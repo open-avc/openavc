@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Save, AlertTriangle, Power, Copy } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
@@ -28,12 +28,12 @@ import { SecurityCard } from "./settings/SecurityCard";
 import { TrustedCertificateCard, type TrustedCertificatePage } from "./settings/TrustedCertificateCard";
 import type { UpdateTls } from "./settings/YourOwnCertificate";
 import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
-import { CutOffRestartLines, CutOffSaved, CutOffWarning } from "../components/system/ListenCutOff";
-import { adapterName, restartPlan, type RestartPlan } from "../components/system/adapterChoice";
-import { listenBody, useListenChoice } from "./settings/listenChoice";
+import { CutOffWarning } from "../components/system/ListenCutOff";
+import { adapterName } from "../components/system/adapterChoice";
+import { useListenChoice } from "./settings/listenChoice";
+import { useRestart } from "./settings/restartFlow";
+import { RestartProgress, RestartQuestion } from "./settings/RestartDialogs";
 import { useProjectStore } from "../store/projectStore";
-import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
-import { configuredOrigin, restartOrigin, runningOrigin, withHost } from "../components/shared/restartPollHelpers";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
 import { ApiError, parseApiError } from "../api/errors";
@@ -76,10 +76,7 @@ export function SystemSettingsView() {
   const [dirty, setDirty] = useState<Partial<SystemConfig>>({});
   const [saving, setSaving] = useState(false);
   const [restartNeeded, setRestartNeeded] = useState(false);
-  const originalServerOrigin = useRef<string | null>(null);
   const [showRebootDialog, setShowRebootDialog] = useState(false);
-  const [showRestartDialog, setShowRestartDialog] = useState(false);
-  const [showRestartPrompt, setShowRestartPrompt] = useState(false);
   const [kioskAvailable, setKioskAvailable] = useState(false);
   const [panelDimAvailable, setPanelDimAvailable] = useState(false);
   const [updateGuidance, setUpdateGuidance] = useState<string | null>(null);
@@ -96,8 +93,6 @@ export function SystemSettingsView() {
   const [adaptersLoading, setAdaptersLoading] = useState(false);
   // Set while the "Change who can connect?" dialog is open.
   const [cutOffCheck, setCutOffCheck] = useState<ListenPreview | null>(null);
-  // Where the restart dialog waits, worked out when it opens.
-  const [restartSetup, setRestartSetup] = useState<{ plan: RestartPlan; preview: ListenPreview | null } | null>(null);
   const [tlsStatus, setTlsStatus] = useState<TlsStatus | null>(null);
 
   const loadAdapters = useCallback(() => {
@@ -116,10 +111,7 @@ export function SystemSettingsView() {
   }, []);
 
   useEffect(() => {
-    api.getSystemConfig().then((fresh) => {
-      originalServerOrigin.current ??= runningOrigin(fresh, window.location.origin);
-      setConfig(fresh);
-    }).catch((e) => showError("Failed to load config: " + parseApiError(e)));
+    api.getSystemConfig().then(setConfig).catch((e) => showError("Failed to load config: " + parseApiError(e)));
     api.getSystemVersion().then((v) => {
       setKioskAvailable(v.kiosk_available);
       setPanelDimAvailable(v.panel_dim_available);
@@ -167,22 +159,8 @@ export function SystemSettingsView() {
   // Accept connections from: the choice on screen, the server's answer for
   // it, and where it stands against the saved and the running choice.
   const listen = useListenChoice(config, dirty.network, hold.deploymentType);
-
-  /** Open the restart dialog, having worked out where it waits: a change of
-   *  who can connect can move this page to another address, or cut it off. */
-  const startRestart = async (cfg: SystemConfig | null = config) => {
-    let preview: ListenPreview | null = null;
-    if (cfg?._listen?.restart_needed) {
-      const n = cfg.network;
-      try {
-        preview = await api.previewListen(listenBody(n.accept_connections_from, n.accept_connections_adapter ?? {}));
-      } catch {
-        preview = null; // the dialog then waits where it always has
-      }
-    }
-    setRestartSetup({ plan: restartPlan(preview), preview });
-    setShowRestartDialog(true);
-  };
+  // "Restart to apply changes?" and the restart itself.
+  const restart = useRestart(config);
 
   const handleSave = async (cutOffConfirmed = false) => {
     // A change of who can connect that would cut off this browser is said
@@ -254,9 +232,9 @@ export function SystemSettingsView() {
         setShowRebootDialog(true);
       } else if (cutOffConfirmed) {
         // "Restart and apply" was the answer already.
-        void startRestart(fresh);
+        void restart.start(fresh);
       } else if (needsRestart) {
-        setShowRestartPrompt(true);
+        restart.ask();
       }
     } catch (e) {
       if (!saved) {
@@ -336,7 +314,7 @@ export function SystemSettingsView() {
     setConfig,
     setTlsStatus,
     loadTlsStatus,
-    askForRestart: () => setShowRestartPrompt(true),
+    askForRestart: restart.ask,
   };
 
   if (!config) {
@@ -369,7 +347,7 @@ export function SystemSettingsView() {
             - !hasDirty: settings saved; offer to restart in-app. */}
         {/* Not once a restart has handed this page over: the server it would
             ask can no longer be reached from here. */}
-        {(restartNeeded || listen.needsRestart) && !restartSetup?.plan.cutOff && (
+        {(restartNeeded || listen.needsRestart) && !restart.handedOver && (
           <div style={warningBox} data-testid="restart-banner">
             <AlertTriangle size={16} style={{ color: "rgb(255, 152, 0)", flexShrink: 0, marginTop: 2 }} />
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-md)", flexWrap: "wrap", flex: 1 }}>
@@ -380,7 +358,7 @@ export function SystemSettingsView() {
               </span>
               {!hasDirty && (
                 <button
-                  onClick={() => void startRestart()}
+                  onClick={() => void restart.start()}
                   style={{
                     ...btnStyle,
                     background: "rgb(255, 152, 0)",
@@ -876,27 +854,7 @@ export function SystemSettingsView() {
       />
     )}
 
-    {showRestartPrompt && (
-      <ConfirmDialog
-        title="Restart to apply changes?"
-        message={
-          <>
-            Your network or security changes need a server restart to take effect.
-            The Programmer will reconnect automatically once the server is back,
-            usually about ten seconds.
-            <br /><br />
-            You can also keep working and restart later from the banner at the top of this page.
-          </>
-        }
-        confirmLabel="Restart now"
-        cancelLabel="Later"
-        onConfirm={() => {
-          setShowRestartPrompt(false);
-          void startRestart();
-        }}
-        onCancel={() => setShowRestartPrompt(false)}
-      />
-    )}
+    <RestartQuestion restart={restart} />
 
     {cutOffCheck && (() => {
       // The URLs use what this save will run with: the ports on screen.
@@ -925,51 +883,7 @@ export function SystemSettingsView() {
       );
     })()}
 
-    {showRestartDialog && (() => {
-      // Target URL is derived from the SAVED config (not the unsaved `dirty`
-      // state). The Restart button is only enabled when !hasDirty, so config
-      // reflects what the post-restart server will actually serve.
-      // Where the server answers after the restart: the page's own origin
-      // behind a proxy, else the configured listener (restartOrigin).
-      const origin = restartOrigin(window.location.origin, originalServerOrigin.current,
-        configuredOrigin(config, window.location.origin));
-      const targetScheme = new URL(origin).protocol === "https:" ? "https" : "http";
-      // A change of who can connect can move this page, on the same scheme and
-      // port: to 127.0.0.1 for a browser on this computer at an address the
-      // choice leaves out, or, for a browser it cuts off, to the new choice's
-      // own addresses if it can reach them (restartPlan).
-      const plan = restartSetup?.plan ?? { cutOff: false, hosts: [""] };
-      const urlFor = (host: string) =>
-        new URL("/programmer", host ? withHost(origin, host) : origin).toString();
-      const localUrl = new URL("/programmer", withHost(origin, "localhost")).toString();
-      const urls = plan.hosts.map(urlFor);
-      const targetUrl = plan.cutOff ? (urls[0] ?? localUrl) : urls[0];
-      const currentScheme = window.location.protocol === "https:" ? "https" : "http";
-      const isProtocolSwitch = currentScheme !== targetScheme;
-      const expectsNewCert = currentScheme === "http" && targetScheme === "https";
-      const facts = plan.cutOff && restartSetup?.preview
-        ? listen.facts(restartSetup.preview, urls, localUrl)
-        : null;
-      return (
-        <RestartProgressDialog
-          targetUrl={targetUrl}
-          alsoTry={plan.cutOff ? urls : urls.slice(1)}
-          handoff={facts ? {
-            lines: <CutOffRestartLines facts={facts} />,
-            saved: <CutOffSaved facts={facts} />,
-          } : undefined}
-          isProtocolSwitch={isProtocolSwitch}
-          expectsNewCert={expectsNewCert}
-          onClose={() => {
-            setShowRestartDialog(false);
-            // Clear restartNeeded only if the dialog reported success — but
-            // since the success path navigates away before the user can close,
-            // a manual close means the user is bailing out. Leave the banner
-            // up so they can try again.
-          }}
-        />
-      );
-    })()}
+    <RestartProgress restart={restart} config={config} facts={listen.facts} />
     </>
   );
 }
