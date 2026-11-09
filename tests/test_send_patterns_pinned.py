@@ -13,6 +13,7 @@ placeholder name that is not an identifier). On an invented Acme device.
 
 from __future__ import annotations
 
+import enum
 import re
 
 import pytest
@@ -264,4 +265,45 @@ def test_a_read_back_names_its_child_id_param_as_child_id_and_keeps_the_spec():
         "Z{ch:{x}}?",
         "Z{chx}?",
         "Z{1}?",
+    ]
+
+
+# ── A declared type that is not a plain name ──
+
+
+class _AcmeKind(str, enum.Enum):
+    INT = "integer"
+
+
+@pytest.mark.parametrize(
+    "ptype, bare, hex_spec",
+    [
+        # A hand-written type that is not a name captures the rest of the field.
+        (["integer"], "LVL (.+)", "LVL (.+)"),
+        ({"type": "integer"}, "LVL (.+)", "LVL (.+)"),
+        (["boolean"], "LVL (.+)", "LVL (.+)"),
+        # A text value equal to a type name is that type, however it hashes.
+        (_AcmeKind.INT, r"LVL (-?\d+)", "LVL ([0-9a-fA-F]+)"),
+    ],
+)
+def test_a_type_that_is_not_a_plain_name_is_compared_not_looked_up(ptype, bare, hex_spec):
+    params = {"x": {"type": ptype}}
+    assert send_regex("LVL {x}", params) == bare
+    assert send_regex("LVL {x:02X}", params) == hex_spec
+
+
+def test_the_simulator_builds_a_handler_for_a_param_typed_as_a_list():
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+    driver = {
+        "id": "acme_amp",
+        "transport": "tcp",
+        "delimiter": "\\r",
+        "state_variables": {"level": {"type": "integer"}},
+        "commands": {"set_level": {"send": "LVL {x}", "params": {"x": {"type": ["integer"]}}}},
+        "responses": [],
+    }
+    sim = YAMLAutoSimulator(device_id="acme1", config={}, driver_def=driver)
+    assert [(h.name, h.pattern.pattern, h.state_changes, h.response_var) for h in sim._command_handlers] == [
+        ("set_level", "^LVL (.+)$", {"level": 1}, "level"),
     ]
