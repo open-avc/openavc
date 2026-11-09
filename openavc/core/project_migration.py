@@ -214,56 +214,8 @@ def _migrate_bindings_0_6_to_0_7(bindings: dict) -> dict:
     if not isinstance(bindings, dict):
         return bindings
 
-    show: dict = {}
-    do: dict = {}
-
-    # show.value — the thing the control IS. Order matters: a `variable`
-    # (two-way read source) overrides a plain `value`, mirroring the panel's
-    # `bindings.variable || bindings.value`. `text` is the label's value.
-    if isinstance(bindings.get("value"), dict):
-        show["value"] = bindings["value"]
-    if isinstance(bindings.get("text"), dict):
-        show["value"] = bindings["text"]
-    if isinstance(bindings.get("variable"), dict):
-        key = bindings["variable"].get("key", "")
-        value: dict = {"source": "state", "key": key}
-        if isinstance(key, str) and key.startswith("var."):
-            value["write_back"] = True
-        show["value"] = value
-    # A list's value is its current selection (was the `selected` two-way slot).
-    if isinstance(bindings.get("selected"), dict):
-        sel_key = bindings["selected"].get("key", "")
-        show["value"] = {"source": "state", "key": sel_key, "write_back": True}
-
-    # show.items — list row population.
-    if isinstance(bindings.get("items"), dict):
-        show["items"] = bindings["items"]
-
-    # show.look — state-driven appearance (feedback / LED color map / select
-    # per-option style). Inner shape is carried verbatim; runtime branches on it.
-    if isinstance(bindings.get("feedback"), dict):
-        show["look"] = bindings["feedback"]
-    if isinstance(bindings.get("color"), dict):
-        show["look"] = bindings["color"]
-
-    # show.visible_when — unchanged condition shape.
-    if bindings.get("visible_when") is not None:
-        show["visible_when"] = bindings["visible_when"]
-
-    # do.<interaction> — normalize a single action object to a one-item list.
-    for slot in _ACTION_SLOTS_0_7:
-        if slot not in bindings:
-            continue
-        raw = bindings[slot]
-        if isinstance(raw, list):
-            actions = [a for a in raw if isinstance(a, dict)]
-        elif isinstance(raw, dict) and raw:
-            actions = [raw]
-        else:
-            actions = []
-        if actions:
-            do[slot] = actions
-
+    show = _show_0_7(bindings)
+    do = _do_0_7(bindings)
     out: dict = {}
     if show:
         out["show"] = show
@@ -273,8 +225,79 @@ def _migrate_bindings_0_6_to_0_7(bindings: dict) -> dict:
     # matrix_config by the element-level caller, so it is intentionally not
     # carried on `bindings` here. The orphan `meter` slot (never wired to an
     # editor or runtime) is dropped; every other v0.6.0 binding key is mapped
-    # above (action slots, the show sources).
+    # by the two halves (the show sources, the action slots).
     return out
+
+
+def _show_0_7(bindings: dict) -> dict:
+    """``show``: what the element reflects from state, as value, items, look
+    and visible_when, in that order."""
+    show: dict = {}
+    value = _show_value_0_7(bindings)
+    if value is not None:
+        show["value"] = value
+    # show.items -- list row population.
+    if isinstance(bindings.get("items"), dict):
+        show["items"] = bindings["items"]
+    # show.look -- state-driven appearance (feedback / LED color map / select
+    # per-option style). Inner shape is carried verbatim; runtime branches on it.
+    look = _last_object(bindings, ("feedback", "color"))
+    if look is not None:
+        show["look"] = look
+    # show.visible_when -- unchanged condition shape.
+    if bindings.get("visible_when") is not None:
+        show["visible_when"] = bindings["visible_when"]
+    return show
+
+
+def _show_value_0_7(bindings: dict):
+    """show.value -- the thing the control IS, or None.
+
+    The later source wins: a `variable` (two-way read source) overrides a plain
+    `value`, mirroring the panel's `bindings.variable || bindings.value`;
+    `text` is the label's value; and a list's value is its current selection
+    (was the `selected` two-way slot), which overrides them all.
+    """
+    if isinstance(bindings.get("selected"), dict):
+        sel_key = bindings["selected"].get("key", "")
+        return {"source": "state", "key": sel_key, "write_back": True}
+    if isinstance(bindings.get("variable"), dict):
+        key = bindings["variable"].get("key", "")
+        value: dict = {"source": "state", "key": key}
+        if isinstance(key, str) and key.startswith("var."):
+            value["write_back"] = True
+        return value
+    return _last_object(bindings, ("value", "text"))
+
+
+def _last_object(bindings: dict, slots: tuple):
+    """The last of these binding slots that holds an object, or None."""
+    found = None
+    for slot in slots:
+        if isinstance(bindings.get(slot), dict):
+            found = bindings[slot]
+    return found
+
+
+def _do_0_7(bindings: dict) -> dict:
+    """``do``: an action list per interaction, in _ACTION_SLOTS_0_7's order;
+    a slot with no action in it is left out."""
+    do: dict = {}
+    for slot in _ACTION_SLOTS_0_7:
+        actions = _actions_0_7(bindings[slot]) if slot in bindings else []
+        if actions:
+            do[slot] = actions
+    return do
+
+
+def _actions_0_7(raw) -> list:
+    """One v0.6.0 action slot as a list: a single action object becomes a
+    one-item list, and anything that is not an action is dropped."""
+    if isinstance(raw, list):
+        return [a for a in raw if isinstance(a, dict)]
+    if isinstance(raw, dict) and raw:
+        return [raw]
+    return []
 
 
 def _migrate_element_bindings_0_6_to_0_7(el: dict) -> None:
