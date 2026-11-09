@@ -218,6 +218,17 @@ describe("Save is refused before it is sent", () => {
     expect(saveButton()).not.toBeDisabled();
   });
 
+  it("says why under a held field's line, for a value the environment holds", async () => {
+    served.config.tls.enabled = true;
+    served.config.tls.port = 8080;
+    hold({ "tls.port": "OPENAVC_TLS_PORT" });
+    await renderLoaded(<SystemSettingsView />);
+    const problem = screen.getByText("HTTPS port must differ from HTTP port");
+    expect(notes()).toHaveLength(1);
+    expect(notes()[0].parentElement).toBe(problem.parentElement);
+    expect(notes()[0].compareDocumentPosition(problem) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("for an HTTPS port out of range, and an empty box reads as 8443", async () => {
     served.config.tls.enabled = true;
     await renderLoaded(<SystemSettingsView />);

@@ -204,6 +204,16 @@ describe("Panel access", () => {
     expect(await saved()).toEqual({ panels: { access: "approved" } });
   });
 
+  it("offers approved panels only first, then anyone on the network", async () => {
+    await renderLoaded(<SystemSettingsView />);
+    const radios = Array.from(document.querySelectorAll<HTMLInputElement>("input[name=cfg-panel-access]"));
+    expect(radios.map((r) => r.value)).toEqual(["approved", "open"]);
+    expect(radios.map((r) => r.closest("label")!.textContent)).toEqual([
+      "Approved panels onlyA new tablet or browser waits until you approve it here. Approved panels stay approved.",
+      "Anyone on the networkAny device that can reach this system can open the panel and control the space.",
+    ]);
+  });
+
   it("reads anything but the word open as approved panels only", async () => {
     served.config.panels.access = "Open";
     await renderLoaded(<SystemSettingsView />);
@@ -330,6 +340,22 @@ describe("SSH access", () => {
     await waitFor(() => expect(toast.showSuccess).toHaveBeenCalledWith("SSH change submitted. Confirming..."));
     await waitFor(() => expect(sshLine()).toBe("SSH is on"));
     expect(api.getSshStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it("says Applying... until the read that confirms a pending change answers", async () => {
+    served.ssh = { supported: true, enabled: false };
+    api.setSsh.mockImplementationOnce(async () => ({ success: false, pending: true }));
+    await renderLoaded(<SystemSettingsView />);
+    await screen.findByText("SSH access");
+    let confirm: (v: { supported: boolean; enabled: boolean }) => void = () => {};
+    api.getSshStatus.mockImplementationOnce(() => new Promise((r) => { confirm = r; }));
+    fireEvent.click(sshSwitch());
+    await waitFor(() => expect(api.getSshStatus).toHaveBeenCalledTimes(2));
+    expect(sshLine()).toBe("Applying...");
+    fireEvent.click(sshSwitch());
+    expect(api.setSsh).toHaveBeenCalledTimes(1);
+    confirm({ supported: true, enabled: true });
+    await waitFor(() => expect(sshLine()).toBe("SSH is on"));
   });
 
   it("keeps what it showed when that read fails", async () => {
