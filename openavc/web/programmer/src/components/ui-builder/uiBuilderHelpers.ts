@@ -4363,33 +4363,43 @@ export function overlapFindings(
   const findings: ReviewFinding[] = [];
   let remaining = pairs;
   while (remaining.length) {
-    const counts = new Map<string, number>();
-    for (const { aId, bId } of remaining) {
-      counts.set(aId, (counts.get(aId) ?? 0) + 1);
-      counts.set(bId, (counts.get(bId) ?? 0) + 1);
-    }
-    let owner: string | null = null;
-    let best = 0;
-    for (const [id, count] of counts) {
-      if (owner === null || count > best || (count === best && id < owner)) {
-        owner = id;
-        best = count;
-      }
-    }
-    if (owner === null) break; // unreachable: `remaining` is not empty
-    const mine = remaining.filter((p) => p.aId === owner || p.bId === owner);
-    remaining = remaining.filter((p) => p.aId !== owner && p.bId !== owner);
-    const partners = mine
+    const owner = overlapOwner(remaining);
+    const involved = (p: OverlapPair) => p.aId === owner || p.bId === owner;
+    const partners = remaining
+      .filter(involved)
       .map((p) => ({
         id: p.aId === owner ? p.bId : p.aId,
         oxPx: p.oxPx,
         oyPx: p.oyPx,
         share: p.share,
       }))
-      .sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+      .sort((x, y) => textOrder(x.id, y.id));
+    remaining = remaining.filter((p) => !involved(p));
     findings.push(overlapMessage(owner, partners, types, parentName));
   }
   return findings;
+}
+
+/** Two ids in the AI side's order for text: by character, never by locale. */
+function textOrder(a: string, b: string): number {
+  if (a === b) return 0;
+  return a < b ? -1 : 1;
+}
+
+/**
+ * Who answers for a set of colliding pairs: whichever element is in most of
+ * them, the earlier id on a tie. Called again on what is left after each
+ * answer, so the worst offender is named first. Mirrors `_overlap_owner` in
+ * page_review.py. `pairs` is never empty.
+ */
+function overlapOwner(pairs: OverlapPair[]): string {
+  const counts = new Map<string, number>();
+  for (const { aId, bId } of pairs) {
+    counts.set(aId, (counts.get(aId) ?? 0) + 1);
+    counts.set(bId, (counts.get(bId) ?? 0) + 1);
+  }
+  const ranked = [...counts].sort(([aId, a], [bId, b]) => b - a || textOrder(aId, bId));
+  return ranked[0][0];
 }
 
 function overlapMessage(

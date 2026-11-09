@@ -1003,11 +1003,7 @@ def overlap_findings(
     findings: list[Finding] = []
     remaining = list(pairs)
     while remaining:
-        counts: dict[str, int] = {}
-        for a_id, b_id, *_ in remaining:
-            counts[a_id] = counts.get(a_id, 0) + 1
-            counts[b_id] = counts.get(b_id, 0) + 1
-        owner = min(counts, key=lambda el_id: (-counts[el_id], el_id))
+        owner = _overlap_owner(remaining)
         mine = [p for p in remaining if owner in (p[0], p[1])]
         remaining = [p for p in remaining if owner not in (p[0], p[1])]
         partners = sorted(
@@ -1016,6 +1012,19 @@ def overlap_findings(
         )
         findings.append(_overlap_message(owner, partners, types, parent_name))
     return findings
+
+
+def _overlap_owner(pairs: list[tuple[str, str, float, float, float]]) -> str:
+    """Who answers for a set of colliding pairs: whichever element is in most of them.
+
+    The earlier id on a tie. Called again on what is left after each answer, so
+    the worst offender is named first. The Builder's twin is ``overlapOwner``.
+    """
+    counts: dict[str, int] = {}
+    for a_id, b_id, *_ in pairs:
+        counts[a_id] = counts.get(a_id, 0) + 1
+        counts[b_id] = counts.get(b_id, 0) + 1
+    return min(counts, key=lambda el_id: (-counts[el_id], el_id))
 
 
 def _overlap_message(
