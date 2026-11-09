@@ -4572,29 +4572,31 @@ export function mutuallyExclusive(a: UIElement, b: UIElement): boolean {
 // the one thing it says about such a page).
 
 /**
- * The box a master draws in on a page arranged this way.
+ * Which of a master's stored boxes is drawn on a page arranged this way.
  *
- * Mirrors the panel's `_masterPlacement`: this orientation's own box, then
- * landscape, then portrait, then whatever is there. A master has to be valid on
- * every page it appears on, so it carries its own orientation-keyed boxes rather
- * than borrowing a layout's -- and the panel falls back rather than drawing
- * nothing, so a master with only a landscape box still appears on a portrait
- * screen.
+ * The panel's `_masterPlacement`: this orientation's own box, then landscape,
+ * then portrait, then whatever is there. A master has to be valid on every page
+ * it appears on, so it carries its own orientation-keyed boxes rather than
+ * borrowing a layout's -- and the panel falls back rather than drawing nothing,
+ * so a master with only a landscape box still appears on a portrait screen.
+ *
+ * The canvas reads the same chain through `masterPlacement` above. The two
+ * differ only on a box stored as null, which the project model refuses: this
+ * one, like `_stored_master_box` on the AI side, skips it.
  */
-export function masterBox(
-  master: MasterElement,
-  orientation: string,
-): Placement | null {
-  const placements = master.placements;
-  if (!placements || typeof placements !== "object") return null;
-  const raw =
+function storedMasterBox(placements: Record<string, Placement>, orientation: string): Placement | null {
+  return (
     placements[orientation] ||
     placements.landscape ||
     placements.portrait ||
     Object.values(placements).find((box) => box) ||
-    null;
-  if (!raw) return null;
-  // The same defaults `_placeElement` applies to a missing coordinate.
+    null
+  );
+}
+
+/** A stored box as the panel draws it, or null when it is not numbers: the same
+ *  defaults `_placeElement` applies to a missing coordinate. */
+function drawnBox(raw: Placement): Placement | null {
   const box = {
     x: Number(raw.x || 0),
     y: Number(raw.y || 0),
@@ -4602,6 +4604,17 @@ export function masterBox(
     h: Number(raw.h || 100),
   };
   return Object.values(box).every((n) => Number.isFinite(n)) ? box : null;
+}
+
+/** The box a master draws in on a page arranged this way. */
+export function masterBox(
+  master: MasterElement,
+  orientation: string,
+): Placement | null {
+  const placements = master.placements;
+  if (!placements || typeof placements !== "object") return null;
+  const raw = storedMasterBox(placements, orientation);
+  return raw ? drawnBox(raw) : null;
 }
 
 /** Whether a master appears on this page. The panel's own test, exactly. */
@@ -4616,6 +4629,70 @@ export function masterDrawsOn(pages: string | string[], pageId: string): boolean
 function masterScope(pages: string | string[]): string {
   if (Array.isArray(pages)) return `${pages.length} page${pages.length === 1 ? "" : "s"}`;
   return "every page";
+}
+
+/** One master as it draws on one page: its box, its size, the screen it is on. */
+interface MasterHere {
+  master: MasterElement;
+  pageId: string;
+  box: Placement;
+  widthPx: number;
+  heightPx: number;
+  reference: { width: number; height: number };
+}
+
+/** A master as it draws on this page, or null when it draws nothing here:
+ *  hidden, listed for other pages only, with no box, or with no size. */
+function masterHere(master: MasterElement, pageId: string, orientation: string): MasterHere | null {
+  if (master.hidden || !masterDrawsOn(master.pages ?? "*", pageId)) return null;
+  const box = masterBox(master, orientation);
+  if (!box) return null;
+  const reference = referenceBox(orientation);
+  const widthPx = (box.w / 100) * reference.width;
+  const heightPx = (box.h / 100) * reference.height;
+  if (widthPx <= 0 || heightPx <= 0) return null;
+  return { master, pageId, box, widthPx, heightPx, reference };
+}
+
+type Covered = Map<string, { oxPx: number; oyPx: number }>;
+
+/** Each drawn control lying on this master, with the pixels it covers per axis.
+ *  A control that can never be on screen with the master is not lying on it. */
+function coveredBy(here: MasterHere, boxes: Map<string, Placement>, elements: Map<string, UIElement>): Covered {
+  const covered: Covered = new Map();
+  for (const [elId, box] of boxes) {
+    if (mutuallyExclusive(elements.get(elId) as UIElement, here.master)) continue;
+    const extent = overlapExtent(box, here.box, here.reference);
+    if (extent) covered.set(elId, { oxPx: extent.oxPx, oyPx: extent.oyPx });
+  }
+  return covered;
+}
+
+function coversMasterFinding(
+  here: MasterHere,
+  elId: string,
+  el: UIElement | undefined,
+  overlap: { oxPx: number; oyPx: number },
+): ReviewFinding {
+  const { master, pageId } = here;
+  const { oxPx, oyPx } = overlap;
+  const share = (100 * (oxPx * oyPx)) / (here.widthPx * here.heightPx);
+  return {
+    elementId: elId,
+    kind: "covers_master",
+    // The coverage goes LAST because a variant arrangement appends
+    // " in the 'portrait' arrangement" to whatever the sentence ends with,
+    // and geometry is the half that is per-arrangement -- a master's page
+    // list is not.
+    message:
+      `${elId} (${el?.type ?? "?"}) is drawn over the master element ` +
+      `${master.id} (${master.type}), which draws on ` +
+      `${masterScope(master.pages ?? "*")} and sits behind a page's own controls. ` +
+      `Move ${elId} off it, or stop ${master.id} drawing on ${pageId}. ` +
+      `${elId} covers ${fixed(oxPx, 0)}x${fixed(oyPx, 0)}px of ${master.id}, ` +
+      `${fixed(share, 0)}% of it.`,
+    key: `covers_master|${elId}|${master.id}`,
+  };
 }
 
 /**
@@ -4642,41 +4719,17 @@ export function buriedMasterFindings(
   inScope: (id: string) => boolean,
 ): ReviewFinding[] {
   const findings: ReviewFinding[] = [];
-  const reference = referenceBox(orientation);
   for (const master of masters) {
-    if (master.hidden || !masterDrawsOn(master.pages ?? "*", pageId)) continue;
-    const mBox = masterBox(master, orientation);
-    if (!mBox) continue;
-    const mWidthPx = (mBox.w / 100) * reference.width;
-    const mHeightPx = (mBox.h / 100) * reference.height;
-    if (mWidthPx <= 0 || mHeightPx <= 0) continue;
-    const covered = new Map<string, { oxPx: number; oyPx: number }>();
-    for (const [elId, box] of boxes) {
-      if (mutuallyExclusive(elements.get(elId) as UIElement, master)) continue;
-      const extent = overlapExtent(box, mBox, reference);
-      if (extent) covered.set(elId, { oxPx: extent.oxPx, oyPx: extent.oyPx });
-    }
-    for (const elId of [...covered.keys()].sort()) {
-      if (!inScope(elId) || coveredAncestor(elId, covered, parents)) continue;
-      const { oxPx, oyPx } = covered.get(elId) as { oxPx: number; oyPx: number };
-      const share = (100 * (oxPx * oyPx)) / (mWidthPx * mHeightPx);
-      findings.push({
-        elementId: elId,
-        kind: "covers_master",
-        // The coverage goes LAST because a variant arrangement appends
-        // " in the 'portrait' arrangement" to whatever the sentence ends with,
-        // and geometry is the half that is per-arrangement -- a master's page
-        // list is not.
-        message:
-          `${elId} (${elements.get(elId)?.type ?? "?"}) is drawn over the master element ` +
-          `${master.id} (${master.type}), which draws on ` +
-          `${masterScope(master.pages ?? "*")} and sits behind a page's own controls. ` +
-          `Move ${elId} off it, or stop ${master.id} drawing on ${pageId}. ` +
-          `${elId} covers ${fixed(oxPx, 0)}x${fixed(oyPx, 0)}px of ${master.id}, ` +
-          `${fixed(share, 0)}% of it.`,
-        key: `covers_master|${elId}|${master.id}`,
-      });
-    }
+    const here = masterHere(master, pageId, orientation);
+    if (!here) continue;
+    const covered = coveredBy(here, boxes, elements);
+    findings.push(
+      ...[...covered.keys()].sort()
+        .filter((elId) => inScope(elId) && !coveredAncestor(elId, covered, parents))
+        .map((elId) => coversMasterFinding(
+          here, elId, elements.get(elId), covered.get(elId) as { oxPx: number; oyPx: number },
+        )),
+    );
   }
   return findings;
 }

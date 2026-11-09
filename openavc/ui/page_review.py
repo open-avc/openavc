@@ -1190,30 +1190,33 @@ def mutually_exclusive(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
 # the one thing it says about such a page).
 
 
-def master_box(master: Mapping[str, Any], orientation: str) -> dict[str, float] | None:
-    """The box a master draws in on a page arranged this way.
+def _stored_master_box(placements: Mapping[str, Any], orientation: str) -> Any:
+    """Which of a master's stored boxes is drawn on a page arranged this way.
 
-    Mirrors the panel's ``_masterPlacement``: this orientation's own box, then
+    The panel's ``_masterPlacement``: this orientation's own box, then
     landscape, then portrait, then whatever is there. A master has to be valid
     on every page it appears on, so it carries its own orientation-keyed boxes
     rather than borrowing a layout's -- and the panel falls back rather than
     drawing nothing, so a master with only a landscape box still appears on a
-    portrait screen.
+    portrait screen. The Builder's twin is ``storedMasterBox``.
     """
-    placements = master.get("placements")
-    if not isinstance(placements, Mapping):
-        return None
-    raw = (
+    return (
         placements.get(orientation)
         or placements.get("landscape")
         or placements.get("portrait")
         or next((box for box in placements.values() if box), None)
     )
-    if raw is None:
-        return None
+
+
+def _drawn_box(raw: Any) -> dict[str, float] | None:
+    """A stored box as the panel draws it, or None when it is not numbers.
+
+    The same defaults ``_placeElement`` applies to a missing coordinate. A
+    hand-edited file can carry a NaN, which compares False against every bound
+    and would otherwise report an overlap measured in "nan px".
+    """
     box = _mapping(raw)
     try:
-        # The same defaults `_placeElement` applies to a missing coordinate.
         out = {
             "x": float(box.get("x") or 0.0),
             "y": float(box.get("y") or 0.0),
@@ -1222,9 +1225,16 @@ def master_box(master: Mapping[str, Any], orientation: str) -> dict[str, float] 
         }
     except (TypeError, ValueError):
         return None
-    # A hand-edited file can carry a NaN, which compares False against every
-    # bound and would otherwise report an overlap measured in "nan px".
     return out if all(isfinite(value) for value in out.values()) else None
+
+
+def master_box(master: Mapping[str, Any], orientation: str) -> dict[str, float] | None:
+    """The box a master draws in on a page arranged this way."""
+    placements = master.get("placements")
+    if not isinstance(placements, Mapping):
+        return None
+    raw = _stored_master_box(placements, orientation)
+    return None if raw is None else _drawn_box(raw)
 
 
 def master_draws_on(pages: Any, page_id: str) -> bool:
@@ -1241,6 +1251,78 @@ def _master_scope(pages: Any) -> str:
     if isinstance(pages, list):
         return f"{len(pages)} page" + ("" if len(pages) == 1 else "s")
     return "every page"
+
+
+@dataclass(frozen=True)
+class _MasterHere:
+    """One master as it draws on one page: its box, its size, the screen it is on."""
+
+    master: Mapping[str, Any]
+    page_id: str
+    box: dict[str, float]
+    size_px: tuple[float, float]
+    reference: tuple[float, float]
+
+
+def _master_here(master: Any, page_id: str, orientation: str) -> _MasterHere | None:
+    """A master as it draws on this page, or None when it draws nothing here.
+
+    Hidden, listed for other pages only, with no box, or with no size: each is
+    a master the page's controls cannot be drawn over.
+    """
+    m = _mapping(master)
+    if m.get("hidden") or not master_draws_on(m.get("pages", "*"), page_id):
+        return None
+    box = master_box(m, orientation)
+    if box is None:
+        return None
+    reference = reference_box(orientation)
+    size_px = _box_px(box, reference)
+    if size_px[0] <= 0 or size_px[1] <= 0:
+        return None
+    return _MasterHere(m, page_id, box, size_px, reference)
+
+
+def _covered_by(
+    here: _MasterHere,
+    boxes: Mapping[str, Mapping[str, float]],
+    dumps: Mapping[str, Mapping[str, Any]],
+) -> dict[str, tuple[float, float]]:
+    """Each drawn control lying on this master, with the pixels it covers per axis.
+
+    A control that can never be on screen with the master is not lying on it.
+    """
+    covered: dict[str, tuple[float, float]] = {}
+    for el_id, box in boxes.items():
+        if mutually_exclusive(dumps[el_id], here.master):
+            continue
+        extent = overlap_extent(box, here.box, here.reference)
+        if extent:
+            covered[el_id] = (extent[0], extent[1])
+    return covered
+
+
+def _covers_master_finding(
+    here: _MasterHere, el_id: str, element: Mapping[str, Any], overlap_px: tuple[float, float],
+) -> Finding:
+    m = here.master
+    m_id = str(m.get("id", "?"))
+    ox_px, oy_px = overlap_px
+    share = 100.0 * (ox_px * oy_px) / (here.size_px[0] * here.size_px[1])
+    return Finding(
+        el_id,
+        "covers_master",
+        # The coverage goes LAST because a variant arrangement appends
+        # " in the 'portrait' arrangement" to whatever the sentence ends
+        # with, and geometry is the half that is per-arrangement -- a
+        # master's page list is not.
+        f"{el_id} ({element.get('type', '?')}) is drawn over the master element "
+        f"{m_id} ({m.get('type', '?')}), which draws on "
+        f"{_master_scope(m.get('pages', '*'))} and sits behind a page's own controls. "
+        f"Move {el_id} off it, or stop {m_id} drawing on {here.page_id}. "
+        f"{el_id} covers {ox_px:.0f}x{oy_px:.0f}px of {m_id}, {share:.0f}% of it.",
+        key=("covers_master", el_id, m_id),
+    )
 
 
 def buried_master_findings(
@@ -1266,47 +1348,17 @@ def buried_master_findings(
     it is the fix, and the child has done nothing wrong.
     """
     findings: list[Finding] = []
-    reference = reference_box(orientation)
     for master in masters:
-        m = _mapping(master)
-        if m.get("hidden") or not master_draws_on(m.get("pages", "*"), page_id):
+        here = _master_here(master, page_id, orientation)
+        if here is None:
             continue
-        m_box = master_box(m, orientation)
-        if m_box is None:
-            continue
-        m_w_px, m_h_px = _box_px(m_box, reference)
-        if m_w_px <= 0 or m_h_px <= 0:
-            continue
-        covered: dict[str, tuple[float, float]] = {}
-        for el_id, box in boxes.items():
-            if mutually_exclusive(dumps[el_id], m):
-                continue
-            extent = overlap_extent(box, m_box, reference)
-            if extent:
-                covered[el_id] = (extent[0], extent[1])
-        m_id = str(m.get("id", "?"))
-        for el_id in sorted(covered):
-            if not in_scope(el_id) or _covered_ancestor(el_id, covered, parents):
-                continue
-            ox_px, oy_px = covered[el_id]
-            share = 100.0 * (ox_px * oy_px) / (m_w_px * m_h_px)
-            findings.append(Finding(
-                el_id,
-                "covers_master",
-                # The coverage goes LAST because a variant arrangement appends
-                # " in the 'portrait' arrangement" to whatever the sentence ends
-                # with, and geometry is the half that is per-arrangement -- a
-                # master's page list is not.
-                f"{el_id} ({dumps[el_id].get('type', '?')}) is drawn over the master element "
-                f"{m_id} ({m.get('type', '?')}), which draws on "
-                f"{_master_scope(m.get('pages', '*'))} and sits behind a page's own controls. "
-                f"Move {el_id} off it, or stop {m_id} drawing on {page_id}. "
-                f"{el_id} covers {ox_px:.0f}x{oy_px:.0f}px of {m_id}, {share:.0f}% of it.",
-                key=("covers_master", el_id, m_id),
-            ))
+        covered = _covered_by(here, boxes, dumps)
+        findings.extend(
+            _covers_master_finding(here, el_id, dumps[el_id], covered[el_id])
+            for el_id in sorted(covered)
+            if in_scope(el_id) and not _covered_ancestor(el_id, covered, parents)
+        )
     return findings
-
-
 def _covered_ancestor(
     el_id: str, covered: Mapping[str, Any], parents: Mapping[str, str | None],
 ) -> bool:
