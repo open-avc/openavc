@@ -1702,21 +1702,7 @@ def content_findings(element: Mapping[str, Any]) -> list[Finding]:
     if rule is None:
         return []
     prop, slot, remedy = rule
-    if element.get(prop):
-        return []
-    show = _show(element)
-    if slot and show is not None and show.get(slot):
-        return []
-    # A label whose words come from its look is not an empty box. The renderer
-    # draws show.look's per-state text for the types in STATE_LABEL_TYPES, and
-    # falls back to the matched default_state, so a state chip that carries its
-    # four captions in the look and no `text` at all draws correctly. Warning
-    # about it taught authors to add a dead `text` to silence the check.
-    if (
-        el_type in STATE_LABEL_TYPES
-        and show is not None
-        and look_supplies_text(show.get("look"))
-    ):
+    if _content_supplied(element, prop, slot):
         return []
     el_id = str(element.get("id", "?"))
     instead = f", and no show.{slot} to supply one" if slot else ""
@@ -1726,6 +1712,31 @@ def content_findings(element: Mapping[str, Any]) -> list[Finding]:
         f"{el_id} ({el_type}) has no {prop}{instead}, so it draws an empty box. "
         f"Set {prop} to {remedy}.",
     )]
+
+
+def _content_supplied(element: Mapping[str, Any], prop: str, slot: str | None) -> bool:
+    """Whether anything gives this element what it draws.
+
+    Three things can: the property itself; the ``show`` slot that stands in for
+    it (a label bound to ``show.value`` needs no ``text``); and, for a type that
+    draws a look's words (``STATE_LABEL_TYPES``), a look that has some. The
+    renderer draws show.look's per-state text for those types and falls back to
+    the matched default_state, so a state chip that carries its four captions in
+    the look and no ``text`` at all draws correctly; warning about it taught
+    authors to add a dead ``text`` to silence the check. Another source the panel
+    learns to draw from is one more line here, and in ``contentSupplied``.
+    """
+    if element.get(prop):
+        return True
+    show = _show(element)
+    if show is None:
+        return False
+    if slot and show.get(slot):
+        return True
+    return (
+        str(element.get("type", "")) in STATE_LABEL_TYPES
+        and look_supplies_text(show.get("look"))
+    )
 
 
 #: The keypad's defaults, as panel.js renderKeypad reads them (``digits ?? 4``,

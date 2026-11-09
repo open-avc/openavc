@@ -5471,13 +5471,6 @@ const INERT_WITHOUT: Record<string, [string, string | null, string]> = {
 };
 
 /**
- * A control with nothing to draw, which draws an empty box and says nothing.
- *
- * Named by a logo placeholder created as a master image and never given a src,
- * because no tool could set one. It stored, it took a placement, and it
- * rendered as nothing -- while the request that asked for it was reported done.
- */
-/**
  * Whether a `show.look` puts TEXT on screen, rather than only colour.
  *
  * Two shapes do: a `states` map with a `label` on any entry, and the binary
@@ -5485,37 +5478,36 @@ const INERT_WITHOUT: Record<string, [string, string | null, string]> = {
  * supplies none. Mirrors look_supplies_text in page_review.py.
  */
 export function lookSuppliesText(look: unknown): boolean {
-  if (!look || typeof look !== "object") return false;
-  const l = look as Record<string, unknown>;
-  if (l.label_active !== undefined && l.label_active !== null) return true;
-  if (l.label_inactive !== undefined && l.label_inactive !== null) return true;
-  const states = l.states;
-  if (states && typeof states === "object") {
-    return Object.values(states as Record<string, unknown>).some(
-      (spec) =>
-        spec !== null && typeof spec === "object" &&
-        (spec as Record<string, unknown>).label !== undefined &&
-        (spec as Record<string, unknown>).label !== null,
-    );
-  }
-  return false;
+  if (!isPlainObject(look)) return false;
+  return present(look.label_active) || present(look.label_inactive) || statesHaveWords(look.states);
 }
 
+/** Whether any state in a look's `states` carries words of its own. A list is
+ *  read as states here, where the AI side reads none from it. */
+function statesHaveWords(states: unknown): boolean {
+  if (!states || typeof states !== "object") return false;
+  return Object.values(states as Record<string, unknown>).some(
+    (spec) => isPlainObject(spec) && present(spec.label),
+  );
+}
+
+/** Neither missing nor null: Python's `is not None`, for a field read off JSON. */
+function present(value: unknown): boolean {
+  return value !== undefined && value !== null;
+}
+
+/**
+ * A control with nothing to draw, which draws an empty box and says nothing.
+ *
+ * Named by a logo placeholder created as a master image and never given a src,
+ * because no tool could set one. It stored, it took a placement, and it
+ * rendered as nothing -- while the request that asked for it was reported done.
+ */
 export function contentFindings(el: UIElement): ReviewFinding[] {
   const rule = own(INERT_WITHOUT, el.type);
   if (!rule) return [];
   const [prop, slot, remedy] = rule;
-  const value = (el as unknown as Record<string, unknown>)[prop];
-  if (value !== undefined && value !== null && value !== "" &&
-      !(Array.isArray(value) && value.length === 0)) return [];
-  const show = showOf(el);
-  if (slot && show && show[slot]) return [];
-  // A label whose words come from its look is not an empty box: the renderer
-  // draws show.look's per-state text for STATE_LABEL_TYPES. Warning about it
-  // taught authors to add a dead `text` to silence the check.
-  if (STATE_LABEL_TYPES.includes(el.type) && show && lookSuppliesText(show.look)) {
-    return [];
-  }
+  if (contentSupplied(el, prop, slot)) return [];
   const instead = slot ? `, and no show.${slot} to supply one` : "";
   return [{
     elementId: el.id,
@@ -5525,6 +5517,32 @@ export function contentFindings(el: UIElement): ReviewFinding[] {
       `Set ${prop} to ${remedy}.`,
     key: `nothing_to_draw|${el.id}`,
   }];
+}
+
+/**
+ * Whether anything gives this element what it draws: the property itself, the
+ * `show` slot that stands in for it (a label bound to `show.value` needs no
+ * `text`), or, for a type that draws a look's words (STATE_LABEL_TYPES), a look
+ * that has some. Warning about a state chip whose captions live in its look
+ * taught authors to add a dead `text` to silence the check. Another source the
+ * panel learns to draw from is one more line here, and in `_content_supplied`
+ * in page_review.py.
+ */
+function contentSupplied(el: UIElement, prop: string, slot: string | null): boolean {
+  if (isWritten((el as unknown as Record<string, unknown>)[prop])) return true;
+  const show = showOf(el);
+  if (!show) return false;
+  if (slot && show[slot]) return true;
+  return STATE_LABEL_TYPES.includes(el.type) && lookSuppliesText(show.look);
+}
+
+/** A property value an author wrote: not missing, not empty text, not an empty
+ *  list. The AI side asks Python's truthiness instead, which also turns away 0,
+ *  false and {}: values the project model refuses for every property in
+ *  INERT_WITHOUT. */
+function isWritten(value: unknown): boolean {
+  if (!present(value) || value === "") return false;
+  return !Array.isArray(value) || value.length > 0;
 }
 
 /** A value a full model dump carries for a field nobody set: not an authoring
