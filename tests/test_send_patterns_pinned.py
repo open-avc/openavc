@@ -206,6 +206,11 @@ def test_a_param_takes_its_first_occurrences_group_in_template_order():
     assert send_param_groups("{b}{a:02d}", {"a": {}, "b": {}}) == {"b": 1, "a": 2}
 
 
+def test_an_empty_spec_still_counts_as_the_params_placeholder():
+    assert send_param_specs("{v:}", {"v": {}}) == {"v": ""}
+    assert send_param_groups("{a:}{b}", {"a": {}, "b": {}}) == {"a": 1, "b": 2}
+
+
 def test_a_placeholder_name_that_is_not_an_identifier_is_filled_but_not_inverted():
     # safe_substitute fills any word-character name; the inversion reads only
     # an identifier as a placeholder, so the line it is sent as goes

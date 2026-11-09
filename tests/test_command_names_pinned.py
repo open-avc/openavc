@@ -48,6 +48,7 @@ _VARS = {
         ("x_toggle_on", None, None),
         ("query_query_input", "query_input", None),
         ("enable_set_volume", None, None),
+        ("set_enable_mute", None, None),
         # A name that is all affix leaves nothing, or the affix's own word.
         ("get_", None, None),
         ("_on", None, None),
@@ -87,6 +88,7 @@ _DRIVER = {
         "route": {"send": "R{x}", "params": {"x": {"type": "integer"}}},
         "unmute": {"send": "UM"},
         "power_toggle_on": {"send": "PTO"},
+        "input_toggle": {"send": "IT{x}", "params": {"x": {"type": "integer"}}},
     },
     "responses": [],
 }
@@ -115,4 +117,6 @@ def test_what_the_simulator_sets_from_a_command_name():
         "unmute": ({}, "mute"),
         # Only the _on is stripped, leaving power_toggle, which names nothing.
         "power_toggle_on": ({}, None),
+        # A toggle with a param still sets nothing from it.
+        "input_toggle": ({}, "input"),
     }
