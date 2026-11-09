@@ -537,12 +537,7 @@ export function addLayout(page: UIPage, orientation: Orientation): UIPage {
   const layouts = page.layouts ?? [];
   const primary = primaryLayout(page);
   const taken = new Set(layouts.map((l) => l.id));
-  let id: string = orientation;
-  let counter = 1;
-  while (taken.has(id)) {
-    counter++;
-    id = `${orientation}_${counter}`;
-  }
+  const [id] = firstFree(taken, (n) => (n === 1 ? orientation : `${orientation}_${n}`));
   const variant: Layout = {
     id,
     orientation,
@@ -948,6 +943,32 @@ export function resolveDropParent(
   return { parentId, relative: roundPlacement(parentSpace(box, base)) };
 }
 
+/**
+ * The first spelling nobody has taken, counting up from `from`, and the count
+ * it took. Page ids and names, a page copy's controls and a layout variant's
+ * id are each named this way; `spell` says what the nth try is called.
+ */
+function firstFree(
+  taken: ReadonlySet<string>,
+  spell: (n: number) => string,
+  from = 1,
+): [string, number] {
+  let n = from;
+  while (taken.has(spell(n))) n++;
+  return [spell(n), n];
+}
+
+/**
+ * Every id a new control on any page may not take: every page's controls, and
+ * the reserved ones (master elements share the ui.<id> namespace, so a copy
+ * cannot be named onto a master's id).
+ */
+function takenElementIds(pages: UIPage[], reservedIds: string[]): Set<string> {
+  const taken = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
+  for (const id of reservedIds) taken.add(id);
+  return taken;
+}
+
 // --- Page mutations (return new pages array) ---
 
 export function addPage(
@@ -958,18 +979,8 @@ export function addPage(
   const names = new Set(pages.map((p) => p.name));
   const prefix = pageType === "page" ? "page" : pageType;
   const label = pageType === "page" ? "Page" : pageType === "overlay" ? "Overlay" : "Sidebar";
-  let counter = 1;
-  let id = `${prefix}_${counter}`;
-  while (ids.has(id)) {
-    counter++;
-    id = `${prefix}_${counter}`;
-  }
-  let nameCounter = counter;
-  let name = `${label} ${nameCounter}`;
-  while (names.has(name)) {
-    nameCounter++;
-    name = `${label} ${nameCounter}`;
-  }
+  const [id, counter] = firstFree(ids, (n) => `${prefix}_${n}`);
+  const [name] = firstFree(names, (n) => `${label} ${n}`, counter);
 
   const newPage: UIPage = {
     id,
@@ -1200,12 +1211,7 @@ export function duplicateElementInPage(
   const subtree = elementSubtree(page, elementId);
   if (!subtree.length) return pages;
 
-  // Collect IDs from ALL pages to avoid cross-page collisions, plus any
-  // reserved IDs (master_elements share the ui.<id> namespace) so a duplicate
-  // can't be auto-named onto a master id.
-  const taken = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
-  for (const id of reservedIds) taken.add(id);
-  const idMap = freshIds(subtree, taken);
+  const idMap = freshIds(subtree, takenElementIds(pages, reservedIds));
 
   // Place the copy down-right of the original, the nudge every design tool
   // uses, and pull it back inside the parent box if that would push it off.
@@ -1314,10 +1320,7 @@ export function pasteIntoPage(
   const page = pages.find((p) => p.id === pageId);
   if (!page || clipboard.elements.length === 0) return pages;
 
-  // Page element ids and master ids share the ui.<id> runtime namespace, so a
-  // pasted element must avoid colliding with either.
-  const taken = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
-  for (const id of reservedIds) taken.add(id);
+  const taken = takenElementIds(pages, reservedIds);
   // A clipboard id that is still free is kept, so a paste into a fresh page
   // reads the way it was authored. Generated ids steer clear of every id on
   // the clipboard as well, so one element can never be handed the id another
@@ -1421,98 +1424,63 @@ export function reorderPage(
 
 // --- Page duplication ---
 
+/**
+ * Copy a page and everything on it, straight after the original.
+ *
+ * Every control gets a fresh id named from its type and the copy's id, and
+ * every reference between the page's controls follows the copy
+ * (`cloneWithIds`), the container hierarchy included. Geometry does not live
+ * on the elements: every arrangement keys its placements and hidden list by
+ * element id, so the renames reach them too (`layoutRenamed`).
+ */
 export function duplicatePage(
   pages: UIPage[],
   pageId: string,
   reservedIds: string[] = [],
 ): UIPage[] {
-  const page = pages.find((p) => p.id === pageId);
-  if (!page) return pages;
+  const idx = pages.findIndex((p) => p.id === pageId);
+  if (idx === -1) return pages;
+  const page = pages[idx];
 
-  const ids = new Set(pages.map((p) => p.id));
-  const names = new Set(pages.map((p) => p.name));
-
-  // Generate unique ID
-  let newId = `${page.id}_copy`;
-  let counter = 1;
-  while (ids.has(newId)) {
-    counter++;
-    newId = `${page.id}_copy_${counter}`;
-  }
-
-  // Generate unique name
-  let newName = `${page.name} (Copy)`;
-  let nameCounter = 1;
-  while (names.has(newName)) {
-    nameCounter++;
-    newName = `${page.name} (Copy ${nameCounter})`;
-  }
-
-  // Element ids must be unique across all pages AND the reserved ids
-  // (master_elements share the ui.<id> namespace)
-  const existingElementIds = new Set(
-    pages.flatMap((p) => p.elements.map((e) => e.id)),
+  const [newId] = firstFree(new Set(pages.map((p) => p.id)), (n) =>
+    n === 1 ? `${page.id}_copy` : `${page.id}_copy_${n}`,
   );
-  for (const id of reservedIds) existingElementIds.add(id);
-
-  // First pass: assign every copied element its new id
+  const [newName] = firstFree(new Set(pages.map((p) => p.name)), (n) =>
+    n === 1 ? `${page.name} (Copy)` : `${page.name} (Copy ${n})`,
+  );
+  const taken = takenElementIds(pages, reservedIds);
   const idMap = new Map<string, string>();
   for (const el of page.elements) {
-    let elId = `${el.type}_${newId}_1`;
-    let c = 1;
-    while (existingElementIds.has(elId)) {
-      c++;
-      elId = `${el.type}_${newId}_${c}`;
-    }
-    existingElementIds.add(elId);
+    const [elId] = firstFree(taken, (n) => `${el.type}_${newId}_${n}`);
+    taken.add(elId);
     idMap.set(el.id, elId);
   }
 
-  // Second pass: clone and rewrite ui.<id>.* references for EVERY old->new
-  // pair, so both self-references and references to sibling elements on the
-  // same page follow the copy instead of pointing back at the originals.
-  const newElements = page.elements.map((el) => {
-    let cloned = JSON.parse(JSON.stringify(el)) as UIElement;
-    for (const [oldElId, newElId] of idMap) {
-      cloned = rewriteElement(cloned, oldElId, newElId);
-    }
-    // The container hierarchy is keyed by element id too, and rewriteElement
-    // only follows bindings -- remap it or every child dangles in the copy.
-    if (cloned.parent && idMap.has(cloned.parent)) {
-      cloned = { ...cloned, parent: idMap.get(cloned.parent)! };
-    }
-    return cloned;
-  });
-
-  // Geometry does not live on the elements: every arrangement keys its
-  // placements and hidden list by element id, so the renames have to reach
-  // them or the copy loses its whole layout to DEFAULT_PLACEMENT fallbacks.
   const clonedPage = JSON.parse(JSON.stringify(page)) as UIPage;
-  const newLayouts = (clonedPage.layouts ?? []).map((l) => {
-    const placements: Record<string, Placement> = {};
-    for (const [elId, p] of Object.entries(l.placements ?? {})) {
-      placements[idMap.get(elId) ?? elId] = p;
-    }
-    return {
-      ...l,
-      placements,
-      hidden: (l.hidden ?? []).map((id) => idMap.get(id) ?? id),
-    };
-  });
-
   const newPage: UIPage = {
     ...clonedPage,
     id: newId,
     name: newName,
-    elements: newElements,
-    layouts: newLayouts,
+    elements: page.elements.map((el) => cloneWithIds(el, idMap)),
+    layouts: (clonedPage.layouts ?? []).map((l) => layoutRenamed(l, idMap)),
   };
 
-  // Insert after source page
-  const idx = pages.findIndex((p) => p.id === pageId);
   const result = [...pages];
   result.splice(idx + 1, 0, newPage);
   return result;
+}
+
+/** A layout with every id in `idMap` renamed, its boxes kept in their order. */
+function layoutRenamed(layout: Layout, idMap: Map<string, string>): Layout {
+  const placements: Record<string, Placement> = {};
+  for (const [elId, p] of Object.entries(layout.placements ?? {})) {
+    placements[idMap.get(elId) ?? elId] = p;
+  }
+  return {
+    ...layout,
+    placements,
+    hidden: (layout.hidden ?? []).map((id) => idMap.get(id) ?? id),
+  };
 }
 
 // --- Alignment helpers ---
