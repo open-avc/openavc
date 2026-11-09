@@ -4731,9 +4731,7 @@ function shownBindings(el: UIElement): Shown | null {
 /** `show.look` when this type reads one at all, else null. */
 function shownLook(shown: Shown): Record<string, unknown> | null {
   const look = shown.show.look;
-  return shown.honored.includes("look") && look && typeof look === "object" && !Array.isArray(look)
-    ? (look as Record<string, unknown>)
-    : null;
+  return shown.honored.includes("look") && isPlainObject(look) ? look : null;
 }
 
 /** The sentence for a per-state setting this type takes nothing of from show.look.
@@ -4806,12 +4804,9 @@ function lookLabelFindings(shown: Shown): ReviewFinding[] {
   const { el } = shown;
   if (!look || STATE_LABEL_TYPES.includes(el.type)) return [];
   const states = look.states;
-  if (!states || typeof states !== "object" || Array.isArray(states)) return [];
-  const labelled = Object.entries(states as Record<string, unknown>)
-    .filter(([, spec]) =>
-      spec && typeof spec === "object" && !Array.isArray(spec) &&
-      (spec as Record<string, unknown>).label !== undefined &&
-      (spec as Record<string, unknown>).label !== null)
+  if (!isPlainObject(states)) return [];
+  const labelled = Object.entries(states)
+    .filter(([, spec]) => isPlainObject(spec) && (spec.label ?? null) !== null)
     .map(([name]) => name)
     .sort();
   if (!labelled.length) return [];
@@ -4885,6 +4880,14 @@ function lookFieldFindings(shown: Shown): ReviewFinding[] {
   return findings;
 }
 
+/** Whether a show binding names what it reads: its state key, or its key pattern
+ *  for `items`. A value shown from a macro's progress reads neither. */
+function namesItsSource(slot: string, binding: Record<string, unknown>): boolean {
+  if (slot === "value" && binding.source === "macro_progress") return true;
+  const field = slot === "items" ? "key_pattern" : "key";
+  return Boolean(String(binding[field] ?? "").trim());
+}
+
 /**
  * A binding the renderer DOES read, that names nothing to read.
  *
@@ -4896,12 +4899,9 @@ function lookFieldFindings(shown: Shown): ReviewFinding[] {
 function keylessSlotFindings({ el, honored, show }: Shown): ReviewFinding[] {
   const findings: ReviewFinding[] = [];
   for (const slot of REVIEWED_SHOW_SLOTS) {
-    const binding = show[slot] as Record<string, unknown> | undefined;
-    if (!honored.includes(slot) || !binding || typeof binding !== "object" ||
-        Array.isArray(binding)) continue;
-    if (slot === "value" && binding.source === "macro_progress") continue;
-    const field = slot === "items" ? "key_pattern" : "key";
-    if (String(binding[field] ?? "").trim()) continue;
+    const binding = show[slot];
+    if (!honored.includes(slot) || !isPlainObject(binding)) continue;
+    if (namesItsSource(slot, binding)) continue;
     const named = slot === "items" ? "key pattern" : "state key";
     findings.push({
       elementId: el.id,
@@ -5682,26 +5682,107 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
 
   const layouts = page.layouts ?? [];
   if (!layouts.length) return findings;
-
-  const primaryId = primaryLayout(page)?.id;
   // One arrangement when the caller is looking at one (an unknown id resolves
   // to the primary, the way every other read of a layout id does).
   const chosen = layoutId === undefined ? layouts : [layoutById(page, layoutId) ?? layouts[0]];
-  // Primary first: it is the arrangement every variant inherits from, so its
-  // phrasing ("...") beats the variant's ("... in the portrait arrangement").
-  const ordered = [...chosen].sort(
+  findings.push(...arrangementFindings(page, chosen, { theme, inScope, masters: masters ?? [] }));
+  return findings;
+}
+
+/** What one review was asked about: which elements, under which theme, over which masters. */
+interface ReviewScope {
+  theme?: ElementDefaults;
+  inScope: (id: string) => boolean;
+  masters: MasterElement[];
+}
+
+/**
+ * One arrangement of a page as the panel resolves it.
+ *
+ * `absolute` is where each element is drawn, in page percentages with container
+ * nesting flattened; `ownBoxes` is the box each one stores, a percentage of its
+ * container. Every percentage resolves against `reference`, which is the whole
+ * of what portrait changes: the same screen, turned.
+ */
+interface Arrangement {
+  page: UIPage;
+  byId: Map<string, UIElement>;
+  absolute: Record<string, Placement>;
+  ownBoxes: Record<string, Placement>;
+  hidden: Set<string>;
+  reference: { width: number; height: number };
+  orientation: string;
+  isPrimary: boolean;
+}
+
+function resolveArrangement(page: UIPage, layout: Layout, primaryId: string | undefined): Arrangement {
+  const orientation = layout.orientation ?? "landscape";
+  return {
+    page,
+    byId: new Map(page.elements.map((e) => [e.id, e])),
+    absolute: absolutePlacements(page, layout.id),
+    ownBoxes: resolvePlacements(page, layout.id),
+    hidden: resolveHidden(page, layout.id),
+    reference: referenceBox(orientation),
+    orientation,
+    isPrimary: layout.id === primaryId,
+  };
+}
+
+/** Shown in this arrangement and given a box in it. */
+function isDrawn(arr: Arrangement, id: string): boolean {
+  return !arr.hidden.has(id) && !!own(arr.absolute, id);
+}
+
+function parentIn(arr: Arrangement, id: string): string | null {
+  const named = arr.byId.get(id)?.parent;
+  return named && arr.byId.has(named) && named !== id ? named : null;
+}
+
+function parentNameIn(arr: Arrangement, id: string): string {
+  const parent = parentIn(arr, id);
+  return parent ? `its container '${parent}'` : "the page";
+}
+
+/** Every container above this element, innermost first.
+ *
+ *  Only as far as the boxes actually resolve -- a container the arrangement
+ *  never positions ends the chain rather than guessing a size for it. */
+function ancestorsIn(arr: Arrangement, id: string): Container[] {
+  const chain: Container[] = [];
+  const seen = new Set<string>([id]);
+  let cursor = parentIn(arr, id);
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    const box = own(arr.absolute, cursor);
+    if (!box) break;
+    chain.push({
+      label: `'${cursor}'`,
+      widthPx: (box.w / 100) * arr.reference.width,
+      heightPx: (box.h / 100) * arr.reference.height,
+    });
+    cursor = parentIn(arr, cursor);
+  }
+  return chain;
+}
+
+/**
+ * Every geometry finding across these arrangements, each said once.
+ *
+ * Primary first: it is the arrangement every variant inherits from, so its
+ * phrasing ("...") beats the variant's ("... in the portrait arrangement").
+ */
+function arrangementFindings(page: UIPage, layouts: Layout[], scope: ReviewScope): ReviewFinding[] {
+  const primaryId = primaryLayout(page)?.id;
+  const ordered = [...layouts].sort(
     (a, b) => Number(a.id !== primaryId) - Number(b.id !== primaryId),
   );
+  const findings: ReviewFinding[] = [];
   const seen = new Set<string>();
   for (const layout of ordered) {
-    const where = layout.id === primaryId ? "" : ` in the '${layout.id}' arrangement`;
-    for (const finding of layoutFindings(page, layout.id, {
-      theme,
-      inScope,
-      isPrimary: layout.id === primaryId,
-      masters: masters ?? [],
-      orientation: layout.orientation ?? "landscape",
-    })) {
+    const arr = resolveArrangement(page, layout, primaryId);
+    const where = arr.isPrimary ? "" : ` in the '${layout.id}' arrangement`;
+    for (const finding of layoutFindings(arr, scope)) {
       if (seen.has(finding.key)) continue;
       seen.add(finding.key);
       findings.push(withWhere(finding, where));
@@ -5710,147 +5791,119 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
   return findings;
 }
 
-/** Every geometry finding for one arrangement. */
-function layoutFindings(
-  page: UIPage,
-  layoutId: string,
-  ctx: {
-    theme?: ElementDefaults;
-    inScope: (id: string) => boolean;
-    isPrimary: boolean;
-    masters: MasterElement[];
-    orientation: string;
-  },
-): ReviewFinding[] {
-  const absolute = absolutePlacements(page, layoutId);
-  const ownBoxes = resolvePlacements(page, layoutId);
-  const hidden = resolveHidden(page, layoutId);
-  const byId = new Map(page.elements.map((e) => [e.id, e]));
+/** Every geometry finding for one arrangement: each box, then siblings, then masters. */
+function layoutFindings(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
+  return [
+    ...boxFindingsIn(arr, scope),
+    ...siblingOverlaps(arr, scope),
+    ...buriedMastersIn(arr, scope),
+  ];
+}
+
+function boxFindingsIn(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
   const findings: ReviewFinding[] = [];
-  // Every percentage in this arrangement resolves against this, and it is the
-  // whole of what portrait changes: the same screen, turned.
-  const reference = referenceBox(ctx.orientation);
-
-  const parentOf = (id: string): string | null => {
-    const named = byId.get(id)?.parent;
-    return named && byId.has(named) && named !== id ? named : null;
-  };
-  const parentName = (id: string): string => {
-    const parent = parentOf(id);
-    return parent ? `its container '${parent}'` : "the page";
-  };
-  /** Every container above this element, innermost first.
-   *
-   *  Only reached when a floor is larger than the immediate parent, and only as
-   *  far as the boxes actually resolve -- a container the arrangement never
-   *  positions ends the chain rather than guessing a size for it. */
-  const ancestorsOf = (id: string): Container[] => {
-    const chain: Container[] = [];
-    const seen = new Set<string>([id]);
-    let cursor = parentOf(id);
-    while (cursor && !seen.has(cursor)) {
-      seen.add(cursor);
-      const box = own(absolute, cursor);
-      if (!box) break;
-      chain.push({
-        label: `'${cursor}'`,
-        widthPx: (box.w / 100) * reference.width,
-        heightPx: (box.h / 100) * reference.height,
-      });
-      cursor = parentOf(cursor);
-    }
-    return chain;
-  };
-
-  for (const el of page.elements) {
-    if (!ctx.inScope(el.id) || hidden.has(el.id)) continue;
-    const box = own(absolute, el.id);
-    if (!box) {
+  for (const el of arr.page.elements) {
+    if (!scope.inScope(el.id) || arr.hidden.has(el.id)) continue;
+    if (own(arr.absolute, el.id)) {
+      findings.push(...placedBoxFindings(arr, el, scope.theme));
+    } else if (arr.isPrimary) {
       // A variant legitimately carries no delta for an element -- it inherits
       // one. Only the primary having no box means it has none at all.
-      if (ctx.isPrimary) findings.push(noBoxFinding(el, parentName(el.id)));
-      continue;
+      findings.push(noBoxFinding(el, parentNameIn(arr, el.id)));
     }
-    const parentPx = parentBoxPx(parentOf(el.id), absolute, reference);
-    const boxPx = {
-      width: (box.w / 100) * reference.width,
-      height: (box.h / 100) * reference.height,
-    };
-    const candidates = [
-      starvationFinding(
-        el, boxPx, parentPx, parentName(el.id), ctx.theme, ancestorsOf(el.id), ctx.orientation,
-      ),
-      degenerateFinding(
-        el, boxPx, parentPx, parentName(el.id), ctx.theme, ctx.orientation,
-      ),
-      touchFinding(el, boxPx),
-      styleFinding(el, boxPx),
-    ];
-    const stored = own(ownBoxes, el.id);
-    if (stored) {
-      candidates.push(overhangFinding(el, stored, parentName(el.id), parentPx));
-    }
-    for (const finding of candidates) if (finding) findings.push(finding);
   }
+  return findings;
+}
 
-  // Siblings, in the space they share.
-  //
-  // An element that also hangs out of its container is NOT excused here, which
-  // was tried and was wrong: two boxes can overlap in the middle of a container
-  // while one of them separately runs off the edge, and fixing the overflow does
-  // not touch the collision. Narrow a box from 80% to 70% and it sits inside its
-  // parent while still lying on the neighbour it started at. Reporting both is
-  // right; the volume that suppression was aimed at is what overlapFindings
-  // collapses.
-  const types = new Map(page.elements.map((e) => [e.id, e.type]));
+function placedBoxFindings(
+  arr: Arrangement,
+  el: UIElement,
+  theme: ElementDefaults | undefined,
+): ReviewFinding[] {
+  const box = own(arr.absolute, el.id) as Placement;
+  const parentPx = parentBoxPx(parentIn(arr, el.id), arr.absolute, arr.reference);
+  const parentName = parentNameIn(arr, el.id);
+  const boxPx = {
+    width: (box.w / 100) * arr.reference.width,
+    height: (box.h / 100) * arr.reference.height,
+  };
+  const candidates = [
+    starvationFinding(
+      el, boxPx, parentPx, parentName, theme, ancestorsIn(arr, el.id), arr.orientation,
+    ),
+    degenerateFinding(el, boxPx, parentPx, parentName, theme, arr.orientation),
+    touchFinding(el, boxPx),
+    styleFinding(el, boxPx),
+  ];
+  const stored = own(arr.ownBoxes, el.id);
+  if (stored) candidates.push(overhangFinding(el, stored, parentName, parentPx));
+  return candidates.filter((f): f is ReviewFinding => !!f);
+}
+
+/**
+ * Siblings, in the space they share.
+ *
+ * An element that also hangs out of its container is NOT excused here, which
+ * was tried and was wrong: two boxes can overlap in the middle of a container
+ * while one of them separately runs off the edge, and fixing the overflow does
+ * not touch the collision. Narrow a box from 80% to 70% and it sits inside its
+ * parent while still lying on the neighbour it started at. Reporting both is
+ * right; the volume that suppression was aimed at is what overlapFindings
+ * collapses.
+ */
+function siblingOverlaps(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
+  const types = new Map(arr.page.elements.map((e) => [e.id, e.type]));
   const byParent = new Map<string | null, string[]>();
-  for (const el of page.elements) {
-    if (hidden.has(el.id) || !own(absolute, el.id)) continue;
-    const parent = parentOf(el.id);
+  for (const el of arr.page.elements) {
+    if (!isDrawn(arr, el.id)) continue;
+    const parent = parentIn(arr, el.id);
     const kids = byParent.get(parent);
     if (kids) kids.push(el.id);
     else byParent.set(parent, [el.id]);
   }
+  const findings: ReviewFinding[] = [];
   for (const [parent, kids] of byParent) {
     kids.sort();
-    const pairs: OverlapPair[] = [];
-    for (let i = 0; i < kids.length; i++) {
-      for (let j = i + 1; j < kids.length; j++) {
-        if (!ctx.inScope(kids[i]) && !ctx.inScope(kids[j])) continue;
-        const a = byId.get(kids[i]) as UIElement;
-        const b = byId.get(kids[j]) as UIElement;
-        if (mutuallyExclusive(a, b)) continue;
-        const extent = overlapExtent(
-          own(absolute, kids[i]) as Placement,
-          own(absolute, kids[j]) as Placement,
-          reference,
-        );
-        if (extent) pairs.push({ aId: kids[i], bId: kids[j], ...extent });
-      }
-    }
     findings.push(
-      ...overlapFindings(pairs, types, parent ? `'${parent}'` : "the page"),
+      ...overlapFindings(collidingPairs(arr, kids, scope), types, parent ? `'${parent}'` : "the page"),
     );
   }
-
-  // ...and the masters under all of them, which are nobody's sibling.
-  const drawn = new Map<string, Placement>();
-  for (const el of page.elements) {
-    const box = own(absolute, el.id);
-    if (box && !hidden.has(el.id)) drawn.set(el.id, box);
-  }
-  findings.push(
-    ...buriedMasterFindings(
-      drawn,
-      byId,
-      new Map(page.elements.map((el) => [el.id, parentOf(el.id)])),
-      ctx.masters,
-      page.id,
-      ctx.orientation,
-      ctx.inScope,
-    ),
-  );
   return findings;
+}
+
+/** Each pair of siblings whose boxes overlap, at least one of them in scope. */
+function collidingPairs(arr: Arrangement, kids: string[], scope: ReviewScope): OverlapPair[] {
+  const pairs: OverlapPair[] = [];
+  kids.forEach((aId, i) => {
+    for (const bId of kids.slice(i + 1)) {
+      if (!scope.inScope(aId) && !scope.inScope(bId)) continue;
+      if (mutuallyExclusive(arr.byId.get(aId) as UIElement, arr.byId.get(bId) as UIElement)) continue;
+      const extent = overlapExtent(
+        own(arr.absolute, aId) as Placement,
+        own(arr.absolute, bId) as Placement,
+        arr.reference,
+      );
+      if (extent) pairs.push({ aId, bId, ...extent });
+    }
+  });
+  return pairs;
+}
+
+/** ...and the masters under all of them, which are nobody's sibling. */
+function buriedMastersIn(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
+  const drawn = new Map<string, Placement>();
+  for (const el of arr.page.elements) {
+    if (isDrawn(arr, el.id)) drawn.set(el.id, own(arr.absolute, el.id) as Placement);
+  }
+  return buriedMasterFindings(
+    drawn,
+    arr.byId,
+    new Map(arr.page.elements.map((el) => [el.id, parentIn(arr, el.id)])),
+    scope.masters,
+    arr.page.id,
+    arr.orientation,
+    scope.inScope,
+  );
 }
 
 /**

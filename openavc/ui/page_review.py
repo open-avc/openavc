@@ -48,6 +48,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import combinations
 from math import isfinite
 from typing import Any
 
@@ -1884,6 +1885,16 @@ def _look_field_findings(shown: _Shown) -> list[Finding]:
     return findings
 
 
+def _names_its_source(slot: str, binding: Mapping[str, Any]) -> bool:
+    """Whether a show binding names what it reads: its state key, or its key
+    pattern for ``items``. A value shown from a macro's progress reads neither:
+    its text comes from the macro."""
+    if slot == "value" and binding.get("source") == "macro_progress":
+        return True
+    field = "key_pattern" if slot == "items" else "key"
+    return bool(str(binding.get(field) or "").strip())
+
+
 def _keyless_slot_findings(shown: _Shown) -> list[Finding]:
     """A binding the renderer DOES read, that names nothing to read.
 
@@ -1897,10 +1908,7 @@ def _keyless_slot_findings(shown: _Shown) -> list[Finding]:
         binding = shown.show.get(slot)
         if slot not in shown.honored or not isinstance(binding, Mapping):
             continue
-        if slot == "value" and binding.get("source") == "macro_progress":
-            continue  # its text comes from the macro, not from a state key
-        field = "key_pattern" if slot == "items" else "key"
-        if str(binding.get(field) or "").strip():
+        if _names_its_source(slot, binding):
             continue
         named = "key pattern" if slot == "items" else "state key"
         findings.append(Finding(
@@ -2288,166 +2296,244 @@ def review_page(
                 dump[fill.field] = fill.value
                 adjustments.append(fill)
 
-    if not page.layouts:
-        return findings, adjustments
-
-    primary_id = primary_layout(page).id
-    seen: set[tuple] = set()
-    # Primary first: it is the arrangement every variant inherits from, so its
-    # phrasing ("...") beats the variant's ("... in the portrait arrangement").
-    ordered = sorted(page.layouts, key=lambda lay: lay.id != primary_id)
-    for layout in ordered:
-        hidden: set[str] = set()
-        for ancestor in layout_chain(page, layout.id):
-            hidden |= set(getattr(ancestor, "hidden", None) or ())
-        where = "" if layout.id == primary_id else f" in the '{layout.id}' arrangement"
-        for finding in _layout_findings(
-            page,
-            dumps,
-            absolute_placements(page, layout.id),
-            resolved_placements(page, layout.id),
-            hidden,
-            in_scope,
-            theme,
-            is_primary=layout.id == primary_id,
-            masters=masters,
-            orientation=str(getattr(layout, "orientation", "landscape") or "landscape"),
-        ):
-            if finding.key in seen:
-                continue
-            seen.add(finding.key)
-            findings.append(_with_where(finding, where))
-
+    if page.layouts:
+        findings.extend(_arrangement_findings(
+            page, dumps, _ReviewScope(in_scope, theme, masters),
+        ))
     return findings, adjustments
 
 
-def _layout_findings(
-    page: Any,
-    dumps: dict[str, dict[str, Any]],
-    absolute: dict,
-    own: dict,
-    hidden: set[str],
-    in_scope: Callable[[str], bool],
-    theme: Mapping[str, Any] | None,
-    is_primary: bool,
-    masters: Sequence[Any] = (),
-    orientation: str = "landscape",
-) -> list[Finding]:
-    """Every geometry finding for one arrangement."""
-    findings: list[Finding] = []
-    elements = {el.id: el for el in page.elements}
-    # Every percentage in this arrangement resolves against this, and it is the
-    # whole of what portrait changes: the same screen, turned.
-    reference = reference_box(orientation)
+@dataclass(frozen=True)
+class _ReviewScope:
+    """What one review was asked about: which elements, under which theme, over which masters."""
 
-    def parent_of(el_id: str) -> str | None:
-        named = getattr(elements.get(el_id), "parent", None)
-        return named if named and named in elements and named != el_id else None
+    in_scope: Callable[[str], bool]
+    theme: Mapping[str, Any] | None
+    masters: Sequence[Any]
 
-    def parent_box_px(el_id: str) -> tuple[float, float]:
-        parent_id = parent_of(el_id)
-        box = (absolute.get(parent_id) if parent_id else PAGE_BOX) or PAGE_BOX
-        return _box_px(box, reference)
 
-    def parent_name(el_id: str) -> str:
-        parent_id = parent_of(el_id)
+@dataclass(frozen=True)
+class _Arrangement:
+    """One arrangement of a page as the panel resolves it.
+
+    ``absolute`` is where each element is drawn, in page percentages with
+    container nesting flattened; ``own`` is the box each one stores, a
+    percentage of its container. Every percentage resolves against
+    ``reference``, which is the whole of what portrait changes: the same
+    screen, turned.
+    """
+
+    page: Any
+    elements: Mapping[str, Any]
+    absolute: Mapping[str, Any]
+    own: Mapping[str, Any]
+    hidden: frozenset[str]
+    orientation: str
+    is_primary: bool
+
+    @classmethod
+    def of(cls, page: Any, layout: Any, primary_id: str) -> _Arrangement:
+        hidden: set[str] = set()
+        for ancestor in layout_chain(page, layout.id):
+            hidden |= set(getattr(ancestor, "hidden", None) or ())
+        return cls(
+            page=page,
+            elements={el.id: el for el in page.elements},
+            absolute=absolute_placements(page, layout.id),
+            own=resolved_placements(page, layout.id),
+            hidden=frozenset(hidden),
+            orientation=str(getattr(layout, "orientation", "landscape") or "landscape"),
+            is_primary=layout.id == primary_id,
+        )
+
+    @property
+    def reference(self) -> tuple[float, float]:
+        return reference_box(self.orientation)
+
+    def is_drawn(self, el_id: str) -> bool:
+        """Shown in this arrangement and given a box in it."""
+        return el_id not in self.hidden and self.absolute.get(el_id) is not None
+
+    def parent_of(self, el_id: str) -> str | None:
+        named = getattr(self.elements.get(el_id), "parent", None)
+        return named if named and named in self.elements and named != el_id else None
+
+    def parent_box_px(self, el_id: str) -> tuple[float, float]:
+        parent_id = self.parent_of(el_id)
+        box = (self.absolute.get(parent_id) if parent_id else PAGE_BOX) or PAGE_BOX
+        return _box_px(box, self.reference)
+
+    def parent_name(self, el_id: str) -> str:
+        parent_id = self.parent_of(el_id)
         return f"its container '{parent_id}'" if parent_id else "the page"
 
-    def ancestors_of(el_id: str) -> tuple[Container, ...]:
+    def ancestors_of(self, el_id: str) -> tuple[Container, ...]:
         """Every container above this element, innermost first.
 
-        Only reached when a floor is larger than the immediate parent, and only
-        as far as the boxes actually resolve -- a container the arrangement
-        never positions ends the chain rather than guessing a size for it.
+        Only as far as the boxes actually resolve -- a container the
+        arrangement never positions ends the chain rather than guessing a size
+        for it.
         """
         chain: list[Container] = []
         seen = {el_id}
-        cursor = parent_of(el_id)
+        cursor = self.parent_of(el_id)
         while cursor and cursor not in seen:
             seen.add(cursor)
-            box = absolute.get(cursor)
+            box = self.absolute.get(cursor)
             if box is None:
                 break
-            chain.append(Container(f"'{cursor}'", *_box_px(box, reference)))
-            cursor = parent_of(cursor)
+            chain.append(Container(f"'{cursor}'", *_box_px(box, self.reference)))
+            cursor = self.parent_of(cursor)
         return tuple(chain)
 
+
+def _arrangement_findings(
+    page: Any, dumps: dict[str, dict[str, Any]], scope: _ReviewScope,
+) -> list[Finding]:
+    """Every geometry finding, across every arrangement, each said once.
+
+    Primary first: it is the arrangement every variant inherits from, so its
+    phrasing ("...") beats the variant's ("... in the portrait arrangement").
+    """
+    primary_id = primary_layout(page).id
+    findings: list[Finding] = []
+    seen: set[tuple] = set()
+    for layout in sorted(page.layouts, key=lambda lay: lay.id != primary_id):
+        arrangement = _Arrangement.of(page, layout, primary_id)
+        where = "" if arrangement.is_primary else f" in the '{layout.id}' arrangement"
+        findings.extend(
+            _with_where(finding, where)
+            for finding in _unsaid(_layout_findings(arrangement, dumps, scope), seen)
+        )
+    return findings
+
+
+def _unsaid(findings: list[Finding], said: set[tuple]) -> list[Finding]:
+    """The findings whose ``key`` has not been said yet, each marked as said."""
+    fresh: list[Finding] = []
+    for finding in findings:
+        if finding.key not in said:
+            said.add(finding.key)
+            fresh.append(finding)
+    return fresh
+
+
+def _layout_findings(
+    arrangement: _Arrangement, dumps: dict[str, dict[str, Any]], scope: _ReviewScope,
+) -> list[Finding]:
+    """Every geometry finding for one arrangement: each box, then siblings, then masters."""
+    return (
+        _box_findings_in(arrangement, dumps, scope)
+        + _sibling_overlaps(arrangement, dumps, scope)
+        + _buried_masters_in(arrangement, dumps, scope)
+    )
+
+
+def _box_findings_in(
+    arrangement: _Arrangement, dumps: dict[str, dict[str, Any]], scope: _ReviewScope,
+) -> list[Finding]:
+    findings: list[Finding] = []
     for el_id, dump in dumps.items():
-        if not in_scope(el_id) or el_id in hidden:
+        if not scope.in_scope(el_id) or el_id in arrangement.hidden:
             continue
-        box = absolute.get(el_id)
-        if box is None:
+        box = arrangement.absolute.get(el_id)
+        if box is not None:
+            findings.extend(_placed_box_findings(arrangement, el_id, dump, scope.theme))
+        elif arrangement.is_primary:
             # A variant legitimately carries no delta for an element -- it
             # inherits one. Only the primary having no box means it has none.
-            if is_primary:
-                findings.append(no_box_finding(dump, parent_name(el_id)))
-            continue
-        box_px = _box_px(box, reference)
-        candidates = [
-            starvation_finding(
-                dump, box_px, parent_box_px(el_id), parent_name(el_id), theme,
-                ancestors_of(el_id), orientation,
-            ),
-            degenerate_finding(
-                dump, box_px, parent_box_px(el_id), parent_name(el_id), theme,
-                orientation,
-            ),
-            touch_finding(dump, box_px),
-            style_finding(dump, box_px),
-        ]
-        if own.get(el_id) is not None:
-            candidates.append(overhang_finding(
-                dump, own[el_id], parent_name(el_id), parent_box_px(el_id),
-            ))
-        findings.extend(f for f in candidates if f)
+            findings.append(no_box_finding(dump, arrangement.parent_name(el_id)))
+    return findings
 
-    # Siblings, in the space they share.
-    #
-    # An element that also hangs out of its container is NOT excused here, which
-    # was tried and was wrong: two boxes can overlap in the middle of a
-    # container while one of them separately runs off the edge, and fixing the
-    # overflow does not touch the collision. Narrow a box from 80% to 70% and it
-    # sits inside its parent while still lying on the neighbour it started at.
-    # Reporting both is right; the volume that suppression was aimed at is what
-    # `overlap_findings` collapses.
+
+def _placed_box_findings(
+    arrangement: _Arrangement,
+    el_id: str,
+    dump: Mapping[str, Any],
+    theme: Mapping[str, Any] | None,
+) -> list[Finding]:
+    box_px = _box_px(arrangement.absolute[el_id], arrangement.reference)
+    parent_px = arrangement.parent_box_px(el_id)
+    parent_name = arrangement.parent_name(el_id)
+    candidates = [
+        starvation_finding(
+            dump, box_px, parent_px, parent_name, theme,
+            arrangement.ancestors_of(el_id), arrangement.orientation,
+        ),
+        degenerate_finding(
+            dump, box_px, parent_px, parent_name, theme, arrangement.orientation,
+        ),
+        touch_finding(dump, box_px),
+        style_finding(dump, box_px),
+    ]
+    stored = arrangement.own.get(el_id)
+    if stored is not None:
+        candidates.append(overhang_finding(dump, stored, parent_name, parent_px))
+    return [f for f in candidates if f]
+
+
+def _sibling_overlaps(
+    arrangement: _Arrangement, dumps: dict[str, dict[str, Any]], scope: _ReviewScope,
+) -> list[Finding]:
+    """Siblings, in the space they share.
+
+    An element that also hangs out of its container is NOT excused here, which
+    was tried and was wrong: two boxes can overlap in the middle of a
+    container while one of them separately runs off the edge, and fixing the
+    overflow does not touch the collision. Narrow a box from 80% to 70% and it
+    sits inside its parent while still lying on the neighbour it started at.
+    Reporting both is right; the volume that suppression was aimed at is what
+    `overlap_findings` collapses.
+    """
     types = {el_id: str(dump.get("type", "?")) for el_id, dump in dumps.items()}
     by_parent: dict[str | None, list[str]] = {}
     for el_id in dumps:
-        if el_id in hidden or absolute.get(el_id) is None:
-            continue
-        by_parent.setdefault(parent_of(el_id), []).append(el_id)
+        if arrangement.is_drawn(el_id):
+            by_parent.setdefault(arrangement.parent_of(el_id), []).append(el_id)
+    findings: list[Finding] = []
     for parent_id, kids in by_parent.items():
-        kids.sort()
-        pairs = []
-        for i, a_id in enumerate(kids):
-            for b_id in kids[i + 1:]:
-                if not (in_scope(a_id) or in_scope(b_id)):
-                    continue
-                if mutually_exclusive(dumps[a_id], dumps[b_id]):
-                    continue
-                extent = overlap_extent(absolute[a_id], absolute[b_id], reference)
-                if extent:
-                    pairs.append((a_id, b_id, *extent))
+        pairs = _colliding_pairs(arrangement, dumps, sorted(kids), scope.in_scope)
         findings.extend(overlap_findings(
             pairs, types, f"'{parent_id}'" if parent_id else "the page",
         ))
+    return findings
 
-    # ...and the masters under all of them, which are nobody's sibling.
-    drawn = {
-        el_id: absolute[el_id]
-        for el_id in dumps
-        if el_id not in hidden and absolute.get(el_id) is not None
-    }
-    findings.extend(buried_master_findings(
+
+def _colliding_pairs(
+    arrangement: _Arrangement,
+    dumps: dict[str, dict[str, Any]],
+    kids: list[str],
+    in_scope: Callable[[str], bool],
+) -> list[tuple]:
+    """Each pair of siblings whose boxes overlap, at least one of them in scope."""
+    pairs = []
+    for a_id, b_id in combinations(kids, 2):
+        if not (in_scope(a_id) or in_scope(b_id)):
+            continue
+        if mutually_exclusive(dumps[a_id], dumps[b_id]):
+            continue
+        extent = overlap_extent(
+            arrangement.absolute[a_id], arrangement.absolute[b_id], arrangement.reference,
+        )
+        if extent:
+            pairs.append((a_id, b_id, *extent))
+    return pairs
+
+
+def _buried_masters_in(
+    arrangement: _Arrangement, dumps: dict[str, dict[str, Any]], scope: _ReviewScope,
+) -> list[Finding]:
+    """...and the masters under all of them, which are nobody's sibling."""
+    drawn = {el_id: arrangement.absolute[el_id] for el_id in dumps if arrangement.is_drawn(el_id)}
+    return buried_master_findings(
         drawn,
         dumps,
-        {el_id: parent_of(el_id) for el_id in dumps},
-        masters,
-        str(getattr(page, "id", "?")),
-        orientation,
-        in_scope,
-    ))
-    return findings
+        {el_id: arrangement.parent_of(el_id) for el_id in dumps},
+        scope.masters,
+        str(getattr(arrangement.page, "id", "?")),
+        arrangement.orientation,
+        scope.in_scope,
+    )
 
 
 def _with_where(finding: Finding, where: str) -> Finding:
