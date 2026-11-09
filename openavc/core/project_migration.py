@@ -1,8 +1,18 @@
 """
-OpenAVC project format migration system.
+OpenAVC project format migration: the chain that brings a project file written
+by an older format version up to the one this platform writes.
 
-Applies versioned transforms when loading older project files.
-Each migration is a pure function: dict -> dict.
+Each step takes the project dict as one version left it, rewrites it in place
+for the next version, stamps that version and returns the same dict.
+`MIGRATIONS` is the chain in order, and `migrate_project` runs every step from
+the file's own version on. A new format version is one `migrate_X_to_Y` and one
+row: `CURRENT_VERSION` is where the chain ends, so the two cannot disagree.
+
+The rule worth knowing before changing a step: a step says what it did to the
+projects of its day, so the steps that rewrite UI elements keep their own
+numbers, type lists and element walk rather than reading today's renderer or
+page review, and each says so where it does. The 0.8.0 grid-to-percent layout
+conversion is ``core/layout_migration.py``.
 """
 
 from typing import NamedTuple
@@ -24,8 +34,6 @@ from openavc.drivers.spec import CONNECTION_FIELDS
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
-
-CURRENT_VERSION = "0.16.0"
 
 
 def migrate_0_1_to_0_2(data: dict) -> dict:
@@ -752,6 +760,9 @@ MIGRATIONS = [
     ("0.14.0", "0.15.0", migrate_0_14_to_0_15),
     ("0.15.0", "0.16.0", migrate_0_15_to_0_16),
 ]
+
+# The format this platform writes: where the chain ends.
+CURRENT_VERSION = MIGRATIONS[-1][1]
 
 
 def migrate_project(data: dict) -> tuple[dict, bool]:
