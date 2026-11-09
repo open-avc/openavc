@@ -160,6 +160,74 @@ def test_the_container_chain_reaches_the_outermost_placed_container():
     ]
 
 
+def test_the_container_chain_stops_at_an_unplaced_container_in_the_middle():
+    """'c3' is placed and big enough, but the chain never reaches it past 'c2'."""
+    findings, _ = review_page(_page([
+        {"id": "led", "type": "status_led", "label": "Ready", "parent": "c1"},
+        {"id": "c1", "type": "group", "parent": "c2"},
+        {"id": "c2", "type": "group", "parent": "c3"},
+        {"id": "c3", "type": "group"},
+    ], {
+        "led": FULL_PAGE,
+        "c1": {"x": 0, "y": 0, "w": 28 / PX_W, "h": 44 / PX_H},
+        "c3": {"x": 0, "y": 0, "w": 50, "h": 50},
+    }))
+    assert [(f.kind, f.element_id, f.message) for f in findings] == [
+        ("too_small_for_contents", "led",
+         "led (status_led) is 28x44px at the 1280x800 reference, too small for what it "
+         "draws: 28px wide, needs 29px (led-dot is 20px). 'c1' is 28px wide, too small "
+         "to hold it at any width: give 'c1' w at least 2.27% of the page."),
+        ("no_placement", "c2",
+         "c2 (group) has no placement, so it fills its container 'c3' edge to edge and "
+         "covers whatever is already there. Give it {x, y, w, h}."),
+    ]
+
+
+def test_a_hidden_element_overlaps_nothing():
+    labels = [
+        {"id": "a", "type": "label", "text": "A"},
+        {"id": "b", "type": "label", "text": "B"},
+    ]
+    boxes = {"a": {"x": 10, "y": 10, "w": 20, "h": 10}, "b": {"x": 15, "y": 10, "w": 20, "h": 10}}
+    shown, _ = review_page(_page(labels, boxes))
+    assert _sequence(shown) == [("overlap", "a")]
+    page = _page(labels, boxes)
+    page.layouts[0].hidden = ["b"]
+    hidden, _ = review_page(page)
+    assert hidden == []
+
+
+def test_an_empty_per_state_label_still_counts_as_text_the_type_drops():
+    findings = review_master_element({
+        "id": "led", "type": "status_led",
+        "bindings": {"show": {"look": {"key": "var.a", "states": {"on": {"label": ""}}}}},
+    })
+    assert [(f.kind, f.message) for f in findings] == [
+        ("binding_not_rendered",
+         "led (status_led): show.look.states sets a label for on, but a status_led takes "
+         "only color from show.look, so that text never appears. Use the element's own "
+         "label, or a label element bound to the same key."),
+    ]
+
+
+def test_a_macro_progress_source_excuses_only_show_value_from_its_key():
+    on_value = review_master_element({
+        "id": "lbl", "type": "label", "text": "A",
+        "bindings": {"show": {"value": {"source": "macro_progress"}}},
+    })
+    assert on_value == []
+    on_look = review_master_element({
+        "id": "lbl", "type": "label", "text": "A",
+        "bindings": {"show": {"look": {"source": "macro_progress"}}},
+    })
+    assert [(f.kind, f.message) for f in on_look] == [
+        ("binding_without_key",
+         "lbl (label): show.look has no state key, so it reads nothing and never updates. "
+         "Its appearance stays on whatever an unmatched state gives it. Pick the state key "
+         "it should read, or remove the binding."),
+    ]
+
+
 def test_a_master_with_no_boxes_gets_only_its_element_findings():
     assert _sequence(review_master_element(dict(KEYPAD))) == KEYPAD_ORDER
     assert review_master_element({"id": "m", "type": "status_led", "label": "Ready"}) == []

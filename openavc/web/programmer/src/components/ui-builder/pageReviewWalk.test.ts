@@ -134,6 +134,14 @@ describe("the elements one edit touched", () => {
     ]);
   });
 
+  it("are the only ones whose boxes are measured", () => {
+    const leds = [LED, { ...LED, id: "led2" }];
+    const findings = reviewPage(page(leds, { led: tinyLed, led2: { ...tinyLed, x: 50 } }), {
+      touched: new Set(["led2"]),
+    });
+    expect(sequence(findings)).toEqual([["too_small_for_contents", "led2"]]);
+  });
+
   it("leave out an overlap between two untouched elements", () => {
     const labels = [
       { id: "a", type: "label", text: "A" },
@@ -207,6 +215,78 @@ describe("the container chain", () => {
   it("reaches the outermost container that is placed", () => {
     const findings = reviewPage(page(nested, { led: FULL, inner: FULL, outer: tinyLed }));
     expect(findings.map((f) => f.message)).toEqual([tooSmallIn("outer")]);
+  });
+
+  it("stops at an unplaced container in the middle, short of a placed one above it", () => {
+    const chain = [
+      { ...LED, parent: "c1" },
+      { id: "c1", type: "group", parent: "c2" },
+      { id: "c2", type: "group", parent: "c3" },
+      { id: "c3", type: "group" },
+    ];
+    const findings = reviewPage(
+      page(chain, { led: FULL, c1: tinyLed, c3: { x: 0, y: 0, w: 50, h: 50 } }),
+    );
+    expect(findings.map((f) => [f.kind, f.elementId, f.message])).toEqual([
+      ["too_small_for_contents", "led", tooSmallIn("c1")],
+      [
+        "no_placement",
+        "c2",
+        "c2 (group) has no placement, so it fills its container 'c3' edge to edge and " +
+          "covers whatever is already there. Give it {x, y, w, h}.",
+      ],
+    ]);
+  });
+});
+
+describe("a hidden element", () => {
+  it("overlaps nothing", () => {
+    const labels = [
+      { id: "a", type: "label", text: "A" },
+      { id: "b", type: "label", text: "B" },
+    ];
+    const boxes = { a: { x: 10, y: 10, w: 20, h: 10 }, b: { x: 15, y: 10, w: 20, h: 10 } };
+    expect(sequence(reviewPage(page(labels, boxes)))).toEqual([["overlap", "a"]]);
+    const hiding = page(labels, boxes);
+    (hiding.layouts as unknown as { hidden: string[] }[])[0].hidden = ["b"];
+    expect(reviewPage(hiding)).toEqual([]);
+  });
+});
+
+describe("the binding checks", () => {
+  it("count an empty per-state label as text the type drops", () => {
+    const findings = reviewMasterElement({
+      id: "led",
+      type: "status_led",
+      bindings: { show: { look: { key: "var.a", states: { on: { label: "" } } } } },
+    } as unknown as MasterElement);
+    expect(findings.map((f) => [f.kind, f.message])).toEqual([
+      [
+        "binding_not_rendered",
+        "led (status_led): show.look.states sets a label for on, but a status_led takes " +
+          "only color from show.look, so that text never appears. Use the element's own " +
+          "label, or a label element bound to the same key.",
+      ],
+    ]);
+  });
+
+  it("excuse only show.value from its key when the source is a macro's progress", () => {
+    const label = (slot: string) =>
+      ({
+        id: "lbl",
+        type: "label",
+        text: "A",
+        bindings: { show: { [slot]: { source: "macro_progress" } } },
+      }) as unknown as MasterElement;
+    expect(reviewMasterElement(label("value"))).toEqual([]);
+    expect(reviewMasterElement(label("look")).map((f) => [f.kind, f.message])).toEqual([
+      [
+        "binding_without_key",
+        "lbl (label): show.look has no state key, so it reads nothing and never updates. " +
+          "Its appearance stays on whatever an unmatched state gives it. Pick the state key " +
+          "it should read, or remove the binding.",
+      ],
+    ]);
   });
 });
 
