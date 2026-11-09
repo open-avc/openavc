@@ -8,9 +8,7 @@ import { parentAwayFrom } from "./childPresence";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { ChildEntities } from "./ChildEntities";
 import { QuickActions } from "./QuickActions";
-import { InlineProtocolEditor } from "./InlineProtocolEditor";
-import { IrCodesEditor } from "./IrCodesEditor";
-import { ConfigTableEditor } from "./ConfigTableEditor";
+import { DeviceConfigEditors } from "./DeviceConfigEditors";
 import { BridgePortsSection } from "./BridgePortsSection";
 import { advertisedBridgePorts } from "./bridgePorts";
 import { DeviceSshKey } from "./SshKeySection";
@@ -228,46 +226,14 @@ export function DeviceDetail({
         <DeviceSettingsSection key={`settings:${deviceId}`} deviceId={deviceId} connected={connected} />
       )}
 
-      {/* Commands & Responses — no-code protocol editor for the generic devices
-          (driver opts in via DRIVER_INFO.inline_protocol). Writes commands /
-          responses / state_variables into the device config. */}
-      {deviceInfo?.driver_info?.inline_protocol === true && (
-        <InlineProtocolEditor
-          deviceId={deviceId}
-          driverInfo={deviceInfo.driver_info as Record<string, unknown>}
-          connected={connected}
-          onSaved={refetchDeviceInfo}
-        />
-      )}
-
-      {/* IR Codes — the code-set editor for IR devices (driver opts in via
-          DRIVER_INFO.ir_codes). Writes ir_codes into the device config. */}
-      {deviceInfo?.driver_info?.ir_codes === true && (
-        <IrCodesEditor
-          deviceId={deviceId}
-          connected={connected}
-          onSaved={refetchDeviceInfo}
-        />
-      )}
-
-      {/* Table config fields — a friendly row editor for any config_schema field
-          declared `type: "table"` (e.g. a Modbus register map). Detected
-          generically from the schema, not a bespoke driver flag. Writes the
-          list of row objects into the device config. */}
-      {Object.entries(
-        (deviceInfo?.driver_info?.config_schema ?? {}) as Record<string, Record<string, unknown>>,
-      )
-        .filter(([, schema]) => schema?.type === "table")
-        .map(([key, schema]) => (
-          <ConfigTableEditor
-            key={key}
-            deviceId={deviceId}
-            fieldKey={key}
-            fieldSchema={schema}
-            connected={connected}
-            onSaved={refetchDeviceInfo}
-          />
-        ))}
+      {/* What the driver asks to have edited here: the no-code protocol, the
+          IR code set, each table setting. */}
+      <DeviceConfigEditors
+        deviceId={deviceId}
+        driverInfo={deviceInfo?.driver_info}
+        connected={connected}
+        onSaved={refetchDeviceInfo}
+      />
 
       <SendCommandSection
         deviceId={deviceId}
