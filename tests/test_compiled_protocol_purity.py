@@ -69,12 +69,19 @@ def test_compiled_protocol_stays_pure():
 
 
 def _openavc_modules_loaded(module: str, *flags: str) -> set[str]:
-    """The openavc modules importing ``module`` loads, in a fresh interpreter."""
+    """The openavc modules importing ``module`` loads, in a fresh interpreter,
+    plus ``third-party:<name>`` for each top-level module outside the standard
+    library that the import itself pulls in (the interpreter's own start-up
+    modules are left out)."""
     code = (
         "import sys\n"
         "sys.path.insert(0, r'" + str(REPO_ROOT) + "')\n"
+        "before = set(sys.modules)\n"
         "import " + module + "\n"
-        "print('\\n'.join(sorted(m for m in sys.modules if m.startswith('openavc'))))\n"
+        "names = sorted(m for m in sys.modules if m.startswith('openavc'))\n"
+        "names += sorted('third-party:' + m for m in set(sys.modules) - before\n"
+        "                if '.' not in m and m != 'openavc' and m not in sys.stdlib_module_names)\n"
+        "print('\\n'.join(names))\n"
     )
     result = subprocess.run(
         [sys.executable, *flags, "-c", code],
@@ -107,7 +114,8 @@ def test_the_simulators_template_and_name_readers_stay_leaves(module):
 def test_the_reread_queries_stay_within_the_protocol_closure():
     # The validator imports the then_query / read_back query lists; they read
     # a rule through compiled_protocol and a query line through
-    # send_templates, and nothing more.
+    # send_templates, and nothing more: no other openavc module, and nothing
+    # outside the standard library (yaml included).
     loaded = _openavc_modules_loaded("openavc.simulator.reread_queries")
     allowed = ALLOWED | {
         "openavc.simulator",
