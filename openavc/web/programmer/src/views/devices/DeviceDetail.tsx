@@ -113,8 +113,6 @@ export function DeviceDetail({
       ?.help?.connection ?? ""
   );
 
-
-
   return (
     <div>
       <DeviceHeader

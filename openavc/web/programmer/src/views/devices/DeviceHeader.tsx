@@ -10,6 +10,10 @@
  * enabled device that is not connected. Edit, Duplicate and Delete are for a
  * device the page can manage (`manageable` on the page: never product
  * hardware, and a device whose driver failed to load still gets them).
+ *
+ * Reconnect's two busy seconds and Delete's open question belong to the
+ * header, not to their buttons: a button unmounts when the device connects or
+ * stops being manageable, and coming back it carries on where it was.
  */
 import { useCallback, useState, type CSSProperties } from "react";
 import { ClipboardCheck, Copy, Pencil, Power, RefreshCw, Trash2, Wifi } from "lucide-react";
@@ -35,7 +39,8 @@ export interface DeviceHeaderProps {
   isEnabled: boolean;
   installed: boolean;
   manageable: boolean;
-  checks: DeviceChecks;
+  /** The checks the header starts; what they found is drawn by the page. */
+  checks: Pick<DeviceChecks, "testing" | "runTest" | "openingAudit" | "openAudit">;
   onEdit: (config: DeviceConfig) => void;
   onDuplicate: (config: DeviceConfig) => void;
   onDeleted: (deviceId: string) => void;
@@ -45,6 +50,8 @@ export interface DeviceHeaderProps {
 
 export function DeviceHeader(props: DeviceHeaderProps) {
   const { deviceId, away, info, manageable } = props;
+  const reconnect = useReconnect(deviceId);
+  const question = useDeleteQuestion(deviceId, props.onDeleted);
   return (
     <div style={{ marginBottom: "var(--space-xl)" }}>
       <div
@@ -65,7 +72,7 @@ export function DeviceHeader(props: DeviceHeaderProps) {
           size={12}
         />
         <h2 style={{ fontSize: "var(--font-size-xl)", flex: 1 }}>{props.deviceName}</h2>
-        <HeaderActions {...props} />
+        <HeaderActions {...props} reconnect={reconnect} question={question} />
       </div>
       <DriverLine driver={info?.driver} deviceId={deviceId} onReport={props.onReport} />
       {/* Product hardware's driver is part of OpenAVC, and a device whose
@@ -79,20 +86,19 @@ export function DeviceHeader(props: DeviceHeaderProps) {
 
 /** The actions, each offered only where it applies (see the module's
  *  docstring), in the row beside the name. */
-function HeaderActions(props: DeviceHeaderProps) {
+function HeaderActions(props: DeviceHeaderProps & { reconnect: Reconnect; question: DeleteQuestion }) {
   const { deviceId, info } = props;
   return (
     <>
       {info && <EnableToggle deviceId={deviceId} config={props.config} isEnabled={props.isEnabled} />}
       {info && <CheckButtons checks={props.checks} installed={props.installed} />}
-      {!props.away.connected && props.isEnabled && <ReconnectButton deviceId={deviceId} />}
+      {!props.away.connected && props.isEnabled && <ReconnectButton reconnect={props.reconnect} />}
       {props.manageable && (
         <ManageButtons
-          deviceId={deviceId}
           config={props.config}
           onEdit={props.onEdit}
           onDuplicate={props.onDuplicate}
-          onDeleted={props.onDeleted}
+          question={props.question}
         />
       )}
     </>
@@ -149,7 +155,7 @@ function EnableToggle({
   );
 }
 
-function CheckButtons({ checks, installed }: { checks: DeviceChecks; installed: boolean }) {
+function CheckButtons({ checks, installed }: { checks: DeviceHeaderProps["checks"]; installed: boolean }) {
   return (
     <>
       <button
@@ -172,10 +178,10 @@ function CheckButtons({ checks, installed }: { checks: DeviceChecks; installed: 
   );
 }
 
-/** Asks the server to drop and redial the device. The button reads
+/** Asks the server to drop and redial the device. Reconnect reads
  *  Reconnecting for two seconds whatever the answer: the device's status dot
  *  and banners say how the redial went. */
-function ReconnectButton({ deviceId }: { deviceId: string }) {
+function useReconnect(deviceId: string) {
   const [reconnecting, setReconnecting] = useState(false);
   const reconnect = async () => {
     setReconnecting(true);
@@ -187,6 +193,12 @@ function ReconnectButton({ deviceId }: { deviceId: string }) {
       setTimeout(() => setReconnecting(false), 2000);
     }
   };
+  return { reconnecting, reconnect };
+}
+
+type Reconnect = ReturnType<typeof useReconnect>;
+
+function ReconnectButton({ reconnect: { reconnecting, reconnect } }: { reconnect: Reconnect }) {
   return (
     <button
       onClick={reconnect}
@@ -200,17 +212,15 @@ function ReconnectButton({ deviceId }: { deviceId: string }) {
 }
 
 function ManageButtons({
-  deviceId,
   config,
   onEdit,
   onDuplicate,
-  onDeleted,
+  question,
 }: {
-  deviceId: string;
   config: DeviceConfig | undefined;
   onEdit: (config: DeviceConfig) => void;
   onDuplicate: (config: DeviceConfig) => void;
-  onDeleted: (deviceId: string) => void;
+  question: DeleteQuestion;
 }) {
   return (
     <>
@@ -228,14 +238,13 @@ function ManageButtons({
       >
         <Copy size={14} /> Duplicate
       </button>
-      <DeleteDevice deviceId={deviceId} onDeleted={onDeleted} />
+      <DeleteDevice question={question} />
     </>
   );
 }
 
-/** Delete, after a question that lists what still uses the device. */
-function DeleteDevice({ deviceId, onDeleted }: { deviceId: string; onDeleted: (deviceId: string) => void }) {
-  const project = useProjectStore((s) => s.project);
+/** Delete's question: whether it is open, and the delete it asks about. */
+function useDeleteQuestion(deviceId: string, onDeleted: (deviceId: string) => void) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -251,6 +260,16 @@ function DeleteDevice({ deviceId, onDeleted }: { deviceId: string; onDeleted: (d
       setConfirmDelete(false);
     }
   }, [deviceId, onDeleted]);
+
+  return { deviceId, confirmDelete, setConfirmDelete, deleting, handleDelete };
+}
+
+type DeleteQuestion = ReturnType<typeof useDeleteQuestion>;
+
+/** Delete, after a question that lists what still uses the device. */
+function DeleteDevice({ question }: { question: DeleteQuestion }) {
+  const project = useProjectStore((s) => s.project);
+  const { deviceId, confirmDelete, setConfirmDelete, deleting, handleDelete } = question;
 
   if (!confirmDelete) {
     return (
