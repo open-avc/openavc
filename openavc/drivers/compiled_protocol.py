@@ -33,7 +33,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -528,6 +528,10 @@ def parse_json_reply(text: str | bytes) -> Any:
 
 
 # ── Value coercion ──
+#
+# A value the device sent, read as the type its state variable declares: one
+# reading per wire form (text, a parsed JSON body, an OSC argument), each a
+# ``_WireForm`` row below. The boolean token is the one rule all three share.
 
 _TRUE_WORDS = frozenset({"true", "yes", "on"})
 _FALSE_WORDS = frozenset({"false", "no", "off"})
@@ -567,23 +571,98 @@ def coerce_bool_token(raw: Any) -> bool:
         return False
 
 
+def _numbers(
+    integer: Callable[[Any], Any], real: Callable[[Any], Any]
+) -> dict[str, Callable[[Any], Any]]:
+    """A wire form's number readers by declared type: ``float`` is an accepted
+    alias for ``number`` (driver loader + schema)."""
+    return {"integer": integer, "float": real, "number": real}
+
+
+@dataclass(frozen=True)
+class _WireForm:
+    """How one wire form's values are read as a state variable's declared
+    type. The three forms share the type names and the boolean token, and
+    differ on purpose in what each field below holds."""
+
+    #: The reader for each number type.
+    numbers: dict[str, Callable[[Any], Any]]
+    #: What a number reader raises that the form absorbs; anything else
+    #: escapes to the caller.
+    absorbs: tuple[type[Exception], ...]
+    #: What a number that will not convert becomes, given (value, type).
+    unconverted: Callable[[Any, str], Any]
+    boolean: Callable[[Any], Any]
+    #: A string, an enum, or a type the form has no reader for.
+    text: Callable[[Any], Any]
+
+
+def _coerce(value: Any, value_type: str, form: _WireForm) -> Any:
+    """``value`` read as ``value_type`` the way ``form`` reads it. The type is
+    compared, never hashed: a hand-written type that is not a name (a list)
+    reads as text rather than raising."""
+    if value_type == "boolean":
+        return form.boolean(value)
+    reader = next((read for name, read in form.numbers.items() if value_type == name), None)
+    if reader is None:
+        return form.text(value)
+    try:
+        return reader(value)
+    except form.absorbs:
+        return form.unconverted(value, value_type)
+
+
+def _kept_and_said(raw: Any, value_type: str) -> Any:
+    log.warning("Cannot coerce %r to %s, returning raw string", raw, value_type)
+    return raw
+
+
+#: Text: a regex capture or a static value.
+_TEXT = _WireForm(
+    numbers=_numbers(int, float),
+    absorbs=(ValueError,),
+    unconverted=_kept_and_said,
+    boolean=coerce_bool_token,
+    text=lambda raw: raw,
+)
+
+
 def coerce_value(raw: str, value_type: str) -> Any:
     """Convert a raw string (a regex capture or static value) to the type."""
-    if value_type == "integer":
-        try:
-            return int(raw)
-        except ValueError:
-            log.warning("Cannot coerce %r to integer, returning raw string", raw)
-            return raw
-    elif value_type in ("float", "number"):
-        try:
-            return float(raw)
-        except ValueError:
-            log.warning("Cannot coerce %r to %s, returning raw string", raw, value_type)
-            return raw
-    elif value_type == "boolean":
-        return coerce_bool_token(raw)
-    return raw  # string or enum
+    return _coerce(raw, value_type, _TEXT)
+
+
+def _json_integer(value: Any) -> int:
+    """A JSON number or numeric string as an int: a float, or a string of
+    one, is cut toward zero ("5.7" -> 5)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(float(value))
+
+
+def _json_text(value: Any) -> str:
+    """JSON ``true`` / ``false`` as those words, anything else as ``str``."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _text_and_said(value: Any, value_type: str) -> str:
+    log.warning("Cannot coerce %r to %s, returning string", value, value_type)
+    return str(value)
+
+
+#: A parsed JSON body: a real JSON bool, int or float is kept as it is,
+#: rather than round-tripped through ``str`` (JSON ``true`` would become the
+#: string "True").
+_JSON = _WireForm(
+    numbers=_numbers(_json_integer, float),
+    absorbs=(TypeError, ValueError),
+    unconverted=_text_and_said,
+    boolean=lambda value: value if isinstance(value, bool) else coerce_bool_token(value),
+    text=_json_text,
+)
 
 
 def coerce_json_value(value: Any, value_type: str) -> Any:
@@ -591,55 +670,37 @@ def coerce_json_value(value: Any, value_type: str) -> Any:
 
     Unlike ``coerce_value`` (string in), this keeps real JSON bools / ints /
     floats instead of round-tripping through ``str`` (which would turn JSON
-    ``true`` into the string ``"True"``).
+    ``true`` into the string ``"True"``). A JSON null stays None.
     """
     if value is None:
         return None
-    if value_type == "boolean":
-        if isinstance(value, bool):
-            return value
-        return coerce_bool_token(value)
-    if value_type == "integer":
-        if isinstance(value, bool):
-            return int(value)
-        try:
-            return int(value)
-        except (TypeError, ValueError):
-            try:
-                return int(float(value))
-            except (TypeError, ValueError):
-                log.warning("Cannot coerce %r to integer, returning string", value)
-                return str(value)
-    if value_type in ("float", "number"):
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            log.warning("Cannot coerce %r to %s, returning string", value, value_type)
-            return str(value)
+    return _coerce(value, value_type, _JSON)
+
+
+def _osc_boolean(value: Any) -> bool:
+    """An OSC argument as a flag: a bool as it is, a number by its value,
+    anything else as a boolean token."""
     if isinstance(value, bool):
-        return "true" if value else "false"
-    return str(value)
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return coerce_bool_token(value)
+
+
+#: An OSC argument, already typed by its type tag: a number that will not
+#: convert is passed on as it came, and nothing is said.
+_OSC = _WireForm(
+    numbers=_numbers(int, float),
+    absorbs=(ValueError, TypeError),
+    unconverted=lambda value, _value_type: value,
+    boolean=_osc_boolean,
+    text=lambda value: str(value) if value is not None else None,
+)
 
 
 def coerce_osc_value(value: Any, value_type: str) -> Any:
     """Convert an already-typed OSC value to the declared state type."""
-    if value_type in ("float", "number"):
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return value
-    elif value_type == "integer":
-        try:
-            return int(value)
-        except (ValueError, TypeError):
-            return value
-    elif value_type == "boolean":
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return bool(value)
-        return coerce_bool_token(value)
-    return str(value) if value is not None else None
+    return _coerce(value, value_type, _OSC)
 
 
 # ── Value conversion (scale / offset / unknown) ──
@@ -788,12 +849,18 @@ def value_for_map_word(word: Any, value_map: Any) -> tuple[bool, Any]:
     if not isinstance(value_map, dict):
         return False, None
     text = str(word).strip()
-    for key, mapped in value_map.items():
-        if str(mapped) == text:
-            return True, key
+    exact = _key_for(value_map, lambda mapped: mapped == text)
+    if exact[0]:
+        return exact
     folded = text.lower()
+    return _key_for(value_map, lambda mapped: mapped.lower() == folded)
+
+
+def _key_for(value_map: dict[Any, Any], matches: Callable[[str], bool]) -> tuple[bool, Any]:
+    """``(True, key)`` for the first entry whose word, as text, ``matches``;
+    ``(False, None)`` when none does (a key may itself be None or False)."""
     for key, mapped in value_map.items():
-        if str(mapped).lower() == folded:
+        if matches(str(mapped)):
             return True, key
     return False, None
 
