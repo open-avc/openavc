@@ -109,9 +109,15 @@ def _digit_capture(param_type: Any, spec: str) -> str | None:
     wire, or None: an integer or a child id always, a boolean only under a
     numeric spec (its word spellings could never match what that send
     produced)."""
-    if param_type == "boolean" and not (spec and spec[-1] in "dxXob"):
+    if param_type == "boolean" and not _writes_a_number(spec):
         return None
     return _of_type(_DIGIT_CAPTURES, param_type)
+
+
+def _writes_a_number(spec: str) -> bool:
+    """A format spec whose presentation type writes a whole number (decimal,
+    hex, octal or binary)."""
+    return bool(spec) and spec[-1] in "dxXob"
 
 
 def _capture_for(param_type: Any, spec: str) -> str:
