@@ -1422,5 +1422,3920 @@
         }
       ]
     }
+  ],
+  "mutually_exclusive": [
+    {
+      "name": "eq against eq on another value",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "b"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq against eq on the same value",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "equals against == on another value",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "equals",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "==",
+              "value": "b"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "no operator reads as eq",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "b"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "an empty operator reads as eq",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "value": "b"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "an upper-case operator is read lower-case",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "EQ",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "Eq",
+              "value": "b"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq against its own ne",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "ne",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq against ne on another value",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "not_equals",
+              "value": "b"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "!= against eq on the same value",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "!=",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "ne against ne",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "ne",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "ne",
+              "value": "b"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "truthy against falsy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "falsy"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "falsy against truthy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "falsy"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "truthy against truthy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq true against truthy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": true
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq false against truthy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": false
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq false against falsy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": false
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "falsy"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq zero against truthy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 0
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq an empty string against truthy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": ""
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq the text 0 against truthy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "0"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq null against falsy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": null
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "falsy"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq null against truthy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": null
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq a list against falsy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": [
+                1
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "falsy"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq an object against truthy",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": {
+                "a": 1
+              }
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq 1 against eq true",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 1
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": true
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq true against eq true",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": true
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": true
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq true against eq false",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": true
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": false
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq 1 against eq 1.5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 1
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 1.5
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq 2 against eq 2",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq the text 1 against eq 1",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "1"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 1
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq null against eq null",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": null
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": null
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "a missing value against eq null",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": null
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq null against eq a word",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": null
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "x"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq a list against eq the same list",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": [
+                1
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": [
+                1
+              ]
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "gt 5 against lt 3",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lt",
+              "value": 3
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "lt 3 against gt 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lt",
+              "value": 3
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "gte 5 against lte 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gte",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lte",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "gt 5 against lte 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lte",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": ">= 5 against < 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": ">=",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "<",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "> 5 against <= 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": ">",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "<=",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "gt 5 against lt 10",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lt",
+              "value": 10
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "gt 5 against gt 10",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 10
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "lt 5 against lt 10",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lt",
+              "value": 10
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "gt the text 5 against lt 3",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": "5"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lt",
+              "value": 3
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "gt 5 against lt the text 3",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lt",
+              "value": "3"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "gt true against lt 0",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": true
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lt",
+              "value": 0
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq 7 against gt 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 7
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq 3 against gt 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 3
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq 5 against gte 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gte",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq 5 against gt 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq 5 against lte 4",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lte",
+              "value": 4
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq 4 against lt 4",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 4
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "lt",
+              "value": 4
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq 4 against <= 4",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 4
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "<=",
+              "value": 4
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq a word against gt 5",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "x"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq 5 against gt a word",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": "x"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq true against gte 1",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": true
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gte",
+              "value": 1
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq 3 against an operator the panel does not have",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 3
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "contains",
+              "value": 3
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "two operators the panel does not have",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "in",
+              "value": 3
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "contains",
+              "value": 4
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "truthy against gt",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "truthy"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 1
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "gt against eq",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "gt",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 3
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "eq on different keys",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.a",
+              "operator": "eq",
+              "value": 1
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.b",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "any of two values against a third",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                },
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 2
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 3
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "any of two values against one of them",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                },
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 3
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 3
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "any with an unreadable condition",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                },
+                {
+                  "value": 2
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 3
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "any with a condition that is not an object",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                },
+                "eq 2"
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 3
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "an empty any",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": []
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 3
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "all across two keys against one",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "all": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                },
+                {
+                  "key": "var.b",
+                  "operator": "eq",
+                  "value": 2
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "all that keeps its readable condition",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "all": [
+                {
+                  "value": 1
+                },
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "all with nothing readable",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "all": [
+                {
+                  "value": 1
+                },
+                {
+                  "key": ""
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "an empty all",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "all": []
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "all bounding a range against a value outside it",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "all": [
+                {
+                  "key": "var.tab",
+                  "operator": "gt",
+                  "value": 5
+                },
+                {
+                  "key": "var.tab",
+                  "operator": "lt",
+                  "value": 10
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 20
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "all bounding a range against a value inside it",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "all": [
+                {
+                  "key": "var.tab",
+                  "operator": "gt",
+                  "value": 5
+                },
+                {
+                  "key": "var.tab",
+                  "operator": "lt",
+                  "value": 10
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 7
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "any against any, every branch apart",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                },
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 2
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 3
+                },
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 4
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "any against any, one branch shared",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                },
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 2
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 2
+                },
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 4
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "both any and all are read as any",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                }
+              ],
+              "all": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 2
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "an any that is not a list falls through to all",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "any": {
+                "key": "var.tab"
+              },
+              "all": [
+                {
+                  "key": "var.tab",
+                  "operator": "eq",
+                  "value": 1
+                }
+              ]
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "a key that is a number",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": 5,
+              "operator": "eq",
+              "value": 1
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "a key that is empty",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "",
+              "operator": "eq",
+              "value": 1
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "one side with no visible_when",
+      "a": {
+        "id": "a",
+        "type": "group"
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 1
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "a visible_when that is a list",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": [
+              {
+                "key": "var.tab",
+                "operator": "eq",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "bindings that are not an object",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": "show"
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "a show that is not an object",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": "x"
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": 2
+            }
+          }
+        }
+      },
+      "expected": false
+    }
+  ],
+  "content_findings": [
+    {
+      "name": "an image with no src",
+      "element": {
+        "id": "logo",
+        "type": "image"
+      },
+      "expected": [
+        {
+          "element_id": "logo",
+          "kind": "nothing_to_draw",
+          "message": "logo (image) has no src, so it draws an empty box. Set src to an asset ref ('assets://logo.png') or a URL.",
+          "key": "nothing_to_draw|logo"
+        }
+      ]
+    },
+    {
+      "name": "an image with an empty src",
+      "element": {
+        "id": "logo",
+        "type": "image",
+        "src": ""
+      },
+      "expected": [
+        {
+          "element_id": "logo",
+          "kind": "nothing_to_draw",
+          "message": "logo (image) has no src, so it draws an empty box. Set src to an asset ref ('assets://logo.png') or a URL.",
+          "key": "nothing_to_draw|logo"
+        }
+      ]
+    },
+    {
+      "name": "an image with a src",
+      "element": {
+        "id": "logo",
+        "type": "image",
+        "src": "assets://logo.png"
+      },
+      "expected": []
+    },
+    {
+      "name": "an image whose pictures are all in its look",
+      "element": {
+        "id": "logo",
+        "type": "image",
+        "bindings": {
+          "show": {
+            "look": {
+              "key": "var.season",
+              "states": {
+                "winter": {
+                  "image": "assets://w.png"
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "logo",
+          "kind": "nothing_to_draw",
+          "message": "logo (image) has no src, so it draws an empty box. Set src to an asset ref ('assets://logo.png') or a URL.",
+          "key": "nothing_to_draw|logo"
+        }
+      ]
+    },
+    {
+      "name": "a page nav with no target",
+      "element": {
+        "id": "nav",
+        "type": "page_nav",
+        "label": "Home"
+      },
+      "expected": [
+        {
+          "element_id": "nav",
+          "kind": "nothing_to_draw",
+          "message": "nav (page_nav) has no target_page, so it draws an empty box. Set target_page to the page id it should open, or '$back'.",
+          "key": "nothing_to_draw|nav"
+        }
+      ]
+    },
+    {
+      "name": "a page nav with a target",
+      "element": {
+        "id": "nav",
+        "type": "page_nav",
+        "target_page": "main"
+      },
+      "expected": []
+    },
+    {
+      "name": "a page nav with no target whose look has words",
+      "element": {
+        "id": "nav",
+        "type": "page_nav",
+        "bindings": {
+          "show": {
+            "look": {
+              "label_active": "Here"
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a label with no text",
+      "element": {
+        "id": "cap",
+        "type": "label"
+      },
+      "expected": [
+        {
+          "element_id": "cap",
+          "kind": "nothing_to_draw",
+          "message": "cap (label) has no text, and no show.value to supply one, so it draws an empty box. Set text to the string to draw, or a show.value binding.",
+          "key": "nothing_to_draw|cap"
+        }
+      ]
+    },
+    {
+      "name": "a label with text",
+      "element": {
+        "id": "cap",
+        "type": "label",
+        "text": "Volume"
+      },
+      "expected": []
+    },
+    {
+      "name": "a label bound to show.value",
+      "element": {
+        "id": "cap",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "value": {
+              "key": "var.v"
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a label whose show.value is null",
+      "element": {
+        "id": "cap",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "value": null
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "cap",
+          "kind": "nothing_to_draw",
+          "message": "cap (label) has no text, and no show.value to supply one, so it draws an empty box. Set text to the string to draw, or a show.value binding.",
+          "key": "nothing_to_draw|cap"
+        }
+      ]
+    },
+    {
+      "name": "a label whose look has a state with words",
+      "element": {
+        "id": "chip",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "states": {
+                "on": {
+                  "label": "On",
+                  "bg_color": "#0a0"
+                },
+                "off": {
+                  "bg_color": "#333"
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a label whose look has an active word",
+      "element": {
+        "id": "chip",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "label_active": "On"
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a label whose look has an inactive word",
+      "element": {
+        "id": "chip",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "label_inactive": "Off"
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a label whose look words are null",
+      "element": {
+        "id": "chip",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "label_active": null,
+              "label_inactive": null
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "chip",
+          "kind": "nothing_to_draw",
+          "message": "chip (label) has no text, and no show.value to supply one, so it draws an empty box. Set text to the string to draw, or a show.value binding.",
+          "key": "nothing_to_draw|chip"
+        }
+      ]
+    },
+    {
+      "name": "a label whose look has only colour",
+      "element": {
+        "id": "chip",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "states": {
+                "on": {
+                  "bg_color": "#0a0"
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "chip",
+          "kind": "nothing_to_draw",
+          "message": "chip (label) has no text, and no show.value to supply one, so it draws an empty box. Set text to the string to draw, or a show.value binding.",
+          "key": "nothing_to_draw|chip"
+        }
+      ]
+    },
+    {
+      "name": "a label whose look state word is null",
+      "element": {
+        "id": "chip",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "states": {
+                "on": {
+                  "label": null
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "chip",
+          "kind": "nothing_to_draw",
+          "message": "chip (label) has no text, and no show.value to supply one, so it draws an empty box. Set text to the string to draw, or a show.value binding.",
+          "key": "nothing_to_draw|chip"
+        }
+      ]
+    },
+    {
+      "name": "a label whose look state is not an object",
+      "element": {
+        "id": "chip",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "states": {
+                "on": "On"
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "chip",
+          "kind": "nothing_to_draw",
+          "message": "chip (label) has no text, and no show.value to supply one, so it draws an empty box. Set text to the string to draw, or a show.value binding.",
+          "key": "nothing_to_draw|chip"
+        }
+      ]
+    },
+    {
+      "name": "a label whose look is not an object",
+      "element": {
+        "id": "chip",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": "On"
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "chip",
+          "kind": "nothing_to_draw",
+          "message": "chip (label) has no text, and no show.value to supply one, so it draws an empty box. Set text to the string to draw, or a show.value binding.",
+          "key": "nothing_to_draw|chip"
+        }
+      ]
+    },
+    {
+      "name": "a label whose bindings are not an object",
+      "element": {
+        "id": "cap",
+        "type": "label",
+        "bindings": "x"
+      },
+      "expected": [
+        {
+          "element_id": "cap",
+          "kind": "nothing_to_draw",
+          "message": "cap (label) has no text, and no show.value to supply one, so it draws an empty box. Set text to the string to draw, or a show.value binding.",
+          "key": "nothing_to_draw|cap"
+        }
+      ]
+    },
+    {
+      "name": "a select with no options",
+      "element": {
+        "id": "pick",
+        "type": "select"
+      },
+      "expected": [
+        {
+          "element_id": "pick",
+          "kind": "nothing_to_draw",
+          "message": "pick (select) has no options, and no show.items to supply one, so it draws an empty box. Set options to [{label, value}, ...] for the list of choices.",
+          "key": "nothing_to_draw|pick"
+        }
+      ]
+    },
+    {
+      "name": "a select with an empty option list",
+      "element": {
+        "id": "pick",
+        "type": "select",
+        "options": []
+      },
+      "expected": [
+        {
+          "element_id": "pick",
+          "kind": "nothing_to_draw",
+          "message": "pick (select) has no options, and no show.items to supply one, so it draws an empty box. Set options to [{label, value}, ...] for the list of choices.",
+          "key": "nothing_to_draw|pick"
+        }
+      ]
+    },
+    {
+      "name": "a select with options",
+      "element": {
+        "id": "pick",
+        "type": "select",
+        "options": [
+          {
+            "label": "A",
+            "value": "a"
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "a select bound to show.items",
+      "element": {
+        "id": "pick",
+        "type": "select",
+        "bindings": {
+          "show": {
+            "items": {
+              "key": "var.list"
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a select whose look has words",
+      "element": {
+        "id": "pick",
+        "type": "select",
+        "bindings": {
+          "show": {
+            "look": {
+              "label_active": "On"
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "pick",
+          "kind": "nothing_to_draw",
+          "message": "pick (select) has no options, and no show.items to supply one, so it draws an empty box. Set options to [{label, value}, ...] for the list of choices.",
+          "key": "nothing_to_draw|pick"
+        }
+      ]
+    },
+    {
+      "name": "a custom control with no file",
+      "element": {
+        "id": "map",
+        "type": "custom"
+      },
+      "expected": [
+        {
+          "element_id": "map",
+          "kind": "nothing_to_draw",
+          "message": "map (custom) has no custom_file, so it draws an empty box. Set custom_file to a page in the project's ui/ folder, e.g. 'room_map/index.html'.",
+          "key": "nothing_to_draw|map"
+        }
+      ]
+    },
+    {
+      "name": "a custom control with a file",
+      "element": {
+        "id": "map",
+        "type": "custom",
+        "custom_file": "room/index.html"
+      },
+      "expected": []
+    },
+    {
+      "name": "a button, which always draws",
+      "element": {
+        "id": "b1",
+        "type": "button"
+      },
+      "expected": []
+    }
+  ],
+  "keypad_findings": [
+    {
+      "name": "not a keypad",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "auto_send": true,
+        "auto_send_delay_ms": 10
+      },
+      "expected": []
+    },
+    {
+      "name": "a phone keypad that never sends",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "keypad_style": "phone",
+        "auto_send": false
+      },
+      "expected": [
+        {
+          "element_id": "pin",
+          "kind": "keypad_never_sends",
+          "message": "pin (keypad) uses the Phone style, which has no Enter key, and Send without Enter is off, so nothing typed on it is ever sent. Turn on Send without Enter, or choose the Numeric style.",
+          "key": "keypad_never_sends|pin"
+        }
+      ]
+    },
+    {
+      "name": "a phone keypad with auto send unset",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "keypad_style": "phone"
+      },
+      "expected": [
+        {
+          "element_id": "pin",
+          "kind": "keypad_never_sends",
+          "message": "pin (keypad) uses the Phone style, which has no Enter key, and Send without Enter is off, so nothing typed on it is ever sent. Turn on Send without Enter, or choose the Numeric style.",
+          "key": "keypad_never_sends|pin"
+        }
+      ]
+    },
+    {
+      "name": "a phone keypad sending early",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "keypad_style": "phone",
+        "auto_send": true,
+        "auto_send_delay_ms": 200
+      },
+      "expected": [
+        {
+          "element_id": "pin",
+          "kind": "keypad_sends_early",
+          "message": "pin (keypad) sends what has been typed 200 ms after the last key press, shorter than the 1500 ms default, so a code can be sent before it is finished. Set Send Delay to 1500 ms or more; an entry of 4 digits is sent as soon as the last one is pressed.",
+          "key": "keypad_sends_early|pin"
+        }
+      ]
+    },
+    {
+      "name": "a numeric keypad with auto send off",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "keypad_style": "numeric",
+        "auto_send_delay_ms": 200
+      },
+      "expected": []
+    },
+    {
+      "name": "a style other than phone",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "keypad_style": "Phone"
+      },
+      "expected": []
+    },
+    {
+      "name": "auto send at the default delay",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true
+      },
+      "expected": []
+    },
+    {
+      "name": "auto send with the delay null",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": null
+      },
+      "expected": []
+    },
+    {
+      "name": "auto send a millisecond early",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 1499
+      },
+      "expected": [
+        {
+          "element_id": "pin",
+          "kind": "keypad_sends_early",
+          "message": "pin (keypad) sends what has been typed 1499 ms after the last key press, shorter than the 1500 ms default, so a code can be sent before it is finished. Set Send Delay to 1500 ms or more; an entry of 4 digits is sent as soon as the last one is pressed.",
+          "key": "keypad_sends_early|pin"
+        }
+      ]
+    },
+    {
+      "name": "auto send at exactly the default",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 1500
+      },
+      "expected": []
+    },
+    {
+      "name": "auto send past the default",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 2500
+      },
+      "expected": []
+    },
+    {
+      "name": "auto send with no delay at all",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 0
+      },
+      "expected": [
+        {
+          "element_id": "pin",
+          "kind": "keypad_sends_early",
+          "message": "pin (keypad) sends what has been typed 0 ms after the last key press, shorter than the 1500 ms default, so a code can be sent before it is finished. Set Send Delay to 1500 ms or more; an entry of 4 digits is sent as soon as the last one is pressed.",
+          "key": "keypad_sends_early|pin"
+        }
+      ]
+    },
+    {
+      "name": "auto send with a fractional delay",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 250.5
+      },
+      "expected": [
+        {
+          "element_id": "pin",
+          "kind": "keypad_sends_early",
+          "message": "pin (keypad) sends what has been typed 250.5 ms after the last key press, shorter than the 1500 ms default, so a code can be sent before it is finished. Set Send Delay to 1500 ms or more; an entry of 4 digits is sent as soon as the last one is pressed.",
+          "key": "keypad_sends_early|pin"
+        }
+      ]
+    },
+    {
+      "name": "auto send with the delay as text",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": "200"
+      },
+      "expected": []
+    },
+    {
+      "name": "one digit never waits",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 200,
+        "digits": 1
+      },
+      "expected": []
+    },
+    {
+      "name": "two digits",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 200,
+        "digits": 2
+      },
+      "expected": [
+        {
+          "element_id": "pin",
+          "kind": "keypad_sends_early",
+          "message": "pin (keypad) sends what has been typed 200 ms after the last key press, shorter than the 1500 ms default, so a code can be sent before it is finished. Set Send Delay to 1500 ms or more; an entry of 2 digits is sent as soon as the last one is pressed.",
+          "key": "keypad_sends_early|pin"
+        }
+      ]
+    },
+    {
+      "name": "digits null takes the default",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 200,
+        "digits": null
+      },
+      "expected": [
+        {
+          "element_id": "pin",
+          "kind": "keypad_sends_early",
+          "message": "pin (keypad) sends what has been typed 200 ms after the last key press, shorter than the 1500 ms default, so a code can be sent before it is finished. Set Send Delay to 1500 ms or more; an entry of 4 digits is sent as soon as the last one is pressed.",
+          "key": "keypad_sends_early|pin"
+        }
+      ]
+    },
+    {
+      "name": "digits as text",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 200,
+        "digits": "4"
+      },
+      "expected": []
+    },
+    {
+      "name": "digits fractional",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": 200,
+        "digits": 4.5
+      },
+      "expected": []
+    },
+    {
+      "name": "auto send written as 1",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": 1,
+        "auto_send_delay_ms": 200
+      },
+      "expected": [
+        {
+          "element_id": "pin",
+          "kind": "keypad_sends_early",
+          "message": "pin (keypad) sends what has been typed 200 ms after the last key press, shorter than the 1500 ms default, so a code can be sent before it is finished. Set Send Delay to 1500 ms or more; an entry of 4 digits is sent as soon as the last one is pressed.",
+          "key": "keypad_sends_early|pin"
+        }
+      ]
+    }
+  ],
+  "starvation_finding": [
+    {
+      "name": "an LED that fits",
+      "element": {
+        "id": "led",
+        "type": "status_led",
+        "label": "Power"
+      },
+      "seat": {
+        "box_px": [
+          120,
+          40
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": []
+    },
+    {
+      "name": "an LED too narrow inside a roomy parent",
+      "element": {
+        "id": "led",
+        "type": "status_led",
+        "label": "Power"
+      },
+      "seat": {
+        "box_px": [
+          20,
+          40
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "led",
+          "kind": "too_small_for_contents",
+          "message": "led (status_led) is 20x40px at the 1280x800 reference, too small for what it draws: 20px wide, needs 29px (led-dot is 20px). Give it w at least 7.25% of grp_strip.",
+          "key": "too_small_for_contents|led"
+        }
+      ]
+    },
+    {
+      "name": "an LED too small both ways",
+      "element": {
+        "id": "led",
+        "type": "status_led",
+        "label": "Power"
+      },
+      "seat": {
+        "box_px": [
+          20,
+          10
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "led",
+          "kind": "too_small_for_contents",
+          "message": "led (status_led) is 20x10px at the 1280x800 reference, too small for what it draws: 20px wide, needs 29px (led-dot is 20px); 10px tall, needs 20px (led-dot is 20px). Give it w at least 7.25% and h at least 6.67% of grp_strip.",
+          "key": "too_small_for_contents|led"
+        }
+      ]
+    },
+    {
+      "name": "a gauge has no floor",
+      "element": {
+        "id": "g",
+        "type": "gauge"
+      },
+      "seat": {
+        "box_px": [
+          5,
+          5
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": []
+    },
+    {
+      "name": "a fader in a strip too narrow, the strip can grow",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          46,
+          300
+        ],
+        "parent_px": [
+          51,
+          400
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [
+          {
+            "label": "grp_strip",
+            "width_px": 51,
+            "height_px": 400
+          },
+          {
+            "label": "grp_bank",
+            "width_px": 600,
+            "height_px": 500
+          }
+        ],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 46x300px at the 1280x800 reference, too small for what it draws: 46px wide, needs 88px (fader-handle is 44px, fader-scale is 42px). grp_strip is 51px wide, too small to hold it at any width: give grp_strip w at least 16.26% of grp_bank.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
+    },
+    {
+      "name": "a fader in a strip too narrow and short, the strip can grow",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          46,
+          60
+        ],
+        "parent_px": [
+          51,
+          70
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [
+          {
+            "label": "grp_strip",
+            "width_px": 51,
+            "height_px": 70
+          },
+          {
+            "label": "grp_bank",
+            "width_px": 600,
+            "height_px": 500
+          }
+        ],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 46x60px at the 1280x800 reference, too small for what it draws: 46px wide, needs 88px (fader-handle is 44px, fader-scale is 42px); 60px tall, needs 175px (fader-handle is 44px). grp_strip is 51x70px, too small to hold it at any size: give grp_strip w at least 16.26% and h at least 40.83% of grp_bank.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
+    },
+    {
+      "name": "a fader blocked on width and reachable on height",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          46,
+          50
+        ],
+        "parent_px": [
+          51,
+          400
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [
+          {
+            "label": "grp_strip",
+            "width_px": 51,
+            "height_px": 400
+          },
+          {
+            "label": "grp_bank",
+            "width_px": 600,
+            "height_px": 500
+          }
+        ],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 46x50px at the 1280x800 reference, too small for what it draws: 46px wide, needs 88px (fader-handle is 44px, fader-scale is 42px); 50px tall, needs 175px (fader-handle is 44px). Give it h at least 43.75% of grp_strip. grp_strip is 51px wide, too small to hold it at any width: give grp_strip w at least 16.26% of grp_bank.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
+    },
+    {
+      "name": "a fader nothing can grow to hold",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          46,
+          300
+        ],
+        "parent_px": [
+          51,
+          400
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [
+          {
+            "label": "grp_strip",
+            "width_px": 51,
+            "height_px": 400
+          },
+          {
+            "label": "grp_bank",
+            "width_px": 52,
+            "height_px": 500
+          }
+        ],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 46x300px at the 1280x800 reference, too small for what it draws: 46px wide, needs 88px (fader-handle is 44px, fader-scale is 42px). grp_bank is 52px wide, too small to hold it at any width: give grp_bank w at least 7.77% of the page.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
+    },
+    {
+      "name": "a fader nothing can grow, with no ancestors given",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          46,
+          300
+        ],
+        "parent_px": [
+          51,
+          400
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 46x300px at the 1280x800 reference, too small for what it draws: 46px wide, needs 88px (fader-handle is 44px, fader-scale is 42px). No placement fits: the widest this can be drawn on a 1280px page is 1280px, and it needs 88px.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
+    },
+    {
+      "name": "a fader with no width at all",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          0,
+          300
+        ],
+        "parent_px": [
+          51,
+          400
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [
+          {
+            "label": "grp_strip",
+            "width_px": 51,
+            "height_px": 400
+          }
+        ],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 0x300px at the 1280x800 reference, too small for what it draws: 0px wide, needs 88px (fader-handle is 44px, fader-scale is 42px). No placement fits: the widest this can be drawn on a 1280px page is 0px, and it needs 88px.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
+    },
+    {
+      "name": "a fader grown one level further out",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          46,
+          300
+        ],
+        "parent_px": [
+          51,
+          400
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [
+          {
+            "label": "grp_strip",
+            "width_px": 51,
+            "height_px": 400
+          },
+          {
+            "label": "grp_mid",
+            "width_px": 55,
+            "height_px": 400
+          },
+          {
+            "label": "grp_bank",
+            "width_px": 600,
+            "height_px": 500
+          }
+        ],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 46x300px at the 1280x800 reference, too small for what it draws: 46px wide, needs 88px (fader-handle is 44px, fader-scale is 42px). grp_mid is 55px wide, too small to hold it at any width: give grp_mid w at least 17.54% of grp_bank.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
+    },
+    {
+      "name": "an LED too narrow on a portrait page",
+      "element": {
+        "id": "led",
+        "type": "status_led",
+        "label": "Power"
+      },
+      "seat": {
+        "box_px": [
+          20,
+          40
+        ],
+        "parent_px": [
+          800,
+          1280
+        ],
+        "parent_name": "the page",
+        "ancestors": [],
+        "orientation": "portrait"
+      },
+      "expected": [
+        {
+          "element_id": "led",
+          "kind": "too_small_for_contents",
+          "message": "led (status_led) is 20x40px at the 800x1280 reference, too small for what it draws: 20px wide, needs 29px (led-dot is 20px). Give it w at least 3.62% of the page.",
+          "key": "too_small_for_contents|led"
+        }
+      ]
+    },
+    {
+      "name": "a slider under the thumb the theme sets",
+      "element": {
+        "id": "s1",
+        "type": "slider"
+      },
+      "seat": {
+        "box_px": [
+          300,
+          40
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "s1",
+          "kind": "too_small_for_contents",
+          "message": "s1 (slider) is 300x40px at the 1280x800 reference, too small for what it draws: 40px tall, needs 120px (slider thumb is 66px). Give it h at least 40% of grp_strip.",
+          "key": "too_small_for_contents|s1"
+        }
+      ],
+      "theme": {
+        "thumb_size": 4.714285714285714
+      }
+    }
+  ],
+  "degenerate_finding": [
+    {
+      "name": "a gauge too small both ways",
+      "element": {
+        "id": "g",
+        "type": "gauge"
+      },
+      "seat": {
+        "box_px": [
+          5,
+          5
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "g",
+          "kind": "too_small_to_draw",
+          "message": "g (gauge) is 5x5px at the 1280x800 reference, which is not small, it is invisible. A gauge has no fixed floor -- what limits it is its content -- so nothing else here measures it. Give it w at least 2.5% and h at least 3.33% of grp_strip.",
+          "key": "too_small_to_draw|g"
+        }
+      ]
+    },
+    {
+      "name": "a gauge too narrow",
+      "element": {
+        "id": "g",
+        "type": "gauge"
+      },
+      "seat": {
+        "box_px": [
+          5,
+          50
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "g",
+          "kind": "too_small_to_draw",
+          "message": "g (gauge) is 5x50px at the 1280x800 reference, which is not small, it is invisible. A gauge has no fixed floor -- what limits it is its content -- so nothing else here measures it. Give it w at least 2.5% of grp_strip.",
+          "key": "too_small_to_draw|g"
+        }
+      ]
+    },
+    {
+      "name": "a gauge too short",
+      "element": {
+        "id": "g",
+        "type": "gauge"
+      },
+      "seat": {
+        "box_px": [
+          50,
+          5
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "g",
+          "kind": "too_small_to_draw",
+          "message": "g (gauge) is 50x5px at the 1280x800 reference, which is not small, it is invisible. A gauge has no fixed floor -- what limits it is its content -- so nothing else here measures it. Give it h at least 3.33% of grp_strip.",
+          "key": "too_small_to_draw|g"
+        }
+      ]
+    },
+    {
+      "name": "a gauge big enough",
+      "element": {
+        "id": "g",
+        "type": "gauge"
+      },
+      "seat": {
+        "box_px": [
+          50,
+          50
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": []
+    },
+    {
+      "name": "a gauge exactly at the line",
+      "element": {
+        "id": "g",
+        "type": "gauge"
+      },
+      "seat": {
+        "box_px": [
+          10,
+          10
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": []
+    },
+    {
+      "name": "an LED is the starvation check's",
+      "element": {
+        "id": "led",
+        "type": "status_led",
+        "label": "Power"
+      },
+      "seat": {
+        "box_px": [
+          2,
+          2
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": []
+    },
+    {
+      "name": "a gauge in a parent with no width",
+      "element": {
+        "id": "g",
+        "type": "gauge"
+      },
+      "seat": {
+        "box_px": [
+          5,
+          5
+        ],
+        "parent_px": [
+          0,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "g",
+          "kind": "too_small_to_draw",
+          "message": "g (gauge) is 5x5px at the 1280x800 reference, which is not small, it is invisible. A gauge has no fixed floor -- what limits it is its content -- so nothing else here measures it. Give it h at least 3.33% of grp_strip.",
+          "key": "too_small_to_draw|g"
+        }
+      ]
+    },
+    {
+      "name": "a gauge in a parent with no size at all",
+      "element": {
+        "id": "g",
+        "type": "gauge"
+      },
+      "seat": {
+        "box_px": [
+          5,
+          5
+        ],
+        "parent_px": [
+          0,
+          0
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "g",
+          "kind": "too_small_to_draw",
+          "message": "g (gauge) is 5x5px at the 1280x800 reference, which is not small, it is invisible. A gauge has no fixed floor -- what limits it is its content -- so nothing else here measures it.",
+          "key": "too_small_to_draw|g"
+        }
+      ]
+    },
+    {
+      "name": "a gauge on a portrait page",
+      "element": {
+        "id": "g",
+        "type": "gauge"
+      },
+      "seat": {
+        "box_px": [
+          5,
+          5
+        ],
+        "parent_px": [
+          800,
+          1280
+        ],
+        "parent_name": "the page",
+        "ancestors": [],
+        "orientation": "portrait"
+      },
+      "expected": [
+        {
+          "element_id": "g",
+          "kind": "too_small_to_draw",
+          "message": "g (gauge) is 5x5px at the 800x1280 reference, which is not small, it is invisible. A gauge has no fixed floor -- what limits it is its content -- so nothing else here measures it. Give it w at least 1.25% and h at least 0.78% of the page.",
+          "key": "too_small_to_draw|g"
+        }
+      ]
+    }
   ]
 }

@@ -3,19 +3,28 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import {
   buriedMasterFindings,
+  contentFindings,
+  degenerateFinding,
+  keypadFindings,
   masterBox,
   matrixFindings,
+  mutuallyExclusive,
   propertyFindings,
+  starvationFinding,
   styleFinding,
 } from "./uiBuilderHelpers";
+import type { ElementDefaults, Seat } from "./uiBuilderHelpers";
 import type { MasterElement, Placement, UIElement } from "../../api/types";
 
 // The Builder's single-element review checks, held sentence for sentence to the
 // AI side's: a matrix's lists, a style measurement against its box, a property
 // its type's renderer never reads, the box a master draws in and the controls
-// drawn over it. tests/fixtures/page_review_check_cases.json holds each case
-// and what the review says about it; tests/test_ui_page_review_checks_pinned.py
-// holds openavc/ui/page_review.py to the same file.
+// drawn over it, two visibility conditions that can never both hold, a control
+// with nothing to draw, a keypad that never sends or sends early, and a box too
+// small for what it draws or too small to draw at all.
+// tests/fixtures/page_review_check_cases.json holds each case and what the
+// review says about it; tests/test_ui_page_review_checks_pinned.py holds
+// openavc/ui/page_review.py to the same file.
 
 type Said = { element_id: string; kind: string; message: string; key: string };
 type Case = { name: string; expected: Said[] } & Record<string, unknown>;
@@ -72,4 +81,66 @@ describe("buriedMasterFindings", () => {
     );
     expect(said(findings)).toEqual(c.expected);
   });
+});
+
+describe("mutuallyExclusive", () => {
+  it.each(corpus.mutually_exclusive.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(mutuallyExclusive(c.a as UIElement, c.b as UIElement)).toBe(c.expected);
+  });
+});
+
+describe("contentFindings", () => {
+  it.each(corpus.content_findings.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(said(contentFindings(c.element as UIElement))).toEqual(c.expected);
+  });
+});
+
+describe("keypadFindings", () => {
+  it.each(corpus.keypad_findings.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(said(keypadFindings(c.element as UIElement))).toEqual(c.expected);
+  });
+});
+
+type RawSeat = {
+  box_px: [number, number];
+  parent_px: [number, number];
+  parent_name: string;
+  ancestors: { label: string; width_px: number; height_px: number }[];
+  orientation: string;
+};
+
+const toSeat = (raw: RawSeat): Seat => ({
+  boxPx: { width: raw.box_px[0], height: raw.box_px[1] },
+  parentPx: { width: raw.parent_px[0], height: raw.parent_px[1] },
+  parentName: raw.parent_name,
+  ancestors: raw.ancestors.map((a) => ({ label: a.label, widthPx: a.width_px, heightPx: a.height_px })),
+  orientation: raw.orientation,
+});
+
+describe("starvationFinding", () => {
+  it.each(corpus.starvation_finding.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const found = starvationFinding(
+      c.element as UIElement, toSeat(c.seat as RawSeat), c.theme as ElementDefaults,
+    );
+    expect(said(found ? [found] : [])).toEqual(c.expected);
+  });
+});
+
+describe("degenerateFinding", () => {
+  it.each(corpus.degenerate_finding.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const found = degenerateFinding(c.element as UIElement, toSeat(c.seat as RawSeat));
+    expect(said(found ? [found] : [])).toEqual(c.expected);
+  });
+});
+
+// The one shape the two sides answer differently, so it is pinned per side.
+// `states` is a map of value to appearance. Written as a list, this side reads
+// the list's entries as states and says nothing; the AI side reads no words
+// from it and says the label is empty.
+it("reads words from a look whose states are a list", () => {
+  const chip = {
+    id: "chip", type: "label",
+    bindings: { show: { look: { states: [{ label: "On" }] } } },
+  } as unknown as UIElement;
+  expect(contentFindings(chip)).toEqual([]);
 });

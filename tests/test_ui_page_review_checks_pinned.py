@@ -1,7 +1,10 @@
 """The page review's single-element checks, pinned sentence for sentence.
 
 A matrix's lists, a style measurement against its box, a property its type's
-renderer never reads, the box a master draws in and the controls drawn over it:
+renderer never reads, the box a master draws in and the controls drawn over it,
+two visibility conditions that can never both hold, a control with nothing to
+draw, a keypad that never sends or sends early, and a box too small for what it
+draws or too small to draw at all:
 ``tests/fixtures/page_review_check_cases.json`` holds each case and what the
 review says about it, and the Builder's copy is held to the same file by
 ``pageReviewChecks.test.ts``. The parity corpus compares the two sides over
@@ -24,12 +27,19 @@ from pathlib import Path
 import pytest
 
 from openavc.ui.page_review import (
+    Container,
+    Seat,
     buried_master_findings,
+    content_findings,
+    degenerate_finding,
+    keypad_findings,
     master_box,
     matrix_findings,
+    mutually_exclusive,
     precision_review,
     property_findings,
     range_review,
+    starvation_finding,
     style_finding,
 )
 
@@ -88,6 +98,41 @@ def test_buried_master_findings(case) -> None:
     assert _said(findings) == case["expected"]
 
 
+@pytest.mark.parametrize("case", _cases("mutually_exclusive"))
+def test_mutually_exclusive(case) -> None:
+    assert mutually_exclusive(case["a"], case["b"]) is case["expected"]
+
+
+@pytest.mark.parametrize("case", _cases("content_findings"))
+def test_content_findings(case) -> None:
+    assert _said(content_findings(case["element"])) == case["expected"]
+
+
+@pytest.mark.parametrize("case", _cases("keypad_findings"))
+def test_keypad_findings(case) -> None:
+    assert _said(keypad_findings(case["element"])) == case["expected"]
+
+
+def _seat(raw: dict) -> Seat:
+    return Seat(
+        tuple(raw["box_px"]), tuple(raw["parent_px"]), raw["parent_name"],
+        tuple(Container(a["label"], a["width_px"], a["height_px"]) for a in raw["ancestors"]),
+        raw["orientation"],
+    )
+
+
+@pytest.mark.parametrize("case", _cases("starvation_finding"))
+def test_starvation_finding(case) -> None:
+    found = starvation_finding(case["element"], _seat(case["seat"]), case.get("theme"))
+    assert _said([found] if found else []) == case["expected"]
+
+
+@pytest.mark.parametrize("case", _cases("degenerate_finding"))
+def test_degenerate_finding(case) -> None:
+    found = degenerate_finding(case["element"], _seat(case["seat"]))
+    assert _said([found] if found else []) == case["expected"]
+
+
 def test_the_corpus_reaches_every_finding_these_checks_make() -> None:
     """A corpus whose expectations are all empty passes for free."""
     kinds = {
@@ -101,7 +146,15 @@ def test_the_corpus_reaches_every_finding_these_checks_make() -> None:
         "matrix_not_configured", "matrix_config_unread", "matrix_default_size",
         "matrix_duplicate_values", "matrix_lock_unbacked", "matrix_no_route_feedback",
         "style_too_large", "property_not_rendered", "covers_master",
+        "nothing_to_draw", "keypad_never_sends", "keypad_sends_early",
+        "too_small_for_contents", "too_small_to_draw",
     }
+
+
+def test_the_corpus_proves_and_refuses_exclusivity() -> None:
+    """Pairs that are all one answer pass for free too."""
+    answers = [case["expected"] for case in CORPUS["mutually_exclusive"]]
+    assert True in answers and False in answers
 
 
 # --- Ranges and rounding (the AI side only) ---------------------------------
@@ -227,3 +280,15 @@ def test_rounding_set_or_a_value_that_is_not_a_float_says_nothing() -> None:
     assert precision_review({"id": "v1", "type": "label"}, {"type": "integer"}, KEY) is None
     assert precision_review({"id": "v1", "type": "gauge"}, {"type": "float"}, KEY) is None
     assert precision_review({"id": "v1", "type": "label"}, None, KEY) is None
+
+
+def test_a_look_whose_states_are_a_list_supplies_no_words_here() -> None:
+    """The one shape the two sides answer differently, so it is pinned per side.
+
+    ``states`` is a map of value to appearance. Written as a list, this side
+    reads no words from it and says the label is empty; the Builder reads the
+    list's entries as states and says nothing.
+    """
+    chip = {"id": "chip", "type": "label",
+            "bindings": {"show": {"look": {"states": [{"label": "On"}]}}}}
+    assert [f.kind for f in content_findings(chip)] == ["nothing_to_draw"]
