@@ -56,6 +56,10 @@ def create_backup(
     travel with the backup. Links in either project tree are followed and
     recorded in ``links.json``; see the module docstring.
 
+    A project directly in ``data_dir`` uses that same archive prefix, but
+    only its named file, state.json, scripts/, assets/ and ui/ are included.
+    The rest of the data root belongs to the system, not the project.
+
     Returns the path to the created backup file.
     """
     backup_dir = data_dir / "backups"
@@ -119,18 +123,11 @@ def create_backup(
             if device_logins.exists():
                 zf.write(device_logins, "device_logins.json")
 
-            # Back up the project file and its siblings when it lives outside
-            # data_dir. Without this, OPENAVC_PROJECT users would lose project.avc,
-            # state.json (persistent variables), scripts/, and assets/ on a
-            # failed update.
+            # Projects outside data_dir, and directly at its root, are not
+            # reached by the projects/ walk. The data-root case selects only
+            # project entries, never the supervisor, update cache or backups.
             if project_path is not None and project_path.exists():
-                external_dir = _project_external_dir(project_path, data_dir)
-                if external_dir is not None:
-                    files, links["external-project"] = _project_files(external_dir, backup_dir)
-                    for file_path in files:
-                        if not _in_user_backups(file_path, external_dir):
-                            rel = file_path.relative_to(external_dir).as_posix()
-                            zf.write(file_path, f"external-project/{rel}")
+                links["external-project"] = _backup_extra_project(zf, project_path, data_dir)
 
             recorded = {tree: found for tree, found in links.items() if found}
             if recorded:
@@ -168,7 +165,18 @@ def _contains(outer: str, inner: str) -> bool:
     return inner == outer or inner.startswith(outer.rstrip(os.sep) + os.sep)
 
 
-def _project_files(root: Path, backups: Path) -> tuple[list[Path], dict[str, str]]:
+def _walk_project_tree(root: Path, root_names: set[str] | None):
+    """Walk selected entries without visiting the system's other directories."""
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+        if Path(dirpath) == root and root_names is not None:
+            dirnames[:] = sorted(root_names.intersection(dirnames))
+            filenames = sorted(root_names.intersection(filenames))
+        yield dirpath, dirnames, filenames
+
+
+def _project_files(
+    root: Path, backups: Path, root_names: set[str] | None = None,
+) -> tuple[list[Path], dict[str, str]]:
     """The files a project tree shows, links followed, and the links themselves.
 
     Returns ``(files, links)``: every file as its path through the tree, and
@@ -178,6 +186,9 @@ def _project_files(root: Path, backups: Path) -> tuple[list[Path], dict[str, str
     folder it sits in (a loop), into a folder another link already walked,
     into the tree itself or above it, or into the backups being written. Such
     a link is still recorded, so a rollback puts it back.
+
+    ``root_names`` limits the walk to those immediate children, before any
+    directory is visited. Used when project and system data share a root.
     """
     files: list[Path] = []
     links: dict[str, str] = {}
@@ -190,7 +201,7 @@ def _project_files(root: Path, backups: Path) -> tuple[list[Path], dict[str, str
     def note(path: Path) -> None:
         links[path.relative_to(root).as_posix()] = os.path.realpath(path)
 
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+    for dirpath, dirnames, filenames in _walk_project_tree(root, root_names):
         here = Path(dirpath)
         here_real = _real(here)
         kept = []
@@ -221,23 +232,54 @@ def _project_files(root: Path, backups: Path) -> tuple[list[Path], dict[str, str
     return sorted(files), links
 
 
-def _project_external_dir(project_path: Path, data_dir: Path) -> Path | None:
-    """Return the project's parent directory if it sits outside data_dir.
+def _extra_project_tree(
+    project_path: Path, data_dir: Path,
+) -> tuple[Path | None, set[str] | None]:
+    """Project tree needing the external-project archive, and its entry filter.
 
-    Returns None when the project lives inside ``data_dir`` (already covered
-    by the regular `projects/` walk) so we don't archive everything twice.
+    An external directory is carried whole. The data root carries only the
+    project's own entries; both backup and rollback use this selection.
+    Other locations inside data_dir retain the regular projects/ handling.
     """
     try:
         project_path = project_path.resolve()
         data_dir = data_dir.resolve()
     except OSError:
-        return None
+        return None, None
+    if project_path.parent == data_dir:
+        return data_dir, {project_path.name, "state.json", "scripts", "assets", "ui"}
     try:
         project_path.relative_to(data_dir)
     except ValueError:
         # Not a subpath of data_dir — external.
-        return project_path.parent
-    return None
+        return project_path.parent, None
+    return None, None
+
+
+def _backup_extra_project(zf: zipfile.ZipFile, project_path: Path, data_dir: Path) -> dict[str, str]:
+    """Archive the selected extra project tree and return its recorded links."""
+    root, root_names = _extra_project_tree(project_path, data_dir)
+    if root is None:
+        return {}
+    files, links = _project_files(root, data_dir / "backups", root_names)
+    for path in files:
+        if not _in_user_backups(path, root):
+            rel = path.relative_to(root).as_posix()
+            zf.write(path, f"external-project/{rel}")
+    return links
+
+
+def _selected_external_members(members: list, root_names: set[str] | None) -> list:
+    """Limit the external-project members to the data root's project entries.
+
+    The restore writer still validates every selected member's full path.
+    """
+    if root_names is None:
+        return members
+    return [
+        member for member in members
+        if member.filename.removeprefix("external-project/").partition("/")[0] in root_names
+    ]
 
 
 def restore_user_data(
@@ -260,6 +302,8 @@ def restore_user_data(
     (``OPENAVC_PROJECT`` outside data_dir, archived under
     ``external-project/``) is restored by per-file overwrite instead of a
     swap — that directory can be a mount point that cannot be renamed.
+    A project directly at the data root uses the same per-file restore,
+    restricted to its own entries so system files are never rolled back.
 
     A link the backup recorded (``links.json``) that still leads where it did
     is kept a link: its files are restored through it rather than as a plain
@@ -288,10 +332,11 @@ def restore_user_data(
             )
 
         if external_members and project_path is not None:
-            external_dir = _project_external_dir(project_path, data_dir)
+            external_dir, root_names = _extra_project_tree(project_path, data_dir)
             if external_dir is not None:
                 restored |= _restore_external_files(
-                    zf, external_members, external_dir, links.get("external-project", {}),
+                    zf, _selected_external_members(external_members, root_names),
+                    external_dir, links.get("external-project", {}),
                 )
 
     return restored

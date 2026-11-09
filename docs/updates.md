@@ -54,7 +54,7 @@ Only the application code is updated. Your data is never touched:
 - System configuration (system.json) is preserved
 - Cloud pairing credentials are preserved
 
-A backup zip is created before every update, stored in your data directory under `backups/`. The five most recent backups are kept automatically.
+A backup zip is created before every update, stored in your data directory under `backups/`. It includes the active project and its scripts, assets, custom controls and saved variable state, including on appliance hardware. The five most recent backups are kept automatically.
 
 ## Deployment Types
 
@@ -156,7 +156,7 @@ If an update causes problems, you can roll back to the previous version.
 
 ### Automatic Rollback
 
-If the server crashes immediately after an update (fails to start twice in a row), it automatically restores the previous version. Your project data is restored from the backup taken just before the update, so code and data go back together. The project files from the failed update are kept in a `projects.pre-rollback` folder next to your projects in case you need anything from them. If your project folder is a link to another location (a symbolic link, or a junction on Windows), it stays a link, and its files are put back where they really are. No action needed.
+If the server crashes immediately after an update (fails to start twice in a row), it automatically restores the previous version and your backed-up project data. Projects in the normal `projects/` folder keep the replaced files in `projects.pre-rollback`. Projects stored elsewhere, including on appliance hardware, restore their backed-up files in place. Existing project-folder links (symbolic links, or junctions on Windows) are preserved. No action needed.
 
 An update counts as good the moment the new version finishes starting up, so restarting or power-cycling the system after an update never undoes it. Only a version that cannot get itself running is rolled back.
 
