@@ -331,6 +331,19 @@ describe("Where the restart dialog waits", () => {
     });
   });
 
+  it("keeps where this page reached the server when Settings opened, through a save that moves the port", async () => {
+    // No ports from the server: the saved port says where this page reached it.
+    served.config.network.http_port = Number(PORT || 80);
+    await renderLoaded(<SystemSettingsView />);
+    served.config.network.http_port = 9090;
+    fireEvent.change(httpPort(), { target: { value: "9090" } });
+    await saveAndSettle();
+    fireEvent.click(screen.getByRole("button", { name: "Later" }));
+    fireEvent.click(within(banner()!).getByRole("button", { name: "Restart now" }));
+    await screen.findByTestId("restart-dialog");
+    expect(dialogProps().targetUrl).toBe("http://localhost:9090/programmer");
+  });
+
   it("waits at HTTPS's own port, 8443 when none is saved", async () => {
     served.config.tls = { ...served.config.tls, enabled: true, port: undefined };
     waitingChoice({ http_port: Number(PORT || 80), https_port: null });
