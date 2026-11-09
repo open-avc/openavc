@@ -6,9 +6,9 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Copy, Download, Smartphone } from "lucide-react";
 import { copyToClipboard } from "../../components/shared/clipboard";
+import { saveCaCertificate } from "../../components/system/caCertificate";
 import { btnStyle, fieldRow, labelStyle, selectStyle, subCardTitle } from "../../components/system/settingsStyles";
 import { showError, showSuccess } from "../../store/toastStore";
-import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
 import type { TlsCertInfo, TlsStatus } from "../../api/restClient";
 import { CA_INSTALL_OS_LABELS, CA_INSTALL_STEPS, detectOs, type CaInstallOs } from "./caInstallSteps";
@@ -37,15 +37,7 @@ export type CertificateMadeHereView = ReturnType<typeof useCertificateMadeHere>;
 
 async function downloadCaCertificate() {
   try {
-    const blob = await api.downloadCertificate();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "openavc-ca.crt";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    await saveCaCertificate();
     showSuccess("CA certificate downloaded. Install it on your panel devices to skip the security warning.");
   } catch (e) {
     showError("Could not download CA certificate: " + parseApiError(e));

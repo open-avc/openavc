@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, Download, ExternalLink, RefreshCw } from "lucide-react";
 import { Dialog } from "./Dialog";
+import { saveCaCertificate } from "../system/caCertificate";
 import {
   HANDOFF_ATTEMPTS,
   healthProbeUrl,
@@ -161,15 +162,7 @@ export function RestartProgressDialog({
     try {
       // Download CA from the *current* origin (still HTTP, still reachable from
       // the splash page that's still in the user's browser tab).
-      const blob = await api.downloadCertificate();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "openavc-ca.crt";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      await saveCaCertificate();
     } catch {
       // Best effort — if the CA isn't fetchable from the current page (e.g.,
       // the redirect listener already took over), fall through to opening the
