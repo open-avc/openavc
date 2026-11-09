@@ -197,18 +197,12 @@ function SettingRow({
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{help}</div>
           )}
         </div>
-        {editor ? (
-          <SettingEditor def={def} {...editor} />
-        ) : (
-          <SettingReading
-            def={def}
-            currentValue={currentValue}
-            pending={pending}
-            pendingValue={pendingValue}
-            connected={connected}
-            onStartEdit={onStartEdit}
-          />
-        )}
+        {/* Called, not mounted as components: both draw a div whose third
+            child is a button, so React keeps that button as Edit turns
+            into Cancel and back, and keyboard focus stays on it. */}
+        {editor
+          ? settingEditor(def, editor)
+          : settingReading({ def, currentValue, pending, pendingValue, connected, onStartEdit })}
       </div>
       {result && <SaveResultLine result={result} />}
     </div>
@@ -217,7 +211,7 @@ function SettingRow({
 
 /** The value on the device, a pending mark, and the edit button, which waits
  *  for the device to be connected. */
-function SettingReading({
+function settingReading({
   def,
   currentValue,
   pending,
@@ -308,7 +302,7 @@ const editorButtonStyle = {
   alignItems: "center",
 } as const;
 
-function SettingEditor({ def, value, onChange, saving, onSave, onCancel }: EditorProps & { def: DeviceSettingValue | undefined }) {
+function settingEditor(def: DeviceSettingValue | undefined, { value, onChange, saving, onSave, onCancel }: EditorProps) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
       <SettingInput def={def} value={value} onChange={onChange} onSave={onSave} onCancel={onCancel} />

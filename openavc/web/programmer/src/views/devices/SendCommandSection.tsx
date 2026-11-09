@@ -80,7 +80,60 @@ function failedResult(e: unknown, command: string, params: Record<string, unknow
   };
 }
 
-/** The chosen command, its form's values and files, and sending it. */
+/** What the form knows of the chosen command: its definition, parameters and
+ *  label, and whether Send waits. Send waits on an invalid or missing
+ *  parameter (each field says which) and on a file run still going; the
+ *  server checks the parameters too. */
+function chosenCommand(commands: Commands, form: CommandFormState, runBusy: boolean) {
+  const def = commands[form.selected] as CommandDef;
+  const paramDefs = (def?.params as Record<string, Partial<DriverParamDef>>) ?? {};
+  return {
+    def,
+    paramDefs,
+    label: (def?.label as string | undefined) || form.selected,
+    blocked: commandParamsBlocked(paramDefs, form.values) || fileParamsBlocked(paramDefs, form.files) || runBusy,
+  };
+}
+
+/** The chosen command, its form's values, and the file chosen for each file
+ *  parameter. */
+interface CommandFormState {
+  selected: string;
+  values: Record<string, string>;
+  files: Record<string, File | null>;
+}
+
+/** Sends the chosen command, or uploads its files and starts its run in the
+ *  background. The answer to show, or null for a run: CommandFileRunStatus
+ *  follows that. */
+async function deliver(
+  deviceId: string,
+  commands: Commands,
+  form: CommandFormState,
+  fileRun: ReturnType<typeof useCommandFileRun>,
+): Promise<CommandResult | null> {
+  const def = commands[form.selected] as { label?: string } | undefined;
+  const label = def?.label || form.selected;
+  const fileParams = new Set(fileParamNames(def));
+  const params = filledParams(form.values, fileParams);
+  try {
+    if (isFileCommand(def)) {
+      await fileRun.start(form.selected, label, params, chosenFiles(form.files, fileParams));
+      return null;
+    }
+    const response = await api.sendCommand(deviceId, form.selected, params);
+    return { ok: true, ...commandResultText(label, response) };
+  } catch (e) {
+    return failedResult(e, form.selected, params);
+  }
+}
+
+/**
+ * The send, from choosing a command to its answer: the choice, its form's
+ * values and files, the question a command asks before it goes, the send or
+ * the file run, and what came back. Owned by the always-mounted section, so
+ * all of it outlives a drop of the device.
+ */
 function useCommandSend(deviceId: string, commands: Commands) {
   const [selected, setSelected] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
@@ -88,26 +141,17 @@ function useCommandSend(deviceId: string, commands: Commands) {
   const fileRun = useCommandFileRun(deviceId);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<CommandResult | null>(null);
+  // What the driver asks before the chosen command is sent, while asking.
+  const [question, setQuestion] = useState<string | null>(null);
+  const chosen = chosenCommand(commands, { selected, values, files }, fileRun.busy);
 
   const send = useCallback(async () => {
     if (!selected) return;
     setSending(true);
     setResult(null);
-    const def = commands[selected] as { label?: string } | undefined;
-    const label = def?.label || selected;
-    const fileParams = new Set(fileParamNames(def));
-    const params = filledParams(values, fileParams);
     try {
-      if (isFileCommand(def)) {
-        // Uploaded first, then run in the background; CommandFileRunStatus
-        // follows it.
-        await fileRun.start(selected, label, params, chosenFiles(files, fileParams));
-        return;
-      }
-      const response = await api.sendCommand(deviceId, selected, params);
-      setResult({ ok: true, ...commandResultText(label, response) });
-    } catch (e) {
-      setResult(failedResult(e, selected, params));
+      const answer = await deliver(deviceId, commands, { selected, values, files }, fileRun);
+      if (answer) setResult(answer);
     } finally {
       setSending(false);
     }
@@ -125,8 +169,29 @@ function useCommandSend(deviceId: string, commands: Commands) {
     if (!fileRun.busy) fileRun.clear();
   };
 
-  return { selected, values, setValues, files, setFiles, fileRun, sending, result, send, choose };
+  /** Send, or first ask the driver's question for a command that erases or
+   *  resets the device. */
+  const requestSend = () => {
+    const ask = commandConfirmMessage(chosen.def, chosen.label);
+    if (ask) setQuestion(ask);
+    else void send();
+  };
+
+  /** The answer to the question: yes sends. */
+  const answer = (yes: boolean) => {
+    setQuestion(null);
+    if (yes) void send();
+  };
+
+  return {
+    selected, values, setValues, files, setFiles, sending, result, question, chosen,
+    runView: fileRun.view,
+    stopRun: () => void fileRun.stop(),
+    choose, requestSend, answer,
+  };
 }
+
+type CommandSend = ReturnType<typeof useCommandSend>;
 
 export function SendCommandSection({
   deviceId,
@@ -141,9 +206,7 @@ export function SendCommandSection({
   connected: boolean;
   onReport: (context: ProblemReportContext) => void;
 }) {
-  const cmd = useCommandSend(deviceId, commands);
-  // What the driver asks before the chosen command is sent, while asking.
-  const [confirmSend, setConfirmSend] = useState<string | null>(null);
+  const send = useCommandSend(deviceId, commands);
   return (
     <div style={sectionStyle}>
       <h3 style={sectionTitleStyle}>Send Command</h3>
@@ -151,37 +214,11 @@ export function SendCommandSection({
         {Object.keys(commands).length === 0 ? (
           <NoCommands connected={connected} />
         ) : (
-          <CommandForm
-            deviceId={deviceId}
-            deviceName={deviceName}
-            commands={commands}
-            cmd={cmd}
-            confirmSend={confirmSend}
-            onConfirmSend={setConfirmSend}
-            onReport={onReport}
-          />
+          <CommandForm deviceId={deviceId} deviceName={deviceName} commands={commands} send={send} onReport={onReport} />
         )}
       </div>
     </div>
   );
-}
-
-/** What the form knows of the chosen command: its definition, parameters and
- *  label, and whether Send waits. Send waits on an invalid or missing
- *  parameter (each field says which) and on a file run still going; the
- *  server checks the parameters too. */
-function chosenCommand(commands: Commands, cmd: ReturnType<typeof useCommandSend>) {
-  const def = commands[cmd.selected] as CommandDef;
-  const paramDefs = (def?.params as Record<string, Partial<DriverParamDef>>) ?? {};
-  return {
-    def,
-    paramDefs,
-    label: (def?.label as string | undefined) || cmd.selected,
-    blocked:
-      commandParamsBlocked(paramDefs, cmd.values) ||
-      fileParamsBlocked(paramDefs, cmd.files) ||
-      cmd.fileRun.busy,
-  };
 }
 
 /** The chosen command's form: the dropdown and Send, its parameters, a file
@@ -190,36 +227,25 @@ function CommandForm({
   deviceId,
   deviceName,
   commands,
-  cmd,
-  confirmSend,
-  onConfirmSend,
+  send,
   onReport,
 }: {
   deviceId: string;
   deviceName: string;
   commands: Commands;
-  cmd: ReturnType<typeof useCommandSend>;
-  confirmSend: string | null;
-  onConfirmSend: (ask: string | null) => void;
+  send: CommandSend;
   onReport: (context: ProblemReportContext) => void;
 }) {
-  const { def: commandDef, paramDefs, label: commandLabel, blocked } = chosenCommand(commands, cmd);
-
-  const requestSend = () => {
-    const ask = commandConfirmMessage(commandDef, commandLabel);
-    if (ask) onConfirmSend(ask);
-    else void cmd.send();
-  };
-
+  const { paramDefs, label, blocked } = send.chosen;
   return (
     <>
       <CommandChooser
         commands={commands}
-        selected={cmd.selected}
-        onChoose={cmd.choose}
-        ready={Boolean(cmd.selected) && !blocked}
-        sending={cmd.sending}
-        onSend={requestSend}
+        selected={send.selected}
+        onChoose={send.choose}
+        ready={Boolean(send.selected) && !blocked}
+        sending={send.sending}
+        onSend={send.requestSend}
       />
       {Object.keys(paramDefs).length > 0 && (
         <div style={{ marginBottom: "var(--space-md)" }}>
@@ -228,33 +254,30 @@ function CommandForm({
           <CommandParamForm
             layout="inline"
             params={paramDefs}
-            values={cmd.values}
-            onChange={(name, val) => cmd.setValues((p) => ({ ...p, [name]: val }))}
+            values={send.values}
+            onChange={(name, val) => send.setValues((p) => ({ ...p, [name]: val }))}
             deviceId={deviceId}
-            files={cmd.files}
-            onFileChange={(name, file) => cmd.setFiles((f) => ({ ...f, [name]: file }))}
+            files={send.files}
+            onFileChange={(name, file) => send.setFiles((f) => ({ ...f, [name]: file }))}
           />
         </div>
       )}
       <CommandFileRunStatus
-        view={cmd.fileRun.view}
+        view={send.runView}
         deviceId={deviceId}
         deviceName={deviceName}
-        onStop={() => void cmd.fileRun.stop()}
+        onStop={send.stopRun}
         onReport={onReport}
       />
-      {cmd.result !== null && <CommandResultLine result={cmd.result} onReport={onReport} />}
-      {confirmSend !== null && (
+      {send.result !== null && <CommandResultLine result={send.result} onReport={onReport} />}
+      {send.question !== null && (
         <ConfirmDialog
-          title={commandLabel}
-          message={confirmSend}
+          title={label}
+          message={send.question}
           confirmLabel="Send"
           destructive
-          onConfirm={() => {
-            onConfirmSend(null);
-            void cmd.send();
-          }}
-          onCancel={() => onConfirmSend(null)}
+          onConfirm={() => send.answer(true)}
+          onCancel={() => send.answer(false)}
         />
       )}
     </>
