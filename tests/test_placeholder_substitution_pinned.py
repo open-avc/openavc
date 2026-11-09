@@ -25,6 +25,7 @@ from openavc.drivers.compiled_protocol import derive_config, safe_substitute
         ("{v:.1f}", {"v": "5"}, "5.0"),
         ("{v:02d}", {"v": "2.5"}, "{v:02d}"),
         ("{v:x}", {"v": "255"}, "ff"),
+        ("{v:02d}", {"v": " 5"}, "05"),
         # A whole float is retried as an int; a bool is a number already.
         ("{v:03d}", {"v": 7.0}, "007"),
         ("{v:d}", {"v": True}, "1"),
@@ -38,6 +39,14 @@ from openavc.drivers.compiled_protocol import derive_config, safe_substitute
 )
 def test_safe_substitute(template: str, params: dict[str, Any], expected: str) -> None:
     assert safe_substitute(template, params) == expected
+
+
+@pytest.mark.parametrize("value", [1114112.0, "2000000"])
+def test_a_retry_that_raises_keeps_the_refusal_it_followed(value: Any) -> None:
+    # A spec no value fits raises from the retry, chained to the first refusal.
+    with pytest.raises(OverflowError) as raised:
+        safe_substitute("{v:c}", {"v": value})
+    assert isinstance(raised.value.__context__, ValueError)
 
 
 @pytest.mark.parametrize(

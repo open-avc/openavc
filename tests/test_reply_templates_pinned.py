@@ -31,10 +31,13 @@ from openavc.simulator.reply_templates import (
         # one is a non-capturing group of its own.
         (r"(?i)PWR(\d+)", 1, "PWR{value}"),
         (r"(?x)a(\d+)", 1, "a{value}"),
+        (r"(?a)X(\d+)", 1, "X{value}"),
+        (r"(?a:x)(\d+)", 1, "x{value}"),
         (r"(?i:x)(\d+)", 1, "x{value}"),
         (r"(?ms:a)(\d+)", 1, "a{value}"),
         # A named group captures, and counts.
         (r"(?P<lvl>\d+) dB", 1, "{value} dB"),
+        (r"a>(?P<n>\d+)", 1, "a>{value}"),
         (r"(?P<lvl\d+)", 1, None),
         # Lookarounds, back-references by name and comments are not modeled.
         (r"(?P=x)(\d+)", 1, None),
