@@ -136,6 +136,14 @@ describe("Panel Display", () => {
     expect(await screen.findByText(/a panel software update waits to install/)).toBeTruthy();
   });
 
+  it("dims by default when the project does not say", async () => {
+    projectState.project!.settings.display = {};
+    await renderLoaded(<SystemSettingsView />);
+    expect(switchBeside("Dim the panel when idle").getAttribute("aria-checked")).toBe("true");
+    expect((within(rowOf("Dim after")).getByRole("spinbutton") as HTMLInputElement).value).toBe("5");
+    expect((within(rowOf("Dim to")).getByRole("spinbutton") as HTMLInputElement).value).toBe("20");
+  });
+
   it("shows only the switch while the dim is off", async () => {
     display().idle_dim_enabled = false;
     await renderLoaded(<SystemSettingsView />);

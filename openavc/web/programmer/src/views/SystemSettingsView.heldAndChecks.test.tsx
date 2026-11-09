@@ -68,6 +68,17 @@ describe("Each field the environment can hold", () => {
     expect(notes()[0].textContent).toContain(`Set by the ${variable} line in a systemd override`);
   });
 
+  it.each([
+    ["network.accept_connections_from", "Accept connections from", "Reach devices through"],
+    ["network.reach_devices_through", "Reach devices through", "Accept connections from"],
+  ])("%s alone locks %s and nothing beside it", async (field, locked, free) => {
+    hold({ [field]: "OPENAVC_TEST" });
+    await renderLoaded(<SystemSettingsView />);
+    expect(screen.getByLabelText(locked)).toBeDisabled();
+    expect(screen.getByLabelText(free)).not.toBeDisabled();
+    expect(notes()).toHaveLength(1);
+  });
+
   it("locks nothing and says nothing when nothing is held", async () => {
     served.config.tls.enabled = true;
     await renderLoaded(<SystemSettingsView />);

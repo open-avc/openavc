@@ -218,6 +218,14 @@ describe("A certificate made here", () => {
     expect(screen.getByText("Verify fingerprint")).toBeTruthy();
   });
 
+  it("says nothing about a certificate while HTTPS is not running", async () => {
+    served.tls = { enabled: false, mode: "auto", cert: CERT };
+    await renderLoaded(<SystemSettingsView />);
+    expect(screen.getByText("The self-signed certificate will be generated on the next restart.")).toBeTruthy();
+    expect(screen.queryByText("Verify fingerprint")).toBeNull();
+    expect(screen.queryByText("Current certificate")).toBeNull();
+  });
+
   it("asks for nothing to be uploaded", async () => {
     served.tls = { enabled: true, mode: "auto", cert: CERT };
     await renderLoaded(<SystemSettingsView />);
@@ -385,6 +393,21 @@ describe("Your own certificate", () => {
     expect(screen.getAllByText("CN=hall.example").length).toBe(2);
     expect(fileInputs()).toHaveLength(0);
     expect(screen.queryByLabelText("Install on")).toBeNull();
+  });
+
+  it("shows an upload's facts in place of the running certificate's", async () => {
+    served.tls = { enabled: true, mode: "provided", cert: { ...CERT, subject: "CN=hall.example" } };
+    await renderLoaded(<SystemSettingsView />);
+    expect(screen.getByText("Active certificate")).toBeTruthy();
+    const [certInput, keyInput] = fileInputs();
+    fireEvent.change(certInput, { target: { files: [pem("a.crt")] } });
+    fireEvent.change(keyInput, { target: { files: [pem("a.key")] } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload certificate" }));
+    await waitFor(() => expect(screen.getByText("Certificate uploaded")).toBeTruthy());
+    expect(screen.getByText("CN=room.example")).toBeTruthy();
+    // The running certificate is still named once, by the status block.
+    expect(screen.getAllByText("CN=hall.example")).toHaveLength(1);
+    expect(screen.getByText("20 days left")).toBeTruthy();
   });
 
   it("keeps a picked file and pasted text across a switch to one made here and back", async () => {
