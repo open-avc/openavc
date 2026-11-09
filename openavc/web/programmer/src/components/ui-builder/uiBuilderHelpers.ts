@@ -1472,14 +1472,30 @@ export function projectCommandActions(project: ProjectConfig): Record<string, un
   for (const mel of project.ui?.master_elements ?? []) {
     found.push(...elementCommandActions(mel as UIElement));
   }
-  const collectStep = (step: MacroStep) => {
-    if ((step.action === "device.command" || step.action === "group.command") && step.command) {
-      found.push(step as unknown as Record<string, unknown>);
-    }
-    step.then_steps?.forEach(collectStep);
-    step.else_steps?.forEach(collectStep);
-  };
-  for (const macro of project.macros ?? []) (macro.steps ?? []).forEach(collectStep);
+  for (const macro of project.macros ?? []) {
+    (macro.steps ?? []).forEach((step) => {
+      found.push(...(stepAndBranches(step).filter(isCommandStep) as unknown as Record<string, unknown>[]));
+    });
+  }
+  return found;
+}
+
+/** The macro steps the platform is asked about: a device or group command
+ *  with its command chosen. */
+function isCommandStep(step: MacroStep): boolean {
+  return (step.action === "device.command" || step.action === "group.command") && !!step.command;
+}
+
+/**
+ * A macro step and every step its branches hold, each before its own branches
+ * and `then_steps` before `else_steps`. Validate's step check and the command
+ * list for the platform both walk this, so every answer Validate looks up by
+ * step is about a step it visits.
+ */
+function stepAndBranches(step: MacroStep): MacroStep[] {
+  const found = [step];
+  step.then_steps?.forEach((s) => found.push(...stepAndBranches(s)));
+  step.else_steps?.forEach((s) => found.push(...stepAndBranches(s)));
   return found;
 }
 
@@ -6538,7 +6554,8 @@ function visibilityIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
   const vw = shownBinding(el, "visible_when");
   if (!vw) return [];
   const issues: ControlIssue[] = [];
-  for (const c of (vw.all || vw.any || [vw]) as Array<{ key?: string }>) {
+  const conditions = (vw.all || vw.any || [vw]) as Array<{ key?: string }>;
+  for (const c of conditions) {
     const deviceId = stateKeyDevice(c.key);
     if (deviceId !== null && !refs.deviceIds.has(deviceId)) {
       issues.push({ severity: "warning", message: `Visibility condition references unknown device "${deviceId}"`, where: " > visible_when" });
@@ -6585,6 +6602,151 @@ function controlIssues(el: UIElement, pageId: string, pageName: string, refs: Pr
   }));
 }
 
+/** A custom page carries the same grant an iframe element does, and can name a
+ *  device that has since left the project in exactly the same invisible way: it
+ *  matches nothing, which looks like a grant nobody set. */
+function pageGrantIssues(page: UIPage, refs: ProjectRefs): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const granted of page.grant?.devices ?? []) {
+    if (!refs.deviceIds.has(granted)) {
+      issues.push({ severity: "error", message: `Granted device "${granted}" not found, so the page shown here cannot read or control it`, location: `${page.name} > page`, pageId: page.id });
+    }
+  }
+  return issues;
+}
+
+/** The arrangements themselves: a dangling inherits silently collapses the
+ *  variant (everything without its own box falls to default placements), and
+ *  orphaned ids are the residue a bad rename or hand edit leaves. */
+function arrangementIssues(page: UIPage, onPage: ReadonlySet<string>): ValidationIssue[] {
+  const layoutIds = new Set((page.layouts ?? []).map((l) => l.id));
+  const issues: ValidationIssue[] = [];
+  for (const layout of page.layouts ?? []) issues.push(...layoutIssues(layout, page, layoutIds, onPage));
+  return issues;
+}
+
+function layoutIssues(
+  layout: Layout,
+  page: UIPage,
+  layoutIds: ReadonlySet<string>,
+  onPage: ReadonlySet<string>,
+): ValidationIssue[] {
+  const at = { location: `${page.name} > ${layout.id}`, pageId: page.id };
+  const strays = (ids: Iterable<string>, says: (elId: string) => string): ValidationIssue[] =>
+    [...ids].filter((elId) => !onPage.has(elId)).map((elId) => ({ severity: "warning", message: says(elId), ...at }));
+  const dangling: ValidationIssue[] = layout.inherits && !layoutIds.has(layout.inherits)
+    ? [{ severity: "error", message: `Arrangement inherits from "${layout.inherits}", which does not exist \u2014 controls without their own position here fall back to default boxes`, ...at }]
+    : [];
+  return [
+    ...dangling,
+    ...strays(Object.keys(layout.placements ?? {}), (elId) => `Arrangement "${layout.id}" positions "${elId}", which is not an element on this page`),
+    ...strays(layout.hidden ?? [], (elId) => `Arrangement "${layout.id}" hides "${elId}", which is not an element on this page`),
+  ];
+}
+
+/** A parent that doesn't exist leaves the child unrendered \u2014 the runtime
+ *  draws children into their container, and there is no container. */
+function containerIssues(el: UIElement, page: UIPage, onPage: ReadonlySet<string>): ValidationIssue[] {
+  if (!el.parent || onPage.has(el.parent)) return [];
+  return [{ severity: "error", message: `Container "${el.parent}" does not exist`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id }];
+}
+
+/**
+ * Everything Validate says about one page: its grant, its arrangements, each
+ * control in turn, then what the page review says.
+ *
+ * Geometry and binding reach come back from the shared review -- the same code,
+ * the same numbers and the same sentences the AI write path answers with, so
+ * the two surfaces cannot reach different verdicts about the same file.
+ * Geometry is per-arrangement: a portrait variant can push a control off-screen
+ * or starve it while the primary is fine, so every layout is checked, and an
+ * issue is reported once per element naming the arrangement only when it isn't
+ * the primary's fault.
+ */
+function pageIssues(
+  page: UIPage,
+  refs: ProjectRefs,
+  review: Pick<ReviewOptions, "theme" | "masters">,
+): ValidationIssue[] {
+  const onPage = new Set(page.elements.map((e) => e.id));
+  const controls = page.elements.flatMap((el) => [
+    ...controlIssues(el, page.id, page.name, refs),
+    ...containerIssues(el, page, onPage),
+  ]);
+  const reviewed = reviewPage(page, review).map((finding): ValidationIssue => ({
+    severity: "warning",
+    message: finding.message,
+    location: `${page.name} > ${finding.elementId}`,
+    pageId: page.id,
+    elementId: finding.elementId,
+  }));
+  return [...pageGrantIssues(page, refs), ...arrangementIssues(page, onPage), ...controls, ...reviewed];
+}
+
+/** A master element: the control checks with no page, its own review, then
+ *  each page it names that is not in the project. */
+function masterIssues(mel: MasterElement, refs: ProjectRefs, theme: ElementDefaults): ValidationIssue[] {
+  const issues: ValidationIssue[] = [
+    ...controlIssues(mel, "", "Master Elements", refs),
+    ...reviewMasterElement(mel, theme).map((finding): ValidationIssue => ({
+      severity: "warning",
+      message: finding.message,
+      location: `Master Elements > ${finding.elementId}`,
+      elementId: finding.elementId,
+    })),
+  ];
+  if (Array.isArray(mel.pages)) {
+    for (const pid of mel.pages) {
+      if (!refs.pageIds.has(pid)) {
+        issues.push({ severity: "error", message: `References deleted page "${pid}"`, location: `Master Elements > ${mel.id}` });
+      }
+    }
+  }
+  return issues;
+}
+
+/** The device or macro a step names that is not in the project. A step's page
+ *  is not checked. `at` places a finding, given what to call a step with no
+ *  description. */
+function stepReferenceIssues(step: MacroStep, at: (unnamed: string) => string, refs: ProjectRefs): ValidationIssue[] {
+  if (step.action === "device.command" && step.device && !refs.deviceIds.has(step.device)) {
+    return [{ severity: "error", message: `Device "${step.device}" not found`, location: at(step.action) }];
+  }
+  if (step.action === "macro" && step.macro && !refs.macroIds.has(step.macro)) {
+    return [{ severity: "error", message: `Macro "${step.macro}" not found`, location: at("call macro") }];
+  }
+  return [];
+}
+
+/** One macro step: what it names that is not there, then what the platform
+ *  said about it. */
+function stepIssues(step: MacroStep, prefix: string, refs: ProjectRefs): ValidationIssue[] {
+  const at = (unnamed: string) => `${prefix} > ${step.description || unnamed}`;
+  const said = refs.commandIssues?.get(step as unknown as Record<string, unknown>) ?? [];
+  return [
+    ...stepReferenceIssues(step, at, refs),
+    ...said.map((message): ValidationIssue => ({ severity: "error", message, location: at(step.action) })),
+  ];
+}
+
+/** Every step of every macro, nested branches included, in the order the
+ *  macro holds them. */
+function macroIssues(macros: MacroConfig[], refs: ProjectRefs): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  for (const macro of macros) {
+    for (const step of macro.steps) {
+      for (const each of stepAndBranches(step)) issues.push(...stepIssues(each, `Macro "${macro.name}"`, refs));
+    }
+  }
+  return issues;
+}
+
+function idlePageIssues(project: ProjectConfig, pageIds: ReadonlySet<string>): ValidationIssue[] {
+  const idlePage = project.ui.settings.idle_page;
+  if (!idlePage || pageIds.has(idlePage)) return [];
+  return [{ severity: "error", message: `Idle page "${idlePage}" does not exist`, location: "Settings > Idle Page" }];
+}
+
 /**
  * @param commandIssues What the platform says about each `device.command` in
  *   the project, keyed by the action object (see `api/commandIssues.ts`).
@@ -6596,119 +6758,20 @@ export function validateProject(
   project: ProjectConfig,
   commandIssues?: Map<Record<string, unknown>, string[]>,
 ): ValidationIssue[] {
-  const issues: ValidationIssue[] = [];
-  const pageIds = new Set(project.ui.pages.map((p) => p.id));
-  const deviceIds = new Set(project.devices.map((d) => d.id));
-  const macroIds = new Set(project.macros.map((m) => m.id));
-  const refs: ProjectRefs = { deviceIds, macroIds, pageIds, commandIssues };
-
-  // Check page elements. Geometry and binding reach come back from the shared
-  // review -- the same code, the same numbers and the same sentences the AI
-  // write path answers with, so the two surfaces cannot reach different
-  // verdicts about the same file. Geometry is per-arrangement: a portrait
-  // variant can push a control off-screen or starve it while the primary is
-  // fine, so every layout is checked, and an issue is reported once per element
-  // naming the arrangement only when it isn't the primary's fault.
+  const refs: ProjectRefs = {
+    pageIds: new Set(project.ui.pages.map((p) => p.id)),
+    deviceIds: new Set(project.devices.map((d) => d.id)),
+    macroIds: new Set(project.macros.map((m) => m.id)),
+    commandIssues,
+  };
   const theme = sliderThemeDefaults(project);
-  for (const page of project.ui.pages) {
-    const byId = new Map(page.elements.map((e) => [e.id, e]));
-    const layoutIds = new Set((page.layouts ?? []).map((l) => l.id));
-
-    // A custom page carries the same grant an iframe element does, and can name
-    // a device that has since left the project in exactly the same invisible
-    // way: it matches nothing, which looks like a grant nobody set.
-    for (const granted of page.grant?.devices ?? []) {
-      if (!deviceIds.has(granted)) {
-        issues.push({ severity: "error", message: `Granted device "${granted}" not found, so the page shown here cannot read or control it`, location: `${page.name} > page`, pageId: page.id });
-      }
-    }
-
-    // The arrangements themselves: a dangling inherits silently collapses the
-    // variant (everything without its own box falls to default placements),
-    // and orphaned ids are the residue a bad rename or hand edit leaves.
-    for (const layout of page.layouts ?? []) {
-      if (layout.inherits && !layoutIds.has(layout.inherits)) {
-        issues.push({ severity: "error", message: `Arrangement inherits from "${layout.inherits}", which does not exist \u2014 controls without their own position here fall back to default boxes`, location: `${page.name} > ${layout.id}`, pageId: page.id });
-      }
-      for (const elId of Object.keys(layout.placements ?? {})) {
-        if (!byId.has(elId)) {
-          issues.push({ severity: "warning", message: `Arrangement "${layout.id}" positions "${elId}", which is not an element on this page`, location: `${page.name} > ${layout.id}`, pageId: page.id });
-        }
-      }
-      for (const elId of layout.hidden ?? []) {
-        if (!byId.has(elId)) {
-          issues.push({ severity: "warning", message: `Arrangement "${layout.id}" hides "${elId}", which is not an element on this page`, location: `${page.name} > ${layout.id}`, pageId: page.id });
-        }
-      }
-    }
-
-    for (const el of page.elements) {
-      issues.push(...controlIssues(el, page.id, page.name, refs));
-      // A parent that doesn't exist leaves the child unrendered \u2014 the runtime
-      // draws children into their container, and there is no container.
-      if (el.parent && !byId.has(el.parent)) {
-        issues.push({ severity: "error", message: `Container "${el.parent}" does not exist`, location: `${page.name} > ${el.id}`, pageId: page.id, elementId: el.id });
-      }
-    }
-
-    for (const finding of reviewPage(page, { theme, masters: project.ui.master_elements ?? [] })) {
-      issues.push({
-        severity: "warning",
-        message: finding.message,
-        location: `${page.name} > ${finding.elementId}`,
-        pageId: page.id,
-        elementId: finding.elementId,
-      });
-    }
-  }
-
-  // Check master elements
-  for (const mel of project.ui.master_elements || []) {
-    issues.push(...controlIssues(mel, "", "Master Elements", refs));
-    for (const finding of reviewMasterElement(mel, theme)) {
-      issues.push({
-        severity: "warning",
-        message: finding.message,
-        location: `Master Elements > ${finding.elementId}`,
-        elementId: finding.elementId,
-      });
-    }
-    if (Array.isArray(mel.pages)) {
-      for (const pid of mel.pages) {
-        if (!pageIds.has(pid)) {
-          issues.push({ severity: "error", message: `References deleted page "${pid}"`, location: `Master Elements > ${mel.id}` });
-        }
-      }
-    }
-  }
-
-  // Check macro steps
-  for (const macro of project.macros) {
-    const checkStep = (step: MacroStep, prefix: string) => {
-      if (step.action === "device.command" && step.device && !deviceIds.has(step.device)) {
-        issues.push({ severity: "error", message: `Device "${step.device}" not found`, location: `${prefix} > ${step.description || step.action}` });
-      }
-      if (step.action === "macro" && step.macro && !macroIds.has(step.macro)) {
-        issues.push({ severity: "error", message: `Macro "${step.macro}" not found`, location: `${prefix} > ${step.description || "call macro"}` });
-      }
-      for (const message of commandIssues?.get(step as unknown as Record<string, unknown>) ?? []) {
-        issues.push({ severity: "error", message, location: `${prefix} > ${step.description || step.action}` });
-      }
-      step.then_steps?.forEach((s) => checkStep(s, prefix));
-      step.else_steps?.forEach((s) => checkStep(s, prefix));
-    };
-    for (const step of macro.steps) {
-      checkStep(step, `Macro "${macro.name}"`);
-    }
-  }
-
-  // Check idle_page
-  const idlePage = project.ui.settings.idle_page;
-  if (idlePage && !pageIds.has(idlePage)) {
-    issues.push({ severity: "error", message: `Idle page "${idlePage}" does not exist`, location: "Settings > Idle Page" });
-  }
-
-  return issues;
+  const review = { theme, masters: project.ui.master_elements ?? [] };
+  return [
+    ...project.ui.pages.flatMap((page) => pageIssues(page, refs, review)),
+    ...(project.ui.master_elements || []).flatMap((mel) => masterIssues(mel, refs, theme)),
+    ...macroIssues(project.macros, refs),
+    ...idlePageIssues(project, refs.pageIds),
+  ];
 }
 
 // --- In-place text editing ---
