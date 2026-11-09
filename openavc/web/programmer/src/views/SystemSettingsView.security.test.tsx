@@ -638,6 +638,23 @@ describe("The trusted certificate", () => {
     expect(clipboard.copyToClipboard).toHaveBeenCalledWith("https://10-20-30-5.abc123.certs.example.net:8443/");
   });
 
+  it("gives the port HTTPS runs on, before the one on screen", async () => {
+    served.config.tls = { ...served.config.tls, enabled: true, cloud_cert: true, port: 8443 };
+    served.tls = { enabled: true, port: 9443, cloud_cert: cloudCert({ enabled: true, active: true }) };
+    served.adapters = [{ name: "eth0", ip: "10.20.30.5" }];
+    await renderLoaded(<SystemSettingsView />);
+    expect(screen.getByText("https://10-20-30-5.abc123.certs.example.net:9443/")).toBeTruthy();
+    expect(screen.getByText("https://10.20.30.5:9443/")).toBeTruthy();
+  });
+
+  it("gives the port on screen when the server does not say its own", async () => {
+    served.config.tls = { ...served.config.tls, enabled: true, cloud_cert: true, port: 7443 };
+    served.tls = { enabled: true, cloud_cert: cloudCert({ enabled: true, active: true }) };
+    served.adapters = [{ name: "eth0", ip: "10.20.30.5" }];
+    await renderLoaded(<SystemSettingsView />);
+    expect(screen.getByText("https://10.20.30.5:7443/")).toBeTruthy();
+  });
+
   it("gives no certified address without an IPv4 to put in it", async () => {
     served.config.tls.enabled = true;
     served.config.tls.cloud_cert = true;
