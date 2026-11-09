@@ -942,18 +942,10 @@ export function resolveDropParent(
   // stored as a fraction of ITS parent, so comparing that to a pointer's page
   // coordinate would test the wrong rectangle the moment containers nest.
   const base = parentId ? absolutePlacements(page, layoutId)[parentId] : null;
-  if (!base || !(base.w > 0) || !(base.h > 0)) {
+  if (!hasArea(base)) {
     return { parentId: null, relative: roundPlacement(box) };
   }
-  return {
-    parentId,
-    relative: roundPlacement({
-      x: ((box.x - base.x) / base.w) * 100,
-      y: ((box.y - base.y) / base.h) * 100,
-      w: (box.w / base.w) * 100,
-      h: (box.h / base.h) * 100,
-    }),
-  };
+  return { parentId, relative: roundPlacement(parentSpace(box, base)) };
 }
 
 // --- Page mutations (return new pages array) ---
@@ -1556,14 +1548,7 @@ export function absolutePlacements(
       return out[id];
     }
     const base = resolve(parentId, new Set(seen).add(parentId));
-    out[id] = base
-      ? {
-          x: base.x + (p.x / 100) * base.w,
-          y: base.y + (p.y / 100) * base.h,
-          w: (p.w / 100) * base.w,
-          h: (p.h / 100) * base.h,
-        }
-      : { ...p };
+    out[id] = base ? pageSpace(p, base) : { ...p };
     return out[id];
   };
 
@@ -1574,6 +1559,38 @@ export function absolutePlacements(
 /** The whole page, as a box. What a page-level element's percentages are of. */
 const PAGE_BOX: Placement = { x: 0, y: 0, w: 100, h: 100 };
 
+/**
+ * A box stored as percentages of `parent`, in the space `parent` is in.
+ *
+ * This and `parentSpace` below are the two directions of THE conversion: here,
+ * every read of a child's box in page space and every write of a page-space box
+ * back against a container goes through one of them. They take no view on a
+ * parent with no area; each caller decides what that means for it (`hasArea`).
+ */
+function pageSpace(relative: Placement, parent: Placement): Placement {
+  return {
+    x: parent.x + (relative.x / 100) * parent.w,
+    y: parent.y + (relative.y / 100) * parent.h,
+    w: (relative.w / 100) * parent.w,
+    h: (relative.h / 100) * parent.h,
+  };
+}
+
+/** A box in the space `parent` is in, as percentages of `parent`. */
+function parentSpace(box: Placement, parent: Placement): Placement {
+  return {
+    x: ((box.x - parent.x) / parent.w) * 100,
+    y: ((box.y - parent.y) / parent.h) * 100,
+    w: (box.w / parent.w) * 100,
+    h: (box.h / parent.h) * 100,
+  };
+}
+
+/** Whether a box has room in it to measure another box against. */
+function hasArea(box: Placement | null | undefined): box is Placement {
+  return !!box && box.w > 0 && box.h > 0;
+}
+
 /** The page-space box an element's own percentages are measured against. */
 function parentAbsoluteBox(
   page: UIPage,
@@ -1582,7 +1599,7 @@ function parentAbsoluteBox(
 ): Placement {
   const parent = page.elements.find((e) => e.id === elementId)?.parent;
   const box = parent && parent !== elementId ? absolute[parent] : undefined;
-  return box && box.w > 0 && box.h > 0 ? box : { ...PAGE_BOX };
+  return hasArea(box) ? box : { ...PAGE_BOX };
 }
 
 /** Write page-space boxes back as percentages of whatever each element's own
@@ -1596,13 +1613,7 @@ function withAbsolutePlacements(
 ): UIPage {
   const relative: Record<string, Placement> = {};
   for (const [id, box] of Object.entries(absoluteBoxes)) {
-    const base = parentAbsoluteBox(page, id, absolute);
-    relative[id] = {
-      x: ((box.x - base.x) / base.w) * 100,
-      y: ((box.y - base.y) / base.h) * 100,
-      w: (box.w / base.w) * 100,
-      h: (box.h / base.h) * 100,
-    };
+    relative[id] = parentSpace(box, parentAbsoluteBox(page, id, absolute));
   }
   return withPlacements(page, relative, layoutId);
 }
@@ -1693,7 +1704,7 @@ function reparentPlacements(
   for (const layout of source.layouts ?? []) {
     const absolute = absolutePlacements(source, layout.id);
     const base = newParentId ? absolute[newParentId] : { ...PAGE_BOX };
-    if (!base || !(base.w > 0) || !(base.h > 0)) continue;
+    if (!hasArea(base)) continue;
     const own = layout.placements ?? {};
     const rewritten: Record<string, Placement> = {};
     for (const id of ids) {
@@ -1702,12 +1713,7 @@ function reparentPlacements(
       if (layout.id !== primaryId && !(id in own)) continue;
       const box = absolute[id];
       if (!box) continue;
-      rewritten[id] = {
-        x: ((box.x - base.x) / base.w) * 100,
-        y: ((box.y - base.y) / base.h) * 100,
-        w: (box.w / base.w) * 100,
-        h: (box.h / base.h) * 100,
-      };
+      rewritten[id] = parentSpace(box, base);
     }
     if (Object.keys(rewritten).length) next = withPlacements(next, rewritten, layout.id);
   }
@@ -1892,13 +1898,7 @@ export function outlineRows(
 
 /** A parent-relative box, expressed in page space. */
 export function toPageBox(relative: Placement, parentBox?: Placement | null): Placement {
-  if (!parentBox || !(parentBox.w > 0) || !(parentBox.h > 0)) return { ...relative };
-  return {
-    x: parentBox.x + (relative.x / 100) * parentBox.w,
-    y: parentBox.y + (relative.y / 100) * parentBox.h,
-    w: (relative.w / 100) * parentBox.w,
-    h: (relative.h / 100) * parentBox.h,
-  };
+  return hasArea(parentBox) ? pageSpace(relative, parentBox) : { ...relative };
 }
 
 /** Do two page-space boxes share any area at all? */
