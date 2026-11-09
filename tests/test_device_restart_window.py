@@ -276,7 +276,7 @@ def test_the_sentence_singularises_its_last_second():
 # --- the YAML half ------------------------------------------------------------
 #
 # Everything above builds DRIVER_INFO by hand, the way a Python driver does. A
-# .avcdriver's commands reach DRIVER_INFO through _build_commands_meta, so a
+# .avcdriver's commands reach DRIVER_INFO through build_commands_meta, so a
 # field it does not carry is inert however right the window is.
 
 

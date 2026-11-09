@@ -107,7 +107,7 @@ def test_every_declared_field_reaches_the_driver_or_says_where_it_went() -> None
     assert unclassified == [], (
         f"The contract declares {unclassified} and create_configurable_driver_class "
         f"does not copy them onto DRIVER_INFO, so a YAML driver that sets one is "
-        f"read as if it had not. Add the copy in configurable.py, or -- if the "
+        f"read as if it had not. Add the copy in yaml_driver_info.py, or -- if the "
         f"field is consumed somewhere else -- add it to NOT_ON_DRIVER_INFO in "
         f"this file with the reason."
     )

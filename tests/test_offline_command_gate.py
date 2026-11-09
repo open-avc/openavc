@@ -191,7 +191,7 @@ def test_command_goes_out_is_the_send_gate(core):
 # Everything above builds DRIVER_INFO by hand, which is how a Python driver
 # works and is why this gap survived: the gate was proven, but not the path a
 # YAML driver's flag takes to reach it. A .avcdriver's commands are rendered
-# into DRIVER_INFO by _build_commands_meta, so a field it does not carry is
+# into DRIVER_INFO by build_commands_meta, so a field it does not carry is
 # inert no matter how correct the gate is.
 
 

@@ -67,62 +67,11 @@ from openavc.drivers.inline_protocol import (
     normalize_config_state_vars,
     normalize_ir_codes,
 )
+from openavc.drivers.yaml_driver_info import build_commands_meta, driver_info_for
 from openavc.transport.frame_parsers import FrameParser
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
-
-
-def _build_commands_meta(commands_def: dict[str, Any]) -> dict[str, Any]:
-    """Build the DRIVER_INFO ``commands`` UI metadata from a commands map.
-
-    Shared by the driver-class factory (file-authored commands) and the
-    per-instance inline-protocol merge (device-config-authored commands) so
-    both present identically in the IDE — same label, params, and
-    transport-specific fields (HTTP method/path/body, OSC address/args).
-
-    ``available_offline`` is carried for a different reason than the rest,
-    and the difference is why it was missed: every other command field is
-    read off the raw definition at send time, but the connected-gate and a
-    promoted button's availability both read DRIVER_INFO
-    (``command_gates.available_offline``,
-    ``actions._command_availability``). A field dropped here is therefore
-    inert for a YAML driver while working for a Python one, which sets
-    DRIVER_INFO itself. Anything else those two ever read must be added here
-    too. ``restarts_device_for`` is the next one: the commanded-restart window
-    (``DeviceManager._arm_restart_window``) reads it off DRIVER_INFO, and until
-    it was carried here a YAML driver's declared window never opened. ``sets``
-    and ``query_for`` are read off the live driver by the device audit, which
-    checks a command's declared effect against what the device then reports.
-    ``confirm`` is read by every door a person sends a command from by hand
-    (the device page and its promoted buttons, the device audit), which asks
-    first.
-    """
-    return {
-        name: _command_meta(name, cmd_def)
-        for name, cmd_def in (commands_def or {}).items()
-        if isinstance(cmd_def, dict)
-    }
-
-
-# The command fields _build_commands_meta copies as written, in the order they
-# land after the label and params.
-_COMMAND_META_FIELDS = (
-    "method", "path", "body", "address", "args", "help",
-    "available_offline", "restarts_device_for", "sleeps_device", "sets", "query_for",
-    "confirm",
-)
-
-
-def _command_meta(name: str, cmd_def: dict[str, Any]) -> dict[str, Any]:
-    """One command's entry: its label (else its name), its params, then the
-    fields it declares of ``_COMMAND_META_FIELDS``."""
-    meta: dict[str, Any] = {
-        "label": cmd_def.get("label", name),
-        "params": cmd_def.get("params", {}),
-    }
-    _copy_fields(meta, cmd_def, _COMMAND_META_FIELDS)
-    return meta
 
 
 def _param_wire_value(name: str, value: Any, pdef: dict[str, Any]) -> dict[str, Any]:
@@ -321,7 +270,7 @@ class ConfigurableDriver(
             _inline_poll_queries(norm_commands),
         )
         info = dict(self.DRIVER_INFO)
-        info["commands"] = _build_commands_meta(self._definition["commands"])
+        info["commands"] = build_commands_meta(self._definition["commands"])
         info["state_variables"] = self._definition["state_variables"]
         self.DRIVER_INFO = info
 
@@ -668,60 +617,6 @@ class ConfigurableDriver(
         return build_frame_parser(parser_config)
 
 
-# Definition fields copied onto DRIVER_INFO as written, in the order they land
-# there, because the platform reads them off a live driver rather than its
-# file (tests/test_driver_field_reaches_runtime.py fails a contract field
-# that reaches neither this table nor its list of fields read elsewhere).
-_INFO_FIELDS = (
-    "help",
-    "protocols",
-    "discovery",
-    "device_settings",
-    # So a driver installed from a file, not the catalog, still says which
-    # models it covers.
-    "compatible_models",
-    # BaseDriver validates child properties against it and adds the `online`
-    # and `label` keys; the cloud state relay reads each property's
-    # `cloud_priority`.
-    "child_entity_types",
-    # The typed ports other devices connect through (get_driver_bridge_ports,
-    # the bridge resolver in core.device_config).
-    "bridge",
-    # Read on connect to subscribe the shared listener.
-    "push",
-    # The media one protocol runs over (["tcp", "serial"]); the connection
-    # picks one, config["transport"] first.
-    "transports",
-    # The device page's Commands & Responses editor.
-    "inline_protocol",
-    # The device page's IR Codes editor.
-    "ir_codes",
-    # Where the routing lives, for the Matrix picker, which asks the live
-    # driver (ui.matrix_inference).
-    "routing",
-)
-
-# The same, landing after ``commands``.
-_INFO_FIELDS_AFTER_COMMANDS = (
-    # Promoted-command buttons and setup wizards, kept raw: the device info
-    # (resolve_device_actions) folds quick_actions into one list, for YAML
-    # and Python drivers alike.
-    "actions",
-    "quick_actions",
-    # True, or a URL template: the Open Web UI action.
-    "web_ui",
-    "delimiter",
-)
-
-
-def _copy_fields(
-    driver_info: dict[str, Any], driver_def: dict[str, Any], fields: tuple[str, ...],
-) -> None:
-    for field in fields:
-        if field in driver_def:
-            driver_info[field] = driver_def[field]
-
-
 def create_configurable_driver_class(
     driver_def: dict[str, Any],
 ) -> type[ConfigurableDriver]:
@@ -731,35 +626,9 @@ def create_configurable_driver_class(
     Returns a new class with the correct DRIVER_INFO and _definition
     attributes, ready to be registered in the driver registry.
     """
-    driver_id = driver_def.get("id", "unknown")
-    driver_info: dict[str, Any] = {
-        "id": driver_id,
-        "name": driver_def.get("name", driver_id),
-        "manufacturer": driver_def.get("manufacturer", "Generic"),
-        "category": driver_def.get("category", "utility"),
-        "version": driver_def.get("version", "1.0.0"),
-        "author": driver_def.get("author", "Community"),
-        "description": driver_def.get("description", ""),
-        "transport": driver_def.get("transport", "tcp"),
-        "default_config": driver_def.get("default_config", {}),
-        "config_schema": driver_def.get("config_schema", {}),
-        "state_variables": driver_def.get("state_variables", {}),
-    }
-    _copy_fields(driver_info, driver_def, _INFO_FIELDS)
-
-    # Copy help from each state variable
-    state_vars = driver_info.get("state_variables", {})
-    for var_name, var_def in state_vars.items():
-        if isinstance(var_def, dict) and "help" in var_def:
-            state_vars[var_name] = {**var_def}
-
-    # Shared with the inline-protocol per-instance merge, so file- and
-    # config-authored commands look identical in the IDE.
-    driver_info["commands"] = _build_commands_meta(driver_def.get("commands", {}))
-    _copy_fields(driver_info, driver_def, _INFO_FIELDS_AFTER_COMMANDS)
-
+    driver_info = driver_info_for(driver_def)
     return type(
-        f"ConfigurableDriver_{driver_id}",
+        f"ConfigurableDriver_{driver_info['id']}",
         (ConfigurableDriver,),
         {
             "DRIVER_INFO": driver_info,

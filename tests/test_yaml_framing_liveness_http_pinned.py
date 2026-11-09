@@ -35,10 +35,10 @@ from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.configurable import (
     ConfigurableDriver,
-    _build_commands_meta,
     create_configurable_driver_class,
 )
 from openavc.drivers.liveness import LivenessWatch
+from openavc.drivers.yaml_driver_info import build_commands_meta as _build_commands_meta
 from openavc.transport.http_client import HTTPClientTransport, HTTPResponse
 from openavc.transport.osc_codec import osc_encode_message
 
