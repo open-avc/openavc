@@ -1,9 +1,9 @@
 /**
  * The frame a section of a device's page is drawn in: the gap below it, its
  * small uppercase heading, and the bordered surface its rows sit on. The page
- * itself, Send Command and Device Settings draw theirs from here (the page
- * hands the first two to the SSH key section); the other sections on the page
- * still write the same values out for themselves.
+ * itself, Send Command, Device Settings and Live State draw theirs from here
+ * (the page hands the first two to the SSH key section); the other sections
+ * on the page still write the same values out for themselves.
  */
 import type { CSSProperties } from "react";
 

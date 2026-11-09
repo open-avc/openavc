@@ -1,20 +1,12 @@
 import { InstalledEquipment } from "./InstalledEquipment";
-import { Fragment, useState, useMemo } from "react";
-import { X, Search } from "lucide-react";
-import { CopyButton } from "../../components/shared/CopyButton";
+import { useState, useMemo } from "react";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import type { BridgePort, DeviceConfig, DriverInfo } from "../../api/types";
-import {
-  MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
-} from "../../components/shared/MonitorControl";
 import { useMonitorEdits } from "../../components/shared/useMonitorEdits";
 import { parentAwayFrom, scanChildTrouble, troubleSummary } from "./childPresence";
 import type { ChildTypeInfo } from "./childPresence";
-import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
-import { parseStateOptionList } from "../../components/shared/paramOptions";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
-import { readingText, valueText } from "../../components/shared/booleanWords";
 import { ChildEntities } from "./ChildEntities";
 import { QuickActions } from "./QuickActions";
 import { InlineProtocolEditor } from "./InlineProtocolEditor";
@@ -26,6 +18,9 @@ import { useDeviceInfo } from "./useDeviceInfo";
 import { useDeviceChecks } from "./useDeviceChecks";
 import { DeviceHeader } from "./DeviceHeader";
 import { AuditRefusalLine, ConnectionTestLine } from "./DeviceCheckResults";
+import { DeviceFilter } from "./DeviceFilter";
+import { LiveStateSection } from "./LiveStateSection";
+import { childTypeNames, deviceStateRows, type StateVariables } from "./liveStateRows";
 import { NeedsLoginBanner } from "./NeedsLoginBanner";
 import { ProblemReportDialog } from "./ProblemReportDialog";
 import type { ProblemReportContext } from "../../api/problemReportClient";
@@ -62,10 +57,6 @@ export function DeviceDetail({
   // Report a problem is open, from where and with what the page showed.
   const [reportContext, setReportContext] = useState<ProblemReportContext | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  // Which Live State row has its Monitor limits open. One at a time: the panel
-  // is drawn in a full-width row of its own, and a table with six of them open
-  // stops being a table.
-  const [openMonitor, setOpenMonitor] = useState<string | null>(null);
 
   const monitors = project?.monitors ?? [];
   const handleMonitors = useMonitorEdits();
@@ -89,17 +80,7 @@ export function DeviceDetail({
   const manageable = deviceInfo ? !installed : notRunning && Boolean(deviceConfig);
   const banner = awayBanner(away, isEnabled, deviceInfo?.needs_login?.length ?? 0);
 
-  // Drivers that manage child entities declare them in DRIVER_INFO; those
-  // keys (device.<id>.<type>.<paddedId>.<prop>) belong to the Child Entities
-  // tab, not this flat list — a fully-loaded controller has tens of thousands
-  // of them. We hide them here only; the StateStore, scripts, macros,
-  // triggers, and the cloud relay still see every key (presentation only).
-  const childTypeNames = useMemo(() => {
-    const cet = deviceInfo?.driver_info?.child_entity_types as
-      | Record<string, unknown>
-      | undefined;
-    return cet ? new Set(Object.keys(cet)) : new Set<string>();
-  }, [deviceInfo]);
+  const childTypes = useMemo(() => childTypeNames(deviceInfo?.driver_info), [deviceInfo]);
 
   // Which sub-units are not answering, for the banner below. A wedged
   // endpoint used to be one word in a column inside a collapsed panel, which
@@ -111,35 +92,16 @@ export function DeviceDetail({
     return troubleSummary(scanChildTrouble(liveState, deviceId, cet));
   }, [liveState, deviceId, deviceInfo]);
 
-  // Extract device state from flat liveState
-  const prefix = `device.${deviceId}.`;
-  // [key, the value as shown, the full value when rounding shortened it]
-  const stateEntries: [string, string, string | undefined][] = [];
-  const declaredReadings = (deviceInfo?.driver_info?.state_variables ?? {}) as
-    Record<string, { step?: unknown }>;
-  let hiddenChildKeyCount = 0;
-  const stateTerm = searchTerm.trim().toLowerCase();
-  for (const [key, value] of Object.entries(liveState)) {
-    if (!key.startsWith(prefix)) continue;
-    const rest = key.slice(prefix.length);
-    if (childTypeNames.size > 0) {
-      const dot = rest.indexOf(".");
-      if (dot > 0 && childTypeNames.has(rest.slice(0, dot))) {
-        hiddenChildKeyCount++;
-        continue;
-      }
-    }
-    const valueStr = readingText(value, declaredReadings[rest]);
-    const fullValue = valueText(value);
-    if (
-      stateTerm &&
-      !rest.toLowerCase().includes(stateTerm) &&
-      !valueStr.toLowerCase().includes(stateTerm)
-    ) {
-      continue;
-    }
-    stateEntries.push([rest, valueStr, fullValue !== valueStr ? fullValue : undefined]);
-  }
+  // What the driver declares about each reading: label, unit, type, range,
+  // allowed values and precision. Monitor fills in from this, which is why
+  // tagging lamp hours is one click rather than a form: the projector's
+  // driver already said it is a number called "Lamp Hours" measured in hours.
+  const stateVariables = (deviceInfo?.driver_info?.state_variables ?? {}) as StateVariables;
+  const { rows: stateRows, childKeyCount } = deviceStateRows(liveState, deviceId, {
+    childTypes,
+    declared: stateVariables,
+    filter: searchTerm.trim().toLowerCase(),
+  });
 
   const deviceName = String(liveState[`device.${deviceId}.name`] ?? deviceConfig?.name ?? deviceId);
   // Optional driver-provided troubleshooting hint (DRIVER_INFO.help.connection),
@@ -150,37 +112,6 @@ export function DeviceDetail({
       ?.help?.connection ?? ""
   );
 
-  // What the driver declares about each state variable — label, unit, type,
-  // range, allowed values. Monitor pre-fills from this, which is why tagging
-  // lamp hours is one click rather than a form: the projector's driver already
-  // said it is a number called "Lamp Hours" measured in hours.
-  const declaredStateVars = (deviceInfo?.driver_info?.state_variables ?? {}) as
-    Record<string, DeclaredReading & { values?: string[] }>;
-
-  // State vars that back a param dropdown (any command/action param declaring
-  // `options_state`) hold a JSON-encoded {value,label} list. The Live State
-  // table renders those as a readable option summary instead of the raw JSON.
-  const optionFeedKeys = useMemo(() => {
-    const keys = new Set<string>();
-    const scan = (params: unknown) => {
-      if (!params || typeof params !== "object") return;
-      for (const def of Object.values(params as Record<string, unknown>)) {
-        const os = (def as { options_state?: unknown } | null)?.options_state;
-        if (typeof os === "string" && os) keys.add(os);
-      }
-    };
-    for (const cmd of Object.values(
-      (deviceInfo?.commands ?? {}) as Record<string, unknown>,
-    )) {
-      scan((cmd as { params?: unknown } | null)?.params);
-    }
-    const actions = (deviceInfo?.driver_info as { actions?: unknown } | undefined)
-      ?.actions;
-    if (Array.isArray(actions)) {
-      for (const a of actions) scan((a as { params?: unknown } | null)?.params);
-    }
-    return keys;
-  }, [deviceInfo]);
 
   // Bridge: when this device's driver advertises bridge ports, it's a bridge
   // other devices route through. The card below lists each port + what's bound
@@ -368,51 +299,10 @@ export function DeviceDetail({
         onInvoked={refetchDeviceInfo}
       />
 
-      {/* Unified filter — one box narrows both the child-entity rows (across
-          every value in each row, not just the summary columns) and the Live
-          State list below. */}
-      <div style={{ position: "relative", marginBottom: "var(--space-lg)" }}>
-        <Search
-          size={16}
-          style={{
-            position: "absolute",
-            left: 10,
-            top: "50%",
-            transform: "translateY(-50%)",
-            color: "var(--text-muted)",
-            pointerEvents: "none",
-          }}
-        />
-        <input
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Filter children and live state by id, label, name, or any value"
-          data-testid="device-filter"
-          style={{ width: "100%", padding: "var(--space-sm) 34px" }}
-        />
-        {searchTerm && (
-          <button
-            onClick={() => setSearchTerm("")}
-            title="Clear filter"
-            style={{
-              position: "absolute",
-              right: 8,
-              top: "50%",
-              transform: "translateY(-50%)",
-              padding: 2,
-              background: "transparent",
-              color: "var(--text-muted)",
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            <X size={16} />
-          </button>
-        )}
-      </div>
+      <DeviceFilter value={searchTerm} onChange={setSearchTerm} />
 
       {/* Child Entities (only renders when the driver declares any).
-          hiddenChildKeyCount is the count the Live State panel below reports as
+          childKeyCount is the count the Live State panel below reports as
           living up here, and it is also how this panel hears that the roster
           changed — the two used to contradict each other on one screen. */}
       <ChildEntities
@@ -420,134 +310,25 @@ export function DeviceDetail({
         search={searchTerm}
         connected={connected}
         parentAway={parentAwayFrom(liveState, deviceId)}
-        childKeyCount={hiddenChildKeyCount}
+        childKeyCount={childKeyCount}
         config={deviceConfig?.config}
         driverInfo={deviceInfo?.driver_info}
         monitors={monitors}
         onMonitorsChange={handleMonitors}
       />
 
-      {/* Live State */}
-      <div style={sectionStyle}>
-        <h3 style={sectionTitleStyle}>Live State</h3>
-        {hiddenChildKeyCount > 0 && (
-          <div
-            style={{
-              fontSize: 11,
-              color: "var(--text-muted)",
-              marginTop: "-4px",
-              marginBottom: "var(--space-sm)",
-            }}
-          >
-            {hiddenChildKeyCount.toLocaleString()} child-entity state{" "}
-            {hiddenChildKeyCount === 1 ? "key is" : "keys are"} shown in the
-            Child Entities tab above.
-          </div>
-        )}
-        <div
-          style={{
-            background: "var(--bg-surface)",
-            borderRadius: "var(--border-radius)",
-            border: "1px solid var(--border-color)",
-            overflow: "hidden",
-          }}
-        >
-          {stateEntries.length === 0 ? (
-            <div
-              style={{
-                padding: "var(--space-lg)",
-                color: "var(--text-muted)",
-                fontSize: "var(--font-size-sm)",
-              }}
-            >
-              {stateTerm ? `No state matches "${searchTerm}"` : "No state values yet"}
-            </div>
-          ) : (
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <tbody>
-                {stateEntries.map(([key, value, fullValue]) => {
-                  const fullKey = `device.${deviceId}.${key}`;
-                  const monitor = monitors.find((m) => m.key === fullKey);
-                  // A value the device is no longer reporting. Only the
-                  // driver's own readings: `connected`, `enabled`, the fault
-                  // pair and the rest of the platform's keys are statements
-                  // about the device that are true right now.
-                  const stale =
-                    !connected && value !== "" && key in declaredStateVars;
-                  return (
-                  <Fragment key={key}>
-                  <tr
-                    data-testid={`live-state-${key}`}
-                    style={{ borderBottom: monitor && openMonitor === fullKey ? undefined : "1px solid var(--border-color)" }}
-                  >
-                    <td
-                      style={{
-                        padding: "var(--space-sm) var(--space-md)",
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "var(--font-size-sm)",
-                        color: "var(--text-secondary)",
-                        width: "40%",
-                      }}
-                    >
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                        {key}
-                        <CopyButton value={`device.${deviceId}.${key}`} size={11} title="Copy full state key" />
-                      </span>
-                    </td>
-                    <td
-                      title={stale ? DEVICE_STALE_TITLE : fullValue}
-                      style={{
-                        padding: "var(--space-sm) var(--space-md)",
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "var(--font-size-sm)",
-                        ...(stale ? staleValueStyle : null),
-                      }}
-                    >
-                      {optionFeedKeys.has(key) ? (
-                        <OptionFeedValue raw={value} />
-                      ) : (
-                        value
-                      )}
-                      {stale && <LastHeard />}
-                    </td>
-                    {/* The second authoring door. Most of what a room's health
-                        actually is lives here — lamp hours, fault flags, input
-                        signal presence, a DSP's temperature — and until now
-                        none of it could be tagged at all. */}
-                    <MonitorCell padding="var(--space-xs) var(--space-md)">
-                      <MonitorControl
-                        compact
-                        toggleOnly
-                        stateKey={fullKey}
-                        declared={declaredStateVars[key]}
-                        monitors={monitors}
-                        liveValue={liveState[fullKey]}
-                        onChange={handleMonitors}
-                        open={openMonitor === fullKey}
-                        onOpenChange={(next) => setOpenMonitor(next ? fullKey : null)}
-                      />
-                    </MonitorCell>
-                  </tr>
-                  {monitor && openMonitor === fullKey && (
-                    <tr style={{ borderBottom: "1px solid var(--border-color)" }}>
-                      <td colSpan={3} style={{ padding: "0 var(--space-md) var(--space-md)" }}>
-                        <MonitorLimitsPanel
-                          monitor={monitor}
-                          declared={declaredStateVars[key]}
-                          monitors={monitors}
-                          onChange={handleMonitors}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                  </Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+      <LiveStateSection
+        deviceId={deviceId}
+        rows={stateRows}
+        childKeyCount={childKeyCount}
+        searchTerm={searchTerm}
+        connected={connected}
+        stateVariables={stateVariables}
+        commands={deviceInfo?.commands}
+        driverInfo={deviceInfo?.driver_info}
+        monitors={monitors}
+        onMonitorsChange={handleMonitors}
+      />
 
       {/* Device Settings */}
       {isEnabled && runtimeEnabled && deviceInfo?.id === deviceId && !deviceInfo.orphaned && (
@@ -624,29 +405,5 @@ export function DeviceDetail({
         />
       )}
     </div>
-  );
-}
-
-/** Readable rendering for a picker-feed state value — a JSON-encoded option
- *  list a command param references via `options_state`. Shows the option
- *  labels instead of the raw JSON; falls back to the raw string when the
- *  value doesn't parse (empty, not yet published, malformed). */
-function OptionFeedValue({ raw }: { raw: string }) {
-  const options = parseStateOptionList(raw);
-  if (options.length === 0) return <>{raw}</>;
-  const labels = options.map((o) => o.label);
-  const MAX_SHOWN = 8;
-  const shown = labels.slice(0, MAX_SHOWN).join(", ");
-  const more = labels.length - MAX_SHOWN;
-  return (
-    <span title={`${labels.length} options: ${labels.join(", ")}`}>
-      <span style={{ color: "var(--text-muted)" }}>
-        {labels.length} option{labels.length === 1 ? "" : "s"}:{" "}
-      </span>
-      {shown}
-      {more > 0 && (
-        <span style={{ color: "var(--text-muted)" }}> (+{more} more)</span>
-      )}
-    </span>
   );
 }
