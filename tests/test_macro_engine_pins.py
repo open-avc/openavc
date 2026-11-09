@@ -664,3 +664,55 @@ async def test_a_handler_of_a_skipped_run_may_start_that_macro_again(
     assert refusals == []
     await running
     await asyncio.sleep(0.25)
+
+
+async def test_a_step_error_from_a_bare_step_list_names_its_macro_as_the_chain(
+    engine: MacroEngine, events: EventBus,
+) -> None:
+    errors = _record(events, "macro.step_error.*")
+    assert await engine.execute_steps([{"action": "acme.nothing"}], macro_id="bare") == 1
+    assert errors[0][1]["call_chain"] == ["bare"]
+
+
+async def test_a_skipped_run_leaves_the_callers_chain_as_it_was(
+    engine: MacroEngine,
+) -> None:
+    from openavc.core.macro_engine import active_call_chain
+
+    engine.load_macros([{
+        "id": "solo", "name": "Solo", "overlap": "skip",
+        "steps": [{"action": "delay", "seconds": 0.2}],
+    }])
+    running = asyncio.create_task(engine.execute("solo"))
+    await asyncio.sleep(0.02)
+    assert await engine.execute("solo") == "skipped"
+    assert active_call_chain() == frozenset()
+    await running
+
+
+async def test_a_patched_step_method_is_the_one_that_runs(
+    engine: MacroEngine, monkeypatch,
+) -> None:
+    patched = AsyncMock(return_value=None)
+    monkeypatch.setattr(engine, "_delay", patched)
+    engine.load_macros([{"id": "m", "name": "M", "steps": [{"action": "delay", "seconds": 30}]}])
+    assert await asyncio.wait_for(engine.execute("m"), 1) == "completed"
+    patched.assert_awaited_once()
+
+
+async def test_a_group_step_sends_through_the_engines_current_devices(
+    engine: MacroEngine, devices: MagicMock,
+) -> None:
+    replacement = MagicMock()
+    replacement.send_command = AsyncMock()
+    replacement.command_goes_out = MagicMock(return_value=True)
+    replacement.get_driver = MagicMock(return_value=None)
+    engine.devices = replacement
+    engine.load_groups([{"id": "wall", "name": "Wall", "device_ids": ["acme1"]}])
+    engine.load_macros([{"id": "m", "name": "M", "steps": [
+        {"action": "group.command", "group": "wall", "command": "power_on"},
+        {"action": "device.command", "device": "acme2", "command": "power_on"},
+    ]}])
+    assert await engine.execute("m") == "completed"
+    assert [c.args[0] for c in replacement.send_command.call_args_list] == ["acme1", "acme2"]
+    devices.send_command.assert_not_called()
