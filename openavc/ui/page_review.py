@@ -369,6 +369,22 @@ class Container:
     height_px: float
 
 
+@dataclass(frozen=True)
+class Seat:
+    """Where one box is drawn, in reference pixels: what every per-box check measures.
+
+    Its own size, the container it has to fit (and how a sentence names that
+    container), the containers above that one, innermost first, and which way
+    round the screen is.
+    """
+
+    box_px: tuple[float, float]
+    parent_px: tuple[float, float]
+    parent_name: str
+    ancestors: tuple[Container, ...] = ()
+    orientation: str = "landscape"
+
+
 def page_container(orientation: str = "landscape") -> Container:
     """The root every chain ends at. It is the one box no remedy can grow.
 
@@ -533,12 +549,8 @@ def _container_clause(
 
 def starvation_finding(
     element: Mapping[str, Any],
-    box_px: tuple[float, float],
-    parent_px: tuple[float, float],
-    parent_name: str,
+    seat: Seat,
     theme: Mapping[str, Any] | None = None,
-    ancestors: tuple[Container, ...] = (),
-    orientation: str = "landscape",
 ) -> Finding | None:
     """A control smaller than the parts inside it that do not shrink.
 
@@ -550,22 +562,22 @@ def starvation_finding(
 
     The remedy is a percentage of the element's own parent, EXCEPT when the
     parent is itself too small to hold the floor. Then no percentage exists and
-    ``ancestors`` is what turns the finding back into something actionable, by
-    naming the box that has to grow instead.
+    the seat's ``ancestors`` are what turn the finding back into something
+    actionable, by naming the box that has to grow instead.
     """
-    box = minimum_box(element, theme, orientation)
+    box = minimum_box(element, theme, seat.orientation)
     if box is None:
         return None
-    width_px, height_px = box_px
+    width_px, height_px = seat.box_px
     reasons = box.starves(width_px, height_px)
     if not reasons:
         return None
 
     el_id = str(element.get("id", "?"))
     el_type = str(element.get("type", "?"))
-    blocked = _blocked_axes(box, box_px, parent_px)
+    blocked = _blocked_axes(box, seat.box_px, seat.parent_px)
     stuck = {axis for axis, _, _ in blocked}
-    percent = minimum_percent(element, parent_px[0], parent_px[1], theme, orientation)
+    percent = minimum_percent(element, *seat.parent_px, theme, seat.orientation)
     fixes = []
     if percent:
         need_w, need_h = percent
@@ -573,9 +585,9 @@ def starvation_finding(
             fixes.append(f"w at least {_pct(need_w)}%")
         if height_px + 0.5 < box.height_px and "height" not in stuck:
             fixes.append(f"h at least {_pct(need_h)}%")
-    page = page_container(orientation)
-    fix = f" Give it {' and '.join(fixes)} of {parent_name}." if fixes else ""
-    fix += _container_clause(ancestors, blocked, page) if blocked else ""
+    page = page_container(seat.orientation)
+    fix = f" Give it {' and '.join(fixes)} of {seat.parent_name}." if fixes else ""
+    fix += _container_clause(seat.ancestors, blocked, page) if blocked else ""
     return Finding(
         el_id,
         "too_small_for_contents",
@@ -601,11 +613,8 @@ MINIMUM_VISIBLE_PX = 10.0
 
 def degenerate_finding(
     element: Mapping[str, Any],
-    box_px: tuple[float, float],
-    parent_px: tuple[float, float],
-    parent_name: str,
+    seat: Seat,
     theme: Mapping[str, Any] | None = None,
-    orientation: str = "landscape",
 ) -> Finding | None:
     """A box too small to draw anything, on a type with no floor to breach.
 
@@ -617,21 +626,22 @@ def degenerate_finding(
     Runs only where ``minimum_box`` has no opinion, so it never speaks over a
     measured floor and never becomes one.
     """
-    if minimum_box(element, theme, orientation) is not None:
+    if minimum_box(element, theme, seat.orientation) is not None:
         return None
-    width_px, height_px = box_px
+    width_px, height_px = seat.box_px
     if width_px >= MINIMUM_VISIBLE_PX and height_px >= MINIMUM_VISIBLE_PX:
         return None
 
     el_id = str(element.get("id", "?"))
     el_type = str(element.get("type", "?"))
+    parent_w, parent_h = seat.parent_px
     fixes = []
-    if width_px < MINIMUM_VISIBLE_PX and parent_px[0] > 0:
-        fixes.append(f"w at least {_pct(MINIMUM_VISIBLE_PX / parent_px[0] * 100)}%")
-    if height_px < MINIMUM_VISIBLE_PX and parent_px[1] > 0:
-        fixes.append(f"h at least {_pct(MINIMUM_VISIBLE_PX / parent_px[1] * 100)}%")
-    page = page_container(orientation)
-    fix = f" Give it {' and '.join(fixes)} of {parent_name}." if fixes else ""
+    if width_px < MINIMUM_VISIBLE_PX and parent_w > 0:
+        fixes.append(f"w at least {_pct(MINIMUM_VISIBLE_PX / parent_w * 100)}%")
+    if height_px < MINIMUM_VISIBLE_PX and parent_h > 0:
+        fixes.append(f"h at least {_pct(MINIMUM_VISIBLE_PX / parent_h * 100)}%")
+    page = page_container(seat.orientation)
+    fix = f" Give it {' and '.join(fixes)} of {seat.parent_name}." if fixes else ""
     return Finding(
         el_id,
         "too_small_to_draw",
@@ -778,6 +788,23 @@ def style_finding(
         f"asks for more room than that: {'; '.join(reasons)}. style measurements are rem, not "
         f"pixels -- px / {_num(REM_BASE_PX)} -- so write {fixes}.",
     )
+
+
+def box_findings(
+    element: Mapping[str, Any], seat: Seat, theme: Mapping[str, Any] | None = None,
+) -> list[Finding]:
+    """Every check one box gets, wherever it is drawn, in the order they report.
+
+    A page's arrangement and a master's own orientation-keyed boxes both run
+    exactly these; only an element on a page also has a container to hang out of.
+    """
+    candidates = (
+        starvation_finding(element, seat, theme),
+        degenerate_finding(element, seat, theme),
+        touch_finding(element, seat.box_px),
+        style_finding(element, seat.box_px),
+    )
+    return [finding for finding in candidates if finding]
 
 
 def overhang_finding(
@@ -2406,6 +2433,16 @@ class _Arrangement:
         parent_id = self.parent_of(el_id)
         return f"its container '{parent_id}'" if parent_id else "the page"
 
+    def seat(self, el_id: str) -> Seat:
+        """Where this element is drawn in this arrangement. It must have a box here."""
+        return Seat(
+            _box_px(self.absolute[el_id], self.reference),
+            self.parent_box_px(el_id),
+            self.parent_name(el_id),
+            self.ancestors_of(el_id),
+            self.orientation,
+        )
+
     def ancestors_of(self, el_id: str) -> tuple[Container, ...]:
         """Every container above this element, innermost first.
 
@@ -2491,24 +2528,14 @@ def _placed_box_findings(
     dump: Mapping[str, Any],
     theme: Mapping[str, Any] | None,
 ) -> list[Finding]:
-    box_px = _box_px(arrangement.absolute[el_id], arrangement.reference)
-    parent_px = arrangement.parent_box_px(el_id)
-    parent_name = arrangement.parent_name(el_id)
-    candidates = [
-        starvation_finding(
-            dump, box_px, parent_px, parent_name, theme,
-            arrangement.ancestors_of(el_id), arrangement.orientation,
-        ),
-        degenerate_finding(
-            dump, box_px, parent_px, parent_name, theme, arrangement.orientation,
-        ),
-        touch_finding(dump, box_px),
-        style_finding(dump, box_px),
-    ]
+    seat = arrangement.seat(el_id)
+    findings = box_findings(dump, seat, theme)
     stored = arrangement.own.get(el_id)
-    if stored is not None:
-        candidates.append(overhang_finding(dump, stored, parent_name, parent_px))
-    return [f for f in candidates if f]
+    overhang = (
+        overhang_finding(dump, stored, seat.parent_name, seat.parent_px)
+        if stored is not None else None
+    )
+    return findings + ([overhang] if overhang else [])
 
 
 def _sibling_overlaps(
@@ -2607,31 +2634,33 @@ def review_master_element(
     placements = dump.get("placements")
     if not isinstance(placements, Mapping):
         return findings
-    seen: set[tuple] = set()
+    said: set[tuple] = set()
     for orientation, raw in placements.items():
-        # A master carries its own orientation-keyed boxes, so the key IS the
-        # way round this one is drawn -- the portrait box is measured against a
-        # portrait screen even on a project whose pages are all landscape.
-        reference = reference_box(orientation)
-        box = _mapping(raw)
-        try:
-            box_px = (
-                float(box.get("w") or 100.0) / 100 * reference[0],
-                float(box.get("h") or 100.0) / 100 * reference[1],
-            )
-        except (TypeError, ValueError):
+        seat = _master_seat(orientation, raw)
+        if seat is None:
             continue
-        for finding in (
-            starvation_finding(
-                dump, box_px, reference, "the page", theme, (), orientation,
-            ),
-            degenerate_finding(
-                dump, box_px, reference, "the page", theme, orientation,
-            ),
-            touch_finding(dump, box_px),
-            style_finding(dump, box_px),
-        ):
-            if finding and finding.key not in seen:
-                seen.add(finding.key)
-                findings.append(_with_where(finding, f" in the {orientation} arrangement"))
+        findings.extend(
+            _with_where(finding, f" in the {orientation} arrangement")
+            for finding in _unsaid(box_findings(dump, seat, theme), said)
+        )
     return findings
+
+
+def _master_seat(orientation: str, raw: Any) -> Seat | None:
+    """A master's box for one orientation, or None when it is not a number.
+
+    A master carries its own orientation-keyed boxes, so the key IS the way
+    round this one is drawn -- the portrait box is measured against a portrait
+    screen even on a project whose pages are all landscape. Its only container
+    is the screen; a missing ``w`` or ``h`` is the whole of it.
+    """
+    reference = reference_box(orientation)
+    box = _mapping(raw)
+    try:
+        box_px = (
+            float(box.get("w") or 100.0) / 100 * reference[0],
+            float(box.get("h") or 100.0) / 100 * reference[1],
+        )
+    except (TypeError, ValueError):
+        return None
+    return Seat(box_px, reference, "the page", (), orientation)

@@ -3735,6 +3735,21 @@ export interface Container {
   heightPx: number;
 }
 
+/**
+ * Where one box is drawn, in reference pixels: what every per-box check measures.
+ *
+ * Its own size, the container it has to fit (and how a sentence names that
+ * container), the containers above that one, innermost first, and which way
+ * round the screen is.
+ */
+export interface Seat {
+  boxPx: { width: number; height: number };
+  parentPx: { width: number; height: number };
+  parentName: string;
+  ancestors: Container[];
+  orientation: string;
+}
+
 /** The root every chain ends at. It is the one box no remedy can grow.
  *
  *  A function rather than a constant because a portrait arrangement is drawn on
@@ -3885,13 +3900,10 @@ function containerClause(
  */
 export function starvationFinding(
   el: UIElement,
-  boxPx: { width: number; height: number },
-  parentPx: { width: number; height: number },
-  parentName: string,
+  seat: Seat,
   theme?: ElementDefaults,
-  ancestors: Container[] = [],
-  orientation: string = "landscape",
 ): ReviewFinding | null {
+  const { boxPx, parentPx, parentName, ancestors, orientation } = seat;
   const box = controlMinimumBox(el, theme, orientation);
   if (!box) return null;
   const reasons = starvedReasons(box, boxPx.width, boxPx.height);
@@ -3951,12 +3963,10 @@ export const MINIMUM_VISIBLE_PX = 10.0;
  */
 export function degenerateFinding(
   el: UIElement,
-  boxPx: { width: number; height: number },
-  parentPx: { width: number; height: number },
-  parentName: string,
+  seat: Seat,
   theme?: ElementDefaults,
-  orientation: string = "landscape",
 ): ReviewFinding | null {
+  const { boxPx, parentPx, parentName, orientation } = seat;
   if (controlMinimumBox(el, theme, orientation)) return null;
   if (boxPx.width >= MINIMUM_VISIBLE_PX && boxPx.height >= MINIMUM_VISIBLE_PX) return null;
 
@@ -4140,6 +4150,21 @@ export function styleFinding(
       `px / ${num(REM_BASE_PX)} -- so write ${fixes}.`,
     key: `style_too_large|${el.id}`,
   };
+}
+
+/**
+ * Every check one box gets, wherever it is drawn, in the order they report.
+ *
+ * A page's arrangement and a master's own orientation-keyed boxes both run
+ * exactly these; only an element on a page also has a container to hang out of.
+ */
+export function boxFindings(el: UIElement, seat: Seat, theme?: ElementDefaults): ReviewFinding[] {
+  return [
+    starvationFinding(el, seat, theme),
+    degenerateFinding(el, seat, theme),
+    touchFinding(el, seat.boxPx),
+    styleFinding(el, seat.boxPx),
+  ].filter((f): f is ReviewFinding => !!f);
 }
 
 /**
@@ -5790,17 +5815,24 @@ function arrangementFindings(page: UIPage, layouts: Layout[], scope: ReviewScope
     (a, b) => Number(a.id !== primaryId) - Number(b.id !== primaryId),
   );
   const findings: ReviewFinding[] = [];
-  const seen = new Set<string>();
+  const said = new Set<string>();
   for (const layout of ordered) {
     const arr = resolveArrangement(page, layout, primaryId);
     const where = arr.isPrimary ? "" : ` in the '${layout.id}' arrangement`;
-    for (const finding of layoutFindings(arr, scope)) {
-      if (seen.has(finding.key)) continue;
-      seen.add(finding.key);
-      findings.push(withWhere(finding, where));
-    }
+    findings.push(...unsaid(layoutFindings(arr, scope), said).map((f) => withWhere(f, where)));
   }
   return findings;
+}
+
+/** The findings whose `key` has not been said yet, each marked as said. */
+function unsaid(findings: ReviewFinding[], said: Set<string>): ReviewFinding[] {
+  const fresh: ReviewFinding[] = [];
+  for (const finding of findings) {
+    if (said.has(finding.key)) continue;
+    said.add(finding.key);
+    fresh.push(finding);
+  }
+  return fresh;
 }
 
 /** Every geometry finding for one arrangement: each box, then siblings, then masters. */
@@ -5827,29 +5859,31 @@ function boxFindingsIn(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
   return findings;
 }
 
+/** Where this element is drawn in this arrangement. It must have a box here. */
+function seatIn(arr: Arrangement, el: UIElement): Seat {
+  const box = own(arr.absolute, el.id) as Placement;
+  return {
+    boxPx: {
+      width: (box.w / 100) * arr.reference.width,
+      height: (box.h / 100) * arr.reference.height,
+    },
+    parentPx: parentBoxPx(parentIn(arr, el.id), arr.absolute, arr.reference),
+    parentName: parentNameIn(arr, el.id),
+    ancestors: ancestorsIn(arr, el.id),
+    orientation: arr.orientation,
+  };
+}
+
 function placedBoxFindings(
   arr: Arrangement,
   el: UIElement,
   theme: ElementDefaults | undefined,
 ): ReviewFinding[] {
-  const box = own(arr.absolute, el.id) as Placement;
-  const parentPx = parentBoxPx(parentIn(arr, el.id), arr.absolute, arr.reference);
-  const parentName = parentNameIn(arr, el.id);
-  const boxPx = {
-    width: (box.w / 100) * arr.reference.width,
-    height: (box.h / 100) * arr.reference.height,
-  };
-  const candidates = [
-    starvationFinding(
-      el, boxPx, parentPx, parentName, theme, ancestorsIn(arr, el.id), arr.orientation,
-    ),
-    degenerateFinding(el, boxPx, parentPx, parentName, theme, arr.orientation),
-    touchFinding(el, boxPx),
-    styleFinding(el, boxPx),
-  ];
+  const seat = seatIn(arr, el);
+  const findings = boxFindings(el, seat, theme);
   const stored = own(arr.ownBoxes, el.id);
-  if (stored) candidates.push(overhangFinding(el, stored, parentName, parentPx));
-  return candidates.filter((f): f is ReviewFinding => !!f);
+  const overhang = stored ? overhangFinding(el, stored, seat.parentName, seat.parentPx) : null;
+  return overhang ? [...findings, overhang] : findings;
 }
 
 /**
@@ -5938,30 +5972,35 @@ export function reviewMasterElement(
   const findings = elementFindings(master);
   const placements = master.placements;
   if (!placements || typeof placements !== "object") return findings;
-  const seen = new Set<string>();
+  const said = new Set<string>();
   for (const [orientation, box] of Object.entries(placements)) {
-    // A master carries its own orientation-keyed boxes, so the key IS the way
-    // round this one is drawn -- the portrait box is measured against a portrait
-    // screen even on a project whose pages are all landscape.
-    const reference = referenceBox(orientation);
-    const boxPx = {
-      width: ((box?.w ?? 100) / 100) * reference.width,
-      height: ((box?.h ?? 100) / 100) * reference.height,
-    };
-    if (!Number.isFinite(boxPx.width) || !Number.isFinite(boxPx.height)) continue;
-    const candidates = [
-      starvationFinding(master, boxPx, reference, "the page", theme, [], orientation),
-      degenerateFinding(master, boxPx, reference, "the page", theme, orientation),
-      touchFinding(master, boxPx),
-      styleFinding(master, boxPx),
-    ];
-    for (const finding of candidates) {
-      if (!finding || seen.has(finding.key)) continue;
-      seen.add(finding.key);
-      findings.push(withWhere(finding, ` in the ${orientation} arrangement`));
-    }
+    const seat = masterSeat(orientation, box);
+    if (!seat) continue;
+    findings.push(
+      ...unsaid(boxFindings(master, seat, theme), said).map((f) =>
+        withWhere(f, ` in the ${orientation} arrangement`),
+      ),
+    );
   }
   return findings;
+}
+
+/**
+ * A master's box for one orientation, or null when it is not a finite size.
+ *
+ * A master carries its own orientation-keyed boxes, so the key IS the way round
+ * this one is drawn -- the portrait box is measured against a portrait screen
+ * even on a project whose pages are all landscape. Its only container is the
+ * screen; a missing `w` or `h` is the whole of it.
+ */
+function masterSeat(orientation: string, box: { w?: number; h?: number } | undefined): Seat | null {
+  const reference = referenceBox(orientation);
+  const boxPx = {
+    width: ((box?.w ?? 100) / 100) * reference.width,
+    height: ((box?.h ?? 100) / 100) * reference.height,
+  };
+  if (!Number.isFinite(boxPx.width) || !Number.isFinite(boxPx.height)) return null;
+  return { boxPx, parentPx: reference, parentName: "the page", ancestors: [], orientation };
 }
 
 /**
