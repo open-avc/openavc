@@ -496,3 +496,19 @@ describe("the ids a copy may not take: every page's, not just the first one's", 
     expect(out[1].elements.map((e) => e.id)).toEqual(["b", "button_1"]);
   });
 });
+
+describe("an arranging tool with too little selected never reads the page's boxes", () => {
+  // A hand-edited page whose layouts are not a list: reading its boxes throws,
+  // so a tool with nothing to do has to answer before it reads them.
+  const broken = () =>
+    ({ id: "pg", name: "Page", elements: [el("a"), el("b")], layouts: { landscape: {} } }) as unknown as UIPage;
+
+  it.each([
+    ["align, nothing on the page selected", (p: UIPage) => alignElements([p], "pg", ["nope"], "align-left")],
+    ["distribute, two selected", (p: UIPage) => distributeElements([p], "pg", ["a", "b"], "horizontal")],
+    ["match size, one selected", (p: UIPage) => matchSizeElements([p], "pg", ["a"], "match-both")],
+  ])("%s hands the page back", (_name, run) => {
+    const p = broken();
+    expect(run(p)[0]).toBe(p);
+  });
+});
