@@ -155,6 +155,11 @@ class TestSerialRenames:
         assert out["devices"] == [{"id": "d"}]
         assert out["connections"] == {}
 
+    @pytest.mark.parametrize("config", [["volume"], "abc", ["host"]])
+    def test_a_config_that_is_not_a_dict_stops_the_step(self, config):
+        with pytest.raises(AttributeError, match="keys"):
+            migrate_0_1_to_0_2({"devices": [{"id": "d", "config": config}]})
+
     def test_driver_dependencies_already_present_are_kept(self):
         out = migrate_0_1_to_0_2({"driver_dependencies": ["x"]})
         assert out["driver_dependencies"] == ["x"]
@@ -929,6 +934,15 @@ class TestDashboardMonitors:
             {"key": "var.a", "label": "A", "type": "number"},
             {"key": "var.c", "label": "", "type": "string"},
         ])
+
+    def test_an_existing_monitor_whose_key_is_not_a_string_is_kept(self):
+        data = {"monitors": [{"key": ["x"]}, {"key": {"a": 1}}],
+                "variables": [{"id": "a", "dashboard": True}]}
+        out = migrate_0_10_to_0_11(data)
+        assert out["monitors"] == [
+            {"key": ["x"]}, {"key": {"a": 1}},
+            {"key": "var.a", "label": "", "type": "string"},
+        ]
 
     def test_a_monitor_list_that_is_not_a_list_is_replaced(self):
         out = migrate_0_10_to_0_11({"monitors": "junk", "variables": [{"id": "a", "dashboard": True}]})
