@@ -181,6 +181,14 @@ class TestDeviceGroups:
             {"id": "front", "name": "Front Row", "device_ids": ["a"]},
         ]
 
+    def test_an_existing_group_keeps_its_own_members_first(self):
+        data = {
+            "devices": [{"id": "b", "group": "Front"}],
+            "device_groups": [{"id": "front", "name": "F", "device_ids": ["a"]}],
+        }
+        out = migrate_0_3_to_0_4(data)
+        assert out["device_groups"] == [{"id": "front", "name": "F", "device_ids": ["a", "b"]}]
+
     def test_an_existing_group_with_no_member_list_gets_one(self):
         data = {
             "devices": [{"id": "a", "group": "Front"}],
@@ -603,6 +611,16 @@ class TestContainerAdoption:
         out = migrate_0_7_to_0_8(_v07([page]))
         parents = {e["id"]: e["parent"] for e in out["ui"]["pages"][0]["elements"]}
         assert parents == {"g": None, "a": "g", "b": "g", "c": "g"}
+
+    def test_the_innermost_group_is_the_one_with_fewer_cells(self):
+        # Both groups hold the element: the tall thin one (six cells) wins by
+        # area, where a ranking by width plus height would pick the square (nine).
+        page = {"id": "p", "elements": [
+            _cell("square", 1, 1, 3, 3, "group"), _cell("thin", 1, 1, 1, 6, "group"),
+            _cell("a", 1, 1),
+        ]}
+        out = migrate_0_7_to_0_8(_v07([page]))
+        assert out["ui"]["pages"][0]["elements"][2]["parent"] == "thin"
 
     def test_equal_size_groups_go_by_their_order_on_the_page(self):
         page = {"id": "p", "elements": [
