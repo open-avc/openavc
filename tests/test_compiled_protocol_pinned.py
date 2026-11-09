@@ -858,3 +858,57 @@ def test_follow_up_queries_compare_whole_entries_with_the_poll():
     }
     assert follow_up_queries(definition) == ["A?"]
     assert follow_up_queries({"polling": "x", "responses": None}) == []
+
+
+# ── pins the deliberate breaks asked for ──
+
+
+def test_json_child_set_types_a_reserved_prop_the_child_type_does_not_declare(caplog):
+    out = _json_children(
+        [{"type": "zone", "id": 1, "state": {"online": "zones.1.on", "offline_reason": "zones.1.why"}}],
+        caplog,
+    )
+    assert out[0]["props"] == [
+        {"prop": "online", "key": "zones.1.on", "type": "boolean"},
+        {"prop": "offline_reason", "key": "zones.1.why", "type": "string"},
+    ]
+
+
+@pytest.mark.parametrize("start", [True, False])
+def test_child_list_start_that_is_a_boolean_is_not_a_number(caplog, start):
+    block = {"type": "zone", "element": r"(\d+)", "state": {"level": "$1"}, "start": start}
+    kind, value = _child_list(block, caplog)[0]["list"]["start"]
+    assert kind == "literal"
+    assert value == 1 and type(value) is int
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda d: d["commands"]["set_zone"]["params"]["zone"].update(type="integer"),
+        lambda d: d["commands"]["set_zone"]["params"]["zone"].update(child_type="speaker"),
+        lambda d: d["commands"]["set_zone"]["params"].update(zone="child_id"),
+        lambda d: d["commands"]["set_zone"].update(sets={"level": 1, "other": 2}),
+        lambda d: d["commands"]["set_zone"].update(sets={"volume": 1}),
+        lambda d: d["commands"]["set_zone"].update(sets=["level"]),
+        lambda d: d["child_entity_types"]["zone"].update(state_variables=None),
+        lambda d: d["commands"]["set_zone"].update(read_back="Z{zone}{level}?"),
+        lambda d: d.update(child_entity_types=["zone"]),
+    ],
+)
+def test_read_back_queries_answer_no_child_they_cannot_name(change):
+    definition = _read_back_definition()
+    change(definition)
+    assert [e for e in read_back_queries(definition) if isinstance(e, dict) and "each_child" in e] == []
+
+
+def test_a_json_rule_child_value_carries_its_conversion():
+    types = {"zone": {"state_variables": {"level": {"type": "integer", "scale": 0.1}}}}
+    compiled = _compile(
+        [{"json": True, "child_set": [{"type": "zone", "id": 1, "state": {"level": "z.l", "online": "z.on"}}]}],
+        child_entity_types=types,
+    )
+    assert compiled.json_responses[0][4][0]["props"] == [
+        {"prop": "level", "key": "z.l", "type": "integer", "convert": {"scale": 0.1}},
+        {"prop": "online", "key": "z.on", "type": "boolean"},
+    ]
