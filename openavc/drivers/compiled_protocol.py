@@ -1156,6 +1156,35 @@ def split_send_frames(
 # ── Receive-side compile ──
 
 
+#: A regex rule: pattern, flat mappings, child mappings (``child_set`` entries,
+#: then a ``child_list``), throttle, ``only_when``, ``then_query``.
+RegexRule = tuple[
+    re.Pattern[str],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+    list[Any] | None,
+]
+#: An OSC rule: address, flat mappings, child mappings, throttle, ``only_when``.
+OscRule = tuple[
+    str,
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    dict[str, Any] | None,
+]
+#: A JSON-body rule: flat mappings, throttle, ``require`` keys, ``only_when``,
+#: child mappings.
+JsonRule = tuple[
+    list[dict[str, Any]],
+    dict[str, Any] | None,
+    tuple[str, ...],
+    dict[str, Any] | None,
+    list[dict[str, Any]],
+]
+
+
 @dataclass
 class CompiledProtocol:
     """The pre-compiled receive side of one driver instance.
@@ -1199,44 +1228,10 @@ class CompiledProtocol:
     instance's edits leak into every other instance of the same driver type.
     """
 
-    responses: list[
-        tuple[
-            re.Pattern[str],
-            list[dict[str, Any]],
-            list[dict[str, Any]],
-            dict[str, Any] | None,
-            dict[str, Any] | None,
-            list[Any] | None,
-        ]
-    ] = field(default_factory=list)
-    after_json_responses: list[
-        tuple[
-            re.Pattern[str],
-            list[dict[str, Any]],
-            list[dict[str, Any]],
-            dict[str, Any] | None,
-            dict[str, Any] | None,
-            list[Any] | None,
-        ]
-    ] = field(default_factory=list)
-    osc_responses: list[
-        tuple[
-            str,
-            list[dict[str, Any]],
-            list[dict[str, Any]],
-            dict[str, Any] | None,
-            dict[str, Any] | None,
-        ]
-    ] = field(default_factory=list)
-    json_responses: list[
-        tuple[
-            list[dict[str, Any]],
-            dict[str, Any] | None,
-            tuple[str, ...],
-            dict[str, Any] | None,
-            list[dict[str, Any]],
-        ]
-    ] = field(default_factory=list)
+    responses: list[RegexRule] = field(default_factory=list)
+    after_json_responses: list[RegexRule] = field(default_factory=list)
+    osc_responses: list[OscRule] = field(default_factory=list)
+    json_responses: list[JsonRule] = field(default_factory=list)
 
 
 def rule_condition(resp: dict[str, Any]) -> dict[str, Any] | None:
@@ -1533,42 +1528,216 @@ def build_throttle(resp: dict[str, Any]) -> dict[str, Any] | None:
     return {"window": window, "last": {}}
 
 
+def _json_set_mapping(
+    state_key: str, spec: Any, state_variables: dict[str, Any]
+) -> dict[str, Any]:
+    """One json ``set:`` item as a mapping: the JSON key to read (shorthand)
+    or a ``{key | path, type, map, contains}`` spec, typed by the state
+    variable unless it says otherwise."""
+    var_def = state_variables.get(state_key, {})
+    default_type = (
+        var_def.get("type", "string") if isinstance(var_def, dict) else "string"
+    )
+    if not isinstance(spec, dict):
+        return {"state": state_key, "key": str(spec), "type": default_type}
+    mapping: dict[str, Any] = {
+        "state": state_key,
+        "key": spec.get("key", spec.get("path", state_key)),
+        "type": spec.get("type", default_type),
+        "map": spec.get("map"),
+    }
+    if "contains" in spec:
+        # "does the array/object/string at key hold this?" -- answered by the
+        # runtime, stored under the state's type (boolean, normally).
+        mapping["contains"] = spec["contains"]
+    return mapping
+
+
 def build_json_mappings(
     resp: dict[str, Any], state_variables: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """Build {state, key, type, map} mappings for a ``json: true`` response.
 
-    Accepts the detailed ``mappings`` list or the friendly ``set`` map. In a
-    json rule a ``set`` value is the JSON key to read (string shorthand) or a
-    ``{key/path, type, map, contains}`` spec — not a regex capture ref. Types
-    default to the matching state variable's declared type.
+    Accepts the detailed ``mappings`` list or the friendly ``set`` map, the
+    ``set`` read only when there are no ``mappings`` (unlike a regex rule,
+    ``build_regex_mappings``, which keeps both). In a json rule a ``set`` value
+    is the JSON key to read (string shorthand) or a ``{key/path, type, map,
+    contains}`` spec — not a regex capture ref. Types default to the matching
+    state variable's declared type.
     """
     mappings: list[dict[str, Any]] = list(resp.get("mappings", []))
     set_map = resp.get("set")
     if not mappings and isinstance(set_map, dict):
-        for state_key, spec in set_map.items():
-            var_def = state_variables.get(state_key, {})
-            default_type = (
-                var_def.get("type", "string") if isinstance(var_def, dict) else "string"
-            )
-            if isinstance(spec, dict):
-                mapping: dict[str, Any] = {
-                    "state": state_key,
-                    "key": spec.get("key", spec.get("path", state_key)),
-                    "type": spec.get("type", default_type),
-                    "map": spec.get("map"),
-                }
-                if "contains" in spec:
-                    # "does the array/object/string at key hold this?" --
-                    # answered by the runtime, stored under the state's type
-                    # (boolean, normally).
-                    mapping["contains"] = spec["contains"]
-                mappings.append(mapping)
-            else:
-                mappings.append({
-                    "state": state_key, "key": str(spec), "type": default_type,
-                })
+        mappings += [
+            _json_set_mapping(state_key, spec, state_variables)
+            for state_key, spec in set_map.items()
+        ]
     return mappings
+
+
+def _typed_mapping(mp: Any, state_vars: dict[str, Any]) -> Any:
+    """A ``mappings:`` entry with no ``type:``, given its state variable's
+    declared type; anything else as written.
+
+    Without it an explicit entry took the string default even when the
+    variable declares integer/boolean, so a trigger comparing it to a number
+    never fired (``set:`` has always inferred the declared type). Copied rather
+    than filled in place: the entry belongs to the loaded driver definition,
+    shared with every other device on the driver."""
+    if not isinstance(mp, dict) or "type" in mp:
+        return mp
+    if not mp.get("state"):
+        return mp
+    var_def = state_vars.get(mp["state"], {})
+    if isinstance(var_def, dict) and var_def.get("type"):
+        return {**mp, "type": var_def["type"]}
+    return mp
+
+
+def _set_mapping(
+    state_key: str, value_expr: Any, state_vars: dict[str, Any], device_id: str
+) -> dict[str, Any] | None:
+    """One ``set:`` shorthand item as a mapping: ``$N`` reads capture N, any
+    other value is a literal; either way typed by the state variable, so a
+    boolean fed ``set: {mute: "true"}`` stores True, not the string."""
+    var_def = state_vars.get(state_key, {})
+    var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
+    if not (isinstance(value_expr, str) and value_expr.startswith("$")):
+        return {"group": 0, "state": state_key, "value": value_expr, "type": var_type}
+    try:
+        group = int(value_expr[1:])
+    except ValueError:
+        # A non-numeric $-reference is an author typo. Capturing group 0 (the
+        # whole match) would write a wrong value with no warning, so it is
+        # skipped, and said. "$0" is the whole match when that is meant.
+        log.warning(
+            "[%s] set-shorthand reference %r for state "
+            "'%s' is not a numeric group ($1, $2, ...); "
+            "skipping this mapping",
+            device_id, value_expr, state_key,
+        )
+        return None
+    return {"group": group, "state": state_key, "type": var_type}
+
+
+def build_regex_mappings(
+    resp: dict[str, Any], state_vars: dict[str, Any], device_id: str = ""
+) -> list[dict[str, Any]]:
+    """Build the flat state mappings of a regex (text) response rule.
+
+    A rule may carry both ``mappings:`` (the detailed form, the only one that
+    takes a value map) and the ``set:`` shorthand, and routinely needs to: the
+    moment one captured field needs a map, the author writes ``mappings:`` for
+    it and ``set:`` for the plain ones. Both are kept, ``mappings:`` first, so
+    an explicit entry still wins for a state named in both. The json twin is
+    ``build_json_mappings``.
+    """
+    mappings = [_typed_mapping(mp, state_vars) for mp in resp.get("mappings", [])]
+    set_map = resp.get("set")
+    if isinstance(set_map, dict):
+        for state_key, value_expr in set_map.items():
+            mapping = _set_mapping(state_key, value_expr, state_vars, device_id)
+            if mapping is not None:
+                mappings.append(mapping)
+    return mappings
+
+
+def _required_keys(resp: dict[str, Any]) -> tuple[str, ...]:
+    """A json rule's optional ``require:`` scope, the key or keys a body must
+    carry for the rule to read it. Endpoints of one REST device often reuse a
+    field name (``status``, ``id``) with different meanings, and an unscoped
+    rule would misapply across them."""
+    raw_require = resp.get("require")
+    if isinstance(raw_require, str):
+        return (raw_require,)
+    if isinstance(raw_require, list):
+        return tuple(str(k) for k in raw_require if k)
+    return ()
+
+
+@dataclass
+class _Instance:
+    """One compile's inputs: the driver definition, the instance's config its
+    rules are filled from, the definition's child types, and the device a
+    warning names."""
+
+    definition: dict[str, Any]
+    config: dict[str, Any]
+    child_types: dict[str, Any]
+    device_id: str
+
+
+def _osc_rule(resp: dict[str, Any], instance: _Instance) -> OscRule:
+    """An OSC address rule (``address:`` in place of ``match:``)."""
+    return (
+        safe_substitute(resp["address"], instance.config),
+        list(resp.get("mappings", [])),
+        compile_osc_child_set(resp, instance.child_types, instance.device_id),
+        build_throttle(resp),
+        rule_condition(resp),
+    )
+
+
+def _json_rule(resp: dict[str, Any], instance: _Instance) -> JsonRule:
+    """A JSON-body rule: the body is parsed once and many keys mapped from it.
+    Additive: it does not change the regex first-match path."""
+    return (
+        build_json_mappings(resp, instance.definition.get("state_variables", {})),
+        build_throttle(resp),
+        _required_keys(resp),
+        rule_condition(resp),
+        compile_json_child_set(resp, instance.child_types, instance.device_id),
+    )
+
+
+def _regex_rule(resp: dict[str, Any], instance: _Instance) -> RegexRule | None:
+    """A regex rule for TCP/serial/UDP/HTTP data, its pattern filled from the
+    instance's config; None when it has no ``match:``. Raises ``re.error`` for
+    a pattern that does not compile."""
+    raw_pattern = resp.get("match", "")
+    if not raw_pattern:
+        return None
+    pattern = re.compile(safe_substitute(raw_pattern, instance.config))
+    device_id, child_types = instance.device_id, instance.child_types
+    mappings = build_regex_mappings(
+        resp, instance.definition.get("state_variables", {}), device_id
+    )
+    child_mappings = compile_child_set(resp, child_types, device_id)
+    child_list = compile_child_list(resp, child_types, device_id)
+    if child_list is not None:
+        child_mappings.append(child_list)
+    return (
+        pattern,
+        mappings,
+        child_mappings,
+        build_throttle(resp),
+        rule_condition(resp),
+        rule_follow_ups(resp),
+    )
+
+
+def _add_regex_rule(
+    compiled: CompiledProtocol, resp: dict[str, Any], instance: _Instance
+) -> None:
+    """Add a regex rule to ``responses``, and to ``after_json_responses`` as
+    the same tuple when it declares ``after_json: true``: the flag does not
+    change how the rule matches, only whether it is still eligible once a json
+    rule has read the body, and sharing the entry keeps one throttle window per
+    rule however the frame reached it. A pattern that does not compile is
+    skipped, with a warning."""
+    try:
+        entry = _regex_rule(resp, instance)
+    except re.error as e:
+        log.warning(
+            f"[{instance.device_id}] Invalid response pattern "
+            f"'{resp.get('match', '')}': {e}"
+        )
+        return
+    if entry is None:
+        return
+    compiled.responses.append(entry)
+    if resp.get("after_json"):
+        compiled.after_json_responses.append(entry)
 
 
 def compile_driver(
@@ -1582,174 +1751,68 @@ def compile_driver(
     in the (class-shared) definition, and aliasing them would let one
     instance's edits leak into every instance of the driver type."""
     compiled = CompiledProtocol()
-    child_types = definition.get("child_entity_types") or {}
+    instance = _Instance(
+        definition=definition,
+        config=config,
+        child_types=definition.get("child_entity_types") or {},
+        device_id=device_id,
+    )
     for resp in definition.get("responses", []):
-        # OSC responses use "address" key instead of "match"
         if "address" in resp:
-            addr = safe_substitute(resp["address"], config)
-            mappings = list(resp.get("mappings", []))
-            compiled.osc_responses.append(
-                (
-                    addr,
-                    mappings,
-                    compile_osc_child_set(resp, child_types, device_id),
-                    build_throttle(resp),
-                    rule_condition(resp),
-                )
-            )
-            continue
-
-        # JSON-body response: parse the whole body once and map many keys
-        # at a time. Additive — does not change the regex first-match path.
-        # Optional `require:` scopes the rule to bodies carrying the named
-        # key(s) — different endpoints on one REST device often reuse a
-        # field name (`status`, `id`, `serialNumber`) with different
-        # meanings, and an unscoped rule would misapply across them.
-        if resp.get("json"):
-            raw_require = resp.get("require")
-            if isinstance(raw_require, str):
-                require = (raw_require,)
-            elif isinstance(raw_require, list):
-                require = tuple(str(k) for k in raw_require if k)
-            else:
-                require = ()
-            compiled.json_responses.append(
-                (
-                    build_json_mappings(resp, definition.get("state_variables", {})),
-                    build_throttle(resp),
-                    require,
-                    rule_condition(resp),
-                    compile_json_child_set(resp, child_types, device_id),
-                )
-            )
-            continue
-
-        try:
-            raw_pattern = resp.get("match", "")
-            if not raw_pattern:
-                continue
-            resolved = safe_substitute(raw_pattern, config)
-            pattern = re.compile(resolved)
-
-            # Accept both "mappings" (detailed) and "set" (shorthand) formats.
-            # A rule may carry BOTH, and routinely needs to: mappings: is the
-            # only form that takes a value map, so the moment one captured
-            # field needs a map the author writes mappings: for it and set: for
-            # the plain ones. This used to read set: only when mappings: was
-            # absent, which silently dropped the whole set: half — no warning,
-            # no log line, the state variables just kept their startup values.
-            # They are merged instead; mappings: entries are applied first so
-            # an explicit entry still wins for a state named in both.
-            state_vars = definition.get("state_variables", {})
-            # An explicit mappings: entry with no type: took the string default
-            # even when the state variable declares integer/boolean, so a
-            # trigger comparing it to a number never fired. set: has always
-            # inferred the declared type; do the same here. Copied rather than
-            # filled in place — `definition` is the loaded driver dict and is
-            # shared with every other device on this driver.
-            mappings = []
-            for mp in resp.get("mappings", []):
-                if isinstance(mp, dict) and "type" not in mp and mp.get("state"):
-                    var_def = state_vars.get(mp["state"], {})
-                    if isinstance(var_def, dict) and var_def.get("type"):
-                        mp = {**mp, "type": var_def["type"]}
-                mappings.append(mp)
-            if isinstance(resp.get("set"), dict):
-                # Convert shorthand: {"set": {"input": "$1", "mute": "true"}}
-                # to mappings: [{"group": 1, "state": "input"}, ...]
-                for state_key, value_expr in resp["set"].items():
-                    var_def = state_vars.get(state_key, {})
-                    var_type = var_def.get("type", "string") if isinstance(var_def, dict) else "string"
-                    if isinstance(value_expr, str) and value_expr.startswith("$"):
-                        try:
-                            group = int(value_expr[1:])
-                        except ValueError:
-                            # A non-numeric $-reference is an author typo.
-                            # Silently capturing group 0 (the whole match)
-                            # would write a wrong value with no warning, so
-                            # surface it and skip this mapping. Use "$0"
-                            # explicitly if the whole match is intended.
-                            log.warning(
-                                "[%s] set-shorthand reference %r for state "
-                                "'%s' is not a numeric group ($1, $2, ...); "
-                                "skipping this mapping",
-                                device_id, value_expr, state_key,
-                            )
-                            continue
-                        mappings.append({"group": group, "state": state_key, "type": var_type})
-                    else:
-                        # Static values coerce by the state var's declared
-                        # type too — without it a boolean var fed
-                        # `set: {mute: "true"}` stored the string "True".
-                        mappings.append({
-                            "group": 0,
-                            "state": state_key,
-                            "value": value_expr,
-                            "type": var_type,
-                        })
-
-            child_mappings = compile_child_set(resp, child_types, device_id)
-            child_list = compile_child_list(resp, child_types, device_id)
-            if child_list is not None:
-                child_mappings.append(child_list)
-            entry = (
-                pattern,
-                mappings,
-                child_mappings,
-                build_throttle(resp),
-                rule_condition(resp),
-                rule_follow_ups(resp),
-            )
-            compiled.responses.append(entry)
-            # Same tuple, second table: `after_json` does not change how the
-            # rule matches, only whether it is still eligible once a json rule
-            # has read the body. Sharing the entry keeps one throttle window
-            # per rule however the frame reached it.
-            if resp.get("after_json"):
-                compiled.after_json_responses.append(entry)
-        except re.error as e:
-            log.warning(
-                f"[{device_id}] Invalid response pattern "
-                f"'{resp.get('match', '')}': {e}"
-            )
+            compiled.osc_responses.append(_osc_rule(resp, instance))
+        elif resp.get("json"):
+            compiled.json_responses.append(_json_rule(resp, instance))
+        else:
+            _add_regex_rule(compiled, resp, instance)
     _attach_conversions(compiled, definition)
     return compiled
+
+
+def _convert_list(
+    entries: list[Any], key: str, declared: Any, seen: set[int]
+) -> None:
+    """Give each mapping in ``entries`` that writes a converted variable its
+    ``convert``, once per list. ``key`` names the variable (``state`` for a
+    flat mapping, ``prop`` for a child's); static ``value:`` entries and
+    ``contains`` checks are already final and get none."""
+    if id(entries) in seen or not isinstance(declared, dict):
+        return
+    seen.add(id(entries))
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict) or _is_final(entry):
+            continue
+        conversion = conversion_of(declared.get(entry.get(key)))
+        if conversion:
+            entries[index] = {**entry, "convert": conversion}
+
+
+def _is_final(entry: dict[str, Any]) -> bool:
+    """A static ``value:`` or a ``contains`` check: nothing left to convert."""
+    return "value" in entry or "contains" in entry
+
+
+def _rule_mappings(compiled: CompiledProtocol) -> Iterator[tuple[Any, Any]]:
+    """Every rule's (flat mappings, child mappings), regex then OSC then JSON."""
+    for _pattern, mappings, child_mappings, *_rest in compiled.responses:
+        yield mappings, child_mappings
+    for _address, mappings, child_mappings, *_rest in compiled.osc_responses:
+        yield mappings, child_mappings
+    for mappings, _throttle, _require, _condition, child_mappings in compiled.json_responses:
+        yield mappings, child_mappings
 
 
 def _attach_conversions(compiled: CompiledProtocol, definition: dict[str, Any]) -> None:
     """Copy each state variable's scale / offset / unknown onto the compiled
     mappings that write it, as ``convert``, so a response handler converts
-    without looking the variable up per message. Static ``value:`` entries
-    and ``contains`` checks are already final and get none. Entries are
-    replaced, never edited: the mapping dicts can be the driver definition's
-    own, shared by every device on the driver."""
+    without looking the variable up per message. Entries are replaced, never
+    edited: the mapping dicts can be the driver definition's own, shared by
+    every device on the driver."""
     state_vars = definition.get("state_variables") or {}
     child_types = definition.get("child_entity_types") or {}
     seen: set[int] = set()
-
-    def convert_list(entries: list[Any], key: str, declared: Any) -> None:
-        if id(entries) in seen or not isinstance(declared, dict):
-            return
-        seen.add(id(entries))
-        for index, entry in enumerate(entries):
-            if not isinstance(entry, dict) or "value" in entry or "contains" in entry:
-                continue
-            conversion = conversion_of(declared.get(entry.get(key)))
-            if conversion:
-                entries[index] = {**entry, "convert": conversion}
-
-    def convert_children(child_mappings: Any) -> None:
+    for mappings, child_mappings in _rule_mappings(compiled):
+        _convert_list(mappings, "state", state_vars, seen)
         for cm in child_mappings or ():
             type_def = child_types.get(cm.get("type")) if isinstance(cm, dict) else None
             if isinstance(type_def, dict) and isinstance(cm.get("props"), list):
-                convert_list(cm["props"], "prop", type_def.get("state_variables"))
-
-    for _pattern, mappings, child_mappings, *_rest in compiled.responses:
-        convert_list(mappings, "state", state_vars)
-        convert_children(child_mappings)
-    for _address, mappings, child_mappings, *_rest in compiled.osc_responses:
-        convert_list(mappings, "state", state_vars)
-        convert_children(child_mappings)
-    for mappings, _throttle, _require, _condition, child_mappings in compiled.json_responses:
-        convert_list(mappings, "state", state_vars)
-        convert_children(child_mappings)
+                _convert_list(cm["props"], "prop", type_def.get("state_variables"), seen)
