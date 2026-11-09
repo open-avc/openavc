@@ -185,6 +185,15 @@ describe("the editors a driver opts in to", () => {
     expect(tables.at(-1)!.props).toMatchObject({ fieldKey: "scenes", fieldSchema: scenes });
   });
 
+  it("tells each of them whether the device is connected", async () => {
+    setInfo({ driver_info: { inline_protocol: true, ir_codes: true, config_schema: { scenes: { type: "table" } } } });
+    setLive({ "device.amp.connected": true });
+    await showPage();
+    for (const kind of ["inline", "ir", "table"]) {
+      expect(mocks.editors.filter((e) => e.kind === kind).at(-1)!.props.connected).toBe(true);
+    }
+  });
+
   it("draws them in a fixed order, below Device Settings and above Send Command", async () => {
     mocks.getDeviceSettings.mockResolvedValue({
       settings: { volume: { label: "Volume", type: "integer", current_value: 1 } },
