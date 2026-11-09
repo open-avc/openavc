@@ -118,15 +118,19 @@ def _spec_retries(value: Any) -> Iterator[Any]:
     whole (26.0), which is exactly what a scaled slider value is, so a
     whole-number float is tried as an int and {vol:d} renders "26". A numeric
     spec applied to a numeric string is tried with it as an int, then as a
-    float, so '02d' works on "5"."""
+    float, so '02d' works on "5". A conversion that fails is skipped."""
     if isinstance(value, float) and value.is_integer():
-        yield int(value)
+        conversions: tuple[Any, ...] = (int,)
     elif isinstance(value, str):
-        for conv in (int, float):
-            try:
-                yield conv(value)
-            except (ValueError, TypeError):
-                continue
+        conversions = (int, float)
+    else:
+        return
+    for conv in conversions:
+        try:
+            number = conv(value)
+        except (ValueError, TypeError):
+            continue
+        yield number
 
 
 def _placeholder_names(template: str) -> list[str]:

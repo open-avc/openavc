@@ -69,7 +69,8 @@ def test_compiled_protocol_stays_pure():
 def test_reply_templates_stays_a_leaf():
     # The simulator's reply-text walker imports nothing beyond the standard
     # library, so anything that needs reply text can take it without the
-    # simulator's own stack.
+    # simulator's own stack. -I -S leaves only the standard library importable,
+    # so a third-party import fails the import itself.
     code = (
         "import sys\n"
         "sys.path.insert(0, r'" + str(REPO_ROOT) + "')\n"
@@ -77,7 +78,7 @@ def test_reply_templates_stays_a_leaf():
         "print('\\n'.join(sorted(m for m in sys.modules if m.startswith('openavc'))))\n"
     )
     result = subprocess.run(
-        [sys.executable, "-c", code],
+        [sys.executable, "-I", "-S", "-c", code],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
