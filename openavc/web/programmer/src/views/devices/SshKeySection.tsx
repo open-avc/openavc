@@ -8,6 +8,8 @@ import { useEffect, useState } from "react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { getSshPublicKey, type SshPublicKey } from "../../api/deviceClient";
 import { parseApiError } from "../../api/errors";
+import type { DeviceInfo, DriverInfo } from "../../api/types";
+import { sectionStyle, sectionTitleStyle } from "./deviceSectionStyles";
 
 export const SSH_KEY_TITLE = "OpenAVC SSH key";
 export const SSH_KEY_HELP =
@@ -37,6 +39,32 @@ export function canUseSshKey(
   const defaults = (driver?.default_config ?? {}) as Record<string, unknown>;
   const method = config?.ssh_auth_method ?? defaults.ssh_auth_method;
   return String(method || "key").toLowerCase() !== "password";
+}
+
+/**
+ * The key card on a device's page, drawn only where it belongs: the running
+ * system says the device connects over SSH, and the driver can sign in with a
+ * key (`canUseSshKey`). The running driver's declaration decides; while
+ * nothing runs the device (it is disabled, so `driver_info` comes back empty),
+ * the installed definition of its driver does. The device's sign-in method is
+ * its config with its connections row laid over it, the order the server
+ * resolves them in.
+ */
+export function DeviceSshKey({
+  info,
+  installedDriver,
+  config,
+  connection,
+}: {
+  info: DeviceInfo | null | undefined;
+  installedDriver?: DriverInfo;
+  config?: Record<string, unknown>;
+  connection?: Record<string, unknown>;
+}) {
+  if (info?.connection?.transport !== "ssh") return null;
+  const driver = Object.keys(info.driver_info ?? {}).length > 0 ? info.driver_info : installedDriver;
+  if (!canUseSshKey(driver, { ...config, ...connection })) return null;
+  return <SshKeySection sectionStyle={sectionStyle} sectionTitleStyle={sectionTitleStyle} />;
 }
 
 interface SshKeySectionProps {

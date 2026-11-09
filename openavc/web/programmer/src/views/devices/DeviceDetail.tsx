@@ -13,7 +13,7 @@ import { IrCodesEditor } from "./IrCodesEditor";
 import { ConfigTableEditor } from "./ConfigTableEditor";
 import { BridgePortsSection } from "./BridgePortsSection";
 import { advertisedBridgePorts } from "./bridgePorts";
-import { SshKeySection, canUseSshKey } from "./SshKeySection";
+import { DeviceSshKey } from "./SshKeySection";
 import { useDeviceInfo } from "./useDeviceInfo";
 import { useDeviceChecks } from "./useDeviceChecks";
 import { DeviceHeader } from "./DeviceHeader";
@@ -31,7 +31,6 @@ import { ChildTroubleBanner } from "./ChildTroubleBanner";
 import { DeviceSettingsSection } from "./DeviceSettingsSection";
 import { DeviceLog } from "./DeviceLog";
 import { SendCommandSection } from "./SendCommandSection";
-import { sectionStyle, sectionTitleStyle } from "./deviceSectionStyles";
 
 export function DeviceDetail({
   deviceId,
@@ -167,15 +166,12 @@ export function DeviceDetail({
       <AuditRefusalLine refusal={checks.auditRefusal} onDismiss={checks.dismissAuditRefusal} />
       <ConnectionTestLine result={checks.testResult} devices={project?.devices} />
 
-      {/* OpenAVC's own SSH key, for a device that connects over SSH and can
-          sign in with a key: key sign-in uses it whenever the device's key
-          path is blank. */}
-      {deviceInfo?.connection?.transport === "ssh" && canUseSshKey(
-        Object.keys(deviceInfo.driver_info ?? {}).length > 0 ? deviceInfo.driver_info : installedDriver,
-        { ...deviceConfig?.config, ...project?.connections?.[deviceId] },
-      ) && (
-        <SshKeySection sectionStyle={sectionStyle} sectionTitleStyle={sectionTitleStyle} />
-      )}
+      <DeviceSshKey
+        info={deviceInfo}
+        installedDriver={installedDriver}
+        config={deviceConfig?.config}
+        connection={project?.connections?.[deviceId]}
+      />
 
       <BridgePortsSection
         deviceId={deviceId}
