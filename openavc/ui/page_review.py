@@ -2293,7 +2293,7 @@ def _keyless_slot_findings(shown: _Shown) -> list[Finding]:
 #
 # The other half of the same silence. `binding_findings` above answers whether
 # this element type's renderer READS a show slot; this answers whether the
-# runtime DISPATCHES a do action, which is a closed set of six living in
+# runtime DISPATCHES a do action, which is a closed set living in
 # core/ui_events.py (DISPATCHED_ACTIONS) rather than a per-type question.
 #
 # The second set is what makes the message worth reading. Five names --
@@ -2436,8 +2436,8 @@ def _why_nothing_runs(path: str, action: str) -> str:
 def do_action_findings(element: Mapping[str, Any]) -> list[Finding]:
     """Actions the runtime has no branch for, so the interaction does nothing.
 
-    The chain in ``ui_events.execute_action`` ends with the six names it knows;
-    anything else reaches no branch. Nothing rejected it on the way in and --
+    The chain in ``ui_events.execute_action`` ends with the names it knows
+    (``DISPATCHED_ACTIONS``); anything else reaches no branch. Nothing rejected it on the way in and --
     until this shipped alongside the runtime's own warning -- nothing logged it
     either, so a control authored with a retired spelling drew perfectly, took
     the press, and did nothing at all.
