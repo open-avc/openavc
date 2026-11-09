@@ -4,10 +4,10 @@
  *  is always drawn, so it holds what the reader picked, pasted and opened in
  *  the parts below it that come and go with HTTPS and the certificate source. */
 import { AlertTriangle } from "lucide-react";
-import { EnvLock, HeldNote, type EnvHold } from "../../components/system/EnvHeldNote";
-import { cardStyle, fieldRow, helpText, inputStyle, labelStyle, toggleRow, warningBox } from "../../components/system/settingsStyles";
+import { EnvLock, HeldNote, heldSetting, type EnvHold } from "../../components/system/EnvHeldNote";
+import { cardStyle, fieldRow, helpText, inputStyle, labelStyle, warningBox } from "../../components/system/settingsStyles";
 import type { SystemConfig, TlsStatus } from "../../api/restClient";
-import { Toggle } from "./settingsControls";
+import { FieldRow, NumberBox, SwitchRow } from "./settingsControls";
 import { CertificateMadeHere, useCertificateMadeHere, type CertificateMadeHereView } from "./CertificateMadeHere";
 import { CertificateStatus } from "./CertificateStatus";
 import { YourOwnCertificate, useCertificateUpload, type CertificateUpload, type UpdateTls } from "./YourOwnCertificate";
@@ -53,21 +53,13 @@ export function SecurityCard({ tls, savedTlsEnabled, httpPort, tlsStatus, update
 function HttpsSwitch({ tls, httpPort, updateTls, hold }: { tls: Tls; httpPort: number; updateTls: UpdateTls; hold: EnvHold }) {
   return (
     <>
-      <div style={toggleRow}>
-        <div>
-          <div style={{ fontSize: "var(--font-size-sm)" }}>Enable HTTPS</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            Encrypt traffic between this server and panels / browsers. Off by default.
-          </div>
-          <HeldNote hold={hold} variable={hold.by("tls", "enabled")} />
-        </div>
-        <EnvLock held={hold.by("tls", "enabled")} style={{ flexShrink: 0 }}>
-          <Toggle
-            checked={!!tls?.enabled}
-            onChange={(v) => updateTls("enabled", v)}
-          />
-        </EnvLock>
-      </div>
+      <SwitchRow
+        title="Enable HTTPS"
+        help="Encrypt traffic between this server and panels / browsers. Off by default."
+        held={heldSetting(hold, "tls", "enabled")}
+        checked={!!tls?.enabled}
+        onChange={(v) => updateTls("enabled", v)}
+      />
 
       {/* Always shown: where the reader will reach the Programmer. */}
       <div style={{ ...helpText, gridColumn: "1 / -1", marginTop: 0, marginBottom: "var(--space-md)" }}>
@@ -211,29 +203,29 @@ function HttpsPortField({ port, error, hold, updateTls }: {
   updateTls: UpdateTls;
 }) {
   return (
-    <div style={fieldRow}>
-      <label style={labelStyle} htmlFor="cfg-tls-port">HTTPS port</label>
-      <EnvLock held={hold.by("tls", "port")}>
-        <input
-          id="cfg-tls-port"
-          type="number"
-          min={1}
-          max={65535}
-          style={{
-            ...inputStyle,
-            borderColor: error ? "rgb(244, 67, 54)" : (inputStyle.borderColor as string),
-          }}
-          value={port}
-          onChange={(e) => updateTls("port", parseInt(e.target.value) || 8443)}
-        />
-      </EnvLock>
-      <HeldNote hold={hold} variable={hold.by("tls", "port")} style={{ gridColumn: "2" }} />
-      {error && (
+    <FieldRow
+      label="HTTPS port"
+      htmlFor="cfg-tls-port"
+      held={heldSetting(hold, "tls", "port")}
+      after={error && (
         <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
           {error}
         </span>
       )}
-    </div>
+    >
+      <NumberBox
+        id="cfg-tls-port"
+        min={1}
+        max={65535}
+        style={{
+          ...inputStyle,
+          borderColor: error ? "rgb(244, 67, 54)" : (inputStyle.borderColor as string),
+        }}
+        value={port}
+        fallback={8443}
+        onChange={(n) => updateTls("port", n)}
+      />
+    </FieldRow>
   );
 }
 
@@ -244,21 +236,15 @@ function RedirectField({ checked, httpPort, hold, updateTls }: {
   updateTls: UpdateTls;
 }) {
   return (
-    <div style={toggleRow}>
-      <div>
-        <div style={{ fontSize: "var(--font-size-sm)" }}>Redirect HTTP to HTTPS</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          Old links to <code>http://&lt;server&gt;:{httpPort}</code> redirect automatically. Turn off only
-          if a reverse proxy in front of OpenAVC handles HTTP.
-        </div>
-        <HeldNote hold={hold} variable={hold.by("tls", "redirect_http")} />
-      </div>
-      <EnvLock held={hold.by("tls", "redirect_http")} style={{ flexShrink: 0 }}>
-        <Toggle
-          checked={checked}
-          onChange={(v) => updateTls("redirect_http", v)}
-        />
-      </EnvLock>
-    </div>
+    <SwitchRow
+      title="Redirect HTTP to HTTPS"
+      help={<>
+        Old links to <code>http://&lt;server&gt;:{httpPort}</code> redirect automatically. Turn off only
+        if a reverse proxy in front of OpenAVC handles HTTP.
+      </>}
+      held={heldSetting(hold, "tls", "redirect_http")}
+      checked={checked}
+      onChange={(v) => updateTls("redirect_http", v)}
+    />
   );
 }

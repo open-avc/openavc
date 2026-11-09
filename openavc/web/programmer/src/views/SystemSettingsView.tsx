@@ -3,24 +3,23 @@ import { Save, AlertTriangle, Power, Copy } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
-import { EnvLock, HeldNote, envHold } from "../components/system/EnvHeldNote";
+import { envHold, heldSetting } from "../components/system/EnvHeldNote";
 import {
   btnStyle,
   cardStyle,
   fieldRow,
   helpText,
   inputStyle,
-  labelStyle,
   radioInput,
   radioRow,
   sectionTitle,
   selectStyle,
   subCardDescription,
   subCardTitle,
-  toggleRow,
   warningBox,
 } from "../components/system/settingsStyles";
-import { PasswordField, REDACTED, Toggle } from "./settings/settingsControls";
+import { EnvLock, HeldNote } from "../components/system/EnvHeldNote";
+import { FieldRow, NumberBox, PasswordField, REDACTED, SwitchRow } from "./settings/settingsControls";
 import { saveChecks } from "./settings/saveChecks";
 import { DevicesCard, PanelDisplayCard } from "./settings/ProjectSettingsCards";
 import { SecurityCard } from "./settings/SecurityCard";
@@ -267,8 +266,7 @@ export function SystemSettingsView() {
         {/* Appearance */}
         <h3 style={sectionTitle}>Appearance</h3>
         <div style={cardStyle}>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Theme</label>
+          <FieldRow label="Theme">
             <select
               style={selectStyle}
               value={theme}
@@ -281,7 +279,7 @@ export function SystemSettingsView() {
               <option value="dark">Dark</option>
               <option value="light">Light</option>
             </select>
-          </div>
+          </FieldRow>
         </div>
 
         {/* Network */}
@@ -315,62 +313,43 @@ export function SystemSettingsView() {
               onRefresh={loadAdapters}
             />
           </div>
-          <div style={fieldRow}>
-            <label style={labelStyle} htmlFor="cfg-http-port">HTTP port</label>
-            <EnvLock held={heldBy("network", "http_port")}>
-              <input
-                id="cfg-http-port"
-                type="number"
-                style={inputStyle}
-                value={net.http_port}
-                onChange={(e) => update("network", "http_port", parseInt(e.target.value) || 8080)}
-              />
-            </EnvLock>
-            <HeldNote hold={hold} variable={heldBy("network", "http_port")} style={{ gridColumn: "2" }} />
-          </div>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Short URLs (port 80 redirect)</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                Lets people type addresses without a port: <code>http://&lt;server&gt;/panel</code> forwards
-                to the real port automatically. Needs port 80 free on this machine. On Linux the
-                OpenAVC service also needs permission to bind it (fresh installs have this; see
-                the deployment guide).
-              </div>
-              <HeldNote hold={hold} variable={heldBy("network", "port80_redirect")} />
-            </div>
-            <EnvLock held={heldBy("network", "port80_redirect")} style={{ flexShrink: 0 }}>
-              <Toggle
-                checked={!!net.port80_redirect}
-                onChange={(v) => update("network", "port80_redirect", v)}
-              />
-            </EnvLock>
-          </div>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Advertise on the network</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }} data-testid="advertise-help">
-                {listen.mode === "this_computer"
-                  ? "Nothing on the network can connect, so there is nothing to announce."
-                  : listen.mode === "adapter"
-                    ? `Lets the OpenAVC Panel app on the ${listenAdapterName || "chosen"} network find this system in its list. Turning this off hides the system from the list; devices can still connect by address.`
-                    : "Lets the OpenAVC Panel app find this system in its list. Turning this off hides the system from the list; devices can still connect by address."}
-              </div>
-              <HeldNote hold={hold} variable={heldBy("discovery", "advertise")} />
-            </div>
-            {/* With this computer only, it is shown off and left as saved, so
-                choosing a network again brings back what was set. */}
-            <EnvLock
-              held={listen.mode === "this_computer" ? "this_computer" : heldBy("discovery", "advertise")}
-              style={{ flexShrink: 0 }}
-            >
-              <Toggle
-                label="Advertise on the network"
-                checked={listen.mode === "this_computer" ? false : advertise}
-                onChange={(v) => update("discovery", "advertise", v)}
-              />
-            </EnvLock>
-          </div>
+          <FieldRow label="HTTP port" htmlFor="cfg-http-port" held={heldSetting(hold, "network", "http_port")}>
+            <NumberBox
+              id="cfg-http-port"
+              value={net.http_port}
+              fallback={8080}
+              onChange={(n) => update("network", "http_port", n)}
+            />
+          </FieldRow>
+          <SwitchRow
+            title="Short URLs (port 80 redirect)"
+            help={<>
+              Lets people type addresses without a port: <code>http://&lt;server&gt;/panel</code> forwards
+              to the real port automatically. Needs port 80 free on this machine. On Linux the
+              OpenAVC service also needs permission to bind it (fresh installs have this; see
+              the deployment guide).
+            </>}
+            held={heldSetting(hold, "network", "port80_redirect")}
+            checked={!!net.port80_redirect}
+            onChange={(v) => update("network", "port80_redirect", v)}
+          />
+          {/* With this computer only, it is shown off and left as saved, so
+              choosing a network again brings back what was set. */}
+          <SwitchRow
+            title="Advertise on the network"
+            help={listen.mode === "this_computer"
+              ? "Nothing on the network can connect, so there is nothing to announce."
+              : listen.mode === "adapter"
+                ? `Lets the OpenAVC Panel app on the ${listenAdapterName || "chosen"} network find this system in its list. Turning this off hides the system from the list; devices can still connect by address.`
+                : "Lets the OpenAVC Panel app find this system in its list. Turning this off hides the system from the list; devices can still connect by address."}
+            helpTestId="advertise-help"
+            label="Advertise on the network"
+            held={listen.mode === "this_computer"
+              ? { ...heldSetting(hold, "discovery", "advertise"), locked: "this_computer" }
+              : heldSetting(hold, "discovery", "advertise")}
+            checked={listen.mode === "this_computer" ? false : advertise}
+            onChange={(v) => update("discovery", "advertise", v)}
+          />
         </div>
 
         {/* Host network configuration (Pi appliance / Linux with NetworkManager).
@@ -416,44 +395,40 @@ export function SystemSettingsView() {
           <div style={subCardDescription}>
             For humans opening the Programmer IDE in a browser. When a password is set, the Programmer shows its own sign-in screen first. Who can open the panel is set below under Panel access.
           </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Username</label>
-            <EnvLock held={heldBy("auth", "programmer_username")}>
-              <input
-                style={inputStyle}
-                type="text"
-                autoComplete="off"
-                spellCheck={false}
-                value={auth.programmer_username}
-                placeholder="No username set"
-                onChange={(e) => update("auth", "programmer_username", e.target.value)}
-              />
-            </EnvLock>
-            <span style={helpText}>
-              Paired with the password on the Programmer sign-in screen. Defaults to admin; leave blank to accept any username.
-            </span>
-            <HeldNote hold={hold} variable={heldBy("auth", "programmer_username")} style={{ gridColumn: "2" }} />
-          </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Password</label>
-            <EnvLock held={heldBy("auth", "programmer_password")}>
-              <PasswordField
-                value={auth.programmer_password}
-                placeholder="No password set"
-                onChange={(v) => update("auth", "programmer_password", v)}
-              />
-            </EnvLock>
-            <span style={helpText}>
+          <FieldRow
+            label="Username"
+            held={heldSetting(hold, "auth", "programmer_username")}
+            help="Paired with the password on the Programmer sign-in screen. Defaults to admin; leave blank to accept any username."
+          >
+            <input
+              style={inputStyle}
+              type="text"
+              autoComplete="off"
+              spellCheck={false}
+              value={auth.programmer_username}
+              placeholder="No username set"
+              onChange={(e) => update("auth", "programmer_username", e.target.value)}
+            />
+          </FieldRow>
+          <FieldRow
+            label="Password"
+            held={heldSetting(hold, "auth", "programmer_password")}
+            help={<>
               Set this if anyone else on your network could open the Programmer IDE.
               {ssh?.supported && " On this controller it is also the SSH and console login for the openavc user."}
-            </span>
-            <HeldNote hold={hold} variable={heldBy("auth", "programmer_password")} style={{ gridColumn: "2" }} />
-            {passwordTooShort && (
+            </>}
+            after={passwordTooShort && (
               <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
                 {PASSWORD_TOO_SHORT}
               </span>
             )}
-          </div>
+          >
+            <PasswordField
+              value={auth.programmer_password}
+              placeholder="No password set"
+              onChange={(v) => update("auth", "programmer_password", v)}
+            />
+          </FieldRow>
         </div>
 
         {ssh?.supported && (
@@ -462,21 +437,18 @@ export function SystemSettingsView() {
             <div style={subCardDescription}>
               Remote command-line login to this controller. Off by default. When on, log in as user <code>openavc</code> with your admin password.
             </div>
-            <div style={toggleRow}>
-              <div>
-                <div style={{ fontSize: "var(--font-size-sm)" }}>Enable SSH</div>
-                <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                  {sshBusy
-                    ? "Applying..."
-                    : ssh.enabled === null
-                    ? "Current state unknown"
-                    : ssh.enabled
-                    ? "SSH is on"
-                    : "SSH is off"}
-                </div>
-              </div>
-              <Toggle checked={!!ssh.enabled} onChange={handleSshToggle} />
-            </div>
+            <SwitchRow
+              title="Enable SSH"
+              help={sshBusy
+                ? "Applying..."
+                : ssh.enabled === null
+                ? "Current state unknown"
+                : ssh.enabled
+                ? "SSH is on"
+                : "SSH is off"}
+              checked={!!ssh.enabled}
+              onChange={handleSshToggle}
+            />
           </div>
         )}
 
@@ -485,47 +457,47 @@ export function SystemSettingsView() {
           <div style={subCardDescription}>
             For external systems: control scripts, middleware, or other software that connects to the OpenAVC REST API or WebSocket. Not needed unless you are building a custom integration.
           </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>API key</label>
-            <EnvLock held={heldBy("auth", "api_key")} style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <PasswordField
-                  value={auth.api_key}
-                  placeholder="No API key set"
-                  onChange={(v) => update("auth", "api_key", v)}
-                />
-              </div>
-              {auth.api_key && auth.api_key !== REDACTED && (
-                <button
-                  type="button"
-                  title="Copy API key"
-                  onClick={() => { copyToClipboard(auth.api_key).then((ok) => { if (ok) showSuccess("Copied."); }); }}
-                  style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: 2, display: "inline-flex" }}
-                >
-                  <Copy size={14} />
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => update("auth", "api_key", generateApiKey())}
-                style={{ ...btnStyle, background: "none", color: "var(--text-secondary)", border: "1px solid var(--border)", flexShrink: 0 }}
-              >
-                Generate
-              </button>
-            </EnvLock>
-            <span style={helpText}>
+          <FieldRow
+            label="API key"
+            held={heldSetting(hold, "auth", "api_key")}
+            lockStyle={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}
+            help={<>
               Provide this to external systems via the <code>X-API-Key</code> header.
               Copy it before you save. It is not shown again afterwards.
-            </span>
-            <HeldNote hold={hold} variable={heldBy("auth", "api_key")} style={{ gridColumn: "2" }} />
-            {apiKeyNeedsPassword && (
+            </>}
+            after={apiKeyNeedsPassword && (
               <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
                 An API key can't sign in to the Programmer. Set a Programmer
                 password as well, or clear the API key, so this system can still
                 be opened in a browser.
               </span>
             )}
-          </div>
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <PasswordField
+                value={auth.api_key}
+                placeholder="No API key set"
+                onChange={(v) => update("auth", "api_key", v)}
+              />
+            </div>
+            {auth.api_key && auth.api_key !== REDACTED && (
+              <button
+                type="button"
+                title="Copy API key"
+                onClick={() => { copyToClipboard(auth.api_key).then((ok) => { if (ok) showSuccess("Copied."); }); }}
+                style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", padding: 2, display: "inline-flex" }}
+              >
+                <Copy size={14} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => update("auth", "api_key", generateApiKey())}
+              style={{ ...btnStyle, background: "none", color: "var(--text-secondary)", border: "1px solid var(--border)", flexShrink: 0 }}
+            >
+              Generate
+            </button>
+          </FieldRow>
         </div>
 
         <div style={cardStyle}>
@@ -573,48 +545,31 @@ export function SystemSettingsView() {
         {/* Logging */}
         <h3 style={sectionTitle}>Logging</h3>
         <div style={cardStyle}>
-          <div style={fieldRow}>
-            <label style={labelStyle} htmlFor="cfg-log-level">Log level</label>
-            <EnvLock held={heldBy("logging", "level")}>
-              <select
-                id="cfg-log-level"
-                style={selectStyle}
-                value={log.level}
-                onChange={(e) => update("logging", "level", e.target.value)}
-              >
-                <option value="debug">Debug</option>
-                <option value="info">Info</option>
-                <option value="warning">Warning</option>
-                <option value="error">Error</option>
-              </select>
-            </EnvLock>
-            <HeldNote hold={hold} variable={heldBy("logging", "level")} style={{ gridColumn: "2" }} />
-          </div>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>File logging</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Write logs to disk in the data directory.</div>
-            </div>
-            <Toggle checked={log.file_enabled} onChange={(v) => update("logging", "file_enabled", v)} />
-          </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Max file size (MB)</label>
-            <input
-              type="number"
-              style={inputStyle}
-              value={log.max_size_mb}
-              onChange={(e) => update("logging", "max_size_mb", parseInt(e.target.value) || 50)}
-            />
-          </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Max log files</label>
-            <input
-              type="number"
-              style={inputStyle}
-              value={log.max_files}
-              onChange={(e) => update("logging", "max_files", parseInt(e.target.value) || 5)}
-            />
-          </div>
+          <FieldRow label="Log level" htmlFor="cfg-log-level" held={heldSetting(hold, "logging", "level")}>
+            <select
+              id="cfg-log-level"
+              style={selectStyle}
+              value={log.level}
+              onChange={(e) => update("logging", "level", e.target.value)}
+            >
+              <option value="debug">Debug</option>
+              <option value="info">Info</option>
+              <option value="warning">Warning</option>
+              <option value="error">Error</option>
+            </select>
+          </FieldRow>
+          <SwitchRow
+            title="File logging"
+            help="Write logs to disk in the data directory."
+            checked={log.file_enabled}
+            onChange={(v) => update("logging", "file_enabled", v)}
+          />
+          <FieldRow label="Max file size (MB)">
+            <NumberBox value={log.max_size_mb} fallback={50} onChange={(n) => update("logging", "max_size_mb", n)} />
+          </FieldRow>
+          <FieldRow label="Max log files">
+            <NumberBox value={log.max_files} fallback={5} onChange={(n) => update("logging", "max_files", n)} />
+          </FieldRow>
         </div>
 
         {/* Updates */}
@@ -623,48 +578,36 @@ export function SystemSettingsView() {
           {updateGuidance !== "" ? (
             <div style={{ fontSize: "var(--font-size-sm)", lineHeight: 1.6 }}>{updateGuidance ?? "Loading update settings..."}</div>
           ) : <>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Check for updates</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Periodically check GitHub for new releases.</div>
-              <HeldNote hold={hold} variable={heldBy("updates", "check_enabled")} />
-            </div>
-            <EnvLock held={heldBy("updates", "check_enabled")} style={{ flexShrink: 0 }}>
-              <Toggle checked={upd.check_enabled} onChange={(v) => update("updates", "check_enabled", v)} />
-            </EnvLock>
-          </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Channel</label>
-            <EnvLock held={heldBy("updates", "channel")}>
-              <select
-                style={selectStyle}
-                value={upd.channel}
-                onChange={(e) => update("updates", "channel", e.target.value)}
-              >
-                <option value="stable">Stable</option>
-                <option value="beta">Beta</option>
-              </select>
-            </EnvLock>
-            <span style={helpText}>Beta includes pre-release versions.</span>
-            <HeldNote hold={hold} variable={heldBy("updates", "channel")} style={{ gridColumn: "2" }} />
-          </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Check interval (hours)</label>
-            <input
-              type="number"
-              style={inputStyle}
+          <SwitchRow
+            title="Check for updates"
+            help="Periodically check GitHub for new releases."
+            held={heldSetting(hold, "updates", "check_enabled")}
+            checked={upd.check_enabled}
+            onChange={(v) => update("updates", "check_enabled", v)}
+          />
+          <FieldRow label="Channel" held={heldSetting(hold, "updates", "channel")} help="Beta includes pre-release versions.">
+            <select
+              style={selectStyle}
+              value={upd.channel}
+              onChange={(e) => update("updates", "channel", e.target.value)}
+            >
+              <option value="stable">Stable</option>
+              <option value="beta">Beta</option>
+            </select>
+          </FieldRow>
+          <FieldRow label="Check interval (hours)" help="How often to check for new versions.">
+            <NumberBox
               value={upd.auto_check_interval_hours}
-              onChange={(e) => update("updates", "auto_check_interval_hours", parseInt(e.target.value) || 24)}
+              fallback={24}
+              onChange={(n) => update("updates", "auto_check_interval_hours", n)}
             />
-            <span style={helpText}>How often to check for new versions.</span>
-          </div>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Notify only</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Say when an update is available, but never install one on its own. An update scheduled from the cloud is skipped too; you can still install one yourself.</div>
-            </div>
-            <Toggle checked={upd.notify_only} onChange={(v) => update("updates", "notify_only", v)} />
-          </div>
+          </FieldRow>
+          <SwitchRow
+            title="Notify only"
+            help="Say when an update is available, but never install one on its own. An update scheduled from the cloud is skipped too; you can still install one yourself."
+            checked={upd.notify_only}
+            onChange={(v) => update("updates", "notify_only", v)}
+          />
           </>}
         </div>
 
@@ -686,29 +629,25 @@ export function SystemSettingsView() {
         {kioskAvailable && <>
         <h3 style={sectionTitle}>Kiosk</h3>
         <div style={cardStyle}>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Kiosk mode</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Launch the Panel UI fullscreen on an attached display (e.g. Raspberry Pi with HDMI touchscreen).</div>
-            </div>
-            <Toggle checked={kiosk.enabled} onChange={(v) => update("kiosk", "enabled", v)} />
-          </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Target URL</label>
+          <SwitchRow
+            title="Kiosk mode"
+            help="Launch the Panel UI fullscreen on an attached display (e.g. Raspberry Pi with HDMI touchscreen)."
+            checked={kiosk.enabled}
+            onChange={(v) => update("kiosk", "enabled", v)}
+          />
+          <FieldRow label="Target URL" help="The URL loaded in the kiosk browser. Defaults to the local Panel UI.">
             <input
               style={inputStyle}
               value={kiosk.target_url}
               onChange={(e) => update("kiosk", "target_url", e.target.value)}
             />
-            <span style={helpText}>The URL loaded in the kiosk browser. Defaults to the local Panel UI.</span>
-          </div>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Show cursor</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Show the mouse cursor on the kiosk display. Disable for touch-only panels.</div>
-            </div>
-            <Toggle checked={kiosk.cursor_visible} onChange={(v) => update("kiosk", "cursor_visible", v)} />
-          </div>
+          </FieldRow>
+          <SwitchRow
+            title="Show cursor"
+            help="Show the mouse cursor on the kiosk display. Disable for touch-only panels."
+            checked={kiosk.cursor_visible}
+            onChange={(v) => update("kiosk", "cursor_visible", v)}
+          />
         </div>
         </>}
       </div>

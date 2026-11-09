@@ -119,6 +119,21 @@ export function envHold(config: Pick<SystemConfig, "_environment"> | null): EnvH
   };
 }
 
+/** One setting the environment can hold, as a Settings row takes it: how its
+ *  line is worded, the variable holding it now (undefined while nothing
+ *  does), and what locks its control, which is that variable unless the row
+ *  has a reason of its own. */
+export interface HeldSetting {
+  hold: EnvHold;
+  variable: string | undefined;
+  locked: string | undefined;
+}
+
+export function heldSetting(hold: EnvHold, section: string, key: string): HeldSetting {
+  const variable = hold.by(section, key);
+  return { hold, variable, locked: variable };
+}
+
 /** The line under a held field, worded for this system. */
 export function HeldNote({ hold, variable, style }: {
   hold: EnvHold;

@@ -2,9 +2,9 @@
  *  Display and Devices. They travel with the project, so a customer sets them
  *  once and one template carries them to every panel it is deployed to. The
  *  page's one Save button saves them, through the project store's dirty flag. */
-import { Toggle } from "./settingsControls";
+import { FieldRow, SwitchRow } from "./settingsControls";
 import { VariableKeyPicker } from "../../components/shared/VariableKeyPicker";
-import { cardStyle, fieldRow, helpText, inputStyle, labelStyle, toggleRow } from "../../components/system/settingsStyles";
+import { cardStyle, inputStyle } from "../../components/system/settingsStyles";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useProjectStore } from "../../store/projectStore";
 import type { ProjectConfig } from "../../api/types";
@@ -67,13 +67,12 @@ export function PanelDisplayCard() {
   return (
     <div style={cardStyle}>
       <BrightnessField />
-      <div style={toggleRow}>
-        <div>
-          <div style={{ fontSize: "var(--font-size-sm)" }}>Dim the panel when idle</div>
-          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Fades the panel down after a period with no touches. A panel left on the same page all day and night can leave a permanent ghost of it on the screen, and a dimmer picture ages the display more slowly.</div>
-        </div>
-        <Toggle checked={dimEnabled} onChange={(v) => updateProjectSetting("display", "idle_dim_enabled", v)} />
-      </div>
+      <SwitchRow
+        title="Dim the panel when idle"
+        help="Fades the panel down after a period with no touches. A panel left on the same page all day and night can leave a permanent ghost of it on the screen, and a dimmer picture ages the display more slowly."
+        checked={dimEnabled}
+        onChange={(v) => updateProjectSetting("display", "idle_dim_enabled", v)}
+      />
       {dimEnabled && <>
         <DimAfterField />
         <DimToField />
@@ -89,8 +88,12 @@ function BrightnessField() {
   const panelBrightness = useProjectStore((s) => s.project?.settings?.display?.brightness_percent ?? null);
 
   return (
-    <div style={fieldRow}>
-      <label style={labelStyle}>Brightness</label>
+    <FieldRow
+      label="Brightness"
+      help={panelBrightness === null
+        ? "Each panel is using whatever its own screen is set to. Move the slider to set them all from here."
+        : "The panel's normal brightness. The panel's own brightness control still works on top of this, until you change this value again."}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
         <input
           type="range"
@@ -104,12 +107,7 @@ function BrightnessField() {
           {panelBrightness === null ? "Panel's own" : `${panelBrightness}%`}
         </span>
       </div>
-      <span style={helpText}>
-        {panelBrightness === null
-          ? "Each panel is using whatever its own screen is set to. Move the slider to set them all from here."
-          : "The panel's normal brightness. The panel's own brightness control still works on top of this, until you change this value again."}
-      </span>
-    </div>
+    </FieldRow>
   );
 }
 
@@ -118,8 +116,7 @@ function DimAfterField() {
   const dimTimeout = useProjectStore((s) => s.project?.settings?.display?.idle_dim_timeout_seconds ?? 300);
 
   return (
-    <div style={fieldRow}>
-      <label style={labelStyle}>Dim after</label>
+    <FieldRow label="Dim after" help="Minutes with no touch before the panel dims.">
       <input
         type="number"
         min={DIM_MINUTES_MIN}
@@ -129,8 +126,7 @@ function DimAfterField() {
         onChange={(e) => updateProjectSetting("display", "idle_dim_timeout_seconds", (parseInt(e.target.value) || 0) * 60)}
         onBlur={(e) => updateProjectSetting("display", "idle_dim_timeout_seconds", clampMinutes(parseInt(e.target.value)) * 60)}
       />
-      <span style={helpText}>Minutes with no touch before the panel dims.</span>
-    </div>
+    </FieldRow>
   );
 }
 
@@ -139,8 +135,12 @@ function DimToField() {
   const dimLevel = useProjectStore((s) => s.project?.settings?.display?.idle_dim_level_percent ?? 20);
 
   return (
-    <div style={fieldRow}>
-      <label style={labelStyle}>Dim to</label>
+    <FieldRow
+      label="Dim to"
+      help={dimLevel === 0
+        ? "Blacked out: the screen goes as dark as the panel allows and the page is covered, so it reads as switched off. A touch brings it straight back."
+        : "Percent of the panel's normal brightness, so a panel already turned down for a dark space dims further rather than brightening. Set it to 0 to black the screen out instead."}
+    >
       <input
         type="number"
         min={0}
@@ -150,12 +150,7 @@ function DimToField() {
         onChange={(e) => updateProjectSetting("display", "idle_dim_level_percent", parseInt(e.target.value) || 0)}
         onBlur={(e) => updateProjectSetting("display", "idle_dim_level_percent", clampPercent(parseInt(e.target.value)))}
       />
-      <span style={helpText}>
-        {dimLevel === 0
-          ? "Blacked out: the screen goes as dark as the panel allows and the page is covered, so it reads as switched off. A touch brings it straight back."
-          : "Percent of the panel's normal brightness, so a panel already turned down for a dark space dims further rather than brightening. Set it to 0 to black the screen out instead."}
-      </span>
-    </div>
+    </FieldRow>
   );
 }
 
@@ -166,16 +161,17 @@ function StayBrightField() {
   const panelSoftwareUpdates = useConnectionStore((s) => !!s.liveState["system.panel_software.version"]);
 
   return (
-    <div style={fieldRow}>
-      <label style={labelStyle}>Stay bright while</label>
+    <FieldRow
+      label="Stay bright while"
+      help={<>Optional. While this value is on, the panel never dims{panelSoftwareUpdates ? " and a panel software update waits to install" : ""}. A meeting in progress generates no touches, so point this at whatever the project already sets when the space is in use — a system-on variable, or a display's power state.</>}
+    >
       <VariableKeyPicker
         value={dimHoldKey}
         onChange={(key) => updateProjectSetting("display", "idle_dim_hold_state_key", key)}
         showDeviceState
         placeholder="Nothing — dim on the timer alone"
       />
-      <span style={helpText}>Optional. While this value is on, the panel never dims{panelSoftwareUpdates ? " and a panel software update waits to install" : ""}. A meeting in progress generates no touches, so point this at whatever the project already sets when the space is in use — a system-on variable, or a display's power state.</span>
-    </div>
+    </FieldRow>
   );
 }
 
@@ -184,13 +180,12 @@ function WakingTouchField() {
   const dimWakePasses = useProjectStore((s) => s.project?.settings?.display?.idle_dim_wake_passes_touch ?? false);
 
   return (
-    <div style={toggleRow}>
-      <div>
-        <div style={{ fontSize: "var(--font-size-sm)" }}>Waking touch also presses the button</div>
-        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Off: the touch that wakes a dimmed panel only brings the brightness back, so nobody mutes a live room by tapping a screen they could not read. On: that touch also does whatever it landed on.</div>
-      </div>
-      <Toggle checked={dimWakePasses} onChange={(v) => updateProjectSetting("display", "idle_dim_wake_passes_touch", v)} />
-    </div>
+    <SwitchRow
+      title="Waking touch also presses the button"
+      help="Off: the touch that wakes a dimmed panel only brings the brightness back, so nobody mutes a live room by tapping a screen they could not read. On: that touch also does whatever it landed on."
+      checked={dimWakePasses}
+      onChange={(v) => updateProjectSetting("display", "idle_dim_wake_passes_touch", v)}
+    />
   );
 }
 
@@ -200,8 +195,10 @@ export function DevicesCard() {
 
   return (
     <div style={cardStyle}>
-      <div style={fieldRow}>
-        <label style={labelStyle}>Retry every</label>
+      <FieldRow
+        label="Retry every"
+        help="How often OpenAVC retries a device that has gone offline. This is the rate of connection attempts your IT department sees, so raise it on a network that is strict about them. Leave it empty to use this system's own setting."
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
           <input
             type="number"
@@ -223,8 +220,7 @@ export function DevicesCard() {
           />
           <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>seconds</span>
         </div>
-        <span style={helpText}>How often OpenAVC retries a device that has gone offline. This is the rate of connection attempts your IT department sees, so raise it on a network that is strict about them. Leave it empty to use this system's own setting.</span>
-      </div>
+      </FieldRow>
     </div>
   );
 }
