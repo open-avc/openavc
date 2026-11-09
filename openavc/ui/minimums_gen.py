@@ -19,6 +19,7 @@ from pathlib import Path
 from openavc.ui.control_minimums import (
     CONDITIONS,
     LAYOUTS,
+    PIXEL_SLACK,
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
     REM_BASE_PX,
@@ -136,6 +137,9 @@ export const UI_REFERENCE = { widthPx: %(ref_w)d, heightPx: %(ref_h)d };
 /** The panel's rem base: style measurements are px / %(rem_base)d. */
 export const REM_BASE_PX = %(rem_base)d;
 
+/** Two sizes this close draw as the same size: the floor test, the container blame and remedy, and the font-size check. */
+export const PIXEL_SLACK = %(pixel_slack)r;
+
 /** Every condition a ControlConditionalPart may name. */
 export const CONTROL_MINIMUM_CONDITIONS = %(conditions)s as const;
 
@@ -216,6 +220,7 @@ def render() -> str:
         "ref_w": REFERENCE_WIDTH_PX,
         "ref_h": REFERENCE_HEIGHT_PX,
         "rem_base": REM_BASE_PX,
+        "pixel_slack": PIXEL_SLACK,
         "conditions": json.dumps(list(CONDITIONS)),
         "layouts": json.dumps(list(LAYOUTS)),
     }

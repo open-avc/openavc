@@ -56,6 +56,7 @@ from typing import Any
 from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
 from openavc.core.ui_events import DISPATCHED_ACTIONS
 from openavc.ui.control_minimums import (
+    PIXEL_SLACK,
     REFERENCE_HEIGHT_PX,
     REFERENCE_WIDTH_PX,
     REM_BASE_PX,
@@ -473,7 +474,7 @@ def _blocked_axes(
     return [
         (axis, needs, has)
         for axis, needs, has in box.short_axes(*box_px)
-        if needs > parent[axis] + 0.5
+        if needs > parent[axis] + PIXEL_SLACK
     ]
 
 
@@ -519,7 +520,7 @@ def container_remedy(
         needs: dict[str, float] = {}
         for axis, wants, has in blocked:
             grown = _grown(ancestor, axis) * wants / has
-            if grown > _grown(parent, axis) + 0.5:
+            if grown > _grown(parent, axis) + PIXEL_SLACK:
                 break
             needs[axis] = grown
         else:
@@ -744,7 +745,7 @@ _StyleBreach = tuple[str, str, float]
 def _font_breach(style: Mapping[str, Any], width_px: float, height_px: float) -> _StyleBreach | None:
     """Text taller than the box, past half a pixel of rounding."""
     font = _style_measure(style, "font_size")
-    if font and height_px > 0 and font[1] * REM_BASE_PX > height_px + 0.5:
+    if font and height_px > 0 and font[1] * REM_BASE_PX > height_px + PIXEL_SLACK:
         return (
             f"font_size {_num(font[1])} draws {font[1] * REM_BASE_PX:.0f}px of text in a box "
             f"{height_px:.0f}px tall",

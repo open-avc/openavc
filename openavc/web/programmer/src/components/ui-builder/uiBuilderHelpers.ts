@@ -6,6 +6,7 @@ import type { PluginExtension } from "../../api/pluginClient";
 // See openavc/ui/minimums_gen.py and openavc/ui/review_gen.py.
 import {
   CONTROL_MINIMUMS,
+  PIXEL_SLACK,
   REM_BASE_PX,
   type ControlMinimumRule,
   type ControlScalingInternal,
@@ -3725,7 +3726,7 @@ interface ShortAxis {
 /**
  * Each axis a box this size is drawn short of the floor on, width first.
  *
- * Half a pixel of slack, so a box that rounds to its floor is not short. The
+ * PIXEL_SLACK of slack, so a box that rounds to its floor is not short. The
  * reasons, the container blame and the remedy all read the shortfall from here.
  * Mirrors `MinimumBox.short_axes` in control_minimums.py.
  */
@@ -3734,7 +3735,7 @@ function shortAxes(box: ControlMinimumBox, boxPx: { width: number; height: numbe
     { axis: "width", wants: box.widthPx, has: boxPx.width },
     { axis: "height", wants: box.heightPx, has: boxPx.height },
   ];
-  return drawn.filter(({ wants, has }) => has + 0.5 < wants);
+  return drawn.filter(({ wants, has }) => has + PIXEL_SLACK < wants);
 }
 
 /** Why this box is too small, per axis, with the numbers in it. Empty when it fits. */
@@ -3797,7 +3798,7 @@ function blockedAxes(
   boxPx: { width: number; height: number },
   parentPx: { width: number; height: number },
 ): BlockedAxis[] {
-  return shortAxes(box, boxPx).filter(({ axis, wants }) => wants > parentPx[axis] + 0.5);
+  return shortAxes(box, boxPx).filter(({ axis, wants }) => wants > parentPx[axis] + PIXEL_SLACK);
 }
 
 function grown(container: Container, axis: "width" | "height"): number {
@@ -3844,7 +3845,7 @@ export function containerRemedy(
     let fits = true;
     for (const { axis, wants, has } of blocked) {
       const size = (grown(holder, axis) * wants) / has;
-      if (size > grown(parent, axis) + 0.5) {
+      if (size > grown(parent, axis) + PIXEL_SLACK) {
         fits = false;
         break;
       }
@@ -4095,7 +4096,7 @@ type StyleCheck = (style: Record<string, unknown>, width: number, height: number
 /** Text taller than the box, past half a pixel of rounding. */
 function fontBreach(style: Record<string, unknown>, _width: number, height: number): StyleBreach | null {
   const font = styleMeasure(style, "font_size");
-  if (font && height > 0 && font[1] * REM_BASE_PX > height + 0.5) {
+  if (font && height > 0 && font[1] * REM_BASE_PX > height + PIXEL_SLACK) {
     return [
       `font_size ${num(font[1])} draws ${fixed(font[1] * REM_BASE_PX, 0)}px of text in a box ` +
         `${fixed(height, 0)}px tall`,

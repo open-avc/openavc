@@ -103,6 +103,9 @@ export const UI_REFERENCE = { widthPx: 1280, heightPx: 800 };
 /** The panel's rem base: style measurements are px / 14. */
 export const REM_BASE_PX = 14;
 
+/** Two sizes this close draw as the same size: the floor test, the container blame and remedy, and the font-size check. */
+export const PIXEL_SLACK = 0.5;
+
 /** Every condition a ControlConditionalPart may name. */
 export const CONTROL_MINIMUM_CONDITIONS = ["label", "presets", "lock_column", "mute_column"] as const;
 

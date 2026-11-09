@@ -121,6 +121,13 @@ from openavc.ui.matrix_model import axis_count
 # The panel's rem base: `style` measurements are px / 14 (project format 0.8.0).
 REM_BASE_PX = 14.0
 
+# Half a pixel: two sizes this close draw as the same size. A box this close
+# under its floor is not short of it, and a floor or a measurement this close
+# over its container still fits. The floor test here and the page review's
+# container blame, remedy and font-size check read this one number, on both
+# sides: the Builder gets it through minimums_gen.
+PIXEL_SLACK = 0.5
+
 # The screen every percentage is reasoned about against. Matches TOUCH_REFERENCE
 # in the Builder (openavc/web/programmer/src/components/ui-builder/uiBuilderHelpers.ts),
 # measured against real panel diagonals rather than chosen.
@@ -176,12 +183,12 @@ class MinimumBox:
     def short_axes(self, width_px: float, height_px: float) -> list[tuple[str, float, float]]:
         """Each axis a box this size is drawn short of the floor on, as ``(axis, needs_px, has_px)``.
 
-        Width first. Half a pixel of slack, so a box that rounds to its floor is
-        not short. The reasons below, and the page review's container blame and
+        Width first. ``PIXEL_SLACK`` of slack, so a box that rounds to its floor
+        is not short. The reasons below, and the page review's container blame and
         remedy, all read the shortfall from here.
         """
         drawn = (("width", self.width_px, width_px), ("height", self.height_px, height_px))
-        return [(axis, needs, has) for axis, needs, has in drawn if has + 0.5 < needs]
+        return [(axis, needs, has) for axis, needs, has in drawn if has + PIXEL_SLACK < needs]
 
     def starves(self, width_px: float, height_px: float) -> list[str]:
         """Why this box is too small. Empty when it fits.
