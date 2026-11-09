@@ -4040,19 +4040,23 @@ export function touchFinding(
   // invites someone to make it a little bigger, when the thing is not on screen
   // at all. The degenerate check has the sentence for it, and one fix ends both.
   if (boxPx.width <= 0 || boxPx.height <= 0) return null;
-  const narrow = boxPx.width < TOUCH_MIN_PX;
-  const short = boxPx.height < TOUCH_MIN_PX;
-  if (!narrow && !short) return null;
-  const axis = narrow && short ? "width and height" : narrow ? "width" : "height";
+  const short = underTouch(boxPx);
+  if (!short.length) return null;
   return {
     elementId: el.id,
     kind: "small_touch_target",
     message:
       `${el.id} (${el.type}) is about ${fixed(boxPx.width, 0)}x${fixed(boxPx.height, 0)}px, roughly ` +
       `${fixed(toMm(boxPx.width), 1)}x${fixed(toMm(boxPx.height), 1)}mm on a 10-inch panel -- under the ` +
-      `${TOUCH_MIN_MM}mm comfortable touch minimum on ${axis} (${fixed(TOUCH_MIN_PX, 0)}px).`,
+      `${TOUCH_MIN_MM}mm comfortable touch minimum on ${joined(short)} (${fixed(TOUCH_MIN_PX, 0)}px).`,
     key: `small_touch_target|${el.id}`,
   };
+}
+
+/** The axes a finger has too little of, width first: each needs `TOUCH_MIN_PX`.
+ *  Mirrors `_under_touch` in page_review.py. */
+function underTouch(boxPx: { width: number; height: number }): string[] {
+  return (["width", "height"] as const).filter((axis) => boxPx[axis] < TOUCH_MIN_PX);
 }
 
 /** `a` or `an`, so a type name reads as a sentence rather than a token. */

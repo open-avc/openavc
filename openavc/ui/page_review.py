@@ -707,19 +707,26 @@ def touch_finding(
         # thing is not on screen at all. The degenerate check has the sentence
         # for it, and one fix ends both.
         return None
-    narrow = width_px < TOUCH_MIN_PX
-    short = height_px < TOUCH_MIN_PX
-    if not (narrow or short):
+    short = _under_touch(box_px)
+    if not short:
         return None
-    axis = "width and height" if (narrow and short) else ("width" if narrow else "height")
     el_id = str(element.get("id", "?"))
     return Finding(
         el_id,
         "small_touch_target",
         f"{el_id} ({el_type}) is about {width_px:.0f}x{height_px:.0f}px, roughly "
         f"{_to_mm(width_px):.1f}x{_to_mm(height_px):.1f}mm on a 10-inch panel -- under the "
-        f"{_num(TOUCH_MIN_MM)}mm comfortable touch minimum on {axis} ({TOUCH_MIN_PX:.0f}px).",
+        f"{_num(TOUCH_MIN_MM)}mm comfortable touch minimum on {_joined(short)} "
+        f"({TOUCH_MIN_PX:.0f}px).",
     )
+
+
+def _under_touch(box_px: tuple[float, float]) -> list[str]:
+    """The axes a finger has too little of, width first: each needs ``TOUCH_MIN_PX``.
+
+    The Builder's twin is ``underTouch``.
+    """
+    return [axis for axis, size in zip(("width", "height"), box_px) if size < TOUCH_MIN_PX]
 
 
 def _style_measure(style: Mapping[str, Any], *names: str) -> tuple[str, float] | None:
