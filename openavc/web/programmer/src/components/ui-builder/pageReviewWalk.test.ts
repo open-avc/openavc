@@ -251,6 +251,21 @@ describe("a hidden element", () => {
     (hiding.layouts as unknown as { hidden: string[] }[])[0].hidden = ["b"];
     expect(reviewPage(hiding)).toEqual([]);
   });
+
+  it("covers no master", () => {
+    const nav = {
+      id: "nav", type: "label", text: "Nav", pages: "*",
+      placements: { landscape: { x: 0, y: 0, w: 20, h: 10 } },
+    } as unknown as MasterElement;
+    const labels = [{ id: "a", type: "label", text: "A" }];
+    const boxes = { a: { x: 5, y: 2, w: 10, h: 5 } };
+    expect(sequence(reviewPage(page(labels, boxes), { masters: [nav] }))).toEqual([
+      ["covers_master", "a"],
+    ]);
+    const hiding = page(labels, boxes);
+    (hiding.layouts as unknown as { hidden: string[] }[])[0].hidden = ["a"];
+    expect(reviewPage(hiding, { masters: [nav] })).toEqual([]);
+  });
 });
 
 describe("the binding checks", () => {

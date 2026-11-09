@@ -197,6 +197,21 @@ def test_a_hidden_element_overlaps_nothing():
     assert hidden == []
 
 
+def test_a_hidden_element_covers_no_master():
+    nav = {
+        "id": "nav", "type": "label", "text": "Nav", "pages": "*",
+        "placements": {"landscape": {"x": 0, "y": 0, "w": 20, "h": 10}},
+    }
+    labels = [{"id": "a", "type": "label", "text": "A"}]
+    boxes = {"a": {"x": 5, "y": 2, "w": 10, "h": 5}}
+    shown, _ = review_page(_page(labels, boxes), masters=[nav])
+    assert _sequence(shown) == [("covers_master", "a")]
+    page = _page(labels, boxes)
+    page.layouts[0].hidden = ["a"]
+    hidden, _ = review_page(page, masters=[nav])
+    assert hidden == []
+
+
 def test_an_empty_per_state_label_still_counts_as_text_the_type_drops():
     findings = review_master_element({
         "id": "led", "type": "status_led",

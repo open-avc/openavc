@@ -459,6 +459,65 @@
       "expected": []
     },
     {
+      "name": "border_width at exactly half the smaller side",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "border_width": 1
+        }
+      },
+      "box_px": [
+        28,
+        200
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 28x200px and its style asks for more room than that: border_width 1 draws a 14px border on a box 28x200px. style measurements are rem, not pixels -- px / 14 -- so write border_width at most 1.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
+      "name": "letter_spacing on a box with no width",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "letter_spacing": 2
+        }
+      },
+      "box_px": [
+        0,
+        40
+      ],
+      "expected": []
+    },
+    {
+      "name": "letter_spacing measured across the width, not the height",
+      "element": {
+        "id": "e1",
+        "type": "label",
+        "style": {
+          "letter_spacing": 2
+        }
+      },
+      "box_px": [
+        20,
+        100
+      ],
+      "expected": [
+        {
+          "element_id": "e1",
+          "kind": "style_too_large",
+          "message": "e1 (label) is 20x100px and its style asks for more room than that: letter_spacing 2 puts 28px between letters in a box 20px wide. style measurements are rem, not pixels -- px / 14 -- so write letter_spacing at most 1.43.",
+          "key": "style_too_large|e1"
+        }
+      ]
+    },
+    {
       "name": "all four that fire at once, four ceilings read out",
       "element": {
         "id": "e1",
@@ -1312,6 +1371,131 @@
         "btn"
       ],
       "expected": []
+    },
+    {
+      "name": "a control hanging out of a container that is clear of the master answers for itself",
+      "boxes": {
+        "grp": {
+          "x": 50,
+          "y": 50,
+          "w": 30,
+          "h": 30
+        },
+        "btn": {
+          "x": 5,
+          "y": 2,
+          "w": 10,
+          "h": 5
+        }
+      },
+      "dumps": {
+        "grp": {
+          "id": "grp",
+          "type": "group"
+        },
+        "btn": {
+          "id": "btn",
+          "type": "button"
+        }
+      },
+      "parents": {
+        "grp": null,
+        "btn": "grp"
+      },
+      "masters": [
+        {
+          "id": "nav_bar",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 20,
+              "h": 10
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "landscape",
+      "in_scope": null,
+      "expected": [
+        {
+          "element_id": "btn",
+          "kind": "covers_master",
+          "message": "btn (button) is drawn over the master element nav_bar (button), which draws on every page and sits behind a page's own controls. Move btn off it, or stop nav_bar drawing on lobby. btn covers 128x40px of nav_bar, 25% of it.",
+          "key": "covers_master|btn|nav_bar"
+        }
+      ]
+    },
+    {
+      "name": "a container over the master answers for a control two containers down",
+      "boxes": {
+        "outer": {
+          "x": 0,
+          "y": 0,
+          "w": 40,
+          "h": 40
+        },
+        "grp": {
+          "x": 30,
+          "y": 30,
+          "w": 10,
+          "h": 10
+        },
+        "btn": {
+          "x": 5,
+          "y": 2,
+          "w": 10,
+          "h": 5
+        }
+      },
+      "dumps": {
+        "outer": {
+          "id": "outer",
+          "type": "group"
+        },
+        "grp": {
+          "id": "grp",
+          "type": "group"
+        },
+        "btn": {
+          "id": "btn",
+          "type": "button"
+        }
+      },
+      "parents": {
+        "outer": null,
+        "grp": "outer",
+        "btn": "grp"
+      },
+      "masters": [
+        {
+          "id": "nav_bar",
+          "type": "button",
+          "pages": "*",
+          "placements": {
+            "landscape": {
+              "x": 0,
+              "y": 0,
+              "w": 20,
+              "h": 10
+            }
+          }
+        }
+      ],
+      "page_id": "lobby",
+      "orientation": "landscape",
+      "in_scope": null,
+      "expected": [
+        {
+          "element_id": "outer",
+          "kind": "covers_master",
+          "message": "outer (group) is drawn over the master element nav_bar (button), which draws on every page and sits behind a page's own controls. Move outer off it, or stop nav_bar drawing on lobby. outer covers 256x80px of nav_bar, 100% of it.",
+          "key": "covers_master|outer|nav_bar"
+        }
+      ]
     },
     {
       "name": "only the touched control answers, in id order, master by master",
