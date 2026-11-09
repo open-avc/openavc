@@ -12,8 +12,8 @@ The rule worth knowing before changing a step: a step says what it did to the
 projects of its day, so the steps that rewrite UI elements keep their own
 numbers and type lists rather than reading today's renderer or page review
 (each says so where it does), and reach elements through the walk they were
-written with: two walks, one per rule, so editing either changes old steps. The 0.8.0 grid-to-percent layout
-conversion is ``core/layout_migration.py``.
+written with: two walks, one per rule, so editing either changes old steps.
+The 0.8.0 grid-to-percent layout conversion is ``core/layout_migration.py``.
 """
 
 from typing import NamedTuple
