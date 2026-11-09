@@ -49,6 +49,17 @@ def test_a_retry_that_raises_keeps_the_refusal_it_followed(value: Any) -> None:
     assert isinstance(raised.value.__context__, ValueError)
 
 
+class _NoWholeNumber(float):
+    """A float that will not become an int."""
+
+    def __int__(self) -> int:
+        raise ValueError("no whole number")
+
+
+def test_a_retry_that_cannot_convert_leaves_the_placeholder() -> None:
+    assert safe_substitute("{v:02d}", {"v": _NoWholeNumber(5.0)}) == "{v:02d}"
+
+
 @pytest.mark.parametrize(
     "config, derived, expected",
     [
