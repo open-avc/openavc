@@ -26,6 +26,8 @@ from pathlib import Path
 # Repo root = openavc/ (this file is openavc/tests/test_frontend_display_fixes.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 SETTINGS_VIEW = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "views" / "SystemSettingsView.tsx"
+# The Settings save, which says "Settings saved" (settings/saveFlow.ts).
+SETTINGS_SAVE = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "views" / "settings" / "saveFlow.ts"
 SIM_COMPONENTS = OPENAVC_ROOT / "openavc" / "web" / "simulator" / "src" / "components"
 METER_CONTROL = SIM_COMPONENTS / "controls" / "MeterControl.tsx"
 SLIDER_CONTROL = SIM_COMPONENTS / "controls" / "SliderControl.tsx"
@@ -39,7 +41,7 @@ def _read(path: Path) -> str:
 
 
 def test_settings_saved_toast_mentions_restart() -> None:
-    src = _read(SETTINGS_VIEW)
+    src = _read(SETTINGS_VIEW) + _read(SETTINGS_SAVE)
     assert '(needsRestart ? "." : ".")' not in src, (
         "the settings-saved toast ternary must not have identical branches "
         "(the restart hint was dead code)"

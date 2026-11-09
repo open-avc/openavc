@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { Save, AlertTriangle, Power, Copy } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
-import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
 import { EnvLock, HeldNote, envHold } from "../components/system/EnvHeldNote";
@@ -28,19 +27,19 @@ import { SecurityCard } from "./settings/SecurityCard";
 import { TrustedCertificateCard, type TrustedCertificatePage } from "./settings/TrustedCertificateCard";
 import type { UpdateTls } from "./settings/YourOwnCertificate";
 import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
-import { CutOffWarning } from "../components/system/ListenCutOff";
 import { adapterName } from "../components/system/adapterChoice";
 import { useListenChoice } from "./settings/listenChoice";
 import { useRestart } from "./settings/restartFlow";
 import { RestartProgress, RestartQuestion } from "./settings/RestartDialogs";
+import { useSettingsSave } from "./settings/saveFlow";
+import { CutOffQuestion, RebootQuestion } from "./settings/SaveDialogs";
 import { useProjectStore } from "../store/projectStore";
 import { showError, showSuccess } from "../store/toastStore";
 import * as api from "../api/restClient";
-import { ApiError, parseApiError } from "../api/errors";
+import { parseApiError } from "../api/errors";
 import { PASSWORD_TOO_SHORT } from "../api/auth";
 import type {
   AdapterIdentity,
-  ListenPreview,
   NetworkAdapter,
   NetworkInterface,
   SshStatus,
@@ -74,16 +73,11 @@ export function SystemSettingsView() {
   const [theme, setThemeState] = useState<"dark" | "light">(getTheme);
   const [config, setConfig] = useState<SystemConfig | null>(null);
   const [dirty, setDirty] = useState<Partial<SystemConfig>>({});
-  const [saving, setSaving] = useState(false);
   const [restartNeeded, setRestartNeeded] = useState(false);
-  const [showRebootDialog, setShowRebootDialog] = useState(false);
   const [kioskAvailable, setKioskAvailable] = useState(false);
   const [panelDimAvailable, setPanelDimAvailable] = useState(false);
   const [updateGuidance, setUpdateGuidance] = useState<string | null>(null);
 
-  // The panel display and device settings live in the PROJECT, so the one
-  // Save button saves the project too.
-  const projectDirty = useProjectStore((s) => s.dirty);
   const projectLoaded = useProjectStore((s) => s.project !== null);
   const [ssh, setSsh] = useState<SshStatus | null>(null);
   const [sshBusy, setSshBusy] = useState(false);
@@ -91,8 +85,6 @@ export function SystemSettingsView() {
   // One entry per adapter, connected or not: what the two adapter pickers list.
   const [interfaces, setInterfaces] = useState<NetworkInterface[]>([]);
   const [adaptersLoading, setAdaptersLoading] = useState(false);
-  // Set while the "Change who can connect?" dialog is open.
-  const [cutOffCheck, setCutOffCheck] = useState<ListenPreview | null>(null);
   const [tlsStatus, setTlsStatus] = useState<TlsStatus | null>(null);
 
   const loadAdapters = useCallback(() => {
@@ -162,97 +154,20 @@ export function SystemSettingsView() {
   // "Restart to apply changes?" and the restart itself.
   const restart = useRestart(config);
 
-  const handleSave = async (cutOffConfirmed = false) => {
-    // A change of who can connect that would cut off this browser is said
-    // first, from the server's own answer ("Change who can connect?"), and
-    // nothing is saved until the person agrees.
-    const changingListen = listen.saving;
-    if (changingListen && !cutOffConfirmed) {
-      let check: ListenPreview;
-      try {
-        check = await listen.ask();
-      } catch (e) {
-        showError("Could not check the change to Accept connections from: " + parseApiError(e));
-        return;
-      }
-      if (check.safety_net) {
-        setCutOffCheck(check);
-        return;
-      }
-    }
-
-    // The panel display + device settings live in the project, so one Save
-    // button has to flush both stores. Project first: it is the one with a
-    // conflict path, and a failure there must not be hidden behind a
-    // successful system.json write.
-    if (projectDirty) {
-      try {
-        await useProjectStore.getState().save();
-      } catch (e) {
-        showError("Could not save project settings: " + parseApiError(e));
-        return;
-      }
-    }
-    if (Object.keys(dirty).length === 0) {
-      if (projectDirty) showSuccess("Settings saved.");
-      return;
-    }
-
-    // Don't send redacted values back
-    const payload: Record<string, Record<string, unknown>> = {};
-    for (const [section, fields] of Object.entries(dirty)) {
-      const clean: Record<string, unknown> = {};
-      for (const [key, value] of Object.entries(fields as Record<string, unknown>)) {
-        if (value !== REDACTED) clean[key] = value;
-      }
-      if (Object.keys(clean).length > 0) payload[section] = clean;
-    }
-
-    if (Object.keys(payload).length === 0) return;
-
-    const hasKioskChanges = "kiosk" in payload;
-
-    // Capture the restart flag before the post-save reset, so we can decide
-    // whether to pop the confirm prompt after the request returns.
-    const needsRestart = restartNeeded || changingListen;
-
-    setSaving(true);
-    let saved = false;
-    try {
-      await api.updateSystemConfig(payload as Partial<SystemConfig>);
-      saved = true;
-      showSuccess("Settings saved" + (needsRestart ? ". Restart required for some changes to take effect." : "."));
-      // Reload config + tls status to get fresh state
-      const fresh = await api.getSystemConfig();
+  // Save, once saveChecks lets it: the cut-off question, the project, the
+  // system settings, and what follows.
+  const save = useSettingsSave({
+    dirty,
+    restartNeeded,
+    kioskAvailable,
+    listen,
+    restart,
+    saved: (fresh) => {
       setConfig(fresh);
       setDirty({});
       loadTlsStatus();
-      if (hasKioskChanges && kioskAvailable) {
-        // Kiosk-reboot dialog handles its own flow; don't stack a second prompt.
-        setShowRebootDialog(true);
-      } else if (cutOffConfirmed) {
-        // "Restart and apply" was the answer already.
-        void restart.start(fresh);
-      } else if (needsRestart) {
-        restart.ask();
-      }
-    } catch (e) {
-      if (!saved) {
-        showError("Failed to save: " + parseApiError(e));
-      } else if (!(e instanceof ApiError && e.status === 401)) {
-        showError(
-          "Settings saved, but this page could not refresh (" + parseApiError(e) +
-            "). Reload the page to see the current values.",
-        );
-      }
-      // A 401 after the save went through is the save itself: a new password
-      // or username ends every session, this one included, and the sign-in
-      // screen has already taken over. "Failed to save" here told the person,
-      // once signed back in, that a password change which worked had not.
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+  });
 
   const handleSshToggle = async (enabled: boolean) => {
     if (sshBusy) return;
@@ -276,11 +191,7 @@ export function SystemSettingsView() {
     }
   };
 
-  // BOTH stores, because this one Save button now writes both. The panel
-  // display and device settings live in the project, so a change to only
-  // those left this false, the button greyed, and nothing saved -- the edit
-  // looked accepted and silently went nowhere.
-  const hasDirty = Object.keys(dirty).length > 0 || projectDirty;
+  const hasDirty = save.hasChanges;
   const net = merged("network");
   const auth = merged("auth");
   const log = merged("logging");
@@ -331,13 +242,13 @@ export function SystemSettingsView() {
       title="System Settings"
       actions={
         <button
-          style={{ ...btnStyle, opacity: hasDirty && !saving && !saveBlocked ? 1 : 0.5 }}
-          onClick={() => void handleSave()}
-          disabled={!hasDirty || saving || saveBlocked}
+          style={{ ...btnStyle, opacity: hasDirty && !save.saving && !saveBlocked ? 1 : 0.5 }}
+          onClick={() => void save.save()}
+          disabled={!hasDirty || save.saving || saveBlocked}
           title={saveBlocked ? "Fix the validation errors below before saving" : undefined}
         >
           <Save size={14} />
-          <span>{saving ? "Saving..." : "Save"}</span>
+          <span>{save.saving ? "Saving..." : "Save"}</span>
         </button>
       }
     >
@@ -832,56 +743,11 @@ export function SystemSettingsView() {
       </div>
     </ViewContainer>
 
-    {showRebootDialog && (
-      <ConfirmDialog
-        title="Reboot Required"
-        message="Kiosk display settings require a reboot to take effect. Reboot now?"
-        confirmLabel="Reboot Now"
-        cancelLabel="Later"
-        onConfirm={async () => {
-          setShowRebootDialog(false);
-          try {
-            await api.rebootSystem();
-            showSuccess("Device is rebooting...");
-          } catch {
-            showError("Reboot not available. Restart the device manually.");
-          }
-        }}
-        onCancel={() => {
-          setShowRebootDialog(false);
-          showSuccess("Settings saved. Reboot the device for changes to take effect.");
-        }}
-      />
-    )}
+    <RebootQuestion save={save} />
 
     <RestartQuestion restart={restart} />
 
-    {cutOffCheck && (() => {
-      // The URLs use what this save will run with: the ports on screen.
-      const scheme = tls?.enabled ? "https" : "http";
-      const port = tls?.enabled ? (tls.port ?? 8443) : net.http_port;
-      return (
-        <ConfirmDialog
-          title="Change who can connect?"
-          message={
-            <CutOffWarning
-              facts={listen.facts(
-                cutOffCheck,
-                cutOffCheck.panel_addresses.map((ip) => `${scheme}://${ip}:${port}/programmer`),
-                `${scheme}://localhost:${port}/programmer`,
-              )}
-            />
-          }
-          confirmLabel="Restart and apply"
-          destructive
-          onConfirm={() => {
-            setCutOffCheck(null);
-            void handleSave(true);
-          }}
-          onCancel={() => setCutOffCheck(null)}
-        />
-      );
-    })()}
+    <CutOffQuestion save={save} listen={listen} tls={tls} httpPort={net.http_port} />
 
     <RestartProgress restart={restart} config={config} facts={listen.facts} />
     </>
