@@ -242,3 +242,11 @@ def test_a_word_against_no_map_or_several_matches():
     assert value_for_map_word("A", {"k1": "a", "k2": "A"}) == (True, "k2")
     assert value_for_map_word("a", {"k1": "A", "k2": "a"}) == (True, "k2")
     assert value_for_map_word("a", {"k1": "A", "k2": "A"}) == (True, "k1")
+
+
+@pytest.mark.parametrize("value_type", [["integer"], {"type": "float"}])
+def test_a_type_that_is_not_a_name_reads_as_text(value_type):
+    assert _typed(coerce_value("5", value_type)) == ("5", "str")
+    assert _typed(coerce_json_value(5, value_type)) == ("5", "str")
+    assert _typed(coerce_json_value(True, value_type)) == ("true", "str")
+    assert _typed(coerce_osc_value(5, value_type)) == ("5", "str")
