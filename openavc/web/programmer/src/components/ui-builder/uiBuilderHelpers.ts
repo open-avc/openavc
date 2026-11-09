@@ -4076,8 +4076,8 @@ function joined(parts: string[]): string {
   return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
-/** One style field as the panel draws it: the field, its rem, and the pixels
- *  that is at REM_BASE_PX each. */
+/** One style field the panel draws: its name, its value in rem, and that value
+ *  in pixels. */
 interface StyleMeasure {
   field: string;
   rem: number;
@@ -4113,7 +4113,7 @@ function pastOneSide(measure: StyleMeasure, side: number, slack = 0): number | n
  *  edge has half the side. null when they leave a gap between them. A side with
  *  no size is not measured. Its twin in page_review.py is `_meets_in_middle`. */
 function meetsInMiddle(measure: StyleMeasure, side: number): number | null {
-  return side > 0 && 2 * measure.rem * REM_BASE_PX >= side ? side / 2 : null;
+  return side > 0 && 2 * measure.px >= side ? side / 2 : null;
 }
 
 /** One style measurement the box cannot hold: the words for it, the field to

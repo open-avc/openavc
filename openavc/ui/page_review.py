@@ -731,7 +731,7 @@ def _under_touch(box_px: tuple[float, float]) -> list[str]:
 
 @dataclass(frozen=True)
 class _StyleMeasure:
-    """One style field as the panel draws it: the field, and its rem, each ``REM_BASE_PX``."""
+    """One style field the panel draws: its name, its value in rem, and that value in pixels."""
 
     field: str
     rem: float
@@ -774,7 +774,7 @@ def _meets_in_middle(measure: _StyleMeasure, side_px: float) -> float | None:
     each edge has half the side. None when they leave a gap between them. A
     side with no size is not measured. The Builder's twin is ``meetsInMiddle``.
     """
-    return side_px / 2 if side_px > 0 and 2 * measure.rem * REM_BASE_PX >= side_px else None
+    return side_px / 2 if side_px > 0 and 2 * measure.px >= side_px else None
 
 
 #: One style measurement the box cannot hold: the words for it, the field to
