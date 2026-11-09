@@ -4440,6 +4440,8 @@ function overlapMessage(
 // conditionally-shown elements costs one warning, and a false one costs the
 // credibility of every warning printed beside it.
 
+/** The operator spellings the panel's `_evalConditionOp` understands, by what
+ *  they mean; held to the AI side's by tests/test_ui_page_review_mirrors.py. */
 const EQ_OPS = new Set(["eq", "equals", "=="]);
 const NE_OPS = new Set(["ne", "not_equals", "!="]);
 /** Range operators, mapped to whether the bound they set is inclusive. */

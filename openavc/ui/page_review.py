@@ -1062,6 +1062,10 @@ def _overlap_message(
 # conditionally-shown elements costs one warning, and a false one costs the
 # credibility of every warning printed beside it.
 
+#: The operator spellings the panel's ``_evalConditionOp`` understands, by what
+#: they mean. A spelling missing here reads as undecidable, which only costs a
+#: warning; tests/test_ui_page_review_mirrors.py holds these to the panel's
+#: and the Builder's sets to these.
 _EQ = frozenset({"eq", "equals", "=="})
 _NE = frozenset({"ne", "not_equals", "!="})
 #: Range operators, mapped to whether the bound they set is inclusive.
@@ -1764,6 +1768,8 @@ def _content_supplied(element: Mapping[str, Any], prop: str, slot: str | None) -
 #: ``auto_send_delay_ms ?? 1500``). The delay is also the review's threshold:
 #: nobody has measured how long a person takes between two keys on a panel, so
 #: the one number with a claim to it is the platform's own default.
+#: tests/test_ui_page_review_mirrors.py holds both to renderKeypad and to the
+#: Builder's copies, which its keypad properties also show.
 KEYPAD_DIGITS_DEFAULT = 4
 KEYPAD_SEND_DELAY_DEFAULT_MS = 1500
 
