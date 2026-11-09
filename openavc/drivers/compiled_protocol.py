@@ -54,6 +54,11 @@ log = get_logger(__name__)
 # ── Placeholder substitution ──
 
 
+#: A {name} or {name:spec} placeholder, the token ``safe_substitute`` fills;
+#: the spec excludes braces so it can't span tokens.
+_SUBSTITUTION_RE = re.compile(r"\{(\w+)(?::([^{}]*))?\}")
+
+
 def safe_substitute(template: str, params: dict[str, Any]) -> str:
     """
     Substitute {name} and {name:spec} placeholders with values from params.
@@ -73,35 +78,53 @@ def safe_substitute(template: str, params: dict[str, Any]) -> str:
         if key not in params:
             return match.group(0)  # Leave unmatched {name} as-is
         spec = match.group(2)
-        value = params[key]
         if not spec:
-            return str(value)
-        try:
-            return format(value, spec)
-        except (ValueError, TypeError):
-            # An integer spec ('d'/'x'/'X'/'o'/'b') rejects a float even when
-            # it's whole (26.0), which is exactly what a scaled slider value
-            # is. Coerce a whole-number float to int and retry so {vol:d}
-            # renders "26".
-            if isinstance(value, float) and not isinstance(value, bool) and value.is_integer():
-                try:
-                    return format(int(value), spec)
-                except (ValueError, TypeError):
-                    pass
-            # A numeric spec applied to a numeric string: coerce, then
-            # format. int first so '02d' works on "5".
-            if isinstance(value, str):
-                for conv in (int, float):
-                    try:
-                        return format(conv(value), spec)
-                    except (ValueError, TypeError):
-                        continue
-            # Unformattable — leave the placeholder verbatim so a bad spec
-            # is visible to the author instead of crashing the send.
-            return match.group(0)
+            return str(params[key])
+        formatted = _formatted(params[key], spec)
+        # Unformattable — leave the placeholder verbatim so a bad spec
+        # is visible to the author instead of crashing the send.
+        return match.group(0) if formatted is None else formatted
 
-    # {name} or {name:spec}; the spec excludes braces so it can't span tokens.
-    return re.sub(r"\{(\w+)(?::([^{}]*))?\}", replacer, template)
+    return _SUBSTITUTION_RE.sub(replacer, template)
+
+
+def _formatted(value: Any, spec: str) -> str | None:
+    """``value`` formatted by ``spec``, else the first number it stands for
+    that the spec takes (``_spec_retries``); None when none does."""
+    try:
+        return format(value, spec)
+    except (ValueError, TypeError):
+        pass
+    for number in _spec_retries(value):
+        try:
+            return format(number, spec)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def _spec_retries(value: Any) -> Iterator[Any]:
+    """What a format spec that refused ``value`` is tried with next, in order.
+
+    An integer spec ('d'/'x'/'X'/'o'/'b') rejects a float even when it's
+    whole (26.0), which is exactly what a scaled slider value is, so a
+    whole-number float is tried as an int and {vol:d} renders "26". A numeric
+    spec applied to a numeric string is tried with it as an int, then as a
+    float, so '02d' works on "5"."""
+    if isinstance(value, float) and value.is_integer():
+        yield int(value)
+    elif isinstance(value, str):
+        for conv in (int, float):
+            try:
+                yield conv(value)
+            except (ValueError, TypeError):
+                continue
+
+
+def _placeholder_names(template: str) -> list[str]:
+    """The name in each placeholder ``safe_substitute`` would fill in
+    ``template``, in order, repeats kept."""
+    return [m.group(1) for m in _SUBSTITUTION_RE.finditer(template)]
 
 
 def derive_config(config: dict[str, Any], derived: Any) -> None:
@@ -119,7 +142,7 @@ def derive_config(config: dict[str, Any], derived: Any) -> None:
     for name, template in derived.items():
         if not isinstance(template, str):
             continue
-        refs = re.findall(r"\{(\w+)(?::[^{}]*)?\}", template)
+        refs = _placeholder_names(template)
         if any(not str(config.get(f, "") or "").strip() for f in refs):
             config[name] = ""
         else:
@@ -332,8 +355,17 @@ class _Unsupported(Exception):
 
 _SHORTHAND_REPS = {"d": "0", "w": "0", "s": " ", "S": "0"}
 _ESCAPE_CHARS = {"r": "\r", "n": "\n", "t": "\t", "f": "\f", "v": "\v"}
-_QUANT_RE = re.compile(r"\{(\d+)(?:,(\d*))?\}")
-_FLAG_GROUP_RE = re.compile(r"\(\?([aiLmsux]+)([:)])")
+#: What an escape outside a class emits: a shorthand's member, a control
+#: character, or nothing for a word boundary.
+_ESCAPE_EMITS = {**_SHORTHAND_REPS, **_ESCAPE_CHARS, "b": "", "B": ""}
+#: The fewest repeats each one-character quantifier allows.
+_SIMPLE_QUANTIFIERS = {"?": 0, "*": 0, "+": 1}
+#: A quantifier: one of those, or ``{n}`` / ``{n,}`` / ``{n,m}``; then ``?``
+#: when it is lazy. A ``{`` that starts none of them is a literal.
+_QUANTIFIER_RE = re.compile(r"(?:([?*+])|\{(\d+)(?:,\d*)?\})\??")
+_GLOBAL_FLAGS_RE = re.compile(r"\(\?[aiLmsux]+\)")
+_SCOPED_FLAGS_RE = re.compile(r"\(\?[aiLmsux]+:")
+_HEX_PAIR_RE = re.compile(r"[0-9a-fA-F]{2}")
 
 
 def _class_emit(body: str) -> str | None:
@@ -356,93 +388,62 @@ def _class_emit(body: str) -> str | None:
     return body[0]
 
 
-def _class_end(src: str, i: int) -> int:
-    """Index of the ']' closing the class opened at src[i] == '['."""
+def _class_members_start(src: str, i: int) -> int:
+    """Where the members of the class opened at ``src[i] == '['`` start: past a
+    negating ``^``, and past a ``]`` right after it, which is a member there."""
     j = i + 1
     if j < len(src) and src[j] == "^":
         j += 1
     if j < len(src) and src[j] == "]":
-        j += 1  # leading ] is a literal member
+        j += 1
+    return j
+
+
+def _class_end(src: str, i: int) -> int:
+    """Index of the ']' closing the class opened at src[i] == '['."""
+    j = _class_members_start(src, i)
     while j < len(src):
-        if src[j] == "\\":
-            j += 2
-            continue
         if src[j] == "]":
             return j
-        j += 1
+        j += 2 if src[j] == "\\" else 1
     raise _Unsupported
 
 
-def _parse_atom(src: str, i: int, ctx: dict) -> tuple[str | None, int]:
-    """Emit one atom starting at src[i]. None means unrepresentable —
-    fatal only if the atom survives into the final emission."""
-    c = src[i]
-    if c in "^$":
-        return "", i + 1
-    if c == ".":
-        return "x", i + 1
-    if c == "\\":
-        if i + 1 >= len(src):
-            raise _Unsupported
-        e = src[i + 1]
-        if e in _SHORTHAND_REPS:
-            return _SHORTHAND_REPS[e], i + 2
-        if e in _ESCAPE_CHARS:
-            return _ESCAPE_CHARS[e], i + 2
-        if e in "bB":
-            return "", i + 2
-        if e == "x" and re.match(r"[0-9a-fA-F]{2}", src[i + 2 : i + 4]):
-            return chr(int(src[i + 2 : i + 4], 16)), i + 4
-        if e.isdigit():
-            return None, i + 2  # backreference
-        if e in "DWAZ":
-            return None, i + 2
-        return e, i + 2  # escaped literal (punctuation)
-    if c == "[":
-        j = _class_end(src, i)
-        return _class_emit(src[i + 1 : j]), j + 1
-    if c == "(":
-        return _parse_group(src, i, ctx)
-    return c, i + 1
+def _escape_emit(src: str, i: int) -> tuple[str | None, int]:
+    """Emit the escape at ``src[i] == '\\'``: a shorthand's member, a control
+    character, nothing for a word boundary, the character ``\\xHH`` names, or
+    the escaped character itself. None for a back-reference, ``\\D`` and
+    ``\\W`` (no safe member) and the anchors ``\\A`` and ``\\Z``."""
+    if i + 1 >= len(src):
+        raise _Unsupported
+    e = src[i + 1]
+    if e in _ESCAPE_EMITS:
+        return _ESCAPE_EMITS[e], i + 2
+    if e == "x" and _HEX_PAIR_RE.match(src[i + 2 : i + 4]):
+        return chr(int(src[i + 2 : i + 4], 16)), i + 4
+    if e.isdigit() or e in "DWAZ":
+        return None, i + 2
+    return e, i + 2  # escaped literal (punctuation)
 
 
-def _parse_group(src: str, i: int, ctx: dict) -> tuple[str | None, int]:
-    """Emit the group opened at src[i] == '('."""
-    capturing = True
-    j = i + 1
+def _group_opening(src: str, i: int) -> tuple[bool, int]:
+    """Whether the group opened at ``src[i] == '('`` captures, and where its
+    body starts: ``(?:`` and a scoped flag group (``(?i:``) do not, a plain or
+    named group (``(?P<name>``) does. Any other ``(?`` (a lookaround, a
+    conditional, a comment, ``(?P=name)``) is refused."""
     if src.startswith("(?:", i):
-        capturing = False
-        j = i + 3
-    elif src.startswith("(?P<", i):
+        return False, i + 3
+    if src.startswith("(?P<", i):
         k = src.find(">", i)
         if k < 0:
             raise _Unsupported
-        j = k + 1
-    elif src.startswith("(?", i):
-        m = _FLAG_GROUP_RE.match(src, i)
-        if not m:
-            raise _Unsupported  # lookarounds, conditionals, (?P=...)
-        if m.group(2) == ")":
-            return "", m.end()  # global flags like (?i)
-        capturing = False
-        j = m.end()
-    this_no = 0
-    if capturing:
-        ctx["n"] += 1
-        this_no = ctx["n"]
-    body_start = j
-    emission, j = _parse_branches(src, j, ctx, depth=1)
-    if j >= len(src) or src[j] != ")":
-        raise _Unsupported
-    body = src[body_start:j]
-    j += 1
-    if capturing and this_no in ctx["targets"]:
-        ctx["found"].add(this_no)
-        width = _fixed_digit_width(body)
-        if width:
-            ctx["widths"][this_no] = width
-        return ctx["targets"][this_no], j
-    return emission, j
+        return True, k + 1
+    if not src.startswith("(?", i):
+        return True, i + 1
+    scoped = _SCOPED_FLAGS_RE.match(src, i)
+    if not scoped:
+        raise _Unsupported  # lookarounds, conditionals, (?P=...)
+    return False, scoped.end()
 
 
 _DIGIT_RUN_RE = re.compile(r"(?:\\d|\[0-9\]|[0-9])(?:\{(\d+)\})?")
@@ -464,81 +465,150 @@ def _fixed_digit_width(body: str) -> int | None:
 
 
 def _parse_quantifier(src: str, i: int) -> tuple[int, int] | None:
-    """Parse a quantifier at src[i]; return (min_repeats, next_i) or None."""
-    if i >= len(src):
+    """Parse a quantifier at src[i]; return (min_repeats, next_i) or None.
+    More than 8 required repeats are refused."""
+    m = _QUANTIFIER_RE.match(src, i)
+    if not m:
         return None
-    c = src[i]
-    if c in "?*":
-        n, j = 0, i + 1
-    elif c == "+":
-        n, j = 1, i + 1
-    elif c == "{":
-        m = _QUANT_RE.match(src, i)
-        if not m:
-            return None  # a bare '{' is a literal, not a quantifier
-        n, j = int(m.group(1)), m.end()
-        if n > 8:
+    n = _SIMPLE_QUANTIFIERS[m.group(1)] if m.group(1) else int(m.group(2))
+    if n > 8:
+        raise _Unsupported
+    return n, m.end()
+
+
+class _PatternWalk:
+    """One walk over a response pattern's source, emitting the text it matches.
+
+    Capture groups are numbered as the walk opens them, which is the order
+    ``re`` numbers them in; ``slots`` names the groups to emit as a placeholder
+    in place of their content. The walk records how many groups it opened
+    (``groups``), which slot groups it reached (``found``) and the fixed digit
+    width of each (``widths``), for the caller to check and apply.
+
+    ``branches``, ``seq``, ``atom`` and ``group`` call one another, one level of
+    the pattern's nesting at a time. Each returns its emission, None when that
+    part cannot be represented, and the index after it, and raises
+    ``_Unsupported`` for a construct the walk refuses outright."""
+
+    def __init__(self, src: str, slots: dict[int, str]) -> None:
+        self.src = src
+        self.slots = dict(slots)
+        self.groups = 0
+        self.found: set[int] = set()
+        self.widths: dict[int, int] = {}
+
+    def emission(self) -> str | None:
+        """The whole pattern's emission, or None when it cannot be modeled."""
+        try:
+            emission, i = self.branches(0, depth=0)
+        except _Unsupported:
+            return None
+        return emission if i == len(self.src) else None
+
+    def carries_slot(self, piece: str) -> bool:
+        """True when a slot group's placeholder text survives in ``piece``."""
+        return any(ph in piece for ph in self.slots.values())
+
+    def with_widths(self, emission: str) -> str:
+        """``emission`` with each ``{name}`` slot whose group is a fixed run of
+        digits written with that width as a zero-pad spec (``{value:03d}``)."""
+        for group, width in self.widths.items():
+            ph = self.slots[group]
+            if _SLOT_NAME_RE.fullmatch(ph):
+                emission = emission.replace(ph, f"{ph[:-1]}:0{width}d}}")
+        return emission
+
+    def branches(self, i: int, depth: int) -> tuple[str | None, int]:
+        """Emit an alternation: all branches are parsed (group numbering must
+        stay exact), the emission comes from the first branch carrying a slot,
+        else the first representable branch."""
+        emission, i = self.seq(i, depth)
+        emissions = [emission]
+        while i < len(self.src) and self.src[i] == "|":
+            emission, i = self.seq(i + 1, depth)
+            emissions.append(emission)
+        with_slot = [e for e in emissions if e is not None and self.carries_slot(e)]
+        if with_slot:
+            return with_slot[0], i
+        return next((e for e in emissions if e is not None), None), i
+
+    def seq(self, i: int, depth: int) -> tuple[str | None, int]:
+        """Emit atoms until '|', a closing ')' (inside a group), or the end."""
+        pieces: list[str | None] = []
+        while i < len(self.src) and not self._ends_seq(i, depth):
+            piece, i = self.atom(i)
+            reps, i = self._repeats(piece, i)
+            if reps:
+                pieces.append(None if piece is None else piece * reps)
+        if any(p is None for p in pieces):
+            return None, i
+        return "".join(pieces), i  # type: ignore[arg-type]
+
+    def _ends_seq(self, i: int, depth: int) -> bool:
+        """True at a '|' or at the ')' closing the group being read; a ')'
+        with no group open is unbalanced."""
+        c = self.src[i]
+        if c == ")" and depth == 0:
             raise _Unsupported
-    else:
-        return None
-    if j < len(src) and src[j] == "?":
-        j += 1  # lazy variant
-    return n, j
+        return c in "|)"
 
+    def _repeats(self, piece: str | None, i: int) -> tuple[int, int]:
+        """How many times the atom just read is emitted, and where the next one
+        starts: its quantifier's fewest repeats, else once. A slot is never
+        dropped, and one that must repeat is refused: the field would go in
+        twice."""
+        quantifier = _parse_quantifier(self.src, i)
+        reps, i = quantifier if quantifier else (1, i)
+        if piece is None or not self.carries_slot(piece):
+            return reps, i
+        if reps > 1:
+            raise _Unsupported
+        return 1, i
 
-def _parse_seq(src: str, i: int, ctx: dict, depth: int) -> tuple[str | None, int]:
-    """Emit atoms until '|', a closing ')' (inside a group), or the end."""
-    pieces: list[str | None] = []
-    while i < len(src):
+    def atom(self, i: int) -> tuple[str | None, int]:
+        """Emit one atom starting at src[i]. None means unrepresentable —
+        fatal only if the atom survives into the final emission."""
+        src = self.src
         c = src[i]
-        if c == "|":
-            break
-        if c == ")":
-            if depth == 0:
-                raise _Unsupported  # unbalanced
-            break
-        piece, i = _parse_atom(src, i, ctx)
-        quant = _parse_quantifier(src, i)
-        reps = 1
-        if quant:
-            reps, i = quant
-        if piece is not None and _has_target(piece, ctx):
-            if reps != 1:
-                if reps > 1:
-                    raise _Unsupported  # a repeated target would duplicate the field
-                reps = 1  # never drop a target capture
-        if reps == 0:
-            continue
-        pieces.append(piece if reps == 1 else (None if piece is None else piece * reps))
-    if any(p is None for p in pieces):
-        return None, i
-    return "".join(pieces), i  # type: ignore[arg-type]
+        if c in "^$":
+            return "", i + 1
+        if c == ".":
+            return "x", i + 1
+        if c == "\\":
+            return _escape_emit(src, i)
+        if c == "[":
+            j = _class_end(src, i)
+            return _class_emit(src[i + 1 : j]), j + 1
+        if c == "(":
+            return self.group(i)
+        return c, i + 1
 
+    def group(self, i: int) -> tuple[str | None, int]:
+        """Emit the group opened at src[i] == '(': its body's emission, or the
+        slot's placeholder when it is a slot group."""
+        flags = _GLOBAL_FLAGS_RE.match(self.src, i)
+        if flags:
+            return "", flags.end()  # global flags like (?i)
+        capturing, start = _group_opening(self.src, i)
+        number = 0
+        if capturing:
+            self.groups += 1
+            number = self.groups
+        emission, end = self.branches(start, depth=1)
+        if end >= len(self.src) or self.src[end] != ")":
+            raise _Unsupported
+        if capturing and number in self.slots:
+            return self._slot(number, self.src[start:end]), end + 1
+        return emission, end + 1
 
-def _has_target(piece: str, ctx: dict) -> bool:
-    """True when a targeted group's placeholder text survives in ``piece``."""
-    return any(ph in piece for ph in ctx["targets"].values())
-
-
-def _parse_branches(src: str, i: int, ctx: dict, depth: int) -> tuple[str | None, int]:
-    """Emit an alternation: all branches are parsed (group numbering must
-    stay exact), the emission comes from the first branch carrying a target
-    placeholder, else the first representable branch."""
-    branches: list[str | None] = []
-    while True:
-        emission, i = _parse_seq(src, i, ctx, depth)
-        branches.append(emission)
-        if i < len(src) and src[i] == "|":
-            i += 1
-            continue
-        break
-    with_value = [b for b in branches if b is not None and _has_target(b, ctx)]
-    if with_value:
-        return with_value[0], i
-    for b in branches:
-        if b is not None:
-            return b, i
-    return None, i
+    def _slot(self, number: int, body: str) -> str:
+        """Slot group ``number``'s placeholder, recording that the walk reached
+        it and the width its body fixes."""
+        self.found.add(number)
+        width = _fixed_digit_width(body)
+        if width:
+            self.widths[number] = width
+        return self.slots[number]
 
 
 def emit_template_multi(pattern: str, placeholders: dict[int, str]) -> str | None:
@@ -555,22 +625,13 @@ def emit_template_multi(pattern: str, placeholders: dict[int, str]) -> str | Non
     width as a zero-pad spec (``'Gain(\\d{3})'`` → ``'Gain{value:03d}'``);
     ``fill_template`` renders it.
     """
-    ctx = {"n": 0, "targets": dict(placeholders), "found": set(), "widths": {}}
-    try:
-        emission, i = _parse_branches(pattern, 0, ctx, depth=0)
-    except _Unsupported:
-        return None
-    if i != len(pattern) or emission is None:
-        return None
-    if ctx["found"] != set(placeholders):
+    walk = _PatternWalk(pattern, placeholders)
+    emission = walk.emission()
+    if emission is None or walk.found != set(placeholders):
         return None
     if any(ph not in emission for ph in placeholders.values()):
         return None
-    for group, width in ctx["widths"].items():
-        ph = placeholders[group]
-        if _SLOT_NAME_RE.fullmatch(ph):
-            emission = emission.replace(ph, f"{ph[:-1]}:0{width}d}}")
-    return emission
+    return walk.with_widths(emission)
 
 
 _SLOT_NAME_RE = re.compile(r"\{\w+\}")
@@ -631,14 +692,9 @@ def emit_literal(pattern: str) -> str | None:
     capturing group (a fixed literal can't represent a captured field) or
     a construct the reconstruction can't model.
     """
-    ctx = {"n": 0, "targets": {}, "found": set()}
-    try:
-        emission, i = _parse_branches(pattern, 0, ctx, depth=0)
-    except _Unsupported:
-        return None
-    if i != len(pattern) or emission is None or ctx["n"]:
-        return None
-    return emission
+    walk = _PatternWalk(pattern, {})
+    emission = walk.emission()
+    return None if walk.groups else emission
 
 
 # ── Declared state-variable defaults ──
