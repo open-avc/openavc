@@ -25,17 +25,14 @@ from typing import Any
 from openavc.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
     child_param_reference_errors,
-    command_confirm_errors,
-    command_read_back_errors,
-    command_sleep_errors,
     config_learned_from_errors,
     device_setting_state_key_errors,
-    file_command_errors,
     platform_version_errors,
     routing_block_errors,
     validate_actions,
     value_conversion_errors,
 )
+from openavc.drivers.command_checks import SharedCommandChecks
 
 
 class ExtractError(Exception):
@@ -327,27 +324,19 @@ def python_driver_info_issues(
                 "set_device_setting, so every write will 501"
             )
 
-    # A command's confirm, from the same shared rule the YAML command walk
-    # runs. A command map built at runtime, or a confirm read from a
-    # constant, cannot be judged from the source and is not. The file rules
-    # too: a Python driver is the one surface that may declare a file param
-    # or returns_file, so it gets the shape checks without the refusal.
+    # A command's confirm, sleeps_device, read_back and file rules, from the
+    # same shared checks the YAML command walk runs. A command map built at
+    # runtime, or a value read from a constant, cannot be judged from the
+    # source and is not. A Python driver is the one surface that may declare
+    # a file param or returns_file, so it gets the shape checks without the
+    # refusal, and is refused read_back, which only the YAML runtime sends.
     commands = info.get("commands")
     if isinstance(commands, dict):
+        shared = SharedCommandChecks(commands, info.get("transport"), python=True)
         for cmd_name, cmd_def in commands.items():
             if cmd_name == UNEVALUATED_KEY or not isinstance(cmd_def, dict):
                 continue
-            if cmd_def.get("confirm") is not UNEVALUATED:
-                issues.extend(command_confirm_errors(f"Command '{cmd_name}'", cmd_def))
-            issues.extend(command_sleep_errors(cmd_name, cmd_def, commands))
-            issues.extend(
-                command_read_back_errors(
-                    cmd_name, cmd_def, commands, info.get("transport"), python=True
-                )
-            )
-            issues.extend(
-                file_command_errors(f"Command '{cmd_name}'", cmd_def, python=True)
-            )
+            issues.extend(shared.errors(cmd_name, cmd_def))
 
     # References out of a command's params into child_entity_types, from the
     # same shared function the YAML path calls. Its skip list is dropped here

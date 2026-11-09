@@ -27,7 +27,8 @@ from openavc.core.device_manager import DeviceManager, device_asleep
 from openavc.core.device_sleep import SleepBook, asleep_message
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.avcdriver_semantic import command_sleep_errors, validate_driver_definition
+from openavc.drivers.avcdriver_semantic import validate_driver_definition
+from openavc.drivers.command_checks import command_sleep_errors
 from openavc.ui.action_devices import annotate_action_devices
 
 WAKE_SECONDS = 40

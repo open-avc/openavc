@@ -1,14 +1,18 @@
 """Driver-definition validation rules (the .avcdriver contract).
 
 Every cross-field rule that decides whether a driver definition is valid
-lives in this one module. The runtime loader wraps it (adding the
-discovery-block check, which needs the discovery engine's parser), and
-the community driver catalog runs a copy of the same rules in its CI —
-so a definition that passes catalog review is exactly a definition the
-platform will load.
+is reached through this module: ``validate_driver_definition`` walks the
+definition section by section and asks a check module about each command
+(``command_checks``), response rule (``response_rule_checks``), query entry
+(``query_entry_checks``) and the push block (``push_block_checks``). The
+runtime loader wraps it (adding the discovery-block check, which needs the
+discovery engine's parser), and the community driver catalog runs a copy of
+the same rules in its CI, so a definition that passes catalog review is
+exactly a definition the platform will load.
 
-Purity contract: standard library plus the sibling ``spec`` constants
-table and the stdlib-only regex-safety helper. Nothing here may import
+Purity contract: standard library plus the sibling contract modules (the
+``spec`` constants table and the check modules) and the stdlib-only
+regex-safety helper. Nothing here may import
 the server runtime, transports, or discovery machinery; checks that need
 them are passed in (see ``validate_driver_definition``'s
 ``discovery_validator`` hook). An import-guard test enforces this.
@@ -21,10 +25,10 @@ import re
 from typing import Any, Callable
 
 from openavc.drivers.child_ids import declared_child_ids, page_starts
+from openavc.drivers.command_checks import CommandSection, osc_args_errors
 from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY,
-    child_writable_props,
     closest_name,
     config_field_names,
     declared_enum_values,
@@ -51,15 +55,12 @@ from openavc.drivers.spec import (
     DEFAULT_LINE_GAP_S,
     DEFS,
     FIELDS,
-    FILE_PARAM_EXCLUDED_KEYS,
-    FILE_PARAM_MAX_BYTES,
     GENERIC_ID_PREFIXES,
     INSTANCE_SOURCES,
     LENGTH_ENDIANS,
     LENGTH_HEADER_SIZES,
     LINE_GAP_TRANSPORTS,
     LIVENESS_TRANSPORTS,
-    OSC_ARG_TYPES as _OSC_ARG_TYPES,
     PORT_OPEN_TRANSPORTS,
     REQUIRED_FIELDS,
     SEND_FRAME_TYPES,
@@ -251,104 +252,6 @@ def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
             )
 
     return errors
-
-
-_UDP_CONFIG_PLACEHOLDER = re.compile(r"^\{([A-Za-z_][A-Za-z0-9_]*)\}$")
-
-
-def _validate_udp_send(
-    where: str, udp_def: Any, driver_def: dict[str, Any], errors: list[str]
-) -> None:
-    """The rules of a command's ``udp:`` block.
-
-    Exactly one of payload / magic_packet; a payload needs a port (a number
-    in range, or a {config_field} placeholder); a magic_packet names a state
-    variable or config field that can hold the MAC. A block that passes here
-    is one the runtime can always turn into a datagram, so the only thing
-    left to fail at send time is a MAC the device has not reported yet.
-    """
-    if not isinstance(udp_def, dict):
-        errors.append(f"{where}: 'udp' must be a mapping (host, port, payload or magic_packet)")
-        return
-    payload = udp_def.get("payload")
-    mac_field = udp_def.get("magic_packet")
-    if payload and mac_field:
-        errors.append(
-            f"{where}: 'udp' declares both 'payload' and 'magic_packet'; a "
-            f"datagram is one or the other"
-        )
-    elif not payload and not mac_field:
-        errors.append(
-            f"{where}: 'udp' needs a 'payload' (the datagram) or a "
-            f"'magic_packet' (the field holding the MAC to wake)"
-        )
-    host = udp_def.get("host")
-    if host is not None and not isinstance(host, str):
-        errors.append(f"{where}: 'udp.host' must be a string")
-    port = udp_def.get("port")
-    if port is None or port == "":
-        if payload and not mac_field:
-            errors.append(
-                f"{where}: 'udp.port' is required with a payload (a number, or "
-                f"a {{config_field}} placeholder)"
-            )
-    elif isinstance(port, bool) or not isinstance(port, (int, str)):
-        errors.append(f"{where}: 'udp.port' must be a number or a {{config_field}} placeholder")
-    elif isinstance(port, int):
-        if not 1 <= port <= 65535:
-            errors.append(f"{where}: 'udp.port' must be between 1 and 65535, got {port}")
-    else:
-        m = _UDP_CONFIG_PLACEHOLDER.match(port.strip())
-        if m is None:
-            if not port.strip().isdigit():
-                errors.append(
-                    f"{where}: 'udp.port' {port!r} is neither a number nor a "
-                    f"{{config_field}} placeholder"
-                )
-            elif not 1 <= int(port.strip()) <= 65535:
-                errors.append(f"{where}: 'udp.port' must be between 1 and 65535, got {port}")
-        elif m.group(1) not in substitution_names(driver_def):
-            errors.append(
-                f"{where}: 'udp.port' names config field '{m.group(1)}', which "
-                f"the driver does not declare"
-            )
-    if mac_field is not None:
-        # A config field, so a display that has never connected can still be
-        # woken by typing its MAC in (and so the Builder's dry run can build
-        # the packet). A state variable of the same name is read first when
-        # the device has reported one; on its own it is a wake that cannot
-        # work until the first connect, which is the case the wake exists for.
-        if not isinstance(mac_field, str) or not mac_field:
-            errors.append(f"{where}: 'udp.magic_packet' must name a config field")
-        elif mac_field not in substitution_names(driver_def):
-            errors.append(
-                f"{where}: 'udp.magic_packet' names '{mac_field}', which is not "
-                f"a config field. Declare it in config_schema so the MAC can be "
-                f"typed in; a state variable of the same name is read first "
-                f"once the device reports one"
-            )
-    if "broadcast" in udp_def and not isinstance(udp_def.get("broadcast"), bool):
-        errors.append(f"{where}: 'udp.broadcast' must be true or false")
-
-
-def _validate_osc_args(where: str, arg_defs: Any, errors: list[str]) -> None:
-    """Validate OSC arg `type` tags so an unsupported tag or typo fails at load
-    rather than being silently dropped when the message is built."""
-    if arg_defs is None:
-        return
-    if not isinstance(arg_defs, list):
-        errors.append(f"{where}: args must be a list")
-        return
-    for j, arg in enumerate(arg_defs):
-        if not isinstance(arg, dict):
-            errors.append(f"{where}: args[{j}] must be a mapping")
-            continue
-        arg_type = arg.get("type", "f")
-        if arg_type not in _OSC_ARG_TYPES:
-            errors.append(
-                f"{where}: args[{j}] unknown OSC type '{arg_type}' "
-                f"(expected one of f/i/s/h/d/T/F/N)"
-            )
 
 
 class _TaggedErrors(list):
@@ -654,7 +557,9 @@ def validate_driver_definition(
             response_rule_errors(i, resp, child_types_map, any_json_rule)
         )
 
-    # Validate commands structure
+    # What one command says about itself is checked in command_checks; its
+    # parameters' references into child_entity_types are checked after every
+    # command, below. Each command's messages are tagged with its place.
     errors.ctx = "commands"
     commands = driver_def.get("commands", {})
     if not isinstance(commands, dict):
@@ -662,125 +567,10 @@ def validate_driver_definition(
         commands = {}
     declared_vars = driver_def.get("state_variables")
     declared_vars = declared_vars if isinstance(declared_vars, dict) else {}
+    section = CommandSection(driver_def, commands, declared_vars, child_types_map)
     for cmd_name, cmd_def in commands.items():
         errors.ctx = f"commands.{cmd_name}"
-        if not isinstance(cmd_def, dict):
-            errors.append(f"Command '{cmd_name}': must be a dict")
-            continue
-        # A command sends one way: send (TCP/serial/UDP transport), path /
-        # method (HTTP), address (OSC), udp (a datagram beside the transport)
-        # or ir (a bridge's emitter). An empty send is the Builder's seed, not
-        # a shape.
-        has_send = cmd_def.get("send")
-        has_http = cmd_def.get("path") or cmd_def.get("method")
-        has_osc = cmd_def.get("address") is not None
-        has_udp = cmd_def.get("udp") is not None
-        has_ir = cmd_def.get("ir") is not None
-        shapes = [
-            name for name, present in (
-                ("send", has_send), ("path/method", has_http),
-                ("address", has_osc), ("udp", has_udp), ("ir", has_ir),
-            ) if present
-        ]
-        if not shapes:
-            errors.append(
-                f"Command '{cmd_name}': must have 'send' (TCP/serial), "
-                f"'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a "
-                f"datagram beside the main transport)"
-            )
-        elif len(shapes) > 1:
-            errors.append(
-                f"Command '{cmd_name}': declares {' and '.join(shapes)}, but a "
-                f"command sends one way. Keep one of 'send' (TCP/serial), "
-                f"'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a "
-                f"datagram beside the main transport)"
-            )
-        if has_osc:
-            _validate_osc_args(f"Command '{cmd_name}'", cmd_def.get("args"), errors)
-        if has_udp:
-            _validate_udp_send(
-                f"Command '{cmd_name}'", cmd_def.get("udp"), driver_def, errors
-            )
-        errors.extend(
-            param_aid_errors(f"Command '{cmd_name}'", cmd_def.get("params"))
-        )
-        # Declared command semantics: `sets` / `query_for` drive the
-        # auto-generated simulator, so a dangling reference would silently
-        # declare nothing — enforce that every name they use exists. A command
-        # addressed to exactly one child (a single child_id param) may name
-        # that child type's state variables instead — the simulator routes
-        # the effect to the addressed child's own state.
-        cmd_params = cmd_def.get("params")
-        cmd_params = cmd_params if isinstance(cmd_params, dict) else {}
-        child_param_types = [
-            p.get("child_type")
-            for p in cmd_params.values()
-            if isinstance(p, dict) and p.get("type") == "child_id"
-        ]
-        # Empty means "this command is not addressed to a single child type",
-        # which is what the two error wordings below branch on. Once it IS
-        # addressed the set is never empty (the reserved props are always in
-        # it), so that branch still reads the way it always did.
-        child_target_vars: set[str] = set()
-        if len(child_param_types) == 1 and child_param_types[0] in child_types_map:
-            _tdef = child_types_map.get(child_param_types[0])
-            child_target_vars = child_writable_props(_tdef)
-        sets_def = cmd_def.get("sets")
-        if sets_def is not None and not isinstance(sets_def, dict):
-            errors.append(f"Command '{cmd_name}': 'sets' must be a mapping")
-        elif isinstance(sets_def, dict):
-            for var_name, set_value in sets_def.items():
-                if var_name not in declared_vars and var_name not in child_target_vars:
-                    if child_target_vars:
-                        errors.append(
-                            f"Command '{cmd_name}': sets '{var_name}' which is "
-                            f"not a declared state variable (device-level or "
-                            f"of the addressed child type)"
-                        )
-                    else:
-                        errors.append(
-                            f"Command '{cmd_name}': sets '{var_name}' which is "
-                            f"not a declared state variable"
-                        )
-                if isinstance(set_value, str) and (
-                    "{" in set_value or "}" in set_value
-                ):
-                    ref = re.fullmatch(r"\{([^{}]+)\}", set_value)
-                    if not ref or ref.group(1) not in cmd_params:
-                        errors.append(
-                            f"Command '{cmd_name}': sets.{var_name} value "
-                            f"{set_value!r} must be a literal or a bare "
-                            f"{{param}} reference to a declared parameter"
-                        )
-        query_for = cmd_def.get("query_for")
-        if query_for is not None:
-            if not isinstance(query_for, str) or not query_for:
-                errors.append(
-                    f"Command '{cmd_name}': 'query_for' must name a state "
-                    f"variable"
-                )
-            elif query_for not in declared_vars and query_for not in child_target_vars:
-                if child_target_vars:
-                    errors.append(
-                        f"Command '{cmd_name}': query_for '{query_for}' is not "
-                        f"a declared state variable (device-level or of the "
-                        f"addressed child type)"
-                    )
-                else:
-                    errors.append(
-                        f"Command '{cmd_name}': query_for '{query_for}' is not "
-                        f"a declared state variable"
-                    )
-        errors.extend(command_confirm_errors(f"Command '{cmd_name}'", cmd_def))
-        errors.extend(command_sleep_errors(cmd_name, cmd_def, commands))
-        errors.extend(
-            command_read_back_errors(
-                cmd_name, cmd_def, commands, driver_def.get("transport")
-            )
-        )
-        errors.extend(
-            file_command_errors(f"Command '{cmd_name}'", cmd_def, python=False)
-        )
+        errors.extend(section.command_errors(cmd_name, cmd_def))
 
     # References out of a command's params into child_entity_types. Shared
     # with the Python surface (a Python driver reaches the same function
@@ -849,7 +639,7 @@ def validate_driver_definition(
             elif write.get("address") is not None:
                 # OSC writes share the command arg encoder — validate their
                 # arg types too so a bad tag fails at load, not write time.
-                _validate_osc_args(f"{where} write", write.get("args"), errors)
+                errors.extend(osc_args_errors(f"{where} write", write.get("args")))
             errors.extend(device_setting_map_errors(where, setting_def))
 
     # Validate the Phase 6 ``discovery:`` block. Templates (generic_*)
@@ -1980,173 +1770,6 @@ def validate_driver_issues(
     return _as_issues(errors, "error") + _as_issues(warnings, "warning")
 
 
-def _unevaluated(value: Any) -> bool:
-    """True for ``python_info``'s placeholder for a value read from a constant
-    or built at runtime (it is defined there, and that module imports this
-    one), which no rule can judge from the source."""
-    return type(value).__name__ == "_Unevaluated"
-
-
-def command_sleep_errors(
-    cmd_name: str, cmd_def: dict[str, Any], commands: dict[str, Any]
-) -> list[str]:
-    """A command's ``sleeps_device`` names a command that can wake the device.
-
-    Shared with the Python surface (``python_info``). The wake command has to
-    work with the device off the network (``available_offline``) and say how
-    long the device takes to come back (``restarts_device_for``), because the
-    wait after it is sent is the driver's measured number and the device that
-    has not returned by then reads as the real fault.
-    """
-    wake = cmd_def.get("sleeps_device")
-    if wake is None or _unevaluated(wake):
-        return []
-    where = f"Command '{cmd_name}'"
-    if not isinstance(wake, str) or not wake.strip():
-        return [f"{where}: 'sleeps_device' must name the command that wakes the device"]
-    if wake == cmd_name:
-        return [
-            f"{where}: 'sleeps_device' names this command itself; name the "
-            f"command that wakes the device"
-        ]
-    names = {n for n in commands if isinstance(n, str) and n != UNEVALUATED_KEY}
-    if wake not in names:
-        if UNEVALUATED_KEY in commands:
-            return []
-        return [
-            f"{where}: 'sleeps_device' names '{wake}', which is not a declared "
-            f"command{did_you_mean(wake, names)}"
-        ]
-    wake_def = commands.get(wake)
-    if not isinstance(wake_def, dict):
-        return []
-    errors: list[str] = []
-    offline = wake_def.get("available_offline")
-    if not _unevaluated(offline) and offline is not True:
-        errors.append(
-            f"{where}: 'sleeps_device' names '{wake}', which does not set "
-            f"available_offline: true, so it cannot wake a device that is off "
-            f"the network"
-        )
-    restarts = wake_def.get("restarts_device_for")
-    if not _unevaluated(restarts) and not restarts:
-        errors.append(
-            f"{where}: 'sleeps_device' names '{wake}', which declares no "
-            f"restarts_device_for: give it the measured seconds the device takes "
-            f"to come back after '{wake}'"
-        )
-    return errors
-
-
-def command_read_back_errors(
-    cmd_name: str,
-    cmd_def: dict[str, Any],
-    commands: dict[str, Any],
-    transport: Any,
-    python: bool = False,
-) -> list[str]:
-    """A command's ``read_back`` is something the runtime can send after it.
-
-    ``true`` reads the command's own OSC address or HTTP path; a string or a
-    list of them names a command, or is a query sent as a poll query is. A
-    named command gets the parameters this one shares with it by name, so
-    each parameter it declares has to be one of this command's; and it may
-    not read back itself, or one press would read back without end. Shared with the Python surface
-    (``python_info``), which refuses the field outright: a Python driver
-    reads a value back in its own send_command.
-    """
-    raw = cmd_def.get("read_back")
-    if raw is None or _unevaluated(raw):
-        return []
-    where = f"Command '{cmd_name}'"
-    if python:
-        return [
-            f"{where}: 'read_back' is read by YAML drivers; a Python driver "
-            f"reads the value back in its own send_command"
-        ]
-    if cmd_def.get("udp") is not None or cmd_def.get("ir") is not None:
-        how = "udp" if cmd_def.get("udp") is not None else "ir"
-        return [
-            f"{where}: 'read_back' reads a value back over the device's "
-            f"connection, and a '{how}' command is sent beside it, so nothing "
-            f"would answer"
-        ]
-    shape = (
-        "'read_back' must be true, a query, or a list of queries"
-    )
-    if raw is True:
-        if cmd_def.get("address") is None and not (
-            cmd_def.get("path") or cmd_def.get("method")
-        ):
-            return [
-                f"{where}: 'read_back: true' reads back from an OSC command's "
-                f"own address or an HTTP command's own path. Name the query "
-                f"that reads this command's value instead"
-            ]
-        return []
-    if isinstance(raw, str):
-        entries = [raw]
-    elif isinstance(raw, list) and raw:
-        entries = raw
-    else:
-        return [f"{where}: {shape}"]
-    if any(not isinstance(e, str) or not e.strip() for e in entries):
-        return [f"{where}: {shape}"]
-
-    errors: list[str] = []
-    own_params = cmd_def.get("params")
-    own_params = own_params if isinstance(own_params, dict) else {}
-    for i, entry in enumerate(entries):
-        at = f"{where}: read_back" + (f"[{i}]" if isinstance(raw, list) else "")
-        if entry == cmd_name:
-            errors.append(
-                f"{at} names this command itself; name the query that reads "
-                f"its value"
-            )
-            continue
-        named = commands.get(entry) if isinstance(commands, dict) else None
-        if isinstance(named, dict):
-            if named.get("read_back") is not None:
-                errors.append(
-                    f"{at} names '{entry}', which has a read_back of its own. "
-                    f"Name a command that only reads"
-                )
-            if named.get("udp") is not None or named.get("ir") is not None:
-                errors.append(
-                    f"{at} names '{entry}', which is sent beside the device's "
-                    f"connection, so nothing would answer it"
-                )
-            declared = named.get("params")
-            if isinstance(declared, dict) and UNEVALUATED_KEY not in declared:
-                for pname in declared:
-                    if pname not in own_params:
-                        errors.append(
-                            f"{at} names '{entry}', whose parameter '{pname}' "
-                            f"is not a parameter of this command, so it would "
-                            f"be sent without it"
-                        )
-            continue
-        if transport == "osc" and not entry.startswith("/"):
-            errors.append(
-                f"{at} '{entry}' is neither a command nor an OSC address "
-                f"(an address starts with /)"
-            )
-    return errors
-
-
-def command_confirm_errors(where: str, cmd_def: dict[str, Any]) -> list[str]:
-    """A command's ``confirm`` is a flag or the sentence to ask.
-
-    Shared with the Python surface (``python_info``), so a Python driver's
-    ``confirm: 5`` is refused in the same words as a YAML one. Anything else
-    is dropped by every door that asks, and the command is sent unasked.
-    """
-    confirm = cmd_def.get("confirm")
-    if confirm is None or isinstance(confirm, (bool, str)):
-        return []
-    return [f"{where}: 'confirm' must be a boolean or a message string"]
-
-
 _CONVERTIBLE_TYPES = ("integer", "number", "float")
 
 
@@ -2602,87 +2225,6 @@ _FILE_ACTION_REASON = (
 
 def _is_file_command_id(commands: Any, command_id: str) -> bool:
     return isinstance(commands, dict) and is_file_command(commands.get(command_id))
-
-
-# The kinds of value the Python reader hands back as themselves; anything else
-# is its placeholder for an expression it could not evaluate.
-_PLAIN_VALUE_TYPES = frozenset({str, int, float, bool, list, tuple, dict})
-
-
-def _judgeable(value: Any) -> bool:
-    """A value read from source as itself, not a placeholder for an
-    expression the Python reader could not evaluate."""
-    return value is None or type(value) in _PLAIN_VALUE_TYPES
-
-
-_ACCEPT_RE = re.compile(r"\.[A-Za-z0-9][A-Za-z0-9._-]*")
-
-
-def file_command_errors(
-    where: str, cmd_def: dict[str, Any], *, python: bool,
-) -> list[str]:
-    """The rules for a command that takes a file or hands one back.
-
-    Shared with the Python surface (``python_info``), which is the only one
-    that may declare either: a YAML driver's runtime has no way to put a file
-    on the wire, so a ``.avcdriver`` declaring one is refused here (the
-    platform never runs the published JSON Schema at load, so its enum alone
-    would not stop it). A value the Python reader could not evaluate is not
-    judged.
-    """
-    errors: list[str] = []
-    params = cmd_def.get("params")
-    if isinstance(params, dict):
-        for pname, pdef in params.items():
-            if not isinstance(pdef, dict) or not _judgeable(pdef.get("type")):
-                continue
-            label = f"{where} param '{pname}'"
-            if pdef.get("type") != "file":
-                stray = [key for key in ("accept", "max_bytes") if key in pdef]
-                if stray:
-                    errors.append(
-                        f"{label}: {' and '.join(stray)} "
-                        f"{'applies' if len(stray) == 1 else 'apply'} only to "
-                        f"a file param (type: file)"
-                    )
-                continue
-            if not python:
-                errors.append(f"{label}: type 'file' requires a Python driver")
-                continue
-            excluded = [key for key in FILE_PARAM_EXCLUDED_KEYS if key in pdef]
-            if excluded:
-                errors.append(
-                    f"{label}: a file param takes no {', '.join(excluded)}"
-                )
-            accept = pdef.get("accept")
-            if accept is not None and _judgeable(accept) and not (
-                isinstance(accept, (list, tuple)) and accept and all(
-                    not _judgeable(item)
-                    or (isinstance(item, str) and _ACCEPT_RE.fullmatch(item))
-                    for item in accept
-                )
-            ):
-                errors.append(
-                    f"{label}: accept must list file-name endings, "
-                    f"e.g. [\".bin\"]"
-                )
-            max_bytes = pdef.get("max_bytes")
-            if max_bytes is not None and _judgeable(max_bytes) and (
-                isinstance(max_bytes, bool)
-                or not isinstance(max_bytes, int)
-                or not 1 <= max_bytes <= FILE_PARAM_MAX_BYTES
-            ):
-                errors.append(
-                    f"{label}: max_bytes must be a whole number of bytes from 1 "
-                    f"to {FILE_PARAM_MAX_BYTES} (1 GiB)"
-                )
-    returns_file = cmd_def.get("returns_file")
-    if returns_file is not None and _judgeable(returns_file):
-        if not isinstance(returns_file, bool):
-            errors.append(f"{where}: 'returns_file' must be true or false")
-        elif returns_file and not python:
-            errors.append(f"{where}: 'returns_file' requires a Python driver")
-    return errors
 
 
 def _validate_action_entry(
