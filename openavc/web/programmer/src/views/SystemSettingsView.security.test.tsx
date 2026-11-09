@@ -210,6 +210,14 @@ describe("A certificate made here", () => {
     spy.mockRestore();
   });
 
+  it("offers no install steps while the server runs your own certificate", async () => {
+    served.tls = { enabled: true, mode: "provided", cert: CERT };
+    await renderLoaded(<SystemSettingsView />);
+    expect(screen.queryByLabelText("Install on")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Download CA certificate/ })).toBeNull();
+    expect(screen.getByText("Verify fingerprint")).toBeTruthy();
+  });
+
   it("asks for nothing to be uploaded", async () => {
     served.tls = { enabled: true, mode: "auto", cert: CERT };
     await renderLoaded(<SystemSettingsView />);
@@ -327,6 +335,29 @@ describe("Your own certificate", () => {
     await waitFor(() => expect(screen.getByText("Certificate uploaded")).toBeTruthy());
   });
 
+  it("asks for both files again while only one is set", async () => {
+    served.config.tls = { ...served.config.tls, cert_file: "/c.pem", key_file: "" };
+    await renderLoaded(<SystemSettingsView />);
+    expect(fileInputs()).toHaveLength(2);
+    expect(screen.getByText("Upload a certificate before saving.")).toBeTruthy();
+  });
+
+  it("forgets the uploaded files' paths on Replace", async () => {
+    await renderLoaded(<SystemSettingsView />);
+    const [certInput, keyInput] = fileInputs();
+    fireEvent.change(certInput, { target: { files: [pem("a.crt")] } });
+    fireEvent.change(keyInput, { target: { files: [pem("a.key")] } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload certificate" }));
+    await waitFor(() => expect(screen.getByText("Certificate uploaded")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Replace certificate" }));
+    fireEvent.click(switchBeside("Enable HTTPS"));
+    fireEvent.click(saveButton());
+    await waitFor(() => expect(api.updateSystemConfig).toHaveBeenCalled());
+    expect(api.updateSystemConfig.mock.calls[0][0]).toEqual({
+      tls: { cert_file: "", key_file: "", enabled: false },
+    });
+  });
+
   it("goes back to the pickers, empty, on Replace", async () => {
     await renderLoaded(<SystemSettingsView />);
     fireEvent.click(screen.getByRole("button", { name: "Or paste PEM contents" }));
@@ -396,6 +427,14 @@ describe("The trusted certificate", () => {
     expect(screen.queryByText("Trusted certificate")).toBeNull();
   });
 
+  it("stays on screen once switched on, even with the pairing gone", async () => {
+    served.config.tls.enabled = true;
+    served.config.tls.cloud_cert = true;
+    served.tls = { enabled: true, cloud_cert: cloudCert({ paired: false, enabled: true }) };
+    await renderLoaded(<SystemSettingsView />);
+    expect(screen.getByRole("button", { name: "Turn off trusted certificate" })).toBeTruthy();
+  });
+
   it("is not offered when the server says nothing about it", async () => {
     served.tls = { enabled: false };
     await renderLoaded(<SystemSettingsView />);
@@ -445,6 +484,23 @@ describe("The trusted certificate", () => {
     await renderLoaded(<SystemSettingsView />);
     vi.useFakeTimers();
     api.getTlsStatus.mockRejectedValue(new Error("down"));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Get a trusted certificate" }));
+    });
+    const before = api.getTlsStatus.mock.calls.length;
+    await act(async () => { vi.advanceTimersByTime(2000 * 61); });
+    const after = api.getTlsStatus.mock.calls.length;
+    expect(after - before).toBe(61);
+    await act(async () => { vi.advanceTimersByTime(20000); });
+    expect(api.getTlsStatus.mock.calls.length).toBe(after);
+  });
+
+  it("stops watching after two minutes of an issuance that never settles", async () => {
+    served.config.tls.enabled = true;
+    served.tls = { enabled: true, cloud_cert: cloudCert() };
+    await renderLoaded(<SystemSettingsView />);
+    vi.useFakeTimers();
+    served.tls = { enabled: true, cloud_cert: cloudCert({ enabled: true, phase: "issuing" }) };
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Get a trusted certificate" }));
     });

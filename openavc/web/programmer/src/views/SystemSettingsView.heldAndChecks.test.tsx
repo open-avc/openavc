@@ -152,6 +152,16 @@ describe("Save is refused before it is sent", () => {
     expect(saveButton().title).toBe("");
   });
 
+  it("for a password emptied beside a stored API key", async () => {
+    served.config.auth = { programmer_username: "", programmer_password: "***", api_key: "***" };
+    await renderLoaded(<SystemSettingsView />);
+    const password = screen.getAllByPlaceholderText("Set (hidden)")[0];
+    fireEvent.change(password, { target: { value: "a" } });
+    fireEvent.change(screen.getByPlaceholderText("No password set"), { target: { value: "" } });
+    expect(screen.getByText(/An API key can't sign in to the Programmer\./)).toBeTruthy();
+    expect(saveButton()).toBeDisabled();
+  });
+
   it("not for a system already in that state that changes something else", async () => {
     served.config.auth = { programmer_username: "", programmer_password: "", api_key: "***" };
     await renderLoaded(<SystemSettingsView />);
