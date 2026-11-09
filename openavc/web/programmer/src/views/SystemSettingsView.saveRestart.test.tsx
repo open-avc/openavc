@@ -305,6 +305,8 @@ describe("Where the restart dialog waits", () => {
 
   it("asks nothing more when the server says no change of who can connect is waiting", async () => {
     waitingChoice({ restart_needed: false });
+    // Were it asked, this answer would move the page to 127.0.0.1.
+    api.previewListen.mockImplementation(async () => preview({ serves_this_address: false, keeps_this_connection: true }));
     await restartFromBanner();
     expect(api.previewListen.mock.calls.every((c) => JSON.stringify(c[0]) === '{"accept_connections_from":"any"}')).toBe(true);
     expect(dialogProps()).toEqual({
@@ -525,6 +527,19 @@ describe("Where panels open, for the choice the server runs", () => {
     await renderLoaded(<SystemSettingsView />);
     await waitFor(() => expect(screen.getByTestId("panels-open-at").textContent).toContain("http://10.0.0.7:8080/panel"));
     expect(screen.getByTestId("panels-open-at").textContent).not.toContain("10.0.0.9");
+  });
+
+  it("asks only about the choice that stays on screen for a moment", async () => {
+    await renderLoaded(<SystemSettingsView />);
+    await waitFor(() => expect(api.previewListen).toHaveBeenCalledTimes(1));
+    fireEvent.change(listenField(), { target: { value: "this_computer" } });
+    await new Promise((r) => setTimeout(r, 60));
+    fireEvent.change(listenField(), { target: { value: "any" } });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(api.previewListen.mock.calls.map((c) => c[0])).toEqual([
+      { accept_connections_from: "any" },
+      { accept_connections_from: "any" },
+    ]);
   });
 
   it("forgets the server's answer when a later one fails", async () => {
