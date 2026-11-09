@@ -76,6 +76,8 @@ def test_constructs_outside_a_class(pattern: str, group: int, expected: Any) -> 
         (r"[]a](\d+)", "]{value}"),
         (r"[]](\d+)", "]{value}"),
         (r"[^]a](\d+)", None),
+        # ...and is still inside the class: dropped whole, it leaves nothing.
+        (r"[^]a]?(\d+)", "{value}"),
         # An escaped ] does not close the class.
         (r"[a\]b](\d+)", "a{value}"),
         # A class that never closes.
@@ -142,6 +144,9 @@ def test_a_target_under_a_quantifier(pattern: str, expected: Any) -> None:
         ("", 1, None),
         (r"(\d+)", 0, None),
         (r"x(\d+)", -1, None),
+        # A group that does not capture has no number to be asked for.
+        (r"(?:x)", 0, None),
+        (r"(?i:x)", 0, None),
         # Alternation: the branch carrying the slot, else the first one that
         # can be emitted, else nothing.
         (r"A|(\d+)", 1, "{value}"),
@@ -197,6 +202,11 @@ def test_the_width_a_fixed_run_of_digits_carries(pattern: str, expected: Any) ->
         (r"Out", {}, "Out"),
         # Both slots must survive; branches carry one each here.
         (r"(?:A(\d+)|B(\d+))", {1: "{a}", 2: "{b}"}, None),
+        # Every slot group must be reached, even when its text is in the reply.
+        (r"(\d+) \{b\}", {1: "{a}", 3: "{b}"}, None),
+        # A literal slot (a wire token) also in a later branch: the first
+        # branch carrying it wins.
+        (r"(?:M(\d)x|1y)", {1: "1"}, "M1x"),
     ],
 )
 def test_several_slots_in_one_emission(
@@ -218,6 +228,7 @@ def test_a_slot_dict_is_not_changed() -> None:
         (r"(?i)abc", "abc"),
         (r"a|b", "a"),
         (r"a|[^b]", "a"),
+        (r"[^a]|b", "b"),
         (r"x{2}y", "xxy"),
         (r"a\\", "a\\"),
         (r"\x00\x7f", "\x00\x7f"),
@@ -225,6 +236,8 @@ def test_a_slot_dict_is_not_changed() -> None:
         # A named group captures, so a fixed literal cannot stand for it.
         (r"(?P<a>x)", None),
         (r"[^a]b", None),
+        (r"x[abc", None),
+        (r"(?=x)y", None),
         (r"(x", None),
         (r"x)", None),
         (r"a{9}", None),
@@ -244,6 +257,7 @@ def test_emit_literal(pattern: str, expected: Any) -> None:
         ("GAIN {value:03d}", {"value": 2.5}, "GAIN 2.5"),
         ("{value:03d}", {"value": " 5"}, " 5"),
         ("{value:03d}", {"value": "+5"}, "+5"),
+        ("{value:03d}", {"value": "0005"}, "005"),
         ("{value:03d}", {"value": float("nan")}, "nan"),
         ("{value:00d}", {"value": 5}, "5"),
         ("{value:010d}", {"value": 5}, "0000000005"),
