@@ -1328,6 +1328,54 @@ export interface BindingRefIds {
   pageIds: ReadonlySet<string>;
 }
 
+/** What an action names by id, which is also the field it is named in. */
+type ReferenceKind = "device" | "macro" | "page";
+
+/** The one id each action names: a command's device, a macro call's macro, a
+ *  page move's page. A field another action carries means nothing to the
+ *  runtime, so it is not read. */
+const NAMED_BY_ACTION = new Map<unknown, ReferenceKind>([
+  ["device.command", "device"],
+  ["macro", "macro"],
+  ["ui.navigate", "page"],
+]);
+
+/** How the binding card names each kind in its Broken badge. */
+const REFERENCE_NOUNS: Record<ReferenceKind, string> = {
+  device: "Device",
+  macro: "Macro",
+  page: "Page",
+};
+
+/** Whether a page move can land: a page in the project, or a target the panel
+ *  resolves itself (`$back`, `$dismiss`). A page nav's target asks the same. */
+function pageExists(page: unknown, pageIds: ReadonlySet<string>): boolean {
+  return pageIds.has(page as string) || NAVIGATION_SENTINELS.has(page as string);
+}
+
+function resolves(kind: ReferenceKind, id: unknown, ids: BindingRefIds): boolean {
+  if (kind === "page") return pageExists(id, ids.pageIds);
+  return (kind === "device" ? ids.deviceIds : ids.macroIds).has(id as string);
+}
+
+interface BrokenReference {
+  kind: ReferenceKind;
+  id: string;
+}
+
+/**
+ * The id an action names that is not in the project, or null when its field is
+ * empty or resolves. One action only: a value_map's options are each caller's to
+ * walk, because the binding card's badge and Validate read them differently
+ * (`valueMapActions`). Each caller words what it finds in its own place.
+ */
+function brokenReference(a: Record<string, unknown>, ids: BindingRefIds): BrokenReference | null {
+  const kind = NAMED_BY_ACTION.get(a.action);
+  if (!kind) return null;
+  const id = a[kind];
+  return id && !resolves(kind, id, ids) ? { kind, id: String(id) } : null;
+}
+
 /** First broken reference in an action — a device/macro/page id that no
  *  longer exists. A value_map runs the per-option action branches, so those
  *  are checked here too — AI tools and imports emit them, and a Broken badge
@@ -1336,19 +1384,9 @@ export function actionDanglingRef(
   a: Record<string, unknown>,
   ids: BindingRefIds,
 ): string | null {
+  const broken = brokenReference(a, ids);
+  if (broken) return `${REFERENCE_NOUNS[broken.kind]} "${broken.id}" not found`;
   const act = a.action;
-  if (act === "device.command" && a.device && !ids.deviceIds.has(a.device as string)) {
-    return `Device "${a.device}" not found`;
-  }
-  if (act === "macro" && a.macro && !ids.macroIds.has(a.macro as string)) {
-    return `Macro "${a.macro}" not found`;
-  }
-  if (
-    act === "ui.navigate" && a.page && !ids.pageIds.has(a.page as string) &&
-    !NAVIGATION_SENTINELS.has(a.page as string)
-  ) {
-    return `Page "${a.page}" not found`;
-  }
   if (act === "value_map" && a.map && typeof a.map === "object") {
     for (const branch of Object.values(a.map as Record<string, unknown>)) {
       const subs = Array.isArray(branch) ? branch : [branch];
@@ -6378,6 +6416,12 @@ export interface ValidationIssue {
   elementId?: string;
 }
 
+/** Validate's words for a reference that is not there. Where the badge says
+ *  `Page "x" not found`, this says the navigate goes to a deleted page. */
+function validateSays({ kind, id }: BrokenReference): string {
+  return kind === "page" ? `Navigate to deleted page "${id}"` : `${REFERENCE_NOUNS[kind]} "${id}" not found`;
+}
+
 /**
  * @param commandIssues What the platform says about each `device.command` in
  *   the project, keyed by the action object (see `api/commandIssues.ts`).
@@ -6393,6 +6437,7 @@ export function validateProject(
   const pageIds = new Set(project.ui.pages.map((p) => p.id));
   const deviceIds = new Set(project.devices.map((d) => d.id));
   const macroIds = new Set(project.macros.map((m) => m.id));
+  const refIds: BindingRefIds = { deviceIds, macroIds, pageIds };
   const checkElement = (el: UIElement, pageId: string, pageName: string) => {
     const loc = `${pageName} > ${el.id}`;
     const bindings = (el.bindings || {}) as Record<string, unknown>;
@@ -6400,10 +6445,7 @@ export function validateProject(
     const doMap = (bindings.do || {}) as Record<string, unknown>;
 
     // page_nav target
-    if (
-      el.type === "page_nav" && el.target_page && !pageIds.has(el.target_page) &&
-      !NAVIGATION_SENTINELS.has(el.target_page)
-    ) {
+    if (el.type === "page_nav" && el.target_page && !pageExists(el.target_page, pageIds)) {
       issues.push({ severity: "error", message: `Target page "${el.target_page}" does not exist`, location: loc, pageId, elementId: el.id });
     }
 
@@ -6419,14 +6461,9 @@ export function validateProject(
     // One action checker for every interaction. Recurses into value_map
     // per-option actions the same way the engine executes them.
     const checkAction = (b: Record<string, unknown>, slotLoc: string) => {
-      if (
-        b.action === "ui.navigate" && b.page && !pageIds.has(b.page as string) &&
-        !NAVIGATION_SENTINELS.has(b.page as string)
-      ) {
-        issues.push({ severity: "error", message: `Navigate to deleted page "${b.page}"`, location: slotLoc, pageId, elementId: el.id });
-      }
-      if (b.action === "device.command" && b.device && !deviceIds.has(b.device as string)) {
-        issues.push({ severity: "error", message: `Device "${b.device}" not found`, location: slotLoc, pageId, elementId: el.id });
+      const broken = brokenReference(b, refIds);
+      if (broken) {
+        issues.push({ severity: "error", message: validateSays(broken), location: slotLoc, pageId, elementId: el.id });
       }
       // The device is here and the command is one it has, and the driver will
       // still refuse it: a parameter it declares required was never filled in.
@@ -6434,9 +6471,6 @@ export function validateProject(
       // wall are the same words.
       for (const message of commandIssues?.get(b) ?? []) {
         issues.push({ severity: "error", message, location: slotLoc, pageId, elementId: el.id });
-      }
-      if (b.action === "macro" && b.macro && !macroIds.has(b.macro as string)) {
-        issues.push({ severity: "error", message: `Macro "${b.macro}" not found`, location: slotLoc, pageId, elementId: el.id });
       }
       if (b.action === "value_map" && b.map && typeof b.map === "object" && !Array.isArray(b.map)) {
         for (const [optValue, mapped] of Object.entries(b.map as Record<string, unknown>)) {
