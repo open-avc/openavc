@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { reportableOffline } from "./DeviceDetail";
+import { reportableOffline } from "./deviceAway";
 import {
   browserAnswer,
   failureText,

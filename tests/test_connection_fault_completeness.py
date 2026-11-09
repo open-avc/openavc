@@ -21,6 +21,9 @@ half-wired. Add a code to the taxonomy and this file tells you what you still ow
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 import pytest
 
 from openavc.core import connection_fault as cf
@@ -118,6 +121,24 @@ def test_a_permanent_fault_is_one_a_human_has_to_clear():
         assert not cf.is_permanent_fault(healing), (
             f"{healing} heals on its own; marking it permanent strands the device"
         )
+
+
+DEVICE_AWAY_TS = (Path(__file__).resolve().parents[1]
+                  / "openavc/web/programmer/src/views/devices/deviceAway.ts")
+
+
+def test_the_device_page_names_the_same_faults_it_will_not_retry():
+    """The Offline banner says "won't clear on its own" for the reasons the
+    device manager stops retrying on, from its own copy of the set: a code
+    added here and not there would read as "Not retrying" with no reason why.
+    auth_failed is in the set too, with a sentence of its own about lockout."""
+    source = DEVICE_AWAY_TS.read_text(encoding="utf-8")
+    block = re.search(
+        r"const PERMANENT_OFFLINE_REASONS = new Set\(\[(.*?)\]\);", source, re.S,
+    )
+    assert block, "PERMANENT_OFFLINE_REASONS not found in deviceAway.ts"
+    listed = set(re.findall(r'"([a-z_]+)"', block.group(1)))
+    assert listed == set(cf._PERMANENT_FAULT_CODES) - {cf.AUTH_FAILED}
 
 
 def test_every_child_fault_code_has_a_sentence_too():

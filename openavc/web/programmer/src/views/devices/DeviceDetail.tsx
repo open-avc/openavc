@@ -1,10 +1,8 @@
 import { InstalledEquipment } from "./InstalledEquipment";
-import { BuiltInEquipmentNotice } from "../../components/shared/BuiltInEquipmentNotice";
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Send, Pencil, Trash2, Wifi, WifiOff, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, Pause, Play, AlertTriangle, ClipboardCheck, Moon } from "lucide-react";
+import { Send, Pencil, Trash2, Wifi, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, AlertTriangle, ClipboardCheck } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
-import { pausedBannerText } from "../../components/shared/pausedText";
 import { useProjectStore } from "../../store/projectStore";
 import { SearchableSelect } from "../../components/shared/SearchableSelect";
 import { commandOptions } from "../../components/shared/pickerOptions";
@@ -35,7 +33,6 @@ import { normalizeOptionList, parseStateOptionList, settingValueText } from "../
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
 import { connectionTestText } from "./deviceAddress";
-import { isSecretConfigField } from "./deviceConfigCoerce";
 import { BooleanOptions } from "../../components/shared/BooleanOptions";
 import { readingText, valueText } from "../../components/shared/booleanWords";
 import { ChildEntities } from "./ChildEntities";
@@ -55,6 +52,10 @@ import { NeedsLoginBanner } from "./NeedsLoginBanner";
 import { ProblemReportDialog, ReportLink } from "./ProblemReportDialog";
 import type { ProblemReportContext } from "../../api/problemReportClient";
 import { reportableCommandFailure } from "./problemReport";
+import { awayBanner, hasSignInFields, readDeviceAway, reportableOffline, waitsForLogin } from "./deviceAway";
+import { AsleepBanner, OfflineBanner, PausedBanner, RestartingBanner } from "./AwayBanners";
+import { OrphanBanner } from "./OrphanBanner";
+import { ChildTroubleBanner } from "./ChildTroubleBanner";
 
 export function DeviceDetail({
   deviceId,
@@ -156,16 +157,17 @@ export function DeviceDetail({
   // moment it comes up (and vice versa).
   // The same when the device's web page is found: the platform looks for it
   // in the background after connect, and Open Web UI comes with the answer.
-  const connected = Boolean(liveState[`device.${deviceId}.connected`]);
+  const away = readDeviceAway(liveState, deviceId);
+  const connected = away.connected;
   const webUiUrl = liveState[`device.${deviceId}.web_ui_url`];
   const [testResult, setTestResult] = useConnectionTestResult(deviceId, connected);
   const runtimeEnabled = liveState[`device.${deviceId}.enabled`] === true;
   // And when it starts or stops waiting for a login: which settings wait is
   // in the device info, and a login saved anywhere changes it.
-  const waitsForLogin = liveState[`device.${deviceId}.offline_reason`] === "login_missing";
+  const awaitingLogin = waitsForLogin(away);
   useEffect(() => {
     refetchDeviceInfo();
-  }, [refetchDeviceInfo, connected, webUiUrl, runtimeEnabled, waitsForLogin]);
+  }, [refetchDeviceInfo, connected, webUiUrl, runtimeEnabled, awaitingLogin]);
 
   const deviceConfig = project?.devices.find((d) => d.id === deviceId);
   const isEnabled = deviceConfig?.enabled !== false;
@@ -173,6 +175,7 @@ export function DeviceDetail({
   // Product hardware is never edited or deleted here, and only the running
   // system says which devices are; until it answers, nothing is offered.
   const manageable = deviceInfo ? !installed : notRunning && Boolean(deviceConfig);
+  const banner = awayBanner(away, isEnabled, deviceInfo?.needs_login?.length ?? 0);
 
   const handleDelete = useCallback(async () => {
     setDeleting(true);
@@ -292,26 +295,6 @@ export function DeviceDetail({
   }
 
   const deviceName = String(liveState[`device.${deviceId}.name`] ?? deviceConfig?.name ?? deviceId);
-  const orphaned = Boolean(liveState[`device.${deviceId}.orphaned`]);
-  // Paused by Live Test or a Device Audit (device.<id>.paused; paused_for
-  // names which) — auto-reconnect is suspended until a resume, a manual
-  // reconnect, or the server's pause TTL.
-  const paused = Boolean(liveState[`device.${deviceId}.paused`]);
-  const pausedFor = liveState[`device.${deviceId}.paused_for`];
-  // Away because a command restarted it. `offline_reason` is deliberately null
-  // for the whole window (core/device_manager.py), so the offline banner below
-  // never fires and this one takes its place.
-  const restarting = Boolean(liveState[`device.${deviceId}.restarting`]);
-  // Off the network because a command put it to sleep (sleeps_device). Like
-  // restarting, `offline_reason` is null the whole time and `offline_detail`
-  // carries the sentence ("Asleep. Power On wakes it."), so the asleep banner
-  // below takes the offline banner's place.
-  const asleep = Boolean(liveState[`device.${deviceId}.asleep`]);
-  // Server-built, human-readable offline reason (device.<id>.offline_detail).
-  // The taxonomy lives server-side; this view only renders the message.
-  const offlineDetail = String(liveState[`device.${deviceId}.offline_detail`] ?? "");
-  const offlineReason = String(liveState[`device.${deviceId}.offline_reason`] ?? "");
-  const reconnectFailed = Boolean(liveState[`device.${deviceId}.reconnect_failed`]);
   // Optional driver-provided troubleshooting hint (DRIVER_INFO.help.connection),
   // surfaced under the offline reason. The driver supplies device-specific
   // guidance the generic classifier can't know (e.g. "enable SSH first").
@@ -459,11 +442,11 @@ export function DeviceDetail({
         >
           <DeviceStatusDot
             connected={connected}
-            orphaned={Boolean(liveState[`device.${deviceId}.orphaned`])}
-            paused={paused}
-            pausedFor={pausedFor}
-            restarting={restarting}
-            asleep={asleep}
+            orphaned={away.orphaned}
+            paused={away.paused}
+            pausedFor={away.pausedFor}
+            restarting={away.restarting}
+            asleep={away.asleep}
             size={12}
           />
           <h2 style={{ fontSize: "var(--font-size-xl)", flex: 1 }}>{deviceName}</h2>
@@ -669,13 +652,15 @@ export function DeviceDetail({
         </div>
         {/* Product hardware's driver is part of OpenAVC, and a device whose
             driver is not installed has the orphan banner below instead. */}
-        {manageable && !orphaned && deviceInfo?.driver && (
+        {manageable && !away.orphaned && deviceInfo?.driver && (
           <DriverUpdateLine driverId={deviceInfo.driver} onUpdated={refetchDeviceInfo} />
         )}
       </div>
 
-      {/* Orphaned device banner */}
-      {orphaned && (
+      {/* Why the device is away: one banner at a time, chosen in deviceAway.ts.
+          The first four sit above product hardware's own panel, the login box
+          and the Offline banner below it. */}
+      {banner === "orphaned" && (
         <OrphanBanner
           driverId={deviceConfig?.driver ?? ""}
           onReassign={() => deviceConfig && onEdit(deviceConfig)}
@@ -683,111 +668,10 @@ export function DeviceDetail({
           onActivated={() => api.getDevice(deviceId).then(setDeviceInfo).catch(console.error)}
         />
       )}
+      {banner === "restarting" && <RestartingBanner detail={away.offlineDetail} />}
+      {banner === "asleep" && <AsleepBanner detail={away.offlineDetail} />}
+      {banner === "paused" && <PausedBanner deviceId={deviceId} pausedFor={away.pausedFor} />}
 
-      {/* Restarting banner — a command took the device away on purpose and it
-          is expected back. Not the offline banner in a different colour: that
-          one names a fault and tells somebody to go and check something, and
-          here the honest instruction is to wait. `offline_detail` carries the
-          sentence (and counts down), so the wording lives in
-          core/connection_fault.py with every other thing that key can say. */}
-      {restarting && !orphaned && !paused && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-sm)",
-            padding: "var(--space-sm) var(--space-md)",
-            borderRadius: "var(--border-radius)",
-            marginBottom: "var(--space-md)",
-            fontSize: "var(--font-size-sm)",
-            background: "rgba(245, 158, 11, 0.1)",
-            border: "1px solid var(--color-warning, #f59e0b)",
-            color: "var(--color-warning, #f59e0b)",
-          }}
-        >
-          <RefreshCw size={14} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>
-            {offlineDetail || "Restarting."}
-          </span>
-        </div>
-      )}
-
-      {/* Asleep banner: a command put the device to sleep and it stays off the
-          network until its wake command. Nothing is wrong and there is nothing
-          to check, so no troubleshooting steps; `offline_detail` names the
-          command that wakes it. */}
-      {asleep && !orphaned && !paused && !restarting && (
-        <div
-          role="status"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-sm)",
-            padding: "var(--space-sm) var(--space-md)",
-            borderRadius: "var(--border-radius)",
-            marginBottom: "var(--space-md)",
-            fontSize: "var(--font-size-sm)",
-            background: "var(--bg-hover)",
-            color: "var(--text-secondary)",
-          }}
-        >
-          <Moon size={14} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>
-            {offlineDetail || "Asleep."}
-          </span>
-        </div>
-      )}
-
-      {/* Paused banner — Live Test or a Device Audit holds the device.
-          Auto-reconnect is suspended; offer Resume so a pause left behind by
-          a closed test is recoverable here. */}
-      {paused && !orphaned && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-sm)",
-            padding: "var(--space-sm) var(--space-md)",
-            borderRadius: "var(--border-radius)",
-            marginBottom: "var(--space-md)",
-            fontSize: "var(--font-size-sm)",
-            background: "var(--bg-info, #1a2a3a)",
-            border: "1px solid var(--color-info, #6aa3d6)",
-            color: "var(--color-info, #6aa3d6)",
-          }}
-        >
-          <Pause size={14} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>{pausedBannerText(pausedFor)}</span>
-          <button
-            onClick={async () => {
-              try {
-                await api.resumeDevice(deviceId);
-              } catch (e) {
-                console.error(e);
-              }
-            }}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "2px 10px",
-              borderRadius: 12,
-              border: "1px solid var(--color-info, #6aa3d6)",
-              background: "transparent",
-              color: "var(--color-info, #6aa3d6)",
-              fontSize: 11,
-              cursor: "pointer",
-            }}
-            title="Clear the pause and reconnect now"
-          >
-            <Play size={12} /> Resume
-          </button>
-        </div>
-      )}
-
-      {/* Sub-units that are not answering. Shown while the device itself is
-          up: when the device is offline its own banner is the story, and
-          every port under it reads down for the same one reason. */}
       {connected && childTrouble && (
         <ChildTroubleBanner
           headline={childTrouble.headline}
@@ -804,11 +688,8 @@ export function DeviceDetail({
         />
       )}
 
-      {/* Needs login: the device waits for a login this system does not have.
-          The box to enter it takes the Offline banner's place; saving it
-          adds the device again, so there is nothing to retry. */}
-      {!connected && isEnabled && !orphaned && !paused && !restarting && !asleep &&
-        offlineReason === "login_missing" && (deviceInfo?.needs_login?.length ?? 0) > 0 && (
+      {/* Saving the login adds the device again, so there is nothing to retry. */}
+      {banner === "needs_login" && (
         <NeedsLoginBanner
           key={deviceId}
           deviceId={deviceId}
@@ -817,22 +698,19 @@ export function DeviceDetail({
           onSaved={refetchDeviceInfo}
         />
       )}
-
-      {/* Offline reason banner — actionable cause from device.<id>.offline_detail */}
-      {!connected && isEnabled && !orphaned && !paused && !restarting && !asleep && offlineDetail &&
-        offlineReason !== "login_missing" && (
+      {banner === "offline" && (
         <OfflineBanner
           installed={installed}
-          detail={offlineDetail}
-          reason={offlineReason}
-          failed={reconnectFailed}
+          detail={away.offlineDetail}
+          reason={away.offlineReason}
+          failed={away.reconnectFailed}
           hint={connectionHint}
           signInFields={hasSignInFields(
             deviceInfo?.driver_info?.config_schema as Record<string, unknown> | undefined,
           )}
           onReport={
-            reportableOffline(offlineReason)
-              ? () => setReportContext({ source: "offline_banner", error: `Offline. ${offlineDetail}` })
+            reportableOffline(away.offlineReason)
+              ? () => setReportContext({ source: "offline_banner", error: `Offline. ${away.offlineDetail}` })
               : undefined
           }
         />
@@ -1806,348 +1684,6 @@ function DeviceLog({ deviceId }: { deviceId: string }) {
       ) : (
         <DeviceStateLog deviceId={deviceId} />
       )}
-    </div>
-  );
-}
-
-// Offline reasons the server stops retrying on, because only a human can
-// clear them. Mirrors _PERMANENT_FAULT_CODES in openavc/core/connection_fault.py
-// (auth_failed is in that set too, but gets its own lockout-specific wording
-// below). Keep the two lists in step.
-const PERMANENT_OFFLINE_REASONS = new Set([
-  "host_key_rejected",
-  "tls_cert_untrusted",
-  "invalid_config",
-  "client_missing",
-  "login_missing",
-]);
-
-/** The device is fine; some of what it manages is not. Deliberately quieter
- *  than OfflineBanner (one border, no icon column of its own): the room still
- *  works, and this is a "go look at that endpoint" not a "nothing responds". */
-function ChildTroubleBanner({ headline, names }: { headline: string; names: string }) {
-  const accent = "var(--color-warning, #f59e0b)";
-  return (
-    <div
-      data-testid="child-trouble-banner"
-      style={{
-        padding: "var(--space-sm) var(--space-md)",
-        borderRadius: "var(--border-radius)",
-        marginBottom: "var(--space-md)",
-        background: "rgba(245, 158, 11, 0.08)",
-        border: "1px solid rgba(245, 158, 11, 0.35)",
-        display: "flex",
-        gap: "var(--space-sm)",
-        alignItems: "flex-start",
-      }}
-    >
-      <AlertTriangle size={16} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
-      <div>
-        <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 600 }}>
-          {headline}
-        </div>
-        <div
-          style={{
-            fontSize: "var(--font-size-sm)",
-            color: "var(--text-secondary)",
-            marginTop: 2,
-          }}
-        >
-          {names}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-/** The Offline banner's last line: what happens next, and what to do. */
-/** True when the driver has a password, key or other sign-in field, so a
- *  refused sign-in may be fixed under Edit. A device that pairs (a TV
- *  accepting a prompt, a bridge's link button) or has no credentials does not. */
-export function hasSignInFields(schema: Record<string, unknown> | undefined): boolean {
-  return Object.keys(schema ?? {}).some((key) => isSecretConfigField(schema, key));
-}
-
-export function offlineNextStep(
-  reason: string | undefined,
-  failed: boolean,
-  signInFields: boolean,
-): string {
-  if (reason === "no_simulator") {
-    // Refused on purpose, and retried by nothing: it is the simulation that
-    // keeps it off, so stopping it is what brings the device back.
-    return "Not connecting while simulation runs. Stopping simulation connects it to the real device again.";
-  }
-  if (!failed) {
-    // Deliberately no attempt count. There's no ceiling to count toward, and
-    // a device left off over a weekend would show a number in the thousands,
-    // which tells the integrator nothing except that something looks broken.
-    return "Reconnecting automatically, and will keep trying until the device comes back.";
-  }
-  if (reason === "auth_failed") {
-    // Retrying a rejected login would only trip the device's brute-force
-    // lockout, so the server holds off on purpose.
-    // The line above is the driver's sentence and names what was refused,
-    // which is not always a password: a declined pairing prompt, a bridge to
-    // pair with its link button, a setting on the device itself.
-    return signInFields
-      ? "Not retrying, so repeated sign-ins cannot lock OpenAVC out of the device. Fix the cause above (the sign-in details are under Edit), then press Reconnect."
-      : "Not retrying, so repeated sign-ins cannot lock OpenAVC out of the device. Fix the cause above, then press Reconnect.";
-  }
-  if (PERMANENT_OFFLINE_REASONS.has(reason ?? "")) {
-    // Stopped early on purpose, not out of attempts: the detail line above
-    // already names what to change. Saying "gave up" here would read as "we
-    // tried everything", sending the integrator hunting a network problem
-    // that isn't there.
-    return "Not retrying: this won't clear on its own. Fix the cause above, then press Reconnect.";
-  }
-  // Only a fault someone has to clear reaches `failed` now, and both branches
-  // above name one. A network fault never lands here: it retries for as long
-  // as the device is in the project.
-  return "Not retrying. Fix the cause above, then press Reconnect.";
-}
-
-/** Faults no driver change fixes: the address does not answer, a setting or a
- *  program on this computer, the device's own key or settings, the bridge it
- *  goes through, a driver with no simulator while simulation runs, or a login
- *  not saved on this computer. */
-const OFFLINE_NOT_THE_DRIVER = new Set([
-  "unreachable",
-  "tls_cert_untrusted",
-  "host_key_rejected",
-  "client_missing",
-  "invalid_config",
-  "bridge_offline",
-  "no_simulator",
-  "login_missing",
-]);
-
-/** Report a problem on the Offline banner: a fault the driver could have
- *  caused. An unknown code, or none, might be the driver too. */
-export function reportableOffline(reason: string | undefined): boolean {
-  return !OFFLINE_NOT_THE_DRIVER.has(reason ?? "");
-}
-
-function OfflineBanner({
-  installed = false,
-  detail,
-  reason,
-  failed,
-  hint,
-  signInFields = false,
-  onReport,
-}: {
-  installed?: boolean;
-  detail: string;
-  reason?: string;
-  failed: boolean;
-  hint?: string;
-  signInFields?: boolean;
-  /** Report a problem, offered when the driver could have caused the fault. */
-  onReport?: () => void;
-}) {
-  const accent = "var(--color-warning, #f59e0b)";
-  return (
-    <div
-      style={{
-        padding: "var(--space-md)",
-        borderRadius: "var(--border-radius)",
-        marginBottom: "var(--space-md)",
-        background: "rgba(245, 158, 11, 0.1)",
-        border: "2px solid rgba(245, 158, 11, 0.4)",
-        display: "flex",
-        gap: "var(--space-sm)",
-        alignItems: "flex-start",
-      }}
-    >
-      <WifiOff size={18} style={{ color: accent, flexShrink: 0, marginTop: 2 }} />
-      <div>
-        <div style={{ fontWeight: 600, color: accent, fontSize: "var(--font-size-md)" }}>
-          Offline
-        </div>
-        <div style={{ fontSize: "var(--font-size-sm)", marginTop: 2 }}>{detail}</div>
-        {hint && (
-          <div
-            style={{
-              fontSize: "var(--font-size-sm)",
-              marginTop: "var(--space-xs)",
-              whiteSpace: "pre-line",
-            }}
-          >
-            {hint}
-          </div>
-        )}
-        <div
-          style={{
-            fontSize: "var(--font-size-sm)",
-            color: "var(--text-muted)",
-            marginTop: "var(--space-xs)",
-          }}
-        >
-          {installed && failed && reason !== "no_simulator"
-            ? "Automatic reconnect is paused. Check this product's OpenAVC status, then press Reconnect."
-            : offlineNextStep(reason, failed, signInFields)}
-          {onReport && (
-            <button
-              type="button"
-              onClick={onReport}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                marginLeft: "var(--space-sm)",
-                padding: "2px 10px",
-                borderRadius: 12,
-                border: `1px solid ${accent}`,
-                background: "transparent",
-                color: accent,
-                fontSize: 11,
-                cursor: "pointer",
-              }}
-            >
-              Report a problem
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OrphanBanner({
-  driverId,
-  onReassign,
-  onBrowseDrivers,
-  onActivated,
-}: {
-  driverId: string;
-  onReassign: () => void;
-  onBrowseDrivers?: () => void;
-  onActivated: () => void;
-}) {
-  // Look up the missing driver in the catalog so the button can install it
-  // directly (the previous behavior of switching tabs left the user stranded
-  // — they had to find it manually). When the driver isn't in the catalog,
-  // surface that fact inline rather than silently failing.
-  const [match, setMatch] = useState<{ file_url: string; min_platform_version: string | null } | null>(null);
-  const [lookupDone, setLookupDone] = useState(false);
-  const [builtIn, setBuiltIn] = useState(false);
-  const [installing, setInstalling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setMatch(null);
-    setBuiltIn(false);
-    setLookupDone(false);
-    if (!driverId) return;
-    let cancelled = false;
-    api
-      .listMissingDrivers()
-      .then((items) => {
-        if (cancelled) return;
-        const entry = items.find((m) => m.driver_id === driverId);
-        setBuiltIn(Boolean(entry?.built_in_equipment));
-        if (entry?.community_match) {
-          setMatch({
-            file_url: entry.community_match.file_url,
-            min_platform_version: entry.community_match.min_platform_version,
-          });
-        }
-        setLookupDone(true);
-      })
-      .catch(() => setLookupDone(true));
-    return () => {
-      cancelled = true;
-    };
-  }, [driverId]);
-
-  const handleInstall = async () => {
-    if (!match) return;
-    setInstalling(true);
-    setError(null);
-    try {
-      await api.installCommunityDriver(driverId, match.file_url, match.min_platform_version || undefined);
-      // Server retries orphans automatically; refresh device info to pick
-      // up the now-active state.
-      onActivated();
-    } catch (e) {
-      setError(parseApiError(e));
-    } finally {
-      setInstalling(false);
-    }
-  };
-
-  return (
-    <div
-      style={{
-        padding: "var(--space-md)",
-        borderRadius: "var(--border-radius)",
-        marginBottom: "var(--space-md)",
-        background: "rgba(239, 68, 68, 0.1)",
-        border: "2px solid rgba(239, 68, 68, 0.4)",
-      }}
-    >
-      <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: "#ef4444", fontSize: "var(--font-size-md)" }}>
-        {builtIn ? "Product hardware unavailable" : "Driver Not Installed"}
-      </div>
-      <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
-        {builtIn ? <BuiltInEquipmentNotice /> : <>This device needs the driver "{driverId}" which is not installed.</>}
-        {lookupDone && !match && !builtIn && (
-          <div style={{ marginTop: "var(--space-xs)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
-            This driver isn't in the community catalog. Reassign the device to a different
-            driver, or upload the driver file from the Drivers tab.
-          </div>
-        )}
-        {error && (
-          <div style={{ marginTop: "var(--space-xs)", color: "#ef4444", fontSize: "var(--font-size-sm)" }}>
-            Install failed: {error}
-          </div>
-        )}
-      </div>
-      <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-        {match && (
-          <button
-            onClick={handleInstall}
-            disabled={installing}
-            style={{
-              padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--color-warning, #f59e0b)",
-              color: "#000",
-              fontSize: "var(--font-size-sm)",
-              fontWeight: 500,
-              cursor: installing ? "not-allowed" : "pointer",
-              opacity: installing ? 0.7 : 1,
-            }}
-          >
-            {installing ? "Installing..." : "Install from Community"}
-          </button>
-        )}
-        {lookupDone && !match && !builtIn && onBrowseDrivers && (
-          <button
-            onClick={onBrowseDrivers}
-            style={{
-              padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--bg-hover)",
-              fontSize: "var(--font-size-sm)",
-            }}
-          >
-            Browse Drivers
-          </button>
-        )}
-        <button
-          onClick={onReassign}
-          style={{
-            padding: "var(--space-xs) var(--space-md)",
-            borderRadius: "var(--border-radius)",
-            background: "var(--bg-hover)",
-            fontSize: "var(--font-size-sm)",
-          }}
-        >
-          Reassign Driver
-        </button>
-      </div>
     </div>
   );
 }

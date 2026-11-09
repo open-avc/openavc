@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hasSignInFields, offlineNextStep } from "./DeviceDetail";
+import { hasSignInFields, offlineNextStep } from "./deviceAway";
 
 // The last line of the device page's Offline banner: what happens next and
 // what to do. It names the button that is on the page, and says nothing that
