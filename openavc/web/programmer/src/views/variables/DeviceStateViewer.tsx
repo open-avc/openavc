@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Zap, Cpu } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { useProjectStore } from "../../store/projectStore";
@@ -10,11 +10,12 @@ import {
   listChildEntities,
 } from "../../api/restClient";
 import type {
-  ChildEntitiesListResponse, DriverInfo, MonitorConfig, ScriptReference,
+  ChildEntitiesListResponse, DriverInfo, ScriptReference,
 } from "../../api/types";
 import { useSettled } from "../../components/shared/useSettled";
 import { useChildReadingDeclarations } from "../../components/shared/useChildReadingDeclarations";
 import { MonitorControl } from "../../components/shared/MonitorControl";
+import { useMonitorEdits } from "../../components/shared/useMonitorEdits";
 import { HelpBanner, UsageRow, buildStateUsageMap, typeBadgeStyle, sectionTitle } from "./variablesShared";
 import { valueText } from "../../components/shared/booleanWords";
 import { driverLabel } from "../../components/shared/driverLabel";
@@ -47,14 +48,7 @@ export function DeviceStatesSubTab() {
 
   const devices = project?.devices ?? [];
   const monitors = project?.monitors ?? [];
-  const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
-  const handleMonitors = useCallback(
-    (next: MonitorConfig[], description: string) => {
-      updateWithUndo({ monitors: next }, description);
-      useProjectStore.getState().debouncedSave(1500);
-    },
-    [updateWithUndo],
-  );
+  const handleMonitors = useMonitorEdits();
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [selectedProp, setSelectedProp] = useState<string | null>(null);
 

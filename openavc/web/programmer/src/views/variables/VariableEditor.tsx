@@ -5,6 +5,7 @@ import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { Modal } from "../../components/shared/Modal";
 import { VariableKeyPicker } from "../../components/shared/VariableKeyPicker";
 import { MonitorControl } from "../../components/shared/MonitorControl";
+import { useMonitorEdits } from "../../components/shared/useMonitorEdits";
 import {
   dropMonitorsForVariable, renameMonitorKey,
 } from "../../api/monitorHelpers";
@@ -278,13 +279,7 @@ export function VariablesSubTab() {
     [variables, update]
   );
 
-  const handleMonitors = useCallback(
-    (next: typeof monitors, description: string) => {
-      updateWithUndo({ monitors: next }, description);
-      useProjectStore.getState().debouncedSave(1500);
-    },
-    [updateWithUndo]
-  );
+  const handleMonitors = useMonitorEdits();
 
   const handleStartRename = useCallback((oldId: string) => {
     const usages = usageMap.get(oldId) ?? [];

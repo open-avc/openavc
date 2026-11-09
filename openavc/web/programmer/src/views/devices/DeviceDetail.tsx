@@ -12,7 +12,7 @@ import type { BridgePort, DeviceConfig, DeviceInfo, DriverInfo } from "../../api
 import {
   MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
 } from "../../components/shared/MonitorControl";
-import type { MonitorConfig } from "../../api/types";
+import { useMonitorEdits } from "../../components/shared/useMonitorEdits";
 import { parentAwayFrom, scanChildTrouble, troubleSummary } from "./childPresence";
 import type { ChildTypeInfo } from "./childPresence";
 import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
@@ -87,14 +87,7 @@ export function DeviceDetail({
   const [openMonitor, setOpenMonitor] = useState<string | null>(null);
 
   const monitors = project?.monitors ?? [];
-  const updateWithUndo = useProjectStore((s) => s.updateWithUndo);
-  const handleMonitors = useCallback(
-    (next: MonitorConfig[], description: string) => {
-      updateWithUndo({ monitors: next }, description);
-      useProjectStore.getState().debouncedSave(1500);
-    },
-    [updateWithUndo],
-  );
+  const handleMonitors = useMonitorEdits();
 
   // The id this page is showing, as of the last render. A fetch that resolves
   // after the user has moved to another device would otherwise draw that
