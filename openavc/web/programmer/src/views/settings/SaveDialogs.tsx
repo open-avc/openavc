@@ -1,14 +1,33 @@
-/** The two questions Settings' Save asks (saveFlow.ts): "Change who can
- *  connect?" before a save that would cut this browser off, and the kiosk's
- *  reboot after a save that changed it. Each draws nothing while closed, so
- *  the page places both always. */
+/** Settings' Save button and the two questions Save asks (saveFlow.ts):
+ *  "Change who can connect?" before a save that would cut this browser off,
+ *  and the kiosk's reboot after a save that changed it. Each question draws
+ *  nothing while closed, so the page places both always. */
+import { Save } from "lucide-react";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { CutOffWarning } from "../../components/system/ListenCutOff";
 import type { SystemConfig } from "../../api/restClient";
 import * as api from "../../api/restClient";
 import { showError, showSuccess } from "../../store/toastStore";
 import type { ListenChoice } from "./listenChoice";
+import { btnStyle } from "../../components/system/settingsStyles";
 import { questionUrls, type SettingsSave } from "./saveFlow";
+
+/** Save, off while there is nothing to save, while a save is in flight, and
+ *  while saveChecks refuses one. */
+export function SaveButton({ save, blocked }: { save: SettingsSave; blocked: boolean }) {
+  const ready = save.hasChanges && !save.saving && !blocked;
+  return (
+    <button
+      style={{ ...btnStyle, opacity: ready ? 1 : 0.5 }}
+      onClick={() => void save.save()}
+      disabled={!ready}
+      title={blocked ? "Fix the validation errors below before saving" : undefined}
+    >
+      <Save size={14} />
+      <span>{save.saving ? "Saving..." : "Save"}</span>
+    </button>
+  );
+}
 
 export function RebootQuestion({ save }: { save: SettingsSave }) {
   if (!save.rebootAsked) return null;
