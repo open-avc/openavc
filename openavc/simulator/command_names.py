@@ -5,7 +5,8 @@ auto-generated simulator (``yaml_auto``) honors that first. A command that
 declares nothing is read by its name instead: ``infer_state_var`` finds the
 state variable it targets (``set_volume`` -> ``volume``) and ``name_switch``
 the value a switching name sets (``power_on`` -> True). Only the simulator
-guesses; the runtime and the validator never do.
+guesses (the validator's coverage checks see the guess through the simulator
+they build); the runtime never does.
 
 Standard library only (``tests/test_compiled_protocol_purity.py``).
 """
