@@ -5435,55 +5435,56 @@ export function contentFindings(el: UIElement): ReviewFinding[] {
   }];
 }
 
+/** A value a full model dump carries for a field nobody set: not an authoring
+ *  decision, so never worth a finding. `0` and `false` are decisions. */
+function isUnset(value: unknown): boolean {
+  return (
+    value === null || value === undefined || value === "" ||
+    (Array.isArray(value) && value.length === 0) ||
+    (typeof value === "object" && !Array.isArray(value) &&
+      Object.keys(value as object).length === 0)
+  );
+}
+
+/** Why a property this type does not read is there, said as the repair: the
+ *  right idea one level too high on a matrix, the right idea on the wrong type,
+ *  or an invented field. */
+function unreadReason(type: string, name: string, honored: readonly string[]): string {
+  if (type === "matrix" && MATRIX_CONFIG_KEYS.includes(name)) {
+    return `'${name}' belongs inside matrix_config, not on the element.`;
+  }
+  const elsewhere = Object.entries(HONORED_PROPERTIES)
+    .filter(([, props]) => props.includes(name))
+    .map(([other]) => other)
+    .sort();
+  if (!elsewhere.length) return `No element type reads '${name}'.`;
+  const why = `'${name}' is read by ${joined(elsewhere.map((t) => `\`${t}\``))}, not by a ${type}.`;
+  return name === "label" && honored.includes("text") ? `${why} A label element draws \`text\`.` : why;
+}
+
 /**
  * Properties this element type's renderer never reads.
  *
- * The element-level twin of `bindingFindings`, firing on the same silence: the
- * field is declared on UIElement for some other type (or for none), the loader
- * stores it, and no renderer has a line that looks at it. A property some OTHER
- * type reads is usually the right idea on the wrong element -- `label` on a
- * `label`, which wants `text`; one no type reads was invented.
+ * The same silence as an unread binding: the field is declared on UIElement for
+ * some other type (or none), the loader stores it, and no renderer has a line
+ * that looks at it. `unreadReason` says which of those it is, because the repair
+ * is different.
  */
 export function propertyFindings(el: UIElement): ReviewFinding[] {
   const honored = own(HONORED_PROPERTIES, el.type);
   if (!honored) return []; // a type this module has never heard of; say nothing
-
-  const findings: ReviewFinding[] = [];
-  for (const [name, value] of Object.entries(el as unknown as Record<string, unknown>)) {
-    if (honored.includes(name) || STRUCTURAL_PROPERTIES.includes(name)) continue;
-    // An unset field is not an authoring decision. `0` and `false` are.
-    if (
-      value === null || value === undefined || value === "" ||
-      (Array.isArray(value) && value.length === 0) ||
-      (typeof value === "object" && !Array.isArray(value) &&
-        Object.keys(value as object).length === 0)
-    ) continue;
-
-    const elsewhere = Object.entries(HONORED_PROPERTIES)
-      .filter(([, props]) => props.includes(name))
-      .map(([type]) => type)
-      .sort();
-    let why: string;
-    if (el.type === "matrix" && MATRIX_CONFIG_KEYS.includes(name)) {
-      why = `'${name}' belongs inside matrix_config, not on the element.`;
-    } else if (elsewhere.length) {
-      why = `'${name}' is read by ${joined(elsewhere.map((t) => `\`${t}\``))}, not by a ${el.type}.`;
-      if (name === "label" && honored.includes("text")) {
-        why += " A label element draws `text`.";
-      }
-    } else {
-      why = `No element type reads '${name}'.`;
-    }
-    findings.push({
+  const reads = [...honored].sort().join(", ");
+  return Object.entries(el as unknown as Record<string, unknown>)
+    .filter(([name, value]) =>
+      !honored.includes(name) && !STRUCTURAL_PROPERTIES.includes(name) && !isUnset(value))
+    .map(([name]) => ({
       elementId: el.id,
       kind: "property_not_rendered",
       message:
         `${el.id} (${el.type}) sets '${name}', which a ${el.type} does not render. ` +
-        `${why} A ${el.type} reads: ${[...honored].sort().join(", ")}.`,
+        `${unreadReason(el.type, name, honored)} A ${el.type} reads: ${reads}.`,
       key: `property_not_rendered|${el.id}|${name}`,
-    });
-  }
-  return findings;
+    }));
 }
 
 /**

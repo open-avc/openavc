@@ -1410,21 +1410,50 @@ def element_type_finding(element: Mapping[str, Any]) -> Finding | None:
     )
 
 
+def _is_unset(value: Any) -> bool:
+    """A value a full model dump carries for a field nobody set.
+
+    Not an authoring decision, so never worth a finding. ``0`` and ``False``
+    are decisions.
+    """
+    return value is None or value == "" or value == [] or value == {}
+
+
+def _unread_reason(el_type: str, name: str, honored: frozenset[str]) -> str:
+    """Why a property this type does not read is there, said as the repair.
+
+    A property some OTHER type reads is usually the right idea on the wrong
+    element -- ``label`` on a ``label``, which wants ``text``. A property NO
+    type reads was invented, and the only useful answer is the list of what this
+    type does read, which the finding gives after this.
+    """
+    if el_type == "matrix" and name in MATRIX_CONFIG_KEYS:
+        # The right idea one level too high. Saying "nothing reads it" here
+        # would be true of the top level and useless, because the matrix
+        # does read it -- from inside matrix_config.
+        return f"'{name}' belongs inside matrix_config, not on the element."
+    elsewhere = sorted(
+        other for other, props in HONORED_PROPERTIES.items() if name in props
+    )
+    if not elsewhere:
+        return f"No element type reads '{name}'."
+    where = _joined([f"`{t}`" for t in elsewhere])
+    why = f"'{name}' is read by {where}, not by a {el_type}."
+    if name == "label" and "text" in honored:
+        why += " A label element draws `text`."
+    return why
+
+
 def property_findings(element: Mapping[str, Any]) -> list[Finding]:
     """Properties this element type's renderer never reads.
 
     The element-level twin of ``binding_findings``, and it fires on the same
     silence: the field is declared on ``UIElement`` for some other type (or on
     no type at all), the loader stores it, the write returns created, and the
-    renderer has no line that looks at it.
+    renderer has no line that looks at it. ``_unread_reason`` says which of
+    those it is, because the repair is different.
 
-    Two readings, and the message distinguishes them, because the repair is
-    different. A property some OTHER type reads is usually the right idea on the
-    wrong element -- ``label`` on a ``label``, which wants ``text``. A property
-    NO type reads was invented, and the only useful answer is the list of what
-    this type does read.
-
-    Anything falsy is ignored. A caller that dumps a full Pydantic model hands
+    Anything unset is ignored. A caller that dumps a full Pydantic model hands
     over sixty keys of ``None``, and warning that an unset field is unread would
     bury the two that were actually set.
     """
@@ -1434,36 +1463,18 @@ def property_findings(element: Mapping[str, Any]) -> list[Finding]:
         return []
 
     el_id = str(element.get("id", "?"))
-    findings: list[Finding] = []
-    for name, value in element.items():
-        if name in honored or name in STRUCTURAL_PROPERTIES:
-            continue
-        # An unset field is not an authoring decision. `0` and `False` are.
-        if value is None or value == "" or value == [] or value == {}:
-            continue
-        elsewhere = sorted(
-            other for other, props in HONORED_PROPERTIES.items() if name in props
-        )
-        if el_type == "matrix" and name in MATRIX_CONFIG_KEYS:
-            # The right idea one level too high. Saying "nothing reads it" here
-            # would be true of the top level and useless, because the matrix
-            # does read it -- from inside matrix_config.
-            why = f"'{name}' belongs inside matrix_config, not on the element."
-        elif elsewhere:
-            where = _joined([f"`{t}`" for t in elsewhere])
-            why = f"'{name}' is read by {where}, not by a {el_type}."
-            if name == "label" and "text" in honored:
-                why += " A label element draws `text`."
-        else:
-            why = f"No element type reads '{name}'."
-        findings.append(Finding(
+    reads = ", ".join(sorted(honored))
+    return [
+        Finding(
             el_id,
             "property_not_rendered",
             f"{el_id} ({el_type}) sets '{name}', which a {el_type} does not render. "
-            f"{why} A {el_type} reads: {', '.join(sorted(honored))}.",
+            f"{_unread_reason(el_type, name, honored)} A {el_type} reads: {reads}.",
             key=("property_not_rendered", el_id, name),
-        ))
-    return findings
+        )
+        for name, value in element.items()
+        if name not in honored and name not in STRUCTURAL_PROPERTIES and not _is_unset(value)
+    ]
 
 
 #: Controls that are inert without one particular thing, and what to set.
