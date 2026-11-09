@@ -488,10 +488,10 @@ describe("The trusted certificate", () => {
       fireEvent.click(screen.getByRole("button", { name: "Get a trusted certificate" }));
     });
     const before = api.getTlsStatus.mock.calls.length;
-    await act(async () => { vi.advanceTimersByTime(2000 * 61); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000 * 61); });
     const after = api.getTlsStatus.mock.calls.length;
     expect(after - before).toBe(61);
-    await act(async () => { vi.advanceTimersByTime(20000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
     expect(api.getTlsStatus.mock.calls.length).toBe(after);
   });
 
@@ -505,10 +505,10 @@ describe("The trusted certificate", () => {
       fireEvent.click(screen.getByRole("button", { name: "Get a trusted certificate" }));
     });
     const before = api.getTlsStatus.mock.calls.length;
-    await act(async () => { vi.advanceTimersByTime(2000 * 61); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000 * 61); });
     const after = api.getTlsStatus.mock.calls.length;
     expect(after - before).toBe(61);
-    await act(async () => { vi.advanceTimersByTime(20000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(20000); });
     expect(api.getTlsStatus.mock.calls.length).toBe(after);
   });
 
