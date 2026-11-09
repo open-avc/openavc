@@ -2,12 +2,18 @@
 
 ``validate_driver_definition`` walks the list and asks ``response_rule_errors``
 about each rule, tagging what comes back with the rule's place in the list.
-Everything one rule can get wrong is decided here, in a fixed order: first the
+What one rule says about itself is decided here, in a fixed order: first the
 checks every rule gets (``throttle``, ``only_when``, ``require``,
 ``after_json``, where ``child_list`` may sit, a value map written into
 ``set:``), then the checks of the rule's form. An ``address:`` rule is OSC,
 otherwise a ``json: true`` rule reads a JSON body, otherwise it is a text rule
 whose ``match:`` regex the rest refers to.
+
+Three checks of a rule read other parts of the definition and run later in
+the walk, so they stay in ``avcdriver_semantic``: a rule's ``then_query:``
+(its entries are query entries, checked with the poll's), the placeholders in
+its ``match:`` (``validate_substitutions``), and whether a paged query can
+place the list a ``child_list:`` rule fills.
 
 A rule's ``child_set:`` is one check for all three forms. What an entry's id
 and its values may be depends on what the form has to route on (a capture, an
@@ -29,7 +35,7 @@ import re
 from typing import Any
 
 from openavc.drivers.condition_checks import condition_block_errors
-from openavc.drivers.declared_names import child_writable_props
+from openavc.drivers.declared_names import child_writable_props, declared_id_kind
 from openavc.utils.regex_safety import regex_safety_error
 
 # The keys a json value spec ({key, type, map, contains}) may carry.
@@ -277,14 +283,6 @@ def _json_contains_errors(where: str, spec: dict[str, Any]) -> list[str]:
 # --- child_set: one check, a row per form ------------------------------------------------
 
 
-def _id_kind(type_def: dict[str, Any]) -> Any:
-    """The child type's declared id kind, as these checks have always read it:
-    ``id_format.type`` as written, ``integer`` when absent."""
-    id_format = type_def.get("id_format")
-    id_format = id_format if isinstance(id_format, dict) else {}
-    return id_format.get("type", "integer")
-
-
 def _reads_as_int(value: Any) -> bool:
     try:
         int(str(value).strip())
@@ -357,7 +355,7 @@ class _Routes:
         if child_id is None:
             errors = [f"{where}: missing 'id' ({self.missing_id})"]
         else:
-            errors = self.id_errors(where, child_id, child_type, _id_kind(type_def))
+            errors = self.id_errors(where, child_id, child_type, declared_id_kind(type_def))
         return errors + self._state_errors(where, entry.get("state"), child_type, type_def)
 
     def _state_errors(
@@ -707,7 +705,7 @@ class _ListCheck:
                 f"-> local child id"
             )
             return
-        if _id_kind(self.type_def) != "integer":
+        if declared_id_kind(self.type_def) != "integer":
             return
         for value in id_map.values():
             if not _reads_as_int(value):
@@ -718,7 +716,7 @@ class _ListCheck:
                 return
 
     def _start(self) -> None:
-        if _id_kind(self.type_def) == "string":
+        if declared_id_kind(self.type_def) == "string":
             self.found.append(
                 f"{self.where}: {self.spec.get('type')} has string ids, so an item "
                 f"cannot be named by its place in the list; give id: $N"

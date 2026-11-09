@@ -22,7 +22,11 @@ from typing import Any, Callable
 
 from openavc.drivers.child_ids import declared_child_ids, page_starts
 from openavc.drivers.condition_checks import condition_block_errors
-from openavc.drivers.declared_names import child_writable_props, config_field_names
+from openavc.drivers.declared_names import (
+    child_writable_props,
+    config_field_names,
+    declared_id_kind,
+)
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.response_rule_checks import response_rule_errors
 from openavc.drivers.spec import (
@@ -920,8 +924,10 @@ def validate_driver_definition(
         _raw_child_types if isinstance(_raw_child_types, dict) else {}
     )
 
-    # Each response rule's checks live in response_rule_checks; what one rule
-    # returns is tagged with its place in the list.
+    # What one response rule says about itself is checked in
+    # response_rule_checks; its then_query and its child_list's paged reads
+    # are checked with the query entries below. Each rule's messages are
+    # tagged with its place in the list.
     errors.ctx = "responses"
     responses = driver_def.get("responses", [])
     if not isinstance(responses, list):
@@ -1531,7 +1537,7 @@ def validate_driver_definition(
                     config_fields = config_field_names(driver_def)
                     id_fmt = type_def.get("id_format")
                     id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
-                    id_type = id_fmt.get("type", "integer")
+                    id_type = declared_id_kind(type_def)
                     cfs = instances.get("count_from_state")
                     if cfs is not None:
                         if not isinstance(cfs, str) or not cfs:

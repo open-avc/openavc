@@ -33,6 +33,19 @@ def config_field_names(driver_def: dict[str, Any]) -> set[str]:
     return names
 
 
+def declared_id_kind(type_def: dict[str, Any]) -> Any:
+    """A child type's ``id_format.type`` as written, ``integer`` when absent.
+
+    The checks compare it with ``integer`` or ``string``, so a value that is
+    neither (a typo, a number) asks for no id check here; the child-type
+    check reports the value itself. ``child_ids.child_id_kind``, the runtime's
+    reading, takes a non-text kind as ``integer`` instead.
+    """
+    id_format = type_def.get("id_format")
+    id_format = id_format if isinstance(id_format, dict) else {}
+    return id_format.get("type", "integer")
+
+
 def child_writable_props(type_def: Any) -> set[str]:
     """Every property a driver may write on a child of this type.
 

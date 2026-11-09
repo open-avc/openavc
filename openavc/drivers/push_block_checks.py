@@ -18,7 +18,7 @@ own checks, run after the type and the keys:
   (no keys of its own: the URL is built at runtime and substitutes into
   commands as ``{push_callback_url}``).
 
-``tcp_listener`` and ``sse`` also name driver commands to run once the channel
+``tcp_listener`` and ``sse`` (the types whose keys include ``register``) also name driver commands to run once the channel
 is open (``register:``) and before it closes (``unregister:``). Addressing
 values accept ``{config_field}`` templates, so a device whose notification
 target is user-configurable resolves them per instance. Every message here
@@ -74,9 +74,16 @@ def push_block_errors(driver_def: dict[str, Any]) -> list[str]:
     type_check = _TYPE_CHECKS.get(push_type) if isinstance(push_type, str) else None
     if type_check is not None:
         type_check(check)
-    if push_type in ("tcp_listener", "sse"):
+    if _registers(push_type):
         _register_checks(check)
     return check.found
+
+
+def _registers(push_type: Any) -> bool:
+    """Whether the type runs driver commands when its channel opens and
+    closes: the types whose keys in ``spec.PUSH_TYPE_KEYS`` include
+    ``register`` (tcp_listener and sse)."""
+    return "register" in PUSH_TYPE_KEYS.get(push_type, ())
 
 
 class _PushCheck:
