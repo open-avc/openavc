@@ -175,6 +175,89 @@ def _call_hook(hook: Any, failure: str, *args: Any) -> None:
         log.exception(failure)
 
 
+def _as_written(declared: Any) -> Any:
+    return declared
+
+
+def _without_handlers(declared: dict) -> dict:
+    """Each entry without its handler, a method name nothing outside the plugin needs."""
+    return {
+        name: {k: v for k, v in spec.items() if k != "handler"}
+        for name, spec in declared.items()
+    }
+
+
+# The class-level declarations get_plugin_info hands on, in order, when the
+# class has them: (result key, attribute, how it is shown).
+_DESCRIBED = (
+    ("config_schema", "CONFIG_SCHEMA", _as_written),
+    ("extensions", "EXTENSIONS", _as_written),
+    ("surface_layout", "SURFACE_LAYOUT", _as_written),
+    ("macro_actions", "MACRO_ACTIONS", _without_handlers),
+    ("script_api", "SCRIPT_API", _without_handlers),
+)
+
+
+def _described_declarations(plugin_class: type) -> dict[str, Any]:
+    described = {}
+    for key, attr, shown in _DESCRIBED:
+        declared = getattr(plugin_class, attr, None)
+        if declared:
+            described[key] = shown(declared)
+    return described
+
+
+def _listed_missing(plugin_id: str, missing: dict) -> dict[str, Any]:
+    """A plugin the project names that is not installed."""
+    return {
+        "plugin_id": plugin_id,
+        "name": plugin_id,
+        "status": "missing",
+        "installed": False,
+        "compatible": True,
+        "missing_reason": missing.get("reason", ""),
+    }
+
+
+def _listed_incompatible(plugin_id: str, incompatible: dict) -> dict[str, Any]:
+    """A plugin marked incompatible whose class is not registered (one that
+    is registered is listed with the installed plugins)."""
+    return {
+        "plugin_id": plugin_id,
+        "name": plugin_id,
+        "status": "incompatible",
+        "installed": True,
+        "compatible": False,
+        "supported_platforms": incompatible.get("supported_platforms", []),
+    }
+
+
+def _builder_action(plugin_id: str, plugin_name: str, action_type: str, spec: dict) -> dict[str, Any]:
+    entry = {
+        "action_type": action_type,
+        "plugin_id": plugin_id,
+        "plugin_name": plugin_name,
+        "label": spec.get("label") or action_type,
+        "params": spec.get("params", []),
+    }
+    for optional in ("description", "icon"):
+        if spec.get(optional):
+            entry[optional] = spec[optional]
+    return entry
+
+
+def _script_method(plugin_id: str, plugin_name: str, method_name: str, spec: dict) -> dict[str, Any]:
+    entry = {
+        "plugin_id": plugin_id,
+        "plugin_name": plugin_name,
+        "method": method_name,
+        "sync": bool(spec.get("sync", False)),
+    }
+    if spec.get("doc"):
+        entry["doc"] = spec["doc"]
+    return entry
+
+
 class PluginLoader:
     """
     Manages plugin discovery, validation, lifecycle, and error isolation.
@@ -908,86 +991,57 @@ class PluginLoader:
 
         ``for_cloud`` words each error as :meth:`error_for_cloud` allows, for
         the AI assistant's answers; the Programmer's list shows them as stored.
+        Installed plugins first, then the project's missing ones, then any
+        marked incompatible that never registered.
         """
-        plugins = []
-
-        # Registered plugin classes
-        seen = set()
-        for plugin_id, plugin_class in _PLUGIN_CLASS_REGISTRY.items():
-            seen.add(plugin_id)
-            info = plugin_class.PLUGIN_INFO
-            status = self._status.get(plugin_id, "stopped")
-            entry = {
-                "plugin_id": plugin_id,
-                "name": info.get("name", plugin_id),
-                "version": info.get("version", ""),
-                "author": info.get("author", ""),
-                "description": info.get("description", ""),
-                "category": info.get("category", ""),
-                "status": status,
-                "platforms": info.get("platforms", ["all"]),
-                "capabilities": info.get("capabilities", []),
-                "sandbox_permissions": sandbox_permissions(plugin_id, plugin_class),
-                "guest_alias": info.get("guest_alias", ""),
-                "installed": True,
-                "compatible": self.is_platform_compatible(plugin_class),
-            }
-            if status == "error":
-                if for_cloud:
-                    entry["error"] = (
-                        self.error_for_cloud(plugin_id)
-                        or self.couldnt_start_sentence(plugin_id)
-                    )
-                else:
-                    entry["error"] = self._errors.get(plugin_id, "")
-            plugins.append(entry)
-
-        # Missing plugins (referenced in project but not installed)
-        for plugin_id, missing_info in self._missing_plugins.items():
-            if plugin_id not in seen:
-                seen.add(plugin_id)
-                plugins.append({
-                    "plugin_id": plugin_id,
-                    "name": plugin_id,
-                    "status": "missing",
-                    "installed": False,
-                    "compatible": True,
-                    "missing_reason": missing_info.get("reason", ""),
-                })
-
-        # Incompatible plugins that aren't in the class registry (e.g. failed to
-        # register but were marked incompatible). Registered-but-incompatible
-        # plugins already surface above with status 'incompatible'; this is the
-        # fallback so the tracker dict can't hold dead, un-surfaced state.
-        for plugin_id, incompat_info in self._incompatible_plugins.items():
-            if plugin_id not in seen:
-                seen.add(plugin_id)
-                plugins.append({
-                    "plugin_id": plugin_id,
-                    "name": plugin_id,
-                    "status": "incompatible",
-                    "installed": True,
-                    "compatible": False,
-                    "supported_platforms": incompat_info.get(
-                        "supported_platforms", []
-                    ),
-                })
-
+        plugins = [
+            self._listed(plugin_id, plugin_class, for_cloud)
+            for plugin_id, plugin_class in _PLUGIN_CLASS_REGISTRY.items()
+        ]
+        seen = set(_PLUGIN_CLASS_REGISTRY)
+        unregistered = (
+            (self._missing_plugins, _listed_missing),
+            (self._incompatible_plugins, _listed_incompatible),
+        )
+        for tracker, entry_for in unregistered:
+            for plugin_id, tracked in tracker.items():
+                if plugin_id not in seen:
+                    seen.add(plugin_id)
+                    plugins.append(entry_for(plugin_id, tracked))
         return plugins
+
+    def _listed(self, plugin_id: str, plugin_class: type, for_cloud: bool) -> dict[str, Any]:
+        info = plugin_class.PLUGIN_INFO
+        status = self._status.get(plugin_id, "stopped")
+        entry = {
+            "plugin_id": plugin_id,
+            "name": info.get("name", plugin_id),
+            "version": info.get("version", ""),
+            "author": info.get("author", ""),
+            "description": info.get("description", ""),
+            "category": info.get("category", ""),
+            "status": status,
+            "platforms": info.get("platforms", ["all"]),
+            "capabilities": info.get("capabilities", []),
+            "sandbox_permissions": sandbox_permissions(plugin_id, plugin_class),
+            "guest_alias": info.get("guest_alias", ""),
+            "installed": True,
+            "compatible": self.is_platform_compatible(plugin_class),
+        }
+        if status == "error":
+            entry["error"] = self._listed_error(plugin_id, for_cloud)
+        return entry
+
+    def _listed_error(self, plugin_id: str, for_cloud: bool) -> str:
+        if for_cloud:
+            return self.error_for_cloud(plugin_id) or self.couldnt_start_sentence(plugin_id)
+        return self._errors.get(plugin_id, "")
 
     def get_plugin_info(self, plugin_id: str) -> dict[str, Any] | None:
         """Get detailed info for a specific plugin."""
         plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
         if plugin_class is None:
-            missing = self._missing_plugins.get(plugin_id)
-            if missing:
-                return {
-                    "plugin_id": plugin_id,
-                    "status": "missing",
-                    "installed": False,
-                    **missing,
-                }
-            return None
+            return self._missing_plugin_info(plugin_id)
 
         info = plugin_class.PLUGIN_INFO
         status = self._status.get(plugin_id, "stopped")
@@ -1013,42 +1067,16 @@ class PluginLoader:
             "has_macro_actions": bool(getattr(plugin_class, "MACRO_ACTIONS", None)),
             "has_script_api": bool(getattr(plugin_class, "SCRIPT_API", None)),
         }
-
         if status == "error":
             result["error"] = self._errors.get(plugin_id, "")
-
-        # Include config schema if available
-        schema = getattr(plugin_class, "CONFIG_SCHEMA", None)
-        if schema:
-            result["config_schema"] = schema
-
-        # Include extensions if available
-        extensions = getattr(plugin_class, "EXTENSIONS", None)
-        if extensions:
-            result["extensions"] = extensions
-
-        # Include surface layout if available
-        surface = getattr(plugin_class, "SURFACE_LAYOUT", None)
-        if surface:
-            result["surface_layout"] = surface
-
-        # Include macro actions if available — strip 'handler' (internal-only)
-        macro_actions = getattr(plugin_class, "MACRO_ACTIONS", None)
-        if macro_actions:
-            result["macro_actions"] = {
-                action_type: {k: v for k, v in spec.items() if k != "handler"}
-                for action_type, spec in macro_actions.items()
-            }
-
-        # Include script API methods if available — strip 'handler' (internal)
-        script_api = getattr(plugin_class, "SCRIPT_API", None)
-        if script_api:
-            result["script_api"] = {
-                method_name: {k: v for k, v in spec.items() if k != "handler"}
-                for method_name, spec in script_api.items()
-            }
-
+        result.update(_described_declarations(plugin_class))
         return result
+
+    def _missing_plugin_info(self, plugin_id: str) -> dict[str, Any] | None:
+        missing = self._missing_plugins.get(plugin_id)
+        if not missing:
+            return None
+        return {"plugin_id": plugin_id, "status": "missing", "installed": False, **missing}
 
     def get_plugin_status(self, plugin_id: str) -> str:
         """Get the current status of a plugin."""
@@ -1060,28 +1088,11 @@ class PluginLoader:
         Returns a flat list, each entry shaped for the macro builder:
         ``{action_type, plugin_id, plugin_name, label, description?, icon?, params}``
         """
-        result: list[dict[str, Any]] = []
-        for plugin_id, instance in self._instances.items():
-            plugin_class = type(instance)
-            macro_actions = getattr(plugin_class, "MACRO_ACTIONS", None)
-            if not macro_actions:
-                continue
-            info = plugin_class.PLUGIN_INFO
-            plugin_name = info.get("name", plugin_id)
-            for action_type, spec in macro_actions.items():
-                entry = {
-                    "action_type": action_type,
-                    "plugin_id": plugin_id,
-                    "plugin_name": plugin_name,
-                    "label": spec.get("label") or action_type,
-                    "params": spec.get("params", []),
-                }
-                if spec.get("description"):
-                    entry["description"] = spec["description"]
-                if spec.get("icon"):
-                    entry["icon"] = spec["icon"]
-                result.append(entry)
-        return result
+        return [
+            _builder_action(plugin_id, plugin_name, action_type, spec)
+            for plugin_id, plugin_name, actions in self._running_declarations("MACRO_ACTIONS")
+            for action_type, spec in actions.items()
+        ]
 
     def get_all_script_api(self) -> list[dict[str, Any]]:
         """Get all script API methods from running plugins.
@@ -1090,25 +1101,20 @@ class PluginLoader:
         autocomplete and hover docs:
         ``{plugin_id, plugin_name, method, doc?, sync}``
         """
-        result: list[dict[str, Any]] = []
+        return [
+            _script_method(plugin_id, plugin_name, method_name, spec)
+            for plugin_id, plugin_name, methods in self._running_declarations("SCRIPT_API")
+            for method_name, spec in methods.items()
+        ]
+
+    def _running_declarations(self, attr: str):
+        """(plugin_id, plugin_name, declaration) for each running plugin whose
+        class declares ``attr`` non-empty, in running order."""
         for plugin_id, instance in self._instances.items():
             plugin_class = type(instance)
-            script_api = getattr(plugin_class, "SCRIPT_API", None)
-            if not script_api:
-                continue
-            info = plugin_class.PLUGIN_INFO
-            plugin_name = info.get("name", plugin_id)
-            for method_name, spec in script_api.items():
-                entry = {
-                    "plugin_id": plugin_id,
-                    "plugin_name": plugin_name,
-                    "method": method_name,
-                    "sync": bool(spec.get("sync", False)),
-                }
-                if spec.get("doc"):
-                    entry["doc"] = spec["doc"]
-                result.append(entry)
-        return result
+            declared = getattr(plugin_class, attr, None)
+            if declared:
+                yield plugin_id, plugin_class.PLUGIN_INFO.get("name", plugin_id), declared
 
     def get_all_extensions(self) -> dict[str, Any]:
         """Every running plugin's extensions by type, as the panel and the IDE
