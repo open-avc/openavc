@@ -634,6 +634,14 @@ describe("Where panels open, for the choice the server runs", () => {
 });
 
 describe("What the page reads when it opens", () => {
+  it("asks for the config, the version, SSH, the adapters and the certificate status, in that order", async () => {
+    await renderLoaded(<SystemSettingsView />);
+    const order = [api.getSystemConfig, api.getSystemVersion, api.getSshStatus, api.getNetworkAdapters, api.getTlsStatus]
+      .map((fn) => fn.mock.invocationCallOrder[0]);
+    expect(order.every((n) => typeof n === "number")).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+  });
+
   it("says the config could not be loaded, and draws nothing else", async () => {
     api.getSystemConfig.mockRejectedValueOnce(new ApiError(500, JSON.stringify({ detail: "Disk full" })));
     const { render } = await import("@testing-library/react");
