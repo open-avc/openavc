@@ -1255,3 +1255,59 @@ async def test_a_start_ends_a_pending_auto_disable_mark(loader, rec):
     assert "acme_widget" not in loader._auto_disabling
     loader._apis["acme_widget"]._failure_reporter()
     assert loader._callback_failures == {"acme_widget": 1}
+
+
+def test_an_install_registers_the_class_with_its_own_id(tmp_path, monkeypatch):
+    """The search an install makes takes the class whose id is the plugin's,
+    not the first plugin class in the file."""
+    from openavc.core import plugin_installer as installer
+
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(installer, "PLUGIN_REPO_DIR", tmp_path)
+    plugin_dir = tmp_path / "acme_pair"
+    _write(
+        plugin_dir / "acme_pair_plugin.py",
+        _plugin_src("acme_other", cls="AaaPlugin") + _plugin_src("acme_pair", cls="BbbPlugin"),
+    )
+    assert installer._register_installed_plugin("acme_pair", plugin_dir) is None
+    assert _PLUGIN_CLASS_REGISTRY["acme_pair"].__name__ == "BbbPlugin"
+    assert "acme_other" not in _PLUGIN_CLASS_REGISTRY
+
+
+async def test_a_stop_without_router_hooks_logs_nothing(loader, rec, caplog):
+    register_plugin_class(_lifecycle_plugin(rec, router=True))
+    await loader.start_plugin("acme_widget")
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        await loader.stop_plugin("acme_widget")
+    assert _msgs(caplog, logging.WARNING) == []
+    assert loader.get_plugin_status("acme_widget") == "stopped"
+
+
+async def test_a_stop_ends_a_pending_auto_disable_mark(loader, rec):
+    register_plugin_class(_lifecycle_plugin(rec))
+    await loader.start_plugin("acme_widget")
+    loader._auto_disabling.add("acme_widget")
+    await loader.stop_plugin("acme_widget")
+    assert "acme_widget" not in loader._auto_disabling
+
+
+def test_an_install_puts_deps_on_the_end_of_the_import_path(tmp_path, monkeypatch):
+    from openavc.core import plugin_installer as installer
+
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    monkeypatch.setattr(installer, "PLUGIN_REPO_DIR", tmp_path)
+    (tmp_path / ".deps").mkdir()
+    plugin_dir = tmp_path / "acme_deps"
+    _write(plugin_dir / "acme_deps_plugin.py", _plugin_src("acme_deps"))
+    assert installer._register_installed_plugin("acme_deps", plugin_dir) is None
+    assert installer._register_installed_plugin("acme_deps", plugin_dir) is None
+    assert sys.path.count(str(tmp_path / ".deps")) == 1
+    assert sys.path[-1] == str(tmp_path / ".deps")
+
+
+async def test_starting_a_running_plugin_with_no_config_changes_nothing(loader, rec):
+    register_plugin_class(_lifecycle_plugin(rec))
+    await loader.start_plugin("acme_widget", {"level": 3})
+    assert await loader.start_plugin("acme_widget") is True
+    assert [c for c in rec.calls if c[0] in ("start", "stop")] == [("start", None)]
+    assert loader.get_running_config("acme_widget") == {"level": 3}
