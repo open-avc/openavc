@@ -10,8 +10,9 @@ row: `CURRENT_VERSION` is where the chain ends, so the two cannot disagree.
 
 The rule worth knowing before changing a step: a step says what it did to the
 projects of its day, so the steps that rewrite UI elements keep their own
-numbers, type lists and element walk rather than reading today's renderer or
-page review, and each says so where it does. The 0.8.0 grid-to-percent layout
+numbers and type lists rather than reading today's renderer or page review
+(each says so where it does), and reach elements through the walk they were
+written with: two walks, one per rule, so editing either changes old steps. The 0.8.0 grid-to-percent layout
 conversion is ``core/layout_migration.py``.
 """
 
@@ -52,7 +53,9 @@ def migrate_0_1_to_0_2(data: dict) -> dict:
         config = device.get("config", {})
         # Renamed BEFORE the move, so the moved fields carry the new names.
         _rename_serial_fields_0_2(config)
-        conn_overrides = {key: config.pop(key) for key in list(config) if key in CONNECTION_FIELDS}
+        conn_overrides = {
+            key: config.pop(key) for key in list(config.keys()) if key in CONNECTION_FIELDS
+        }
         if conn_overrides:
             connections[device_id] = conn_overrides
 
