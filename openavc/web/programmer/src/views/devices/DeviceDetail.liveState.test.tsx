@@ -46,8 +46,15 @@ vi.mock("./InstalledEquipment", () => ({ InstalledEquipment: () => null }));
 vi.mock("./DriverUpdateLine", () => ({ DriverUpdateLine: () => null }));
 vi.mock("../../components/shared/MonitorControl", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../components/shared/MonitorControl")>()),
-  MonitorLimitsPanel: ({ monitor, declared }: { monitor: { key: string }; declared?: { label?: string } }) => (
-    <div data-testid="limits-panel">{`${monitor.key}|${declared?.label ?? ""}`}</div>
+  MonitorLimitsPanel: ({ monitor, declared, onChange }: {
+    monitor: { key: string };
+    declared?: { label?: string };
+    onChange: (next: unknown[], description: string) => void;
+  }) => (
+    <div data-testid="limits-panel">
+      {`${monitor.key}|${declared?.label ?? ""}`}
+      <button onClick={() => onChange([{ key: monitor.key, normal_max: 80 }], `Limits for ${monitor.key}`)}>set limits</button>
+    </div>
   ),
 }));
 vi.mock("../../components/plugins/PluginExtensions", () => ({
@@ -328,11 +335,11 @@ describe("the device page's Live State", () => {
       const opener = (key: string) =>
         within(row(key).querySelectorAll("td")[2] as HTMLElement).getAllByRole("button")[1];
       fireEvent.click(opener("power"));
-      expect(screen.getAllByTestId("limits-panel").map((p) => p.textContent)).toEqual(["device.amp.power|Power"]);
+      expect(screen.getAllByTestId("limits-panel").map((p) => p.firstChild?.textContent)).toEqual(["device.amp.power|Power"]);
       expect(row("power").style.borderBottom).toBe("");
       expect(row("power").nextElementSibling!.contains(screen.getByTestId("limits-panel"))).toBe(true);
       fireEvent.click(opener("input"));
-      expect(screen.getAllByTestId("limits-panel").map((p) => p.textContent)).toEqual(["device.amp.input|"]);
+      expect(screen.getAllByTestId("limits-panel").map((p) => p.firstChild?.textContent)).toEqual(["device.amp.input|"]);
       expect(row("power").style.borderBottom).toBe("1px solid var(--border-color)");
       fireEvent.click(opener("input"));
       expect(screen.queryByTestId("limits-panel")).toBeNull();
@@ -344,6 +351,22 @@ describe("the device page's Live State", () => {
       await showPage();
       expect(within(row("temp")).getByText("Normal up to 80 C · outside now")).toBeTruthy();
       expect(within(row("fan")).getByText("Normal up to 80")).toBeTruthy();
+    });
+
+    it("saves a change in a row's limits the same way", async () => {
+      const updateWithUndo = vi.fn();
+      const debouncedSave = vi.fn();
+      setProject([{ key: "device.amp.temp" }]);
+      useProjectStore.setState({ updateWithUndo, debouncedSave } as never);
+      setLive({ "device.amp.connected": true, "device.amp.temp": 50 });
+      await showPage();
+      fireEvent.click(within(row("temp").querySelectorAll("td")[2] as HTMLElement).getAllByRole("button")[1]);
+      fireEvent.click(screen.getByRole("button", { name: "set limits" }));
+      expect(updateWithUndo).toHaveBeenCalledWith(
+        { monitors: [{ key: "device.amp.temp", normal_max: 80 }] },
+        "Limits for device.amp.temp",
+      );
+      expect(debouncedSave).toHaveBeenCalledWith(1500);
     });
 
     it("hands the Child Entities panel the project's monitors and the same save", async () => {
