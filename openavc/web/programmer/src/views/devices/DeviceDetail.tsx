@@ -1,13 +1,9 @@
 import { InstalledEquipment } from "./InstalledEquipment";
-import { Fragment, useState, useCallback, useMemo } from "react";
-import { Pencil, Trash2, Wifi, Power, RefreshCw, Copy, X, Search, ClipboardCheck } from "lucide-react";
+import { Fragment, useState, useMemo } from "react";
+import { X, Search } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
-import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
-import * as api from "../../api/restClient";
-import { getAuditDeviceTarget } from "../../api/auditClient";
-import { useAuditStore } from "../../store/auditStore";
 import type { BridgePort, DeviceConfig, DriverInfo } from "../../api/types";
 import {
   MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
@@ -18,8 +14,6 @@ import type { ChildTypeInfo } from "./childPresence";
 import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
 import { parseStateOptionList } from "../../components/shared/paramOptions";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
-import { findDeviceReferences } from "./deviceUtils";
-import { connectionTestText } from "./deviceAddress";
 import { readingText, valueText } from "../../components/shared/booleanWords";
 import { ChildEntities } from "./ChildEntities";
 import { QuickActions } from "./QuickActions";
@@ -28,11 +22,10 @@ import { IrCodesEditor } from "./IrCodesEditor";
 import { ConfigTableEditor } from "./ConfigTableEditor";
 import { BridgeIrPort } from "./BridgeIrPort";
 import { SshKeySection, canUseSshKey } from "./SshKeySection";
-import { parseApiError } from "../../api/errors";
-import { useConnectionTestResult } from "./useConnectionTestResult";
 import { useDeviceInfo } from "./useDeviceInfo";
-import { driverLabel } from "../../components/shared/driverLabel";
-import { DriverUpdateLine } from "./DriverUpdateLine";
+import { useDeviceChecks } from "./useDeviceChecks";
+import { DeviceHeader } from "./DeviceHeader";
+import { AuditRefusalLine, ConnectionTestLine } from "./DeviceCheckResults";
 import { NeedsLoginBanner } from "./NeedsLoginBanner";
 import { ProblemReportDialog } from "./ProblemReportDialog";
 import type { ProblemReportContext } from "../../api/problemReportClient";
@@ -65,17 +58,9 @@ export function DeviceDetail({
   installedDriver?: DriverInfo;
 }) {
   const project = useProjectStore((s) => s.project);
-  const update = useProjectStore((s) => s.update);
   const liveState = useConnectionStore((s) => s.liveState);
   // Report a problem is open, from where and with what the page showed.
   const [reportContext, setReportContext] = useState<ProblemReportContext | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [testing, setTesting] = useState(false);
-  // Why "Audit this device" could not start (a device on a serial port, say).
-  const [auditRefusal, setAuditRefusal] = useState("");
-  const [openingAudit, setOpeningAudit] = useState(false);
-  const [reconnecting, setReconnecting] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   // Which Live State row has its Monitor limits open. One at a time: the panel
   // is drawn in a full-width row of its own, and a table with six of them open
@@ -87,7 +72,7 @@ export function DeviceDetail({
 
   const away = readDeviceAway(liveState, deviceId);
   const connected = away.connected;
-  const [testResult, setTestResult] = useConnectionTestResult(deviceId, connected);
+  const checks = useDeviceChecks(deviceId, connected);
   const runtimeEnabled = liveState[`device.${deviceId}.enabled`] === true;
   const { deviceInfo, notRunning, refetch: refetchDeviceInfo, takeActivated } = useDeviceInfo(deviceId, {
     connected,
@@ -103,71 +88,6 @@ export function DeviceDetail({
   // system says which devices are; until it answers, nothing is offered.
   const manageable = deviceInfo ? !installed : notRunning && Boolean(deviceConfig);
   const banner = awayBanner(away, isEnabled, deviceInfo?.needs_login?.length ?? 0);
-
-  const handleDelete = useCallback(async () => {
-    setDeleting(true);
-    try {
-      await api.deleteDevice(deviceId);
-      onDeleted(deviceId);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setDeleting(false);
-      setConfirmDelete(false);
-    }
-  }, [deviceId, onDeleted]);
-
-  const handleTestConnection = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const result = await api.testDeviceConnection(deviceId);
-      setTestResult(result);
-    } catch (e) {
-      setTestResult({ success: false, error: parseApiError(e), latency_ms: null });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  // Open the Device Audit wizard on this device: its address, driver and
-  // saved settings filled in, and the device paused while the audit runs.
-  const handleAudit = async () => {
-    setAuditRefusal("");
-    setOpeningAudit(true);
-    try {
-      const target = await getAuditDeviceTarget(deviceId);
-      if (!target.auditable) {
-        setAuditRefusal(target.reason);
-        return;
-      }
-      useAuditStore.getState().openWizard({ address: target.address, deviceId });
-    } catch (e) {
-      setAuditRefusal(parseApiError(e));
-    } finally {
-      setOpeningAudit(false);
-    }
-  };
-
-  const handleToggleEnabled = async () => {
-    if (!project || !deviceConfig) return;
-    const updatedDevices = project.devices.map((d) =>
-      d.id === deviceId ? { ...d, enabled: !isEnabled } : d
-    );
-    update({ devices: updatedDevices });
-    useProjectStore.getState().debouncedSave();
-  };
-
-  const handleReconnect = async () => {
-    setReconnecting(true);
-    try {
-      await api.reconnectDevice(deviceId);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setTimeout(() => setReconnecting(false), 2000);
-    }
-  };
 
   // Drivers that manage child entities declare them in DRIVER_INFO; those
   // keys (device.<id>.<type>.<paddedId>.<prop>) belong to the Child Entities
@@ -278,232 +198,22 @@ export function DeviceDetail({
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ marginBottom: "var(--space-xl)" }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-md)",
-            flexWrap: "wrap",
-          }}
-        >
-          <DeviceStatusDot
-            connected={connected}
-            orphaned={away.orphaned}
-            paused={away.paused}
-            pausedFor={away.pausedFor}
-            restarting={away.restarting}
-            asleep={away.asleep}
-            size={12}
-          />
-          <h2 style={{ fontSize: "var(--font-size-xl)", flex: 1 }}>{deviceName}</h2>
-          {deviceInfo && <>
-          <button
-            onClick={handleToggleEnabled}
-            title={isEnabled ? "Disable device" : "Enable device"}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-xs)",
-              padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "var(--border-radius)",
-              background: isEnabled ? "rgba(76,175,80,0.15)" : "var(--bg-hover)",
-              color: isEnabled ? "var(--color-success)" : "var(--text-muted)",
-              fontSize: "var(--font-size-sm)",
-            }}
-          >
-            <Power size={14} /> {isEnabled ? "Enabled" : "Disabled"}
-          </button>
-          </>}
-          {deviceInfo && <>
-          <button
-            onClick={handleTestConnection}
-            disabled={testing}
-            title="Test device connection"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-xs)",
-              padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--bg-hover)",
-              fontSize: "var(--font-size-sm)",
-              opacity: testing ? 0.6 : 1,
-            }}
-          >
-            <Wifi size={14} /> {testing ? "Testing..." : "Test"}
-          </button>
-          <button
-            onClick={() => void handleAudit()}
-            disabled={openingAudit || installed}
-            title={installed ? "Product hardware uses a local connection. Network audit is unavailable for this connection." : "Check this device in detail and write a report about it"}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-xs)",
-              padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--bg-hover)",
-              fontSize: "var(--font-size-sm)",
-              opacity: openingAudit ? 0.6 : 1,
-            }}
-          >
-            <ClipboardCheck size={14} /> Audit this device
-          </button>
-          </>}
-          {!connected && isEnabled && (
-            <button
-              onClick={handleReconnect}
-              disabled={reconnecting}
-              title="Force reconnect"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--space-xs)",
-                padding: "var(--space-xs) var(--space-md)",
-                borderRadius: "var(--border-radius)",
-                background: "var(--bg-hover)",
-                color: "var(--accent)",
-                fontSize: "var(--font-size-sm)",
-                opacity: reconnecting ? 0.6 : 1,
-              }}
-            >
-              <RefreshCw size={14} /> {reconnecting ? "Reconnecting..." : "Reconnect"}
-            </button>
-          )}
-          {manageable && <>
-          <button
-            onClick={() => deviceConfig && onEdit(deviceConfig)}
-            title="Edit device settings"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-xs)",
-              padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--bg-hover)",
-              fontSize: "var(--font-size-sm)",
-            }}
-          >
-            <Pencil size={14} /> Edit
-          </button>
-          <button
-            onClick={() => deviceConfig && onDuplicate(deviceConfig)}
-            title="Duplicate device"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--space-xs)",
-              padding: "var(--space-xs) var(--space-md)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--bg-hover)",
-              fontSize: "var(--font-size-sm)",
-            }}
-          >
-            <Copy size={14} /> Duplicate
-          </button>
-          {confirmDelete ? (
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                <span style={{ fontSize: "var(--font-size-sm)", color: "var(--color-error)" }}>
-                  Delete this device?
-                </span>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  style={{
-                    padding: "var(--space-xs) var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    background: "var(--color-error)",
-                    color: "#fff",
-                    fontSize: "var(--font-size-sm)",
-                    opacity: deleting ? 0.6 : 1,
-                  }}
-                >
-                  {deleting ? "Deleting..." : "Yes, Delete"}
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(false)}
-                  style={{
-                    padding: "var(--space-xs) var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    background: "var(--bg-hover)",
-                    fontSize: "var(--font-size-sm)",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-              {project && (() => {
-                const refs = findDeviceReferences(project, deviceId);
-                if (refs.length === 0) return null;
-                return (
-                  <div style={{ marginTop: "var(--space-xs)", padding: "var(--space-sm)", background: "rgba(244,67,54,0.08)", borderRadius: "var(--border-radius)", fontSize: 12, color: "var(--text-secondary)" }}>
-                    <strong>Warning:</strong> This device is referenced in {refs.length} place(s):
-                    <ul style={{ margin: "4px 0 0 16px", padding: 0 }}>
-                      {refs.slice(0, 5).map((r, i) => <li key={i}>{r}</li>)}
-                      {refs.length > 5 && <li>...and {refs.length - 5} more</li>}
-                    </ul>
-                  </div>
-                );
-              })()}
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              title="Delete device"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--space-xs)",
-                padding: "var(--space-xs) var(--space-md)",
-                borderRadius: "var(--border-radius)",
-                background: "var(--bg-hover)",
-                color: "var(--color-error)",
-                fontSize: "var(--font-size-sm)",
-              }}
-            >
-              <Trash2 size={14} /> Delete
-            </button>
-          )}
-          </>}
-        </div>
-        <div style={{ marginLeft: 22, display: "flex", alignItems: "center", gap: "var(--space-sm)", flexWrap: "wrap" }}>
-          <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>
-            {driverLabel(deviceInfo?.driver)}
-          </span>
-          <span style={{ color: "var(--border-color)" }}>&middot;</span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <code style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
-              {deviceId}
-            </code>
-            <CopyButton value={deviceId} title="Copy device ID" />
-          </span>
-          <span style={{ color: "var(--border-color)" }}>&middot;</span>
-          <button
-            type="button"
-            onClick={() => setReportContext({ source: "driver_line" })}
-            onMouseEnter={(e) => (e.currentTarget.style.textDecoration = "underline")}
-            onMouseLeave={(e) => (e.currentTarget.style.textDecoration = "none")}
-            style={{
-              background: "none",
-              border: "none",
-              padding: 0,
-              cursor: "pointer",
-              fontSize: "var(--font-size-sm)",
-              color: "var(--text-muted)",
-            }}
-          >
-            Report a problem
-          </button>
-        </div>
-        {/* Product hardware's driver is part of OpenAVC, and a device whose
-            driver is not installed has the orphan banner below instead. */}
-        {manageable && !away.orphaned && deviceInfo?.driver && (
-          <DriverUpdateLine driverId={deviceInfo.driver} onUpdated={refetchDeviceInfo} />
-        )}
-      </div>
+      <DeviceHeader
+        deviceId={deviceId}
+        deviceName={deviceName}
+        away={away}
+        info={deviceInfo}
+        config={deviceConfig}
+        isEnabled={isEnabled}
+        installed={installed}
+        manageable={manageable}
+        checks={checks}
+        onEdit={onEdit}
+        onDuplicate={onDuplicate}
+        onDeleted={onDeleted}
+        onReport={() => setReportContext({ source: "driver_line" })}
+        onDriverUpdated={refetchDeviceInfo}
+      />
 
       {/* Why the device is away: one banner at a time, chosen in deviceAway.ts.
           The first four sit above product hardware's own panel, the login box
@@ -564,60 +274,8 @@ export function DeviceDetail({
         />
       )}
 
-      {/* Why "Audit this device" did not open the wizard */}
-      {auditRefusal && (
-        <div
-          role="status"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-sm)",
-            padding: "var(--space-sm) var(--space-md)",
-            borderRadius: "var(--border-radius)",
-            marginBottom: "var(--space-md)",
-            fontSize: "var(--font-size-sm)",
-            background: "var(--bg-hover)",
-            color: "var(--text-secondary)",
-          }}
-        >
-          <ClipboardCheck size={14} style={{ flexShrink: 0 }} />
-          <span style={{ flex: 1 }}>{auditRefusal}</span>
-          <button
-            onClick={() => setAuditRefusal("")}
-            aria-label="Dismiss"
-            title="Dismiss"
-            style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--text-muted)" }}
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
-
-      {/* Test connection result */}
-      {testResult && (
-        <div
-          style={{
-            padding: "var(--space-sm) var(--space-md)",
-            borderRadius: "var(--border-radius)",
-            marginBottom: "var(--space-md)",
-            fontSize: "var(--font-size-sm)",
-            background: testResult.success
-              ? "rgba(76,175,80,0.15)"
-              : "var(--color-error-bg)",
-            color: testResult.success ? "var(--color-success)" : "var(--color-error)",
-          }}
-        >
-          {connectionTestText(
-            testResult,
-            (id) => project?.devices.find((d) => d.id === id)?.name || id,
-          )}
-          {testResult.note && (
-            <div style={{ marginTop: "var(--space-xs)", color: "var(--text-muted)" }}>
-              {testResult.note}
-            </div>
-          )}
-        </div>
-      )}
+      <AuditRefusalLine refusal={checks.auditRefusal} onDismiss={checks.dismissAuditRefusal} />
+      <ConnectionTestLine result={checks.testResult} devices={project?.devices} />
 
       {/* OpenAVC's own SSH key, for a device that connects over SSH and can
           sign in with a key: key sign-in uses it whenever the device's key
