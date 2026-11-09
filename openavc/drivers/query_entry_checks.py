@@ -22,7 +22,8 @@ rule's ``child_set:`` wrote, and reading again what the rule has just written
 asks the device what it has just said), then as any entry is. The runtime's
 twins are ``query_entries.py`` (the gates) and ``rereads.py`` (a then_query
 round); the simulator answers the same entries through
-``simulator/reread_queries.py``. A new template position in an entry is also
+``simulator/reread_queries.py``, and the Driver Builder edits them through
+``driver-builder/queryEntryHelpers.ts``. A new template position in an entry is also
 an edit to ``validate_substitutions`` (``avcdriver_semantic``), which checks
 every entry's placeholders.
 
