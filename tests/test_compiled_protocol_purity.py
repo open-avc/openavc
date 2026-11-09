@@ -24,6 +24,9 @@ ALLOWED = {
     # What a rule's child_set: / child_list: compile to; compile_driver calls
     # it, and it is held to the same closure.
     "openavc.drivers.child_routes",
+    # What a json rule's value spec compiles to, in a flat set: and a child;
+    # both of the above call it. Standard library only.
+    "openavc.drivers.json_value_spec",
     # The driver contract's constant tables. Stdlib-only (ipaddress + re) and
     # already vendored into openavc-drivers, so it travels everywhere this
     # module does. compiled_protocol needs it for the reserved child props:
@@ -109,6 +112,14 @@ def test_the_simulators_template_and_name_readers_stay_leaves(module):
     # only the standard library importable, so a third-party import fails the
     # import itself.
     assert _openavc_modules_loaded(module, "-I", "-S") == {"openavc", "openavc.simulator", module}
+
+
+def test_the_json_value_spec_stays_a_leaf():
+    # compiled_protocol and child_routes both read a json rule's value spec
+    # through it, so it imports nothing beyond the standard library, which -I
+    # -S leaves the only thing importable.
+    module = "openavc.drivers.json_value_spec"
+    assert _openavc_modules_loaded(module, "-I", "-S") == {"openavc", "openavc.drivers", module}
 
 
 def test_the_reread_queries_stay_within_the_protocol_closure():

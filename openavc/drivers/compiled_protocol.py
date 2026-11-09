@@ -16,7 +16,9 @@ they live here once instead.
 incoming data against. The other interpreters reason about the same rules,
 so the compile lives here with the helpers rather than inside the runtime.
 What a rule's ``child_set:`` and ``child_list:`` compile to, in each wire
-form, is ``openavc.drivers.child_routes``, which the compile calls.
+form, is ``openavc.drivers.child_routes``, which the compile calls; what a json
+rule's value spec compiles to, in a flat ``set:`` and in a child alike, is
+``openavc.drivers.json_value_spec``, which both call.
 
 What only the simulator and its validator need lives beside them in
 ``openavc.simulator``: the reply text a response pattern matches
@@ -26,8 +28,8 @@ name says when it declares nothing (``command_names``), and the then_query
 and read_back queries the simulator answers (``reread_queries``).
 
 Pure on purpose: stdlib plus ``openavc.transport.binary_helpers``, the driver
-contract's tables (``openavc.drivers.spec``, through ``child_routes``) and the
-logger only — the same contract as ``openavc.drivers.inline_protocol``, and for
+contract's tables (``openavc.drivers.spec``, through ``child_routes``),
+``json_value_spec`` and the logger only — the same contract as ``openavc.drivers.inline_protocol``, and for
 the same reason: the simulator runs as a separate process and imports this
 module directly, so it must not pull in the driver runtime or transport stack
 (``tests/test_compiled_protocol_purity.py``).
@@ -48,6 +50,7 @@ from openavc.drivers.child_routes import (
     compile_json_child_set,
     compile_osc_child_set,
 )
+from openavc.drivers.json_value_spec import FLAT, json_value_mapping
 from openavc.transport.binary_helpers import (
     DEFAULT_MAX_BUFFER,
     encode_escape_sequences,
@@ -869,27 +872,14 @@ def build_throttle(resp: dict[str, Any]) -> dict[str, Any] | None:
 
 def _json_set_mapping(
     state_key: str, spec: Any, state_variables: dict[str, Any]
-) -> dict[str, Any]:
-    """One json ``set:`` item as a mapping: the JSON key to read (shorthand)
-    or a ``{key | path, type, map, contains}`` spec, typed by the state
-    variable unless it says otherwise."""
+) -> dict[str, Any] | None:
+    """One json ``set:`` item as a mapping, typed by its state variable unless
+    the spec says otherwise; how a flat item reads the spec is ``FLAT``."""
     var_def = state_variables.get(state_key, {})
     default_type = (
         var_def.get("type", "string") if isinstance(var_def, dict) else "string"
     )
-    if not isinstance(spec, dict):
-        return {"state": state_key, "key": str(spec), "type": default_type}
-    mapping: dict[str, Any] = {
-        "state": state_key,
-        "key": spec.get("key", spec.get("path", state_key)),
-        "type": spec.get("type", default_type),
-        "map": spec.get("map"),
-    }
-    if "contains" in spec:
-        # "does the array/object/string at key hold this?" -- answered by the
-        # runtime, stored under the state's type (boolean, normally).
-        mapping["contains"] = spec["contains"]
-    return mapping
+    return json_value_mapping(state_key, spec, default_type, FLAT)
 
 
 def build_json_mappings(
@@ -900,9 +890,9 @@ def build_json_mappings(
     Accepts the detailed ``mappings`` list or the friendly ``set`` map, the
     ``set`` read only when there are no ``mappings`` (unlike a regex rule,
     ``build_regex_mappings``, which keeps both). In a json rule a ``set`` value
-    is the JSON key to read (string shorthand) or a ``{key/path, type, map,
-    contains}`` spec — not a regex capture ref. Types default to the matching
-    state variable's declared type.
+    is a value spec (``openavc.drivers.json_value_spec``), the JSON path to
+    read — not a regex capture ref. Types default to the matching state
+    variable's declared type.
     """
     mappings: list[dict[str, Any]] = list(resp.get("mappings", []))
     set_map = resp.get("set")

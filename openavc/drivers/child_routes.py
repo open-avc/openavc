@@ -9,7 +9,8 @@ in its own way where the child id and each value come from:
   segment (``{segment: N}``) or a literal, and a value is a positional argument
   (``{arg: N}``) or a literal;
 - a JSON rule (``compile_json_child_set``): nothing to route on, so the id is a
-  literal and a value is a JSON path into the body;
+  literal and a value is a JSON path into the body, the value spec a flat
+  ``set:`` takes too, compiled for both by ``json_value_spec``;
 
 and a regex rule's ``child_list:`` (``compile_child_list``) spreads one captured
 list across the children of a type, its items read with ``child_set``'s value
@@ -34,7 +35,8 @@ A malformed entry is skipped, most with a warning; the loader reports the same
 shapes up front, so a catalog driver never gets here wrong. Pure for the same
 reason as ``compiled_protocol``, which calls it: the simulator and the validator
 import that module directly, so this one takes nothing beyond the standard
-library, ``spec`` and the logger (``tests/test_compiled_protocol_purity.py``).
+library, ``spec``, ``json_value_spec`` and the logger
+(``tests/test_compiled_protocol_purity.py``).
 """
 
 from __future__ import annotations
@@ -43,6 +45,7 @@ import re
 from collections.abc import Callable
 from typing import Any, NamedTuple
 
+from openavc.drivers.json_value_spec import CHILD, json_value_mapping
 from openavc.drivers.spec import CHILD_RESERVED_PROP_SCHEMA
 from openavc.utils.logger import get_logger
 
@@ -335,25 +338,11 @@ def _json_id(cid: Any, device_id: str) -> dict[str, Any] | None:
 
 
 def _json_prop(
-    prop: str, expr: Any, var_type: str, device_id: str
+    prop: str, expr: Any, var_type: str, _device_id: str
 ) -> dict[str, Any] | None:
-    """A JSON path, plain or as ``{key | path, type, map, contains}``, the
-    strings a json ``set:`` takes; ``key`` wins over ``path``."""
-    if not isinstance(expr, dict):
-        return {"prop": prop, "key": str(expr), "type": var_type}
-    key = expr.get("key", expr.get("path"))
-    if key is None:
-        return None
-    pm: dict[str, Any] = {
-        "prop": prop,
-        "key": str(key),
-        "type": expr.get("type", var_type),
-    }
-    if isinstance(expr.get("map"), dict):
-        pm["map"] = expr["map"]
-    if "contains" in expr:
-        pm["contains"] = expr["contains"]
-    return pm
+    """A value spec, the one a json ``set:`` takes, read the way a child reads
+    it (``CHILD``); None, unsaid, when it names no path."""
+    return json_value_mapping(prop, expr, var_type, CHILD)
 
 
 _JSON = _Form(_json_id, _json_prop)
