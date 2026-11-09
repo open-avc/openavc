@@ -183,6 +183,40 @@ def migrate_0_5_to_0_6(data: dict) -> dict:
     return data
 
 
+# The steps that rewrite UI elements reach every page element and then every
+# master element, in two ways that differ on a list they cannot read. Each step
+# keeps the one it was written with: a step says what it did to the projects of
+# its day.
+
+def _elements_as_written(ui: dict):
+    """Every page element, then every master element, as the 0.7.0 and 0.8.0
+    steps read them: each list as written, so a null one stops the step with a
+    TypeError (a PUT answers it with a 422), and one element at a time, so the
+    elements before it are already rewritten when it stops."""
+    for page in ui.get("pages", []):
+        if isinstance(page, dict):
+            yield from (el for el in page.get("elements", []) if isinstance(el, dict))
+    yield from (mel for mel in ui.get("master_elements", []) if isinstance(mel, dict))
+
+
+def _elements(data: dict) -> list:
+    """Every page element, then every master element, as the steps from 0.10.0
+    on read them: no ui, a missing or null list and anything that is not a dict
+    all read as nothing. The list is made before the step changes anything, so
+    one that cannot be read stops the step with nothing changed."""
+    ui = data.get("ui")
+    if not isinstance(ui, dict):
+        return []
+    elements = [
+        el
+        for page in ui.get("pages", []) or []
+        if isinstance(page, dict)
+        for el in page.get("elements", []) or []
+    ]
+    elements += list(ui.get("master_elements", []) or [])
+    return [el for el in elements if isinstance(el, dict)]
+
+
 # UI element binding slots that held ordered action lists in v0.6.0; these
 # move under ``do``. Matrix sends one ui.route event that ws.py demuxes into
 # route/audio_route/mute_route/audio_mute_route by flags; all four are
@@ -305,15 +339,8 @@ def migrate_0_6_to_0_7(data: dict) -> dict:
     """
     ui = data.get("ui")
     if isinstance(ui, dict):
-        for page in ui.get("pages", []):
-            if not isinstance(page, dict):
-                continue
-            for el in page.get("elements", []):
-                if isinstance(el, dict):
-                    _migrate_element_bindings_0_6_to_0_7(el)
-        for mel in ui.get("master_elements", []):
-            if isinstance(mel, dict):
-                _migrate_element_bindings_0_6_to_0_7(mel)
+        for el in _elements_as_written(ui):
+            _migrate_element_bindings_0_6_to_0_7(el)
 
     data["openavc_version"] = "0.7.0"
     return data
@@ -591,15 +618,8 @@ def migrate_0_7_to_0_8(data: dict) -> dict:
         data["openavc_version"] = "0.8.0"
         return data
 
-    for page in ui.get("pages", []):
-        if not isinstance(page, dict):
-            continue
-        for el in page.get("elements", []):
-            if isinstance(el, dict):
-                _migrate_element_navigate_0_7_to_0_8(el)
-    for mel in ui.get("master_elements", []):
-        if isinstance(mel, dict):
-            _migrate_element_navigate_0_7_to_0_8(mel)
+    for el in _elements_as_written(ui):
+        _migrate_element_navigate_0_7_to_0_8(el)
 
     settings = ui.get("settings") if isinstance(ui.get("settings"), dict) else {}
     orientation = settings.get("orientation") or "landscape"
@@ -837,23 +857,14 @@ def migrate_0_9_to_0_10(data: dict) -> dict:
     stated as a generator rather than as loose keys -- so no project needs
     re-authoring and no matrix changes shape.
     """
-    ui = data.get("ui")
-    if isinstance(ui, dict):
-        elements = [
-            el
-            for page in ui.get("pages", []) or []
-            if isinstance(page, dict)
-            for el in page.get("elements", []) or []
-        ]
-        elements += list(ui.get("master_elements", []) or [])
-        for el in elements:
-            if not isinstance(el, dict) or el.get("type") != "matrix":
-                continue
-            config = el.get("matrix_config")
-            # No config at all stays that way: the element is unconfigured, and
-            # inventing a generator for it would hide that behind a shape.
-            if isinstance(config, dict) and config:
-                el["matrix_config"] = _migrate_matrix_config_0_9_to_0_10(config)
+    for el in _elements(data):
+        if el.get("type") != "matrix":
+            continue
+        config = el.get("matrix_config")
+        # No config at all stays that way: the element is unconfigured, and
+        # inventing a generator for it would hide that behind a shape.
+        if isinstance(config, dict) and config:
+            el["matrix_config"] = _migrate_matrix_config_0_9_to_0_10(config)
 
     data["openavc_version"] = "0.10.0"
     return data
@@ -1003,18 +1014,9 @@ def migrate_0_14_to_0_15(data: dict) -> dict:
     which was the label. An older platform opening a 0.15.0 project logs the
     version mismatch and loads it, drawing the same thing it always did.
     """
-    ui = data.get("ui")
-    if isinstance(ui, dict):
-        elements = [
-            el
-            for page in ui.get("pages", []) or []
-            if isinstance(page, dict)
-            for el in page.get("elements", []) or []
-        ]
-        elements += list(ui.get("master_elements", []) or [])
-        for el in elements:
-            if isinstance(el, dict) and el.get("type") in _UNDRAWN_LABEL_TYPES_0_15:
-                el.pop("label", None)
+    for el in _elements(data):
+        if el.get("type") in _UNDRAWN_LABEL_TYPES_0_15:
+            el.pop("label", None)
 
     data["openavc_version"] = "0.15.0"
     return data
@@ -1035,18 +1037,9 @@ def migrate_0_15_to_0_16(data: dict) -> dict:
     and is left alone: that fader now shows no unit, which is what clearing it
     asked for.
     """
-    ui = data.get("ui")
-    if isinstance(ui, dict):
-        elements = [
-            el
-            for page in ui.get("pages", []) or []
-            if isinstance(page, dict)
-            for el in page.get("elements", []) or []
-        ]
-        elements += list(ui.get("master_elements", []) or [])
-        for el in elements:
-            if isinstance(el, dict) and el.get("type") == "fader" and el.get("unit") is None:
-                el["unit"] = "%"
+    for el in _elements(data):
+        if el.get("type") == "fader" and el.get("unit") is None:
+            el["unit"] = "%"
 
     data["openavc_version"] = "0.16.0"
     return data
