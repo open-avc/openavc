@@ -362,6 +362,22 @@ describe("the device page's header", () => {
       expect((button(/^Reconnect$/) as HTMLButtonElement).disabled).toBe(false);
     });
 
+    it("still reads Reconnecting when the device connects and drops again within the two seconds", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const view = showPage();
+      fireEvent.click(await screen.findByRole("button", { name: /Reconnect/ }));
+      await act(async () => { await Promise.resolve(); });
+      setLive({ "device.amp.connected": true });
+      view.rerender(<DeviceDetail deviceId="amp" onEdit={view.onEdit} onDeleted={view.onDeleted} onDuplicate={view.onDuplicate} />);
+      noButton(/Reconnect/);
+      await act(async () => { vi.advanceTimersByTime(500); });
+      setLive({});
+      view.rerender(<DeviceDetail deviceId="amp" onEdit={view.onEdit} onDeleted={view.onDeleted} onDuplicate={view.onDuplicate} />);
+      expect((button(/Reconnecting\.\.\./) as HTMLButtonElement).disabled).toBe(true);
+      await act(async () => { vi.advanceTimersByTime(1600); });
+      expect((button(/^Reconnect$/) as HTMLButtonElement).disabled).toBe(false);
+    });
+
     it("reads Reconnecting for two seconds when the server refuses too", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       const logged = vi.spyOn(console, "error").mockImplementation(() => {});

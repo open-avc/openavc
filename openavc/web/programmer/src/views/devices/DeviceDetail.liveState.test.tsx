@@ -338,6 +338,14 @@ describe("the device page's Live State", () => {
       expect(screen.queryByTestId("limits-panel")).toBeNull();
     });
 
+    it("says beside a monitored row whether its value is outside normal now", async () => {
+      setProject([{ key: "device.amp.temp", normal_max: 80, unit: "C" }, { key: "device.amp.fan", normal_max: 80 }]);
+      setLive({ "device.amp.connected": true, "device.amp.temp": 90, "device.amp.fan": 20 });
+      await showPage();
+      expect(within(row("temp")).getByText("Normal up to 80 C · outside now")).toBeTruthy();
+      expect(within(row("fan")).getByText("Normal up to 80")).toBeTruthy();
+    });
+
     it("hands the Child Entities panel the project's monitors and the same save", async () => {
       const updateWithUndo = vi.fn();
       const debouncedSave = vi.fn();

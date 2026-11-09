@@ -55,6 +55,7 @@ vi.mock("../../components/plugins/PluginExtensions", () => ({
 }));
 
 import { useProjectStore } from "../../store/projectStore";
+import { ApiError } from "../../api/errors";
 import { DeviceDetail } from "./DeviceDetail";
 
 const itach = { id: "itach", driver: "acme_bridge", name: "Rack iTach", config: {}, enabled: true };
@@ -227,6 +228,22 @@ describe("reading the device again", () => {
     });
     expect(screen.queryByRole("heading", { name: "Bridge Ports" })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Test/ })).toBeNull();
+  });
+
+  it("does not take a 404 for a device it has stopped showing as this one not running", async () => {
+    let refuse!: (e: unknown) => void;
+    mocks.getDevice.mockReturnValueOnce(new Promise((_, r) => { refuse = r; }));
+    mocks.getDevice.mockReturnValueOnce(new Promise(() => {}));
+    setProject([itach, { id: "tv", driver: "acme_tv", name: "TV", config: {}, enabled: true }], {});
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const view = render(page("itach"));
+    view.rerender(page("tv"));
+    await act(async () => {
+      refuse(new ApiError(404, JSON.stringify({ detail: "Device 'itach' not found" })));
+    });
+    expect(screen.queryByRole("button", { name: /Edit/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Delete/ })).toBeNull();
+    logged.mockRestore();
   });
 
   it("takes the device as the running system has it once its driver is installed", async () => {
