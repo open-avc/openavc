@@ -3,8 +3,10 @@
 A matrix's lists, a style measurement against its box, a property its type's
 renderer never reads, the box a master draws in and the controls drawn over it,
 two visibility conditions that can never both hold, a control with nothing to
-draw, a keypad that never sends or sends early, and a box too small for what it
-draws or too small to draw at all:
+draw, a keypad that never sends or sends early, a box too small for what it
+draws or too small to draw at all, a binding action nothing runs, siblings drawn
+over each other, a control too small for a finger, and a per-state icon or
+picture on a type that does not draw one:
 ``tests/fixtures/page_review_check_cases.json`` holds each case and what the
 review says about it, and the Builder's copy is held to the same file by
 ``pageReviewChecks.test.ts``. The parity corpus compares the two sides over
@@ -29,18 +31,23 @@ import pytest
 from openavc.ui.page_review import (
     Container,
     Seat,
+    binding_findings,
     buried_master_findings,
     content_findings,
     degenerate_finding,
+    do_action_dicts,
+    do_action_findings,
     keypad_findings,
     master_box,
     matrix_findings,
     mutually_exclusive,
+    overlap_findings,
     precision_review,
     property_findings,
     range_review,
     starvation_finding,
     style_finding,
+    touch_finding,
 )
 
 CORPUS = json.loads(
@@ -133,6 +140,55 @@ def test_degenerate_finding(case) -> None:
     assert _said([found] if found else []) == case["expected"]
 
 
+@pytest.mark.parametrize("case", _cases("do_action_findings"))
+def test_do_action_findings(case) -> None:
+    assert _said(do_action_findings(case["element"])) == case["expected"]
+
+
+@pytest.mark.parametrize("case", _cases("overlap_findings"))
+def test_overlap_findings(case) -> None:
+    pairs = [tuple(pair) for pair in case["pairs"]]
+    assert _said(overlap_findings(pairs, case["types"], case["parent_name"])) == case["expected"]
+
+
+@pytest.mark.parametrize("case", _cases("touch_finding"))
+def test_touch_finding(case) -> None:
+    found = touch_finding(case["element"], tuple(case["box_px"]))
+    assert _said([found] if found else []) == case["expected"]
+
+
+@pytest.mark.parametrize("case", _cases("look_states_naming"))
+def test_look_states_naming(case) -> None:
+    assert _said(binding_findings(case["element"])) == case["expected"]
+
+
+def test_do_action_dicts_walks_where_the_findings_walk_in_the_same_order() -> None:
+    """The AI side alone: the actions an element can run, paths dropped, for event_references."""
+    element = {
+        "id": "mx", "type": "matrix",
+        "bindings": {"do": {
+            "press": [{"action": "macro", "off_action": {"action": "delay"},
+                       "hold_action": {"action": "event.emit", "event": "custom.held"}}],
+            "change": {"action": "value_map", "map": {"2": {"action": "a2"}, "10": {"action": "a10"}}},
+        }},
+        "matrix_config": {"destinations": [
+            {"value": 1, "label": "Left", "route": [{"action": "event.emit", "event": "custom.left"}]},
+        ]},
+    }
+    assert do_action_dicts(element) == [
+        {"action": "macro", "off_action": {"action": "delay"},
+         "hold_action": {"action": "event.emit", "event": "custom.held"}},
+        {"action": "delay"},
+        {"action": "event.emit", "event": "custom.held"},
+        {"action": "value_map", "map": {"2": {"action": "a2"}, "10": {"action": "a10"}}},
+        {"action": "a10"},
+        {"action": "a2"},
+        {"action": "event.emit", "event": "custom.left"},
+    ]
+    assert do_action_dicts({"id": "b", "type": "button", "bindings": "x"}) == []
+    assert do_action_dicts({"id": "b", "type": "button", "bindings": {"do": ["x"]}}) == []
+
+
 def test_the_corpus_reaches_every_finding_these_checks_make() -> None:
     """A corpus whose expectations are all empty passes for free."""
     kinds = {
@@ -147,7 +203,8 @@ def test_the_corpus_reaches_every_finding_these_checks_make() -> None:
         "matrix_duplicate_values", "matrix_lock_unbacked", "matrix_no_route_feedback",
         "style_too_large", "property_not_rendered", "covers_master",
         "nothing_to_draw", "keypad_never_sends", "keypad_sends_early",
-        "too_small_for_contents", "too_small_to_draw",
+        "too_small_for_contents", "too_small_to_draw", "binding_not_dispatched", "overlap",
+        "small_touch_target", "binding_not_rendered",
     }
 
 

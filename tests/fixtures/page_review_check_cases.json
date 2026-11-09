@@ -5572,5 +5572,1580 @@
         }
       ]
     }
+  ],
+  "do_action_findings": [
+    {
+      "name": "no bindings",
+      "element": {
+        "id": "b1",
+        "type": "button"
+      },
+      "expected": []
+    },
+    {
+      "name": "bindings not an object",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": "press"
+      },
+      "expected": []
+    },
+    {
+      "name": "do written as a list",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": {
+          "do": [
+            {
+              "action": "delay"
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "every action dispatched",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": {
+          "do": {
+            "press": [
+              {
+                "action": "macro",
+                "macro": "m1"
+              },
+              {
+                "action": "state.set",
+                "key": "var.a",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a single dict stands for a one-entry list",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": {
+          "do": {
+            "press": {
+              "action": "delay",
+              "seconds": 1
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has do.press action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press|delay"
+        }
+      ]
+    },
+    {
+      "name": "no action, a macro step and an unknown name, in order",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": {
+          "do": {
+            "press": [
+              {
+                "macro": "m1"
+              },
+              {
+                "action": "wait_until"
+              },
+              {
+                "action": "device.cmd"
+              }
+            ]
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has a do.press entry with no action, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press|"
+        },
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has do.press action 'wait_until', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press|wait_until"
+        },
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has do.press action 'device.cmd', which nothing dispatches, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press|device.cmd"
+        }
+      ]
+    },
+    {
+      "name": "an action that is not text reads as none",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": {
+          "do": {
+            "press": [
+              {
+                "action": 7
+              },
+              {
+                "action": null
+              },
+              {
+                "action": ""
+              }
+            ]
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has a do.press entry with no action, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press|"
+        },
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has a do.press entry with no action, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press|"
+        },
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has a do.press entry with no action, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press|"
+        }
+      ]
+    },
+    {
+      "name": "an entry that is not an object is skipped",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": {
+          "do": {
+            "press": [
+              "macro",
+              3,
+              null,
+              [
+                "delay"
+              ]
+            ]
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "off_action and hold_action nested under the first press",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": {
+          "do": {
+            "press": [
+              {
+                "action": "macro",
+                "macro": "on",
+                "mode": "toggle",
+                "off_action": {
+                  "action": "help.clear"
+                },
+                "hold_action": {
+                  "action": "delay",
+                  "off_action": {
+                    "action": "nope"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has do.press.off_action action 'help.clear', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press.off_action|help.clear"
+        },
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has do.press.hold_action action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press.hold_action|delay"
+        },
+        {
+          "element_id": "b1",
+          "kind": "binding_not_dispatched",
+          "message": "b1 (button) has do.press.hold_action.off_action action 'nope', which nothing dispatches, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|b1|do.press.hold_action.off_action|nope"
+        }
+      ]
+    },
+    {
+      "name": "a nested action that is not an object is skipped",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": {
+          "do": {
+            "press": [
+              {
+                "action": "macro",
+                "off_action": "delay",
+                "hold_action": [
+                  "wait_until"
+                ]
+              }
+            ]
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "value_map entries walked in sorted order, integer-like keys too",
+      "element": {
+        "id": "s1",
+        "type": "select",
+        "bindings": {
+          "do": {
+            "change": [
+              {
+                "action": "value_map",
+                "map": {
+                  "10": {
+                    "action": "delay"
+                  },
+                  "2": {
+                    "action": "macro",
+                    "macro": "two"
+                  },
+                  "b": {
+                    "action": "conditional"
+                  },
+                  "1": {
+                    "action": "unknown.one"
+                  },
+                  "a": "not an action"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "s1",
+          "kind": "binding_not_dispatched",
+          "message": "s1 (select) has do.change.map.1 action 'unknown.one', which nothing dispatches, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|s1|do.change.map.1|unknown.one"
+        },
+        {
+          "element_id": "s1",
+          "kind": "binding_not_dispatched",
+          "message": "s1 (select) has do.change.map.10 action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|s1|do.change.map.10|delay"
+        },
+        {
+          "element_id": "s1",
+          "kind": "binding_not_dispatched",
+          "message": "s1 (select) has do.change.map.b action 'conditional', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|s1|do.change.map.b|conditional"
+        }
+      ]
+    },
+    {
+      "name": "a value_map whose map is not an object walks nothing more",
+      "element": {
+        "id": "s1",
+        "type": "select",
+        "bindings": {
+          "do": {
+            "change": [
+              {
+                "action": "value_map",
+                "map": [
+                  {
+                    "action": "delay"
+                  }
+                ]
+              },
+              {
+                "action": "value_map",
+                "map": "x"
+              }
+            ]
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a map on an action that is not value_map is not walked",
+      "element": {
+        "id": "s1",
+        "type": "select",
+        "bindings": {
+          "do": {
+            "change": [
+              {
+                "action": "macro",
+                "map": {
+                  "1": {
+                    "action": "delay"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a value_map entry nests its own off_action",
+      "element": {
+        "id": "s1",
+        "type": "select",
+        "bindings": {
+          "do": {
+            "change": [
+              {
+                "action": "value_map",
+                "map": {
+                  "on": {
+                    "action": "macro",
+                    "off_action": {
+                      "action": "delay"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "s1",
+          "kind": "binding_not_dispatched",
+          "message": "s1 (select) has do.change.map.on.off_action action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|s1|do.change.map.on.off_action|delay"
+        }
+      ]
+    },
+    {
+      "name": "a matrix destination's own route, named by label then value",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "bindings": {
+          "do": {
+            "route": [
+              {
+                "action": "device.command"
+              }
+            ]
+          }
+        },
+        "matrix_config": {
+          "sources": [
+            {
+              "value": 1,
+              "label": "PC"
+            }
+          ],
+          "destinations": [
+            {
+              "value": 1,
+              "label": "Left",
+              "route": [
+                {
+                  "action": "delay"
+                }
+              ]
+            },
+            {
+              "value": 2,
+              "route": [
+                {
+                  "action": "group.command",
+                  "off_action": {
+                    "action": "zzz"
+                  }
+                }
+              ]
+            },
+            {
+              "value": 3,
+              "label": "Stream",
+              "route": [
+                {
+                  "action": "event.emit",
+                  "event": "custom.go"
+                }
+              ]
+            },
+            {
+              "value": 4,
+              "label": "Odd",
+              "route": {
+                "action": "delay"
+              }
+            },
+            {
+              "value": 5,
+              "label": "Skip",
+              "route": [
+                "delay",
+                4
+              ]
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for 'Left' action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for 'Left'|delay"
+        },
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for 'Out 2' action 'group.command', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for 'Out 2'|group.command"
+        },
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for 'Out 2'.off_action action 'zzz', which nothing dispatches, so nothing runs when it fires. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for 'Out 2'.off_action|zzz"
+        }
+      ]
+    },
+    {
+      "name": "a destination route on a type that is not a matrix is not read",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "matrix_config": {
+          "destinations": [
+            {
+              "value": 1,
+              "route": [
+                {
+                  "action": "delay"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a matrix whose config is not an object has no destination routes",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": [
+          {
+            "value": 1,
+            "route": [
+              {
+                "action": "delay"
+              }
+            ]
+          }
+        ]
+      },
+      "expected": []
+    },
+    {
+      "name": "a matrix with no config has no destination routes",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "bindings": {
+          "do": {
+            "route": [
+              {
+                "action": "delay"
+              }
+            ]
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route|delay"
+        }
+      ]
+    },
+    {
+      "name": "a generated destination axis carries its route to every row",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "destinations": {
+            "from": {
+              "count": 2,
+              "route": [
+                {
+                  "action": "delay"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for 'Out 1' action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for 'Out 1'|delay"
+        },
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for 'Out 2' action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for 'Out 2'|delay"
+        }
+      ]
+    },
+    {
+      "name": "do and a destination route, do first",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "bindings": {
+          "do": {
+            "route": [
+              {
+                "action": "delay"
+              }
+            ],
+            "press": {
+              "action": "wait_until"
+            }
+          }
+        },
+        "matrix_config": {
+          "destinations": [
+            {
+              "value": "hdmi1",
+              "label": "TV",
+              "route": [
+                {
+                  "action": "help.request"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route|delay"
+        },
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.press action 'wait_until', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.press|wait_until"
+        },
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for 'TV' action 'help.request', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for 'TV'|help.request"
+        }
+      ]
+    },
+    {
+      "name": "a row the device names is called by its value",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "destinations": [
+            {
+              "value": "hdmi2",
+              "label_key": "device.sw.output.2.name",
+              "route": [
+                {
+                  "action": "delay"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for 'hdmi2' action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for 'hdmi2'|delay"
+        }
+      ]
+    }
+  ],
+  "overlap_findings": [
+    {
+      "name": "no pairs",
+      "pairs": [],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": []
+    },
+    {
+      "name": "a lone pair keeps its arithmetic",
+      "pairs": [
+        [
+          "b",
+          "a",
+          40.4,
+          12.6,
+          33.3
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "a",
+          "kind": "overlap",
+          "message": "a (button) and b (label) overlap by 40x13px (33% of the smaller one) inside the page.",
+          "key": "overlap|a|b"
+        }
+      ]
+    },
+    {
+      "name": "a lone pair with a type nobody knows",
+      "pairs": [
+        [
+          "a",
+          "zz",
+          5,
+          5,
+          100
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "a",
+          "kind": "overlap",
+          "message": "a (button) and zz (?) overlap by 5x5px (100% of the smaller one) inside the page.",
+          "key": "overlap|a|zz"
+        }
+      ]
+    },
+    {
+      "name": "the element in most pairs answers for them",
+      "pairs": [
+        [
+          "a",
+          "b",
+          10,
+          10,
+          50
+        ],
+        [
+          "c",
+          "a",
+          20,
+          5,
+          25
+        ],
+        [
+          "a",
+          "d",
+          3,
+          4,
+          2
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "a",
+          "kind": "overlap",
+          "message": "a (button) overlaps 3 elements inside the page: b by 10x10px, c by 20x5px, d by 3x4px.",
+          "key": "overlap|a|b|c|d"
+        }
+      ]
+    },
+    {
+      "name": "a tie on count goes to the earlier id",
+      "pairs": [
+        [
+          "c",
+          "d",
+          10,
+          10,
+          50
+        ],
+        [
+          "b",
+          "a",
+          5,
+          5,
+          5
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "a",
+          "kind": "overlap",
+          "message": "a (button) and b (label) overlap by 5x5px (5% of the smaller one) inside the page.",
+          "key": "overlap|a|b"
+        },
+        {
+          "element_id": "c",
+          "kind": "overlap",
+          "message": "c (slider) and d (image) overlap by 10x10px (50% of the smaller one) inside the page.",
+          "key": "overlap|c|d"
+        }
+      ]
+    },
+    {
+      "name": "a tie on count of two goes to the earlier id",
+      "pairs": [
+        [
+          "d",
+          "c",
+          10,
+          10,
+          50
+        ],
+        [
+          "c",
+          "e",
+          4,
+          4,
+          4
+        ],
+        [
+          "d",
+          "e",
+          6,
+          6,
+          6
+        ],
+        [
+          "a",
+          "b",
+          1,
+          1,
+          1
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "c",
+          "kind": "overlap",
+          "message": "c (slider) overlaps 2 elements inside the page: d by 10x10px, e by 4x4px.",
+          "key": "overlap|c|d|e"
+        },
+        {
+          "element_id": "a",
+          "kind": "overlap",
+          "message": "a (button) and b (label) overlap by 1x1px (1% of the smaller one) inside the page.",
+          "key": "overlap|a|b"
+        },
+        {
+          "element_id": "d",
+          "kind": "overlap",
+          "message": "d (image) and e (select) overlap by 6x6px (6% of the smaller one) inside the page.",
+          "key": "overlap|d|e"
+        }
+      ]
+    },
+    {
+      "name": "partners read in id order, the first three named and the rest counted",
+      "pairs": [
+        [
+          "a",
+          "f",
+          1,
+          2,
+          3
+        ],
+        [
+          "a",
+          "c",
+          4,
+          5,
+          6
+        ],
+        [
+          "e",
+          "a",
+          7,
+          8,
+          9
+        ],
+        [
+          "a",
+          "b",
+          10,
+          11,
+          12
+        ],
+        [
+          "d",
+          "a",
+          13,
+          14,
+          15
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "a",
+          "kind": "overlap",
+          "message": "a (button) overlaps 5 elements inside the page: b by 10x11px, c by 4x5px, d by 13x14px, and 2 more.",
+          "key": "overlap|a|b|c|d|e|f"
+        }
+      ]
+    },
+    {
+      "name": "exactly three partners name them all",
+      "pairs": [
+        [
+          "a",
+          "d",
+          1,
+          1,
+          1
+        ],
+        [
+          "b",
+          "a",
+          2,
+          2,
+          2
+        ],
+        [
+          "a",
+          "c",
+          3,
+          3,
+          3
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "a",
+          "kind": "overlap",
+          "message": "a (button) overlaps 3 elements inside the page: b by 2x2px, c by 3x3px, d by 1x1px.",
+          "key": "overlap|a|b|c|d"
+        }
+      ]
+    },
+    {
+      "name": "four partners count the one left",
+      "pairs": [
+        [
+          "a",
+          "d",
+          1,
+          1,
+          1
+        ],
+        [
+          "b",
+          "a",
+          2,
+          2,
+          2
+        ],
+        [
+          "a",
+          "c",
+          3,
+          3,
+          3
+        ],
+        [
+          "e",
+          "a",
+          4,
+          4,
+          4
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "a",
+          "kind": "overlap",
+          "message": "a (button) overlaps 4 elements inside the page: b by 2x2px, c by 3x3px, d by 1x1px, and 1 more.",
+          "key": "overlap|a|b|c|d|e"
+        }
+      ]
+    },
+    {
+      "name": "each round re-counts what is left",
+      "pairs": [
+        [
+          "a",
+          "b",
+          1,
+          1,
+          1
+        ],
+        [
+          "a",
+          "c",
+          2,
+          2,
+          2
+        ],
+        [
+          "a",
+          "d",
+          3,
+          3,
+          3
+        ],
+        [
+          "b",
+          "c",
+          4,
+          4,
+          4
+        ],
+        [
+          "e",
+          "f",
+          5,
+          5,
+          5
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "a",
+          "kind": "overlap",
+          "message": "a (button) overlaps 3 elements inside the page: b by 1x1px, c by 2x2px, d by 3x3px.",
+          "key": "overlap|a|b|c|d"
+        },
+        {
+          "element_id": "b",
+          "kind": "overlap",
+          "message": "b (label) and c (slider) overlap by 4x4px (4% of the smaller one) inside the page.",
+          "key": "overlap|b|c"
+        },
+        {
+          "element_id": "e",
+          "kind": "overlap",
+          "message": "e (select) and f (led) overlap by 5x5px (5% of the smaller one) inside the page.",
+          "key": "overlap|e|f"
+        }
+      ]
+    },
+    {
+      "name": "ids compare as text, not as numbers",
+      "pairs": [
+        [
+          "10",
+          "9",
+          1,
+          1,
+          1
+        ],
+        [
+          "9",
+          "x",
+          2,
+          2,
+          2
+        ],
+        [
+          "10",
+          "x",
+          3,
+          3,
+          3
+        ]
+      ],
+      "types": {
+        "10": "button",
+        "9": "label",
+        "x": "slider"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "10",
+          "kind": "overlap",
+          "message": "10 (button) overlaps 2 elements inside the page: 9 by 1x1px, x by 3x3px.",
+          "key": "overlap|10|9|x"
+        },
+        {
+          "element_id": "9",
+          "kind": "overlap",
+          "message": "9 (label) and x (slider) overlap by 2x2px (2% of the smaller one) inside the page.",
+          "key": "overlap|9|x"
+        }
+      ]
+    },
+    {
+      "name": "an owner whose type is missing",
+      "pairs": [
+        [
+          "q",
+          "a",
+          1,
+          1,
+          1
+        ],
+        [
+          "q",
+          "b",
+          2,
+          2,
+          2
+        ]
+      ],
+      "types": {
+        "a": "button",
+        "b": "label",
+        "c": "slider",
+        "d": "image",
+        "e": "select",
+        "f": "led"
+      },
+      "parent_name": "the page",
+      "expected": [
+        {
+          "element_id": "q",
+          "kind": "overlap",
+          "message": "q (?) overlaps 2 elements inside the page: a by 1x1px, b by 2x2px.",
+          "key": "overlap|q|a|b"
+        }
+      ]
+    }
+  ],
+  "touch_finding": [
+    {
+      "name": "a type nobody touches",
+      "element": {
+        "id": "l1",
+        "type": "label"
+      },
+      "box_px": [
+        10,
+        10
+      ],
+      "expected": []
+    },
+    {
+      "name": "a type missing",
+      "element": {
+        "id": "x1"
+      },
+      "box_px": [
+        10,
+        10
+      ],
+      "expected": []
+    },
+    {
+      "name": "narrow only",
+      "element": {
+        "id": "b1",
+        "type": "button"
+      },
+      "box_px": [
+        30,
+        80
+      ],
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "small_touch_target",
+          "message": "b1 (button) is about 30x80px, roughly 5.1x13.6mm on a 10-inch panel -- under the 9mm comfortable touch minimum on width (53px).",
+          "key": "small_touch_target|b1"
+        }
+      ]
+    },
+    {
+      "name": "short only",
+      "element": {
+        "id": "s1",
+        "type": "select"
+      },
+      "box_px": [
+        200,
+        44
+      ],
+      "expected": [
+        {
+          "element_id": "s1",
+          "kind": "small_touch_target",
+          "message": "s1 (select) is about 200x44px, roughly 34.1x7.5mm on a 10-inch panel -- under the 9mm comfortable touch minimum on height (53px).",
+          "key": "small_touch_target|s1"
+        }
+      ]
+    },
+    {
+      "name": "both",
+      "element": {
+        "id": "k1",
+        "type": "keypad"
+      },
+      "box_px": [
+        20,
+        20
+      ],
+      "expected": [
+        {
+          "element_id": "k1",
+          "kind": "small_touch_target",
+          "message": "k1 (keypad) is about 20x20px, roughly 3.4x3.4mm on a 10-inch panel -- under the 9mm comfortable touch minimum on width and height (53px).",
+          "key": "small_touch_target|k1"
+        }
+      ]
+    },
+    {
+      "name": "neither",
+      "element": {
+        "id": "f1",
+        "type": "fader"
+      },
+      "box_px": [
+        60,
+        300
+      ],
+      "expected": []
+    },
+    {
+      "name": "exactly the minimum on both is enough",
+      "element": {
+        "id": "b1",
+        "type": "button"
+      },
+      "box_px": [
+        52.795275590551185,
+        52.795275590551185
+      ],
+      "expected": []
+    },
+    {
+      "name": "a hair under on width",
+      "element": {
+        "id": "b1",
+        "type": "button"
+      },
+      "box_px": [
+        52.78527559055119,
+        52.795275590551185
+      ],
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "small_touch_target",
+          "message": "b1 (button) is about 53x53px, roughly 9.0x9.0mm on a 10-inch panel -- under the 9mm comfortable touch minimum on width (53px).",
+          "key": "small_touch_target|b1"
+        }
+      ]
+    },
+    {
+      "name": "a hair under on height",
+      "element": {
+        "id": "b1",
+        "type": "page_nav"
+      },
+      "box_px": [
+        52.795275590551185,
+        52.78527559055119
+      ],
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "small_touch_target",
+          "message": "b1 (page_nav) is about 53x53px, roughly 9.0x9.0mm on a 10-inch panel -- under the 9mm comfortable touch minimum on height (53px).",
+          "key": "small_touch_target|b1"
+        }
+      ]
+    },
+    {
+      "name": "zero width is the degenerate check's",
+      "element": {
+        "id": "b1",
+        "type": "button"
+      },
+      "box_px": [
+        0,
+        10
+      ],
+      "expected": []
+    },
+    {
+      "name": "zero height is the degenerate check's",
+      "element": {
+        "id": "b1",
+        "type": "button"
+      },
+      "box_px": [
+        10,
+        0
+      ],
+      "expected": []
+    },
+    {
+      "name": "a negative width is the degenerate check's",
+      "element": {
+        "id": "b1",
+        "type": "slider"
+      },
+      "box_px": [
+        -5,
+        10
+      ],
+      "expected": []
+    },
+    {
+      "name": "a negative height is the degenerate check's",
+      "element": {
+        "id": "b1",
+        "type": "list"
+      },
+      "box_px": [
+        10,
+        -5
+      ],
+      "expected": []
+    }
+  ],
+  "look_states_naming": [
+    {
+      "name": "states naming an icon on a label, sorted",
+      "element": {
+        "id": "l1",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "key": "var.x",
+              "states": {
+                "zeta": {
+                  "icon": "power"
+                },
+                "alpha": {
+                  "icon": "mute"
+                },
+                "mid": {
+                  "bg_color": "#000"
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "l1",
+          "kind": "binding_not_rendered",
+          "message": "l1 (label): show.look sets an icon for alpha, zeta, but a label takes only color and text from show.look, so that icon never appears. Set the element's own icon -- it draws that one, it just cannot change it per state.",
+          "key": "binding_not_rendered|l1|look.icon"
+        }
+      ]
+    },
+    {
+      "name": "a state that is not an object names nothing",
+      "element": {
+        "id": "l1",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "key": "var.x",
+              "states": {
+                "on": "power",
+                "off": [
+                  "mute"
+                ],
+                "x": null,
+                "y": {
+                  "icon": ""
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "the binary form names active then inactive",
+      "element": {
+        "id": "l1",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "key": "var.x",
+              "style_inactive": {
+                "icon": "mute",
+                "button_image": "assets://b.png"
+              },
+              "style_active": {
+                "icon": "power"
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "l1",
+          "kind": "binding_not_rendered",
+          "message": "l1 (label): show.look sets an icon for active, inactive, but a label takes only color and text from show.look, so that icon never appears. Set the element's own icon -- it draws that one, it just cannot change it per state.",
+          "key": "binding_not_rendered|l1|look.icon"
+        },
+        {
+          "element_id": "l1",
+          "kind": "binding_not_rendered",
+          "message": "l1 (label): show.look sets a picture (button_image) for inactive, but a label takes only color and text from show.look, so that picture never appears. Use an image element bound to the same key.",
+          "key": "binding_not_rendered|l1|look.button_image"
+        }
+      ]
+    },
+    {
+      "name": "a binary half that is not an object names nothing",
+      "element": {
+        "id": "l1",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "key": "var.x",
+              "style_active": "power",
+              "style_inactive": [
+                "mute"
+              ]
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "a binary half without the field names nothing",
+      "element": {
+        "id": "l1",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "key": "var.x",
+              "style_active": {
+                "bg_color": "#fff"
+              },
+              "style_inactive": {
+                "icon": null
+              }
+            }
+          }
+        }
+      },
+      "expected": []
+    },
+    {
+      "name": "states that are not an object fall to the binary form",
+      "element": {
+        "id": "l1",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "key": "var.x",
+              "states": [
+                "on"
+              ],
+              "style_active": {
+                "icon": "power"
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "l1",
+          "kind": "binding_not_rendered",
+          "message": "l1 (label): show.look sets an icon for active, but a label takes only color and text from show.look, so that icon never appears. Set the element's own icon -- it draws that one, it just cannot change it per state.",
+          "key": "binding_not_rendered|l1|look.icon"
+        }
+      ]
+    },
+    {
+      "name": "a picture per state on a label",
+      "element": {
+        "id": "l1",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "key": "var.x",
+              "states": {
+                "on": {
+                  "button_image": "assets://on.png"
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected": [
+        {
+          "element_id": "l1",
+          "kind": "binding_not_rendered",
+          "message": "l1 (label): show.look sets a picture (button_image) for on, but a label takes only color and text from show.look, so that picture never appears. Use an image element bound to the same key.",
+          "key": "binding_not_rendered|l1|look.button_image"
+        }
+      ]
+    },
+    {
+      "name": "a button draws both, so nothing is said",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "bindings": {
+          "show": {
+            "look": {
+              "key": "var.x",
+              "states": {
+                "on": {
+                  "icon": "power",
+                  "button_image": "assets://on.png"
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected": []
+    }
   ]
 }

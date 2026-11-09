@@ -2,16 +2,20 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import {
+  bindingFindings,
   buriedMasterFindings,
   contentFindings,
   degenerateFinding,
+  doActionFindings,
   keypadFindings,
   masterBox,
   matrixFindings,
   mutuallyExclusive,
+  overlapFindings,
   propertyFindings,
   starvationFinding,
   styleFinding,
+  touchFinding,
 } from "./uiBuilderHelpers";
 import type { ElementDefaults, Seat } from "./uiBuilderHelpers";
 import type { MasterElement, Placement, UIElement } from "../../api/types";
@@ -20,8 +24,10 @@ import type { MasterElement, Placement, UIElement } from "../../api/types";
 // AI side's: a matrix's lists, a style measurement against its box, a property
 // its type's renderer never reads, the box a master draws in and the controls
 // drawn over it, two visibility conditions that can never both hold, a control
-// with nothing to draw, a keypad that never sends or sends early, and a box too
-// small for what it draws or too small to draw at all.
+// with nothing to draw, a keypad that never sends or sends early, a box too
+// small for what it draws or too small to draw at all, a binding action nothing
+// runs, siblings drawn over each other, a control too small for a finger, and a
+// per-state icon or picture on a type that does not draw one.
 // tests/fixtures/page_review_check_cases.json holds each case and what the
 // review says about it; tests/test_ui_page_review_checks_pinned.py holds
 // openavc/ui/page_review.py to the same file.
@@ -130,6 +136,40 @@ describe("degenerateFinding", () => {
   it.each(corpus.degenerate_finding.map((c) => [c.name, c] as const))("%s", (_name, c) => {
     const found = degenerateFinding(c.element as UIElement, toSeat(c.seat as RawSeat));
     expect(said(found ? [found] : [])).toEqual(c.expected);
+  });
+});
+
+describe("doActionFindings", () => {
+  it.each(corpus.do_action_findings.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(said(doActionFindings(c.element as UIElement))).toEqual(c.expected);
+  });
+});
+
+type RawPair = [string, string, number, number, number];
+
+describe("overlapFindings", () => {
+  it.each(corpus.overlap_findings.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const pairs = (c.pairs as RawPair[]).map(([aId, bId, oxPx, oyPx, share]) => ({
+      aId, bId, oxPx, oyPx, share,
+    }));
+    const findings = overlapFindings(
+      pairs, toMap(c.types as Record<string, string>), c.parent_name as string,
+    );
+    expect(said(findings)).toEqual(c.expected);
+  });
+});
+
+describe("touchFinding", () => {
+  it.each(corpus.touch_finding.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const [width, height] = c.box_px as [number, number];
+    const found = touchFinding(c.element as UIElement, { width, height });
+    expect(said(found ? [found] : [])).toEqual(c.expected);
+  });
+});
+
+describe("bindingFindings: which states of a look name a field", () => {
+  it.each(corpus.look_states_naming.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    expect(said(bindingFindings(c.element as UIElement))).toEqual(c.expected);
   });
 });
 
