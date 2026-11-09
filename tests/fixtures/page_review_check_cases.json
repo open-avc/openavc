@@ -688,6 +688,51 @@
         "label": "x"
       },
       "expected": []
+    },
+    {
+      "name": "an unread property holding an object is reported",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "invented_field": {
+          "a": 1
+        }
+      },
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "property_not_rendered",
+          "message": "b1 (button) sets 'invented_field', which a button does not render. No element type reads 'invented_field'. A button reads: button_image, display_mode, frameless, icon, icon_color, icon_position, icon_size, image_blend_mode, image_fit, image_opacity, label.",
+          "key": "property_not_rendered|b1|invented_field"
+        }
+      ]
+    },
+    {
+      "name": "an unread property holding an empty object is unset",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "invented_field": {}
+      },
+      "expected": []
+    },
+    {
+      "name": "an unread property holding a list is reported",
+      "element": {
+        "id": "b1",
+        "type": "button",
+        "invented_field": [
+          1
+        ]
+      },
+      "expected": [
+        {
+          "element_id": "b1",
+          "kind": "property_not_rendered",
+          "message": "b1 (button) sets 'invented_field', which a button does not render. No element type reads 'invented_field'. A button reads: button_image, display_mode, frameless, icon, icon_color, icon_position, icon_size, image_blend_mode, image_fit, image_opacity, label.",
+          "key": "property_not_rendered|b1|invented_field"
+        }
+      ]
     }
   ],
   "master_box": [
