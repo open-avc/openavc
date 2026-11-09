@@ -1,8 +1,24 @@
 """
-Plugin loader — discovery, validation, lifecycle, and error isolation.
+Plugin loader: the running plugins' lifecycle, what is said about them, and error isolation.
 
-Scans plugin_repo/ for valid plugin packages, validates manifests,
-manages the start/stop lifecycle, and handles missing/incompatible plugins.
+One PluginLoader per Engine. It registers the plugin classes a scan of
+plugin_repo/ finds, starts and stops plugins as the project's plugin config
+says, and keeps what the Programmer and the cloud are told about each one:
+running, stopped, missing, incompatible or in error, and why.
+
+Its neighbours hold the rules it applies: core/plugin_import.py finds and
+imports a plugin's code (the startup scan and an install both use it),
+core/plugin_manifest.py says what a plugin class must declare to start, and
+core/plugin_extensions.py what its EXTENSIONS may say and what the panel and
+the IDE are served from them. This module stays the import path for the class
+registry, ``get_platform_id`` and the declaration validators, which
+openavc-plugins and other modules import from here.
+
+A plugin is third-party code, so every call into it (start, stop, health
+check, config hook) runs under a timeout and its failure is contained: a
+plugin that raises or hangs is marked in error and torn down, and never stops
+the server starting, stopping or answering. The timeouts are read from this
+module when each call is made, so a test can shorten them here.
 """
 
 import asyncio
