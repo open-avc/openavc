@@ -289,6 +289,27 @@ CASES: dict[str, dict[str, Any]] = {
         "polling": {"queries": [{"send": "A?", "when": "nope"}], "when_state": {"nope": 1}},
         "on_connect": [{"send": "B?", "when": "nope"}, {"each_child": "zone", "send": "Z?"}],
     },
+    "when_state_on_an_enum_with_no_values": {
+        "state_variables": {
+            **STATE_VARIABLES,
+            "source": {"type": "enum", "label": "Source", "values": [{"label": "unnamed"}]},
+            "scene": {"type": "enum", "label": "Scene", "values": []},
+            "layout": {"type": "enum", "label": "Layout", "values": "a,b"},
+        },
+        "polling": {"queries": [
+            {"send": "A?", "when_state": {"source": "x", "scene": "y", "layout": "z"}},
+        ]},
+    },
+    "when_names_a_field_no_source_declares": {
+        "default_config": {},
+        "polling": {"queries": [{"send": "A?", "when": "verbose"}]},
+    },
+    "query_for_with_two_dots": poll(
+        {"send": "Q?", "query_for": "zone.level.x"},
+        {"send": "R?", "query_for": "a.b.c"},
+    ),
+    "polling_interval_falsy": {"polling": {"queries": ["Q?"], "interval": 0}},
+    "polling_interval_null": {"polling": {"queries": ["Q?"], "interval": None}},
     # --- then_query: ------------------------------------------------------
     "then_query_on_other_forms": then(
         {"json": True, "set": {"mode": "mode"}, "then_query": ["Q?"]},
@@ -724,6 +745,35 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'polling_absent': [('child_entity_
                                    ('on_connect[1]',
                                     "on_connect[1]: 'send' must contain {child_id} (a format spec like "
                                     '{child_id:02d} works too)')],
+ 'when_state_on_an_enum_with_no_values': [('child_entity_types.bare',
+                                           'child_entity_types.bare: must be a mapping'),
+                                          ('polling.queries[0]',
+                                           "polling.queries[0]: when_state.source value 'x' is not one of "
+                                           'its values ()'),
+                                          ('polling.queries[0]',
+                                           "polling.queries[0]: when_state.scene value 'y' is not one of its "
+                                           'values ()')],
+ 'when_names_a_field_no_source_declares': [('child_entity_types.bare',
+                                            'child_entity_types.bare: must be a mapping'),
+                                           ('polling.queries[0]',
+                                            "polling.queries[0]: 'when' field 'verbose' is not a declared "
+                                            'config field (config_schema / default_config / '
+                                            'config_derived)')],
+ 'query_for_with_two_dots': [('child_entity_types.bare', 'child_entity_types.bare: must be a mapping'),
+                             ('polling.queries[0]',
+                              "polling.queries[0]: query_for 'zone.level.x': 'level.x' is not a state "
+                              "variable of child type 'zone'"),
+                             ('polling.queries[1]',
+                              "polling.queries[1]: query_for 'a.b.c': 'a' is not a declared "
+                              'child_entity_type')],
+ 'polling_interval_falsy': [('child_entity_types.bare', 'child_entity_types.bare: must be a mapping'),
+                            ('polling',
+                             'polling.interval is not read by the runtime. Remove the interval: key and set '
+                             'default_config.poll_interval instead')],
+ 'polling_interval_null': [('child_entity_types.bare', 'child_entity_types.bare: must be a mapping'),
+                           ('polling',
+                            'polling.interval is not read by the runtime. Remove the interval: key and set '
+                            'default_config.poll_interval instead')],
  'then_query_on_other_forms': [('responses[3]',
                                 'Response 3: set.mode must be a capture reference like "$1" or a static '
                                 'value; move a value map into mappings:'),

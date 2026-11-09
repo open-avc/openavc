@@ -91,6 +91,11 @@ CASES: dict[str, dict[str, Any]] = {
         all={"send": "X", "method": "GET", "address": "/x", "udp": {}, "ir": "x"},
         false_send={"send": False, "ir": None},
     ),
+    "an_empty_address_is_an_osc_command": cmds(
+        a={"address": ""},
+        b={"address": "", "args": [{"type": "x"}]},
+        c={"address": "", "send": "X"},
+    ),
     # --- an OSC command's args --------------------------------------------
     "osc_args": cmds(
         none={"address": "/a"},
@@ -152,6 +157,16 @@ CASES: dict[str, dict[str, Any]] = {
         a_number=udp(magic_packet=5),
         false=udp(magic_packet=False, payload="x", port=9),
         none_with_payload=udp(magic_packet=None, payload="x", port=9),
+    ),
+    "udp_magic_packet_fields_from_every_source": cmds(
+        schema=udp(magic_packet="wake_mac"),
+        default=udp(magic_packet="poll_interval"),
+        platform=udp(magic_packet="listener_port"),
+    ),
+    "udp_broadcast_falsy": cmds(
+        zero=udp(payload="x", port=9, broadcast=0),
+        null=udp(payload="x", port=9, broadcast=None),
+        blank=udp(payload="x", port=9, broadcast=""),
     ),
     # --- a parameter's aids -----------------------------------------------
     "param_free_text_aids": cmds(
@@ -220,6 +235,20 @@ CASES: dict[str, dict[str, Any]] = {
             g={"options_from": {"source": "child_schema", "param": "zone", "units": [5]}},
             h={"options_from": {"source": "child_schema", "param": "zone", "units": ["dB"]}},
             i={"options_from": {"source": "nope", "param": "nope", "types": [], "units": []}},
+        ),
+    ),
+    "param_options_from_types_partly_known": cmds(
+        c=picker(
+            zone=ZONE,
+            a={"options_from": {"source": "child_schema", "param": "zone",
+                                "types": ["number", "nope"]}},
+        ),
+    ),
+    "param_type_from_a_sibling_of_another_source": cmds(
+        c=picker(
+            zone=ZONE,
+            other={"type": "string", "options_from": {"source": "nope", "param": "zone"}},
+            a={"type_from": {"param": "other"}},
         ),
     ),
     "param_type_from": cmds(
@@ -434,6 +463,13 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                  ('commands.false_send',
                   "Command 'false_send': must have 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' "
                   "(OSC), or 'udp' (a datagram beside the main transport)")],
+ 'an_empty_address_is_an_osc_command': [('commands.b',
+                                         "Command 'b': args[0] unknown OSC type 'x' (expected one of "
+                                         'f/i/s/h/d/T/F/N)'),
+                                        ('commands.c',
+                                         "Command 'c': declares send and address, but a command sends one "
+                                         "way. Keep one of 'send' (TCP/serial), 'path'/'method' (HTTP), "
+                                         "'address' (OSC), or 'udp' (a datagram beside the main transport)")],
  'osc_args': [('commands.not_a_list', "Command 'not_a_list': args must be a list"),
               ('commands.items', "Command 'items': args[1] must be a mapping"),
               ('commands.items',
@@ -504,6 +540,10 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                        ('commands.a_number',
                         "Command 'a_number': 'udp.magic_packet' must name a config field"),
                        ('commands.false', "Command 'false': 'udp.magic_packet' must name a config field")],
+ 'udp_magic_packet_fields_from_every_source': [],
+ 'udp_broadcast_falsy': [('commands.zero', "Command 'zero': 'udp.broadcast' must be true or false"),
+                         ('commands.null', "Command 'null': 'udp.broadcast' must be true or false"),
+                         ('commands.blank', "Command 'blank': 'udp.broadcast' must be true or false")],
  'param_free_text_aids': [('commands.c',
                            "Command 'c' param 'b': pattern: regex '(a+)+$' has a nested quantifier; this can "
                            'cause catastrophic backtracking against hostile input'),
@@ -571,6 +611,16 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                               ('commands.c',
                                "Command 'c' param 'i': options_from.units must be a non-empty list of unit "
                                'names, e.g. ["dB"]')],
+ 'param_options_from_types_partly_known': [('commands.c',
+                                            "Command 'c' param 'a': options_from.types must be a non-empty "
+                                            "list of ['string', 'integer', 'number', 'boolean', 'enum', "
+                                            "'float']")],
+ 'param_type_from_a_sibling_of_another_source': [('commands.c',
+                                                  "Command 'c' param 'other': options_from.source must be "
+                                                  "one of ['child_schema']"),
+                                                 ('commands.c',
+                                                  "Command 'c' param 'a': type_from.param 'other' must "
+                                                  'itself be an options_from child_schema cascade')],
  'param_type_from': [('commands.c',
                       "Command 'c' param 'odd': options_from must be a mapping with 'param' and 'source'"),
                      ('commands.c', "Command 'c' param 'a': type_from must be a mapping with 'param'"),
