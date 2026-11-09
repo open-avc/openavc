@@ -101,6 +101,14 @@ describe("Save, once its checks pass", () => {
     expect(api.updateSystemConfig).toHaveBeenCalledWith({ logging: { level: "warning" } });
   });
 
+  it("leaves the project alone when only a system setting changed", async () => {
+    await renderLoaded(<SystemSettingsView />);
+    fireEvent.change(logLevel(), { target: { value: "warning" } });
+    await saveAndSettle();
+    expect(api.updateSystemConfig).toHaveBeenCalledTimes(1);
+    expect(projectState.save).not.toHaveBeenCalled();
+  });
+
   it("sends nothing to the server when only the project changed, and says it saved", async () => {
     projectState.dirty = true;
     await renderLoaded(<SystemSettingsView />);
@@ -460,6 +468,33 @@ describe("The Change who can connect? question", () => {
     expect(text).toContain("OpenAVC goes back to Any network.");
   });
 
+  it("closes once Restart and apply is pressed, and saves", async () => {
+    api.previewListen.mockImplementation(async () => preview({
+      mode: "this_computer", serves_this_address: false, keeps_this_connection: false, safety_net: true,
+    }));
+    await renderLoaded(<SystemSettingsView />);
+    fireEvent.change(listenField(), { target: { value: "this_computer" } });
+    fireEvent.click(saveButton());
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Restart and apply" }));
+    expect(screen.queryByText("Change who can connect?")).toBeNull();
+    await waitFor(() => expect(api.updateSystemConfig).toHaveBeenCalledTimes(1));
+  });
+
+  it("closes on Cancel and saves nothing", async () => {
+    api.previewListen.mockImplementation(async () => preview({
+      mode: "this_computer", serves_this_address: false, keeps_this_connection: false, safety_net: true,
+    }));
+    await renderLoaded(<SystemSettingsView />);
+    fireEvent.change(listenField(), { target: { value: "this_computer" } });
+    fireEvent.click(saveButton());
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText("Change who can connect?")).toBeNull();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(api.updateSystemConfig).not.toHaveBeenCalled();
+  });
+
   it("says why the change could not be checked, and saves nothing", async () => {
     await renderLoaded(<SystemSettingsView />);
     api.previewListen.mockRejectedValue(new ApiError(500, JSON.stringify({ detail: "Adapters unreadable" })));
@@ -540,6 +575,23 @@ describe("Where panels open, for the choice the server runs", () => {
       { accept_connections_from: "any" },
       { accept_connections_from: "any" },
     ]);
+  });
+
+  it("keeps the answer for the choice on screen when an earlier choice's answer comes late", async () => {
+    const pending: Array<(p: ReturnType<typeof preview>) => void> = [];
+    api.previewListen.mockImplementation(() => new Promise((r) => { pending.push(r); }));
+    await renderLoaded(<SystemSettingsView />);
+    // The first question, for Any network, waits.
+    await waitFor(() => expect(pending).toHaveLength(1));
+    fireEvent.change(listenField(), { target: { value: "this_computer" } });
+    await waitFor(() => expect(pending).toHaveLength(2));
+    pending[1](preview({ mode: "this_computer", panel_addresses: [] }));
+    await waitFor(() => expect(screen.getByTestId("accept-connections-help").textContent).toBeTruthy());
+    expect(screen.queryByTestId("panels-open-at")).toBeNull();
+    // Any network's answer arrives after: it is for a choice no longer on screen.
+    pending[0](preview({ panel_addresses: ["10.0.0.7"] }));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByTestId("panels-open-at")).toBeNull();
   });
 
   it("forgets the server's answer when a later one fails", async () => {
