@@ -6,6 +6,7 @@ import {
   duplicatePage,
   matchSizeElements,
   reparentElement,
+  resolveDropParent,
   toPageBox,
   type AlignAction,
 } from "./uiBuilderHelpers";
@@ -185,6 +186,18 @@ describe("reparentElement: the numbers change, the pixels do not", () => {
   });
 });
 
+describe("resolveDropParent: a palette drop, as a box in its container", () => {
+  it("measures each axis against the container's own side", () => {
+    const p = page([el("g", "group")], [primary({ g: box(20, 10, 50, 20) })]);
+    expect(resolveDropParent(p, box(30, 15, 10, 5))).toEqual({ parentId: "g", relative: box(20, 25, 20, 25) });
+  });
+
+  it("lands at page level when the container it falls in has no width", () => {
+    const p = page([el("g", "group")], [primary({ g: box(30, 10, 0, 50) })]);
+    expect(resolveDropParent(p, box(30, 20, 0, 10))).toEqual({ parentId: null, relative: box(30, 20, 0, 10) });
+  });
+});
+
 describe("alignElements", () => {
   const two = () =>
     page([el("a"), el("b")], [primary({ a: box(10, 10, 20, 10), b: box(50, 40, 10, 30) })]);
@@ -227,6 +240,30 @@ describe("alignElements", () => {
     expect(out.layouts[0].placements.kid).toEqual(box(0, 40, 0, 4));
   });
 
+  it("writes a control back against a container that is wider than it is tall", () => {
+    const p = page(
+      [el("g", "group"), el("kid", "button", "g")],
+      [primary({ g: box(0, 0, 50, 25), kid: box(0, 0, 20, 40) })],
+    );
+    const [out] = alignElements([p], "pg", ["kid"], "align-bottom");
+    expect(out.layouts[0].placements.kid).toEqual(box(0, 360, 20, 40));
+  });
+
+  it("writes a control back as a page box when its container has no height", () => {
+    const p = page(
+      [el("g", "group"), el("kid", "button", "g")],
+      [primary({ g: box(10, 10, 50, 0), kid: box(0, 0, 20, 20) })],
+    );
+    const [out] = alignElements([p], "pg", ["kid"], "align-left");
+    expect(out.layouts[0].placements.kid).toEqual(box(0, 10, 10, 0));
+  });
+
+  it("writes a control that names itself as its container back as a page box", () => {
+    const p = page([el("self", "button", "self")], [primary({ self: box(10, 10, 20, 10) })]);
+    const [out] = alignElements([p], "pg", ["self"], "align-right");
+    expect(out.layouts[0].placements.self).toEqual(box(80, 10, 20, 10));
+  });
+
   it("measures a control with no box from the default box and writes it one", () => {
     const p = page([el("a"), el("b")], [primary({ a: box(50, 10, 20, 10) })]);
     const [out] = alignElements([p], "pg", ["a", "b"], "align-right");
@@ -259,6 +296,16 @@ describe("distributeElements", () => {
     const [out] = distributeElements([p], "pg", ["a", "b", "c", "d"], "horizontal");
     expect(out.layouts[0].placements.b.x).toBe(26.6667);
     expect(out.layouts[0].placements.c.x).toBe(53.3333);
+  });
+
+  it("puts the nearer far edge first even when the id says otherwise", () => {
+    const p = page(
+      [el("a"), el("b"), el("c"), el("d")],
+      [primary({ a: box(0, 0, 10, 10), b: box(30, 0, 20, 10), c: box(30, 0, 10, 10), d: box(90, 0, 10, 10) })],
+    );
+    const [out] = distributeElements([p], "pg", ["a", "b", "c", "d"], "horizontal");
+    expect(out.layouts[0].placements.c.x).toBe(26.6667);
+    expect(out.layouts[0].placements.b.x).toBe(53.3333);
   });
 
   it.each([
@@ -380,6 +427,11 @@ describe("duplicatePage", () => {
       ["button_p1_copy_1", "group_p1_copy_2"],
       ["label_p1_copy_1", "elsewhere"],
     ]);
+  });
+
+  it("counts on past an id it has just handed out to a control of the same type", () => {
+    const two = { id: "p1", name: "Main", elements: [el("a"), el("b")], layouts: [] } as unknown as UIPage;
+    expect(duplicatePage([two], "p1")[1].elements.map((e) => e.id)).toEqual(["button_p1_copy_1", "button_p1_copy_2"]);
   });
 
   it("renames every layout's boxes in their order and its hidden list, keeping ids it does not know", () => {
