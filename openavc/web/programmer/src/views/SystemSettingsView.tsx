@@ -720,7 +720,7 @@ export function SystemSettingsView() {
 
     <CutOffQuestion save={save} listen={listen} tls={tls} httpPort={net.http_port} />
 
-    <RestartProgress restart={restart} config={config} facts={listen.facts} />
+    <RestartProgress restart={restart} facts={listen.facts} />
     </>
   );
 }

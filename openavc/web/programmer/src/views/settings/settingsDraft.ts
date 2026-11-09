@@ -3,9 +3,9 @@
  *  two merged as the screen shows them, and whether a change made since
  *  Settings opened needs a restart to take effect.
  *
- *  Nothing clears that restart flag but leaving Settings: it is still owed
- *  after the save, until the restart hands the page over or Settings is
- *  opened again. */
+ *  Nothing clears that restart flag: it is still owed after the save, and
+ *  only opening Settings again starts it unset. (The banner that says so
+ *  hides once a restart hands the page over; the flag stays.) */
 import { useCallback, useEffect, useState } from "react";
 import * as api from "../../api/restClient";
 import type { SystemConfig } from "../../api/restClient";

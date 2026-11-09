@@ -1,12 +1,11 @@
 /** The two restart dialogs Settings draws: "Restart to apply changes?" and the
  *  restart itself. Each draws nothing while closed, so the page places both
- *  always. Where the restart waits is `restartTargets` (restartFlow.ts). */
+ *  always. Where the restart waits is the restart's own (restartFlow.ts). */
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { RestartProgressDialog } from "../../components/shared/RestartProgressDialog";
 import { CutOffRestartLines, CutOffSaved } from "../../components/system/ListenCutOff";
-import type { SystemConfig } from "../../api/restClient";
 import type { ListenChoice } from "./listenChoice";
-import { restartTargets, type Restart } from "./restartFlow";
+import type { Restart } from "./restartFlow";
 
 /** Asked after a save that needs a restart, and by the trusted certificate. */
 export function RestartQuestion({ restart }: { restart: Restart }) {
@@ -36,15 +35,13 @@ export function RestartQuestion({ restart }: { restart: Restart }) {
 
 /** The restart, waiting where `restartTargets` says; when the saved change of
  *  who can connect cuts this browser off, it says where to go instead. */
-export function RestartProgress({ restart, config, facts }: {
+export function RestartProgress({ restart, facts }: {
   restart: Restart;
-  config: SystemConfig;
   facts: ListenChoice["facts"];
 }) {
   if (!restart.dialogOpen) return null;
-  const plan = restart.setup?.plan ?? { cutOff: false, hosts: [""] };
-  const target = restartTargets(window.location, restart.openedAt.current, config, plan);
-  const handoff = plan.cutOff && restart.setup?.preview
+  const target = restart.targets();
+  const handoff = restart.handedOver && restart.setup?.preview
     ? facts(restart.setup.preview, target.urls, target.localUrl)
     : null;
   return (

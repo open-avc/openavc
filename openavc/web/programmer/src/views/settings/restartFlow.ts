@@ -90,7 +90,10 @@ export function useRestart(config: SystemConfig | null) {
     setup,
     /** A restart has handed this page over to another address. */
     handedOver: !!setup?.plan.cutOff,
-    openedAt,
+    /** Where the open dialog waits, from the plan worked out when it opened. */
+    targets: () => restartTargets(
+      window.location, openedAt.current, config, setup?.plan ?? { cutOff: false, hosts: [""] },
+    ),
   };
 }
 
