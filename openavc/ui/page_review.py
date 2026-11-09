@@ -1605,6 +1605,151 @@ def _matrix_named(labels: list[str]) -> str:
     return f"{shown} and {rest} more" if rest > 0 else shown
 
 
+def _entry_name(entry: Mapping[str, Any]) -> str:
+    """What a review sentence calls one matrix row: the name it was given, else its value.
+
+    Not the panel's caption (``_entryLabel``), which can read a live name off
+    the device: a review has no state to read, so a row the device names is
+    called by its value here. The Builder's twin is ``matrixEntryName``.
+    """
+    return str(entry.get("label", entry.get("value")))
+
+
+def _destinations(count: int) -> str:
+    """``1 destination`` or ``3 destinations``."""
+    return f"{count} destination{'' if count == 1 else 's'}"
+
+
+def _unread_config_findings(el_id: str, config: Mapping[str, Any]) -> list[Finding]:
+    """Keys in ``matrix_config`` the matrix renderer never reads."""
+    unread = sorted(k for k in config if k not in MATRIX_CONFIG_KEYS)
+    if not unread:
+        return []
+    return [Finding(
+        el_id,
+        "matrix_config_unread",
+        f"{el_id} (matrix) sets matrix_config {_joined([repr(k) for k in unread])}, "
+        f"which the matrix renderer does not read. The keys it reads are: "
+        f"{', '.join(sorted(MATRIX_CONFIG_KEYS))}.",
+        key=("matrix_config_unread", el_id, *unread),
+    )]
+
+
+def _axis_findings(el_id: str, config: Mapping[str, Any]) -> list[Finding]:
+    """Each axis that resolves to nothing, or has two rows claiming one value."""
+    findings: list[Finding] = []
+    for axis in ("sources", "destinations"):
+        entries = resolve_axis(config, axis)
+        if not entries:
+            findings.append(Finding(
+                el_id,
+                "matrix_default_size",
+                f"{el_id} (matrix) resolves to no {axis}, so it draws nothing to "
+                f"{_MATRIX_AXIS_DIRECTION[axis]}. List them under "
+                f"matrix_config.{axis}, or generate them with {axis}.from.count.",
+                key=("matrix_default_size", el_id, axis),
+            ))
+            continue
+        collided = _colliding_entries(entries, axis)
+        if collided:
+            findings.append(Finding(
+                el_id,
+                "matrix_duplicate_values",
+                f"{el_id} (matrix) has {len(collided)} of its {axis} claiming a value "
+                f"another one already has ({_matrix_named(collided)}), and a routed "
+                f"source is matched by value -- so they cannot be told apart. Give "
+                f"each one the value its device actually reports.",
+                key=("matrix_duplicate_values", el_id, axis, *collided),
+            ))
+    return findings
+
+
+def _colliding_entries(entries: list[Mapping[str, Any]], axis: str) -> list[str]:
+    """The rows claiming a value an earlier row already has, by name.
+
+    Two entries claiming one value is new in 0.10.0 and is only possible
+    because a value is now opaque and authored. It is not cosmetic: the
+    crosspoint match lights every entry the device's report names, and a list
+    dropdown can only hold one option per value, so the second entry is either
+    a duplicate light or a row that cannot be selected.
+    """
+    seen: list[Any] = []
+    collided: list[str] = []
+    for entry in entries:
+        # By what the DEVICE calls it, which is what a report is matched
+        # against -- the same thing as the value on all but a couple of
+        # drivers, and the only thing that can collide on those.
+        value = source_report_value(entry) if axis == "sources" else entry.get("value")
+        if any(route_matches(value, other) for other in seen):
+            collided.append(_entry_name(entry))
+        else:
+            seen.append(value)
+    return collided
+
+
+def _unbacked_lock_findings(el_id: str, config: Mapping[str, Any]) -> list[Finding]:
+    """Lock buttons drawn for destinations no variable backs.
+
+    A lock only the panel that pressed it remembers is not a lock: it is gone
+    the next time the page draws, the panel by the other door never hears
+    about it, and the rack does not know either. Backing it with a variable is
+    what makes it one, and `var.`/`plugin.` are the only prefixes a panel is
+    allowed to write, so the check is the prefix rather than merely presence.
+    """
+    if config.get("show_lock") is not True:
+        return []
+    unbacked = [
+        _entry_name(entry)
+        for entry in resolve_axis(config, "destinations")
+        if not str(entry.get("lock_key") or "").startswith(PANEL_WRITABLE_PREFIXES)
+    ]
+    if not unbacked:
+        return []
+    one = len(unbacked) == 1
+    return [Finding(
+        el_id,
+        "matrix_lock_unbacked",
+        f"{el_id} (matrix) draws lock buttons, but {_destinations(len(unbacked))} "
+        f"({_matrix_named(unbacked)}) "
+        f"{'has' if one else 'have'} no lock_key under "
+        f"{' or '.join(repr(p) for p in PANEL_WRITABLE_PREFIXES)}, so locking "
+        f"{'it' if one else 'them'} is this panel's own memory "
+        f"-- forgotten when the page redraws, and invisible to every other "
+        f"panel in the space. Give each one a variable, e.g. "
+        f"'var.{el_id}_lock_1'.",
+    )]
+
+
+def _blind_destination_findings(el_id: str, config: Mapping[str, Any]) -> list[Finding]:
+    """Destinations with no ``route_key``, which never show what is routed to them."""
+    blind = [
+        _entry_name(entry)
+        for entry in resolve_axis(config, "destinations")
+        if not entry.get("route_key")
+    ]
+    if not blind:
+        return []
+    return [Finding(
+        el_id,
+        "matrix_no_route_feedback",
+        f"{el_id} (matrix) has {_destinations(len(blind))} with no route_key "
+        f"({_matrix_named(blind)}), so those never show what is routed -- the "
+        f"matrix routes, and the panel cannot say which source is selected. Give "
+        f"each one the state key holding its routed source, e.g. "
+        f"'device.<id>.output.1.input'.",
+    )]
+
+
+#: The checks a configured matrix gets, in the order they report. A new one is
+#: an entry here and one in ``MATRIX_CHECKS``, its twin in uiBuilderHelpers.ts.
+_MATRIX_CHECKS: tuple[Callable[[str, Mapping[str, Any]], list[Finding]], ...] = (
+    _unread_config_findings,
+    _axis_findings,
+    _unbacked_lock_findings,
+    _blind_destination_findings,
+)
+
+
 def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
     """A matrix that will draw, and route, and never show what is routed.
 
@@ -1619,16 +1764,14 @@ def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
     of project format 0.10.0: each destination owns its key, so half a matrix can
     be blind while the other half reports, and that is worth naming precisely.
 
-    The other four are the ones that make it hard to notice: a config full of
-    keys nothing reads, an axis that resolves to nothing, two entries that claim
-    the same value, and a lock button backed by nothing.
+    The others in ``_MATRIX_CHECKS`` are the ones that make it hard to notice: a
+    config full of keys nothing reads, an axis that resolves to nothing, two
+    entries that claim the same value, and a lock button backed by nothing.
     """
     if str(element.get("type", "")) != "matrix":
         return []
     config = element.get("matrix_config")
     el_id = str(element.get("id", "?"))
-    findings: list[Finding] = []
-
     if not isinstance(config, Mapping) or not config:
         return [Finding(
             el_id,
@@ -1638,103 +1781,7 @@ def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
             f"standing for one, e.g. destinations: "
             f"{{'from': {{'count': 8, 'route_key': 'device.<id>.output.*.input'}}}}.",
         )]
-
-    unread = sorted(k for k in config if k not in MATRIX_CONFIG_KEYS)
-    if unread:
-        findings.append(Finding(
-            el_id,
-            "matrix_config_unread",
-            f"{el_id} (matrix) sets matrix_config {_joined([repr(k) for k in unread])}, "
-            f"which the matrix renderer does not read. The keys it reads are: "
-            f"{', '.join(sorted(MATRIX_CONFIG_KEYS))}.",
-            key=("matrix_config_unread", el_id, *unread),
-        ))
-
-    for axis in ("sources", "destinations"):
-        entries = resolve_axis(config, axis)
-        if not entries:
-            findings.append(Finding(
-                el_id,
-                "matrix_default_size",
-                f"{el_id} (matrix) resolves to no {axis}, so it draws nothing to "
-                f"{_MATRIX_AXIS_DIRECTION[axis]}. List them under "
-                f"matrix_config.{axis}, or generate them with {axis}.from.count.",
-                key=("matrix_default_size", el_id, axis),
-            ))
-            continue
-
-        # Two entries claiming one value is new in 0.10.0 and is only possible
-        # because a value is now opaque and authored. It is not cosmetic: the
-        # crosspoint match lights every entry the device's report names, and a
-        # list dropdown can only hold one option per value, so the second entry
-        # is either a duplicate light or a row that cannot be selected.
-        seen: list[Any] = []
-        collided: list[str] = []
-        for entry in entries:
-            # By what the DEVICE calls it, which is what a report is matched
-            # against -- the same thing as the value on all but a couple of
-            # drivers, and the only thing that can collide on those.
-            value = (
-                source_report_value(entry) if axis == "sources" else entry.get("value")
-            )
-            if any(route_matches(value, other) for other in seen):
-                collided.append(str(entry.get("label", entry.get("value"))))
-            else:
-                seen.append(value)
-        if collided:
-            findings.append(Finding(
-                el_id,
-                "matrix_duplicate_values",
-                f"{el_id} (matrix) has {len(collided)} of its {axis} claiming a value "
-                f"another one already has ({_matrix_named(collided)}), and a routed "
-                f"source is matched by value -- so they cannot be told apart. Give "
-                f"each one the value its device actually reports.",
-                key=("matrix_duplicate_values", el_id, axis, *collided),
-            ))
-
-    # A lock only the panel that pressed it remembers is not a lock: it is gone
-    # the next time the page draws, the panel by the other door never hears
-    # about it, and the rack does not know either. Backing it with a variable is
-    # what makes it one, and `var.`/`plugin.` are the only prefixes a panel is
-    # allowed to write, so the check is the prefix rather than merely presence.
-    if config.get("show_lock") is True:
-        unbacked = [
-            str(entry.get("label", entry.get("value")))
-            for entry in resolve_axis(config, "destinations")
-            if not str(entry.get("lock_key") or "").startswith(PANEL_WRITABLE_PREFIXES)
-        ]
-        if unbacked:
-            findings.append(Finding(
-                el_id,
-                "matrix_lock_unbacked",
-                f"{el_id} (matrix) draws lock buttons, but {len(unbacked)} "
-                f"destination{'' if len(unbacked) == 1 else 's'} "
-                f"({_matrix_named(unbacked)}) "
-                f"{'has' if len(unbacked) == 1 else 'have'} no lock_key under "
-                f"{' or '.join(repr(p) for p in PANEL_WRITABLE_PREFIXES)}, so locking "
-                f"{'it' if len(unbacked) == 1 else 'them'} is this panel's own memory "
-                f"-- forgotten when the page redraws, and invisible to every other "
-                f"panel in the space. Give each one a variable, e.g. "
-                f"'var.{el_id}_lock_1'.",
-            ))
-
-    blind = [
-        str(entry.get("label", entry.get("value")))
-        for entry in resolve_axis(config, "destinations")
-        if not entry.get("route_key")
-    ]
-    if blind:
-        findings.append(Finding(
-            el_id,
-            "matrix_no_route_feedback",
-            f"{el_id} (matrix) has {len(blind)} "
-            f"destination{'' if len(blind) == 1 else 's'} with no route_key "
-            f"({_matrix_named(blind)}), so those never show what is routed -- the "
-            f"matrix routes, and the panel cannot say which source is selected. Give "
-            f"each one the state key holding its routed source, e.g. "
-            f"'device.<id>.output.1.input'.",
-        ))
-    return findings
+    return [finding for check in _MATRIX_CHECKS for finding in check(el_id, config)]
 
 
 @dataclass(frozen=True)
@@ -2042,7 +2089,7 @@ def _destination_route_entries(
         route = entry.get("route")
         if not isinstance(route, list):
             continue
-        named = entry.get("label", entry.get("value"))
+        named = _entry_name(entry)
         for action in route:
             found.extend(
                 _walk_action(f"do.route for '{named}'", action)
