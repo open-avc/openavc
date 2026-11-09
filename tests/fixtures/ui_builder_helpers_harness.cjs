@@ -3,9 +3,7 @@
 // with the esbuild already in openavc/web/programmer/node_modules) and runs pure-logic
 // checks for the grid-geometry / id / rename helpers, printing JSON results to
 // stdout. Mirrors color_utils_harness.cjs: no build step, and the Python wrapper
-// skips when the toolchain is absent rather than failing CI. The helper module
-// has only `import type` statements, which esbuild strips, so it loads with no
-// runtime imports.
+// skips when the toolchain is absent rather than failing CI.
 const fs = require("fs");
 const path = require("path");
 
@@ -13,9 +11,10 @@ const helpersPath = process.argv[2];
 
 const esbuild = require("esbuild");
 // Bundled rather than transpiled: the helpers import the generated control
-// minimums and binding-reach tables, which are real runtime values and have to
-// come along. Everything else they import is `import type`, which esbuild
-// strips, so the bundle still pulls in nothing but this module and those two.
+// minimums and binding-reach tables and their sibling modules (the binding
+// actions, a new control, renames and page deletes), which are real runtime
+// values and have to come along; uiBuilderHelpers.ts re-exports the sibling
+// modules' names, so every scenario reads them through it.
 const built = esbuild.buildSync({
   entryPoints: [helpersPath],
   bundle: true,
