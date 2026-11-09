@@ -245,6 +245,17 @@ describe("renameElement", () => {
     expect(L[3]).toEqual({ id: "bare", hidden: ["go"] });
   });
 
+  it("a page whose layout alone holds the id, with no such control on it, still moves it", () => {
+    const box = { x: 1, y: 2, w: 3, h: 4 };
+    const orphan = { id: "landscape", placements: { btn: box }, hidden: ["btn"] };
+    const other = el("other");
+    const p1 = page("p1", [other], { layouts: [orphan] });
+    const { p, r } = rename({ pages: [p1, page("p2", [el("btn")])] });
+    expect(r.pages[0]).not.toBe(p1);
+    expect(r.pages[0].elements).toBe(p.pages[0].elements);
+    expect(r.pages[0].layouts).toEqual([{ id: "landscape", placements: { go: box }, hidden: ["go"] }]);
+  });
+
   it("a page with no layouts at all keeps that", () => {
     const bare = { id: "p1", name: "p1", elements: [el("btn")] } as unknown as UIPage;
     const { r } = rename({ pages: [bare] });
