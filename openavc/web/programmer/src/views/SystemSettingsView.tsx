@@ -23,12 +23,11 @@ import {
 } from "../components/system/settingsStyles";
 import { PasswordField, REDACTED, Toggle } from "./settings/settingsControls";
 import { saveChecks } from "./settings/saveChecks";
+import { DevicesCard, PanelDisplayCard } from "./settings/ProjectSettingsCards";
 import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
 import { CutOffRestartLines, CutOffSaved, CutOffWarning, type CutOffFacts } from "../components/system/ListenCutOff";
 import { adapterName, ownScreenOpensProgrammer, restartPlan, sameListenChoice, type RestartPlan } from "../components/system/adapterChoice";
-import { VariableKeyPicker } from "../components/shared/VariableKeyPicker";
 import { useProjectStore } from "../store/projectStore";
-import { useConnectionStore } from "../store/connectionStore";
 import { RestartProgressDialog } from "../components/shared/RestartProgressDialog";
 import { configuredOrigin, restartOrigin, runningOrigin, withHost } from "../components/shared/restartPollHelpers";
 import { showError, showSuccess } from "../store/toastStore";
@@ -46,7 +45,6 @@ import type {
   TlsStatus,
   TlsUploadResult,
 } from "../api/restClient";
-import type { ProjectConfig } from "../api/types";
 
 /** A new API key: 32 random bytes, url-safe, the same shape the server would
  *  produce. The server stores only a digest of whatever is saved here, so this
@@ -74,40 +72,6 @@ const CLOUD_CERT_ERROR_LABELS: Record<string, string> = {
   invalid_csr: "The cloud rejected the certificate request.",
   invalid_enrollment: "The cloud sent an unexpected enrollment response.",
   internal: "The cloud hit an internal error during issuance. An automatic retry is scheduled.",
-};
-
-// Idle-dim bounds, mirroring what the server clamps to on the way out
-// (openavc/api/routes/system.py). Applied on BLUR, never per keystroke:
-// clamping as the user types makes a field with a floor impossible to fill in,
-// because the first digit of "15" snaps to the minimum and the second lands
-// after it -- typing 15 gets you 55. Blur still shows the corrected number
-// before the save, so the field never claims a value that will not take.
-const DIM_MINUTES_MIN = 1;
-const DIM_MINUTES_MAX = 120;
-// 0 is not a percentage but a mode -- blackout -- so the control's floor is 0
-// while the lowest real dim level is DIM_PERCENT_MIN.
-const DIM_PERCENT_MIN = 1;
-const DIM_PERCENT_MAX = 90;
-const DIM_BLACKOUT = 0;
-
-// The lowest brightness the Programmer will set. Not a hardware limit -- the
-// panel's own floor is lower -- but a panel dimmer than this cannot be read,
-// and the control that would undo it is on somebody's laptop, not the panel.
-// There used to be a "Clear" button beside this slider meaning "stop managing
-// this panel". It restored nothing, so clicking it at 1% left the panel dark
-// with its own control reading "not set": a stuck screen two clicks away. It
-// was removed rather than fixed, because the local-override case it existed
-// for is already covered -- the shell writes brightness only when this value
-// CHANGES, so a panel's own brightness control keeps working regardless.
-const BRIGHTNESS_MIN = 10;
-
-const clampMinutes = (n: number) =>
-  Number.isFinite(n) ? Math.min(Math.max(n, DIM_MINUTES_MIN), DIM_MINUTES_MAX) : 5;
-
-const clampPercent = (n: number) => {
-  if (!Number.isFinite(n)) return 20;
-  if (n <= DIM_BLACKOUT) return DIM_BLACKOUT;
-  return Math.min(Math.max(n, DIM_PERCENT_MIN), DIM_PERCENT_MAX);
 };
 
 function ExpiryBadge({ days }: { days: number }) {
@@ -262,21 +226,10 @@ export function SystemSettingsView() {
   const [panelDimAvailable, setPanelDimAvailable] = useState(false);
   const [updateGuidance, setUpdateGuidance] = useState<string | null>(null);
 
-  // The panel display settings live in the PROJECT, not system.json, so a
-  // customer sets them once and deploys one template to every panel. Selected
-  // one primitive at a time: a selector that builds an object returns a new
-  // reference every render and crashes React 19.
+  // The panel display and device settings live in the PROJECT, so the one
+  // Save button saves the project too.
   const projectDirty = useProjectStore((s) => s.dirty);
   const projectLoaded = useProjectStore((s) => s.project !== null);
-  const dimEnabled = useProjectStore((s) => s.project?.settings?.display?.idle_dim_enabled ?? true);
-  const dimTimeout = useProjectStore((s) => s.project?.settings?.display?.idle_dim_timeout_seconds ?? 300);
-  const dimLevel = useProjectStore((s) => s.project?.settings?.display?.idle_dim_level_percent ?? 20);
-  const dimWakePasses = useProjectStore((s) => s.project?.settings?.display?.idle_dim_wake_passes_touch ?? false);
-  const dimHoldKey = useProjectStore((s) => s.project?.settings?.display?.idle_dim_hold_state_key ?? "");
-  // Present only on a panel whose software can be updated from the cloud.
-  const panelSoftwareUpdates = useConnectionStore((s) => !!s.liveState["system.panel_software.version"]);
-  const panelBrightness = useProjectStore((s) => s.project?.settings?.display?.brightness_percent ?? null);
-  const reconnectInterval = useProjectStore((s) => s.project?.settings?.devices?.reconnect_interval_seconds ?? null);
   const [ssh, setSsh] = useState<SshStatus | null>(null);
   const [sshBusy, setSshBusy] = useState(false);
   const [adapters, setAdapters] = useState<NetworkAdapter[]>([]);
@@ -370,36 +323,6 @@ export function SystemSettingsView() {
       if (section === "network" && (key === "http_port" || key === "port80_redirect")) setRestartNeeded(true);
       // Any TLS change requires a restart — uvicorn only reads cert + ports at startup.
       if (section === "tls") setRestartNeeded(true);
-    },
-    [],
-  );
-
-  /** Patch one project-settings field. Merges through the current project so
-   *  a write to `display` never drops `devices`, and vice versa. */
-  const updateDisplay = useCallback(
-    (key: string, value: unknown) => {
-      const st = useProjectStore.getState();
-      const cur = st.project?.settings;
-      st.update({
-        settings: {
-          display: { ...(cur?.display ?? {}), [key]: value },
-          devices: { ...(cur?.devices ?? {}) },
-        },
-      } as Partial<ProjectConfig>);
-    },
-    [],
-  );
-
-  const updateProjectDevices = useCallback(
-    (key: string, value: unknown) => {
-      const st = useProjectStore.getState();
-      const cur = st.project?.settings;
-      st.update({
-        settings: {
-          display: { ...(cur?.display ?? {}) },
-          devices: { ...(cur?.devices ?? {}), [key]: value },
-        },
-      } as Partial<ProjectConfig>);
     },
     [],
   );
@@ -1931,115 +1854,13 @@ export function SystemSettingsView() {
             them to every panel a customer deploys it to. */}
         {panelDimAvailable && projectLoaded && <>
         <h3 style={sectionTitle}>Panel Display</h3>
-        <div style={cardStyle}>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Brightness</label>
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-              <input
-                type="range"
-                min={BRIGHTNESS_MIN}
-                max={100}
-                style={{ flex: 1, maxWidth: 260 }}
-                value={panelBrightness ?? 100}
-                onChange={(e) => updateDisplay("brightness_percent", Number(e.target.value))}
-              />
-              <span style={{ fontSize: "var(--font-size-sm)", minWidth: 74, color: "var(--text-muted)" }}>
-                {panelBrightness === null ? "Panel's own" : `${panelBrightness}%`}
-              </span>
-            </div>
-            <span style={helpText}>
-              {panelBrightness === null
-                ? "Each panel is using whatever its own screen is set to. Move the slider to set them all from here."
-                : "The panel's normal brightness. The panel's own brightness control still works on top of this, until you change this value again."}
-            </span>
-          </div>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Dim the panel when idle</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Fades the panel down after a period with no touches. A panel left on the same page all day and night can leave a permanent ghost of it on the screen, and a dimmer picture ages the display more slowly.</div>
-            </div>
-            <Toggle checked={dimEnabled} onChange={(v) => updateDisplay("idle_dim_enabled", v)} />
-          </div>
-          {dimEnabled && <>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Dim after</label>
-            <input
-              type="number"
-              min={DIM_MINUTES_MIN}
-              max={DIM_MINUTES_MAX}
-              style={{ ...inputStyle, maxWidth: 120 }}
-              value={Math.round(dimTimeout / 60)}
-              onChange={(e) => updateDisplay("idle_dim_timeout_seconds", (parseInt(e.target.value) || 0) * 60)}
-              onBlur={(e) => updateDisplay("idle_dim_timeout_seconds", clampMinutes(parseInt(e.target.value)) * 60)}
-            />
-            <span style={helpText}>Minutes with no touch before the panel dims.</span>
-          </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Dim to</label>
-            <input
-              type="number"
-              min={0}
-              max={DIM_PERCENT_MAX}
-              style={{ ...inputStyle, maxWidth: 120 }}
-              value={dimLevel}
-              onChange={(e) => updateDisplay("idle_dim_level_percent", parseInt(e.target.value) || 0)}
-              onBlur={(e) => updateDisplay("idle_dim_level_percent", clampPercent(parseInt(e.target.value)))}
-            />
-            <span style={helpText}>
-              {dimLevel === 0
-                ? "Blacked out: the screen goes as dark as the panel allows and the page is covered, so it reads as switched off. A touch brings it straight back."
-                : "Percent of the panel's normal brightness, so a panel already turned down for a dark space dims further rather than brightening. Set it to 0 to black the screen out instead."}
-            </span>
-          </div>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Stay bright while</label>
-            <VariableKeyPicker
-              value={dimHoldKey}
-              onChange={(key) => updateDisplay("idle_dim_hold_state_key", key)}
-              showDeviceState
-              placeholder="Nothing — dim on the timer alone"
-            />
-            <span style={helpText}>Optional. While this value is on, the panel never dims{panelSoftwareUpdates ? " and a panel software update waits to install" : ""}. A meeting in progress generates no touches, so point this at whatever the project already sets when the space is in use — a system-on variable, or a display's power state.</span>
-          </div>
-          <div style={toggleRow}>
-            <div>
-              <div style={{ fontSize: "var(--font-size-sm)" }}>Waking touch also presses the button</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Off: the touch that wakes a dimmed panel only brings the brightness back, so nobody mutes a live room by tapping a screen they could not read. On: that touch also does whatever it landed on.</div>
-            </div>
-            <Toggle checked={dimWakePasses} onChange={(v) => updateDisplay("idle_dim_wake_passes_touch", v)} />
-          </div>
-          </>}
-        </div>
+        <PanelDisplayCard />
         </>}
 
         {/* Device behaviour that travels with the project, for the same reason. */}
         {projectLoaded && <>
         <h3 style={sectionTitle}>Devices</h3>
-        <div style={cardStyle}>
-          <div style={fieldRow}>
-            <label style={labelStyle}>Retry every</label>
-            <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-              <input
-                type="number"
-                min={1}
-                max={300}
-                style={{ ...inputStyle, maxWidth: 120 }}
-                placeholder="5"
-                value={reconnectInterval ?? ""}
-                onChange={(e) => updateProjectDevices(
-                  "reconnect_interval_seconds",
-                  e.target.value === "" ? null : (parseInt(e.target.value) || 0),
-                )}
-                onBlur={(e) => updateProjectDevices(
-                  "reconnect_interval_seconds",
-                  e.target.value === "" ? null : Math.min(Math.max(parseInt(e.target.value) || 5, 1), 300),
-                )}
-              />
-              <span style={{ fontSize: "var(--font-size-sm)", color: "var(--text-muted)" }}>seconds</span>
-            </div>
-            <span style={helpText}>How often OpenAVC retries a device that has gone offline. This is the rate of connection attempts your IT department sees, so raise it on a network that is strict about them. Leave it empty to use this system's own setting.</span>
-          </div>
-        </div>
+        <DevicesCard />
         </>}
 
         {/* Kiosk — only shown on Pi/kiosk-capable deployments */}
