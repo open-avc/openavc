@@ -32,6 +32,7 @@ from openavc.drivers.declared_names import (
     did_you_mean,
     substitution_names,
 )
+from openavc.drivers.param_aid_checks import param_aid_errors
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.query_entry_checks import (
     FollowUp,
@@ -59,7 +60,6 @@ from openavc.drivers.spec import (
     LINE_GAP_TRANSPORTS,
     LIVENESS_TRANSPORTS,
     OSC_ARG_TYPES as _OSC_ARG_TYPES,
-    PARAM_OPTIONS_FROM_SOURCES as _PARAM_OPTIONS_FROM_SOURCES,
     PORT_OPEN_TRANSPORTS,
     REQUIRED_FIELDS,
     SEND_FRAME_TYPES,
@@ -349,177 +349,6 @@ def _validate_osc_args(where: str, arg_defs: Any, errors: list[str]) -> None:
                 f"{where}: args[{j}] unknown OSC type '{arg_type}' "
                 f"(expected one of f/i/s/h/d/T/F/N)"
             )
-
-
-def _validate_param_option_providers(
-    where: str, params: Any, errors: list[str],
-) -> None:
-    """Validate the param-picker option/type providers on a param map:
-    ``options_state`` (state-key list), ``options_from``
-    (cascade off a sibling param), and ``type_from`` (take the input type from a
-    sibling cascade's chosen control). Also validates the Phase 3 free-text
-    aids — a ``pattern`` regex (compiles + isn't ReDoS-prone) and sane
-    ``min``/``max`` bounds. Authoring-time aids — the runtime still
-    coerces/validates the submitted value — but a typo here silently leaves a
-    free-text box, so flag it at load.
-    """
-    if not isinstance(params, dict):
-        return
-    for pname, pdef in params.items():
-        if not isinstance(pdef, dict):
-            continue
-
-        # Phase 3: a free-text param can declare a `pattern` (shape check) and
-        # numeric min/max. Validate them at load so a bad regex or inverted
-        # range errors here, not at command time.
-        pattern = pdef.get("pattern")
-        if pattern is not None:
-            err = _regex_redos_error(f"{where} param '{pname}': pattern", pattern)
-            if err:
-                errors.append(err)
-        mn, mx = pdef.get("min"), pdef.get("max")
-        for bound_name, bound in (("min", mn), ("max", mx)):
-            if bound is not None and not isinstance(bound, (int, float)):
-                errors.append(
-                    f"{where} param '{pname}': {bound_name} must be a number"
-                )
-        if (
-            isinstance(mn, (int, float))
-            and isinstance(mx, (int, float))
-            and mn > mx
-        ):
-            errors.append(
-                f"{where} param '{pname}': min ({mn}) must be <= max ({mx})"
-            )
-
-        # A `decimals` rounding rule (number params) must be a non-negative int.
-        decimals = pdef.get("decimals")
-        if decimals is not None and (
-            not isinstance(decimals, int) or isinstance(decimals, bool) or decimals < 0
-        ):
-            errors.append(
-                f"{where} param '{pname}': decimals must be a non-negative integer"
-            )
-
-        # `trim: false` opts a string param out of the runtime whitespace
-        # trim (raw passthrough payloads where a terminator is meaningful).
-        trim = pdef.get("trim")
-        if trim is not None and not isinstance(trim, bool):
-            errors.append(f"{where} param '{pname}': trim must be true or false")
-
-        # A wire-value `map` translates the validated value before it is
-        # substituted into the send template (0-based channel numbers,
-        # letter codes). Keys/values must be scalars; a typo'd shape would
-        # silently never translate.
-        value_map = pdef.get("map")
-        if value_map is not None:
-            if not isinstance(value_map, dict) or not value_map:
-                errors.append(
-                    f"{where} param '{pname}': map must be a non-empty "
-                    f"mapping of value -> wire value"
-                )
-            else:
-                for mk, mv in value_map.items():
-                    if isinstance(mk, bool) or isinstance(mv, bool) or not (
-                        isinstance(mk, (str, int, float))
-                        and isinstance(mv, (str, int, float))
-                    ):
-                        errors.append(
-                            f"{where} param '{pname}': map entries must be "
-                            f"scalar value -> wire value pairs"
-                        )
-                        break
-
-        ostate = pdef.get("options_state")
-        if ostate is not None and not (isinstance(ostate, str) and ostate):
-            errors.append(
-                f"{where} param '{pname}': options_state must be a non-empty string"
-            )
-        ofrom = pdef.get("options_from")
-        if ofrom is not None:
-            if not isinstance(ofrom, dict):
-                errors.append(
-                    f"{where} param '{pname}': options_from must be a mapping "
-                    f"with 'param' and 'source'"
-                )
-            else:
-                source = ofrom.get("source")
-                if source not in _PARAM_OPTIONS_FROM_SOURCES:
-                    errors.append(
-                        f"{where} param '{pname}': options_from.source must be "
-                        f"one of {sorted(_PARAM_OPTIONS_FROM_SOURCES)}"
-                    )
-                ref = ofrom.get("param")
-                if not (isinstance(ref, str) and ref):
-                    errors.append(
-                        f"{where} param '{pname}': options_from.param must name "
-                        f"a sibling param"
-                    )
-                elif ref not in params:
-                    errors.append(
-                        f"{where} param '{pname}': options_from.param '{ref}' is "
-                        f"not a param of this command"
-                    )
-                elif source == "child_schema":
-                    sibling = params.get(ref)
-                    if isinstance(sibling, dict) \
-                            and sibling.get("type") != "child_id":
-                        errors.append(
-                            f"{where} param '{pname}': options_from.param "
-                            f"'{ref}' must be a child_id param for source "
-                            f"'child_schema'"
-                        )
-                # A typo in either list would quietly empty the picker.
-                types = ofrom.get("types")
-                if types is not None and not (
-                    isinstance(types, list) and types
-                    and all(t in VALUE_TYPES for t in types)
-                ):
-                    errors.append(
-                        f"{where} param '{pname}': options_from.types must be "
-                        f"a non-empty list of {list(VALUE_TYPES)}"
-                    )
-                units = ofrom.get("units")
-                if units is not None and not (
-                    isinstance(units, list) and units
-                    and all(isinstance(u, str) and u.strip() for u in units)
-                ):
-                    errors.append(
-                        f"{where} param '{pname}': options_from.units must be "
-                        f"a non-empty list of unit names, e.g. [\"dB\"]"
-                    )
-
-        tfrom = pdef.get("type_from")
-        if tfrom is not None:
-            if not isinstance(tfrom, dict):
-                errors.append(
-                    f"{where} param '{pname}': type_from must be a mapping with "
-                    f"'param'"
-                )
-                continue
-            ref = tfrom.get("param")
-            if not (isinstance(ref, str) and ref):
-                errors.append(
-                    f"{where} param '{pname}': type_from.param must name a "
-                    f"sibling param"
-                )
-            elif ref not in params:
-                errors.append(
-                    f"{where} param '{pname}': type_from.param '{ref}' is not a "
-                    f"param of this command"
-                )
-            else:
-                # The named sibling must itself be a child_schema cascade — that
-                # is how type_from finds the component + control to read the
-                # type from.
-                sib = params.get(ref)
-                sib_from = sib.get("options_from") if isinstance(sib, dict) else None
-                if not (isinstance(sib_from, dict)
-                        and sib_from.get("source") == "child_schema"):
-                    errors.append(
-                        f"{where} param '{pname}': type_from.param '{ref}' must "
-                        f"itself be an options_from child_schema cascade"
-                    )
 
 
 class _TaggedErrors(list):
@@ -872,8 +701,8 @@ def validate_driver_definition(
             _validate_udp_send(
                 f"Command '{cmd_name}'", cmd_def.get("udp"), driver_def, errors
             )
-        _validate_param_option_providers(
-            f"Command '{cmd_name}'", cmd_def.get("params"), errors,
+        errors.extend(
+            param_aid_errors(f"Command '{cmd_name}'", cmd_def.get("params"))
         )
         # Declared command semantics: `sets` / `query_for` drive the
         # auto-generated simulator, so a dangling reference would silently
@@ -1154,9 +983,7 @@ def validate_driver_definition(
                 f"kind 'command' only"
             )
         if isinstance(entry, dict) and isinstance(entry.get("params"), dict):
-            _validate_param_option_providers(
-                f"actions[{i}]", entry.get("params"), errors,
-            )
+            errors.extend(param_aid_errors(f"actions[{i}]", entry.get("params")))
 
     # Validate state_variables structure
     valid_types = set(VALUE_TYPES)
