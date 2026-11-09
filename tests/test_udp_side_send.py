@@ -362,7 +362,9 @@ def test_start_0_lets_the_udp_side_pick_when_it_refuses_the_stream_servers_numbe
     async def scenario():
         sim = YAMLAutoSimulator("d1", {}, driver_def=_definition())
         real = sim.start_datagram_server
+        real_stream = sim._start_stream_server
         asked: list[int] = []
+        stream_refused: list[int] = []
 
         async def refuse_every_named_number(port):
             asked.append(port)
@@ -370,15 +372,33 @@ def test_start_0_lets_the_udp_side_pick_when_it_refuses_the_stream_servers_numbe
                 raise _refused(port)
             await real(port)
 
+        async def stream_server(port):
+            try:
+                await real_stream(port)
+            except OSError:
+                stream_refused.append(port)
+                raise
+
         sim.start_datagram_server = refuse_every_named_number
-        await sim.start(0)
+        sim._start_stream_server = stream_server
         try:
-            return asked, await _both_answer_on(sim)
+            await sim.start(0)
+        except OSError:
+            return asked, stream_refused, None
+        try:
+            return asked, stream_refused, await _both_answer_on(sim)
         finally:
             await sim.stop()
 
-    asked, woke = asyncio.run(scenario())
-    assert asked[0] != 0 and asked[1:] == [0], asked
+    asked, stream_refused, woke = asyncio.run(scenario())
+    # The UDP side picks as soon as it refuses the stream server's number.
+    assert asked[0] != 0 and asked[1] == 0, asked
+    if stream_refused:
+        # This machine also keeps TCP blocks for itself, and the numbers the
+        # UDP side handed out fell in one: with every named UDP number refused
+        # here, nothing both servers answer on is left to find.
+        pytest.skip(f"TCP refused the UDP side's numbers here: {stream_refused}")
+    assert asked[1:] == [0], asked
     assert woke, "the datagram reached the side receiver on the reported number"
 
 
