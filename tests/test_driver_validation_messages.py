@@ -1084,7 +1084,8 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
         _ROOT / "openavc" / "drivers" / name
         for name in (
             "avcdriver_semantic.py", "condition_checks.py", "declared_names.py",
-            "response_rule_checks.py", "python_info.py", "check.py",
+            "push_block_checks.py", "response_rule_checks.py", "python_info.py",
+            "check.py",
         )
     ]
     dashed = []
