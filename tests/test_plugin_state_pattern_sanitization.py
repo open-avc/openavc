@@ -1,12 +1,12 @@
-"""A71 — PluginLoader._sanitize_state_pattern keeps plugins inside their
+"""sanitize_state_pattern keeps plugins inside their
 ``plugin.<id>.*`` namespace so a plugin sidebar can't scrape unrelated state.
 """
 
-from openavc.core.plugin_loader import PluginLoader
+from openavc.core.plugin_extensions import sanitize_state_pattern
 
 
 def _san(pattern, plugin_id="dante"):
-    return PluginLoader._sanitize_state_pattern(
+    return sanitize_state_pattern(
         pattern, plugin_id, f"plugin.{plugin_id}."
     )
 

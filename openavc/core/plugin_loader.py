@@ -19,6 +19,11 @@ from pathlib import Path
 from typing import Any
 
 from openavc.core.plugin_api import PluginAPI, PluginRefusal
+from openavc.core.plugin_extensions import (
+    collect_extensions,
+    sandbox_permissions,
+    validate_extensions as validate_extensions,
+)
 from openavc.core.plugin_registry import PluginRegistry
 from openavc.utils.logger import get_logger
 
@@ -93,22 +98,6 @@ PLUGIN_APPLY_TIMEOUT = 10.0
 # the event mirror is dropped (the logger line is still written).
 MAX_PENDING_LOG_EVENTS = 1000
 
-# Extension types the panel/IDE understand. EXTENSIONS keys outside this set
-# are rejected at load — an authoring typo shouldn't silently do nothing.
-VALID_EXTENSION_TYPES = {
-    "views", "device_panels", "status_cards", "context_actions", "panel_elements",
-}
-
-# Field that uniquely identifies an extension within its type. panel_elements
-# are keyed by their element `type`; every other extension type uses `id`.
-_EXTENSION_ID_FIELD = {
-    "views": "id",
-    "device_panels": "id",
-    "status_cards": "id",
-    "context_actions": "id",
-    "panel_elements": "type",
-}
-
 # Valid macro action param field types (mirrors the macro builder's renderer support)
 VALID_MACRO_ACTION_PARAM_TYPES = {
     "text", "integer", "float", "boolean", "select",
@@ -126,30 +115,6 @@ _SCRIPT_API_RESERVED_NAMES = frozenset({
     "register", "unregister", "clear",
     # Anything starting with underscore is rejected by the regex above.
 })
-
-# Whitelisted iframe `sandbox` tokens a panel_elements extension can opt into.
-# `allow-scripts` is always present and not listed here. Tokens that would
-# escape the sandbox (`allow-popups-to-escape-sandbox`,
-# `allow-top-navigation`, `allow-pointer-lock`) are deliberately excluded.
-_ALLOWED_SANDBOX_PERMISSIONS = frozenset({
-    "allow-same-origin",
-    "allow-forms",
-    "allow-modals",
-    "allow-popups",
-})
-
-# Whitelisted Permissions-Policy tokens a panel_elements extension can opt
-# into via the iframe `allow` attribute. `camera`, `microphone`,
-# `geolocation`, and similar sensor-access tokens are deliberately
-# excluded — no v1 use case needs them and they have non-obvious
-# privacy implications.
-_ALLOWED_ALLOW_FEATURES = frozenset({
-    "autoplay",
-    "encrypted-media",
-    "fullscreen",
-    "picture-in-picture",
-})
-
 
 def get_platform_id() -> str:
     """Detect the current platform identifier."""
@@ -319,49 +284,6 @@ def validate_script_api(
                 f"method '{method_name}' handler '{handler_name}' is not async — "
                 f"add 'sync': True to SCRIPT_API entry if intentional"
             )
-
-    return True, ""
-
-
-def validate_extensions(
-    extensions: Any, plugin_id: str, plugin_class: type
-) -> tuple[bool, str]:
-    """Validate a plugin's EXTENSIONS declaration.
-
-    EXTENSIONS feeds the /api/plugins/extensions aggregation that the panel and
-    IDE render. Unlike MACRO_ACTIONS/SCRIPT_API this was previously unvalidated,
-    so a single malformed entry (a non-dict list element, a list where a dict was
-    expected) could blow up the serve-time loop for *every* plugin. Validate the
-    shape at load so a bad plugin fails to enable instead of blanking the whole
-    plugin UI.
-
-    Returns (valid, error_message).
-    """
-    if not isinstance(extensions, dict):
-        return False, "EXTENSIONS must be a dict"
-
-    for ext_type, ext_list in extensions.items():
-        if ext_type not in VALID_EXTENSION_TYPES:
-            return False, (
-                f"unknown extension type '{ext_type}' "
-                f"(allowed: {sorted(VALID_EXTENSION_TYPES)})"
-            )
-        if not isinstance(ext_list, list):
-            return False, f"extension type '{ext_type}' must be a list"
-
-        id_field = _EXTENSION_ID_FIELD[ext_type]
-        seen_ids: set[str] = set()
-        for i, ext in enumerate(ext_list):
-            if not isinstance(ext, dict):
-                return False, f"{ext_type}[{i}] must be a dict"
-            ext_id = ext.get(id_field)
-            if not ext_id or not isinstance(ext_id, str):
-                return False, f"{ext_type}[{i}] missing '{id_field}' (string)"
-            if ext_id in seen_ids:
-                return False, (
-                    f"{ext_type} has duplicate {id_field} '{ext_id}'"
-                )
-            seen_ids.add(ext_id)
 
     return True, ""
 
@@ -1435,9 +1357,7 @@ class PluginLoader:
                 "status": status,
                 "platforms": info.get("platforms", ["all"]),
                 "capabilities": info.get("capabilities", []),
-                "sandbox_permissions": self._collect_sandbox_permissions(
-                    plugin_id, plugin_class
-                ),
+                "sandbox_permissions": sandbox_permissions(plugin_id, plugin_class),
                 "guest_alias": info.get("guest_alias", ""),
                 "installed": True,
                 "compatible": self.is_platform_compatible(plugin_class),
@@ -1513,9 +1433,7 @@ class PluginLoader:
             "status": status,
             "platforms": info.get("platforms", ["all"]),
             "capabilities": info.get("capabilities", []),
-            "sandbox_permissions": self._collect_sandbox_permissions(
-                plugin_id, plugin_class
-            ),
+            "sandbox_permissions": sandbox_permissions(plugin_id, plugin_class),
             "dependencies": info.get("dependencies", []),
             "installed": True,
             "compatible": self.is_platform_compatible(plugin_class),
@@ -1623,213 +1541,9 @@ class PluginLoader:
         return result
 
     def get_all_extensions(self) -> dict[str, Any]:
-        """Get all extensions from running plugins, organized by extension type.
-
-        Each plugin's contribution is collected under its own try/except and
-        every entry is shape-checked, so one plugin shipping a malformed
-        EXTENSIONS (a non-dict, a list where a dict was expected, a non-dict
-        element) can't break the endpoint for every other plugin (A125). IDs are
-        de-duplicated across plugins so a second plugin can't silently shadow a
-        first plugin's view/card/element id (A619).
-
-        Sanitizes each extension's ``state_pattern`` to keep plugins inside their
-        ``plugin.<id>.*`` namespace. A hostile or careless extension that
-        declares ``state_pattern: "*"`` or ``"device.*"`` would otherwise let a
-        plugin's sidebar scrape unrelated state (A71).
-
-        For panel_elements, also sanitizes ``sandbox_permissions`` and
-        ``allow_features`` against whitelists. The panel runtime trusts
-        these values to set the iframe's sandbox tokens and Permissions-
-        Policy allow attribute; a plugin that tries to declare an
-        unrecognized or dangerous token gets it silently stripped here.
-        """
-        result: dict[str, list] = {
-            "views": [],
-            "device_panels": [],
-            "status_cards": [],
-            "context_actions": [],
-            "panel_elements": [],
-        }
-        # (ext_type, id) pairs already emitted — first plugin to claim an id wins.
-        seen_ids: set[tuple[str, str]] = set()
-
-        for plugin_id, instance in self._instances.items():
-            try:
-                plugin_class = type(instance)
-                extensions = getattr(plugin_class, "EXTENSIONS", None)
-                if extensions is None:
-                    continue
-                if not isinstance(extensions, dict):
-                    log.warning(
-                        "Plugin '%s' EXTENSIONS is not a dict (%s); skipping",
-                        plugin_id, type(extensions).__name__,
-                    )
-                    continue
-
-                info = plugin_class.PLUGIN_INFO
-                plugin_name = info.get("name", plugin_id)
-                namespace_prefix = f"plugin.{plugin_id}."
-
-                for ext_type in result:
-                    ext_list = extensions.get(ext_type, [])
-                    if not isinstance(ext_list, list):
-                        log.warning(
-                            "Plugin '%s' EXTENSIONS['%s'] is not a list; skipping",
-                            plugin_id, ext_type,
-                        )
-                        continue
-                    id_field = _EXTENSION_ID_FIELD[ext_type]
-                    for ext in ext_list:
-                        if not isinstance(ext, dict):
-                            log.warning(
-                                "Plugin '%s' %s entry is not a dict; skipping",
-                                plugin_id, ext_type,
-                            )
-                            continue
-                        ext_id = ext.get(id_field)
-                        if isinstance(ext_id, str) and ext_id:
-                            key = (ext_type, ext_id)
-                            if key in seen_ids:
-                                log.warning(
-                                    "Plugin '%s' %s '%s' duplicates an already-"
-                                    "registered id; skipping",
-                                    plugin_id, ext_type, ext_id,
-                                )
-                                continue
-                            seen_ids.add(key)
-                        safe_ext = {
-                            **ext,
-                            "plugin_id": plugin_id,
-                            "plugin_name": plugin_name,
-                        }
-                        pattern = safe_ext.get("state_pattern")
-                        if pattern is not None:
-                            safe_ext["state_pattern"] = self._sanitize_state_pattern(
-                                pattern, plugin_id, namespace_prefix
-                            )
-                        if ext_type == "panel_elements":
-                            safe_ext["sandbox_permissions"] = self._sanitize_token_list(
-                                safe_ext.get("sandbox_permissions"),
-                                _ALLOWED_SANDBOX_PERMISSIONS,
-                                plugin_id, "sandbox_permissions",
-                            )
-                            safe_ext["allow_features"] = self._sanitize_token_list(
-                                safe_ext.get("allow_features"),
-                                _ALLOWED_ALLOW_FEATURES,
-                                plugin_id, "allow_features",
-                            )
-                            # Surface the plugin's declared capabilities so the
-                            # panel iframe bridge can gate openavc:action requests
-                            # (device.command / state.set) against them, mirroring
-                            # the server-side PluginAPI capability checks.
-                            safe_ext["capabilities"] = list(
-                                info.get("capabilities", [])
-                            )
-                        result[ext_type].append(safe_ext)
-            except Exception:  # One bad plugin must not blank the whole endpoint
-                log.exception(
-                    "Failed to collect extensions for plugin '%s'", plugin_id
-                )
-
-        return result
-
-    def _collect_sandbox_permissions(
-        self, plugin_id: str, plugin_class: type
-    ) -> list[str]:
-        """Plugin-level union of the sanitized iframe sandbox tokens across
-        the plugin's panel elements.
-
-        Surfaced by list_plugins()/get_plugin_info() so the IDE can show the
-        grant alongside capabilities — declaring ``allow-same-origin`` means
-        the plugin's panel UI runs with full page access, part of the trust
-        granted at install time. Filtered against the same whitelist as
-        get_all_extensions(), so the UI reports what the panel runtime would
-        actually apply, not the raw declaration.
-        """
-        extensions = getattr(plugin_class, "EXTENSIONS", None)
-        if not isinstance(extensions, dict):
-            return []
-        ext_list = extensions.get("panel_elements", [])
-        if not isinstance(ext_list, list):
-            return []
-        result: list[str] = []
-        for ext in ext_list:
-            if not isinstance(ext, dict):
-                continue
-            for token in self._sanitize_token_list(
-                ext.get("sandbox_permissions"),
-                _ALLOWED_SANDBOX_PERMISSIONS,
-                plugin_id, "sandbox_permissions",
-            ):
-                if token not in result:
-                    result.append(token)
-        return result
-
-    @staticmethod
-    def _sanitize_token_list(
-        raw: Any, allowed: frozenset[str], plugin_id: str, field_name: str
-    ) -> list[str]:
-        """Filter a string list against a whitelist, dropping anything not on it.
-
-        Returns an empty list for missing, non-list, or non-string-element input.
-        Unknown tokens are dropped with a log warning so plugin authors can
-        diagnose typos and so policy escapes are visible in the system log.
-        """
-        if raw is None:
-            return []
-        if not isinstance(raw, list):
-            log.warning(
-                "Plugin '%s' %s is not a list (%r); ignoring",
-                plugin_id, field_name, raw,
-            )
-            return []
-        result: list[str] = []
-        for token in raw:
-            if not isinstance(token, str):
-                log.warning(
-                    "Plugin '%s' %s contains non-string token %r; ignoring",
-                    plugin_id, field_name, token,
-                )
-                continue
-            if token not in allowed:
-                log.warning(
-                    "Plugin '%s' %s requests unsupported token %r; ignoring "
-                    "(allowed: %s)",
-                    plugin_id, field_name, token, sorted(allowed),
-                )
-                continue
-            if token not in result:
-                result.append(token)
-        return result
-
-    @staticmethod
-    def _sanitize_state_pattern(
-        pattern: Any, plugin_id: str, namespace_prefix: str
-    ) -> str:
-        """Force a plugin's state_pattern into its own namespace.
-
-        Returns the original pattern if it's safely scoped; otherwise rewrites
-        to the default ``plugin.<id>.*`` and logs a warning. ``{device_id}``
-        and similar placeholders inside the namespace are allowed.
-        """
-        default_pattern = f"{namespace_prefix}*"
-        if not isinstance(pattern, str):
-            log.warning(
-                "Plugin '%s' state_pattern is not a string (%r); using default %r",
-                plugin_id, pattern, default_pattern,
-            )
-            return default_pattern
-        trimmed = pattern.strip()
-        if not trimmed:
-            return default_pattern
-        if not trimmed.startswith(namespace_prefix):
-            log.warning(
-                "Plugin '%s' state_pattern %r escapes its namespace; "
-                "rewriting to %r",
-                plugin_id, trimmed, default_pattern,
-            )
-            return default_pattern
-        return trimmed
+        """Every running plugin's extensions by type, as the panel and the IDE
+        receive them (core/plugin_extensions.py)."""
+        return collect_extensions(self._instances)
 
     # ──── Validation Endpoint Support ────
 

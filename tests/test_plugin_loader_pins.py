@@ -20,6 +20,7 @@ import pytest
 
 from openavc.core import plugin_loader as loader_module
 from openavc.core.event_bus import EventBus
+from openavc.core.plugin_extensions import sanitize_state_pattern, sanitize_token_list
 from openavc.core.plugin_loader import (
     PLUGIN_STOP_TIMEOUT,
     PluginLoader,
@@ -823,12 +824,12 @@ def test_the_sandbox_grant_a_plugin_is_listed_with(loader, extensions, expected)
 
 
 def test_the_sanitizers_alone():
-    tokens = PluginLoader._sanitize_token_list
+    tokens = sanitize_token_list
     allowed = frozenset({"a", "b"})
     assert tokens(None, allowed, "p", "f") == []
     assert tokens(("a",), allowed, "p", "f") == []
     assert tokens(["b", "a", "b", "z", None], allowed, "p", "f") == ["b", "a"]
-    pattern = PluginLoader._sanitize_state_pattern
+    pattern = sanitize_state_pattern
     assert pattern("plugin.p.x", "p", "plugin.p.") == "plugin.p.x"
     assert pattern("  plugin.p.{device_id}  ", "p", "plugin.p.") == "plugin.p.{device_id}"
     assert pattern("", "p", "plugin.p.") == "plugin.p.*"
