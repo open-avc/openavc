@@ -10,7 +10,7 @@ import {
   type BindingRefIds,
   type BrokenReference,
 } from "./bindingActions";
-import { generateId } from "./newElement";
+import { firstFree, generateId } from "./newElement";
 import { rewriteElement } from "./projectRewrites";
 // Both generated, both from Python, because both are measured facts rather than
 // design decisions: the per-control floors were binary-searched against a real
@@ -944,24 +944,9 @@ export function resolveDropParent(
 }
 
 /**
- * The first spelling nobody has taken, counting up from `from`, and the count
- * it took. Page ids and names, a page copy's controls and a layout variant's
- * id are each named this way; `spell` says what the nth try is called.
- */
-function firstFree(
-  taken: ReadonlySet<string>,
-  spell: (n: number) => string,
-  from = 1,
-): [string, number] {
-  let n = from;
-  while (taken.has(spell(n))) n++;
-  return [spell(n), n];
-}
-
-/**
  * Every id a new control on any page may not take: every page's controls, and
- * the reserved ones (master elements share the ui.<id> namespace, so a copy
- * cannot be named onto a master's id).
+ * the reserved ones (master elements share the ui.<id> namespace, so a copy, or
+ * a control promoted to or demoted from a master, cannot be named onto one).
  */
 function takenElementIds(pages: UIPage[], reservedIds: string[]): Set<string> {
   const taken = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
@@ -1530,10 +1515,13 @@ const PAGE_BOX: Placement = { x: 0, y: 0, w: 100, h: 100 };
 /**
  * A box stored as percentages of `parent`, in the space `parent` is in.
  *
- * This and `parentSpace` below are the two directions of THE conversion: here,
- * every read of a child's box in page space and every write of a page-space box
- * back against a container goes through one of them. They take no view on a
- * parent with no area; each caller decides what that means for it (`hasArea`).
+ * This and `parentSpace` below are the formula, each way, that the page-space
+ * read (`absolutePlacements`, `toPageBox`) and every write of a page-space box
+ * back against a container (the alignment tools, a reparent, a palette drop)
+ * use. They take no view on a parent with no area; each caller decides what
+ * that means for it (`hasArea`). Which box a child is measured against is
+ * still each caller's own lookup, and `referenceParentBox` walks the chain in
+ * pixels with its own answer for a container with no box.
  */
 function pageSpace(relative: Placement, parent: Placement): Placement {
   return {
@@ -1586,14 +1574,6 @@ function withAbsolutePlacements(
   return withPlacements(page, relative, layoutId);
 }
 
-/**
- * Drop any element whose container is also selected.
- *
- * A container's children are percentages OF it, so moving or resizing the
- * container already carries them. Acting on both writes the same travel twice
- * and the child ends up somewhere nobody asked for. Easy to hit now that a
- * marquee can sweep a container and its contents in one gesture.
- */
 /**
  * A locked element never moves, but it still counts.
  *
@@ -1992,6 +1972,14 @@ export function outlineDropParent(
   return canReparent(page, draggedId, parentId) ? parentId : undefined;
 }
 
+/**
+ * Drop any element whose container is also selected.
+ *
+ * A container's children are percentages OF it, so moving or resizing the
+ * container already carries them. Acting on both writes the same travel twice
+ * and the child ends up somewhere nobody asked for. Easy to hit now that a
+ * marquee can sweep a container and its contents in one gesture.
+ */
 export function topmostSelection(page: UIPage, elementIds: string[]): string[] {
   const selected = new Set(elementIds);
   const byId = new Map(page.elements.map((e) => [e.id, e]));
@@ -2022,8 +2010,8 @@ interface Arranging {
   ids: string[];
   /** The same controls in page order, each one on the page. */
   targets: UIElement[];
-  /** Every box on the page, in page space. */
-  absolute: Record<string, Placement>;
+  /** Every box on the page, in page space; read once, after a tool's own guard. */
+  pageBoxes: () => Record<string, Placement>;
   /** The selected controls a tool may move. */
   movable: Set<string>;
 }
@@ -2041,15 +2029,16 @@ function arrangeSelection(
     if (p.id !== pageId) return p;
     const ids = topmostSelection(p, selection.elementIds);
     const kept = new Set(ids);
-    const absolute = absolutePlacements(p, selection.layoutId);
+    let absolute: Record<string, Placement> | undefined;
+    const pageBoxes = () => (absolute ??= absolutePlacements(p, selection.layoutId));
     const moved = arrange({
       ids,
       targets: p.elements.filter((el) => kept.has(el.id)),
-      absolute,
+      pageBoxes,
       movable: movableIds(p, ids),
     });
     if (Object.keys(moved).length === 0) return p;
-    return withAbsolutePlacements(p, moved, absolute, selection.layoutId);
+    return withAbsolutePlacements(p, moved, pageBoxes(), selection.layoutId);
   });
 }
 
@@ -2098,7 +2087,9 @@ export function alignElements(
   action: AlignAction,
   layoutId?: string | null,
 ): UIPage[] {
-  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ targets, absolute, movable }) => {
+  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ targets, pageBoxes, movable }) => {
+    if (targets.length === 0) return {};
+    const absolute = pageBoxes();
     const boxes = new Map(
       targets.map((el) => [el.id, absolute[el.id] ?? { ...DEFAULT_PLACEMENT }]),
     );
@@ -2136,8 +2127,9 @@ export function distributeElements(
   axis: DistributeAxis,
   layoutId?: string | null,
 ): UIPage[] {
-  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ targets, absolute, movable }) => {
+  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ targets, pageBoxes, movable }) => {
     if (targets.length < 3) return {};
+    const absolute = pageBoxes();
     const pos = axis === "horizontal" ? "x" : "y";
     const size = axis === "horizontal" ? "w" : "h";
     const boxes = new Map(
@@ -2202,8 +2194,10 @@ export function matchSizeElements(
   action: MatchSizeAction,
   layoutId?: string | null,
 ): UIPage[] {
-  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ ids, absolute, movable }) => {
-    const anchor = ids.length < 2 ? undefined : absolute[ids[0]];
+  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ ids, pageBoxes, movable }) => {
+    if (ids.length < 2) return {};
+    const absolute = pageBoxes();
+    const anchor = absolute[ids[0]];
     if (!anchor) return {};
     const moved: Arranged = {};
     for (const id of ids.slice(1)) {
@@ -2302,10 +2296,7 @@ export function promoteToMaster(
   // Masters and page elements share the ui.<id> namespace. If the promoted
   // id is already taken (possible in imported/hand-edited projects), rename
   // the promoted copy and rewrite its self-references.
-  const taken = new Set<string>([
-    ...masterElements.map((m) => m.id),
-    ...newPages.flatMap((p) => p.elements.map((e) => e.id)),
-  ]);
+  const taken = takenElementIds(newPages, masterElements.map((m) => m.id));
   let promoted: UIElement = element;
   if (taken.has(promoted.id)) {
     const newId = generateId(promoted.type, taken);
@@ -2351,10 +2342,7 @@ export function demoteFromMaster(
   // this id while it lived as a master in an imported project), rename the
   // demoted copy and rewrite its self-references — two same-id elements would
   // break ui.<id> resolution at runtime.
-  const taken = new Set<string>([
-    ...newMasters.map((m) => m.id),
-    ...pages.flatMap((p) => p.elements.map((e) => e.id)),
-  ]);
+  const taken = takenElementIds(pages, newMasters.map((m) => m.id));
   if (taken.has(demoted.id)) {
     const newId = generateId(demoted.type, taken);
     demoted = rewriteElement(demoted, demoted.id, newId);

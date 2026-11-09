@@ -15,15 +15,25 @@
 import type { UIElement } from "../../api/types";
 import type { PluginExtension } from "../../api/pluginClient";
 
+/**
+ * The first spelling nobody has taken, counting up from `from`, and the count
+ * it took. A control's id is named this way (`generateId`), and so are a page's
+ * id and name, a page copy's controls and a layout variant's id in
+ * uiBuilderHelpers.ts; `spell` says what the nth try is called.
+ */
+export function firstFree(
+  taken: ReadonlySet<string>,
+  spell: (n: number) => string,
+  from = 1,
+): [string, number] {
+  let n = from;
+  while (taken.has(spell(n))) n++;
+  return [spell(n), n];
+}
+
 /** The first `<type>_<n>` nothing holds yet, counting from 1. */
 export function generateId(type: string, existingIds: Set<string>): string {
-  let counter = 1;
-  let id = `${type}_${counter}`;
-  while (existingIds.has(id)) {
-    counter++;
-    id = `${type}_${counter}`;
-  }
-  return id;
+  return firstFree(existingIds, (n) => `${type}_${n}`)[0];
 }
 
 /**
