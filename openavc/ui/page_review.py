@@ -50,6 +50,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 from math import isfinite
+from operator import gt, lt
 from typing import Any
 
 from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
@@ -849,6 +850,8 @@ def style_finding(
         f"asks for more room than that: {reasons}. style measurements are rem, not "
         f"pixels -- px / {_num(REM_BASE_PX)} -- so write {fixes}.",
     )
+
+
 def box_findings(
     element: Mapping[str, Any], seat: Seat, theme: Mapping[str, Any] | None = None,
 ) -> list[Finding]:
@@ -1199,6 +1202,11 @@ def _stored_master_box(placements: Mapping[str, Any], orientation: str) -> Any:
     rather than borrowing a layout's -- and the panel falls back rather than
     drawing nothing, so a master with only a landscape box still appears on a
     portrait screen. The Builder's twin is ``storedMasterBox``.
+
+    One difference from the panel: past the named orientations the panel takes
+    the first stored value and this the first that is set, so a box stored as
+    null draws nothing there and is skipped here. The project model refuses a
+    null box, so no loaded project reaches it.
     """
     return (
         placements.get(orientation)
@@ -1359,6 +1367,8 @@ def buried_master_findings(
             if in_scope(el_id) and not _covered_ancestor(el_id, covered, parents)
         )
     return findings
+
+
 def _covered_ancestor(
     el_id: str, covered: Mapping[str, Any], parents: Mapping[str, str | None],
 ) -> bool:
@@ -2379,9 +2389,10 @@ def _range_fills(
 ) -> list[Adjustment]:
     """Each part of the range the author left out, filled from the declaration.
 
-    Mirrors the Builder's "Match driver range" (DeviceValuePicker): the same
-    types, the same fields, the same precedence -- a value the author wrote,
-    zero included, is never replaced.
+    Shares its type sets with the Builder's "Match driver range"
+    (DeviceValuePicker), but not its precedence: that button overwrites what the
+    author wrote, and this never does -- a value the author wrote, zero
+    included, is kept, and each part is filled on its own.
     """
     el_id = str(element.get("id", "?"))
     fills: list[Adjustment] = []
@@ -2401,9 +2412,9 @@ def _range_fills(
 
 #: The two ends of a control's travel, each with the comparison that puts it
 #: past the device's own bound and the words for that end.
-_TRAVEL_ENDS: tuple[tuple[str, Callable[[float, float], bool], str, str], ...] = (
-    ("min", lambda written, device: written < device, "below", "bottom"),
-    ("max", lambda written, device: written > device, "above", "top"),
+_TRAVEL_ENDS: tuple[tuple[str, Callable[[Any, Any], bool], str, str], ...] = (
+    ("min", lt, "below", "bottom"),
+    ("max", gt, "above", "top"),
 )
 
 

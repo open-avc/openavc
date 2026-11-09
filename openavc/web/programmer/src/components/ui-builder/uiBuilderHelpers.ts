@@ -4580,9 +4580,11 @@ export function mutuallyExclusive(a: UIElement, b: UIElement): boolean {
  * borrowing a layout's -- and the panel falls back rather than drawing nothing,
  * so a master with only a landscape box still appears on a portrait screen.
  *
- * The canvas reads the same chain through `masterPlacement` above. The two
- * differ only on a box stored as null, which the project model refuses: this
- * one, like `_stored_master_box` on the AI side, skips it.
+ * The canvas reads the same chain through `masterPlacement` above, exactly as
+ * the panel does. This one, like `_stored_master_box` on the AI side, differs
+ * from both past the named orientations: they take the first stored value and
+ * this the first that is set, so a box stored as null draws nothing there and
+ * is skipped here. The project model refuses a null box.
  */
 function storedMasterBox(placements: Record<string, Placement>, orientation: string): Placement | null {
   return (
