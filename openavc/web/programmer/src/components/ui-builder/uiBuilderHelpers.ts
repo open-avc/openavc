@@ -4711,6 +4711,42 @@ export function elementTypeFinding(el: UIElement): ReviewFinding | null {
   };
 }
 
+/** One element's `show` bindings, beside what its type's renderer reads. */
+interface Shown {
+  el: UIElement;
+  honored: readonly string[];
+  show: Record<string, unknown>;
+}
+
+function shownBindings(el: UIElement): Shown | null {
+  const honored = own(HONORED_SHOW_SLOTS, el.type);
+  if (!honored) return null; // a type this module has never heard of; say nothing
+  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
+    | Record<string, unknown>
+    | undefined;
+  if (!show || typeof show !== "object") return null;
+  return { el, honored, show };
+}
+
+/** `show.look` when this type reads one at all, else null. */
+function shownLook(shown: Shown): Record<string, unknown> | null {
+  const look = shown.show.look;
+  return shown.honored.includes("look") && look && typeof look === "object" && !Array.isArray(look)
+    ? (look as Record<string, unknown>)
+    : null;
+}
+
+/** The sentence for a per-state setting this type takes nothing of from show.look.
+ *
+ *  `setting` continues `show.look`: ` sets an icon for on, off`. */
+function lookDropped(shown: Shown, setting: string, noun: string, remedy: string): string {
+  const { el } = shown;
+  return (
+    `${el.id} (${el.type}): show.look${setting}, but ${withArticle(el.type)} takes only ` +
+    `${lookTakes(el.type)} from show.look, so that ${noun} never appears. ${remedy}`
+  );
+}
+
 /**
  * Bindings this element type's renderer never reads.
  *
@@ -4721,19 +4757,23 @@ export function elementTypeFinding(el: UIElement): ReviewFinding | null {
  * binding written by anything else is invisible until it is badged.
  */
 export function bindingFindings(el: UIElement): ReviewFinding[] {
-  const honored = own(HONORED_SHOW_SLOTS, el.type);
-  if (!honored) return []; // a type this module has never heard of; say nothing
-  const show = ((el.bindings ?? {}) as Record<string, unknown>).show as
-    | Record<string, unknown>
-    | undefined;
-  if (!show || typeof show !== "object") return [];
+  const shown = shownBindings(el);
+  if (!shown) return [];
+  return [
+    ...unreadSlotFindings(shown),
+    ...lookLabelFindings(shown),
+    ...lookFieldFindings(shown),
+    ...keylessSlotFindings(shown),
+  ];
+}
 
-  const findings: ReviewFinding[] = [];
+/** A whole show slot this type has no code path for. */
+function unreadSlotFindings({ el, honored, show }: Shown): ReviewFinding[] {
   const reads =
     REVIEWED_SHOW_SLOTS.filter((slot) => honored.includes(slot))
       .map((slot) => `show.${slot}`)
       .join(", ") || "nothing from show but show.visible_when";
-
+  const findings: ReviewFinding[] = [];
   for (const slot of REVIEWED_SHOW_SLOTS) {
     if (!show[slot] || honored.includes(slot)) continue;
     const extra =
@@ -4750,86 +4790,111 @@ export function bindingFindings(el: UIElement): ReviewFinding[] {
       key: `binding_not_rendered|${el.id}|${slot}`,
     });
   }
+  return findings;
+}
 
-  // A look binding can be honored for its colour while its state labels are
-  // not: a status LED tints its dot, a select styles its options, an image
-  // swaps its picture, and none of them has anywhere to put text.
-  const look = show.look as Record<string, unknown> | undefined;
-  const states = look && typeof look === "object" ? look.states : undefined;
-  if (
-    honored.includes("look") &&
-    !STATE_LABEL_TYPES.includes(el.type) &&
-    states && typeof states === "object" && !Array.isArray(states)
-  ) {
-    const labelled = Object.entries(states as Record<string, unknown>)
-      .filter(([, spec]) =>
-        spec && typeof spec === "object" && !Array.isArray(spec) &&
-        (spec as Record<string, unknown>).label !== undefined &&
-        (spec as Record<string, unknown>).label !== null)
-      .map(([name]) => name)
-      .sort();
-    if (labelled.length) {
-      findings.push({
-        elementId: el.id,
-        kind: "binding_not_rendered",
-        message:
-          `${el.id} (${el.type}): show.look.states sets a label for ` +
-          `${labelled.join(", ")}, but ${withArticle(el.type)} takes only ` +
-          `${lookTakes(el.type)} from show.look, so that text never appears. ` +
-          (own(STATE_TEXT_REMEDY, el.type) ??
-            "Use the element's own label, or a label element bound to the same key."),
-        key: `binding_not_rendered|${el.id}|look.states.label`,
-      });
-    }
+/**
+ * Per-state words on a type that takes only colour from a look.
+ *
+ * A look binding can be honored for its colour while its state labels are not:
+ * a status LED tints its dot, a select styles its options, an image swaps its
+ * picture, and none of them has anywhere to put text. A label that is present
+ * counts even when it is empty: the renderer acts on the field.
+ */
+function lookLabelFindings(shown: Shown): ReviewFinding[] {
+  const look = shownLook(shown);
+  const { el } = shown;
+  if (!look || STATE_LABEL_TYPES.includes(el.type)) return [];
+  const states = look.states;
+  if (!states || typeof states !== "object" || Array.isArray(states)) return [];
+  const labelled = Object.entries(states as Record<string, unknown>)
+    .filter(([, spec]) =>
+      spec && typeof spec === "object" && !Array.isArray(spec) &&
+      (spec as Record<string, unknown>).label !== undefined &&
+      (spec as Record<string, unknown>).label !== null)
+    .map(([name]) => name)
+    .sort();
+  if (!labelled.length) return [];
+  const remedy =
+    own(STATE_TEXT_REMEDY, el.type) ??
+    "Use the element's own label, or a label element bound to the same key.";
+  return [{
+    elementId: el.id,
+    kind: "binding_not_rendered",
+    message: lookDropped(shown, `.states sets a label for ${labelled.join(", ")}`, "text", remedy),
+    key: `binding_not_rendered|${el.id}|look.states.label`,
+  }];
+}
+
+/** A per-state look field only some types draw, and what to say when one is dropped. */
+interface LookField {
+  field: string;
+  drawnBy: readonly string[];
+  /** How the sentence introduces one: `an icon`. */
+  named: string;
+  /** How it refers back to it: `icon`. */
+  noun: string;
+  /** What to do instead, from the element's type. */
+  remedy: (type: string) => string;
+}
+
+function iconRemedy(type: string): string {
+  return (own(HONORED_PROPERTIES, type) ?? []).includes("icon")
+    ? "Set the element's own icon -- it draws that one, it just cannot change it per state."
+    : "Use a button, which does draw one.";
+}
+
+/**
+ * Content a look can set per state, and the only types that draw it. A look can
+ * be honored for its colour AND its text while a per-state icon is still
+ * dropped, because an icon is content rather than style and only the button's
+ * evaluator rebuilds it; a per-state picture is drawn only by the types in
+ * STATE_IMAGE_TYPES, and a label, a status LED or a select stores one and never
+ * shows it. A new per-state field the panel draws for some types is one row.
+ */
+const LOOK_FIELDS: readonly LookField[] = [
+  { field: "icon", drawnBy: STATE_ICON_TYPES, named: "an icon", noun: "icon", remedy: iconRemedy },
+  {
+    field: "button_image",
+    drawnBy: STATE_IMAGE_TYPES,
+    named: "a picture (button_image)",
+    noun: "picture",
+    remedy: () => "Use an image element bound to the same key.",
+  },
+];
+
+/** Each per-state field in LOOK_FIELDS set on a type that does not draw it. */
+function lookFieldFindings(shown: Shown): ReviewFinding[] {
+  const look = shownLook(shown);
+  if (!look) return [];
+  const { el } = shown;
+  const findings: ReviewFinding[] = [];
+  for (const spec of LOOK_FIELDS) {
+    if (spec.drawnBy.includes(el.type)) continue;
+    const names = lookStatesNaming(look, spec.field);
+    if (!names.length) continue;
+    findings.push({
+      elementId: el.id,
+      kind: "binding_not_rendered",
+      message: lookDropped(
+        shown, ` sets ${spec.named} for ${names.join(", ")}`, spec.noun, spec.remedy(el.type),
+      ),
+      key: `binding_not_rendered|${el.id}|look.${spec.field}`,
+    });
   }
+  return findings;
+}
 
-  // ...and the same one step further in: a look can be honored for its colour
-  // AND its text while a per-state icon is still dropped, because an icon is
-  // content rather than style and only the button's evaluator rebuilds it.
-  if (honored.includes("look") && !STATE_ICON_TYPES.includes(el.type) &&
-      look && typeof look === "object" && !Array.isArray(look)) {
-    const iconed = lookStatesNaming(look, "icon");
-    if (iconed.length) {
-      const remedy = (own(HONORED_PROPERTIES, el.type) ?? []).includes("icon")
-        ? "Set the element's own icon -- it draws that one, it just cannot " +
-          "change it per state."
-        : "Use a button, which does draw one.";
-      findings.push({
-        elementId: el.id,
-        kind: "binding_not_rendered",
-        message:
-          `${el.id} (${el.type}): show.look sets an icon for ${iconed.join(", ")}, ` +
-          `but ${withArticle(el.type)} takes only ${lookTakes(el.type)} from show.look, so ` +
-          `that icon never appears. ${remedy}`,
-        key: `binding_not_rendered|${el.id}|look.icon`,
-      });
-    }
-  }
-
-  // ...and a per-state picture, which only the types in STATE_IMAGE_TYPES draw.
-  // A label, a status LED or a select stores one and never shows it.
-  if (honored.includes("look") && !STATE_IMAGE_TYPES.includes(el.type) &&
-      look && typeof look === "object" && !Array.isArray(look)) {
-    const pictured = lookStatesNaming(look, "button_image");
-    if (pictured.length) {
-      findings.push({
-        elementId: el.id,
-        kind: "binding_not_rendered",
-        message:
-          `${el.id} (${el.type}): show.look sets a picture (button_image) for ` +
-          `${pictured.join(", ")}, but ${withArticle(el.type)} takes only ` +
-          `${lookTakes(el.type)} from show.look, so that picture never appears. ` +
-          `Use an image element bound to the same key.`,
-        key: `binding_not_rendered|${el.id}|look.button_image`,
-      });
-    }
-  }
-
-  // A binding the renderer DOES read, that names nothing to read. It is the
-  // half-finished state every one of these passes through -- the editor writes
-  // the binding when the source is chosen and the key a moment later -- and
-  // left that way it is worse than no binding at all, because every other
-  // check here treats a present binding as a supplied one and goes quiet.
+/**
+ * A binding the renderer DOES read, that names nothing to read.
+ *
+ * It is the half-finished state every one of these passes through -- the editor
+ * writes the binding when the source is chosen and the key a moment later -- and
+ * left that way it is worse than no binding at all, because every other check
+ * here treats a present binding as a supplied one and goes quiet.
+ */
+function keylessSlotFindings({ el, honored, show }: Shown): ReviewFinding[] {
+  const findings: ReviewFinding[] = [];
   for (const slot of REVIEWED_SHOW_SLOTS) {
     const binding = show[slot] as Record<string, unknown> | undefined;
     if (!honored.includes(slot) || !binding || typeof binding !== "object" ||

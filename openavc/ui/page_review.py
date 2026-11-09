@@ -1709,6 +1709,45 @@ def matrix_findings(element: Mapping[str, Any]) -> list[Finding]:
     return findings
 
 
+@dataclass(frozen=True)
+class _Shown:
+    """One element's ``show`` bindings, beside what its type's renderer reads."""
+
+    el_id: str
+    el_type: str
+    honored: frozenset[str]
+    show: Mapping[str, Any]
+
+    @property
+    def look(self) -> Mapping[str, Any] | None:
+        """``show.look`` when this type reads one at all, else None."""
+        look = self.show.get("look")
+        return look if "look" in self.honored and isinstance(look, Mapping) else None
+
+    def dropped(self, setting: str, noun: str, remedy: str) -> str:
+        """The sentence for a per-state setting this type takes nothing of from show.look.
+
+        ``setting`` continues ``show.look``: `` sets an icon for on, off``.
+        """
+        return (
+            f"{self.el_id} ({self.el_type}): show.look{setting}, but {_a(self.el_type)} "
+            f"takes only {_look_takes(self.el_type)} from show.look, so that {noun} never "
+            f"appears. {remedy}"
+        )
+
+
+def _shown(element: Mapping[str, Any]) -> _Shown | None:
+    el_type = str(element.get("type", ""))
+    honored = HONORED_SHOW_SLOTS.get(el_type)
+    if honored is None:  # a type this module has never heard of; say nothing
+        return None
+    bindings = element.get("bindings")
+    show = bindings.get("show") if isinstance(bindings, Mapping) else None
+    if not isinstance(show, Mapping):
+        return None
+    return _Shown(str(element.get("id", "?")), el_type, honored, show)
+
+
 def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
     """Bindings this element type's renderer never reads.
 
@@ -1717,110 +1756,146 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
     for this type. From the outside it is indistinguishable from a value that
     never changes.
     """
-    el_type = str(element.get("type", ""))
-    honored = HONORED_SHOW_SLOTS.get(el_type)
-    if honored is None:  # a type this module has never heard of; say nothing
+    shown = _shown(element)
+    if shown is None:
         return []
-    bindings = element.get("bindings")
-    show = bindings.get("show") if isinstance(bindings, Mapping) else None
-    if not isinstance(show, Mapping):
-        return []
+    return (
+        _unread_slot_findings(shown)
+        + _look_label_findings(shown)
+        + _look_field_findings(shown)
+        + _keyless_slot_findings(shown)
+    )
 
-    el_id = str(element.get("id", "?"))
-    findings: list[Finding] = []
+
+def _unread_slot_findings(shown: _Shown) -> list[Finding]:
+    """A whole show slot this type has no code path for."""
     reads = (
-        ", ".join(f"show.{slot}" for slot in _SLOTS if slot in honored)
+        ", ".join(f"show.{slot}" for slot in _SLOTS if slot in shown.honored)
         or "nothing from show but show.visible_when"
     )
+    findings: list[Finding] = []
     for slot in _SLOTS:
-        if not show.get(slot) or slot in honored:
+        if not shown.show.get(slot) or slot in shown.honored:
             continue
         extra = ""
-        if slot == "look" and "value" in honored:
+        if slot == "look" and "value" in shown.honored:
             extra = (
                 " Put whatever depended on it into show.value (a condition with "
                 "text_true / text_false), or use a button."
             )
         findings.append(Finding(
-            el_id,
+            shown.el_id,
             "binding_not_rendered",
-            f"{el_id} ({el_type}) declares show.{slot}, which {_a(el_type)} does not render "
-            f"-- it reads {reads}. That binding has no effect.{extra}",
-            key=("binding_not_rendered", el_id, slot),
+            f"{shown.el_id} ({shown.el_type}) declares show.{slot}, which "
+            f"{_a(shown.el_type)} does not render -- it reads {reads}. That binding has "
+            f"no effect.{extra}",
+            key=("binding_not_rendered", shown.el_id, slot),
         ))
+    return findings
 
-    # A look binding can be honored for its colour while its state labels are
-    # not: a status LED tints its dot, a select styles its options, an image
-    # swaps its picture, and none of them has anywhere to put text.
-    look = show.get("look")
-    if (
-        "look" in honored
-        and el_type not in STATE_LABEL_TYPES
-        and isinstance(look, Mapping)
-        and isinstance(look.get("states"), Mapping)
-    ):
-        labelled = sorted(
-            str(name) for name, spec in look["states"].items()
-            if isinstance(spec, Mapping) and spec.get("label") is not None
-        )
-        if labelled:
+
+def _look_label_findings(shown: _Shown) -> list[Finding]:
+    """Per-state words on a type that takes only colour from a look.
+
+    A look binding can be honored for its colour while its state labels are
+    not: a status LED tints its dot, a select styles its options, an image
+    swaps its picture, and none of them has anywhere to put text. A label that
+    is present counts even when it is empty: the renderer acts on the field.
+    """
+    look = shown.look
+    if look is None or shown.el_type in STATE_LABEL_TYPES:
+        return []
+    states = look.get("states")
+    if not isinstance(states, Mapping):
+        return []
+    labelled = sorted(
+        str(name) for name, spec in states.items()
+        if isinstance(spec, Mapping) and spec.get("label") is not None
+    )
+    if not labelled:
+        return []
+    remedy = _STATE_TEXT_REMEDY.get(
+        shown.el_type,
+        "Use the element's own label, or a label element bound to the same key.",
+    )
+    return [Finding(
+        shown.el_id,
+        "binding_not_rendered",
+        shown.dropped(f".states sets a label for {', '.join(labelled)}", "text", remedy),
+        key=("binding_not_rendered", shown.el_id, "look.states.label"),
+    )]
+
+
+@dataclass(frozen=True)
+class _LookField:
+    """A per-state look field only some types draw, and what to say when one is dropped."""
+
+    field: str
+    drawn_by: frozenset[str]
+    named: str
+    """How the sentence introduces one: ``an icon``."""
+    noun: str
+    """How it refers back to it: ``icon``."""
+    remedy: Callable[[str], str]
+    """What to do instead, from the element's type."""
+
+
+def _icon_remedy(el_type: str) -> str:
+    if "icon" in HONORED_PROPERTIES.get(el_type, frozenset()):
+        return "Set the element's own icon -- it draws that one, it just cannot change it per state."
+    return "Use a button, which does draw one."
+
+
+#: Content a look can set per state, and the only types that draw it. A look can
+#: be honored for its colour AND its text while a per-state icon is still
+#: dropped, because an icon is content rather than style and only the button's
+#: evaluator rebuilds it; a per-state picture is drawn only by the types in
+#: STATE_IMAGE_TYPES, and a label, a status LED or a select stores one and never
+#: shows it. A new per-state field the panel draws for some types is one row.
+_LOOK_FIELDS = (
+    _LookField("icon", STATE_ICON_TYPES, "an icon", "icon", _icon_remedy),
+    _LookField(
+        "button_image", STATE_IMAGE_TYPES, "a picture (button_image)", "picture",
+        lambda _el_type: "Use an image element bound to the same key.",
+    ),
+)
+
+
+def _look_field_findings(shown: _Shown) -> list[Finding]:
+    """Each per-state field in ``_LOOK_FIELDS`` set on a type that does not draw it."""
+    look = shown.look
+    if look is None:
+        return []
+    findings: list[Finding] = []
+    for spec in _LOOK_FIELDS:
+        if shown.el_type in spec.drawn_by:
+            continue
+        names = _look_states_naming(look, spec.field)
+        if names:
             findings.append(Finding(
-                el_id,
+                shown.el_id,
                 "binding_not_rendered",
-                f"{el_id} ({el_type}): show.look.states sets a label for "
-                f"{', '.join(labelled)}, but {_a(el_type)} takes only "
-                f"{_look_takes(el_type)} from show.look, so that text never appears. "
-                + _STATE_TEXT_REMEDY.get(
-                    el_type,
-                    "Use the element's own label, or a label element bound to the same key.",
+                shown.dropped(
+                    f" sets {spec.named} for {', '.join(names)}", spec.noun,
+                    spec.remedy(shown.el_type),
                 ),
-                key=("binding_not_rendered", el_id, "look.states.label"),
+                key=("binding_not_rendered", shown.el_id, f"look.{spec.field}"),
             ))
+    return findings
 
-    # ...and the same one step further in: a look can be honored for its colour
-    # AND its text while a per-state icon is still dropped, because an icon is
-    # content rather than style and only the button's evaluator rebuilds it.
-    if "look" in honored and el_type not in STATE_ICON_TYPES and isinstance(look, Mapping):
-        iconed = _look_states_naming(look, "icon")
-        if iconed:
-            remedy = (
-                "Set the element's own icon -- it draws that one, it just cannot "
-                "change it per state."
-                if "icon" in HONORED_PROPERTIES.get(el_type, frozenset())
-                else "Use a button, which does draw one."
-            )
-            findings.append(Finding(
-                el_id,
-                "binding_not_rendered",
-                f"{el_id} ({el_type}): show.look sets an icon for {', '.join(iconed)}, "
-                f"but {_a(el_type)} takes only {_look_takes(el_type)} from show.look, so "
-                f"that icon never appears. {remedy}",
-                key=("binding_not_rendered", el_id, "look.icon"),
-            ))
 
-    # ...and a per-state picture, which only the types in STATE_IMAGE_TYPES draw.
-    # A label, a status LED or a select stores one and never shows it.
-    if "look" in honored and el_type not in STATE_IMAGE_TYPES and isinstance(look, Mapping):
-        pictured = _look_states_naming(look, "button_image")
-        if pictured:
-            findings.append(Finding(
-                el_id,
-                "binding_not_rendered",
-                f"{el_id} ({el_type}): show.look sets a picture (button_image) for "
-                f"{', '.join(pictured)}, but {_a(el_type)} takes only "
-                f"{_look_takes(el_type)} from show.look, so that picture never appears. "
-                f"Use an image element bound to the same key.",
-                key=("binding_not_rendered", el_id, "look.button_image"),
-            ))
+def _keyless_slot_findings(shown: _Shown) -> list[Finding]:
+    """A binding the renderer DOES read, that names nothing to read.
 
-    # A binding the renderer DOES read, that names nothing to read. It is the
-    # half-finished state every one of these passes through -- the editor writes
-    # the binding when the source is chosen and the key a moment later -- and
-    # left that way it is worse than no binding at all, because every other
-    # check here treats a present binding as a supplied one and goes quiet.
+    It is the half-finished state every one of these passes through -- the
+    editor writes the binding when the source is chosen and the key a moment
+    later -- and left that way it is worse than no binding at all, because every
+    other check here treats a present binding as a supplied one and goes quiet.
+    """
+    findings: list[Finding] = []
     for slot in _SLOTS:
-        binding = show.get(slot)
-        if slot not in honored or not isinstance(binding, Mapping):
+        binding = shown.show.get(slot)
+        if slot not in shown.honored or not isinstance(binding, Mapping):
             continue
         if slot == "value" and binding.get("source") == "macro_progress":
             continue  # its text comes from the macro, not from a state key
@@ -1829,12 +1904,12 @@ def binding_findings(element: Mapping[str, Any]) -> list[Finding]:
             continue
         named = "key pattern" if slot == "items" else "state key"
         findings.append(Finding(
-            el_id,
+            shown.el_id,
             "binding_without_key",
-            f"{el_id} ({el_type}): show.{slot} has no {named}, so it reads nothing and "
-            f"never updates. {_UNBOUND_CONSEQUENCE[slot]} Pick the {named} it should "
-            f"read, or remove the binding.",
-            key=("binding_without_key", el_id, slot),
+            f"{shown.el_id} ({shown.el_type}): show.{slot} has no {named}, so it reads "
+            f"nothing and never updates. {_UNBOUND_CONSEQUENCE[slot]} Pick the {named} it "
+            f"should read, or remove the binding.",
+            key=("binding_without_key", shown.el_id, slot),
         ))
     return findings
 
