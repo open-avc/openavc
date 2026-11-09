@@ -415,6 +415,13 @@ CASES: dict[str, dict[str, Any]] = {
             "",
         ]},
     ),
+    "then_query_checks_every_entry_against_the_rule_first": then(
+        {"match": r"VOL (\d+)", "set": {"volume": "$1"}, "then_query": [
+            {"send": "A?", "when": "nope"},
+            {"send": "VOL?", "query_for": "volume"},
+            {"send": "Z{child_id}?", "when": "nope"},
+        ]},
+    ),
     "then_query_with_responses_not_a_list": {
         "responses": {"r": {"match": "A", "then_query": ["Q?"]}},
     },
@@ -974,6 +981,26 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'polling_absent': [('child_entity_
                                              ('responses[2].then_query[5]',
                                               "responses[2].then_query[5]: 'send' must contain {child_id} (a "
                                               'format spec like {child_id:02d} works too)')],
+ 'then_query_checks_every_entry_against_the_rule_first': [('child_entity_types.bare',
+                                                           'child_entity_types.bare: must be a mapping'),
+                                                          ('responses[2].then_query[1]',
+                                                           "responses[2].then_query[1]: reads 'volume', "
+                                                           'which this rule has just written. then_query '
+                                                           'reads what the report did not say'),
+                                                          ('responses[2].then_query[2]',
+                                                           'responses[2].then_query[2]: {child_id} names the '
+                                                           'child this rule writes, and the rule has no '
+                                                           'child_set. Route the report to its child with '
+                                                           'child_set, or send the query to every child with '
+                                                           'each_child'),
+                                                          ('responses[2].then_query[0]',
+                                                           "responses[2].then_query[0]: 'when' field 'nope' "
+                                                           'is not a declared config field (config_schema / '
+                                                           'default_config / config_derived)'),
+                                                          ('responses[2].then_query[2]',
+                                                           "responses[2].then_query[2]: 'when' field 'nope' "
+                                                           'is not a declared config field (config_schema / '
+                                                           'default_config / config_derived)')],
  'then_query_with_responses_not_a_list': [('responses', 'responses: must be a list'),
                                           ('child_entity_types.bare',
                                            'child_entity_types.bare: must be a mapping')],
