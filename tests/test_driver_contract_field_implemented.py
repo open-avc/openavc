@@ -160,7 +160,7 @@ RUNTIME_OPT_OUT = {
         "non-clashing default from it (DeviceSettingsSetupDialog).",
     # The rest of config_schema's members, on the same footing as row_label
     # above: the runtime hands the whole block to the IDE
-    # (configurable.py's driver_info, device_manager's driver listing) and
+    # (yaml_driver_info.py's driver_info_for, device_manager's driver listing) and
     # reads none of these. These passed the old name-keyed check only
     # because words like "values" and "help" are everywhere in the server.
     # `advanced`, `description` and `help` are deliberately NOT listed, though

@@ -19,13 +19,17 @@ The rules worth knowing before changing anything here:
   value, in the order the tables give (``_INFO_FIELDS``, then ``commands``,
   then ``_INFO_FIELDS_AFTER_COMMANDS``).
 * **A command's entry** is its label (else its name), its params, then each
-  of ``_COMMAND_META_FIELDS`` it declares. Most command fields are read off
-  the definition at send time, but some are read off ``DRIVER_INFO``: for
-  example the connected gate and a promoted button's availability
-  (``available_offline``), the commanded-restart window
-  (``restarts_device_for``), the device audit's declared effect (``sets``,
-  ``query_for``) and every door a person sends a command from by hand
-  (``confirm``). A field one of them starts reading goes into that table.
+  of ``_COMMAND_META_FIELDS`` it declares. The transport fields (``method``,
+  ``path``, ``body``, ``address``, ``args``) are there so the IDE shows them.
+  Most other command fields are read off the definition at send time, but
+  some are read off ``DRIVER_INFO``: for example the connected gate and a
+  promoted button's availability (``available_offline``, read by
+  ``command_gates.available_offline`` and ``actions._command_availability``),
+  the commanded-restart window (``restarts_device_for``,
+  ``DeviceManager._arm_restart_window``), the device audit's declared effect
+  (``sets``, ``query_for``) and every door a person sends a command from by
+  hand (``confirm``). A field one of them starts reading goes into that
+  table.
 * **The driver-class factory and the inline-protocol merge both build
   command entries here** (``build_commands_meta``), so a command the device
   authored itself looks the same in the IDE as one from the file.
@@ -106,7 +110,9 @@ def driver_info_for(driver_def: dict[str, Any]) -> dict[str, Any]:
     }
     _copy_fields(driver_info, driver_def, _INFO_FIELDS)
 
-    # Copy help from each state variable
+    # Each state variable that carries help is replaced, in the definition's
+    # own dict (driver_info holds the same one), by a copy of itself; nothing
+    # else differs, and that is all this does.
     state_vars = driver_info.get("state_variables", {})
     for var_name, var_def in state_vars.items():
         if isinstance(var_def, dict) and "help" in var_def:

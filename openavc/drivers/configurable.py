@@ -36,9 +36,11 @@ the device again after a change, a reply rule's ``then_query`` and a
 command's ``read_back:`` (``rereads``). Writing a device setting:
 ``setting_writes``.
 
-What stays here: the order the parts are set up in, the connect and its
-initial sync, which form a command goes out in and its parameters' wire
-values, filling a template's placeholders, and where an incoming frame goes.
+What stays here: the order the parts are set up in and the drop of a
+session, the derived config, the connect and its initial sync, which form a
+command goes out in and its parameters' wire values, filling a template's
+placeholders (the platform's push values among them), the reply counts the
+poll loop judges, the frame parser, and where an incoming frame goes.
 """
 
 from __future__ import annotations

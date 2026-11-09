@@ -15,8 +15,10 @@ The rules worth knowing before changing anything here:
   variable a file rule writes, its label and values with it; the
   simulator's own merge (``_merge_inline_protocol`` in
   ``simulator/yaml_auto.py``) derives from the device's rules only.
-* **A device that authors none of the four shares the class definition**,
-  untouched. Otherwise the instance gets its own ``_definition`` and its own
+* **A device whose config holds none of the four shares the class
+  definition**, untouched. A driver's shipped ``default_config.ir_codes``
+  are layered into every device's config, so each device of such a driver
+  gets its own. Otherwise the instance gets its own ``_definition`` and its own
   ``DRIVER_INFO`` shadow, because the class attribute is shared by every
   device of the driver: the device page, the macro command picker and the
   state seeding read the live instance, so a per-device protocol must never

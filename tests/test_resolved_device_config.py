@@ -659,7 +659,7 @@ def test_ir_bridge_binding_marks_device_bridge_routed(
 def test_yaml_bridge_and_transports_survive_into_driver_info(
     fake_bridge_driver, fake_serial_device_driver
 ):
-    """configurable.py must copy `bridge` + `transports` into DRIVER_INFO,
+    """yaml_driver_info.py must copy `bridge` + `transports` into DRIVER_INFO,
     or the runtime can't see the declaration (the YAML->runtime parity trap)."""
     assert fake_bridge_driver.DRIVER_INFO.get("bridge", {}).get("ports")
     assert fake_serial_device_driver.DRIVER_INFO.get("transports") == ["tcp", "serial"]

@@ -7,8 +7,10 @@ The rules worth knowing before changing anything here:
 * **These two come before the connected gate** (``_send_command`` asks
   ``_side_sender`` first): an IR device routed through a bridge has no
   transport of its own, and a wake is sent exactly while the control link is
-  down. ``_side_sender`` is the one place that says a command is one of them;
-  a definition that is not a mapping is neither.
+  down. ``_side_sender`` is where a send decides that a command is one of
+  them, and a definition that is not a mapping is neither; the Driver
+  Builder's dry run of one command picks its route with its own checks
+  (``dry_run.capture_command_transport``), so a new kind is added there too.
 * **An ``ir:`` code** goes to the bound bridge's emitter as its Pronto text
   and repeat count (one when absent); the bridge driver converts and
   confirms it.
