@@ -1082,7 +1082,10 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
 
     sources = [
         _ROOT / "openavc" / "drivers" / name
-        for name in ("avcdriver_semantic.py", "python_info.py", "check.py")
+        for name in (
+            "avcdriver_semantic.py", "condition_checks.py", "declared_names.py",
+            "python_info.py", "check.py",
+        )
     ]
     dashed = []
     for path in sources:

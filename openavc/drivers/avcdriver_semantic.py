@@ -21,15 +21,15 @@ import re
 from typing import Any, Callable
 
 from openavc.drivers.child_ids import declared_child_ids, page_starts
+from openavc.drivers.condition_checks import condition_block_errors
+from openavc.drivers.declared_names import child_writable_props, config_field_names
 from openavc.drivers.spec import (
     ACTION_KINDS,
     AUTH_TRANSPORTS,
     AUTH_TYPES,
     AVAILABILITIES,
     CHILD_ID_TYPES,
-    CHILD_RESERVED_PROPS,
     CLOUD_PRIORITIES,
-    CONFIG_FIELD_SOURCES,
     CONNECTION_FIELDS,
     DEFAULT_LINE_GAP_S,
     DEFS,
@@ -54,7 +54,6 @@ from openavc.drivers.spec import (
     SILENCE_CHECK_TRANSPORTS,
     STRUCT_LENGTH_SIZES,
     VALUE_TYPES,
-    VISIBLE_WHEN_OPERATORS as _VISIBLE_WHEN_OPERATORS,
     YAML_TRANSPORTS,
     block_has_fixed_keys,
     is_file_command,
@@ -190,7 +189,7 @@ def _child_list_errors(
     if not isinstance(state_map, dict) or not state_map:
         errors.append(f"{where}: missing 'state' mapping (prop -> $N or literal)")
         return errors
-    writable = _child_writable_props(tdef)
+    writable = child_writable_props(tdef)
     for prop, expr in state_map.items():
         if prop not in writable:
             errors.append(
@@ -208,25 +207,6 @@ def _child_list_errors(
                     f"or a value"
                 )
     return errors
-
-
-def _child_writable_props(type_def: Any) -> set[str]:
-    """Every property a driver may write on a child of this type.
-
-    The declared ``state_variables`` PLUS the reserved keys the platform
-    injects at runtime (``online``, ``label``, ``offline_reason``,
-    ``offline_detail``). Three sites need this, and each of them used to
-    compare against the raw declaration alone -- so a YAML driver reporting
-    presence, which is the single commonest thing a child roster does, was
-    told the key it was writing did not exist. The runtime always allowed it
-    (BaseDriver._effective_child_schema injects the same names), so this was
-    the static half refusing what the live half accepts: the driver worked,
-    and `python -m openavc.drivers.check`, the Driver Builder and catalog CI
-    all said it was broken. Which in practice means it could not ship.
-    """
-    declared = type_def.get("state_variables") if isinstance(type_def, dict) else None
-    names = set(declared) if isinstance(declared, dict) else set()
-    return names | set(CHILD_RESERVED_PROPS)
 
 
 # Placeholder key standing in for a mapping whose KEYS were built at runtime
@@ -1138,7 +1118,7 @@ def validate_driver_definition(
         # the rule ungated -- which is exactly the value this rule exists to
         # stop being published.
         errors.extend(
-            _validate_visible_when(
+            condition_block_errors(
                 f"Response {i}", resp.get("only_when"), field="only_when"
             )
         )
@@ -1265,7 +1245,7 @@ def validate_driver_definition(
                         continue
                     tdef = child_types_map.get(ctype)
                     tdef = tdef if isinstance(tdef, dict) else {}
-                    cvars = _child_writable_props(tdef)
+                    cvars = child_writable_props(tdef)
                     id_fmt = tdef.get("id_format")
                     id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
                     id_type = id_fmt.get("type", "integer")
@@ -1416,7 +1396,7 @@ def validate_driver_definition(
                         continue
                     tdef = child_types_map.get(ctype)
                     tdef = tdef if isinstance(tdef, dict) else {}
-                    cvars = _child_writable_props(tdef)
+                    cvars = child_writable_props(tdef)
                     id_fmt = tdef.get("id_format")
                     id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
                     id_type = id_fmt.get("type", "integer")
@@ -1558,7 +1538,7 @@ def validate_driver_definition(
                 continue
             tdef = child_types_map.get(ctype)
             tdef = tdef if isinstance(tdef, dict) else {}
-            cvars = _child_writable_props(tdef)
+            cvars = child_writable_props(tdef)
             cid = entry.get("id")
             id_fmt = tdef.get("id_format")
             id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
@@ -1694,7 +1674,7 @@ def validate_driver_definition(
         child_target_vars: set[str] = set()
         if len(child_param_types) == 1 and child_param_types[0] in child_types_map:
             _tdef = child_types_map.get(child_param_types[0])
-            child_target_vars = _child_writable_props(_tdef)
+            child_target_vars = child_writable_props(_tdef)
         sets_def = cmd_def.get("sets")
         if sets_def is not None and not isinstance(sets_def, dict):
             errors.append(f"Command '{cmd_name}': 'sets' must be a mapping")
@@ -1855,11 +1835,7 @@ def validate_driver_definition(
         else:
             # config_derived keys resolve into config at runtime, so a push
             # template may reference them like any declared field.
-            _push_config_fields: set[str] = set()
-            for src_key in CONFIG_FIELD_SOURCES:
-                src = driver_def.get(src_key)
-                if isinstance(src, dict):
-                    _push_config_fields.update(src)
+            _push_config_fields = config_field_names(driver_def)
 
             _push_known_keys = PUSH_TYPE_KEYS
             ptype = push_def.get("type")
@@ -2589,11 +2565,7 @@ def validate_driver_definition(
                 else:
                     # config_derived keys resolve into config at runtime, so
                     # count_from / ids_from may name them too.
-                    config_fields = set()
-                    for src in CONFIG_FIELD_SOURCES:
-                        block = driver_def.get(src)
-                        if isinstance(block, dict):
-                            config_fields.update(block.keys())
+                    config_fields = config_field_names(driver_def)
                     id_fmt = type_def.get("id_format")
                     id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
                     id_type = id_fmt.get("type", "integer")
@@ -2704,11 +2676,7 @@ def validate_driver_definition(
     # would silently poll nothing.
     # config_derived keys resolve into config at runtime, so a `when:` gate
     # may name them like any declared field.
-    query_config_fields: set[str] = set()
-    for _src in CONFIG_FIELD_SOURCES:
-        _block = driver_def.get(_src)
-        if isinstance(_block, dict):
-            query_config_fields.update(_block.keys())
+    query_config_fields = config_field_names(driver_def)
 
     # (child type, variable) pairs a child_list rule fills: what a list read
     # (a plain query naming <type>.<var>, or a paged per-child query) reports.
@@ -4392,7 +4360,7 @@ def _validate_action_entry(
     elif url is not None:
         errors.append(f"{where}: 'url' is only valid on a kind:link action")
 
-    errors.extend(_validate_visible_when(where, entry.get("visible_when")))
+    errors.extend(condition_block_errors(where, entry.get("visible_when")))
 
     # A kind:"command" action must resolve to a declared command. The command
     # is the explicit `command` field, or the action id itself.
@@ -4407,52 +4375,4 @@ def _validate_action_entry(
                     f"{where}: command '{target}' is not a declared command"
                 )
 
-    return errors
-
-
-def _validate_visible_when(
-    where: str, vw: Any, field: str = "visible_when"
-) -> list[str]:
-    """Validate a state-condition block: a single {key, operator, value}
-    condition, or a {any: [...]} / {all: [...]} group of them. Light-touch —
-    unknown extra keys are tolerated, only the recognized shapes are checked.
-
-    ``field`` names the block in the message, because two fields carry this
-    shape now: an action's ``visible_when`` and a response's ``only_when``.
-    """
-    if vw is None:
-        return []
-    if not isinstance(vw, dict):
-        return [f"{where}: '{field}' must be a mapping"]
-
-    errors: list[str] = []
-    if "any" in vw or "all" in vw:
-        for group_key in ("any", "all"):
-            if group_key not in vw:
-                continue
-            group = vw[group_key]
-            if not isinstance(group, list) or not group:
-                errors.append(
-                    f"{where}: {field}.{group_key} must be a non-empty list"
-                )
-                continue
-            for j, cond in enumerate(group):
-                errors.extend(
-                    _validate_condition(f"{where}: {field}.{group_key}[{j}]", cond)
-                )
-    else:
-        errors.extend(_validate_condition(f"{where}: {field}", vw))
-    return errors
-
-
-def _validate_condition(where: str, cond: Any) -> list[str]:
-    if not isinstance(cond, dict):
-        return [f"{where}: condition must be a mapping"]
-    errors: list[str] = []
-    key = cond.get("key")
-    if not isinstance(key, str) or not key:
-        errors.append(f"{where}: condition missing 'key' (state key string)")
-    op = cond.get("operator", "eq")
-    if op not in _VISIBLE_WHEN_OPERATORS:
-        errors.append(f"{where}: unknown operator '{op}'")
     return errors
