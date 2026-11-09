@@ -2352,6 +2352,84 @@ def precision_review(
     )
 
 
+def _range_fields(el_type: str) -> tuple[str, ...]:
+    """The parts of a range this type takes from the device, in the order they are filled."""
+    return (
+        "min", "max",
+        *(("step",) if el_type in STEP_TYPES else ()),
+        *(("unit",) if el_type in UNIT_TYPES else ()),
+    )
+
+
+def _declared_fill(declared: Mapping[str, Any], field: str) -> Any:
+    """What the driver declares for this field, when it is the kind the field takes.
+
+    A unit is words and every other bound a number; a boolean is neither, so it
+    fills nothing. None when there is nothing to fill with.
+    """
+    value = declared.get(field)
+    expected = str if field == "unit" else (int, float)
+    if value is None or isinstance(value, bool) or not isinstance(value, expected):
+        return None
+    return value
+
+
+def _range_fills(
+    element: Mapping[str, Any], declared: Mapping[str, Any], state_key: str,
+) -> list[Adjustment]:
+    """Each part of the range the author left out, filled from the declaration.
+
+    Mirrors the Builder's "Match driver range" (DeviceValuePicker): the same
+    types, the same fields, the same precedence -- a value the author wrote,
+    zero included, is never replaced.
+    """
+    el_id = str(element.get("id", "?"))
+    fills: list[Adjustment] = []
+    for field in _range_fields(str(element.get("type", ""))):
+        if element.get(field) is not None:
+            continue
+        value = _declared_fill(declared, field)
+        if value is None:
+            continue
+        fills.append(Adjustment(
+            el_id, field, value,
+            f"{el_id}: {field} was not set, so it was filled in as {_num(value)} from what "
+            f"the driver declares for {state_key}.",
+        ))
+    return fills
+
+
+#: The two ends of a control's travel, each with the comparison that puts it
+#: past the device's own bound and the words for that end.
+_TRAVEL_ENDS: tuple[tuple[str, Callable[[float, float], bool], str, str], ...] = (
+    ("min", lambda written, device: written < device, "below", "bottom"),
+    ("max", lambda written, device: written > device, "above", "top"),
+)
+
+
+def _wider_than_device(
+    element: Mapping[str, Any], declared: Mapping[str, Any], state_key: str,
+) -> list[Finding]:
+    """Each end of the control's travel that commands a value the device refuses."""
+    el_id = str(element.get("id", "?"))
+    findings: list[Finding] = []
+    for field, beyond, side, end in _TRAVEL_ENDS:
+        device, written = declared.get(field), element.get(field)
+        if (
+            isinstance(device, (int, float))
+            and isinstance(written, (int, float))
+            and beyond(written, device)
+        ):
+            findings.append(Finding(
+                el_id, "range_wider_than_device",
+                f"{el_id}: {field} {_num(written)} is {side} the {_num(device)} the driver "
+                f"declares for {state_key}. The {end} of its travel commands a value the "
+                f"device refuses.",
+                key=("range_wider_than_device", el_id, field),
+            ))
+    return findings
+
+
 def range_review(
     element: Mapping[str, Any],
     declared: Mapping[str, Any] | None,
@@ -2364,61 +2442,21 @@ def range_review(
     * **absent** -- no intent was expressed, and the renderer's fallback is a
       guess that has already gone badly: an omitted ``max`` on a dB fader
       becomes 100, so the top of the throw commands +100dB. Filled in, and
-      reported.
+      reported (``_range_fills``).
     * **narrower than the device** -- left alone. A volume-limited install is
       real authoring, and overriding it would undo a deliberate choice to
       protect something.
     * **wider than the device** -- warned, for the two types that send what they
-      read. The control can command a value the device refuses, which shows up
-      as a dead end of travel.
+      read (``_wider_than_device``). The control can command a value the device
+      refuses, which shows up as a dead end of travel.
     """
-    if not declared or str(element.get("type", "")) not in RANGE_TYPES:
-        return [], []
-
-    el_id = str(element.get("id", "?"))
     el_type = str(element.get("type", ""))
-    fills: list[Adjustment] = []
-    findings: list[Finding] = []
-
-    wanted = {"min", "max"}
-    if el_type in STEP_TYPES:
-        wanted.add("step")
-    if el_type in UNIT_TYPES:
-        wanted.add("unit")
-
-    for field in ("min", "max", "step", "unit"):
-        if field not in wanted or element.get(field) is not None:
-            continue
-        value = declared.get(field)
-        expected = str if field == "unit" else (int, float)
-        if value is None or isinstance(value, bool) or not isinstance(value, expected):
-            continue
-        fills.append(Adjustment(
-            el_id, field, value,
-            f"{el_id}: {field} was not set, so it was filled in as {_num(value)} from what "
-            f"the driver declares for {state_key}.",
-        ))
-
+    if not declared or el_type not in RANGE_TYPES:
+        return [], []
+    fills = _range_fills(element, declared, state_key)
     if el_type not in COMMANDING_TYPES:
-        return fills, findings
-
-    low, high = declared.get("min"), declared.get("max")
-    el_low, el_high = element.get("min"), element.get("max")
-    if isinstance(low, (int, float)) and isinstance(el_low, (int, float)) and el_low < low:
-        findings.append(Finding(
-            el_id, "range_wider_than_device",
-            f"{el_id}: min {_num(el_low)} is below the {_num(low)} the driver declares for "
-            f"{state_key}. The bottom of its travel commands a value the device refuses.",
-            key=("range_wider_than_device", el_id, "min"),
-        ))
-    if isinstance(high, (int, float)) and isinstance(el_high, (int, float)) and el_high > high:
-        findings.append(Finding(
-            el_id, "range_wider_than_device",
-            f"{el_id}: max {_num(el_high)} is above the {_num(high)} the driver declares for "
-            f"{state_key}. The top of its travel commands a value the device refuses.",
-            key=("range_wider_than_device", el_id, "max"),
-        ))
-    return fills, findings
+        return fills, []
+    return fills, _wider_than_device(element, declared, state_key)
 
 
 # --- One element, wherever it is drawn -------------------------------------
