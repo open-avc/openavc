@@ -5,8 +5,12 @@ path written plainly, or the long form ``{key | path, type, map, contains}``,
 ``key`` winning over ``path``. A rule's flat ``set:`` reads one into a state
 variable (``compiled_protocol.build_json_mappings``), a json ``child_set:``
 entry's ``state:`` into a child's prop (``child_routes``). Both compile it
-here, so a new field on the spec is one edit; what the runtime does with the
-compiled mapping is ``json_replies.read_json_mapping``.
+here, so a new field on the spec is one edit to the compile; what the runtime
+does with the compiled mapping is ``json_replies.read_json_mapping``. Three
+other readings of the spec are kept by hand and do not ask this module: the
+loader's checks (``avcdriver_semantic``, vendored), the simulator validator's
+json-rule keys (``openavc.simulator.validate._json_rule_keys``) and the Driver
+Builder's json rows (``getJsonRows`` in ``responseBuilderHelpers.ts``).
 
 The two read the spec alike except in four ways, each a field of the place's
 ``Place`` row below (``FLAT``, ``CHILD``):
@@ -75,7 +79,8 @@ def _child_map(spec: dict[str, Any]) -> dict[str, Any]:
     return {"map": value_map} if isinstance(value_map, dict) else {}
 
 
-#: A json rule's flat ``set:`` item, read into a state variable.
+#: A json rule's flat ``set:`` item, read into a state variable. Its key rule
+#: never returns ``SKIP``, so a flat item always compiles to a mapping.
 FLAT = Place(field="state", key=_flat_key, value_map=_flat_map)
 #: A json ``child_set:`` entry's ``state:`` item, read into a child's prop.
 CHILD = Place(field="prop", key=_child_key, value_map=_child_map)

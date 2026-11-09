@@ -29,8 +29,9 @@ and read_back queries the simulator answers (``reread_queries``).
 
 Pure on purpose: stdlib plus ``openavc.transport.binary_helpers``, the driver
 contract's tables (``openavc.drivers.spec``, through ``child_routes``),
-``json_value_spec`` and the logger only — the same contract as ``openavc.drivers.inline_protocol``, and for
-the same reason: the simulator runs as a separate process and imports this
+``json_value_spec`` and the logger only — the same contract as
+``openavc.drivers.inline_protocol``, and for the same reason: the simulator
+runs as a separate process and imports this
 module directly, so it must not pull in the driver runtime or transport stack
 (``tests/test_compiled_protocol_purity.py``).
 """
@@ -872,9 +873,10 @@ def build_throttle(resp: dict[str, Any]) -> dict[str, Any] | None:
 
 def _json_set_mapping(
     state_key: str, spec: Any, state_variables: dict[str, Any]
-) -> dict[str, Any] | None:
+) -> dict[str, Any]:
     """One json ``set:`` item as a mapping, typed by its state variable unless
-    the spec says otherwise; how a flat item reads the spec is ``FLAT``."""
+    the spec says otherwise; how a flat item reads the spec is ``FLAT``, which
+    leaves no item out, so this is never None."""
     var_def = state_variables.get(state_key, {})
     default_type = (
         var_def.get("type", "string") if isinstance(var_def, dict) else "string"
