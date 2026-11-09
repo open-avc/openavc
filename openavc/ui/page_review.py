@@ -2535,14 +2535,13 @@ def _range_fields(el_type: str) -> tuple[str, ...]:
 def _declared_fill(declared: Mapping[str, Any], field: str) -> Any:
     """What the driver declares for this field, when it is the kind the field takes.
 
-    A unit is words and every other bound a number; a boolean is neither, so it
-    fills nothing. None when there is nothing to fill with.
+    A unit is words and every other bound a number, in ``_literal_kind``'s
+    sense: a boolean is neither, so it fills nothing. None when there is nothing
+    to fill with.
     """
     value = declared.get(field)
-    expected = str if field == "unit" else (int, float)
-    if value is None or isinstance(value, bool) or not isinstance(value, expected):
-        return None
-    return value
+    wanted = "text" if field == "unit" else "number"
+    return value if _literal_kind(value) == wanted else None
 
 
 def _range_fills(
