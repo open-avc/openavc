@@ -425,6 +425,66 @@ CASES: dict[str, dict[str, Any]] = {
 }
 
 
+# Cases the deliberate breaks of the code before the commands section moved
+# found no test held, recorded from that code.
+CASES.update({
+    # a text port one past the top of the range
+    "udp_text_port_edges": cmds(
+        over=udp(payload="x", port="65536"),
+        top=udp(payload="x", port="65535"),
+        spaced=udp(payload="x", port=" 65536 "),
+    ),
+    # args that is not a list, whatever it reads as
+    "osc_args_falsy_but_not_a_list": cmds(
+        empty_text={"address": "/a", "args": ""},
+        zero={"address": "/a", "args": 0},
+        empty_list={"address": "/a", "args": []},
+    ),
+    # an aid given a falsy value is still checked (an empty pattern compiles)
+    "param_aids_given_falsy_values": cmds(
+        a=picker(a={"type": "string", "pattern": 0}),
+        b=picker(a={"type": "string", "trim": 0}),
+        c=picker(a={"type": "string", "trim": ""}),
+        d=picker(a={"type": "string", "pattern": False}),
+        e=picker(a={"type": "string", "pattern": ""}),
+    ),
+    # a number may be a map's key
+    "param_map_number_keys": cmds(
+        a=picker(a={"type": "number", "map": {1.5: "x", 2: "y"}}),
+    ),
+    # a command that is both udp and ir names udp
+    "read_back_on_a_udp_and_ir_command": cmds(
+        a={"udp": {"payload": "x", "port": 9}, "ir": "code", "read_back": "Q"},
+    ),
+    # a named command whose read_back is false still has one
+    "read_back_naming_a_command_with_read_back_false": cmds(
+        a=send(read_back="b"),
+        b=send(read_back=False),
+    ),
+    # a named command's params holding the computed-keys marker are not judged
+    "read_back_naming_a_command_whose_params_hold_the_marker": cmds(
+        a=send(read_back="b"),
+        b={"send": "B {x}\r", "params": {"<unevaluated>": {"type": "string"},
+                                        "x": {"type": "string"}}},
+    ),
+    # a param with no type is judged, so a file key on it is named
+    "file_keys_on_a_param_with_no_type": cmds(
+        a={"send": "X {f}\r", "params": {"f": {"accept": [".bin"]}}},
+        b={"send": "X {f}\r", "params": {"f": {"max_bytes": 5, "label": "F"}}},
+    ),
+    # a config field name that is not text is never a substitution name
+    "a_config_field_name_that_is_not_text": {
+        "config_schema": {True: {"type": "string"}, "wake_mac": {"type": "string"}},
+        "commands": {"a": {"send": "X {nope}\r", "params": {"p": {"type": "string"}}}},
+    },
+    # the marker is never a wake command's name, even as a written command
+    "sleeps_device_naming_the_marker": {"commands": {
+        "<unevaluated>": send(),
+        "off": send(sleeps_device="<unevaluated>"),
+    }},
+})
+
+
 def _definition(case: str) -> dict[str, Any]:
     over = CASES[case]
     if "commands" not in over:
@@ -815,6 +875,47 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('comma
                                               ('device_settings.s', "Device setting 's': must be a mapping")]}
 
 
+EXPECTED.update({'a_config_field_name_that_is_not_text': [('commands.a.send',
+                                           "commands.a.send: '{nope}' resolves to nothing. It names no "
+                                           'parameter of this command and no config field, so it would be '
+                                           'sent to the device as written')],
+ 'file_keys_on_a_param_with_no_type': [('commands.a',
+                                        "Command 'a' param 'f': accept applies only to a file param (type: "
+                                        'file)'),
+                                       ('commands.b',
+                                        "Command 'b' param 'f': max_bytes applies only to a file param "
+                                        '(type: file)')],
+ 'osc_args_falsy_but_not_a_list': [('commands.empty_text', "Command 'empty_text': args must be a list"),
+                                   ('commands.zero', "Command 'zero': args must be a list")],
+ 'param_aids_given_falsy_values': [('commands.a',
+                                    "Command 'a' param 'a': pattern: pattern must be a string, got int"),
+                                   ('commands.b', "Command 'b' param 'a': trim must be true or false"),
+                                   ('commands.c', "Command 'c' param 'a': trim must be true or false"),
+                                   ('commands.d',
+                                    "Command 'd' param 'a': pattern: pattern must be a string, got bool")],
+ 'param_map_number_keys': [],
+ 'read_back_naming_a_command_whose_params_hold_the_marker': [],
+ 'read_back_naming_a_command_with_read_back_false': [('commands.a',
+                                                      "Command 'a': read_back names 'b', which has a "
+                                                      'read_back of its own. Name a command that only reads'),
+                                                     ('commands.b',
+                                                      "Command 'b': 'read_back' must be true, a query, or a "
+                                                      'list of queries')],
+ 'read_back_on_a_udp_and_ir_command': [('commands.a',
+                                        "Command 'a': declares udp and ir, but a command sends one way. Keep "
+                                        "one of 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' "
+                                        "(OSC), or 'udp' (a datagram beside the main transport)"),
+                                       ('commands.a',
+                                        "Command 'a': 'read_back' reads a value back over the device's "
+                                        "connection, and a 'udp' command is sent beside it, so nothing would "
+                                        'answer')],
+ 'sleeps_device_naming_the_marker': [],
+ 'udp_text_port_edges': [('commands.over',
+                          "Command 'over': 'udp.port' must be between 1 and 65535, got 65536"),
+                         ('commands.spaced',
+                          "Command 'spaced': 'udp.port' must be between 1 and 65535, got  65536 ")]})
+
+
 @pytest.mark.parametrize("case", sorted(EXPECTED))
 def test_errors_their_order_and_their_tags(case: str) -> None:
     definition = _definition(case)
@@ -865,6 +966,19 @@ PYTHON_COMMANDS: dict[str, dict[str, Any]] = {
     },
 }
 
+PYTHON_COMMANDS.update({
+    # an accept item the reader could not evaluate is not judged
+    "file_accept_with_an_unread_item": {
+        "a": {"params": {"f": {"type": "file", "accept": [".bin", UNEVALUATED]}}},
+    },
+    # an ending is a dot and then a letter or digit
+    "file_accept_endings": {
+        "a": {"params": {"f": {"type": "file", "accept": ["."]}}},
+        "b": {"params": {"f": {"type": "file", "accept": ["._x"]}}},
+        "c": {"params": {"f": {"type": "file", "accept": [".tar.gz", ".a-b_c"]}}},
+    },
+})
+
 PYTHON_EXPECTED: dict[str, list[str]] = {'confirm': ["Command 'b': 'confirm' must be a boolean or a message string"],
  'sleeps_device': ["Command 'off3': 'sleeps_device' names 'gone', which is not a declared command",
                    "Command 'off4': 'sleeps_device' names 'wake2', which does not set available_offline: "
@@ -886,6 +1000,11 @@ PYTHON_EXPECTED: dict[str, list[str]] = {'confirm': ["Command 'b': 'confirm' mus
                 'GiB)',
                 "Command 'a' param 'l': max_bytes applies only to a file param (type: file)",
                 "Command 'c': 'returns_file' must be true or false"]}
+
+
+PYTHON_EXPECTED.update({'file_accept_endings': ['Command \'a\' param \'f\': accept must list file-name endings, e.g. [".bin"]',
+                         'Command \'b\' param \'f\': accept must list file-name endings, e.g. [".bin"]'],
+ 'file_accept_with_an_unread_item': []})
 
 
 def _python_info(case: str) -> dict[str, Any]:
