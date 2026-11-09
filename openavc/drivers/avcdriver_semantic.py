@@ -23,10 +23,14 @@ from typing import Any, Callable
 from openavc.drivers.child_ids import declared_child_ids, page_starts
 from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import (
+    UNEVALUATED_KEY,
     child_writable_props,
+    closest_name,
     config_field_names,
     declared_enum_values,
     declared_id_kind,
+    did_you_mean,
+    substitution_names,
 )
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.query_entry_checks import (
@@ -70,23 +74,6 @@ from openavc.drivers.spec import (
 )
 from openavc.utils.regex_safety import regex_safety_error as _regex_redos_error
 
-# Placeholder key standing in for a mapping whose KEYS were built at runtime
-# rather than written out. A YAML definition can never contain one — the
-# reader that produces it (``python_info``) only ever substitutes it for a
-# Python driver's computed block — but the cross-reference rules below are
-# shared by both surfaces, so the marker is defined with the rules that have
-# to recognise it rather than in the reader that emits it.
-UNEVALUATED_KEY = "<unevaluated>"
-
-# Names the platform substitutes without the driver declaring them:
-# ``child_id`` in a per-child send template, and the three tokens the push
-# machinery injects before a registration command goes out (``base.py`` sets
-# ``listener_port``; ``_push_params`` supplies ``push_callback_url`` and, for
-# an sse session, ``push_session``).
-PLATFORM_SUBSTITUTIONS = frozenset(
-    {"child_id", "push_callback_url", "listener_port", "push_session"}
-)
-
 # One ``{name}`` or ``{name:format_spec}`` token. Deliberately requires an
 # identifier, so a literal JSON body — ``{"vol": {level}}`` — matches only on
 # the real placeholder and never on the brace that opens the object.
@@ -95,31 +82,6 @@ _SUBSTITUTION_TOKEN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
 # What each position is allowed to interpolate, phrased for the message.
 _CMD_SOURCES = "no parameter of this command and no config field"
 _CFG_SOURCES = "no config field (only config values substitute here)"
-
-
-def _config_substitution_names(driver_def: dict[str, Any]) -> set[str]:
-    """Every name resolvable from the driver's config, plus the platform's.
-
-    The runtime builds a command's substitution map as ``{**self.config,
-    **self._push_params(), **params}``, and ``self.config`` is the driver's
-    declared defaults merged with the device's own settings — so a name is
-    resolvable exactly when the driver declares it somewhere in its config
-    surface. Measured against the shipped library before this rule landed:
-    every YAML driver declares every name it interpolates, so nothing beyond
-    the three platform tokens needs assuming here.
-    """
-    names = set(PLATFORM_SUBSTITUTIONS)
-    for block in ("default_config", "config_schema", "config_derived"):
-        section = driver_def.get(block)
-        if isinstance(section, dict):
-            names |= {k for k in section if isinstance(k, str)}
-    return names
-
-
-def _closest_name(name: str, candidates: set[str]) -> str | None:
-    """The nearest declared name, for a did-you-mean suggestion."""
-    close = _difflib.get_close_matches(name, sorted(candidates), n=1, cutoff=0.7)
-    return close[0] if close else None
 
 
 def _unresolved_substitutions(
@@ -147,7 +109,7 @@ def _unresolved_substitutions(
         name = match.group(1)
         if name in resolvable:
             continue
-        suggestion = _closest_name(name, resolvable)
+        suggestion = closest_name(name, resolvable)
         hint = f" (did you mean '{suggestion}'?)" if suggestion else ""
         errors.append(
             f"{where}: '{{{name}}}' resolves to nothing{hint}. It names "
@@ -168,7 +130,7 @@ def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
     this module (``openavc-drivers/scripts/_vendor/``).
     """
     errors: list[str] = []
-    config_names = _config_substitution_names(driver_def)
+    config_names = substitution_names(driver_def)
 
     commands = driver_def.get("commands")
     if isinstance(commands, dict) and UNEVALUATED_KEY not in commands:
@@ -345,7 +307,7 @@ def _validate_udp_send(
                 )
             elif not 1 <= int(port.strip()) <= 65535:
                 errors.append(f"{where}: 'udp.port' must be between 1 and 65535, got {port}")
-        elif m.group(1) not in _config_substitution_names(driver_def):
+        elif m.group(1) not in substitution_names(driver_def):
             errors.append(
                 f"{where}: 'udp.port' names config field '{m.group(1)}', which "
                 f"the driver does not declare"
@@ -358,7 +320,7 @@ def _validate_udp_send(
         # work until the first connect, which is the case the wake exists for.
         if not isinstance(mac_field, str) or not mac_field:
             errors.append(f"{where}: 'udp.magic_packet' must name a config field")
-        elif mac_field not in _config_substitution_names(driver_def):
+        elif mac_field not in substitution_names(driver_def):
             errors.append(
                 f"{where}: 'udp.magic_packet' names '{mac_field}', which is not "
                 f"a config field. Declare it in config_schema so the MAC can be "
@@ -1738,7 +1700,7 @@ def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
             errors.append(
                 f"{where}: destination_child_type '{dest_type}' is not a "
                 f"declared child_entity_type"
-                + _did_you_mean(dest_type, set(child_types))
+                + did_you_mean(dest_type, set(child_types))
             )
         elif route_property:
             # Where the routed property has to live: on the destination child
@@ -1754,7 +1716,7 @@ def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
                 errors.append(
                     f"{where}: route_property '{route_property}' is not a "
                     f"state variable of {origin}"
-                    + _did_you_mean(route_property, set(declared_vars))
+                    + did_you_mean(route_property, set(declared_vars))
                 )
 
         source_type = plane.get("source_child_type")
@@ -1762,7 +1724,7 @@ def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
             errors.append(
                 f"{where}: source_child_type '{source_type}' is not a "
                 f"declared child_entity_type"
-                + _did_you_mean(source_type, set(child_types))
+                + did_you_mean(source_type, set(child_types))
             )
 
         command = plane.get("command")
@@ -1773,7 +1735,7 @@ def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
             if command not in commands:
                 errors.append(
                     f"{where}: command '{command}' is not a declared command"
-                    + _did_you_mean(command, set(commands))
+                    + did_you_mean(command, set(commands))
                 )
             else:
                 params = command_params(command)
@@ -1805,7 +1767,7 @@ def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
             if params is not None and value not in params:
                 errors.append(
                     f"{where}: {key} '{value}' is not a parameter of "
-                    f"command '{command}'" + _did_you_mean(value, set(params))
+                    f"command '{command}'" + did_you_mean(value, set(params))
                 )
 
         extra = raw.get("params")
@@ -1822,7 +1784,7 @@ def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
                 elif params is not None and name not in params:
                     errors.append(
                         f"{where}: params.{name} is not a parameter of "
-                        f"command '{command}'" + _did_you_mean(name, set(params))
+                        f"command '{command}'" + did_you_mean(name, set(params))
                     )
 
         if route_property:
@@ -1855,11 +1817,6 @@ def routing_block_errors(driver_def: dict[str, Any]) -> list[str]:
                 seen[key] = index
 
     return errors
-
-
-def _did_you_mean(name: str, candidates: set[str]) -> str:
-    closest = _closest_name(name, candidates)
-    return f" (did you mean '{closest}'?)" if closest else ""
 
 
 def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:
@@ -2231,7 +2188,7 @@ def command_sleep_errors(
             return []
         return [
             f"{where}: 'sleeps_device' names '{wake}', which is not a declared "
-            f"command{_did_you_mean(wake, names)}"
+            f"command{did_you_mean(wake, names)}"
         ]
     wake_def = commands.get(wake)
     if not isinstance(wake_def, dict):
