@@ -310,6 +310,34 @@ CASES: dict[str, dict[str, Any]] = {
     ),
     "polling_interval_falsy": {"polling": {"queries": ["Q?"], "interval": 0}},
     "polling_interval_null": {"polling": {"queries": ["Q?"], "interval": None}},
+    "when_with_no_config_declared": {
+        "config_schema": {}, "default_config": {}, "config_derived": {},
+        "polling": {"queries": [{"send": "A?", "when": "zones_on"}, {"send": "B?", "when": "verbose"}]},
+    },
+    "each_child_roster_and_id_format_apart": {
+        "child_entity_types": {
+            **CHILD_TYPES,
+            "deck": {"state_variables": {"tc": {"type": "string", "label": "TC"}},
+                     "instances": {"count": 2}},
+            "panel": {"id_format": {"type": "integer"},
+                      "state_variables": {"lit": {"type": "boolean", "label": "Lit"}}},
+        },
+        "polling": {"queries": [
+            {"each_child": "deck", "send": "D{child_id}?"},
+            {"each_child": "panel", "send": "P{child_id}?"},
+        ]},
+    },
+    "each_child_tokens_that_are_not_child_id": poll(
+        {"each_child": "zone", "send": "Z{child_idx}?"},
+        {"each_child": "zone", "send": "Z{child_id_2}?"},
+        {"each_child": "zone", "send": "Z{child_id:{w}}?"},
+        {"each_child": "zone", "send": "Z{ child_id }?"},
+    ),
+    "when_state_on_a_string_that_lists_values": {
+        "state_variables": {**STATE_VARIABLES,
+                            "preset": {"type": "string", "label": "Preset", "values": ["a", "b"]}},
+        "polling": {"queries": [{"send": "A?", "when_state": {"preset": "c"}}]},
+    },
     # --- then_query: ------------------------------------------------------
     "then_query_on_other_forms": then(
         {"json": True, "set": {"mode": "mode"}, "then_query": ["Q?"]},
@@ -774,6 +802,48 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'polling_absent': [('child_entity_
                            ('polling',
                             'polling.interval is not read by the runtime. Remove the interval: key and set '
                             'default_config.poll_interval instead')],
+ 'when_with_no_config_declared': [('child_entity_types.bare', 'child_entity_types.bare: must be a mapping'),
+                                  ('polling.queries[0]',
+                                   "polling.queries[0]: 'when' field 'zones_on' is not a declared config "
+                                   'field (config_schema / default_config / config_derived)'),
+                                  ('polling.queries[1]',
+                                   "polling.queries[1]: 'when' field 'verbose' is not a declared config "
+                                   'field (config_schema / default_config / config_derived)')],
+ 'each_child_roster_and_id_format_apart': [('child_entity_types.bare',
+                                            'child_entity_types.bare: must be a mapping'),
+                                           ('polling.queries[1]',
+                                            "polling.queries[1]: each_child type 'panel' declares no "
+                                            'instances: block, so nothing would ever be polled')],
+ 'each_child_tokens_that_are_not_child_id': [('child_entity_types.bare',
+                                              'child_entity_types.bare: must be a mapping'),
+                                             ('polling.queries[0]',
+                                              "polling.queries[0]: 'send' must contain {child_id} (a format "
+                                              'spec like {child_id:02d} works too)'),
+                                             ('polling.queries[1]',
+                                              "polling.queries[1]: 'send' must contain {child_id} (a format "
+                                              'spec like {child_id:02d} works too)'),
+                                             ('polling.queries[2]',
+                                              "polling.queries[2]: 'send' must contain {child_id} (a format "
+                                              'spec like {child_id:02d} works too)'),
+                                             ('polling.queries[3]',
+                                              "polling.queries[3]: 'send' must contain {child_id} (a format "
+                                              'spec like {child_id:02d} works too)'),
+                                             ('polling.queries[0]',
+                                              "polling.queries[0]: '{child_idx}' resolves to nothing (did "
+                                              "you mean 'child_id'?). It names no config field (only config "
+                                              'values substitute here), so it would be sent to the device as '
+                                              'written'),
+                                             ('polling.queries[1]',
+                                              "polling.queries[1]: '{child_id_2}' resolves to nothing (did "
+                                              "you mean 'child_id'?). It names no config field (only config "
+                                              'values substitute here), so it would be sent to the device as '
+                                              'written'),
+                                             ('polling.queries[2]',
+                                              "polling.queries[2]: '{w}' resolves to nothing. It names no "
+                                              'config field (only config values substitute here), so it '
+                                              'would be sent to the device as written')],
+ 'when_state_on_a_string_that_lists_values': [('child_entity_types.bare',
+                                               'child_entity_types.bare: must be a mapping')],
  'then_query_on_other_forms': [('responses[3]',
                                 'Response 3: set.mode must be a capture reference like "$1" or a static '
                                 'value; move a value map into mappings:'),
