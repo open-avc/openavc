@@ -32,6 +32,7 @@ import { useListenChoice } from "./settings/listenChoice";
 import { useRestart } from "./settings/restartFlow";
 import { RestartProgress, RestartQuestion } from "./settings/RestartDialogs";
 import { useSettingsSave } from "./settings/saveFlow";
+import { useSettingsDraft } from "./settings/settingsDraft";
 import { CutOffQuestion, RebootQuestion } from "./settings/SaveDialogs";
 import { useProjectStore } from "../store/projectStore";
 import { showError, showSuccess } from "../store/toastStore";
@@ -43,7 +44,6 @@ import type {
   NetworkAdapter,
   NetworkInterface,
   SshStatus,
-  SystemConfig,
   TlsStatus,
 } from "../api/restClient";
 
@@ -71,9 +71,9 @@ function setTheme(theme: "dark" | "light") {
 
 export function SystemSettingsView() {
   const [theme, setThemeState] = useState<"dark" | "light">(getTheme);
-  const [config, setConfig] = useState<SystemConfig | null>(null);
-  const [dirty, setDirty] = useState<Partial<SystemConfig>>({});
-  const [restartNeeded, setRestartNeeded] = useState(false);
+  // The config, the changes not saved yet, and whether one needs a restart.
+  const draft = useSettingsDraft();
+  const { config, dirty, update, merged, restartNeeded } = draft;
   const [kioskAvailable, setKioskAvailable] = useState(false);
   const [panelDimAvailable, setPanelDimAvailable] = useState(false);
   const [updateGuidance, setUpdateGuidance] = useState<string | null>(null);
@@ -103,7 +103,6 @@ export function SystemSettingsView() {
   }, []);
 
   useEffect(() => {
-    api.getSystemConfig().then(setConfig).catch((e) => showError("Failed to load config: " + parseApiError(e)));
     api.getSystemVersion().then((v) => {
       setKioskAvailable(v.kiosk_available);
       setPanelDimAvailable(v.panel_dim_available);
@@ -114,34 +113,7 @@ export function SystemSettingsView() {
     loadTlsStatus();
   }, [loadAdapters, loadTlsStatus]);
 
-  // Track which fields the user has changed
-  const update = useCallback(
-    <S extends keyof SystemConfig>(section: S, key: keyof SystemConfig[S], value: SystemConfig[S][keyof SystemConfig[S]]) => {
-      setDirty((prev) => ({
-        ...prev,
-        [section]: { ...(prev[section] as Record<string, unknown> ?? {}), [key]: value },
-      }));
-      // Track restart-required changes. Who can connect needs one too, and is
-      // tracked against what the server runs (listenNeedsRestart below), so
-      // choosing the running choice again clears it. Reach devices through
-      // applies with no restart.
-      if (section === "network" && (key === "http_port" || key === "port80_redirect")) setRestartNeeded(true);
-      // Any TLS change requires a restart — uvicorn only reads cert + ports at startup.
-      if (section === "tls") setRestartNeeded(true);
-    },
-    [],
-  );
-
   const updateTls: UpdateTls = useCallback((key, value) => update("tls", key, value), [update]);
-
-  // Merged view: base config + unsaved changes
-  const merged = useCallback(
-    <S extends keyof SystemConfig>(section: S): SystemConfig[S] => {
-      if (!config) return {} as SystemConfig[S];
-      return { ...config[section], ...(dirty[section] as Partial<SystemConfig[S]> ?? {}) };
-    },
-    [config, dirty],
-  );
 
   // Fields the service's environment holds: the server runs with that value
   // at every start whatever is saved here, so they are shown locked and the
@@ -163,8 +135,7 @@ export function SystemSettingsView() {
     listen,
     restart,
     saved: (fresh) => {
-      setConfig(fresh);
-      setDirty({});
+      draft.saved(fresh);
       loadTlsStatus();
     },
   });
@@ -222,7 +193,7 @@ export function SystemSettingsView() {
 
   const trustedCertPage: TrustedCertificatePage = {
     savedTlsEnabled: config?.tls?.enabled,
-    setConfig,
+    setConfig: draft.setConfig,
     setTlsStatus,
     loadTlsStatus,
     askForRestart: restart.ask,
