@@ -381,7 +381,12 @@ class _Refused(Exception):
 
 
 def _capture_ref(raw: Any) -> int | None:
-    """``"$3"`` or ``3`` as the capture number, None for anything else."""
+    """``"$3"`` or ``3`` as the capture number, None for anything else.
+
+    Stricter than the ``child_set`` refs (``_group_ref`` and the ``$N`` forms,
+    which take ``$0``, the whole match, and a negative): each is the rule its
+    form has always compiled by, so making them one would change what a
+    hand-installed driver compiles to."""
     if isinstance(raw, bool):
         return None
     if isinstance(raw, int):

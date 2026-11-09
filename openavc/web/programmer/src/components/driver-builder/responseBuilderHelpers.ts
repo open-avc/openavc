@@ -544,7 +544,7 @@ export function jsonChildPropFromText(text: string, original: unknown): unknown 
 
 // ── child_list (a list in one reply, spread across children) ──
 // The runtime half is compile_child_list + ConfigurableDriver._resolve_child_list
-// (compiled_protocol.py / configurable.py). `group` and `start` count the
+// (child_routes.py / text_replies.py). `group` and `start` count the
 // rule's own captures; `id` and every state value count the item's (element).
 
 /** A capture-ref-or-number input (`group`, `start`): "$2" stays a capture
