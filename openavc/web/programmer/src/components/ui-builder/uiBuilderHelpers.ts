@@ -4076,19 +4076,44 @@ function joined(parts: string[]): string {
   return `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
 }
 
-/** The first of these style fields that is set, as `[name, value]`.
+/** One style field as the panel draws it: the field, its rem, and the pixels
+ *  that is at REM_BASE_PX each. */
+interface StyleMeasure {
+  field: string;
+  rem: number;
+  px: number;
+}
+
+/** The first of these style fields that is set.
  *
  *  Ordered the way the panel resolves them: a specific axis wins over the
  *  shorthand, so the message names the field the author would actually edit. */
-function styleMeasure(
-  style: Record<string, unknown>,
-  ...names: string[]
-): [string, number] | null {
+function styleMeasure(style: Record<string, unknown>, ...names: string[]): StyleMeasure | null {
   for (const name of names) {
     const value = style[name];
-    if (typeof value === "number" && value > 0) return [name, value];
+    if (typeof value === "number" && value > 0) return { field: name, rem: value, px: value * REM_BASE_PX };
   }
   return null;
+}
+
+/** The room a side gives a measurement drawn once across it, when it is longer.
+ *
+ *  Text against the box's height, the gap between two letters against its width:
+ *  the room is the side itself, and `slack` is how far past it still draws alike.
+ *  null when it fits. A side with no size is not measured -- nothing is drawn
+ *  there to outgrow. Its twin in page_review.py is `_past_one_side`. */
+function pastOneSide(measure: StyleMeasure, side: number, slack = 0): number | null {
+  return side > 0 && measure.px > side + slack ? side : null;
+}
+
+/** The room each edge has for a measurement drawn on both edges of a side, when
+ *  the two meet.
+ *
+ *  Padding on two opposite sides, a border across the box's shorter side: each
+ *  edge has half the side. null when they leave a gap between them. A side with
+ *  no size is not measured. Its twin in page_review.py is `_meets_in_middle`. */
+function meetsInMiddle(measure: StyleMeasure, side: number): number | null {
+  return side > 0 && 2 * measure.rem * REM_BASE_PX >= side ? side / 2 : null;
 }
 
 /** One style measurement the box cannot hold: the words for it, the field to
@@ -4100,14 +4125,14 @@ type StyleCheck = (style: Record<string, unknown>, width: number, height: number
 /** Text taller than the box, past half a pixel of rounding. */
 function fontBreach(style: Record<string, unknown>, _width: number, height: number): StyleBreach | null {
   const font = styleMeasure(style, "font_size");
-  if (font && height > 0 && font[1] * REM_BASE_PX > height + PIXEL_SLACK) {
-    return [
-      `font_size ${num(font[1])} draws ${fixed(font[1] * REM_BASE_PX, 0)}px of text in a box ` +
-        `${fixed(height, 0)}px tall`,
-      font[0], height,
-    ];
-  }
-  return null;
+  if (!font) return null;
+  const room = pastOneSide(font, height, PIXEL_SLACK);
+  if (room === null) return null;
+  return [
+    `font_size ${num(font.rem)} draws ${fixed(font.px, 0)}px of text in a box ` +
+      `${fixed(height, 0)}px tall`,
+    font.field, room,
+  ];
 }
 
 /** Padding on one axis: the fields that set it, and how a sentence names it.
@@ -4133,14 +4158,14 @@ function paddingBreach(
   size: number,
 ): StyleBreach | null {
   const pad = styleMeasure(style, ...axis.names);
-  if (pad && size > 0 && 2 * pad[1] * REM_BASE_PX >= size) {
-    return [
-      `${pad[0]} ${num(pad[1])} leaves ${fixed(pad[1] * REM_BASE_PX, 0)}px ${axis.where} ` +
-        `in a box ${fixed(size, 0)}px ${axis.extent}`,
-      pad[0], size / 2,
-    ];
-  }
-  return null;
+  if (!pad) return null;
+  const room = meetsInMiddle(pad, size);
+  if (room === null) return null;
+  return [
+    `${pad.field} ${num(pad.rem)} leaves ${fixed(pad.px, 0)}px ${axis.where} ` +
+      `in a box ${fixed(size, 0)}px ${axis.extent}`,
+    pad.field, room,
+  ];
 }
 
 const paddingDown: StyleCheck = (style, _width, height) => paddingBreach(style, PADDING_DOWN, height);
@@ -4151,31 +4176,32 @@ const paddingAcross: StyleCheck = (style, width) => paddingBreach(style, PADDING
 function borderBreach(style: Record<string, unknown>, width: number, height: number): StyleBreach | null {
   const edge = styleMeasure(style, "border_width");
   const smallest = Math.min(width, height);
-  if (edge && smallest > 0 && 2 * edge[1] * REM_BASE_PX >= smallest) {
-    return [
-      `border_width ${num(edge[1])} draws a ${fixed(edge[1] * REM_BASE_PX, 0)}px border on a ` +
-        `box ${fixed(width, 0)}x${fixed(height, 0)}px`,
-      edge[0], smallest / 2,
-    ];
-  }
-  return null;
+  if (!edge) return null;
+  const room = meetsInMiddle(edge, smallest);
+  if (room === null) return null;
+  return [
+    `border_width ${num(edge.rem)} draws a ${fixed(edge.px, 0)}px border on a ` +
+      `box ${fixed(width, 0)}x${fixed(height, 0)}px`,
+    edge.field, room,
+  ];
 }
 
 /** A gap between two letters wider than the box. */
 function letterBreach(style: Record<string, unknown>, width: number): StyleBreach | null {
   const gap = styleMeasure(style, "letter_spacing");
-  if (gap && width > 0 && gap[1] * REM_BASE_PX > width) {
-    return [
-      `letter_spacing ${num(gap[1])} puts ${fixed(gap[1] * REM_BASE_PX, 0)}px between letters ` +
-        `in a box ${fixed(width, 0)}px wide`,
-      gap[0], width,
-    ];
-  }
-  return null;
+  if (!gap) return null;
+  const room = pastOneSide(gap, width);
+  if (room === null) return null;
+  return [
+    `letter_spacing ${num(gap.rem)} puts ${fixed(gap.px, 0)}px between letters ` +
+      `in a box ${fixed(width, 0)}px wide`,
+    gap.field, room,
+  ];
 }
 
 /** Every style measurement that can outgrow its box, in the order a finding reads
- *  them out. A new one is an entry here and one in `_STYLE_BREACHES`, its twin in
+ *  them out. A new one is a function asking `pastOneSide` or `meetsInMiddle` for
+ *  its room and an entry here, and the same in `_STYLE_BREACHES`, its twin in
  *  page_review.py. */
 const STYLE_BREACHES: readonly StyleCheck[] = [
   fontBreach,

@@ -729,8 +729,20 @@ def _under_touch(box_px: tuple[float, float]) -> list[str]:
     return [axis for axis, size in zip(("width", "height"), box_px) if size < TOUCH_MIN_PX]
 
 
-def _style_measure(style: Mapping[str, Any], *names: str) -> tuple[str, float] | None:
-    """The first of these fields that is set, as ``(name, value)``.
+@dataclass(frozen=True)
+class _StyleMeasure:
+    """One style field as the panel draws it: the field, and its rem, each ``REM_BASE_PX``."""
+
+    field: str
+    rem: float
+
+    @property
+    def px(self) -> float:
+        return self.rem * REM_BASE_PX
+
+
+def _style_measure(style: Mapping[str, Any], *names: str) -> _StyleMeasure | None:
+    """The first of these fields that is set.
 
     Ordered the way the panel resolves them: a specific axis wins over the
     shorthand, so the message names the field the author would actually edit.
@@ -740,8 +752,29 @@ def _style_measure(style: Mapping[str, Any], *names: str) -> tuple[str, float] |
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             continue
         if value > 0:
-            return name, float(value)
+            return _StyleMeasure(name, float(value))
     return None
+
+
+def _past_one_side(measure: _StyleMeasure, side_px: float, slack: float = 0) -> float | None:
+    """The room a side gives a measurement drawn once across it, when it is longer.
+
+    Text against the box's height, the gap between two letters against its
+    width: the room is the side itself, and ``slack`` is how far past it still
+    draws alike. None when it fits. A side with no size is not measured --
+    nothing is drawn there to outgrow. The Builder's twin is ``pastOneSide``.
+    """
+    return side_px if side_px > 0 and measure.px > side_px + slack else None
+
+
+def _meets_in_middle(measure: _StyleMeasure, side_px: float) -> float | None:
+    """The room each edge has for a measurement drawn on both edges of a side, when the two meet.
+
+    Padding on two opposite sides, a border across the box's shorter side:
+    each edge has half the side. None when they leave a gap between them. A
+    side with no size is not measured. The Builder's twin is ``meetsInMiddle``.
+    """
+    return side_px / 2 if side_px > 0 and 2 * measure.rem * REM_BASE_PX >= side_px else None
 
 
 #: One style measurement the box cannot hold: the words for it, the field to
@@ -752,13 +785,16 @@ _StyleBreach = tuple[str, str, float]
 def _font_breach(style: Mapping[str, Any], width_px: float, height_px: float) -> _StyleBreach | None:
     """Text taller than the box, past half a pixel of rounding."""
     font = _style_measure(style, "font_size")
-    if font and height_px > 0 and font[1] * REM_BASE_PX > height_px + PIXEL_SLACK:
-        return (
-            f"font_size {_num(font[1])} draws {font[1] * REM_BASE_PX:.0f}px of text in a box "
-            f"{height_px:.0f}px tall",
-            font[0], height_px,
-        )
-    return None
+    if font is None:
+        return None
+    room = _past_one_side(font, height_px, PIXEL_SLACK)
+    if room is None:
+        return None
+    return (
+        f"font_size {_num(font.rem)} draws {font.px:.0f}px of text in a box "
+        f"{height_px:.0f}px tall",
+        font.field, room,
+    )
 
 
 @dataclass(frozen=True)
@@ -783,13 +819,16 @@ def _padding_breach(
 ) -> _StyleBreach | None:
     """Padding on two opposite sides that meets in the middle of the box."""
     pad = _style_measure(style, *axis.names)
-    if pad and size_px > 0 and 2 * pad[1] * REM_BASE_PX >= size_px:
-        return (
-            f"{pad[0]} {_num(pad[1])} leaves {pad[1] * REM_BASE_PX:.0f}px {axis.where} in a "
-            f"box {size_px:.0f}px {axis.extent}",
-            pad[0], size_px / 2,
-        )
-    return None
+    if pad is None:
+        return None
+    room = _meets_in_middle(pad, size_px)
+    if room is None:
+        return None
+    return (
+        f"{pad.field} {_num(pad.rem)} leaves {pad.px:.0f}px {axis.where} in a "
+        f"box {size_px:.0f}px {axis.extent}",
+        pad.field, room,
+    )
 
 
 def _padding_down(style: Mapping[str, Any], width_px: float, height_px: float) -> _StyleBreach | None:
@@ -804,30 +843,37 @@ def _border_breach(style: Mapping[str, Any], width_px: float, height_px: float) 
     """A border that meets in the middle of the box's shorter side."""
     edge = _style_measure(style, "border_width")
     smallest = min(width_px, height_px)
-    if edge and smallest > 0 and 2 * edge[1] * REM_BASE_PX >= smallest:
-        return (
-            f"border_width {_num(edge[1])} draws a {edge[1] * REM_BASE_PX:.0f}px border on a box "
-            f"{width_px:.0f}x{height_px:.0f}px",
-            edge[0], smallest / 2,
-        )
-    return None
+    if edge is None:
+        return None
+    room = _meets_in_middle(edge, smallest)
+    if room is None:
+        return None
+    return (
+        f"border_width {_num(edge.rem)} draws a {edge.px:.0f}px border on a box "
+        f"{width_px:.0f}x{height_px:.0f}px",
+        edge.field, room,
+    )
 
 
 def _letter_breach(style: Mapping[str, Any], width_px: float, height_px: float) -> _StyleBreach | None:
     """A gap between two letters wider than the box."""
     gap = _style_measure(style, "letter_spacing")
-    if gap and width_px > 0 and gap[1] * REM_BASE_PX > width_px:
-        return (
-            f"letter_spacing {_num(gap[1])} puts {gap[1] * REM_BASE_PX:.0f}px between letters in a "
-            f"box {width_px:.0f}px wide",
-            gap[0], width_px,
-        )
-    return None
+    if gap is None:
+        return None
+    room = _past_one_side(gap, width_px)
+    if room is None:
+        return None
+    return (
+        f"letter_spacing {_num(gap.rem)} puts {gap.px:.0f}px between letters in a "
+        f"box {width_px:.0f}px wide",
+        gap.field, room,
+    )
 
 
 #: Every style measurement that can outgrow its box, in the order a finding reads
-#: them out. A new one is an entry here and one in ``STYLE_BREACHES``, its twin
-#: in uiBuilderHelpers.ts.
+#: them out. A new one is a function asking ``_past_one_side`` or
+#: ``_meets_in_middle`` for its room and an entry here, and the same in
+#: ``STYLE_BREACHES``, its twin in uiBuilderHelpers.ts.
 _STYLE_BREACHES: tuple[Callable[[Mapping[str, Any], float, float], _StyleBreach | None], ...] = (
     _font_breach,
     _padding_down,
