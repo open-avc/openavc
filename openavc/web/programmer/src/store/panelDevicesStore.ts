@@ -11,6 +11,7 @@
  */
 import { create } from "zustand";
 import type { PanelAccessMode, PanelDevice } from "../api/restClient";
+import { panelAccessMode } from "../api/panelDevicesClient";
 import * as api from "../api/restClient";
 import { parseApiError } from "../api/errors";
 import { showError } from "./toastStore";
@@ -51,13 +52,6 @@ interface PanelDevicesStore {
   rename: (id: string, name: string) => Promise<boolean>;
   /** Clear the one-time notice; the server remembers, so it stays gone. */
   dismissUpgradeNotice: () => Promise<void>;
-}
-
-function accessMode(value: unknown): PanelAccessMode {
-  // The server's own rule: anything other than the exact word "open" is
-  // approved, so a garbled value never draws the card as if the panel were
-  // open to everyone.
-  return value === "open" ? "open" : "approved";
 }
 
 function isDevice(value: unknown): value is PanelDevice {
@@ -109,7 +103,7 @@ export const usePanelDevicesStore = create<PanelDevicesStore>((set, get) => ({
     try {
       const list = await api.listPanelDevices();
       set({
-        access: accessMode(list.access),
+        access: panelAccessMode(list.access),
         upgradeNotice: list.upgrade_notice === true,
         pending: list.pending ?? [],
         approved: list.approved ?? [],
@@ -128,7 +122,7 @@ export const usePanelDevicesStore = create<PanelDevicesStore>((set, get) => ({
     const reason = message.reason as PanelDevicesChangeReason | undefined;
     const device = message.device;
     if (reason === "access_changed") {
-      set({ access: accessMode(message.access), upgradeNotice: message.upgrade_notice === true });
+      set({ access: panelAccessMode(message.access), upgradeNotice: message.upgrade_notice === true });
       return;
     }
     if (!isDevice(device)) {

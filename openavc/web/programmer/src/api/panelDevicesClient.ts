@@ -9,6 +9,13 @@ import { request } from "./base";
  *  (anyone on the network). Anything else the server treats as approved. */
 export type PanelAccessMode = "approved" | "open";
 
+/** A stored or reported access mode, read the way the server reads it:
+ *  anything other than the exact word "open" is approved, so a garbled value
+ *  never shows the panel as open to everyone. */
+export function panelAccessMode(value: unknown): PanelAccessMode {
+  return value === "open" ? "open" : "approved";
+}
+
 export type PanelDeviceStatus = "pending" | "approved" | "denied";
 
 export interface PanelDevice {

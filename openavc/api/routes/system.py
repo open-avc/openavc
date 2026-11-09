@@ -27,7 +27,8 @@ open_router = APIRouter(route_class=PublicProgrammerRoute)
 # What a secret reads as on the way out, and the value a PATCH must never
 # take literally on the way back in. One constant so the two halves of that
 # round trip cannot drift; the Programmer's copy of it is in
-# SystemSettingsView.tsx, which strips these before saving.
+# views/settings/settingsControls.tsx, and Settings' save (saveFlow.ts)
+# strips it before sending.
 REDACTED = "***"
 
 # The key GET /api/system/config adds for the environment's overrides.

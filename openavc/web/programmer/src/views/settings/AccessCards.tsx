@@ -6,6 +6,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { AlertTriangle, Copy } from "lucide-react";
 import * as api from "../../api/restClient";
+import { panelAccessMode } from "../../api/panelDevicesClient";
 import type { SshStatus, SystemConfig } from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
 import { PASSWORD_TOO_SHORT } from "../../api/auth";
@@ -30,7 +31,7 @@ type Auth = SystemConfig["auth"];
 
 /** Nothing asks for a credential: no password and no API key, on screen or
  *  stored (a stored one comes back as REDACTED, which is set). */
-export function hasNoCredential(auth: Auth): boolean {
+function hasNoCredential(auth: Auth): boolean {
   return !auth.programmer_password && !auth.api_key;
 }
 
@@ -204,7 +205,7 @@ function sshLine(busy: boolean, enabled: boolean | null | undefined): string {
  *  produce. The server stores only a digest of whatever is saved here, so this
  *  is the one moment the key exists in readable form -- and its length is what
  *  makes a key safe to store that way. */
-export function generateApiKey(): string {
+function generateApiKey(): string {
   const raw = new Uint8Array(32);
   crypto.getRandomValues(raw);
   return btoa(String.fromCharCode(...raw))
@@ -264,12 +265,6 @@ function ApiKeyCard({ draft, hold, needsPassword }: { draft: SettingsDraft; hold
       </FieldRow>
     </div>
   );
-}
-
-/** Who can open the panel, read the way the server does: anything but the
- *  exact word "open" is approved panels only. */
-export function panelAccessMode(access: unknown): "approved" | "open" {
-  return access === "open" ? "open" : "approved";
 }
 
 const PANEL_ACCESS_CHOICES = [
