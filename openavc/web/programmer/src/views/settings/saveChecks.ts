@@ -30,6 +30,7 @@ export interface SaveChecks {
 
 /** The HTTPS port's problem, or null. */
 function tlsPortProblem(port: number | undefined, httpPort: number): string | null {
+  // No port only before the config loads, when nothing is drawn.
   if (port === undefined) return null;
   if (port === httpPort) return "HTTPS port must differ from HTTP port";
   if (port < 1 || port > 65535) return "Port must be between 1 and 65535";

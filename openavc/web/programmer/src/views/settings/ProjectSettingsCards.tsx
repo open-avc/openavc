@@ -74,7 +74,12 @@ export function PanelDisplayCard() {
         </div>
         <Toggle checked={dimEnabled} onChange={(v) => updateProjectSetting("display", "idle_dim_enabled", v)} />
       </div>
-      {dimEnabled && <IdleDimFields />}
+      {dimEnabled && <>
+        <DimAfterField />
+        <DimToField />
+        <StayBrightField />
+        <WakingTouchField />
+      </>}
     </div>
   );
 }
@@ -105,18 +110,6 @@ function BrightnessField() {
           : "The panel's normal brightness. The panel's own brightness control still works on top of this, until you change this value again."}
       </span>
     </div>
-  );
-}
-
-/** The settings that apply while the panel dims when idle, one row each. */
-function IdleDimFields() {
-  return (
-    <>
-      <DimAfterField />
-      <DimToField />
-      <StayBrightField />
-      <WakingTouchField />
-    </>
   );
 }
 
