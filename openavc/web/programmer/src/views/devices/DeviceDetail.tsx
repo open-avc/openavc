@@ -1,5 +1,5 @@
 import { InstalledEquipment } from "./InstalledEquipment";
-import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { Fragment, useState, useCallback, useMemo } from "react";
 import { Pencil, Trash2, Wifi, Power, RefreshCw, Copy, X, Search, ClipboardCheck } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
@@ -8,7 +8,7 @@ import { useConnectionStore } from "../../store/connectionStore";
 import * as api from "../../api/restClient";
 import { getAuditDeviceTarget } from "../../api/auditClient";
 import { useAuditStore } from "../../store/auditStore";
-import type { BridgePort, DeviceConfig, DeviceInfo, DriverInfo } from "../../api/types";
+import type { BridgePort, DeviceConfig, DriverInfo } from "../../api/types";
 import {
   MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
 } from "../../components/shared/MonitorControl";
@@ -28,8 +28,9 @@ import { IrCodesEditor } from "./IrCodesEditor";
 import { ConfigTableEditor } from "./ConfigTableEditor";
 import { BridgeIrPort } from "./BridgeIrPort";
 import { SshKeySection, canUseSshKey } from "./SshKeySection";
-import { ApiError, parseApiError } from "../../api/errors";
+import { parseApiError } from "../../api/errors";
 import { useConnectionTestResult } from "./useConnectionTestResult";
+import { useDeviceInfo } from "./useDeviceInfo";
 import { driverLabel } from "../../components/shared/driverLabel";
 import { DriverUpdateLine } from "./DriverUpdateLine";
 import { NeedsLoginBanner } from "./NeedsLoginBanner";
@@ -66,11 +67,6 @@ export function DeviceDetail({
   const project = useProjectStore((s) => s.project);
   const update = useProjectStore((s) => s.update);
   const liveState = useConnectionStore((s) => s.liveState);
-  const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
-  // The running system has no such device (its driver failed while loading;
-  // the device log says why). It is still in the project, so it can still be
-  // edited, duplicated or deleted.
-  const [notRunning, setNotRunning] = useState(false);
   // Report a problem is open, from where and with what the page showed.
   const [reportContext, setReportContext] = useState<ProblemReportContext | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -89,45 +85,16 @@ export function DeviceDetail({
   const monitors = project?.monitors ?? [];
   const handleMonitors = useMonitorEdits();
 
-  // The id this page is showing, as of the last render. A fetch that resolves
-  // after the user has moved to another device would otherwise draw that
-  // device's commands, settings and driver info under this one's name.
-  const shownDeviceId = useRef(deviceId);
-  shownDeviceId.current = deviceId;
-  const refetchDeviceInfo = useCallback(() => {
-    const forDevice = deviceId;
-    api.getDevice(deviceId)
-      .then((info) => {
-        if (shownDeviceId.current !== forDevice) return;
-        setDeviceInfo(info);
-        setNotRunning(false);
-      })
-      .catch((e) => {
-        if (shownDeviceId.current === forDevice && e instanceof ApiError && e.status === 404) {
-          setDeviceInfo(null);
-          setNotRunning(true);
-        }
-        console.error(e);
-      });
-  }, [deviceId]);
-
-  // Refetch on mount and whenever the connection flips: a role-adaptive
-  // driver narrows its commands/actions to what the hardware reports at
-  // connect, so info fetched while the device was offline goes stale the
-  // moment it comes up (and vice versa).
-  // The same when the device's web page is found: the platform looks for it
-  // in the background after connect, and Open Web UI comes with the answer.
   const away = readDeviceAway(liveState, deviceId);
   const connected = away.connected;
-  const webUiUrl = liveState[`device.${deviceId}.web_ui_url`];
   const [testResult, setTestResult] = useConnectionTestResult(deviceId, connected);
   const runtimeEnabled = liveState[`device.${deviceId}.enabled`] === true;
-  // And when it starts or stops waiting for a login: which settings wait is
-  // in the device info, and a login saved anywhere changes it.
-  const awaitingLogin = waitsForLogin(away);
-  useEffect(() => {
-    refetchDeviceInfo();
-  }, [refetchDeviceInfo, connected, webUiUrl, runtimeEnabled, awaitingLogin]);
+  const { deviceInfo, notRunning, refetch: refetchDeviceInfo, takeActivated } = useDeviceInfo(deviceId, {
+    connected,
+    webUiUrl: liveState[`device.${deviceId}.web_ui_url`],
+    runtimeEnabled,
+    awaitingLogin: waitsForLogin(away),
+  });
 
   const deviceConfig = project?.devices.find((d) => d.id === deviceId);
   const isEnabled = deviceConfig?.enabled !== false;
@@ -546,7 +513,7 @@ export function DeviceDetail({
           driverId={deviceConfig?.driver ?? ""}
           onReassign={() => deviceConfig && onEdit(deviceConfig)}
           onBrowseDrivers={onBrowseDrivers}
-          onActivated={() => api.getDevice(deviceId).then(setDeviceInfo).catch(console.error)}
+          onActivated={takeActivated}
         />
       )}
       {banner === "restarting" && <RestartingBanner detail={away.offlineDetail} />}
