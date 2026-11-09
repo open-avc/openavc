@@ -3993,7 +3993,7 @@
               "key": "var.season",
               "states": {
                 "winter": {
-                  "image": "assets://w.png"
+                  "button_image": "assets://w.png"
                 }
               }
             }
@@ -4409,6 +4409,25 @@
         "type": "button"
       },
       "expected": []
+    },
+    {
+      "name": "a label whose look state word is empty text",
+      "element": {
+        "id": "chip",
+        "type": "label",
+        "bindings": {
+          "show": {
+            "look": {
+              "states": {
+                "on": {
+                  "label": ""
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected": []
     }
   ],
   "keypad_findings": [
@@ -4677,6 +4696,18 @@
           "key": "keypad_sends_early|pin"
         }
       ]
+    },
+    {
+      "name": "auto send with the delay as a list",
+      "element": {
+        "id": "pin",
+        "type": "keypad",
+        "auto_send": true,
+        "auto_send_delay_ms": [
+          200
+        ]
+      },
+      "expected": []
     }
   ],
   "starvation_finding": [
@@ -5102,6 +5133,74 @@
       "theme": {
         "thumb_size": 4.714285714285714
       }
+    },
+    {
+      "name": "an LED a third of a pixel narrow and too short",
+      "element": {
+        "id": "led",
+        "type": "status_led",
+        "label": "Power"
+      },
+      "seat": {
+        "box_px": [
+          28.7,
+          10
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "led",
+          "kind": "too_small_for_contents",
+          "message": "led (status_led) is 29x10px at the 1280x800 reference, too small for what it draws: 10px tall, needs 20px (led-dot is 20px). Give it h at least 6.67% of grp_strip.",
+          "key": "too_small_for_contents|led"
+        }
+      ]
+    },
+    {
+      "name": "a fader whose floor is a third of a pixel wider than its strip",
+      "element": {
+        "id": "vol",
+        "type": "fader"
+      },
+      "seat": {
+        "box_px": [
+          46,
+          300
+        ],
+        "parent_px": [
+          87.7,
+          400
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [
+          {
+            "label": "grp_strip",
+            "width_px": 87.7,
+            "height_px": 400
+          },
+          {
+            "label": "grp_bank",
+            "width_px": 600,
+            "height_px": 500
+          }
+        ],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "vol",
+          "kind": "too_small_for_contents",
+          "message": "vol (fader) is 46x300px at the 1280x800 reference, too small for what it draws: 46px wide, needs 88px (fader-handle is 44px, fader-scale is 42px). Give it w at least 100.34% of grp_strip.",
+          "key": "too_small_for_contents|vol"
+        }
+      ]
     }
   ],
   "degenerate_finding": [

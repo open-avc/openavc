@@ -26,8 +26,14 @@ from pathlib import Path
 import pytest
 
 from openavc.ui.page_review import (
+    _EQ,
+    _LOWER,
+    _NE,
+    _UPPER,
     HONORED_PROPERTIES,
     HONORED_SHOW_SLOTS,
+    KEYPAD_DIGITS_DEFAULT,
+    KEYPAD_SEND_DELAY_DEFAULT_MS,
     MATRIX_CONFIG_KEYS,
     MINIMUM_VISIBLE_PX,
     STATE_ICON_TYPES,
@@ -564,3 +570,94 @@ def test_the_guide_states_the_off_values_the_led_renderer_uses(
     assert section, "the guide no longer documents the LED lit/unlit rule"
     for token in ("null", "undefined", "false", "0", '""', '"off"', '"false"', '"no"'):
         assert token in section, f"the guide's off-value list omits {token}"
+
+
+# --- What a visibility operator means, and a keypad's defaults ---------------
+
+_CONDITION_CASE = re.compile(r"((?:case '[^']+':\s*)+)return (.+?);")
+
+#: How the panel's comparison reads for each family the review knows.
+_PANEL_COMPARISON = {
+    "actual == target": "eq",
+    "actual != target": "ne",
+    "!!actual": "truthy",
+    "!actual": "falsy",
+}
+
+
+def _panel_meaning(expression: str) -> str:
+    for bound in (">=", "<=", ">", "<"):
+        if expression.endswith(f"actual {bound} target"):
+            return bound
+    return _PANEL_COMPARISON.get(expression, f"unread: {expression}")
+
+
+def _review_meanings() -> dict[str, str]:
+    meanings = {spelling: "eq" for spelling in _EQ}
+    meanings.update({spelling: "ne" for spelling in _NE})
+    meanings.update({s: ">=" if inclusive else ">" for s, inclusive in _LOWER.items()})
+    meanings.update({s: "<=" if inclusive else "<" for s, inclusive in _UPPER.items()})
+    meanings.update({"truthy": "truthy", "falsy": "falsy"})
+    return meanings
+
+
+def test_the_visibility_operators_are_the_ones_the_panel_evaluates(
+    panel_method_bodies: dict[str, str],
+) -> None:
+    """Every operator spelling the panel's visible_when knows, read as the panel reads it.
+
+    The review stays quiet about two stacked elements only when their
+    conditions provably cannot both hold, reasoning about each operator the way
+    the panel will evaluate it. A spelling the panel learns that the review does
+    not know is read as undecidable, which costs a warning; one the review reads
+    differently from the panel can hide a real overlap. Both are caught here.
+    """
+    body = panel_method_bodies["_evalConditionOp"]
+    panel = {}
+    for labels, expression in _CONDITION_CASE.findall(body):
+        for spelling in re.findall(r"case '([^']+)'", labels):
+            panel[spelling] = _panel_meaning(expression.strip())
+    assert len(panel) > 10, "the operator scan found almost nothing -- the parse is wrong"
+    assert panel == _review_meanings()
+
+
+def test_the_builder_reads_the_same_visibility_operators(builder_source: str) -> None:
+    def spellings(name: str) -> set[str]:
+        block = re.search(rf"const {name} = new Set\(\[(.*?)\]\)", builder_source, re.S)
+        assert block, f"could not find {name} in the Builder helpers"
+        return set(re.findall(r'"([^"]+)"', block.group(1)))
+
+    def bounds(name: str) -> dict[str, bool]:
+        block = re.search(rf"const {name}: Record<string, boolean> = \{{(.*?)\}};", builder_source)
+        assert block, f"could not find {name} in the Builder helpers"
+        pairs = re.findall(r'"?([^\s":,]+)"?:\s*(true|false)', block.group(1))
+        return {spelling: value == "true" for spelling, value in pairs}
+
+    assert spellings("EQ_OPS") == set(_EQ)
+    assert spellings("NE_OPS") == set(_NE)
+    assert bounds("LOWER_OPS") == _LOWER
+    assert bounds("UPPER_OPS") == _UPPER
+
+
+def test_the_keypad_defaults_are_the_panels(
+    panel_method_bodies: dict[str, str], builder_source: str,
+) -> None:
+    """The defaults the panel fills in, which the review also uses as its threshold.
+
+    A Send Delay under the panel's own default is what the review warns about,
+    so the two numbers moving apart would warn about the default itself, or
+    stop warning about a delay that sends a PIN early.
+    """
+    body = panel_method_bodies["renderKeypad"]
+    digits = re.search(r"element\.digits \?\? (\d+)", body)
+    delay = re.search(r"element\.auto_send_delay_ms \?\? (\d+)", body)
+    assert digits and delay, "could not find the keypad's defaults in renderKeypad"
+    assert int(digits.group(1)) == KEYPAD_DIGITS_DEFAULT
+    assert int(delay.group(1)) == KEYPAD_SEND_DELAY_DEFAULT_MS
+    for name, value in (
+        ("KEYPAD_DIGITS_DEFAULT", KEYPAD_DIGITS_DEFAULT),
+        ("KEYPAD_SEND_DELAY_DEFAULT_MS", KEYPAD_SEND_DELAY_DEFAULT_MS),
+    ):
+        found = re.search(rf"const {name} = (\d+);", builder_source)
+        assert found, f"could not find {name} in the Builder helpers"
+        assert int(found.group(1)) == value

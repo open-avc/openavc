@@ -292,3 +292,36 @@ def test_a_look_whose_states_are_a_list_supplies_no_words_here() -> None:
     chip = {"id": "chip", "type": "label",
             "bindings": {"show": {"look": {"states": [{"label": "On"}]}}}}
     assert [f.kind for f in content_findings(chip)] == ["nothing_to_draw"]
+
+
+def test_a_send_delay_written_as_true_reads_as_a_number_here() -> None:
+    """Python counts a boolean as a number, so this side warns about a Send Delay
+    of ``true`` and the Builder does not. The project model turns ``true`` into 1
+    before either review sees a saved project, so only a raw element reaches it.
+    """
+    pad = {"id": "pin", "type": "keypad", "auto_send": True, "auto_send_delay_ms": True}
+    assert [f.message for f in keypad_findings(pad)] == [
+        "pin (keypad) sends what has been typed True ms after the last key press, "
+        "shorter than the 1500 ms default, so a code can be sent before it is finished. "
+        "Set Send Delay to 1500 ms or more; an entry of 4 digits is sent as soon as "
+        "the last one is pressed.",
+    ]
+
+
+def test_a_digit_count_written_as_a_float_is_not_counted_here() -> None:
+    """JSON reads ``4.0`` as 4 in the Builder; here it stays a float and the
+    early-send check stays silent. The project model turns it into 4."""
+    pad = {"id": "pin", "type": "keypad", "auto_send": True, "auto_send_delay_ms": 200,
+           "digits": 4.0}
+    assert keypad_findings(pad) == []
+
+
+def test_an_operator_named_constructor_is_one_this_side_does_not_know() -> None:
+    """Read as undecidable here, as the panel reads it; the Builder reads it as a bound."""
+    def shown(when):
+        return {"id": "x", "type": "group", "bindings": {"show": {"visible_when": when}}}
+
+    assert mutually_exclusive(
+        shown({"key": "var.k", "operator": "constructor", "value": 5}),
+        shown({"key": "var.k", "operator": "lt", "value": 3}),
+    ) is False

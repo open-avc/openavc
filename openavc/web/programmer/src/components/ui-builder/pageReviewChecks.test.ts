@@ -144,3 +144,23 @@ it("reads words from a look whose states are a list", () => {
   } as unknown as UIElement;
   expect(contentFindings(chip)).toEqual([]);
 });
+
+// Two more shapes the sides answer differently, pinned per side. A Send Delay
+// written as true is no number here (the AI side counts it as one); an operator
+// named after a property every object inherits is read as a bound here (the AI
+// side, like the panel, does not know it).
+it("reads a Send Delay written as true as no delay", () => {
+  const pad = {
+    id: "pin", type: "keypad", auto_send: true, auto_send_delay_ms: true,
+  } as unknown as UIElement;
+  expect(keypadFindings(pad)).toEqual([]);
+});
+
+it("reads an operator named constructor as a bound", () => {
+  const shown = (when: unknown) =>
+    ({ id: "x", type: "group", bindings: { show: { visible_when: when } } }) as unknown as UIElement;
+  expect(mutuallyExclusive(
+    shown({ key: "var.k", operator: "constructor", value: 5 }),
+    shown({ key: "var.k", operator: "lt", value: 3 }),
+  )).toBe(true);
+});
