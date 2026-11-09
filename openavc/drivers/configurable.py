@@ -12,23 +12,33 @@ Usage:
     register_driver(DriverClass)
 
 Whole jobs live in mixins ``ConfigurableDriver`` inherits, so every name
-stays on the driver object. Reading the device's replies: the regex rules
-over a line of text (``text_replies``), the JSON-body rules and the
-``json_path`` walk (``json_replies``), OSC commands and reply rules
-(``osc_wire``), what a reply's value becomes and which child it belongs to
-(``reply_values``), and a rule's throttle (``reply_throttle``). Around the
-connection: the ``auth:`` sign-in (``sign_in``), the children an
-``instances:`` block declares (``declared_roster``), whether an HTTP device
-is refusing the credentials (``http_credential``), and the ``liveness:``
-watchdog (``liveness_block``). What goes out: the framing of every byte the
-device's protocol puts on the wire, from every place that sends
-(``send_framing``), and an HTTP command's request (``http_commands``). The
-lines the driver sends on its own: start-up, the poll and the spacing
+stays on the driver object. The definition: what the class's
+``DRIVER_INFO`` says (``yaml_driver_info``, a module the factory below and
+the merge both call), and the commands, replies and state variables a
+device authors itself, merged over the file (``inline_merge``). Reading the
+device's replies: the regex rules over a line of text (``text_replies``),
+the JSON-body rules and the ``json_path`` walk (``json_replies``), OSC
+commands and reply rules (``osc_wire``), what a reply's value becomes and
+which child it belongs to (``reply_values``), whether a rule's
+``only_when:`` gate is open (``reply_gate``), and a rule's throttle
+(``reply_throttle``). Around the connection: the ``auth:`` sign-in
+(``sign_in``), the children an ``instances:`` block declares
+(``declared_roster``), whether an HTTP device is refusing the credentials
+(``http_credential``), and the ``liveness:`` watchdog (``liveness_block``).
+What goes out: the framing of every byte the device's protocol puts on the
+wire, from every place that sends (``send_framing``), an HTTP command's
+request (``http_commands``), and the commands that need no connection of
+the device's own, an ``ir:`` code and a ``udp:`` block (``side_sends``).
+The lines the driver sends on its own: start-up, the poll and the spacing
 between their lines (``start_up_and_poll``), what a poll or start-up entry
 sends and whether its gates let it go now (``query_entries``), and reading
 the device again after a change, a reply rule's ``then_query`` and a
 command's ``read_back:`` (``rereads``). Writing a device setting:
 ``setting_writes``.
+
+What stays here: the order the parts are set up in, the connect and its
+initial sync, which form a command goes out in and its parameters' wire
+values, filling a template's placeholders, and where an incoming frame goes.
 """
 
 from __future__ import annotations
@@ -45,6 +55,7 @@ from openavc.drivers.base import (
 from openavc.drivers.declared_roster import DeclaredRoster
 from openavc.drivers.http_commands import HttpCommands
 from openavc.drivers.http_credential import HttpCredential
+from openavc.drivers.inline_merge import InlineMerge
 from openavc.drivers.json_replies import JsonReplies
 from openavc.drivers.liveness_block import LivenessBlock
 from openavc.drivers.osc_wire import OscWire
@@ -59,15 +70,7 @@ from openavc.drivers.side_sends import SideSends
 from openavc.drivers.sign_in import SignIn
 from openavc.drivers.start_up_and_poll import StartUpAndPoll
 from openavc.drivers.text_replies import TextReplies
-from openavc.drivers.inline_protocol import (
-    declare_command_params,
-    derive_state_vars_from_responses,
-    normalize_config_commands,
-    normalize_config_responses,
-    normalize_config_state_vars,
-    normalize_ir_codes,
-)
-from openavc.drivers.yaml_driver_info import build_commands_meta, driver_info_for
+from openavc.drivers.yaml_driver_info import driver_info_for
 from openavc.transport.frame_parsers import FrameParser
 from openavc.utils.logger import get_logger
 
@@ -88,19 +91,6 @@ def _param_wire_value(name: str, value: Any, pdef: dict[str, Any]) -> dict[str, 
     return {}
 
 
-def _inline_poll_queries(commands: dict[str, Any]) -> list[str]:
-    """The poll lines a device's own commands add: those the editor flagged
-    "poll" are sent on the device's poll_interval to keep status values live
-    (most AV gear doesn't push). A byte-stream command's query is its send
-    string (line ending included); an HTTP or OSC command has no send string,
-    so its name is used (poll() looks the name up)."""
-    return [
-        cmd["send"] if isinstance(cmd.get("send"), str) else name
-        for name, cmd in commands.items()
-        if cmd.get("poll")
-    ]
-
-
 # One {name} / {name:spec} token left unsubstituted on the way to the wire.
 # Same shape the authoring check uses, so both agree on what counts as a
 # placeholder and a literal JSON brace is neither.
@@ -114,6 +104,7 @@ class ConfigurableDriver(
     SideSends,
     HttpCommands,
     SendFraming,
+    InlineMerge,
     LivenessBlock,
     SignIn,
     HttpCredential,
@@ -154,14 +145,14 @@ class ConfigurableDriver(
         self._definition: dict[str, Any] = getattr(self.__class__, "_definition", {})
         super().__init__(*args, **kwargs)
 
-        # Inline protocol: merge any commands / responses / state_variables the
-        # device authored in its project-file config over the file definition,
-        # producing a per-instance _definition + DRIVER_INFO. Runs before the
-        # response compile + derived-config below so the config-authored
-        # responses are compiled and config commands are visible to the IDE.
-        # (template location, token) pairs already warned about — see
+        # (template location, token) pairs already warned about: see
         # _substitute_for_wire.
         self._warned_unresolved: set[tuple[str, str]] = set()
+
+        # The device's own commands, replies and state variables over the
+        # file (inline_merge), framed with the send framing set up first, and
+        # merged before the derived config and the reply rules' compile below
+        # so both see them.
         self._init_send_framing()
         self._merge_config_protocol()
 
@@ -176,12 +167,6 @@ class ConfigurableDriver(
         # responses are compiled below so a derived value can appear in a
         # response address too.
         self._compute_derived_config()
-
-        # Pre-compile the receive side (regex / OSC-address / JSON-body rule
-        # tables, incl. throttle state and compiled child_set routing) — the
-        # shared compile in compiled_protocol, run per instance so the tables
-        # embed this instance's config substitutions. Done below, after the
-        # derived config is computed.
 
         # How the HTTP credential has fared on this connection's start-up and
         # poll queries (http_credential).
@@ -207,6 +192,11 @@ class ConfigurableDriver(
         self._framed_messages = 0
         self._last_unread = ""
 
+        # Pre-compile the receive side (regex / OSC-address / JSON-body rule
+        # tables, incl. throttle state and compiled child_set routing): the
+        # shared compile in compiled_protocol, run per instance so the tables
+        # embed this instance's config substitutions, after the derived
+        # config is computed.
         compiled = compiled_protocol.compile_driver(
             self._definition, self.config, device_id=self.device_id
         )
@@ -220,96 +210,6 @@ class ConfigurableDriver(
         self._drop_follow_ups()
         self._drop_read_backs()
         await super()._close_session()
-
-    def _merge_config_protocol(self) -> None:
-        """Merge device-config-authored ``commands`` / ``responses`` /
-        ``state_variables`` over the file definition (the inline-protocol
-        feature) into a per-instance ``_definition`` and ``DRIVER_INFO``.
-
-        Config *extends/overrides* the file: commands merge by name (config
-        wins), responses append after the file's (so a file driver's base
-        behavior still matches first — first-match-wins), and state variables
-        merge (explicit config + those auto-derived from the responses). A
-        no-op when the device authors none of the three keys, so file-only
-        drivers keep sharing the immutable class definition unchanged.
-
-        The per-instance ``DRIVER_INFO`` shadow is what surfaces config
-        commands + state vars to the device page (``get_device_info`` reads the
-        live instance), the macro command picker, and state-var seeding — the
-        class attribute is shared across every device of this driver type, so
-        a per-device protocol must not write to it.
-        """
-        norm_commands = normalize_config_commands(
-            self.config.get("commands"),
-            self._inline_suffix(),
-            prefix=self._command_prefix,
-        )
-        # File commands (not in this set) are the ones send_command frames.
-        self._inline_command_names: set[str] = set(norm_commands)
-        norm_responses = normalize_config_responses(self.config.get("responses"))
-        norm_state_vars = normalize_config_state_vars(
-            self.config.get("state_variables")
-        )
-        # IR code-set → commands. The effective code-set is the driver-declared
-        # default_config.ir_codes (a community IR driver's shipped codes, already
-        # layered into self.config by resolved_device_config) overlaid with any
-        # device-authored ir_codes. Each becomes an IR command emitted through
-        # the bound bridge (see send_command). Config codes win by name.
-        ir_commands = normalize_ir_codes(self.config.get("ir_codes"))
-
-        if not any((norm_commands, norm_responses, norm_state_vars, ir_commands)):
-            return
-
-        # Auto-declare params for {placeholder} tokens so parameterized commands
-        # prompt in the Send Command card. config_keys are excluded — a {host}
-        # token resolves from config, not a prompt.
-        declare_command_params(norm_commands, set(self.config.keys()))
-
-        self._definition = self._merged_definition(
-            {**norm_commands, **ir_commands}, norm_responses, norm_state_vars,
-            _inline_poll_queries(norm_commands),
-        )
-        info = dict(self.DRIVER_INFO)
-        info["commands"] = build_commands_meta(self._definition["commands"])
-        info["state_variables"] = self._definition["state_variables"]
-        self.DRIVER_INFO = info
-
-        # Re-seed state variables now that the config-added ones exist.
-        # super().__init__() already seeded the file vars; re-seeding pre-poll
-        # is harmless (same defaults) and gives the new vars an initial value
-        # so they appear on the device card before the first matching reply.
-        self._init_state_variables()
-
-    def _merged_definition(
-        self,
-        commands: dict[str, Any],
-        responses: list[dict[str, Any]],
-        state_vars: dict[str, Any],
-        poll_queries: list[str],
-    ) -> dict[str, Any]:
-        """The file definition with the device's own protocol over it.
-
-        Commands merge by name (config wins), responses append after the
-        file's (so a file driver's base behavior still matches first —
-        first-match-wins), and state variables layer the file's, those
-        auto-derived from the merged responses, then the config's explicit
-        ones. Poll queries append after the file's."""
-        merged = dict(self._definition)
-        merged_responses = list(merged.get("responses") or []) + responses
-        if poll_queries:
-            file_polling = merged.get("polling") or {}
-            merged["polling"] = {
-                **file_polling,
-                "queries": list(file_polling.get("queries", [])) + poll_queries,
-            }
-        merged["commands"] = {**(merged.get("commands") or {}), **commands}
-        merged["responses"] = merged_responses
-        merged["state_variables"] = {
-            **(merged.get("state_variables") or {}),
-            **derive_state_vars_from_responses(merged_responses),
-            **state_vars,
-        }
-        return merged
 
     def _compute_derived_config(self) -> None:
         """Populate self.config with values derived from other config fields.

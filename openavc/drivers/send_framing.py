@@ -58,7 +58,7 @@ class SendFraming:
     DRIVER_INFO: dict[str, Any]
     _definition: dict[str, Any]
     # The commands the device authored itself, set by the inline-protocol
-    # merge (ConfigurableDriver._merge_config_protocol); read with a default.
+    # merge (inline_merge's _merge_config_protocol); read with a default.
     _inline_command_names: set[str]
     _push_params: Callable[[], dict[str, Any]]
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]

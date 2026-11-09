@@ -11,10 +11,10 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.configurable import (
+from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.drivers.inline_protocol import (
     normalize_config_commands,
     normalize_config_responses,
-    create_configurable_driver_class,
 )
 
 # A bare "generic" definition: a transport and nothing else. The protocol is
