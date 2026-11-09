@@ -162,11 +162,49 @@ def derive_config(config: dict[str, Any], derived: Any) -> None:
 
 
 # ── Send-template inversion ──
+#
+# The decode twin of ``safe_substitute``: what the runtime puts on the wire for
+# a command's send template, the inversion of that template matches. The
+# auto-generated simulator recognizes an incoming command line by it and the
+# validator checks the simulator's coverage with it.
+
+
+#: Any {name} / {name:spec} token whose name is an identifier, declared or not.
+_ANY_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::([^{}]*))?\}")
 
 
 def _placeholder_re(name: str) -> re.Pattern[str]:
-    # {name} or {name:spec} — the same token shape safe_substitute expands.
+    """``{name}`` or ``{name:spec}``, the spec (without its colon) as group 1:
+    the same token shape safe_substitute expands."""
     return re.compile(r"\{" + re.escape(name) + r"(?::([^{}]*))?\}")
+
+
+def declared_placeholders(text: str, params: dict[str, Any]) -> list[str]:
+    """The declared params ``text``'s placeholders name, in order, one per
+    occurrence: the captures ``send_regex`` makes of it."""
+    return [m.group(1) for m in _ANY_PLACEHOLDER.finditer(text) if m.group(1) in params]
+
+
+def rename_placeholder(text: str, name: str, new_name: str) -> str:
+    """``text`` with every ``{name}`` / ``{name:spec}`` written as
+    ``new_name``, each keeping its spec."""
+
+    def renamed(m: re.Match[str]) -> str:
+        spec = "" if m.group(1) is None else ":" + m.group(1)
+        return "{" + new_name + spec + "}"
+
+    return _placeholder_re(name).sub(renamed, text)
+
+
+def _without_terminators(template: str) -> str:
+    """A send template as the consumers read a line: stripped, its trailing
+    terminators dropped (real CR/LF and literal ``\\r``/``\\n`` escapes).
+    They match against delimiter-split, whitespace-stripped lines, so a
+    pattern that kept its terminator could never match anything."""
+    text = template.strip()
+    while text.endswith(("\\r", "\\n")):
+        text = text[:-2].rstrip()
+    return text
 
 
 def spec_int_base(spec: str) -> int | None:
@@ -182,32 +220,36 @@ def spec_int_base(spec: str) -> int | None:
 
 _BASE_CAPTURES = {16: r"([0-9a-fA-F]+)", 8: r"([0-7]+)", 2: r"([01]+)"}
 
+#: The decimal capture of a param that goes on the wire as digits. An integer
+#: may be negative (a level in dB, a converted value). A child id is an integer
+#: child-entity id, optionally zero-padded, so digits only: a greedy (.+) would
+#: over-match and break parity with the driver's send shape. A boolean under a
+#: numeric spec sends 1/0 ({flag:d}) or 01/00 ({flag:02d}), how a fixed-width
+#: protocol writes a flag byte.
+_DIGIT_CAPTURES = {"integer": r"(-?\d+)", "child_id": r"(\d+)", "boolean": r"(\d+)"}
+
+#: The capture of a param that goes on the wire as it is written; any other
+#: type captures the rest of the field, ``(.+)``.
+_WORD_CAPTURES = {"number": r"(-?[\d.]+)", "boolean": r"(true|false|0|1)"}
+
+
+def _goes_out_as_digits(param_type: str, spec: str) -> bool:
+    """Whether a param's placeholder puts digits on the wire: an integer or a
+    child id always, a boolean only under a numeric spec (its word spellings
+    could never match what that send produced)."""
+    if param_type == "boolean":
+        return bool(spec) and spec[-1] in "dxXob"
+    return param_type in ("integer", "child_id")
+
 
 def _capture_for(param_type: str, spec: str) -> str:
-    """The capture class one param placeholder inverts to."""
-    if param_type in ("integer", "child_id"):
-        # The spec's presentation type decides the digit set on the wire:
-        # {addr:02X} emits hex, which (\d+) could never match back.
-        base = spec_int_base(spec)
-        if base:
-            return _BASE_CAPTURES[base]
-        # child_id values are integer child-entity IDs (optionally
-        # zero-padded), so capture digits — not a greedy (.+) that
-        # over-matches and breaks parity with the driver's send shape.
-        # An integer may be negative (a level in dB, a converted value).
-        return r"(\d+)" if param_type == "child_id" else r"(-?\d+)"
-    if param_type == "number":
-        return r"(-?[\d.]+)"
-    if param_type == "boolean":
-        # A boolean carrying a numeric format spec goes on the wire as a
-        # number: {flag:d} sends 1/0 and {flag:02d} sends 01/00, which is
-        # how a fixed-width protocol writes a flag byte. Matching the word
-        # spellings there could never match what the send path produced.
-        if spec and spec[-1] in "dxXob":
-            base = spec_int_base(spec)
-            return _BASE_CAPTURES[base] if base else r"(\d+)"
-        return r"(true|false|0|1)"
-    return r"(.+)"
+    """The capture class one param placeholder inverts to. Digits take the
+    digit set the spec's base puts on the wire ({addr:02X} emits hex, which
+    (\\d+) could never match back), else the type's decimal capture."""
+    if not _goes_out_as_digits(param_type, spec):
+        return _WORD_CAPTURES.get(param_type, r"(.+)")
+    base = spec_int_base(spec)
+    return _BASE_CAPTURES[base] if base else _DIGIT_CAPTURES[param_type]
 
 
 def send_regex(template: str, params: dict[str, Any]) -> str:
@@ -218,14 +260,9 @@ def send_regex(template: str, params: dict[str, Any]) -> str:
     to recognize an incoming command line. Placeholders for declared params
     ({name} and {name:spec} alike) become typed capture groups — one group
     per occurrence, in template order; everything else matches literally.
-    Trailing terminators are dropped (real CR/LF and literal ``\\r``/``\\n``
-    escape sequences): the consumers match against delimiter-split,
-    whitespace-stripped lines, so a pattern that kept its terminator could
-    never match anything.
+    Trailing terminators are dropped (``_without_terminators``).
     """
-    result = template.strip()
-    while result.endswith(("\\r", "\\n")):
-        result = result[:-2].rstrip()
+    result = _without_terminators(template)
     # Escape the literal text BEFORE the capture groups go in, so a literal
     # parenthesis in the protocol (a display whose backlight code is '(')
     # is matched as itself rather than read as a group of its own. Only a
@@ -254,15 +291,8 @@ def is_passthrough_send(template: str, params: dict[str, Any]) -> bool:
     (``"{command}\\r"``): a raw passthrough that puts whatever the caller
     typed on the wire. It describes no protocol, so there is nothing to
     recognize an incoming line by; inverted, it would match every line."""
-    text = template.strip()
-    while text.endswith(("\\r", "\\n")):
-        text = text[:-2].rstrip()
-    m = _ANY_PLACEHOLDER.fullmatch(text)
+    m = _ANY_PLACEHOLDER.fullmatch(_without_terminators(template))
     return bool(m and m.group(1) in params)
-
-
-#: Any {name} / {name:spec} token, declared or not.
-_ANY_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::([^{}]*))?\}")
 
 
 def _escape_literal(text: str) -> str:
@@ -1132,11 +1162,7 @@ def _each_child_read_back(
     cvars = tdef.get("state_variables") if isinstance(tdef, dict) else None
     if not (_fills_one_child_id(used, pdef) and _sets_one_child_variable(command, cvars)):
         return None
-    template = re.sub(
-        r"\{" + re.escape(name) + r"((?::[^{}]*)?)\}",
-        lambda m: "{child_id" + m.group(1) + "}",
-        line,
-    )
+    template = rename_placeholder(line, name, "child_id")
     if template in scope.sent_texts:
         return None
     return {"each_child": ctype, "send": template, "query_for": command.set_vars[0]}
@@ -1157,10 +1183,7 @@ def _plain_read_back(line: str, command: _ReadBackCommand, scope: _ReadBackScope
 def _read_back_entry(line: str, command: _ReadBackCommand, scope: _ReadBackScope) -> Any:
     """One read-back query as the simulator answers it, or None when it is
     left out."""
-    used = [
-        m.group(1) for m in _ANY_PLACEHOLDER.finditer(line)
-        if m.group(1) in command.params
-    ]
+    used = declared_placeholders(line, command.params)
     if used:
         return _each_child_read_back(line, used, command, scope)
     return _plain_read_back(line, command, scope)
