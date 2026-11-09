@@ -6,6 +6,7 @@ manages the start/stop lifecycle, and handles missing/incompatible plugins.
 """
 
 import asyncio
+import functools
 import platform
 import threading
 from pathlib import Path
@@ -108,6 +109,70 @@ def unregister_plugin_class(plugin_id: str) -> bool:
     if removed:
         log.info(f"Unregistered plugin class: {plugin_id}")
     return removed
+
+
+# What a bounded stop() logs, by when it runs: (after the timeout, when it raised).
+_STOP_WORDING = {
+    "stop": (" — continuing teardown", "raised an exception"),
+    "failed_start": (" while cleaning up a failed start", "raised while cleaning up a failed start"),
+}
+
+
+async def _bounded_stop(plugin_id: str, instance: Any, *, during: str) -> None:
+    """Call a plugin's stop() under PLUGIN_STOP_TIMEOUT, every exception logged
+    and swallowed: a stop() that hangs or raises never stops the platform's own
+    teardown. ``during`` is a ``_STOP_WORDING`` key."""
+    timed_out, raised = _STOP_WORDING[during]
+    try:
+        await asyncio.wait_for(instance.stop(), timeout=PLUGIN_STOP_TIMEOUT)
+    except asyncio.TimeoutError:
+        log.error(f"Plugin '{plugin_id}' stop() timed out after {PLUGIN_STOP_TIMEOUT}s{timed_out}")
+    except Exception:  # Catch-all: plugin stop() runs arbitrary code
+        log.exception(f"Plugin '{plugin_id}' stop() {raised}")
+
+
+def _start_failure_text(plugin_id: str, error: Exception) -> str:
+    """The error a failed start() stores, logged as it is stored."""
+    if isinstance(error, asyncio.TimeoutError):
+        msg = f"start() timed out after {PLUGIN_START_TIMEOUT}s"
+        log.error(f"Plugin '{plugin_id}' {msg}")
+        return msg
+    msg = str(error)
+    # The type and text in the message itself, not only the traceback: the Log
+    # view shows a record's message, and the cloud's answer for an unmarked
+    # failure sends the reader there.
+    log.exception(f"Plugin '{plugin_id}' failed to start: {type(error).__name__}: {error}")
+    return msg
+
+
+def _reap_named_tasks(plugin_id: str) -> None:
+    """Cancel every task still running under the plugin's name.
+
+    Every task a PluginAPI creates is named ``plugin.<id>.<name>``, so this
+    catches anything the registry didn't hold. A periodic task that escapes
+    tracking keeps executing actions after the plugin is gone (seen in the
+    field: a leaked hold-repeat drove a volume macro four times a second
+    through a stop, an uninstall and a reinstall). Nothing named for the plugin
+    survives a stop.
+    """
+    prefix = f"plugin.{plugin_id}."
+    for task in asyncio.all_tasks():
+        name = task.get_name() or ""
+        if name.startswith(prefix) and not task.done():
+            log.warning(
+                f"Reaping orphaned task '{name}' that outlived plugin "
+                f"'{plugin_id}' teardown"
+            )
+            task.cancel()
+
+
+def _call_hook(hook: Any, failure: str, *args: Any) -> None:
+    """Call one of the app's router hooks. A failure is logged, never raised:
+    a mount must not abort a started plugin, nor an unmount block a stop."""
+    try:
+        hook(*args)
+    except Exception:  # The hook is the app's; isolate it like plugin code
+        log.exception(failure)
 
 
 class PluginLoader:
@@ -429,71 +494,78 @@ class PluginLoader:
             # Already running. Don't silently drop a differing config — restart
             # to apply it (config-update relies on the new config taking
             # effect); an identical or empty config is a genuine no-op.
-            if config is not None and config != self.get_running_config(plugin_id):
-                log.info(
-                    f"Plugin '{plugin_id}' already running with a different config "
-                    f"— restarting to apply it"
-                )
-                await self._stop_plugin_locked(plugin_id)
-            else:
+            if config is None or config == self.get_running_config(plugin_id):
                 return True
+            log.info(
+                f"Plugin '{plugin_id}' already running with a different config "
+                f"— restarting to apply it"
+            )
+            await self._stop_plugin_locked(plugin_id)
 
+        plugin_class = self._startable_class(plugin_id)
+        if plugin_class is None:
+            return False
+        info = plugin_class.PLUGIN_INFO
+        if config is None:
+            config = {}
+        registry = PluginRegistry(plugin_id)
+        api = self._new_api(plugin_id, info, config, registry)
+
+        # `instance` is bound before the try so the failure path can tell "the
+        # constructor never ran" from "start() did and left things open": only
+        # the second has anything to tear down.
+        instance = None
+        try:
+            instance = plugin_class()
+            await asyncio.wait_for(instance.start(api), timeout=PLUGIN_START_TIMEOUT)
+            self._register_macro_actions(plugin_id, instance)
+            self._register_script_api(plugin_id, instance)
+            self._instances[plugin_id] = instance
+            self._registries[plugin_id] = registry
+            self._apis[plugin_id] = api
+            self._mark_running(plugin_id)
+            self._mount_routers(plugin_id, registry, info.get("guest_alias"))
+            await self._events.emit("plugin.started", {"plugin_id": plugin_id})
+            log.info(f"Plugin '{plugin_id}' started (v{info.get('version', '?')})")
+            # A plugin that bundles a sidecar may need a port open in the host
+            # firewall. Guarded, so this is free unless the set actually moved.
+            self.sync_declared_ports()
+            return True
+        except Exception as e:  # Catch-all: plugin start() runs arbitrary code
+            await self._record_start_failure(plugin_id, e, instance, registry)
+            return False
+
+    def _startable_class(self, plugin_id: str) -> type | None:
+        """The registered class, once it has passed the platform and manifest
+        checks; None, with the reason recorded, when it may not start."""
         plugin_class = _PLUGIN_CLASS_REGISTRY.get(plugin_id)
         if plugin_class is None:
             log.error(f"Plugin '{plugin_id}' class not found in registry")
-            return False
-
-        # Platform check first so an incompatible plugin surfaces as
-        # 'incompatible' (its own banner) and not a generic 'error'.
+            return None
+        # Platform first, so an incompatible plugin shows as 'incompatible'
+        # (its own banner) and not as a generic 'error'.
         if not self.is_platform_compatible(plugin_class):
             self._mark_incompatible(plugin_id, plugin_class)
-            return False
-
-        # Validate manifest
+            return None
         valid, error = self.validate_manifest(plugin_class)
         if not valid:
             log.error(f"Plugin '{plugin_id}' manifest invalid: {error}")
             self._status[plugin_id] = "error"
             self._set_error(plugin_id, f"Invalid manifest: {error}")
-            return False
+            return None
+        return plugin_class
 
-        info = plugin_class.PLUGIN_INFO
-        if config is None:
-            config = {}
-
-        # New instance epoch so a queued auto-disable from a previous instance
-        # can tell it no longer applies.
+    def _new_api(
+        self, plugin_id: str, info: dict, config: dict, registry: PluginRegistry
+    ) -> PluginAPI:
+        """The API a new instance is handed. Its callback failures count against
+        a new instance epoch, so a queued auto-disable from an earlier instance
+        can tell it no longer applies."""
         self._epoch_counter += 1
         epoch = self._epoch_counter
         self._instance_epoch[plugin_id] = epoch
         self._auto_disabling.discard(plugin_id)
-
-        # Create registry and API
-        registry = PluginRegistry(plugin_id)
-
-        def _on_callback_failure(_pid=plugin_id, _epoch=epoch):
-            # One auto-disable per failure streak — past the threshold, don't
-            # keep spawning duplicate _auto_disable_plugin tasks.
-            if _pid in self._auto_disabling:
-                return
-            count = self._callback_failures.get(_pid, 0) + 1
-            self._callback_failures[_pid] = count
-            if count >= MAX_CALLBACK_FAILURES:
-                log.error(
-                    f"Plugin '{_pid}' hit {count} consecutive callback failures "
-                    f"— auto-disabling"
-                )
-                self._auto_disabling.add(_pid)
-                task = asyncio.create_task(self._auto_disable_plugin(_pid, _epoch))
-                self._auto_disable_tasks.add(task)
-                task.add_done_callback(self._auto_disable_tasks.discard)
-                task.add_done_callback(_log_task_exception)
-
-        def _on_callback_success(_pid=plugin_id):
-            # Reset failure counter on success so transient errors don't accumulate
-            self._callback_failures.pop(_pid, None)
-
-        api = PluginAPI(
+        return PluginAPI(
             plugin_id=plugin_id,
             capabilities=info.get("capabilities", []),
             config=config,
@@ -505,113 +577,68 @@ class PluginLoader:
             platform_id=self._platform_id,
             save_config_fn=self._save_config_fn,
             log_fn=self._plugin_log,
-            failure_reporter=_on_callback_failure,
-            success_reporter=_on_callback_success,
+            failure_reporter=functools.partial(self._count_callback_failure, plugin_id, epoch),
+            success_reporter=functools.partial(self._reset_callback_failures, plugin_id),
             cloud_agent_provider=self._cloud_agent_provider,
         )
 
-        # Instantiate and start. `instance` is bound before the try so the
-        # failure path can tell "the constructor never ran" from "start() did
-        # and left things open" — only the second has anything to tear down.
-        instance = None
-        try:
-            instance = plugin_class()
-            await asyncio.wait_for(instance.start(api), timeout=PLUGIN_START_TIMEOUT)
-            self._register_macro_actions(plugin_id, instance)
-            self._register_script_api(plugin_id, instance)
+    def _count_callback_failure(self, plugin_id: str, epoch: int) -> None:
+        """One more consecutive callback failure; at MAX_CALLBACK_FAILURES the
+        instance of ``epoch`` is auto-disabled, once per failure streak."""
+        if plugin_id in self._auto_disabling:
+            return
+        count = self._callback_failures.get(plugin_id, 0) + 1
+        self._callback_failures[plugin_id] = count
+        if count < MAX_CALLBACK_FAILURES:
+            return
+        log.error(
+            f"Plugin '{plugin_id}' hit {count} consecutive callback failures "
+            f"— auto-disabling"
+        )
+        self._auto_disabling.add(plugin_id)
+        task = asyncio.create_task(self._auto_disable_plugin(plugin_id, epoch))
+        self._auto_disable_tasks.add(task)
+        task.add_done_callback(self._auto_disable_tasks.discard)
+        task.add_done_callback(_log_task_exception)
 
-            self._instances[plugin_id] = instance
-            self._registries[plugin_id] = registry
-            self._apis[plugin_id] = api
-            self._status[plugin_id] = "running"
-            self._clear_error(plugin_id)
-            self._callback_failures.pop(plugin_id, None)
+    def _reset_callback_failures(self, plugin_id: str) -> None:
+        """A callback that worked ends the streak, so transient errors don't add up."""
+        self._callback_failures.pop(plugin_id, None)
 
-            # Clear missing / incompatible / auto-disabled state from a prior run
-            self._clear_missing_state(plugin_id)
-            self._clear_plugin_flags(plugin_id)
+    def _mark_running(self, plugin_id: str) -> None:
+        """A started plugin: running, with no error, failure streak or flag
+        (missing, incompatible, auto-disabled) left from an earlier run."""
+        self._status[plugin_id] = "running"
+        self._clear_error(plugin_id)
+        self._callback_failures.pop(plugin_id, None)
+        self._clear_missing_state(plugin_id)
+        self._clear_plugin_flags(plugin_id)
 
-            # Mount any HTTP router the plugin registered during start()
-            if registry.http_router is not None and self._mount_router_fn:
-                try:
-                    self._mount_router_fn(
-                        plugin_id,
-                        registry.http_router,
-                        registry.panel_ext_paths or None,
-                        registry.media_ext_paths or None,
-                    )
-                except Exception:  # Don't let a mount failure abort a started plugin
-                    log.exception(
-                        f"Failed to mount HTTP router for plugin '{plugin_id}'"
-                    )
-            if registry.guest_router is not None and self._mount_guest_router_fn:
-                try:
-                    self._mount_guest_router_fn(
-                        plugin_id, registry.guest_router, info.get("guest_alias")
-                    )
-                except Exception:  # Same isolation as the ext router above
-                    log.exception(
-                        f"Failed to mount guest HTTP router for plugin '{plugin_id}'"
-                    )
-
-            await self._events.emit("plugin.started", {"plugin_id": plugin_id})
-            log.info(f"Plugin '{plugin_id}' started (v{info.get('version', '?')})")
-            # A plugin that bundles a sidecar may need a port open in the host
-            # firewall. Guarded, so this is free unless the set actually moved.
-            self.sync_declared_ports()
-            return True
-
-        except Exception as e:  # Catch-all: plugin start() runs arbitrary code
-            if isinstance(e, asyncio.TimeoutError):
-                msg = f"start() timed out after {PLUGIN_START_TIMEOUT}s"
-                log.error(f"Plugin '{plugin_id}' {msg}")
-            else:
-                msg = str(e)
-                # The type and text in the message itself, not only the
-                # traceback: the Log view shows a record's message, and the
-                # cloud's answer for an unmarked failure sends the reader there.
-                log.exception(
-                    f"Plugin '{plugin_id}' failed to start: {type(e).__name__}: {e}"
-                )
-            self._status[plugin_id] = "error"
-            self._set_error(
-                plugin_id, msg,
-                unmarked=not isinstance(e, (asyncio.TimeoutError, PluginRefusal)),
-            )
-            # Clean up any partial registrations
-            self._macros.unregister_plugin_actions(plugin_id)
-            self._unregister_script_api(plugin_id)
-            # Then give the plugin its own teardown. Everything above is what
-            # the PLATFORM owns; a child process, a socket, a serial port or a
-            # hardware handle that start() opened is owned by the plugin, and
-            # its teardown is precisely what was interrupted. Without this the
-            # handle stays open with nothing referencing it — nothing can close
-            # it again short of restarting the server, and no surface in the
-            # IDE shows that it is held.
-            #
-            # Same order and same guard as _stop_plugin_locked: unregister
-            # first so nothing can dispatch into a half-shutdown plugin, then a
-            # bounded stop() with every exception logged and swallowed. A
-            # stop() that trips over an attribute start() never assigned is an
-            # ordinary outcome here, not a special case.
-            if instance is not None:
-                try:
-                    await asyncio.wait_for(instance.stop(), timeout=PLUGIN_STOP_TIMEOUT)
-                except asyncio.TimeoutError:
-                    log.error(
-                        f"Plugin '{plugin_id}' stop() timed out after "
-                        f"{PLUGIN_STOP_TIMEOUT}s while cleaning up a failed start"
-                    )
-                except Exception:  # Catch-all: plugin stop() runs arbitrary code
-                    log.exception(
-                        f"Plugin '{plugin_id}' stop() raised while cleaning up a "
-                        f"failed start"
-                    )
-            await registry.cleanup(self._state, self._events)
-            await self._events.emit(
-                "plugin.error", {"plugin_id": plugin_id, "error": msg}
-            )
-            return False
+    async def _record_start_failure(
+        self, plugin_id: str, error: Exception, instance: Any, registry: PluginRegistry
+    ) -> None:
+        """A start() that raised or timed out: the error the card shows, then
+        the platform's half of the teardown and the plugin's own."""
+        msg = _start_failure_text(plugin_id, error)
+        self._status[plugin_id] = "error"
+        self._set_error(
+            plugin_id, msg,
+            unmarked=not isinstance(error, (asyncio.TimeoutError, PluginRefusal)),
+        )
+        # The same order as a stop: unregister first, so nothing dispatches
+        # into a half-built plugin, then the plugin's own teardown. A child
+        # process, a socket, a serial port or a hardware handle start() opened
+        # is the plugin's to close, and its teardown is what was interrupted;
+        # without it the handle stays open with nothing referencing it until
+        # the server restarts. A stop() that trips over an attribute start()
+        # never assigned is an ordinary outcome here.
+        self._unregister_dispatch(plugin_id)
+        if instance is not None:
+            await _bounded_stop(plugin_id, instance, during="failed_start")
+        await registry.cleanup(self._state, self._events)
+        await self._events.emit(
+            "plugin.error", {"plugin_id": plugin_id, "error": msg}
+        )
 
     async def stop_plugin(self, plugin_id: str) -> None:
         """Stop a running plugin and clean up all registrations."""
@@ -627,55 +654,24 @@ class PluginLoader:
 
         # Unregister macro actions and script API methods before stop() so
         # in-flight macros and scripts can't dispatch to a half-shutdown plugin
-        self._macros.unregister_plugin_actions(plugin_id)
-        self._unregister_script_api(plugin_id)
-
+        self._unregister_dispatch(plugin_id)
         if instance is not None:
-            try:
-                await asyncio.wait_for(instance.stop(), timeout=PLUGIN_STOP_TIMEOUT)
-            except asyncio.TimeoutError:
-                log.error(
-                    f"Plugin '{plugin_id}' stop() timed out after "
-                    f"{PLUGIN_STOP_TIMEOUT}s — continuing teardown"
-                )
-            except Exception:  # Catch-all: plugin stop() runs arbitrary code
-                log.exception(f"Plugin '{plugin_id}' stop() raised an exception")
-
+            await _bounded_stop(plugin_id, instance, during="stop")
         if registry is not None:
             await registry.cleanup(self._state, self._events)
-
         if api is not None:
             api._cancel_all_tasks()
+        _reap_named_tasks(plugin_id)
+        self._unmount_routers(plugin_id)
+        self._mark_stopped(plugin_id)
+        await self._events.emit("plugin.stopped", {"plugin_id": plugin_id})
+        log.info(f"Plugin '{plugin_id}' stopped")
+        # Close a rule nobody asks for any more. This is the half that makes
+        # the declaration honest: a port that opened on install and stayed open
+        # after uninstall would be worse than never opening it.
+        self.sync_declared_ports()
 
-        # Final backstop: every task a PluginAPI creates is named
-        # ``plugin.<id>.<name>``, so reap anything carrying this plugin's
-        # name that the registry didn't hold. A periodic task that escapes
-        # tracking (any generation, any path) keeps executing actions after
-        # the plugin is gone — observed in the field as a leaked hold-repeat
-        # driving a volume macro 4x/second through stop, uninstall, and
-        # reinstall. Nothing named for this plugin survives a stop.
-        prefix = f"plugin.{plugin_id}."
-        for task in asyncio.all_tasks():
-            name = task.get_name() or ""
-            if name.startswith(prefix) and not task.done():
-                log.warning(
-                    f"Reaping orphaned task '{name}' that outlived plugin "
-                    f"'{plugin_id}' teardown"
-                )
-                task.cancel()
-
-        # Remove any HTTP routes the plugin had mounted
-        if self._unmount_router_fn:
-            try:
-                self._unmount_router_fn(plugin_id)
-            except Exception:  # Teardown best-effort; never block stop
-                log.exception(f"Failed to unmount HTTP router for plugin '{plugin_id}'")
-        if self._unmount_guest_router_fn:
-            try:
-                self._unmount_guest_router_fn(plugin_id)
-            except Exception:  # Teardown best-effort; never block stop
-                log.exception(f"Failed to unmount guest HTTP router for plugin '{plugin_id}'")
-
+    def _mark_stopped(self, plugin_id: str) -> None:
         self._status[plugin_id] = "stopped"
         self._clear_error(plugin_id)
         self._callback_failures.pop(plugin_id, None)
@@ -683,12 +679,43 @@ class PluginLoader:
         # A normal stop clears the auto-disabled flag; auto-disable re-sets it
         # right after its own stop call, so the True it wants still survives.
         self._state.delete(f"plugin.{plugin_id}.auto_disabled")
-        await self._events.emit("plugin.stopped", {"plugin_id": plugin_id})
-        log.info(f"Plugin '{plugin_id}' stopped")
-        # Close a rule nobody asks for any more. This is the half that makes
-        # the declaration honest: a port that opened on install and stayed open
-        # after uninstall would be worse than never opening it.
-        self.sync_declared_ports()
+
+    def _unregister_dispatch(self, plugin_id: str) -> None:
+        """Take a plugin's macro actions and script API methods back."""
+        self._macros.unregister_plugin_actions(plugin_id)
+        self._unregister_script_api(plugin_id)
+
+    def _mount_routers(
+        self, plugin_id: str, registry: PluginRegistry, guest_alias: str | None
+    ) -> None:
+        """Mount the HTTP routers a plugin registered during start(). A mount
+        that fails is logged and the plugin stays started."""
+        if registry.http_router is not None and self._mount_router_fn:
+            _call_hook(
+                self._mount_router_fn,
+                f"Failed to mount HTTP router for plugin '{plugin_id}'",
+                plugin_id,
+                registry.http_router,
+                registry.panel_ext_paths or None,
+                registry.media_ext_paths or None,
+            )
+        if registry.guest_router is not None and self._mount_guest_router_fn:
+            _call_hook(
+                self._mount_guest_router_fn,
+                f"Failed to mount guest HTTP router for plugin '{plugin_id}'",
+                plugin_id, registry.guest_router, guest_alias,
+            )
+
+    def _unmount_routers(self, plugin_id: str) -> None:
+        """Unmount a plugin's routes, on every stop whether or not it mounted
+        any. A failure is logged and the stop goes on."""
+        hooks = (
+            (self._unmount_router_fn, "HTTP router"),
+            (self._unmount_guest_router_fn, "guest HTTP router"),
+        )
+        for unmount, what in hooks:
+            if unmount:
+                _call_hook(unmount, f"Failed to unmount {what} for plugin '{plugin_id}'", plugin_id)
 
     async def stop_all(self) -> None:
         """Stop all running plugins, because the process is going away.
