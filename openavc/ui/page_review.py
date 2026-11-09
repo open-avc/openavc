@@ -702,6 +702,112 @@ def _style_measure(style: Mapping[str, Any], *names: str) -> tuple[str, float] |
     return None
 
 
+#: One style measurement the box cannot hold: the words for it, the field to
+#: change, and the most room the box gives that field, in pixels.
+_StyleBreach = tuple[str, str, float]
+
+
+def _font_breach(style: Mapping[str, Any], width_px: float, height_px: float) -> _StyleBreach | None:
+    """Text taller than the box, past half a pixel of rounding."""
+    font = _style_measure(style, "font_size")
+    if font and height_px > 0 and font[1] * REM_BASE_PX > height_px + 0.5:
+        return (
+            f"font_size {_num(font[1])} draws {font[1] * REM_BASE_PX:.0f}px of text in a box "
+            f"{height_px:.0f}px tall",
+            font[0], height_px,
+        )
+    return None
+
+
+@dataclass(frozen=True)
+class _PaddingAxis:
+    """Padding on one axis: the fields that set it, and how a sentence names it.
+
+    ``names`` is in the panel's order, the axis's own field before the
+    shorthand, so a finding names the field the author would actually edit.
+    """
+
+    names: tuple[str, str]
+    where: str
+    extent: str
+
+
+_PADDING_DOWN = _PaddingAxis(("padding_vertical", "padding"), "above and below", "tall")
+_PADDING_ACROSS = _PaddingAxis(("padding_horizontal", "padding"), "each side", "wide")
+
+
+def _padding_breach(
+    style: Mapping[str, Any], axis: _PaddingAxis, size_px: float,
+) -> _StyleBreach | None:
+    """Padding on two opposite sides that meets in the middle of the box."""
+    pad = _style_measure(style, *axis.names)
+    if pad and size_px > 0 and 2 * pad[1] * REM_BASE_PX >= size_px:
+        return (
+            f"{pad[0]} {_num(pad[1])} leaves {pad[1] * REM_BASE_PX:.0f}px {axis.where} in a "
+            f"box {size_px:.0f}px {axis.extent}",
+            pad[0], size_px / 2,
+        )
+    return None
+
+
+def _padding_down(style: Mapping[str, Any], width_px: float, height_px: float) -> _StyleBreach | None:
+    return _padding_breach(style, _PADDING_DOWN, height_px)
+
+
+def _padding_across(style: Mapping[str, Any], width_px: float, height_px: float) -> _StyleBreach | None:
+    return _padding_breach(style, _PADDING_ACROSS, width_px)
+
+
+def _border_breach(style: Mapping[str, Any], width_px: float, height_px: float) -> _StyleBreach | None:
+    """A border that meets in the middle of the box's shorter side."""
+    edge = _style_measure(style, "border_width")
+    smallest = min(width_px, height_px)
+    if edge and smallest > 0 and 2 * edge[1] * REM_BASE_PX >= smallest:
+        return (
+            f"border_width {_num(edge[1])} draws a {edge[1] * REM_BASE_PX:.0f}px border on a box "
+            f"{width_px:.0f}x{height_px:.0f}px",
+            edge[0], smallest / 2,
+        )
+    return None
+
+
+def _letter_breach(style: Mapping[str, Any], width_px: float, height_px: float) -> _StyleBreach | None:
+    """A gap between two letters wider than the box."""
+    gap = _style_measure(style, "letter_spacing")
+    if gap and width_px > 0 and gap[1] * REM_BASE_PX > width_px:
+        return (
+            f"letter_spacing {_num(gap[1])} puts {gap[1] * REM_BASE_PX:.0f}px between letters in a "
+            f"box {width_px:.0f}px wide",
+            gap[0], width_px,
+        )
+    return None
+
+
+#: Every style measurement that can outgrow its box, in the order a finding reads
+#: them out. A new one is an entry here and one in ``STYLE_BREACHES``, its twin
+#: in uiBuilderHelpers.ts.
+_STYLE_BREACHES: tuple[Callable[[Mapping[str, Any], float, float], _StyleBreach | None], ...] = (
+    _font_breach,
+    _padding_down,
+    _padding_across,
+    _border_breach,
+    _letter_breach,
+)
+
+
+def _style_ceilings(breaches: list[_StyleBreach]) -> dict[str, float]:
+    """The most each field may be, in rem.
+
+    Keyed by field, because ``padding`` is one number governing both axes: when
+    it breaks the box on each, it still gets one ceiling, the tighter one.
+    """
+    limits: dict[str, float] = {}
+    for _, field, limit_px in breaches:
+        room = limit_px / REM_BASE_PX
+        limits[field] = min(limits.get(field, room), room)
+    return limits
+
+
 def style_finding(
     element: Mapping[str, Any], box_px: tuple[float, float],
 ) -> Finding | None:
@@ -726,70 +832,23 @@ def style_finding(
     if not isinstance(style, Mapping):
         return None
     width_px, height_px = box_px
-    reasons: list[str] = []
-    # Keyed by field, because `padding` is one number governing both axes: when
-    # it breaks the box on each, it still gets one ceiling, the tighter one.
-    limits: dict[str, float] = {}
-
-    def note(reason: str, field: str, limit_px: float) -> None:
-        reasons.append(reason)
-        room = limit_px / REM_BASE_PX
-        limits[field] = min(limits.get(field, room), room)
-
-    font = _style_measure(style, "font_size")
-    if font and height_px > 0 and font[1] * REM_BASE_PX > height_px + 0.5:
-        note(
-            f"font_size {_num(font[1])} draws {font[1] * REM_BASE_PX:.0f}px of text in a box "
-            f"{height_px:.0f}px tall",
-            font[0], height_px,
-        )
-
-    down = _style_measure(style, "padding_vertical", "padding")
-    if down and height_px > 0 and 2 * down[1] * REM_BASE_PX >= height_px:
-        note(
-            f"{down[0]} {_num(down[1])} leaves {down[1] * REM_BASE_PX:.0f}px above and below in a "
-            f"box {height_px:.0f}px tall",
-            down[0], height_px / 2,
-        )
-
-    across = _style_measure(style, "padding_horizontal", "padding")
-    if across and width_px > 0 and 2 * across[1] * REM_BASE_PX >= width_px:
-        note(
-            f"{across[0]} {_num(across[1])} leaves {across[1] * REM_BASE_PX:.0f}px each side in a "
-            f"box {width_px:.0f}px wide",
-            across[0], width_px / 2,
-        )
-
-    edge = _style_measure(style, "border_width")
-    smallest = min(width_px, height_px)
-    if edge and smallest > 0 and 2 * edge[1] * REM_BASE_PX >= smallest:
-        note(
-            f"border_width {_num(edge[1])} draws a {edge[1] * REM_BASE_PX:.0f}px border on a box "
-            f"{width_px:.0f}x{height_px:.0f}px",
-            edge[0], smallest / 2,
-        )
-
-    gap = _style_measure(style, "letter_spacing")
-    if gap and width_px > 0 and gap[1] * REM_BASE_PX > width_px:
-        note(
-            f"letter_spacing {_num(gap[1])} puts {gap[1] * REM_BASE_PX:.0f}px between letters in a "
-            f"box {width_px:.0f}px wide",
-            gap[0], width_px,
-        )
-
-    if not reasons:
+    breaches = [
+        breach for check in _STYLE_BREACHES if (breach := check(style, width_px, height_px))
+    ]
+    if not breaches:
         return None
     el_id = str(element.get("id", "?"))
-    fixes = _joined([f"{field} at most {_pct(room)}" for field, room in limits.items()])
+    reasons = "; ".join(reason for reason, _, _ in breaches)
+    fixes = _joined([
+        f"{field} at most {_pct(room)}" for field, room in _style_ceilings(breaches).items()
+    ])
     return Finding(
         el_id,
         "style_too_large",
         f"{el_id} ({element.get('type', '?')}) is {width_px:.0f}x{height_px:.0f}px and its style "
-        f"asks for more room than that: {'; '.join(reasons)}. style measurements are rem, not "
+        f"asks for more room than that: {reasons}. style measurements are rem, not "
         f"pixels -- px / {_num(REM_BASE_PX)} -- so write {fixes}.",
     )
-
-
 def box_findings(
     element: Mapping[str, Any], seat: Seat, theme: Mapping[str, Any] | None = None,
 ) -> list[Finding]:

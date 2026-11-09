@@ -4056,6 +4056,112 @@ function styleMeasure(
   return null;
 }
 
+/** One style measurement the box cannot hold: the words for it, the field to
+ *  change, and the most room the box gives that field, in pixels. */
+type StyleBreach = [reason: string, field: string, limitPx: number];
+
+type StyleCheck = (style: Record<string, unknown>, width: number, height: number) => StyleBreach | null;
+
+/** Text taller than the box, past half a pixel of rounding. */
+function fontBreach(style: Record<string, unknown>, _width: number, height: number): StyleBreach | null {
+  const font = styleMeasure(style, "font_size");
+  if (font && height > 0 && font[1] * REM_BASE_PX > height + 0.5) {
+    return [
+      `font_size ${num(font[1])} draws ${fixed(font[1] * REM_BASE_PX, 0)}px of text in a box ` +
+        `${fixed(height, 0)}px tall`,
+      font[0], height,
+    ];
+  }
+  return null;
+}
+
+/** Padding on one axis: the fields that set it, and how a sentence names it.
+ *  `names` is in the panel's order, the axis's own field before the shorthand,
+ *  so a finding names the field the author would actually edit. */
+interface PaddingAxis {
+  names: [string, string];
+  where: string;
+  extent: string;
+}
+
+const PADDING_DOWN: PaddingAxis = {
+  names: ["padding_vertical", "padding"], where: "above and below", extent: "tall",
+};
+const PADDING_ACROSS: PaddingAxis = {
+  names: ["padding_horizontal", "padding"], where: "each side", extent: "wide",
+};
+
+/** Padding on two opposite sides that meets in the middle of the box. */
+function paddingBreach(
+  style: Record<string, unknown>,
+  axis: PaddingAxis,
+  size: number,
+): StyleBreach | null {
+  const pad = styleMeasure(style, ...axis.names);
+  if (pad && size > 0 && 2 * pad[1] * REM_BASE_PX >= size) {
+    return [
+      `${pad[0]} ${num(pad[1])} leaves ${fixed(pad[1] * REM_BASE_PX, 0)}px ${axis.where} ` +
+        `in a box ${fixed(size, 0)}px ${axis.extent}`,
+      pad[0], size / 2,
+    ];
+  }
+  return null;
+}
+
+const paddingDown: StyleCheck = (style, _width, height) => paddingBreach(style, PADDING_DOWN, height);
+
+const paddingAcross: StyleCheck = (style, width) => paddingBreach(style, PADDING_ACROSS, width);
+
+/** A border that meets in the middle of the box's shorter side. */
+function borderBreach(style: Record<string, unknown>, width: number, height: number): StyleBreach | null {
+  const edge = styleMeasure(style, "border_width");
+  const smallest = Math.min(width, height);
+  if (edge && smallest > 0 && 2 * edge[1] * REM_BASE_PX >= smallest) {
+    return [
+      `border_width ${num(edge[1])} draws a ${fixed(edge[1] * REM_BASE_PX, 0)}px border on a ` +
+        `box ${fixed(width, 0)}x${fixed(height, 0)}px`,
+      edge[0], smallest / 2,
+    ];
+  }
+  return null;
+}
+
+/** A gap between two letters wider than the box. */
+function letterBreach(style: Record<string, unknown>, width: number): StyleBreach | null {
+  const gap = styleMeasure(style, "letter_spacing");
+  if (gap && width > 0 && gap[1] * REM_BASE_PX > width) {
+    return [
+      `letter_spacing ${num(gap[1])} puts ${fixed(gap[1] * REM_BASE_PX, 0)}px between letters ` +
+        `in a box ${fixed(width, 0)}px wide`,
+      gap[0], width,
+    ];
+  }
+  return null;
+}
+
+/** Every style measurement that can outgrow its box, in the order a finding reads
+ *  them out. A new one is an entry here and one in `_STYLE_BREACHES`, its twin in
+ *  page_review.py. */
+const STYLE_BREACHES: readonly StyleCheck[] = [
+  fontBreach,
+  paddingDown,
+  paddingAcross,
+  borderBreach,
+  letterBreach,
+];
+
+/** The most each field may be, in rem. Keyed by field, because `padding` is one
+ *  number governing both axes: when it breaks the box on each, it still gets one
+ *  ceiling, the tighter one. */
+function styleCeilings(breaches: StyleBreach[]): Map<string, number> {
+  const limits = new Map<string, number>();
+  for (const [, field, limitPx] of breaches) {
+    const room = limitPx / REM_BASE_PX;
+    limits.set(field, Math.min(limits.get(field) ?? room, room));
+  }
+  return limits;
+}
+
 /**
  * A `style` measurement that renders bigger than the element it is on.
  *
@@ -4081,73 +4187,20 @@ export function styleFinding(
   const style = el.style as Record<string, unknown> | undefined;
   if (!style || typeof style !== "object") return null;
   const { width, height } = boxPx;
-  const reasons: string[] = [];
-  // Keyed by field, because `padding` is one number governing both axes: when it
-  // breaks the box on each, it still gets one ceiling, the tighter one.
-  const limits = new Map<string, number>();
-  const note = (reason: string, field: string, limitPx: number) => {
-    reasons.push(reason);
-    const room = limitPx / REM_BASE_PX;
-    limits.set(field, Math.min(limits.get(field) ?? room, room));
-  };
-
-  const font = styleMeasure(style, "font_size");
-  if (font && height > 0 && font[1] * REM_BASE_PX > height + 0.5) {
-    note(
-      `font_size ${num(font[1])} draws ${fixed(font[1] * REM_BASE_PX, 0)}px of text in a box ` +
-        `${fixed(height, 0)}px tall`,
-      font[0], height,
-    );
-  }
-
-  const down = styleMeasure(style, "padding_vertical", "padding");
-  if (down && height > 0 && 2 * down[1] * REM_BASE_PX >= height) {
-    note(
-      `${down[0]} ${num(down[1])} leaves ${fixed(down[1] * REM_BASE_PX, 0)}px above and below ` +
-        `in a box ${fixed(height, 0)}px tall`,
-      down[0], height / 2,
-    );
-  }
-
-  const across = styleMeasure(style, "padding_horizontal", "padding");
-  if (across && width > 0 && 2 * across[1] * REM_BASE_PX >= width) {
-    note(
-      `${across[0]} ${num(across[1])} leaves ${fixed(across[1] * REM_BASE_PX, 0)}px each side ` +
-        `in a box ${fixed(width, 0)}px wide`,
-      across[0], width / 2,
-    );
-  }
-
-  const edge = styleMeasure(style, "border_width");
-  const smallest = Math.min(width, height);
-  if (edge && smallest > 0 && 2 * edge[1] * REM_BASE_PX >= smallest) {
-    note(
-      `border_width ${num(edge[1])} draws a ${fixed(edge[1] * REM_BASE_PX, 0)}px border on a ` +
-        `box ${fixed(width, 0)}x${fixed(height, 0)}px`,
-      edge[0], smallest / 2,
-    );
-  }
-
-  const gap = styleMeasure(style, "letter_spacing");
-  if (gap && width > 0 && gap[1] * REM_BASE_PX > width) {
-    note(
-      `letter_spacing ${num(gap[1])} puts ${fixed(gap[1] * REM_BASE_PX, 0)}px between letters ` +
-        `in a box ${fixed(width, 0)}px wide`,
-      gap[0], width,
-    );
-  }
-
-  if (!reasons.length) return null;
+  const breaches = STYLE_BREACHES
+    .map((check) => check(style, width, height))
+    .filter((breach): breach is StyleBreach => breach !== null);
+  if (!breaches.length) return null;
   const fixes = joined(
-    [...limits].map(([field, room]) => `${field} at most ${pct(room)}`),
+    [...styleCeilings(breaches)].map(([field, room]) => `${field} at most ${pct(room)}`),
   );
   return {
     elementId: el.id,
     kind: "style_too_large",
     message:
       `${el.id} (${el.type}) is ${fixed(width, 0)}x${fixed(height, 0)}px and its style asks for ` +
-      `more room than that: ${reasons.join("; ")}. style measurements are rem, not pixels -- ` +
-      `px / ${num(REM_BASE_PX)} -- so write ${fixes}.`,
+      `more room than that: ${breaches.map(([reason]) => reason).join("; ")}. style measurements ` +
+      `are rem, not pixels -- px / ${num(REM_BASE_PX)} -- so write ${fixes}.`,
     key: `style_too_large|${el.id}`,
   };
 }
