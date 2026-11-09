@@ -36,8 +36,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from openavc.core.condition_eval import eval_operator
-from openavc.core.state_store import VALID_KEY_PREFIXES
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import (
     UNKNOWN_COMMAND,
@@ -55,6 +53,7 @@ from openavc.drivers.json_replies import JsonReplies
 from openavc.drivers.liveness_block import LivenessBlock
 from openavc.drivers.osc_wire import OscWire
 from openavc.drivers.query_entries import QueryEntries
+from openavc.drivers.reply_gate import ReplyGate
 from openavc.drivers.reply_throttle import ReplyThrottle
 from openavc.drivers.reply_values import ReplyValues
 from openavc.drivers.rereads import Rereads
@@ -189,6 +188,7 @@ class ConfigurableDriver(
     TextReplies,
     JsonReplies,
     OscWire,
+    ReplyGate,
     ReplyValues,
     BaseDriver,
 ):
@@ -279,53 +279,6 @@ class ConfigurableDriver(
         self._osc_responses = compiled.osc_responses
         self._json_responses = compiled.json_responses
         self._after_json_responses = compiled.after_json_responses
-
-    def _condition_key(self, key: str) -> str:
-        """One condition key, as a state-store key.
-
-        A bare name is this device's own state variable, which is what a driver
-        author writing ``key: examx_mode`` means and saves them spelling out an
-        id they do not know at authoring time. Anything already carrying a
-        namespace is passed through, so a gate can read a variable or another
-        device, and ``$id`` still expands the way it does in ``visible_when``.
-        """
-        resolved = key.replace("$id", self.device_id)
-        if resolved.startswith(VALID_KEY_PREFIXES):
-            return resolved
-        return f"device.{self.device_id}.{resolved}"
-
-    def _condition_holds(self, cond: dict[str, Any]) -> bool:
-        """One ``{key, operator, value}`` leaf."""
-        key = cond.get("key")
-        if not isinstance(key, str) or not key:
-            return True
-        actual = self.state.get(self._condition_key(key))
-        return eval_operator(
-            str(cond.get("operator") or "eq"), actual, cond.get("value")
-        )
-
-    def _rule_applies(self, condition: dict[str, Any] | None) -> bool:
-        """Whether a response rule's ``only_when:`` gate is open right now.
-
-        No gate is the overwhelming case and answers first. A malformed gate
-        opens rather than closes: a driver whose condition is nonsense should
-        report what it always reported, not go silent on the one state variable
-        somebody was watching.
-        """
-        if not condition:
-            return True
-        for group_key, require_all in (("all", True), ("any", False)):
-            group = condition.get(group_key)
-            if isinstance(group, list) and group:
-                results = [
-                    self._condition_holds(c)
-                    for c in group
-                    if isinstance(c, dict)
-                ]
-                if not results:
-                    return True
-                return all(results) if require_all else any(results)
-        return self._condition_holds(condition)
 
     async def _close_session(self) -> None:
         self._drop_all_held()
