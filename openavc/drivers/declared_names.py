@@ -63,3 +63,20 @@ def child_writable_props(type_def: Any) -> set[str]:
     declared = type_def.get("state_variables") if isinstance(type_def, dict) else None
     names = set(declared) if isinstance(declared, dict) else set()
     return names | set(CHILD_RESERVED_PROPS)
+
+
+def declared_enum_values(decl: dict[str, Any]) -> list[str] | None:
+    """The values an enum state variable or setting declares, as text.
+
+    Each entry of ``values:`` is a value or a ``{value, label}`` mapping; a
+    mapping without ``value`` names none. None when ``values`` is not a list,
+    which the checks read as "any value".
+    """
+    values = decl.get("values")
+    if not isinstance(values, list):
+        return None
+    return [
+        str(v.get("value")) if isinstance(v, dict) else str(v)
+        for v in values
+        if not isinstance(v, dict) or "value" in v
+    ]

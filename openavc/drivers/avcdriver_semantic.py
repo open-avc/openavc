@@ -25,6 +25,7 @@ from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import (
     child_writable_props,
     config_field_names,
+    declared_enum_values,
     declared_id_kind,
 )
 from openavc.drivers.push_block_checks import push_block_errors
@@ -129,13 +130,7 @@ def _when_state_errors(
             errors.append(f"{where}: when_state.{var} lists no values")
             continue
         vtype = var_def.get("type", "string")
-        enum_values: list[str] | None = None
-        if vtype == "enum" and isinstance(var_def.get("values"), list):
-            enum_values = [
-                str(v.get("value")) if isinstance(v, dict) else str(v)
-                for v in var_def["values"]
-                if not isinstance(v, dict) or "value" in v
-            ]
+        enum_values = declared_enum_values(var_def) if vtype == "enum" else None
         for value in values:
             if isinstance(value, str) and not value.strip():
                 errors.append(
@@ -2920,13 +2915,7 @@ def device_setting_map_errors(where: str, setting_def: dict[str, Any]) -> list[s
         ]
     errors: list[str] = []
     stype = setting_def.get("type", "string")
-    allowed: list[str] | None = None
-    if stype == "enum" and isinstance(setting_def.get("values"), list):
-        allowed = [
-            str(v.get("value")) if isinstance(v, dict) else str(v)
-            for v in setting_def["values"]
-            if not isinstance(v, dict) or "value" in v
-        ]
+    allowed = declared_enum_values(setting_def) if stype == "enum" else None
     for key, word in value_map.items():
         if isinstance(key, bool):
             errors.append(
