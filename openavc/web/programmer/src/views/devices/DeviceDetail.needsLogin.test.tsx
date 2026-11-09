@@ -48,6 +48,7 @@ vi.mock("../../components/plugins/PluginExtensions", () => ({
 }));
 
 import { useProjectStore } from "../../store/projectStore";
+import { ApiError } from "../../api/errors";
 import { DeviceDetail } from "./DeviceDetail";
 import { DeviceListItem } from "./DeviceListItem";
 
@@ -133,6 +134,21 @@ describe("a device that needs its login", () => {
     await waitFor(() => expect(mocks.getDevice).toHaveBeenCalledTimes(2));
     // The store took the server's copy of the device, never the value typed.
     expect(JSON.stringify(useProjectStore.getState().project)).not.toContain("Hunter2-Acme");
+  });
+
+  it("takes a device the running system no longer has after the save as not running", async () => {
+    setLive(WAITING);
+    showPage();
+    const box = await screen.findByLabelText("Password");
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.getDevice.mockRejectedValueOnce(new ApiError(404, JSON.stringify({ detail: "Device 'wb1' not found" })));
+
+    fireEvent.change(box, { target: { value: "Hunter2-Acme" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save login" }));
+
+    await waitFor(() => expect(mocks.getDevice).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("Needs login")).toBeNull());
+    logged.mockRestore();
   });
 
   it("offers the driver's default where it ships one, and saves it without showing it", async () => {
