@@ -5123,21 +5123,16 @@ function keylessSlotFindings({ el, honored, show }: Shown): ReviewFinding[] {
  * page_review.py.
  */
 function lookStatesNaming(look: Record<string, unknown>, field: string): string[] {
+  const names = (spec: unknown) => isPlainObject(spec) && !!spec[field];
   const states = look.states;
-  if (states && typeof states === "object" && !Array.isArray(states)) {
-    return Object.entries(states as Record<string, unknown>)
-      .filter(([, spec]) =>
-        spec && typeof spec === "object" && !Array.isArray(spec) &&
-        (spec as Record<string, unknown>)[field])
+  if (isPlainObject(states)) {
+    return Object.entries(states)
+      .filter(([, spec]) => names(spec))
       .map(([name]) => name)
       .sort();
   }
   return ([["active", "style_active"], ["inactive", "style_inactive"]] as const)
-    .filter(([, side]) => {
-      const half = look[side];
-      return half && typeof half === "object" && !Array.isArray(half) &&
-        (half as Record<string, unknown>)[field];
-    })
+    .filter(([, side]) => names(look[side]))
     .map(([half]) => half);
 }
 
@@ -5189,22 +5184,18 @@ type ActionEntry = [string, Record<string, unknown>];
 
 /** One action and everything nested inside it, each with its own path. */
 function walkAction(path: string, action: unknown): ActionEntry[] {
-  if (!action || typeof action !== "object" || Array.isArray(action)) return [];
-  const def = action as Record<string, unknown>;
-  const found: ActionEntry[] = [[path, def]];
+  if (!isPlainObject(action)) return [];
+  const found: ActionEntry[] = [[path, action]];
   for (const field of NESTED_ACTION_FIELDS) {
-    found.push(...walkAction(`${path}.${field}`, def[field]));
+    found.push(...walkAction(`${path}.${field}`, action[field]));
   }
-  if (def.action === "value_map") {
-    const mapped = def.map;
-    if (mapped && typeof mapped === "object" && !Array.isArray(mapped)) {
-      // Sorted, because this side hoists integer-like keys to the front of an
-      // object whatever the order they were written in, and the Python side
-      // walks them as authored. See the comment on the Python twin.
-      const entries = mapped as Record<string, unknown>;
-      for (const value of Object.keys(entries).sort()) {
-        found.push(...walkAction(`${path}.map.${value}`, entries[value]));
-      }
+  const mapped = action.map;
+  if (action.action === "value_map" && isPlainObject(mapped)) {
+    // Sorted, because this side hoists integer-like keys to the front of an
+    // object whatever the order they were written in, and the Python side
+    // walks them as authored. See the comment on the Python twin.
+    for (const value of Object.keys(mapped).sort()) {
+      found.push(...walkAction(`${path}.map.${value}`, mapped[value]));
     }
   }
   return found;
@@ -5226,7 +5217,7 @@ function actionEntries(do_: Record<string, unknown>): ActionEntry[] {
 function destinationRouteEntries(el: UIElement): ActionEntry[] {
   if (el.type !== "matrix") return [];
   const config = (el as unknown as Record<string, unknown>).matrix_config;
-  if (!config || typeof config !== "object" || Array.isArray(config)) return [];
+  if (!isPlainObject(config)) return [];
   const found: ActionEntry[] = [];
   for (const entry of resolveMatrixAxis(config, "destinations")) {
     if (!Array.isArray(entry.route)) continue;
@@ -5369,6 +5360,11 @@ function matrixSubstitute(pattern: unknown, value: unknown): string | undefined 
   return pattern.replace("*", String(value));
 }
 
+/**
+ * An object written as `{...}`, not a list and not null: what the AI side's
+ * review means by a `Mapping`. The review asks this wherever page_review.py asks
+ * `isinstance(..., Mapping)`, so the two read the same shapes as a dict.
+ */
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -5579,8 +5575,7 @@ function isUnset(value: unknown): boolean {
   return (
     value === null || value === undefined || value === "" ||
     (Array.isArray(value) && value.length === 0) ||
-    (typeof value === "object" && !Array.isArray(value) &&
-      Object.keys(value as object).length === 0)
+    (isPlainObject(value) && Object.keys(value).length === 0)
   );
 }
 
@@ -6319,9 +6314,7 @@ export function sliderThemeDefaults(project: ProjectConfig | null | undefined): 
   const overrides = (project?.ui?.settings?.theme_overrides ?? {}) as Record<string, unknown>;
   const defaults = (overrides.element_defaults ?? {}) as Record<string, unknown>;
   const slider = defaults.slider;
-  return slider && typeof slider === "object" && !Array.isArray(slider)
-    ? (slider as Record<string, unknown>)
-    : null;
+  return isPlainObject(slider) ? slider : null;
 }
 
 export interface ValidationIssue {
