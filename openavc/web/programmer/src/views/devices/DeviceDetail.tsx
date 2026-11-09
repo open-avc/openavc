@@ -4,8 +4,7 @@ import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import type { DeviceConfig, DriverInfo } from "../../api/types";
 import { useMonitorEdits } from "../../components/shared/useMonitorEdits";
-import { parentAwayFrom, scanChildTrouble, troubleSummary } from "./childPresence";
-import type { ChildTypeInfo } from "./childPresence";
+import { parentAwayFrom } from "./childPresence";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
 import { ChildEntities } from "./ChildEntities";
 import { QuickActions } from "./QuickActions";
@@ -83,16 +82,6 @@ export function DeviceDetail({
 
   const childTypes = useMemo(() => childTypeNames(deviceInfo?.driver_info), [deviceInfo]);
 
-  // Which sub-units are not answering, for the banner below. A wedged
-  // endpoint used to be one word in a column inside a collapsed panel, which
-  // is how an afternoon went into hunting a power fault that did not exist.
-  // It belongs on the page the way an offline device's reason is on its card.
-  const childTrouble = useMemo(() => {
-    const cet = (deviceInfo?.driver_info?.child_entity_types ?? {}) as
-      Record<string, ChildTypeInfo>;
-    return troubleSummary(scanChildTrouble(liveState, deviceId, cet));
-  }, [liveState, deviceId, deviceInfo]);
-
   // What the driver declares about each reading: label, unit, type, range,
   // allowed values and precision. Monitor fills in from this, which is why
   // tagging lamp hours is one click rather than a form: the projector's
@@ -140,12 +129,12 @@ export function DeviceDetail({
       {banner === "asleep" && <AsleepBanner detail={away.offlineDetail} />}
       {banner === "paused" && <PausedBanner deviceId={deviceId} pausedFor={away.pausedFor} />}
 
-      {connected && childTrouble && (
-        <ChildTroubleBanner
-          headline={childTrouble.headline}
-          names={childTrouble.names}
-        />
-      )}
+      <ChildTroubleBanner
+        deviceId={deviceId}
+        connected={connected}
+        childTypes={deviceInfo?.driver_info?.child_entity_types}
+        liveState={liveState}
+      />
 
       {installed && (
         <InstalledEquipment
