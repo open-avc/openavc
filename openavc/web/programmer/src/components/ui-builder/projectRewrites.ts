@@ -1,6 +1,6 @@
 /**
- * When a control is renamed, what the rest of the project says about it
- * follows.
+ * When a control is renamed or a page deleted, what the rest of the project
+ * says about it follows.
  *
  * A control's id is held by the element itself, its children's `parent`, and
  * each arrangement's placements and hidden list; its `ui.<id>.` state keys by
@@ -10,6 +10,11 @@
  * holder's list is one function here (`renamedElement`, `renamedStep`,
  * `renamedTrigger`, `renamedVariable`, `renamedInLayout`), so a new place a key
  * can sit is one line in its holder's function.
+ *
+ * Deleting a page empties a page nav's target on it, drops the moves to it
+ * from each action slot of a page's controls, takes it out of each master's
+ * page list, and drops the trigger conditions that matched on it being the
+ * current page (`removePageAndScrubRefs`).
  *
  * Every array and object nothing in it changed comes back as it was
  * (`mapPreserve`, `withField`): the IDE's undo history snapshots only the
@@ -23,11 +28,13 @@ import type {
   Placement,
   ScriptConfig,
   StepCondition,
+  TriggerCondition,
   TriggerConfig,
   UIElement,
   UIPage,
   VariableConfig,
 } from "../../api/types";
+import { ACTION_SLOTS } from "./bindingActions";
 
 /** The same array back when `fn` handed back every item as it was; otherwise
  *  the new one. */
@@ -234,5 +241,104 @@ export function renameElement(
     macros: mapPreserve(macros, (m) => renamedMacro(m, rename)),
     variables: mapPreserve(variables, (v) => renamedVariable(v, rename)),
     scriptsToReview: scripts.filter((s) => s.file && s.id).map((s) => s.file),
+  };
+}
+
+// --- Deleting a page ---
+
+/** Whether an action is a move to the page being deleted. */
+function isMoveTo(action: unknown, pageId: string): boolean {
+  if (!action || typeof action !== "object") return false;
+  const a = action as Record<string, unknown>;
+  return a.action === "ui.navigate" && a.page === pageId;
+}
+
+/** One action slot without its moves to the deleted page: the same value when
+ *  it held none, undefined when it held nothing else. A slot holds a list or,
+ *  in an older project, one action; a list keeps whatever else it holds. */
+function slotWithoutMoves(raw: unknown, pageId: string): unknown {
+  if (!Array.isArray(raw)) return isMoveTo(raw, pageId) ? undefined : raw;
+  const kept = raw.filter((a) => !isMoveTo(a, pageId));
+  if (kept.length === raw.length) return raw;
+  return kept.length > 0 ? kept : undefined;
+}
+
+/** An element's `do` slots without their moves to the deleted page, a slot
+ *  left empty removed. Only the slots' own actions: a value_map's options and
+ *  an off or hold action are not looked into. */
+function withoutMovesTo(el: UIElement, pageId: string): UIElement {
+  const bindings = el.bindings as Record<string, unknown> | undefined;
+  const doMap = bindings?.do as Record<string, unknown> | undefined;
+  if (!doMap) return el;
+  const nextDo: Record<string, unknown> = { ...doMap };
+  let changed = false;
+  for (const slot of ACTION_SLOTS) {
+    const kept = slotWithoutMoves(nextDo[slot], pageId);
+    if (Object.is(kept, nextDo[slot])) continue;
+    changed = true;
+    if (kept === undefined) delete nextDo[slot];
+    else nextDo[slot] = kept;
+  }
+  return changed
+    ? { ...el, bindings: { ...bindings, do: nextDo } as UIElement["bindings"] }
+    : el;
+}
+
+/** A page's control with what pointed at the deleted page cleared. */
+function controlWithoutPage(el: UIElement, pageId: string): UIElement {
+  const untargeted = el.type === "page_nav" && el.target_page === pageId
+    ? { ...el, target_page: "" }
+    : el;
+  return withoutMovesTo(untargeted, pageId);
+}
+
+/** The pages without the deleted one, each control's links to it cleared.
+ *  Every page and element list comes back new. */
+export function removePage(pages: UIPage[], pageId: string): UIPage[] {
+  return pages
+    .filter((p) => p.id !== pageId)
+    .map((p) => ({
+      ...p,
+      elements: p.elements.map((el) => controlWithoutPage(el, pageId)),
+    }));
+}
+
+/** A master without the deleted page in its page list; one left with no page
+ *  shows on every page ("*"). */
+function masterWithoutPage(m: MasterElement, pageId: string): MasterElement {
+  if (!Array.isArray(m.pages)) return m;
+  const kept = m.pages.filter((pid) => pid !== pageId);
+  if (kept.length === m.pages.length) return m;
+  return { ...m, pages: kept.length > 0 ? kept : "*" };
+}
+
+/** A trigger's conditions without those that matched on the deleted page
+ *  being the current one, whatever their operator. */
+function conditionsWithoutPage(conditions: TriggerCondition[], pageId: string): TriggerCondition[] {
+  const kept = conditions.filter((c) => !(c.key === "system.current_page" && c.value === pageId));
+  return kept.length === conditions.length ? conditions : kept;
+}
+
+function macroWithoutPage(macro: MacroConfig, pageId: string): MacroConfig {
+  return withField(macro, "triggers", (triggers) => mapPreserve(
+    triggers,
+    (t) => withField(t, "conditions", (cs) => conditionsWithoutPage(cs, pageId)),
+  ));
+}
+
+export function removePageAndScrubRefs(
+  pages: UIPage[],
+  pageId: string,
+  masterElements: MasterElement[],
+  macros: MacroConfig[],
+): {
+  pages: UIPage[];
+  masterElements: MasterElement[];
+  macros: MacroConfig[];
+} {
+  return {
+    pages: removePage(pages, pageId),
+    masterElements: mapPreserve(masterElements, (m) => masterWithoutPage(m, pageId)),
+    macros: mapPreserve(macros, (m) => macroWithoutPage(m, pageId)),
   };
 }
