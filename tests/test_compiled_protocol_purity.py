@@ -64,3 +64,25 @@ def test_compiled_protocol_stays_pure():
         f"compiled_protocol pulled in modules outside its purity contract: "
         f"{sorted(set(loaded) - ALLOWED)}"
     )
+
+
+def test_reply_templates_stays_a_leaf():
+    # The simulator's reply-text walker imports nothing beyond the standard
+    # library, so anything that needs reply text can take it without the
+    # simulator's own stack.
+    code = (
+        "import sys\n"
+        "sys.path.insert(0, r'" + str(REPO_ROOT) + "')\n"
+        "import openavc.simulator.reply_templates\n"
+        "print('\\n'.join(sorted(m for m in sys.modules if m.startswith('openavc'))))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    loaded = {line for line in result.stdout.splitlines() if line}
+    assert loaded == {"openavc", "openavc.simulator", "openavc.simulator.reply_templates"}

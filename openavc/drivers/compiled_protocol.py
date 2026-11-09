@@ -92,11 +92,17 @@ def safe_substitute(template: str, params: dict[str, Any]) -> str:
 
 def _formatted(value: Any, spec: str) -> str | None:
     """``value`` formatted by ``spec``, else the first number it stands for
-    that the spec takes (``_spec_retries``); None when none does."""
+    that the spec takes (``_spec_retries``); None when none does. The retries
+    run while the first refusal is being handled, so anything one of them
+    raises is chained to it."""
     try:
         return format(value, spec)
     except (ValueError, TypeError):
-        pass
+        return _first_retry_taken(value, spec)
+
+
+def _first_retry_taken(value: Any, spec: str) -> str | None:
+    """The first of ``_spec_retries(value)`` that ``spec`` formats, or None."""
     for number in _spec_retries(value):
         try:
             return format(number, spec)

@@ -209,7 +209,8 @@ class _PatternWalk:
         return next((e for e in emissions if e is not None), None), i
 
     def seq(self, i: int, depth: int) -> tuple[str | None, int]:
-        """Emit atoms until '|', a closing ')' (inside a group), or the end."""
+        """Emit atoms until '|', a closing ')' (inside a group), or the end;
+        a ')' with no group open is refused there (``_ends_seq``)."""
         pieces: list[str | None] = []
         while i < len(self.src) and not self._ends_seq(i, depth):
             piece, i = self.atom(i)
