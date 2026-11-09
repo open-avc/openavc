@@ -1,6 +1,6 @@
 import { InstalledEquipment } from "./InstalledEquipment";
 import { Fragment, useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Pencil, Trash2, Wifi, Power, RefreshCw, Copy, Settings, Check, X, Loader2, Search, ClipboardCheck } from "lucide-react";
+import { Pencil, Trash2, Wifi, Power, RefreshCw, Copy, X, Search, ClipboardCheck } from "lucide-react";
 import { CopyButton } from "../../components/shared/CopyButton";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { useProjectStore } from "../../store/projectStore";
@@ -8,7 +8,7 @@ import { useConnectionStore } from "../../store/connectionStore";
 import * as api from "../../api/restClient";
 import { getAuditDeviceTarget } from "../../api/auditClient";
 import { useAuditStore } from "../../store/auditStore";
-import type { BridgePort, DeviceConfig, DeviceInfo, DeviceSettingValue, DriverInfo } from "../../api/types";
+import type { BridgePort, DeviceConfig, DeviceInfo, DriverInfo } from "../../api/types";
 import {
   MonitorCell, MonitorControl, MonitorLimitsPanel, type DeclaredReading,
 } from "../../components/shared/MonitorControl";
@@ -16,15 +16,12 @@ import type { MonitorConfig } from "../../api/types";
 import { parentAwayFrom, scanChildTrouble, troubleSummary } from "./childPresence";
 import type { ChildTypeInfo } from "./childPresence";
 import { DEVICE_STALE_TITLE, LastHeard, staleValueStyle } from "./staleReading";
-import { normalizeOptionList, parseStateOptionList, settingValueText } from "../../components/shared/paramOptions";
+import { parseStateOptionList } from "../../components/shared/paramOptions";
 import { DevicePanelSlot, ContextActionRenderer } from "../../components/plugins/PluginExtensions";
-import { findDeviceReferences, validateSettingValue } from "./deviceUtils";
+import { findDeviceReferences } from "./deviceUtils";
 import { connectionTestText } from "./deviceAddress";
-import { BooleanOptions } from "../../components/shared/BooleanOptions";
 import { readingText, valueText } from "../../components/shared/booleanWords";
 import { ChildEntities } from "./ChildEntities";
-import { DeviceStateLog } from "./DeviceStateLog";
-import { DeviceProtocolLog } from "./DeviceProtocolLog";
 import { QuickActions } from "./QuickActions";
 import { InlineProtocolEditor } from "./InlineProtocolEditor";
 import { IrCodesEditor } from "./IrCodesEditor";
@@ -42,6 +39,8 @@ import { awayBanner, hasSignInFields, readDeviceAway, reportableOffline, waitsFo
 import { AsleepBanner, OfflineBanner, PausedBanner, RestartingBanner } from "./AwayBanners";
 import { OrphanBanner } from "./OrphanBanner";
 import { ChildTroubleBanner } from "./ChildTroubleBanner";
+import { DeviceSettingsSection } from "./DeviceSettingsSection";
+import { DeviceLog } from "./DeviceLog";
 import { SendCommandSection } from "./SendCommandSection";
 import { sectionStyle, sectionTitleStyle } from "./deviceSectionStyles";
 
@@ -1010,8 +1009,6 @@ export function DeviceDetail({
   );
 }
 
-// --- Device Settings Section ---
-
 /** Readable rendering for a picker-feed state value — a JSON-encoded option
  *  list a command param references via `options_state`. Shows the option
  *  labels instead of the raw JSON; falls back to the raw string when the
@@ -1033,352 +1030,5 @@ function OptionFeedValue({ raw }: { raw: string }) {
         <span style={{ color: "var(--text-muted)" }}> (+{more} more)</span>
       )}
     </span>
-  );
-}
-
-function DeviceSettingsSection({ deviceId, connected }: { deviceId: string; connected: boolean }) {
-  const liveState = useConnectionStore((s) => s.liveState);
-  const devices = useProjectStore((s) => s.project?.devices);
-  const pendingSettings = useMemo(() => {
-    const dev = devices?.find((d) => d.id === deviceId);
-    return dev?.pending_settings ?? {};
-  }, [devices, deviceId]);
-
-  const [settings, setSettings] = useState<Record<string, DeviceSettingValue>>({});
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [saving, setSaving] = useState<string | null>(null);
-  const [saveResult, setSaveResult] = useState<{ key: string; success: boolean; error?: string } | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const mounted = useRef(false);
-  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const loadSettings = useCallback(() => {
-    if (!mounted.current) return;
-    api.getDeviceSettings(deviceId).then((data) => {
-      if (!mounted.current) return;
-      setSettings(data.settings);
-      setLoaded(true);
-    }).catch(() => { if (mounted.current) setLoaded(true); });
-  }, [deviceId]);
-
-  useEffect(() => {
-    mounted.current = true;
-    loadSettings();
-    const interval = setInterval(loadSettings, 5000);
-    return () => {
-      mounted.current = false;
-      clearInterval(interval);
-      if (refreshTimer.current !== null) clearTimeout(refreshTimer.current);
-    };
-  }, [loadSettings]);
-
-  const settingKeys = Object.keys(settings);
-  if (!loaded || settingKeys.length === 0) return null;
-
-  const handleStartEdit = (key: string) => {
-    const stateKey = `device.${deviceId}.${String(settings[key]?.state_key ?? key)}`;
-    const current = stateKey in liveState ? liveState[stateKey] : settings[key]?.current_value;
-    setEditingKey(key);
-    setEditValue(current != null ? String(current) : String(settings[key]?.default ?? ""));
-    setSaveResult(null);
-  };
-
-  const handleSave = async (key: string) => {
-    setSaving(key);
-    setSaveResult(null);
-    try {
-      const def = settings[key];
-      // Reject invalid input instead of coercing it: the old parseInt(v)||0
-      // silently wrote 0 to the hardware for a blank or mistyped value and
-      // never enforced the definition's min/max/regex.
-      const validated = validateSettingValue(def, editValue);
-      if (!validated.ok) {
-        setSaveResult({ key, success: false, error: validated.error });
-        setSaving(null);
-        return;
-      }
-
-      await api.setDeviceSetting(deviceId, key, validated.value);
-      setSaveResult({ key, success: true });
-      setEditingKey(null);
-      // Refresh settings to get updated current_value
-      if (mounted.current) refreshTimer.current = setTimeout(loadSettings, 1000);
-    } catch (e) {
-      setSaveResult({ key, success: false, error: parseApiError(e) });
-    } finally {
-      setSaving(null);
-    }
-  };
-
-  const handleCancel = () => {
-    setEditingKey(null);
-    setSaveResult(null);
-  };
-
-  const sectionTitleStyle: React.CSSProperties = {
-    fontSize: "var(--font-size-sm)",
-    color: "var(--text-secondary)",
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    marginBottom: "var(--space-md)",
-    fontWeight: 600,
-    display: "flex",
-    alignItems: "center",
-    gap: "var(--space-sm)",
-  };
-
-  return (
-    <div style={{ marginBottom: "var(--space-xl)" }}>
-      <h3 style={sectionTitleStyle}>
-        <Settings size={14} /> Device Settings
-      </h3>
-      <div
-        style={{
-          background: "var(--bg-surface)",
-          borderRadius: "var(--border-radius)",
-          border: "1px solid var(--border-color)",
-          overflow: "hidden",
-        }}
-      >
-        {settingKeys.map((key) => {
-          const def = settings[key];
-          const label = String(def?.label ?? key);
-          const help = String(def?.help ?? "");
-          const fieldType = String(def?.type ?? "string");
-          const values = def?.values as unknown[] | undefined;
-          const enumOptions = normalizeOptionList(values ?? []);
-          const stateKey = `device.${deviceId}.${String(def?.state_key ?? key)}`;
-          const currentValue = stateKey in liveState ? liveState[stateKey] : def?.current_value;
-          const isPending = key in pendingSettings;
-          const isEditing = editingKey === key;
-          const isSaving = saving === key;
-          const result = saveResult?.key === key ? saveResult : null;
-
-          return (
-            <div
-              key={key}
-              style={{
-                padding: "var(--space-md)",
-                borderBottom: "1px solid var(--border-color)",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "var(--font-size-sm)", fontWeight: 500 }}>{label}</div>
-                  {help && (
-                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{help}</div>
-                  )}
-                </div>
-                {isEditing ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)" }}>
-                    {fieldType === "boolean" ? (
-                      <select
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        style={{ fontSize: "var(--font-size-sm)", padding: "2px 6px" }}
-                      >
-                        <BooleanOptions />
-                      </select>
-                    ) : fieldType === "enum" && values ? (
-                      <select
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        style={{ fontSize: "var(--font-size-sm)", padding: "2px 6px" }}
-                      >
-                        {enumOptions.map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        type={fieldType === "integer" || fieldType === "number" || fieldType === "float" ? "number" : "text"}
-                        min={def?.min}
-                        max={def?.max}
-                        step={fieldType === "integer" ? 1 : undefined}
-                        placeholder={
-                          def?.min !== undefined && def?.max !== undefined
-                            ? `${def.min}-${def.max}`
-                            : undefined
-                        }
-                        style={{
-                          fontSize: "var(--font-size-sm)",
-                          padding: "2px 6px",
-                          width: 180,
-                        }}
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleSave(key);
-                          if (e.key === "Escape") handleCancel();
-                        }}
-                      />
-                    )}
-                    <button
-                      onClick={() => handleSave(key)}
-                      disabled={isSaving}
-                      title="Save"
-                      style={{
-                        padding: "2px 6px",
-                        borderRadius: "var(--border-radius)",
-                        background: "var(--color-success-bg)",
-                        color: "var(--color-success)",
-                        fontSize: "var(--font-size-sm)",
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      {isSaving ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Check size={14} />}
-                    </button>
-                    <button
-                      onClick={handleCancel}
-                      title="Cancel"
-                      style={{
-                        padding: "2px 6px",
-                        borderRadius: "var(--border-radius)",
-                        background: "var(--bg-hover)",
-                        fontSize: "var(--font-size-sm)",
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-sm)" }}>
-                    <span
-                      style={{
-                        fontFamily: "var(--font-mono)",
-                        fontSize: "var(--font-size-sm)",
-                        color: currentValue != null ? "var(--text-primary)" : "var(--text-muted)",
-                      }}
-                    >
-                      {currentValue != null
-                        ? settingValueText(def, currentValue)
-                        : "(not set)"}
-                    </span>
-                    {isPending && (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: "var(--accent)",
-                          padding: "1px 6px",
-                          borderRadius: "var(--border-radius)",
-                          background: "var(--accent-dim)",
-                        }}
-                        title={
-                          connected
-                            ? `Pending: ${settingValueText(def, pendingSettings[key])}. Sent, but the device has not reported it back yet. It will be sent again on the next connection.`
-                            : `Pending: ${settingValueText(def, pendingSettings[key])}, will be applied when device connects`
-                        }
-                      >
-                        pending
-                      </span>
-                    )}
-                    <button
-                      onClick={() => handleStartEdit(key)}
-                      disabled={!connected}
-                      title={connected ? "Edit setting" : "Device must be connected to change settings"}
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: "var(--border-radius)",
-                        background: "var(--bg-hover)",
-                        fontSize: "var(--font-size-sm)",
-                        opacity: connected ? 1 : 0.4,
-                      }}
-                    >
-                      <Pencil size={12} />
-                    </button>
-                  </div>
-                )}
-              </div>
-              {result && (
-                <div
-                  style={{
-                    marginTop: "var(--space-xs)",
-                    fontSize: 11,
-                    color: result.success ? "var(--color-success)" : "var(--color-error)",
-                  }}
-                >
-                  {result.success ? "Setting saved successfully" : `Error: ${result.error}`}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// --- Device Log ---
-
-type DeviceLogTab = "protocol" | "state";
-
-function DeviceLog({ deviceId }: { deviceId: string }) {
-  const [tab, setTab] = useState<DeviceLogTab>("protocol");
-
-  return (
-    <div style={{ marginBottom: "var(--space-xl)" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--space-sm)",
-          marginBottom: "var(--space-md)",
-        }}
-      >
-        <h3
-          style={{
-            fontSize: "var(--font-size-sm)",
-            color: "var(--text-secondary)",
-            textTransform: "uppercase",
-            letterSpacing: "0.5px",
-            fontWeight: 600,
-            margin: 0,
-          }}
-        >
-          Device Log
-        </h3>
-        <div style={{ flex: 1 }} />
-        <button
-          onClick={() => setTab("protocol")}
-          style={{
-            padding: "2px 8px",
-            borderRadius: "var(--border-radius)",
-            background: tab === "protocol" ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: tab === "protocol" ? "#fff" : "var(--text-secondary)",
-            fontSize: 11,
-            fontWeight: tab === "protocol" ? 600 : 400,
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          Protocol
-        </button>
-        <button
-          onClick={() => setTab("state")}
-          style={{
-            padding: "2px 8px",
-            borderRadius: "var(--border-radius)",
-            background: tab === "state" ? "var(--accent-bg)" : "var(--bg-hover)",
-            color: tab === "state" ? "#fff" : "var(--text-secondary)",
-            fontSize: 11,
-            fontWeight: tab === "state" ? 600 : 400,
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          State Changes
-        </button>
-      </div>
-      {tab === "protocol" ? (
-        <DeviceProtocolLog deviceId={deviceId} />
-      ) : (
-        <DeviceStateLog deviceId={deviceId} />
-      )}
-    </div>
   );
 }
