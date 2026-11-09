@@ -469,16 +469,29 @@ def _blocked_axes(
     phrased against the parent is a number above 100 -- unreachable, and read as
     nonsense by anyone who tries it. The container is the fault.
     """
-    blocked = []
-    if box_px[0] + 0.5 < box.width_px and box.width_px > parent_px[0] + 0.5:
-        blocked.append(("width", box.width_px, box_px[0]))
-    if box_px[1] + 0.5 < box.height_px and box.height_px > parent_px[1] + 0.5:
-        blocked.append(("height", box.height_px, box_px[1]))
-    return blocked
+    parent = dict(zip(("width", "height"), parent_px))
+    return [
+        (axis, needs, has)
+        for axis, needs, has in box.short_axes(*box_px)
+        if needs > parent[axis] + 0.5
+    ]
 
 
 def _grown(container: Container, axis: str) -> float:
     return container.width_px if axis == "width" else container.height_px
+
+
+def _at_least(axis: str, percent: float) -> str:
+    """One axis of a remedy: ``w at least 7.25%``."""
+    return f"{'w' if axis == 'width' else 'h'} at least {_pct(percent)}%"
+
+
+def _give_it(percents: Mapping[str, float], parent_name: str) -> str:
+    """The remedy as shares of the element's own parent, width first; empty with none."""
+    if not percents:
+        return ""
+    shares = " and ".join(_at_least(axis, percent) for axis, percent in percents.items())
+    return f" Give it {shares} of {parent_name}."
 
 
 def container_remedy(
@@ -550,14 +563,30 @@ def _container_clause(
         size = f"{holder.height_px:.0f}px tall"
         word = "height"
     gives = " and ".join(
-        f"{'w' if axis == 'width' else 'h'} at least "
-        f"{_pct(needs[axis] / _grown(parent, axis) * 100)}%"
-        for axis in axes
+        _at_least(axis, needs[axis] / _grown(parent, axis) * 100) for axis in axes
     )
     return (
         f" {holder.label} is {size}, too small to hold it at any {word}: "
         f"give {holder.label} {gives} of {parent.label}."
     )
+
+
+def _shares_within_reach(
+    short: list[tuple[str, float, float]],
+    blocked: list[tuple[str, float, float]],
+    percent: tuple[float, float] | None,
+) -> dict[str, float]:
+    """The share of its parent each short axis needs, for the axes a share can still reach.
+
+    ``percent`` is the floor as shares of the parent, width then height. A
+    blocked axis is left out: its share would be over 100%, and the container
+    clause names the box that has to grow instead.
+    """
+    if not percent:
+        return {}
+    stuck = {axis for axis, _, _ in blocked}
+    need = dict(zip(("width", "height"), percent))
+    return {axis: need[axis] for axis, _, _ in short if axis not in stuck}
 
 
 def starvation_finding(
@@ -589,17 +618,10 @@ def starvation_finding(
     el_id = str(element.get("id", "?"))
     el_type = str(element.get("type", "?"))
     blocked = _blocked_axes(box, seat.box_px, seat.parent_px)
-    stuck = {axis for axis, _, _ in blocked}
     percent = minimum_percent(element, *seat.parent_px, theme, seat.orientation)
-    fixes = []
-    if percent:
-        need_w, need_h = percent
-        if width_px + 0.5 < box.width_px and "width" not in stuck:
-            fixes.append(f"w at least {_pct(need_w)}%")
-        if height_px + 0.5 < box.height_px and "height" not in stuck:
-            fixes.append(f"h at least {_pct(need_h)}%")
     page = page_container(seat.orientation)
-    fix = f" Give it {' and '.join(fixes)} of {seat.parent_name}." if fixes else ""
+    short = box.short_axes(width_px, height_px)
+    fix = _give_it(_shares_within_reach(short, blocked, percent), seat.parent_name)
     fix += _container_clause(seat.ancestors, blocked, page) if blocked else ""
     return Finding(
         el_id,
@@ -647,14 +669,13 @@ def degenerate_finding(
 
     el_id = str(element.get("id", "?"))
     el_type = str(element.get("type", "?"))
-    parent_w, parent_h = seat.parent_px
-    fixes = []
-    if width_px < MINIMUM_VISIBLE_PX and parent_w > 0:
-        fixes.append(f"w at least {_pct(MINIMUM_VISIBLE_PX / parent_w * 100)}%")
-    if height_px < MINIMUM_VISIBLE_PX and parent_h > 0:
-        fixes.append(f"h at least {_pct(MINIMUM_VISIBLE_PX / parent_h * 100)}%")
+    shares = {
+        axis: MINIMUM_VISIBLE_PX / parent * 100
+        for axis, drawn, parent in zip(("width", "height"), seat.box_px, seat.parent_px)
+        if drawn < MINIMUM_VISIBLE_PX and parent > 0
+    }
     page = page_container(seat.orientation)
-    fix = f" Give it {' and '.join(fixes)} of {seat.parent_name}." if fixes else ""
+    fix = _give_it(shares, seat.parent_name)
     return Finding(
         el_id,
         "too_small_to_draw",

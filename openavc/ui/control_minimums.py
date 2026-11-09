@@ -173,24 +173,30 @@ class MinimumBox:
     height_px: float
     internals: tuple[FixedInternal, ...]
 
+    def short_axes(self, width_px: float, height_px: float) -> list[tuple[str, float, float]]:
+        """Each axis a box this size is drawn short of the floor on, as ``(axis, needs_px, has_px)``.
+
+        Width first. Half a pixel of slack, so a box that rounds to its floor is
+        not short. The reasons below, and the page review's container blame and
+        remedy, all read the shortfall from here.
+        """
+        drawn = (("width", self.width_px, width_px), ("height", self.height_px, height_px))
+        return [(axis, needs, has) for axis, needs, has in drawn if has + 0.5 < needs]
+
     def starves(self, width_px: float, height_px: float) -> list[str]:
         """Why this box is too small. Empty when it fits.
 
         Reported per axis with the numbers in it, because "too small" on its
         own is not something an author or a model can act on.
         """
-        reasons: list[str] = []
-        if width_px + 0.5 < self.width_px:
-            reasons.append(
-                f"{width_px:.0f}px wide, needs {self.width_px:.0f}px"
-                f"{_blame(self.internals, 'width')}"
-            )
-        if height_px + 0.5 < self.height_px:
-            reasons.append(
-                f"{height_px:.0f}px tall, needs {self.height_px:.0f}px"
-                f"{_blame(self.internals, 'height')}"
-            )
-        return reasons
+        return [
+            f"{has:.0f}px {_EXTENT[axis]}, needs {needs:.0f}px{_blame(self.internals, axis)}"
+            for axis, needs, has in self.short_axes(width_px, height_px)
+        ]
+
+
+#: How a sentence says a size on each axis.
+_EXTENT = {"width": "wide", "height": "tall"}
 
 
 def _blame(internals: tuple[FixedInternal, ...], axis: str) -> str:

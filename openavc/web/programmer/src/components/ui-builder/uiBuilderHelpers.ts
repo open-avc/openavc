@@ -3715,26 +3715,39 @@ function blame(internals: ResolvedInternal[], axis: "width" | "height"): string 
   return parts.length ? ` (${parts.join(", ")})` : "";
 }
 
+/** One axis a box is drawn short of its floor on: what it needs, and what it has. */
+interface ShortAxis {
+  axis: "width" | "height";
+  wants: number;
+  has: number;
+}
+
+/**
+ * Each axis a box this size is drawn short of the floor on, width first.
+ *
+ * Half a pixel of slack, so a box that rounds to its floor is not short. The
+ * reasons, the container blame and the remedy all read the shortfall from here.
+ * Mirrors `MinimumBox.short_axes` in control_minimums.py.
+ */
+function shortAxes(box: ControlMinimumBox, boxPx: { width: number; height: number }): ShortAxis[] {
+  const drawn: ShortAxis[] = [
+    { axis: "width", wants: box.widthPx, has: boxPx.width },
+    { axis: "height", wants: box.heightPx, has: boxPx.height },
+  ];
+  return drawn.filter(({ wants, has }) => has + 0.5 < wants);
+}
+
 /** Why this box is too small, per axis, with the numbers in it. Empty when it fits. */
 function starvedReasons(
   box: ControlMinimumBox,
   widthPx: number,
   heightPx: number,
 ): string[] {
-  const reasons: string[] = [];
-  if (widthPx + 0.5 < box.widthPx) {
-    reasons.push(
-      `${fixed(widthPx, 0)}px wide, needs ${fixed(box.widthPx, 0)}px` +
-        blame(box.internals, "width"),
-    );
-  }
-  if (heightPx + 0.5 < box.heightPx) {
-    reasons.push(
-      `${fixed(heightPx, 0)}px tall, needs ${fixed(box.heightPx, 0)}px` +
-        blame(box.internals, "height"),
-    );
-  }
-  return reasons;
+  return shortAxes(box, { width: widthPx, height: heightPx }).map(
+    ({ axis, wants, has }) =>
+      `${fixed(has, 0)}px ${axis === "width" ? "wide" : "tall"}, needs ${fixed(wants, 0)}px` +
+      blame(box.internals, axis),
+  );
 }
 
 /** One box in an element's ancestry, as a remedy would have to name it. */
@@ -3770,11 +3783,7 @@ function pageContainer(orientation: string = "landscape"): Container {
 }
 
 /** A starved axis whose floor is larger than the container itself. */
-interface BlockedAxis {
-  axis: "width" | "height";
-  wants: number;
-  has: number;
-}
+type BlockedAxis = ShortAxis;
 
 /**
  * The starved axes with no percentage to write.
@@ -3788,18 +3797,24 @@ function blockedAxes(
   boxPx: { width: number; height: number },
   parentPx: { width: number; height: number },
 ): BlockedAxis[] {
-  const blocked: BlockedAxis[] = [];
-  if (boxPx.width + 0.5 < box.widthPx && box.widthPx > parentPx.width + 0.5) {
-    blocked.push({ axis: "width", wants: box.widthPx, has: boxPx.width });
-  }
-  if (boxPx.height + 0.5 < box.heightPx && box.heightPx > parentPx.height + 0.5) {
-    blocked.push({ axis: "height", wants: box.heightPx, has: boxPx.height });
-  }
-  return blocked;
+  return shortAxes(box, boxPx).filter(({ axis, wants }) => wants > parentPx[axis] + 0.5);
 }
 
 function grown(container: Container, axis: "width" | "height"): number {
   return axis === "width" ? container.widthPx : container.heightPx;
+}
+
+/** One axis of a remedy: `w at least 7.25%`. */
+function atLeast(axis: "width" | "height", percent: number): string {
+  return `${axis === "width" ? "w" : "h"} at least ${pct(percent)}%`;
+}
+
+/** The remedy as shares of the element's own parent, width first; empty with none. */
+function giveIt(shares: Partial<Record<"width" | "height", number>>, parentName: string): string {
+  const parts = (["width", "height"] as const)
+    .filter((axis) => shares[axis] !== undefined)
+    .map((axis) => atLeast(axis, shares[axis] as number));
+  return parts.length ? ` Give it ${parts.join(" and ")} of ${parentName}.` : "";
 }
 
 /**
@@ -3882,16 +3897,32 @@ function containerClause(
     word = "height";
   }
   const gives = axes
-    .map(
-      (axis) =>
-        `${axis === "width" ? "w" : "h"} at least ` +
-        `${pct((needs[axis] / grown(parent, axis)) * 100)}%`,
-    )
+    .map((axis) => atLeast(axis, (needs[axis] / grown(parent, axis)) * 100))
     .join(" and ");
   return (
     ` ${holder.label} is ${size}, too small to hold it at any ${word}: ` +
     `give ${holder.label} ${gives} of ${parent.label}.`
   );
+}
+
+/**
+ * The share of its parent each short axis needs, for the axes a share can still
+ * reach. `need` is the floor as shares of the parent. A blocked axis is left
+ * out: its share would be over 100%, and the container clause names the box that
+ * has to grow instead.
+ */
+function sharesWithinReach(
+  short: ShortAxis[],
+  blocked: BlockedAxis[],
+  need: { w: number; h: number } | null,
+): Partial<Record<"width" | "height", number>> {
+  if (!need) return {};
+  const stuck = new Set(blocked.map((b) => b.axis));
+  const shares: Partial<Record<"width" | "height", number>> = {};
+  for (const { axis } of short) {
+    if (!stuck.has(axis)) shares[axis] = axis === "width" ? need.w : need.h;
+  }
+  return shares;
 }
 
 /**
@@ -3920,19 +3951,9 @@ export function starvationFinding(
   if (!reasons.length) return null;
 
   const blocked = blockedAxes(box, boxPx, parentPx);
-  const stuck = new Set(blocked.map((b) => b.axis));
   const need = controlMinimumPercent(el, parentPx, theme, orientation);
-  const fixes: string[] = [];
-  if (need) {
-    if (boxPx.width + 0.5 < box.widthPx && !stuck.has("width")) {
-      fixes.push(`w at least ${pct(need.w)}%`);
-    }
-    if (boxPx.height + 0.5 < box.heightPx && !stuck.has("height")) {
-      fixes.push(`h at least ${pct(need.h)}%`);
-    }
-  }
   const pageRoot = pageContainer(orientation);
-  let fix = fixes.length ? ` Give it ${fixes.join(" and ")} of ${parentName}.` : "";
+  let fix = giveIt(sharesWithinReach(shortAxes(box, boxPx), blocked, need), parentName);
   if (blocked.length) fix += containerClause(ancestors, blocked, pageRoot);
   return {
     elementId: el.id,
@@ -3980,14 +4001,13 @@ export function degenerateFinding(
   if (controlMinimumBox(el, theme, orientation)) return null;
   if (boxPx.width >= MINIMUM_VISIBLE_PX && boxPx.height >= MINIMUM_VISIBLE_PX) return null;
 
-  const fixes: string[] = [];
-  if (boxPx.width < MINIMUM_VISIBLE_PX && parentPx.width > 0) {
-    fixes.push(`w at least ${pct((MINIMUM_VISIBLE_PX / parentPx.width) * 100)}%`);
+  const shares: Partial<Record<"width" | "height", number>> = {};
+  for (const axis of ["width", "height"] as const) {
+    if (boxPx[axis] < MINIMUM_VISIBLE_PX && parentPx[axis] > 0) {
+      shares[axis] = (MINIMUM_VISIBLE_PX / parentPx[axis]) * 100;
+    }
   }
-  if (boxPx.height < MINIMUM_VISIBLE_PX && parentPx.height > 0) {
-    fixes.push(`h at least ${pct((MINIMUM_VISIBLE_PX / parentPx.height) * 100)}%`);
-  }
-  const fix = fixes.length ? ` Give it ${fixes.join(" and ")} of ${parentName}.` : "";
+  const fix = giveIt(shares, parentName);
   const pageRoot = pageContainer(orientation);
   return {
     elementId: el.id,
