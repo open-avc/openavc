@@ -16,7 +16,7 @@ from typing import Any
 
 import pytest
 
-from openavc.drivers.compiled_protocol import (
+from openavc.simulator.reply_templates import (
     emit_literal,
     emit_template,
     emit_template_multi,

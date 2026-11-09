@@ -13,14 +13,16 @@ from openavc.drivers.compiled_protocol import (
     build_send_frame,
     compile_driver,
     decode_delimiter,
-    emit_literal,
-    emit_template,
-    emit_template_multi,
-    fill_template,
     send_param_specs,
     send_regex,
     spec_int_base,
     split_send_frames,
+)
+from openavc.simulator.reply_templates import (
+    emit_literal,
+    emit_template,
+    emit_template_multi,
+    fill_template,
 )
 
 
@@ -503,7 +505,7 @@ def test_send_param_groups_ignores_absent_params():
 
 
 def test_emit_template_multi_substitutes_every_targeted_group():
-    from openavc.drivers.compiled_protocol import emit_template_multi
+    from openavc.simulator.reply_templates import emit_template_multi
 
     assert emit_template_multi(
         r"^Out(\d+) In(\d+) Vid$", {1: "{child_id}", 2: "{value}"}
@@ -519,7 +521,7 @@ def test_emit_template_multi_substitutes_every_targeted_group():
 
 
 def test_emit_template_multi_optional_target_survives_and_missing_fails():
-    from openavc.drivers.compiled_protocol import emit_template_multi
+    from openavc.simulator.reply_templates import emit_template_multi
 
     # An optional atom carrying a target is kept, never dropped.
     assert emit_template_multi(
@@ -530,7 +532,7 @@ def test_emit_template_multi_optional_target_survives_and_missing_fails():
 
 
 def test_emit_template_multi_single_group_matches_emit_template():
-    from openavc.drivers.compiled_protocol import emit_template, emit_template_multi
+    from openavc.simulator.reply_templates import emit_template, emit_template_multi
 
     for pattern in (r"In(\d+) All", r"^VOL([0-9A-F]{2})$", r"^Sig([01])\b"):
         assert emit_template_multi(pattern, {1: "{value}"}) == emit_template(pattern)

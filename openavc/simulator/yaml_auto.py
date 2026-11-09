@@ -39,10 +39,6 @@ from openavc.drivers.compiled_protocol import (
     build_send_frame,
     conversion_of,
     decode_delimiter,
-    emit_literal,
-    emit_template,
-    emit_template_multi,
-    fill_template,
     follow_up_queries,
     read_back_queries,
     is_passthrough_send,
@@ -69,6 +65,12 @@ from openavc.drivers.inline_protocol import (
 from openavc.transport.binary_helpers import encode_escape_sequences
 from openavc.simulator.http_simulator import HTTPServerMixin
 from openavc.simulator.osc_simulator import OSCDispatchMixin
+from openavc.simulator.reply_templates import (
+    emit_literal,
+    emit_template,
+    emit_template_multi,
+    fill_template,
+)
 from openavc.simulator.tcp_simulator import TCPSimulator
 
 logger = logging.getLogger(__name__)
