@@ -19,6 +19,9 @@ ALLOWED = {
     "openavc",
     "openavc.drivers",
     "openavc.drivers.compiled_protocol",
+    # What a rule's child_set: / child_list: compile to; compile_driver calls
+    # it, and it is held to the same closure.
+    "openavc.drivers.child_routes",
     # The driver contract's constant tables. Stdlib-only (ipaddress + re) and
     # already vendored into openavc-drivers, so it travels everywhere this
     # module does. compiled_protocol needs it for the reserved child props:
