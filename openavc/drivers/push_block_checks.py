@@ -18,11 +18,12 @@ own checks, run after the type and the keys:
   (no keys of its own: the URL is built at runtime and substitutes into
   commands as ``{push_callback_url}``).
 
-``tcp_listener`` and ``sse`` (the types whose keys include ``register``) also name driver commands to run once the channel
-is open (``register:``) and before it closes (``unregister:``). Addressing
-values accept ``{config_field}`` templates, so a device whose notification
-target is user-configurable resolves them per instance. Every message here
-opens with ``push:``; the walk tags them all with the block.
+``tcp_listener`` and ``sse`` (the types whose keys include ``register``) also
+name driver commands to run once the channel is open (``register:``) and
+before it closes (``unregister:``). Addressing values accept
+``{config_field}`` templates, so a device whose notification target is
+user-configurable resolves them per instance. Every message here opens with
+``push:``; the walk tags them all with the block.
 
 Purity contract, as for ``avcdriver_semantic``: standard library, the sibling
 contract modules and the stdlib-only regex-safety helper. The module is
