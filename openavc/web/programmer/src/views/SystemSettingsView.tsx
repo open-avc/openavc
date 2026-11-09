@@ -1,10 +1,27 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Save, AlertTriangle, Eye, EyeOff, RefreshCw, Download, Lock, Power, Upload, FileCheck2, ChevronDown, ChevronRight, Copy, Smartphone, ShieldCheck } from "lucide-react";
+import { Save, AlertTriangle, RefreshCw, Download, Lock, Power, Upload, FileCheck2, ChevronDown, ChevronRight, Copy, Smartphone, ShieldCheck } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { copyToClipboard } from "../components/shared/clipboard";
 import { HostNetworkCard } from "../components/system/HostNetworkCard";
-import { EnvHeldNote, EnvLock } from "../components/system/EnvHeldNote";
+import { EnvLock, HeldNote, envHold } from "../components/system/EnvHeldNote";
+import {
+  btnStyle,
+  cardStyle,
+  fieldRow,
+  helpText,
+  inputStyle,
+  labelStyle,
+  radioInput,
+  radioRow,
+  sectionTitle,
+  selectStyle,
+  subCardDescription,
+  subCardTitle,
+  toggleRow,
+  warningBox,
+} from "../components/system/settingsStyles";
+import { PasswordField, REDACTED, Toggle } from "./settings/settingsControls";
 import { AcceptConnectionsField, ReachDevicesField } from "../components/system/NetworkChoiceFields";
 import { CutOffRestartLines, CutOffSaved, CutOffWarning, type CutOffFacts } from "../components/system/ListenCutOff";
 import { adapterName, ownScreenOpensProgrammer, restartPlan, sameListenChoice, type RestartPlan } from "../components/system/adapterChoice";
@@ -29,8 +46,6 @@ import type {
   TlsUploadResult,
 } from "../api/restClient";
 import type { ProjectConfig } from "../api/types";
-
-const REDACTED = "***";
 
 /** A new API key: 32 random bytes, url-safe, the same shape the server would
  *  produce. The server stores only a digest of whatever is saved here, so this
@@ -58,75 +73,6 @@ const CLOUD_CERT_ERROR_LABELS: Record<string, string> = {
   invalid_csr: "The cloud rejected the certificate request.",
   invalid_enrollment: "The cloud sent an unexpected enrollment response.",
   internal: "The cloud hit an internal error during issuance. An automatic retry is scheduled.",
-};
-
-const cardStyle: React.CSSProperties = {
-  background: "var(--bg-surface)",
-  border: "1px solid var(--border-color)",
-  borderRadius: "var(--border-radius)",
-  padding: "var(--space-lg)",
-  marginBottom: "var(--space-xl)",
-};
-
-const sectionTitle: React.CSSProperties = {
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
-  textTransform: "uppercase",
-  letterSpacing: "0.5px",
-  fontWeight: 600,
-  marginBottom: "var(--space-md)",
-};
-
-const subCardTitle: React.CSSProperties = {
-  fontSize: "var(--font-size-md)",
-  fontWeight: 600,
-  color: "var(--text-primary)",
-  margin: 0,
-  marginBottom: "var(--space-xs)",
-};
-
-const subCardDescription: React.CSSProperties = {
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
-  marginBottom: "var(--space-lg)",
-  lineHeight: 1.5,
-};
-
-const fieldRow: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "200px 1fr",
-  gap: "var(--space-sm) var(--space-lg)",
-  alignItems: "center",
-  marginBottom: "var(--space-md)",
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
-};
-
-const helpText: React.CSSProperties = {
-  fontSize: 12,
-  color: "var(--text-muted)",
-  gridColumn: "2",
-  marginTop: -4,
-  marginBottom: "var(--space-xs)",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "var(--space-sm) var(--space-md)",
-  background: "var(--bg-input, var(--bg-elevated))",
-  border: "1px solid var(--border-color)",
-  borderRadius: "var(--border-radius)",
-  color: "var(--text-primary)",
-  fontSize: "var(--font-size-sm)",
-  fontFamily: "inherit",
-};
-
-const selectStyle: React.CSSProperties = {
-  ...inputStyle,
-  cursor: "pointer",
 };
 
 // Idle-dim bounds, mirroring what the server clamps to on the way out
@@ -162,140 +108,6 @@ const clampPercent = (n: number) => {
   if (n <= DIM_BLACKOUT) return DIM_BLACKOUT;
   return Math.min(Math.max(n, DIM_PERCENT_MIN), DIM_PERCENT_MAX);
 };
-
-const toggleRow: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  padding: "var(--space-sm) 0",
-  marginBottom: "var(--space-sm)",
-};
-
-const radioRow: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "var(--space-md)",
-  padding: "var(--space-sm) 0",
-  cursor: "pointer",
-};
-
-const radioInput: React.CSSProperties = {
-  marginTop: 3,
-  flexShrink: 0,
-  accentColor: "var(--accent)",
-};
-
-const toggleStyle: React.CSSProperties = {
-  position: "relative",
-  width: 40,
-  height: 22,
-  borderRadius: 11,
-  cursor: "pointer",
-  transition: "background var(--transition-fast)",
-  border: "none",
-  flexShrink: 0,
-};
-
-const btnStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "var(--space-xs)",
-  padding: "var(--space-sm) var(--space-lg)",
-  borderRadius: "var(--border-radius)",
-  fontSize: "var(--font-size-sm)",
-  fontWeight: 500,
-  cursor: "pointer",
-  transition: "all var(--transition-fast)",
-  background: "var(--accent-bg)",
-  color: "var(--text-on-accent)",
-  border: "1px solid var(--accent-bg)",
-};
-
-const warningBox: React.CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: "var(--space-sm)",
-  padding: "var(--space-md)",
-  background: "rgba(255, 152, 0, 0.08)",
-  border: "1px solid rgba(255, 152, 0, 0.3)",
-  borderRadius: "var(--border-radius)",
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-primary)",
-  marginBottom: "var(--space-md)",
-};
-
-function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label?: string }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      style={{
-        ...toggleStyle,
-        background: checked ? "var(--accent-bg)" : "var(--bg-hover, #555)",
-      }}
-      onClick={() => onChange(!checked)}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: 3,
-          left: checked ? 21 : 3,
-          width: 16,
-          height: 16,
-          borderRadius: "50%",
-          background: "#fff",
-          transition: "left var(--transition-fast)",
-        }}
-      />
-    </button>
-  );
-}
-
-function PasswordField({
-  value,
-  placeholder,
-  onChange,
-}: {
-  value: string;
-  placeholder: string;
-  onChange: (v: string) => void;
-}) {
-  const [visible, setVisible] = useState(false);
-  const isRedacted = value === REDACTED;
-  return (
-    <div style={{ position: "relative" }}>
-      <input
-        type={visible ? "text" : "password"}
-        autoComplete="new-password"
-        style={inputStyle}
-        value={isRedacted ? "" : value}
-        placeholder={isRedacted ? "Set (hidden)" : placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
-      {!isRedacted && (
-        <button
-          type="button"
-          onClick={() => setVisible(!visible)}
-          style={{
-            position: "absolute",
-            right: 8,
-            top: "50%",
-            transform: "translateY(-50%)",
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            padding: 4,
-          }}
-        >
-          {visible ? <EyeOff size={14} /> : <Eye size={14} />}
-        </button>
-      )}
-    </div>
-  );
-}
 
 function ExpiryBadge({ days }: { days: number }) {
   let bg = "rgba(76, 175, 80, 0.15)";
@@ -894,10 +706,9 @@ export function SystemSettingsView() {
   // Fields the service's environment holds: the server runs with that value
   // at every start whatever is saved here, so they are shown locked and the
   // server refuses a change to one.
-  const heldBy = (section: string, key: string): string | undefined =>
-    config?._environment?.overrides?.[`${section}.${key}`];
-  const deploymentType = config?._environment?.deployment_type ?? "";
-  const configurationOwner = config?._environment?.configuration_owner;
+  const hold = envHold(config);
+  const heldBy = hold.by;
+  const deploymentType = hold.deploymentType;
   const tlsCertHeld = heldBy("tls", "auto_generate") ?? heldBy("tls", "cert_file") ?? heldBy("tls", "key_file");
   // Getting a trusted certificate also turns HTTPS on, so a held HTTPS switch
   // locks it too while HTTPS is off.
@@ -918,8 +729,6 @@ export function SystemSettingsView() {
     { mode: listenMode, adapter: listenAdapter },
     { mode: config.network.accept_connections_from, adapter: config.network.accept_connections_adapter },
   );
-  const listenHeld = heldBy("network", "accept_connections_from");
-  const reachHeld = heldBy("network", "reach_devices_through");
   const reachChosen: AdapterIdentity = net.reach_devices_through ?? {};
   const listenAdapterName = adapterName(listenAdapter, interfaces, listenRunning?.adapter_name ?? "");
   const urlFacts = {
@@ -1124,9 +933,7 @@ export function SystemSettingsView() {
               problem={listenNeedsRestart ? null : (listenRunning?.problem ?? null)}
               preview={shownPreview}
               changed={listenChanged}
-              heldBy={listenHeld}
-              deploymentType={deploymentType}
-              configurationOwner={configurationOwner}
+              hold={hold}
               urlFacts={urlFacts}
               onChange={(mode, adapter) => {
                 update("network", "accept_connections_from", mode);
@@ -1139,9 +946,7 @@ export function SystemSettingsView() {
               interfaces={interfaces}
               chosen={reachChosen}
               resolved={config._reach_devices}
-              heldBy={reachHeld}
-              deploymentType={deploymentType}
-              configurationOwner={configurationOwner}
+              hold={hold}
               loading={adaptersLoading}
               onChange={(identity) => update("network", "reach_devices_through", identity)}
               onRefresh={loadAdapters}
@@ -1158,7 +963,7 @@ export function SystemSettingsView() {
                 onChange={(e) => update("network", "http_port", parseInt(e.target.value) || 8080)}
               />
             </EnvLock>
-            <EnvHeldNote variable={heldBy("network", "http_port")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
+            <HeldNote hold={hold} variable={heldBy("network", "http_port")} style={{ gridColumn: "2" }} />
           </div>
           <div style={toggleRow}>
             <div>
@@ -1169,7 +974,7 @@ export function SystemSettingsView() {
                 OpenAVC service also needs permission to bind it (fresh installs have this; see
                 the deployment guide).
               </div>
-              <EnvHeldNote variable={heldBy("network", "port80_redirect")} deploymentType={deploymentType} configurationOwner={configurationOwner} />
+              <HeldNote hold={hold} variable={heldBy("network", "port80_redirect")} />
             </div>
             <EnvLock held={heldBy("network", "port80_redirect")} style={{ flexShrink: 0 }}>
               <Toggle
@@ -1188,7 +993,7 @@ export function SystemSettingsView() {
                     ? `Lets the OpenAVC Panel app on the ${listenAdapterName || "chosen"} network find this system in its list. Turning this off hides the system from the list; devices can still connect by address.`
                     : "Lets the OpenAVC Panel app find this system in its list. Turning this off hides the system from the list; devices can still connect by address."}
               </div>
-              <EnvHeldNote variable={heldBy("discovery", "advertise")} deploymentType={deploymentType} configurationOwner={configurationOwner} />
+              <HeldNote hold={hold} variable={heldBy("discovery", "advertise")} />
             </div>
             {/* With this computer only, it is shown off and left as saved, so
                 choosing a network again brings back what was set. */}
@@ -1218,7 +1023,7 @@ export function SystemSettingsView() {
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                 Encrypt traffic between this server and panels / browsers. Off by default.
               </div>
-              <EnvHeldNote variable={heldBy("tls", "enabled")} deploymentType={deploymentType} configurationOwner={configurationOwner} />
+              <HeldNote hold={hold} variable={heldBy("tls", "enabled")} />
             </div>
             <EnvLock held={heldBy("tls", "enabled")} style={{ flexShrink: 0 }}>
               <Toggle
@@ -1287,7 +1092,7 @@ export function SystemSettingsView() {
                     <span>Use my own certificate</span>
                   </label>
                 </EnvLock>
-                <EnvHeldNote variable={tlsCertHeld} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
+                <HeldNote hold={hold} variable={tlsCertHeld} style={{ gridColumn: "2" }} />
               </div>
 
               {tlsCertMode === "auto" && (
@@ -1661,7 +1466,7 @@ export function SystemSettingsView() {
                     onChange={(e) => update("tls", "port", parseInt(e.target.value) || 8443)}
                   />
                 </EnvLock>
-                <EnvHeldNote variable={heldBy("tls", "port")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
+                <HeldNote hold={hold} variable={heldBy("tls", "port")} style={{ gridColumn: "2" }} />
                 {tlsPortError && (
                   <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
                     {tlsPortError}
@@ -1676,7 +1481,7 @@ export function SystemSettingsView() {
                     Old links to <code>http://&lt;server&gt;:{net.http_port}</code> redirect automatically. Turn off only
                     if a reverse proxy in front of OpenAVC handles HTTP.
                   </div>
-                  <EnvHeldNote variable={heldBy("tls", "redirect_http")} deploymentType={deploymentType} configurationOwner={configurationOwner} />
+                  <HeldNote hold={hold} variable={heldBy("tls", "redirect_http")} />
                 </div>
                 <EnvLock held={heldBy("tls", "redirect_http")} style={{ flexShrink: 0 }}>
                   <Toggle
@@ -1765,11 +1570,7 @@ export function SystemSettingsView() {
                     installs automatically.
                   </div>
                 )}
-                <EnvHeldNote
-                  variable={cloudCertHeld}
-                  deploymentType={deploymentType} configurationOwner={configurationOwner}
-                  style={{ marginBottom: "var(--space-md)" }}
-                />
+                <HeldNote hold={hold} variable={cloudCertHeld} style={{ marginBottom: "var(--space-md)" }} />
                 <button
                   type="button"
                   onClick={handleGetTrustedCert}
@@ -1870,11 +1671,7 @@ export function SystemSettingsView() {
                   </div>
                 )}
 
-                <EnvHeldNote
-                  variable={heldBy("tls", "cloud_cert")}
-                  deploymentType={deploymentType} configurationOwner={configurationOwner}
-                  style={{ marginBottom: "var(--space-sm)" }}
-                />
+                <HeldNote hold={hold} variable={heldBy("tls", "cloud_cert")} style={{ marginBottom: "var(--space-sm)" }} />
                 <button
                   type="button"
                   onClick={handleDisableTrustedCert}
@@ -1928,7 +1725,7 @@ export function SystemSettingsView() {
             <span style={helpText}>
               Paired with the password on the Programmer sign-in screen. Defaults to admin; leave blank to accept any username.
             </span>
-            <EnvHeldNote variable={heldBy("auth", "programmer_username")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
+            <HeldNote hold={hold} variable={heldBy("auth", "programmer_username")} style={{ gridColumn: "2" }} />
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Password</label>
@@ -1943,7 +1740,7 @@ export function SystemSettingsView() {
               Set this if anyone else on your network could open the Programmer IDE.
               {ssh?.supported && " On this controller it is also the SSH and console login for the openavc user."}
             </span>
-            <EnvHeldNote variable={heldBy("auth", "programmer_password")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
+            <HeldNote hold={hold} variable={heldBy("auth", "programmer_password")} style={{ gridColumn: "2" }} />
             {passwordTooShort && (
               <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
                 {PASSWORD_TOO_SHORT}
@@ -2013,7 +1810,7 @@ export function SystemSettingsView() {
               Provide this to external systems via the <code>X-API-Key</code> header.
               Copy it before you save. It is not shown again afterwards.
             </span>
-            <EnvHeldNote variable={heldBy("auth", "api_key")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
+            <HeldNote hold={hold} variable={heldBy("auth", "api_key")} style={{ gridColumn: "2" }} />
             {apiKeyNeedsPassword && (
               <span style={{ ...helpText, color: "rgb(244, 67, 54)" }}>
                 An API key can't sign in to the Programmer. Set a Programmer
@@ -2029,7 +1826,7 @@ export function SystemSettingsView() {
           <div style={subCardDescription}>
             Who can open the panel from a tablet, a phone or a browser on the network. Applies as soon as it is saved.
           </div>
-          <EnvHeldNote variable={heldBy("panels", "access")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ marginBottom: "var(--space-sm)" }} />
+          <HeldNote hold={hold} variable={heldBy("panels", "access")} style={{ marginBottom: "var(--space-sm)" }} />
           <EnvLock held={heldBy("panels", "access")}>
           <label style={radioRow}>
             <input
@@ -2084,7 +1881,7 @@ export function SystemSettingsView() {
                 <option value="error">Error</option>
               </select>
             </EnvLock>
-            <EnvHeldNote variable={heldBy("logging", "level")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
+            <HeldNote hold={hold} variable={heldBy("logging", "level")} style={{ gridColumn: "2" }} />
           </div>
           <div style={toggleRow}>
             <div>
@@ -2123,7 +1920,7 @@ export function SystemSettingsView() {
             <div>
               <div style={{ fontSize: "var(--font-size-sm)" }}>Check for updates</div>
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Periodically check GitHub for new releases.</div>
-              <EnvHeldNote variable={heldBy("updates", "check_enabled")} deploymentType={deploymentType} configurationOwner={configurationOwner} />
+              <HeldNote hold={hold} variable={heldBy("updates", "check_enabled")} />
             </div>
             <EnvLock held={heldBy("updates", "check_enabled")} style={{ flexShrink: 0 }}>
               <Toggle checked={upd.check_enabled} onChange={(v) => update("updates", "check_enabled", v)} />
@@ -2142,7 +1939,7 @@ export function SystemSettingsView() {
               </select>
             </EnvLock>
             <span style={helpText}>Beta includes pre-release versions.</span>
-            <EnvHeldNote variable={heldBy("updates", "channel")} deploymentType={deploymentType} configurationOwner={configurationOwner} style={{ gridColumn: "2" }} />
+            <HeldNote hold={hold} variable={heldBy("updates", "channel")} style={{ gridColumn: "2" }} />
           </div>
           <div style={fieldRow}>
             <label style={labelStyle}>Check interval (hours)</label>

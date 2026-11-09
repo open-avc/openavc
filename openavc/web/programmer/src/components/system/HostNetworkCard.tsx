@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
 import { RefreshCw, Wifi, Lock, Check } from "lucide-react";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
+import {
+  cardStyle,
+  fieldRow,
+  inputStyle,
+  labelStyle,
+  subCardDescription as description,
+  subCardTitle as subTitle,
+} from "./settingsStyles";
 import { showError, showSuccess } from "../../store/toastStore";
 import { ApiError, parseApiError } from "../../api/errors";
 import { resolvableHostname } from "../../api/hostnames";
@@ -11,53 +19,6 @@ import type { HostNetworkInterface, HostNetworkStatus, WifiNetwork } from "../..
 // Available only where OpenAVC owns the OS (Pi appliance, Linux with
 // NetworkManager) — the GET 404s elsewhere and the card hides itself.
 // The on-device counterpart of this UI lives on the /setup screen.
-
-const cardStyle: React.CSSProperties = {
-  background: "var(--bg-surface)",
-  border: "1px solid var(--border-color)",
-  borderRadius: "var(--border-radius)",
-  padding: "var(--space-lg)",
-  marginBottom: "var(--space-xl)",
-};
-
-const subTitle: React.CSSProperties = {
-  fontSize: "var(--font-size-md)",
-  fontWeight: 600,
-  color: "var(--text-primary)",
-  margin: 0,
-  marginBottom: "var(--space-xs)",
-};
-
-const description: React.CSSProperties = {
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
-  marginBottom: "var(--space-lg)",
-  lineHeight: 1.5,
-};
-
-const fieldRow: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "200px 1fr",
-  gap: "var(--space-sm) var(--space-lg)",
-  alignItems: "center",
-  marginBottom: "var(--space-md)",
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "var(--space-sm) var(--space-md)",
-  background: "var(--bg-input, var(--bg-elevated))",
-  border: "1px solid var(--border-color)",
-  borderRadius: "var(--border-radius)",
-  color: "var(--text-primary)",
-  fontSize: "var(--font-size-sm)",
-  fontFamily: "inherit",
-};
 
 const btnStyle: React.CSSProperties = {
   display: "inline-flex",

@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { Lock } from "lucide-react";
+import type { SystemConfig } from "../../api/systemClient";
 
 /** The docs section that says how to set a value in the environment on each
  *  kind of install. */
@@ -96,5 +97,40 @@ export function EnvHeldNote({ variable, deploymentType, configurationOwner, styl
         </>}
       </span>
     </span>
+  );
+}
+
+/** What the service's environment holds on this system, as the config reports
+ *  it: the variable holding each field, and the two facts every held field's
+ *  line is worded from. */
+export interface EnvHold {
+  /** The variable that holds `section.key`, or undefined when nothing does. */
+  by: (section: string, key: string) => string | undefined;
+  deploymentType: string;
+  configurationOwner?: "firmware";
+}
+
+export function envHold(config: Pick<SystemConfig, "_environment"> | null): EnvHold {
+  const environment = config?._environment;
+  return {
+    by: (section, key) => environment?.overrides?.[`${section}.${key}`],
+    deploymentType: environment?.deployment_type ?? "",
+    configurationOwner: environment?.configuration_owner,
+  };
+}
+
+/** The line under a held field, worded for this system. */
+export function HeldNote({ hold, variable, style }: {
+  hold: EnvHold;
+  variable: string | undefined;
+  style?: CSSProperties;
+}) {
+  return (
+    <EnvHeldNote
+      variable={variable}
+      deploymentType={hold.deploymentType}
+      configurationOwner={hold.configurationOwner}
+      style={style}
+    />
   );
 }

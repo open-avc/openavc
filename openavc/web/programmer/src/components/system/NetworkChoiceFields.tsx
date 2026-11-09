@@ -9,7 +9,8 @@ import type {
   ReachDevicesBlock,
 } from "../../api/systemClient";
 import { panelBase, type PanelUrlFacts } from "../../views/panelAccessUrls";
-import { EnvHeldNote, EnvLock } from "./EnvHeldNote";
+import { EnvLock, HeldNote, type EnvHold } from "./EnvHeldNote";
+import { helpText, labelStyle, selectStyle } from "./settingsStyles";
 import {
   adapterName,
   adapterOptions,
@@ -28,33 +29,6 @@ import {
 
 /** Where Docker's own "who can connect" control is explained. */
 export const DOCKER_PORTS_DOCS_URL = "https://docs.openavc.com/hardened-deployment/#docker";
-
-const labelStyle: CSSProperties = {
-  fontSize: "var(--font-size-sm)",
-  color: "var(--text-secondary)",
-};
-
-// The Settings screen's own field styles (SystemSettingsView.tsx), so these
-// rows read as part of the same card.
-const selectStyle: CSSProperties = {
-  width: "100%",
-  padding: "var(--space-sm) var(--space-md)",
-  background: "var(--bg-input, var(--bg-elevated))",
-  border: "1px solid var(--border-color)",
-  borderRadius: "var(--border-radius)",
-  color: "var(--text-primary)",
-  fontSize: "var(--font-size-sm)",
-  fontFamily: "inherit",
-  cursor: "pointer",
-};
-
-const helpText: CSSProperties = {
-  fontSize: 12,
-  color: "var(--text-muted)",
-  gridColumn: "2",
-  marginTop: -4,
-  marginBottom: "var(--space-xs)",
-};
 
 const warnLine: CSSProperties = {
   ...helpText,
@@ -76,9 +50,7 @@ export function AcceptConnectionsField({
   problem,
   preview,
   changed,
-  heldBy,
-  deploymentType,
-  configurationOwner,
+  hold,
   urlFacts,
   onChange,
 }: {
@@ -95,16 +67,16 @@ export function AcceptConnectionsField({
   preview: ListenPreview | null;
   /** The choice on screen differs from the saved one. */
   changed: boolean;
-  heldBy: string | undefined;
-  deploymentType: string;
-  /** "firmware" on a product whose firmware owns these settings. */
-  configurationOwner?: "firmware";
+  /** What the environment holds on this system. */
+  hold: EnvHold;
   urlFacts: PanelUrlFacts;
   onChange: (mode: ListenMode, adapter: AdapterIdentity) => void;
 }) {
   // In Docker the compose file holds the choice (OPENAVC_BIND, or the
   // address ports: publishes on), so the field is locked there and shows
   // what the container runs.
+  const heldBy = hold.by("network", "accept_connections_from");
+  const deploymentType = hold.deploymentType;
   const docker = deploymentType === "docker";
   const options = adapterOptions(interfaces, mode === "adapter" ? adapter : null, runningName);
   const value = listenValue(mode, adapter, interfaces);
@@ -189,12 +161,7 @@ export function AcceptConnectionsField({
           </span>
         </span>
       ) : (
-        <EnvHeldNote
-          variable={heldBy}
-          deploymentType={deploymentType}
-          configurationOwner={configurationOwner}
-          style={{ gridColumn: "2" }}
-        />
+        <HeldNote hold={hold} variable={heldBy} style={{ gridColumn: "2" }} />
       )}
     </>
   );
@@ -208,9 +175,7 @@ export function ReachDevicesField({
   interfaces,
   chosen,
   resolved,
-  heldBy,
-  deploymentType,
-  configurationOwner,
+  hold,
   loading,
   onChange,
   onRefresh,
@@ -220,13 +185,13 @@ export function ReachDevicesField({
   chosen: AdapterIdentity;
   /** The server's resolution of the saved choice. */
   resolved: ReachDevicesBlock | null | undefined;
-  heldBy: string | undefined;
-  deploymentType: string;
-  configurationOwner?: "firmware";
+  /** What the environment holds on this system. */
+  hold: EnvHold;
   loading: boolean;
   onChange: (identity: AdapterIdentity) => void;
   onRefresh: () => void;
 }) {
+  const heldBy = hold.by("network", "reach_devices_through");
   const every = Object.keys(chosen).length === 0;
   const options = adapterOptions(interfaces, every ? null : chosen, resolved?.adapter_name ?? "");
   const value = every ? "" : valueForIdentity(chosen, interfaces);
@@ -287,12 +252,7 @@ export function ReachDevicesField({
           </span>
         </span>
       )}
-      <EnvHeldNote
-        variable={heldBy}
-        deploymentType={deploymentType}
-        configurationOwner={configurationOwner}
-        style={{ gridColumn: "2" }}
-      />
+      <HeldNote hold={hold} variable={heldBy} style={{ gridColumn: "2" }} />
     </>
   );
 }
