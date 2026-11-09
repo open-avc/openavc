@@ -181,6 +181,11 @@ describe("elementCommandActions and projectCommandActions: what the platform is 
     found.forEach((f, i) => expect(f).toBe([a, b, c, d, e][i]));
   });
 
+  it("leaves out a control's command with no device chosen yet, unlike a macro step's", () => {
+    const el = { id: "b1", type: "button", bindings: { do: { press: [{ action: "device.command", command: "on" }] } } } as unknown as UIElement;
+    expect(elementCommandActions(el)).toEqual([]);
+  });
+
   it("skips an option that is not an action, and a control with no bindings", () => {
     const a = cmd("a");
     const el = { id: "s1", type: "select", bindings: { do: { change: [{ action: "value_map", map: { x: null, y: "a", z: a } }] } } } as unknown as UIElement;
