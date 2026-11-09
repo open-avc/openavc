@@ -1879,7 +1879,9 @@ def _icon_remedy(el_type: str) -> str:
 #: dropped, because an icon is content rather than style and only the button's
 #: evaluator rebuilds it; a per-state picture is drawn only by the types in
 #: STATE_IMAGE_TYPES, and a label, a status LED or a select stores one and never
-#: shows it. A new per-state field the panel draws for some types is one row.
+#: shows it. A new per-state field the panel draws for some types is a row here,
+#: beside its own STATE_* type set (which review_gen carries to the Builder) and
+#: its word in ``_look_takes``.
 _LOOK_FIELDS = (
     _LookField("icon", STATE_ICON_TYPES, "an icon", "icon", _icon_remedy),
     _LookField(
@@ -2381,6 +2383,10 @@ class _ReviewScope:
 @dataclass(frozen=True)
 class _Arrangement:
     """One arrangement of a page as the panel resolves it.
+
+    The Builder's twin is ``Arrangement`` in uiBuilderHelpers.ts, built by
+    ``resolveArrangement``, with these methods as free functions there
+    (``parentIn``, ``parentNameIn``, ``ancestorsIn``, ``seatIn``, ``isDrawn``).
 
     ``absolute`` is where each element is drawn, in page percentages with
     container nesting flattened; ``own`` is the box each one stores, a

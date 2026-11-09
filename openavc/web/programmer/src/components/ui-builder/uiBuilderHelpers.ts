@@ -4870,7 +4870,9 @@ function iconRemedy(type: string): string {
  * dropped, because an icon is content rather than style and only the button's
  * evaluator rebuilds it; a per-state picture is drawn only by the types in
  * STATE_IMAGE_TYPES, and a label, a status LED or a select stores one and never
- * shows it. A new per-state field the panel draws for some types is one row.
+ * shows it. A new per-state field the panel draws for some types is a row here,
+ * beside its own STATE_* type set (generated from page_review.py) and its word
+ * in lookTakes.
  */
 const LOOK_FIELDS: readonly LookField[] = [
   { field: "icon", drawnBy: STATE_ICON_TYPES, named: "an icon", noun: "icon", remedy: iconRemedy },
@@ -5740,6 +5742,11 @@ interface ReviewScope {
  * nesting flattened; `ownBoxes` is the box each one stores, a percentage of its
  * container. Every percentage resolves against `reference`, which is the whole
  * of what portrait changes: the same screen, turned.
+ *
+ * The twin of `_Arrangement` in page_review.py, whose methods are the free
+ * functions here: `resolveArrangement` is `_Arrangement.of`, and `parentIn`,
+ * `parentNameIn`, `ancestorsIn`, `seatIn` and `isDrawn` are `parent_of`,
+ * `parent_name`, `ancestors_of`, `seat` and `is_drawn`.
  */
 interface Arrangement {
   page: UIPage;
