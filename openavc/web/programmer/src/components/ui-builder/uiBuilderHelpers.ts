@@ -926,11 +926,6 @@ export function autoPlace(
   });
 }
 
-/** How many elements already sit at (near) this spot -- drives the cascade. */
-export function cascadeIndexFor(occupied: Placement[]): number {
-  return occupied.length;
-}
-
 /**
  * Which container a box dropped at page coordinates belongs to, and what its
  * coordinates are once it is in there. The palette's half of `dropTargetFor`:
@@ -1132,19 +1127,6 @@ export function updateElementInPage(
           ),
         }
       : p,
-  );
-}
-
-/** Move/resize one element by writing its box into the page's active layout. */
-export function moveElementInPage(
-  pages: UIPage[],
-  pageId: string,
-  elementId: string,
-  placement: Placement,
-  layoutId?: string | null,
-): UIPage[] {
-  return pages.map((p) =>
-    p.id === pageId ? withPlacement(p, elementId, placement, layoutId) : p,
   );
 }
 
@@ -2122,16 +2104,6 @@ export function alignElements(
     if (Object.keys(moved).length === 0) return p;
     return withAbsolutePlacements(p, moved, absolute, layoutId);
   });
-}
-
-export function alignElement(
-  pages: UIPage[],
-  pageId: string,
-  elementId: string,
-  action: AlignAction,
-  layoutId?: string | null,
-): UIPage[] {
-  return alignElements(pages, pageId, [elementId], action, layoutId);
 }
 
 export type DistributeAxis = "horizontal" | "vertical";
