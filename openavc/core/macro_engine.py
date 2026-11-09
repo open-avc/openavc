@@ -50,9 +50,9 @@ _CANCEL_GRACE_SECONDS = 5.0
 
 # A macro's optional overlap="queue" guard waits for the in-flight
 # invocation to finish before starting. Poll this often for it to clear,
-# and give up after the ceiling so a queued call can't wait forever.
-# Mirrors the trigger engine's queue wait, so a macro's own guard behaves
-# the same whichever entry point fired it.
+# and give up after the ceiling so a queued call can't wait forever. The
+# same two numbers as the trigger engine's queue wait, but at the ceiling a
+# trigger drops its fire and a macro starts anyway.
 _QUEUE_POLL_SECONDS = 1.0
 _QUEUE_MAX_WAIT_SECONDS = 300.0
 
