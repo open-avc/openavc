@@ -590,8 +590,9 @@ export function paletteDragPlacement(
 /** The smallest box a resize or an auto-place will produce, in percent. */
 export const MIN_ELEMENT_SIZE = 1;
 
-/** Each successive cascade step, in percent, when there is no grid to scan. */
-const CASCADE_STEP = 2.5;
+/** The down-right nudge, in percent, a copy takes from where it would
+ *  otherwise sit: each step of the cascade, and a duplicate from its original. */
+export const CASCADE_STEP = 2.5;
 
 /** True when two boxes share any area at all. */
 export function placementsOverlap(a: Placement, b: Placement): boolean {
@@ -601,14 +602,15 @@ export function placementsOverlap(a: Placement, b: Placement): boolean {
 }
 
 /**
- * Where a control lands when nobody pointed at anything -- click-to-add from
- * the palette, duplicate, paste.
+ * Where a control lands when nobody pointed at anything: click-to-add from the
+ * palette, and paste.
  *
  * With snap on this is the first free snap cell scanning row-major, which is
  * exactly what the old grid did for free, so click-to-add is visually unchanged
  * by the whole move to percentages. With snap off "first free cell" is
  * meaningless, so it falls back to the page centre plus a cascade -- the
- * down-right nudge every design tool uses for a paste.
+ * down-right nudge every design tool uses for a paste -- and so does a page
+ * with no free cell left. A size under MIN_ELEMENT_SIZE grows to it first.
  */
 export function autoPlace(
   occupied: Placement[],
@@ -618,25 +620,35 @@ export function autoPlace(
 ): Placement {
   const w = Math.max(MIN_ELEMENT_SIZE, size.w);
   const h = Math.max(MIN_ELEMENT_SIZE, size.h);
+  return firstFreeCell(occupied, w, h, snap) ?? cascaded(w, h, cascadeIndex);
+}
 
-  if (snap.enabled !== false && snap.x > 0 && snap.y > 0) {
-    const cols = Math.max(1, Math.floor(100 / snap.x));
-    const rows = Math.max(1, Math.floor(100 / snap.y));
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const x = c * snap.x;
-        const y = r * snap.y;
-        if (x + w > 100 + 1e-6 || y + h > 100 + 1e-6) continue;
-        const candidate = { x, y, w, h };
-        if (!occupied.some((o) => placementsOverlap(candidate, o))) {
-          return roundPlacement(candidate);
-        }
-      }
+/** The first snap cell, row by row, that a `w` x `h` box can take. Null with
+ *  snap off, an increment that is not positive, or no cell free. */
+function firstFreeCell(occupied: Placement[], w: number, h: number, snap: SnapConfig): Placement | null {
+  if (snap.enabled === false || !(snap.x > 0) || !(snap.y > 0)) return null;
+  const cols = Math.max(1, Math.floor(100 / snap.x));
+  const rows = Math.max(1, Math.floor(100 / snap.y));
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cell = { x: c * snap.x, y: r * snap.y, w, h };
+      if (cellIsFree(cell, occupied)) return roundPlacement(cell);
     }
   }
+  return null;
+}
 
-  // Nothing free (or no grid to scan): page centre, nudged down-right per add,
-  // wrapped so a long cascade can't march an element off the page.
+/** A cell a box can take: within the page's far edges, give or take float
+ *  noise, and sharing no area with anything already there. */
+function cellIsFree(cell: Placement, occupied: Placement[]): boolean {
+  const pastTheEdge = cell.x + cell.w > 100 + 1e-6 || cell.y + cell.h > 100 + 1e-6;
+  return !pastTheEdge && !occupied.some((o) => placementsOverlap(cell, o));
+}
+
+/** The page centre, nudged CASCADE_STEP down-right per add and wrapped every
+ *  eight so a long cascade cannot march a control off the page, then held on
+ *  the page. */
+function cascaded(w: number, h: number, cascadeIndex: number): Placement {
   const offset = (cascadeIndex * CASCADE_STEP) % 20;
   return roundPlacement({
     x: Math.max(0, Math.min(100 - w, 50 - w / 2 + offset)),
@@ -907,7 +919,7 @@ export function duplicateElementInPage(
   // control the author is actually looking at; stored in the primary by
   // addElementToPage, because a copy is a new control and exists everywhere.
   const src = getPlacement(page, elementId, layoutId);
-  const nudge = { x: src.x + 2.5, y: src.y + 2.5, w: src.w, h: src.h };
+  const nudge = { x: src.x + CASCADE_STEP, y: src.y + CASCADE_STEP, w: src.w, h: src.h };
   if (nudge.x + nudge.w > 100) nudge.x = Math.max(0, 100 - nudge.w);
   if (nudge.y + nudge.h > 100) nudge.y = Math.max(0, 100 - nudge.h);
 
