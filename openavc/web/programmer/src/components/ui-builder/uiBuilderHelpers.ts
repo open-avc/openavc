@@ -53,46 +53,6 @@ import { showOf } from "./reviewFinding";
 // design decision.
 import { REM_BASE_PX } from "../../api/uiMinimums.gen";
 
-// --- Binding type definitions ---
-
-export interface PressBinding {
-  action: string;
-  macro?: string;
-  device?: string;
-  command?: string;
-  params?: Record<string, unknown>;
-  key?: string;
-  value?: unknown;
-  page?: string;
-  function?: string;
-}
-
-export interface FeedbackBinding {
-  source: string;
-  key: string;
-  condition: { equals: unknown };
-  style_active: Record<string, string>;
-  style_inactive: Record<string, string>;
-}
-
-export interface TextBinding {
-  source: string;
-  key: string;
-  format?: string;
-}
-
-export interface ColorBinding {
-  source: string;
-  key: string;
-  map: Record<string, string>;
-  default: string;
-}
-
-export interface ValueBinding {
-  source: string;
-  key: string;
-}
-
 // --- Element type palette definitions ---
 
 export interface ElementTypeInfo {
