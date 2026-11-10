@@ -26,6 +26,33 @@ def test_both_readers_read_the_contract_tuple() -> None:
     assert conversion_checks.CONVERSION_KEYS is spec.CONVERSION_KEYS
 
 
+def _carriers(node: object) -> set[int]:
+    """Every registry entry, at any depth, whose fields carry a conversion field."""
+    found: set[int] = set()
+    if isinstance(node, dict):
+        fields = node.get("fields")
+        if isinstance(fields, dict) and any(
+            any(v is f for f in _CONVERSION_FIELDS) for v in fields.values()
+        ):
+            found.add(id(node))
+        for value in node.values():
+            found |= _carriers(value)
+    elif isinstance(node, (list, tuple)):
+        for value in node:
+            found |= _carriers(value)
+    return found
+
+
+def test_every_entry_that_carries_a_conversion_is_named_here() -> None:
+    """A registry entry that gains scale, offset or unknown is a new place a
+    conversion may be declared: name it above, and give it its place in
+    conversion_checks._PLACES, or it is never checked. An entry is found by
+    the registry's own VALUE_SCALE / VALUE_OFFSET / VALUE_UNKNOWN dicts, so one
+    that writes a fresh dict for the field instead is not seen."""
+    named = {id(spec.DEFS[name]) for name in _DECLARED_ON}
+    assert _carriers(spec.DEFS) | _carriers(spec.FIELDS) == named
+
+
 def test_the_registry_declares_a_field_for_each_key() -> None:
     declared: list[str] = []
     for entry, expected in _DECLARED_ON.items():

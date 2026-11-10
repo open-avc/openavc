@@ -52,20 +52,13 @@ def value_conversion_errors(
     """
     errors = [
         message
-        for where, decl, in_action in _conversion_sites(driver_def)
+        for place in _PLACES
+        for where, decl, in_action in place(driver_def)
         for message in _declaration_errors(where, decl, python=python, in_action=in_action)
     ]
     if python:
         errors.extend(python_setting_map_errors(driver_def))
     return errors
-
-
-def _conversion_sites(driver_def: dict[str, Any]) -> Iterator[tuple[str, Any, bool]]:
-    """Each place a conversion may be declared, as ``(where, declaration,
-    in_action)``, in the order they report. ``where`` is written for every
-    entry, judged or not."""
-    for place in _PLACES:
-        yield from place(driver_def)
 
 
 def _variable_sites(driver_def: dict[str, Any]) -> Iterator[tuple[str, Any, bool]]:
@@ -92,6 +85,10 @@ def _action_param_sites(driver_def: dict[str, Any]) -> Iterator[tuple[str, Any, 
                 yield f"Action '{action.get('id')}' param '{pname}'", pdef, True
 
 
+# Each place a conversion may be declared, in the order they report: each
+# yields ``(where, declaration, in_action)``, ``where`` written for every
+# entry, judged or not. A registry entry that gains the conversion fields
+# gains its place here (tests/test_conversion_keys.py names the entries).
 _PLACES: tuple[Callable[[dict[str, Any]], Iterator[tuple[str, Any, bool]]], ...] = (
     _variable_sites,
     _child_variable_sites,

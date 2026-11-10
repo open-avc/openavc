@@ -28,7 +28,7 @@ name says when it declares nothing (``command_names``), and the then_query
 and read_back queries the simulator answers (``reread_queries``).
 
 Pure on purpose: stdlib plus ``openavc.transport.binary_helpers``, the driver
-contract's tables (``openavc.drivers.spec``, through ``child_routes``),
+contract's tables (``openavc.drivers.spec``, directly and through ``child_routes``),
 ``json_value_spec`` and the logger only — the same contract as
 ``openavc.drivers.inline_protocol``, and for the same reason: the simulator
 runs as a separate process and imports this

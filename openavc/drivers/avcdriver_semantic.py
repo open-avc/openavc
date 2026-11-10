@@ -183,6 +183,8 @@ class _KeyWalk:
     ``fields`` against those fields; anything else is not descended. Each
     message is tagged with the place the walk last set, which is why a name
     that is not text is tagged with the place its map's previous entry left.
+    Both places are set through the local name ``errors``, the form the
+    section-tag scan in ``tests/test_driver_definition_validate.py`` reads.
     """
 
     def __init__(self) -> None:
