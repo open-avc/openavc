@@ -38,6 +38,7 @@ import { getTunnelPrefix } from "../../api/restClient";
 import { resolveProjectMatrices } from "../../api/matrixPreview";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useUiFilesStore } from "../../store/uiFilesStore";
+import { isCustomPage } from "./customPage";
 import { showError, showInfo } from "../../store/toastStore";
 
 interface CanvasProps {
@@ -368,13 +369,13 @@ export function Canvas({
   // elements are kept and are not drawn, so the canvas must not offer hit-boxes
   // for them: dragging a box the panel will never render is a gesture that
   // silently does nothing.
-  const isCustomPage = page.render_mode === "custom" && !!page.custom_file;
+  const customPage = isCustomPage(page);
 
   // The container tree the hit-box overlay mirrors. An element whose named
   // parent is missing renders at page level rather than vanishing — the
   // validator flags it, the canvas still shows it.
   const { topLevel, childrenByParent } = useMemo(() => {
-    if (isCustomPage) return { topLevel: [], childrenByParent: new Map() };
+    if (customPage) return { topLevel: [], childrenByParent: new Map() };
     const ids = new Set(page.elements.map((e) => e.id));
     const byParent = new Map<string, typeof page.elements>();
     const roots: typeof page.elements = [];
@@ -389,7 +390,7 @@ export function Canvas({
       }
     }
     return { topLevel: roots, childrenByParent: byParent };
-  }, [page.elements, isCustomPage]);
+  }, [page.elements, customPage]);
 
   // A finished marquee is followed by a click on the canvas, and the canvas
   // clears the selection on click -- so without this the band selects a row and

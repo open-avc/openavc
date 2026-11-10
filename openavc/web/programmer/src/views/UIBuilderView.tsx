@@ -11,8 +11,6 @@ import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { usePluginStore } from "../store/pluginStore";
-import { ElementPalette } from "../components/ui-builder/ElementPalette";
-import { OutlinePanel } from "../components/ui-builder/OutlinePanel";
 import { Canvas } from "../components/ui-builder/Canvas";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
@@ -37,6 +35,7 @@ import { useValidation, ValidationReport } from "./ui-builder/ValidationReport";
 import { PanelSettingsDialog } from "./ui-builder/PanelSettingsDialog";
 import { SaveFailedBanner } from "./ui-builder/SaveFailedBanner";
 import { ToolbarActions } from "./ui-builder/ToolbarActions";
+import { BuilderSidebar, type SidebarTab } from "./ui-builder/BuilderSidebar";
 import { themeFallbackMode, useBuilderTheme, withoutThemeStyles } from "./ui-builder/builderTheme";
 
 export function UIBuilderView() {
@@ -56,10 +55,9 @@ export function UIBuilderView() {
   const clipboard = useUIBuilderStore((s) => s.clipboard);
 
   // Stable action refs — use getState() to avoid re-render subscriptions
-  const { selectPage, selectElement, selectMasterElement, undo, redo } = useMemo(() => ({
+  const { selectPage, selectElement, undo, redo } = useMemo(() => ({
     selectPage: (...args: any[]) => (useUIBuilderStore.getState().selectPage as any)(...args),
     selectElement: (...args: any[]) => (useUIBuilderStore.getState().selectElement as any)(...args),
-    selectMasterElement: (...args: any[]) => (useUIBuilderStore.getState().selectMasterElement as any)(...args),
     undo: () => useUIBuilderStore.getState().undo(),
     redo: () => useUIBuilderStore.getState().redo(),
   }), []);
@@ -77,13 +75,12 @@ export function UIBuilderView() {
   }, []);
   const contextMenu = useUIBuilderStore((s) => s.contextMenu);
   const setContextMenu = useUIBuilderStore((s) => s.setContextMenu);
-  const collapsedOutlineIds = useUIBuilderStore((s) => s.collapsedOutlineIds);
-  const toggleOutlineCollapse = useUIBuilderStore((s) => s.toggleOutlineCollapse);
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
 
   const [showSettings, setShowSettings] = useState(false);
   const [showPalette, setShowPalette] = useState(true);
-  const [leftTab, setLeftTab] = useState<"elements" | "outline">("elements");
+  // The left panel's tab outlives the panel, which preview and Ctrl+E take away.
+  const [leftTab, setLeftTab] = useState<SidebarTab>("elements");
   const [showThemeStudio, setShowThemeStudio] = useState(false);
   const [showStylesheet, setShowStylesheet] = useState(false);
   const validation = useValidation(project);
@@ -124,11 +121,6 @@ export function UIBuilderView() {
   // Derived data
   const pages = project?.ui?.pages ?? [];
   const currentPage = pages.find((p) => p.id === selectedPageId) || pages[0] || null;
-  // A page that hands the whole screen to markup the author wrote. It needs a
-  // file to be one: a page that says custom and names none still draws its
-  // elements, so the palette must stay open for it.
-  const currentPageIsCustom =
-    currentPage?.render_mode === "custom" && !!currentPage?.custom_file;
   const selectedElement = currentPage?.elements.find(
     (e) => e.id === selectedElementId,
   ) || null;
@@ -274,70 +266,16 @@ export function UIBuilderView() {
           {!previewMode && showPalette && (
             <>
               <Panel defaultSize={15} minSize={10} maxSize={25}>
-                <div
-                  style={{
-                    height: "100%",
-                    display: "flex",
-                    flexDirection: "column",
-                    borderRight: "1px solid var(--border-color)",
-                    background: "var(--bg-surface)",
-                  }}
-                >
-                  {/* Tab bar */}
-                  <div style={{ display: "flex", borderBottom: "1px solid var(--border-color)", flexShrink: 0 }}>
-                    {(["elements", "outline"] as const).map((tab) => (
-                      <button
-                        key={tab}
-                        onClick={() => setLeftTab(tab)}
-                        style={{
-                          flex: 1, padding: "6px 0", fontSize: 11, fontWeight: 500,
-                          background: "transparent", border: "none", cursor: "pointer",
-                          color: leftTab === tab ? "var(--accent)" : "var(--text-muted)",
-                          borderBottom: leftTab === tab ? "2px solid var(--accent)" : "2px solid transparent",
-                        }}
-                      >
-                        {tab === "elements" ? "Elements" : "Outline"}
-                      </button>
-                    ))}
-                  </div>
-                  {/* Tab content */}
-                  <div style={{ flex: 1, overflow: "auto" }}>
-                    {leftTab === "elements" ? (
-                      <ElementPalette
-                        disabled={previewMode || currentPageIsCustom}
-                        disabledNote={
-                          !previewMode && currentPageIsCustom
-                            ? "This page shows a page you wrote, so controls placed here are not drawn."
-                            : undefined
-                        }
-                        onAdd={palette.add}
-                      />
-                    ) : (
-                      <OutlinePanel
-                        page={currentPage ?? null}
-                        masterElements={masterElements}
-                        selectedElementIds={selectedElementIds}
-                        selectedMasterElementId={selectedMasterElementId}
-                        lockedElementIds={lockedElementIds}
-                        hiddenElementIds={hiddenElementIds}
-                        collapsedIds={collapsedOutlineIds}
-                        onToggleCollapse={toggleOutlineCollapse}
-                        onToggleHidden={edits.toggleHidden}
-                        onReparent={edits.reparent}
-                        onSelectElement={(id, shift) => {
-                          if (shift) {
-                            useUIBuilderStore.getState().toggleSelectElement(id);
-                          } else {
-                            selectElement(id);
-                          }
-                        }}
-                        onSelectMasterElement={selectMasterElement}
-                        onMoveOrder={edits.swapOrder}
-                        onToggleLock={(id) => useUIBuilderStore.getState().toggleLock(id)}
-                      />
-                    )}
-                  </div>
-                </div>
+                <BuilderSidebar
+                  tab={leftTab}
+                  onTab={setLeftTab}
+                  page={currentPage}
+                  masters={masterElements}
+                  locked={lockedElementIds}
+                  hidden={hiddenElementIds}
+                  onAdd={palette.add}
+                  edits={edits}
+                />
               </Panel>
               <PanelResizeHandle
                 style={{

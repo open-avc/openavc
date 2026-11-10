@@ -40,6 +40,7 @@ import type { UIPage, PageGroup, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { saveFailure, saveNow } from "../../store/saveState";
+import { isCustomPage } from "./customPage";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { PromptDialog } from "../shared/PromptDialog";
 import { NumericInput } from "../shared/NumericInput";
@@ -93,10 +94,6 @@ interface TabMenuState {
  *  ever showing on a loaded project. */
 const isRegularPage = (p: UIPage) => !p.page_type || p.page_type === "page";
 
-/** A page that hands the whole screen to markup the author wrote. It still
- *  needs a file: one that says custom and names none draws its elements, so
- *  marking the tab would say something the panel does not do. */
-const isCustomPage = (p: UIPage) => p.render_mode === "custom" && !!p.custom_file;
 
 const toolButton: React.CSSProperties = {
   display: "flex",
