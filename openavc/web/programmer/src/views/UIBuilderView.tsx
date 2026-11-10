@@ -6,7 +6,7 @@ import {
   PanelGroup,
   PanelResizeHandle,
 } from "react-resizable-panels";
-import type { UIElement, UIPage, UISettings, MasterElement } from "../api/types";
+import type { UIElement, UIPage, MasterElement } from "../api/types";
 import * as wsClient from "../api/wsClient";
 import { showError } from "../store/toastStore";
 import { useProjectStore } from "../store/projectStore";
@@ -22,8 +22,6 @@ import { ContextMenu } from "../components/ui-builder/ContextMenu";
 import { ThemeStudio } from "../components/ui-builder/ThemeStudio";
 import { StylesheetEditor } from "../components/ui-builder/StylesheetEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
-import { Modal } from "../components/shared/Modal";
-import { NumericInput } from "../components/shared/NumericInput";
 import {
   SCREEN_PRESETS,
   createDefaultElement,
@@ -57,6 +55,7 @@ import { takenIds, type Landing } from "./ui-builder/paletteDrop";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
 import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
 import { useValidation, ValidationReport } from "./ui-builder/ValidationReport";
+import { PanelSettingsDialog } from "./ui-builder/PanelSettingsDialog";
 import { themeFallbackMode, useBuilderTheme, withoutThemeStyles } from "./ui-builder/builderTheme";
 
 export function UIBuilderView() {
@@ -915,7 +914,7 @@ export function UIBuilderView() {
 
       {/* Settings dialog */}
       {showSettings && (
-        <UISettingsDialog
+        <PanelSettingsDialog
           settings={project.ui.settings}
           pages={project.ui.pages}
           onUpdate={(settings) => run.commit(projectEdit(project, { settings }, "Edit project settings"))}
@@ -924,285 +923,5 @@ export function UIBuilderView() {
       )}
 
     </DndContext>
-  );
-}
-
-function UISettingsDialog({
-  settings,
-  pages,
-  onUpdate,
-  onClose,
-}: {
-  settings: UISettings;
-  pages: UIPage[];
-  onUpdate: (s: UISettings) => void;
-  onClose: () => void;
-}) {
-  const [draft, setDraft] = useState<UISettings>(settings);
-  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(settings);
-
-  const handleCancel = () => {
-    if (dirty) { setShowDiscardConfirm(true); return; }
-    onClose();
-  };
-
-  const handleSave = () => {
-    if (dirty) onUpdate(draft);
-    onClose();
-  };
-
-  const patch = (p: Partial<UISettings>) => setDraft((d) => ({ ...d, ...p }));
-
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontSize: "var(--font-size-sm)",
-    color: "var(--text-secondary)",
-    marginBottom: "var(--space-xs)",
-  };
-  const fieldStyle: React.CSSProperties = { marginBottom: "var(--space-lg)" };
-  const inputStyle: React.CSSProperties = { width: "100%" };
-
-  return (
-    <Modal
-      onClose={handleCancel}
-      label="Panel Settings"
-      panelStyle={{
-        padding: "var(--space-xl)",
-        width: 480,
-        maxHeight: "85vh",
-        overflow: "auto",
-      }}
-    >
-        <h3 style={{ fontSize: "var(--font-size-lg)", marginBottom: "var(--space-lg)" }}>Panel Settings</h3>
-
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Accent Color</label>
-              <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
-                <input
-                  type="color"
-                  value={draft.accent_color || "#2196F3"}
-                  onChange={(e) => patch({ accent_color: e.target.value })}
-                  style={{ width: 40, height: 32, padding: 0, border: "1px solid var(--border-color)", borderRadius: "var(--border-radius)", cursor: "pointer" }}
-                />
-                <input
-                  value={draft.accent_color}
-                  onChange={(e) => patch({ accent_color: e.target.value })}
-                  placeholder="#2196F3"
-                  style={{ flex: 1 }}
-                />
-              </div>
-            </div>
-
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Font Family</label>
-              <select
-                value={draft.font_family}
-                onChange={(e) => patch({ font_family: e.target.value })}
-                style={inputStyle}
-              >
-                <option value="Inter, system-ui, sans-serif">Inter (Default)</option>
-                <option value="system-ui, sans-serif">System UI</option>
-                <option value="'Roboto', sans-serif">Roboto</option>
-                <option value="'Segoe UI', sans-serif">Segoe UI</option>
-                <option value="monospace">Monospace</option>
-              </select>
-            </div>
-
-            {/* Orientation used to be one setting for the whole project, which
-                is what stopped a project serving a landscape wall panel and a
-                portrait phone at the same time. It belongs to a layout now:
-                each page can carry a portrait arrangement of the same controls,
-                and the panel picks by the viewport it finds itself on. */}
-
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Lock Code (PIN)</label>
-              <input
-                value={draft.lock_code}
-                onChange={(e) => patch({ lock_code: e.target.value.replace(/[^0-9]/g, "").slice(0, 6) })}
-                placeholder="Leave empty for no lock"
-                style={inputStyle}
-              />
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                4-6 digit PIN to lock the touch panel. Leave empty to disable.
-              </div>
-            </div>
-
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Idle Timeout (seconds)</label>
-              <NumericInput
-                integer
-                min={0}
-                owner="panel-settings/idle_timeout_seconds"
-                value={draft.idle_timeout_seconds}
-                onCommit={(v) => {
-                  if (v !== undefined) patch({ idle_timeout_seconds: v });
-                }}
-                style={inputStyle}
-              />
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                Return to idle page after this many seconds of inactivity. 0 = disabled.
-              </div>
-            </div>
-
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Idle Page</label>
-              <select
-                value={draft.idle_page}
-                onChange={(e) => patch({ idle_page: e.target.value })}
-                style={inputStyle}
-              >
-                {pages.map(p => (
-                  <option key={p.id} value={p.id}>{p.name} ({p.id})</option>
-                ))}
-              </select>
-            </div>
-
-            <div style={fieldStyle}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={draft.show_error_messages !== false}
-                  onChange={(e) => patch({ show_error_messages: e.target.checked })}
-                />
-                Show a message when a control fails
-              </label>
-              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                A press that does not reach its device puts the reason across the
-                panel for about five seconds. Turn this off in a space that shows
-                its own status.
-              </div>
-            </div>
-
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Page Transition</label>
-              <select
-                value={draft.page_transition || "none"}
-                onChange={(e) => patch({ page_transition: e.target.value })}
-                style={inputStyle}
-              >
-                <option value="none">None (instant)</option>
-                <option value="fade">Fade</option>
-                <option value="slide-left">Slide Left</option>
-                <option value="slide-right">Slide Right</option>
-                <option value="slide-up">Slide Up</option>
-                <option value="scale">Scale</option>
-              </select>
-            </div>
-            {draft.page_transition && draft.page_transition !== "none" && (
-              <div style={fieldStyle}>
-                <label style={labelStyle}>Transition Duration</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <NumericInput
-                    integer
-                    min={50}
-                    max={1000}
-                    step={50}
-                    owner="panel-settings/page_transition_duration"
-                    value={draft.page_transition_duration || 200}
-                    onCommit={(v) => {
-                      if (v !== undefined) patch({ page_transition_duration: v });
-                    }}
-                    style={{ ...inputStyle, width: 80 }}
-                  />
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>ms</span>
-                </div>
-              </div>
-            )}
-
-            <div style={fieldStyle}>
-              <label style={labelStyle}>Element Entry Animation</label>
-              <select
-                value={draft.element_entry || "none"}
-                onChange={(e) => patch({ element_entry: e.target.value })}
-                style={inputStyle}
-              >
-                <option value="none">None (instant)</option>
-                <option value="fade">Fade In</option>
-                <option value="fade-up">Fade Up</option>
-                <option value="scale">Scale In</option>
-                <option value="stagger">Stagger</option>
-              </select>
-            </div>
-            {draft.element_entry === "stagger" && (
-              <div style={fieldStyle}>
-                <label style={labelStyle}>Stagger Style</label>
-                <select
-                  value={draft.element_stagger_style || "fade-up"}
-                  onChange={(e) => patch({ element_stagger_style: e.target.value })}
-                  style={inputStyle}
-                >
-                  <option value="fade">Fade</option>
-                  <option value="fade-up">Fade Up</option>
-                  <option value="scale">Scale</option>
-                </select>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                  How each element animates in as the stagger sweeps across the page.
-                </div>
-              </div>
-            )}
-            {draft.element_entry === "stagger" && (
-              <div style={fieldStyle}>
-                <label style={labelStyle}>Stagger Delay</label>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <NumericInput
-                    integer
-                    min={10}
-                    max={200}
-                    step={10}
-                    owner="panel-settings/element_stagger_ms"
-                    value={draft.element_stagger_ms || 30}
-                    onCommit={(v) => {
-                      if (v !== undefined) patch({ element_stagger_ms: v });
-                    }}
-                    style={{ ...inputStyle, width: 80 }}
-                  />
-                  <span style={{ fontSize: 11, color: "var(--text-muted)" }}>ms per element</span>
-                </div>
-              </div>
-            )}
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-sm)", marginTop: "var(--space-lg)" }}>
-          <button
-            onClick={handleCancel}
-            style={{
-              padding: "var(--space-sm) var(--space-lg)",
-              borderRadius: "var(--border-radius)",
-              background: "var(--bg-hover)",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--text-primary)",
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!dirty}
-            style={{
-              padding: "var(--space-sm) var(--space-lg)",
-              borderRadius: "var(--border-radius)",
-              background: dirty ? "var(--accent-bg)" : "var(--bg-hover)",
-              border: "none",
-              cursor: dirty ? "pointer" : "default",
-              opacity: dirty ? 1 : 0.5,
-              color: dirty ? "#fff" : "var(--text-muted)",
-              fontWeight: 600,
-            }}
-          >
-            Save
-          </button>
-        </div>
-
-      {showDiscardConfirm && (
-        <ConfirmDialog
-          title="Discard Changes"
-          message="Discard unsaved settings changes?"
-          confirmLabel="Discard"
-          destructive
-          onConfirm={onClose}
-          onCancel={() => setShowDiscardConfirm(false)}
-        />
-      )}
-    </Modal>
   );
 }
