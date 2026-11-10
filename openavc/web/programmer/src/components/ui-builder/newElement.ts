@@ -11,6 +11,10 @@
  *
  * The fields are written in the order a saved project keeps them;
  * `newElementShape.test.ts` holds that order.
+ *
+ * The first-free naming rule a control's id is made with (`firstFree`) is
+ * also the one a page's id and name, a page copy's controls and a layout
+ * variant's id are made with in uiBuilderHelpers.ts.
  */
 import type { UIElement } from "../../api/types";
 import type { PluginExtension } from "../../api/pluginClient";
