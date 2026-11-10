@@ -292,6 +292,11 @@ describe("outlineRows: the Outline's tree", () => {
     expect(rowIds(rows)).toEqual(["g@0", "a@1", "g@0", "a@1"]);
   });
 
+  it("stops a search at a page-level control's own id met again below it", () => {
+    const rows = outlineRows([el("g", "group"), el("a", "group", "g"), el("b", "button", "g"), el("g", "group", "a")], { matchIds: new Set(["b"]) });
+    expect(rowIds(rows)).toEqual(["g@0", "b@1"]);
+  });
+
   it("stops a search at a repeated id below its own namesake", () => {
     const rows = outlineRows([el("g", "group"), el("a", "group", "g"), el("g", "group", "a")], { matchIds: new Set(["a"]) });
     expect(rowIds(rows)).toEqual(["g@0", "a@1"]);

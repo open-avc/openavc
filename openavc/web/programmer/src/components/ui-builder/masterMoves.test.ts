@@ -72,6 +72,16 @@ describe("promoteToMaster: the box a master keeps in each orientation", () => {
     expect(placements.landscape).not.toBe(DEFAULT_PLACEMENT);
   });
 
+  it("gives the primary's orientation the default box when no arrangement of it places the control, and takes a later one that does", () => {
+    const pages = [page([el("a"), el("z")], [
+      layout("main", "landscape", { z: box(1, 1, 1, 1) }, { primary: true }),
+      layout("tall", "portrait", { z: box(1, 1, 1, 1) }),
+      layout("tall_2", "portrait", { a: box(4, 4, 40, 40) }),
+    ])];
+    const out = promoteToMaster(pages, [], "pg", "a");
+    expect(out.masterElements[0].placements).toEqual({ portrait: box(4, 4, 40, 40), landscape: DEFAULT_PLACEMENT });
+  });
+
   it("gives a portrait primary its box under portrait", () => {
     const pages = [page([el("a")], [layout("main", "portrait", { a: box(1, 2, 3, 4) }, { primary: true })])];
     const out = promoteToMaster(pages, [], "pg", "a");
@@ -123,6 +133,14 @@ describe("promoteToMaster: what the master is, and what the page keeps", () => {
     ];
     const out = promoteToMaster(pages, [master("button_2")], "pg", "a");
     expect(out.masterElements.map((m) => m.id)).toEqual(["button_2", "button_3"]);
+  });
+
+  it("names a renamed control after its own type", () => {
+    const pages = [
+      page([el("a", "label")], [layout("main", "landscape", {}, { primary: true })]),
+      page([el("a")], [layout("main", "landscape", {}, { primary: true })], "other"),
+    ];
+    expect(promoteToMaster(pages, [], "pg", "a").masterElements[0].id).toBe("label_1");
   });
 
   it.each([
@@ -181,6 +199,12 @@ describe("demoteFromMaster: the box a control comes back with", () => {
     const out = demoteFromMaster([target(), other], [master("m"), master("button_1")], "m", "pg");
     expect(out.pages[0].elements[0].id).toBe("button_2");
     expect(out.masterElements.map((m) => m.id)).toEqual(["button_1"]);
+  });
+
+  it("names a renamed control after its own type", () => {
+    const other = page([el("m")], [layout("main", "landscape", {}, { primary: true })], "other");
+    const out = demoteFromMaster([target(), other], [master("m", undefined, { type: "slider" })], "m", "pg");
+    expect(out.pages[0].elements[0].id).toBe("slider_1");
   });
 
   it("drops every master sharing the id, and puts back the first", () => {
