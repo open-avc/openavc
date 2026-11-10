@@ -1051,6 +1051,12 @@ def test_a_definition_that_is_not_a_mapping(value: Any) -> None:
     assert unknown_key_errors(value).tags == []
 
 
+@pytest.mark.parametrize("actions", [5, "go", {"go": {"params": {"x": {"scale": 1}}}}])
+def test_actions_that_are_not_a_list_declare_nothing(actions: Any) -> None:
+    assert value_conversion_errors({"actions": actions}) == []
+    assert value_conversion_errors({"actions": actions}, python=True) == []
+
+
 def test_value_conversion_takes_a_definition_with_nothing_in_it() -> None:
     assert value_conversion_errors({}) == []
     assert value_conversion_errors({}, python=True) == []
