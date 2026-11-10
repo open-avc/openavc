@@ -114,6 +114,17 @@ describe("an element's container: a parent that names another element on the pag
   });
 });
 
+describe("two controls sharing an id, written back", () => {
+  it("measures the write-back against the first one's container, where the read took the last one's", () => {
+    const p = page(
+      [el("g", "group"), el("a", "button", "g"), el("a")],
+      [primary({ g: box(0, 0, 50, 50), a: box(10, 10, 10, 10) })],
+    );
+    const [out] = alignElements([p], "pg", ["a"], "align-left");
+    expect(out.layouts[0].placements.a).toEqual(box(20, 20, 20, 20));
+  });
+});
+
 describe("a parent cycle, read and written back", () => {
   it("aligns a container in a cycle against a box the read never measured it against", () => {
     const p = page(
@@ -238,6 +249,12 @@ describe("outlineRows: the Outline's tree", () => {
     expect(rows[1]).toMatchObject({ hasChildren: false, prevSiblingId: "a" });
   });
 
+  it("keeps a control whose parent names nothing in page order among the page's own", () => {
+    const rows = outlineRows([el("x"), el("a", "button", "ghost"), el("y")]);
+    expect(rowIds(rows)).toEqual(["x@0", "a@0", "y@0"]);
+    expect(rows[1]).toMatchObject({ prevSiblingId: "x", nextSiblingId: "y" });
+  });
+
   it("shows the controls of a cycle at page level after everything else, with no children", () => {
     const rows = outlineRows([el("p"), el("a", "group", "b"), el("b", "group", "a"), el("c", "button", "a")]);
     expect(rows).toEqual([
@@ -318,6 +335,19 @@ describe("dropTargetFor: which container a dragged control belongs to", () => {
     expect(dropTargetFor(nested(), "k", box(70, 0, 10, 10))).toBeNull();
   });
 
+  it("moves a control on into a smaller container inside the one it lives in", () => {
+    expect(dropTargetFor(nested(), "k", box(35, 35, 5, 5))).toBe("inner");
+  });
+
+  it("does not count a box that hangs out of a container's bottom edge as held", () => {
+    expect(dropTargetFor(nested(), "a", box(35, 35, 5, 40))).toBeNull();
+  });
+
+  it("never keeps a control that names itself as its own container", () => {
+    const p = page([el("s", "button", "s")], [primary({ s: box(10, 10, 10, 10) })]);
+    expect(dropTargetFor(p, "s", box(12, 12, 10, 10))).toBeNull();
+  });
+
   it("never puts a container inside itself or inside its own contents", () => {
     expect(dropTargetFor(nested(), "outer", box(55, 55, 5, 5))).toBeNull();
     expect(dropTargetFor(nested(), "inner", box(10, 10, 5, 5))).toBe("outer");
@@ -379,5 +409,19 @@ describe("reparentElement on a primary that inherits another arrangement", () =>
     const [out] = reparentElement([p], "pg", "a", "g");
     expect(out.layouts[0].placements).toEqual({ g: box(20, 20, 50, 50), a: box(20, 20, 20, 20) });
     expect(out.layouts[1].placements).toEqual({ a: box(30, 30, 10, 10) });
+  });
+});
+
+describe("reparentElement on a control named constructor", () => {
+  // The page-space read looks a control up in a plain object, where
+  // `constructor` is always there: the box it hands back is no numbers at all.
+  it("writes a box of no numbers into every arrangement, a variant that held none of its own included", () => {
+    const p = page(
+      [el("g", "group"), el("constructor")],
+      [primary({ g: box(20, 20, 50, 50), constructor: box(30, 30, 10, 10) }), portrait({ g: box(0, 0, 50, 50) })],
+    );
+    const [out] = reparentElement([p], "pg", "constructor", "g");
+    expect(out.layouts[0].placements).toEqual({ g: box(20, 20, 50, 50), constructor: box(NaN, NaN, NaN, NaN) });
+    expect(out.layouts[1].placements).toEqual({ g: box(0, 0, 50, 50), constructor: box(NaN, NaN, NaN, NaN) });
   });
 });
