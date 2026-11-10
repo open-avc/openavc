@@ -77,6 +77,17 @@ describe("what stays mounted", () => {
     expect([count("Canvas"), count("CanvasToolbar"), count("ThemeStudio")]).toEqual([[1, 0], [1, 0], [1, 0]]);
   });
 
+  it("keeps the canvas through the toolbar's zoom, grid, screen and arrangement changes", async () => {
+    seed(makeProject(), { selectedPageId: "main" });
+    await renderPage(UIBuilderView);
+    call(() => builder().setZoom(0.6));
+    call(() => builder().toggleGrid());
+    call(() => builder().setScreenPresetIndex(2));
+    call(() => builder().selectLayout("main_port"));
+    expect(seen.Canvas).toMatchObject({ zoom: 0.6, showGrid: false, screenWidth: 768, screenHeight: 1024 });
+    expect(count("Canvas")).toEqual([1, 0]);
+  });
+
   it("draws the Properties panel again after preview, and keeps it through Ctrl+E, the dialogs and the menu", async () => {
     await renderPage(UIBuilderView);
     expect(count("PropertiesPanel")).toEqual([1, 0]);
