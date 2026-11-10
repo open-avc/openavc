@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Settings, Palette, FileCode } from "lucide-react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import {
   Panel,
@@ -37,6 +36,7 @@ import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
 import { useValidation, ValidationReport } from "./ui-builder/ValidationReport";
 import { PanelSettingsDialog } from "./ui-builder/PanelSettingsDialog";
 import { SaveFailedBanner } from "./ui-builder/SaveFailedBanner";
+import { ToolbarActions } from "./ui-builder/ToolbarActions";
 import { themeFallbackMode, useBuilderTheme, withoutThemeStyles } from "./ui-builder/builderTheme";
 
 export function UIBuilderView() {
@@ -82,9 +82,6 @@ export function UIBuilderView() {
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
 
   const [showSettings, setShowSettings] = useState(false);
-  const openGlobalShortcuts = useCallback(() => {
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "/", ctrlKey: true, bubbles: true }));
-  }, []);
   const [showPalette, setShowPalette] = useState(true);
   const [leftTab, setLeftTab] = useState<"elements" | "outline">("elements");
   const [showThemeStudio, setShowThemeStudio] = useState(false);
@@ -262,82 +259,11 @@ export function UIBuilderView() {
           onValidate={validation.run}
           trailing={
             !previewMode ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>
-                <button
-                  onClick={() => setShowThemeStudio(true)}
-                  title="Open Theme Studio"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-xs)",
-                    padding: "3px var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    background: "var(--bg-hover)",
-                    fontSize: "var(--font-size-sm)",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  <Palette size={14} /> Theme
-                </button>
-                <button
-                  onClick={() => setShowStylesheet(true)}
-                  title="Edit the project stylesheet (custom CSS)"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-xs)",
-                    padding: "3px var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    background: "var(--bg-hover)",
-                    fontSize: "var(--font-size-sm)",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  <FileCode size={14} /> Stylesheet
-                </button>
-                <button
-                  onClick={() => setShowSettings(true)}
-                  title="Panel Settings"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-xs)",
-                    padding: "3px var(--space-md)",
-                    borderRadius: "var(--border-radius)",
-                    background: "var(--bg-hover)",
-                    fontSize: "var(--font-size-sm)",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  <Settings size={14} /> Settings
-                </button>
-                <button
-                  onClick={openGlobalShortcuts}
-                  title="Keyboard Shortcuts"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 24,
-                    height: 24,
-                    borderRadius: "var(--border-radius)",
-                    background: "var(--bg-hover)",
-                    fontSize: "var(--font-size-sm)",
-                    fontWeight: 700,
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--text-secondary)",
-                  }}
-                >
-                  ?
-                </button>
-              </div>
+              <ToolbarActions
+                onTheme={() => setShowThemeStudio(true)}
+                onStylesheet={() => setShowStylesheet(true)}
+                onSettings={() => setShowSettings(true)}
+              />
             ) : undefined
           }
         />
