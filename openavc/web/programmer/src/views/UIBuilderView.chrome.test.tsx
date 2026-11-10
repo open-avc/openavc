@@ -351,6 +351,8 @@ describe("Panel Settings, field by field", () => {
     expect(selectIn("Page Transition").value).toBe("none");
     expect(selectIn("Element Entry Animation").value).toBe("none");
     expect(within(dialog()).getByLabelText("Show a message when a control fails")).toBeChecked();
+    // A blank transition is none, so it has no duration to set.
+    expect(within(dialog()).queryByText("Transition Duration")).toBeNull();
     call(() => fireEvent.change(selectIn("Page Transition"), { target: { value: "slide-up" } }));
     call(() => fireEvent.change(selectIn("Element Entry Animation"), { target: { value: "stagger" } }));
     expect(boxIn("Transition Duration").value).toBe("200");
