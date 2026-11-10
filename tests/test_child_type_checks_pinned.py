@@ -22,6 +22,7 @@ contract keeps every message, its position and its tag.
 """
 from __future__ import annotations
 
+import datetime
 from typing import Any
 
 import pytest
@@ -136,6 +137,8 @@ CASES: dict[str, dict[str, Any]] = {
     "child_vars_a_list": zone(state_variables=["level"]),
     "child_vars_a_string": zone(state_variables="level"),
     "child_vars_none": zone(state_variables=None),
+    "child_vars_an_empty_list": zone(state_variables=[]),
+    "child_vars_zero": zone(state_variables=0),
     "child_vars_empty": zone(state_variables={}),
     "child_var_not_a_mapping": zone(state_variables={"a": 1, "b": None, "c": ["x"]}),
     "child_var_unknown_type": zone(state_variables={"a": {"type": "decimal"}}),
@@ -147,6 +150,8 @@ CASES: dict[str, dict[str, Any]] = {
         state_variables={"a": {"cloud_priority": "urgent"}, "b": {"cloud_priority": "low"}}
     ),
     "child_var_cloud_priority_none": zone(state_variables={"a": {"cloud_priority": None}}),
+    # an empty cloud_priority is a value, not an absent one, and is refused
+    "child_var_cloud_priority_empty": zone(state_variables={"a": {"cloud_priority": ""}}),
     "child_var_unit": zone(state_variables={"a": {"unit": 5}, "b": {"unit": "dB"}}),
     "child_var_control": zone(state_variables={"a": {"control": "yes"}, "b": {"control": True}}),
     "child_var_control_a_number": zone(state_variables={"a": {"control": 1}}),
@@ -276,6 +281,8 @@ CASES: dict[str, dict[str, Any]] = {
         }
     },
     "var_names_not_text": {"state_variables": {2: {"label": "Two"}, True: 5}},
+    "var_cloud_priority_empty": {"state_variables": {"a": {"label": "A", "cloud_priority": ""}}},
+    "var_unit_a_date": {"state_variables": {"a": {"label": "A", "unit": datetime.date(2026, 1, 2)}}},
     "vars_and_child_vars_side_by_side": {
         "state_variables": {"a": {"type": "decimal", "unit": 5, "control": 0, "cloud_priority": "x"}},
         **zone(state_variables={"a": {"type": "decimal", "unit": 5, "control": 0, "cloud_priority": "x"}}),
@@ -284,9 +291,11 @@ CASES: dict[str, dict[str, Any]] = {
     "child_id_param_no_child_type": param_cmds(ZONE_TYPE, z={"type": "child_id"}),
     "child_id_param_child_type_none": param_cmds(ZONE_TYPE, z={"type": "child_id", "child_type": None}),
     "child_id_param_child_type_a_number": param_cmds(ZONE_TYPE, z={"type": "child_id", "child_type": 3}),
+    "child_id_param_child_type_empty": param_cmds(ZONE_TYPE, z={"type": "child_id", "child_type": ""}),
     "child_id_param_undeclared": param_cmds(ZONE_TYPE, z={"type": "child_id", "child_type": "zon"}),
     "child_id_param_none_declared": param_cmds(None, z={"type": "child_id", "child_type": "zone"}),
     "child_id_param_types_a_list": param_cmds(["zone"], z=CHILD_ID),
+    "child_id_param_types_an_empty_list": param_cmds([], z=CHILD_ID),
     "child_id_param_several_declared": param_cmds(
         {"zone": {}, "mic": {}, "bus": {}}, z={"type": "child_id", "child_type": "out"}
     ),
@@ -295,6 +304,9 @@ CASES: dict[str, dict[str, Any]] = {
     "child_id_param_above_max": param_cmds(ZONE_TYPE, z={**CHILD_ID, "max": 17}),
     "child_id_param_both_outside": param_cmds(ZONE_TYPE, z={**CHILD_ID, "min": -1, "max": 99}),
     "child_id_param_float_bounds": param_cmds(ZONE_TYPE, z={**CHILD_ID, "min": 0.5, "max": 16.5}),
+    "child_id_param_whole_float_bounds": param_cmds(
+        {"zone": {"id_format": {"min": 2, "max": 16}}}, z={**CHILD_ID, "min": 1.0, "max": 20.0}
+    ),
     "child_id_param_boolean_bounds": param_cmds(ZONE_TYPE, z={**CHILD_ID, "min": False, "max": True}),
     "child_id_param_text_bounds": param_cmds(ZONE_TYPE, z={**CHILD_ID, "min": "0", "max": "99"}),
     "child_id_param_float_format": param_cmds(
@@ -372,11 +384,15 @@ REFERENCE_CASES: dict[str, dict[str, Any]] = {
     "types_computed": _ref_info(_route(z=CHILD_ID), UNEVALUATED),
     "types_a_list": _ref_info(_route(z=CHILD_ID), ["zone"]),
     "types_none": _ref_info(_route(z=CHILD_ID), None),
+    "types_an_empty_list": _ref_info(_route(z=CHILD_ID), []),
     "types_absent": _ref_info(_route(z=CHILD_ID)),
     "commands_partly_computed": _ref_info(
         {**_route(z={"type": "child_id"}), UNEVALUATED_KEY: UNEVALUATED}, ZONE_TYPE
     ),
     "commands_only_computed": _ref_info({UNEVALUATED_KEY: UNEVALUATED}, ZONE_TYPE),
+    "a_command_named_like_the_marker": _ref_info(
+        {UNEVALUATED_KEY: {"params": {"z": {"type": "child_id"}}}}, ZONE_TYPE
+    ),
     "types_partly_computed_undeclared": _ref_info(
         _route(z={"type": "child_id", "child_type": "out"}),
         {**ZONE_TYPE, UNEVALUATED_KEY: UNEVALUATED},
@@ -457,6 +473,9 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
                                   'child_entity_types.zone.id_format.max (16), so the gate would accept an '
                                   'id the child type cannot have')],
  'child_id_param_child_type_a_number': [],
+ 'child_id_param_child_type_empty': [('commands',
+                                      "commands.route.params.z: child_type '' is not a declared "
+                                      'child_entity_type (declared: zone)')],
  'child_id_param_child_type_none': [('commands',
                                      "commands.route.params.z: a child_id param must declare 'child_type' "
                                      '(without it the id cannot be resolved to a child type and is coerced '
@@ -504,9 +523,18 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'child_id_param_type_def_a_list': [('child_entity_types.zone',
                                      'child_entity_types.zone: must be a mapping')],
  'child_id_param_types_a_list': [('child_entity_types', 'child_entity_types: must be a mapping')],
+ 'child_id_param_types_an_empty_list': [],
  'child_id_param_undeclared': [('commands',
                                 "commands.route.params.z: child_type 'zon' is not a declared "
                                 'child_entity_type (declared: zone)')],
+ 'child_id_param_whole_float_bounds': [('commands',
+                                        'commands.route.params.z: min 1 is below '
+                                        'child_entity_types.zone.id_format.min (2), so the gate would accept '
+                                        'an id the child type cannot have'),
+                                       ('commands',
+                                        'commands.route.params.z: max 20 is above '
+                                        'child_entity_types.zone.id_format.max (16), so the gate would '
+                                        'accept an id the child type cannot have')],
  'child_id_params_in_order': [('commands.b', "Command 'b': must be a dict"),
                               ('commands',
                                "commands.a.params.z: a child_id param must declare 'child_type' (without it "
@@ -521,6 +549,9 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'child_var_cloud_priority': [('child_entity_types.zone',
                                "child_entity_types.zone.state_variables.a: cloud_priority must be 'low' or "
                                "'high' (got 'urgent'); omit it for the default cadence")],
+ 'child_var_cloud_priority_empty': [('child_entity_types.zone',
+                                     'child_entity_types.zone.state_variables.a: cloud_priority must be '
+                                     "'low' or 'high' (got ''); omit it for the default cadence")],
  'child_var_cloud_priority_none': [],
  'child_var_control': [('child_entity_types.zone',
                         'child_entity_types.zone.state_variables.a: control must be true or false (got '
@@ -561,8 +592,12 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
                         'child_entity_types.zone.state_variables: must be a mapping')],
  'child_vars_a_string': [('child_entity_types.zone',
                           'child_entity_types.zone.state_variables: must be a mapping')],
+ 'child_vars_an_empty_list': [('child_entity_types.zone',
+                               'child_entity_types.zone.state_variables: must be a mapping')],
  'child_vars_empty': [],
  'child_vars_none': [],
+ 'child_vars_zero': [('child_entity_types.zone',
+                      'child_entity_types.zone.state_variables: must be a mapping')],
  'count_a_boolean': [('child_entity_types.zone',
                       'child_entity_types.zone.instances: count must be an integer >= 1 (got True)')],
  'count_a_float': [('child_entity_types.zone',
@@ -812,6 +847,9 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'var_cloud_priority': [('state_variables.a',
                          "State variable 'a': cloud_priority must be 'low' or 'high' (got 'urgent'); omit it "
                          'for the default cadence')],
+ 'var_cloud_priority_empty': [('state_variables.a',
+                               "State variable 'a': cloud_priority must be 'low' or 'high' (got ''); omit it "
+                               'for the default cadence')],
  'var_control': [('state_variables.a', "State variable 'a': control must be true or false (got 'yes')")],
  'var_everything_wrong': [('state_variables.a', "State variable 'a': unknown type 'decimal'"),
                           ('state_variables.a', "State variable 'a': missing 'label'"),
@@ -831,6 +869,8 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'var_type_a_number': [('state_variables.a', "State variable 'a': unknown type '3'")],
  'var_type_empty': [],
  'var_unit': [('state_variables.a', "State variable 'a': unit must be a string (got 5)")],
+ 'var_unit_a_date': [('state_variables.a',
+                      "State variable 'a': unit must be a string (got datetime.date(2026, 1, 2))")],
  'var_unknown_type': [('state_variables.a', "State variable 'a': unknown type 'decimal'")],
  'vars_a_list': [('state_variables', 'state_variables: must be a mapping')],
  'vars_a_string': [('state_variables', 'state_variables: must be a mapping')],
@@ -862,7 +902,10 @@ RAISES_EXPECTED: dict[str, str] = {'child_var_type_a_list': 'TypeError',
  'count_from_state_over_a_number_of_variables': 'TypeError',
  'var_type_a_list': 'TypeError'}
 
-REFERENCE_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'bound_computed': (['commands.route.params.z: max 99 is above child_entity_types.zone.id_format.max (16), '
+REFERENCE_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_command_named_like_the_marker': ([],
+                                     ['0 of an unknown number of commands were readable; params of the rest '
+                                      'were not checked']),
+ 'bound_computed': (['commands.route.params.z: max 99 is above child_entity_types.zone.id_format.max (16), '
                      'so the gate would accept an id the child type cannot have'],
                     []),
  'child_type_computed': ([], ['commands.route.params.z: child_type is computed']),
@@ -899,6 +942,7 @@ REFERENCE_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'bound_computed': 
  'types_absent': (["commands.route.params.z: child_type 'zone' is not a declared child_entity_type (the "
                    'driver declares none)'],
                   []),
+ 'types_an_empty_list': ([], ['child_entity_types is computed, so no child_type reference was checked']),
  'types_computed': ([], ['child_entity_types is computed, so no child_type reference was checked']),
  'types_none': (["commands.route.params.z: child_type 'zone' is not a declared child_entity_type (the driver "
                  'declares none)'],
@@ -915,7 +959,10 @@ REFERENCE_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'bound_computed': 
                                       ["commands.route.params.z: child_type 'out', because "
                                        'child_entity_types keys are computed'])}
 
-PYTHON_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'bound_computed': (['commands.route.params.z: max 99 is above child_entity_types.zone.id_format.max (16), '
+PYTHON_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_command_named_like_the_marker': ([],
+                                     ['0 of an unknown number of commands were readable; params of the rest '
+                                      'were not checked']),
+ 'bound_computed': (['commands.route.params.z: max 99 is above child_entity_types.zone.id_format.max (16), '
                      'so the gate would accept an id the child type cannot have'],
                     []),
  'child_type_computed': ([], ['commands.route.params.z: child_type is computed']),
@@ -952,6 +999,7 @@ PYTHON_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'bound_computed': (['
  'types_absent': (["commands.route.params.z: child_type 'zone' is not a declared child_entity_type (the "
                    'driver declares none)'],
                   []),
+ 'types_an_empty_list': ([], ['child_entity_types is computed, so no child_type reference was checked']),
  'types_computed': ([], ['child_entity_types is computed, so no child_type reference was checked']),
  'types_none': (["commands.route.params.z: child_type 'zone' is not a declared child_entity_type (the driver "
                  'declares none)'],
