@@ -10,10 +10,10 @@
  *
  * The page hands the keyboard the Builder as it was last drawn, with the edits
  * a key can make and the undo run (`BuilderKeys`); which edit each key makes,
- * which box an arrow moves and how far, are here. Undo, redo, Escape, Ctrl+P
- * and Ctrl+S are the Builder store's own. `useBuilderShortcuts` registers
- * again on every render, so a key always acts on the page as it was last
- * drawn.
+ * which box an arrow moves and how far, are here. Undo, redo, Escape and
+ * Ctrl+P are the Builder store's own actions, and Ctrl+S is saving now
+ * (saveState.ts). `useBuilderShortcuts` registers again on every render, so a
+ * key always acts on the page as it was last drawn.
  */
 import { useEffect } from "react";
 import type { MasterElement, SnapConfig, UIPage } from "../../api/types";
