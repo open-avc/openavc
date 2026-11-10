@@ -6,8 +6,8 @@ definition section by section and asks a check module about each command
 (``command_checks``), response rule (``response_rule_checks``), query entry
 (``query_entry_checks``), child type and the references into it
 (``child_type_checks``), state variable (``state_variable_checks``), the
-push block (``push_block_checks``) and the Quick Action blocks
-(``action_checks``). The
+push block (``push_block_checks``), the Quick Action blocks
+(``action_checks``) and the framing each way (``framing_checks``). The
 runtime loader wraps it (adding the discovery-block check, which needs the
 discovery engine's parser), and the community driver catalog runs a copy of
 the same rules in its CI, so a definition that passes catalog review is
@@ -46,6 +46,12 @@ from openavc.drivers.declared_names import (
     did_you_mean,
     substitution_names,
 )
+from openavc.drivers.framing_checks import (
+    COMMAND_AFFIXES,
+    command_affix_errors,
+    frame_parser_errors,
+    send_frame_errors,
+)
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.query_entry_checks import (
     FollowUp,
@@ -61,13 +67,10 @@ from openavc.drivers.spec import (
     DEFS,
     FIELDS,
     GENERIC_ID_PREFIXES,
-    LENGTH_ENDIANS,
-    LENGTH_HEADER_SIZES,
     LINE_GAP_TRANSPORTS,
     LIVENESS_TRANSPORTS,
     PORT_OPEN_TRANSPORTS,
     REQUIRED_FIELDS,
-    SEND_FRAME_TYPES,
     SILENCE_CHECK_TRANSPORTS,
     VALUE_TYPES,
     YAML_TRANSPORTS,
@@ -586,14 +589,11 @@ def validate_driver_definition(
     _child_ref_errors, _ = child_param_reference_errors(driver_def)
     errors.extend(_child_ref_errors)
 
-    # Opt-in send-side command framing: a constant prefix/suffix wraps every
-    # byte-stream command. Both must be strings when present.
-    errors.ctx = ""
-    for frame_key in ("command_prefix", "command_suffix"):
+    # The constant text wrapped around every byte-stream command, checked in
+    # framing_checks with the rest of the send side.
+    for frame_key in COMMAND_AFFIXES:
         errors.ctx = frame_key
-        frame_val = driver_def.get(frame_key)
-        if frame_val is not None and not isinstance(frame_val, str):
-            errors.append(f"{frame_key}: must be a string")
+        errors.extend(command_affix_errors(driver_def, frame_key))
 
     # Device settings: each entry must be writable (a `write:` block — the
     # runtime raises NotImplementedError without one) and its state_key must
@@ -792,100 +792,12 @@ def validate_driver_definition(
     errors.ctx = "state_variables"
     errors.extend(value_conversion_errors(driver_def))
 
-    # Validate the optional frame_parser block (binary protocols). The runtime
-    # LengthPrefixFrameParser only accepts header_size in {1, 2, 4} and
-    # FixedLengthFrameParser needs a positive length; an out-of-range value
-    # (authored by hand or by an older Driver Builder) would otherwise raise
-    # in connect() and wedge the device in a permanent reconnect loop. Surface
-    # it at load instead, with a clear message.
+    # The framing each way, checked in framing_checks: how frames are cut
+    # from the stream, and the header each one sent is wrapped in.
     errors.ctx = "frame_parser"
-    frame_parser = driver_def.get("frame_parser")
-    if frame_parser is not None:
-        if not isinstance(frame_parser, dict):
-            errors.append("frame_parser: must be a mapping")
-        else:
-            fp_type = frame_parser.get("type", "")
-            if fp_type == "length_prefix":
-                header_size = frame_parser.get("header_size", 2)
-                if header_size not in LENGTH_HEADER_SIZES:
-                    errors.append(
-                        f"frame_parser: header_size must be 1, 2, or 4 (got {header_size!r})"
-                    )
-                offset = frame_parser.get("header_offset", 0)
-                if isinstance(offset, bool) or not isinstance(offset, int):
-                    errors.append(
-                        f"frame_parser: header_offset must be an integer (got {offset!r})"
-                    )
-                # Length field not at byte 0 (e.g. eISCP: length at offset 8,
-                # behind magic + header-size, followed by version/reserved).
-                for extra_key in ("length_offset", "header_extra"):
-                    extra_val = frame_parser.get(extra_key, 0)
-                    if (
-                        isinstance(extra_val, bool)
-                        or not isinstance(extra_val, int)
-                        or extra_val < 0
-                    ):
-                        errors.append(
-                            f"frame_parser: {extra_key} must be a non-negative "
-                            f"integer (got {extra_val!r})"
-                        )
-                endian = frame_parser.get("length_endian", "big")
-                if endian not in LENGTH_ENDIANS:
-                    errors.append(
-                        f"frame_parser: length_endian must be 'big' or 'little' "
-                        f"(got {endian!r})"
-                    )
-            elif fp_type == "fixed_length":
-                length = frame_parser.get("length", 1)
-                if isinstance(length, bool) or not isinstance(length, int) or length <= 0:
-                    errors.append(
-                        f"frame_parser: length must be a positive integer (got {length!r})"
-                    )
-            elif fp_type:
-                errors.append(
-                    f"frame_parser: unknown type '{fp_type}' "
-                    f"(expected 'length_prefix' or 'fixed_length')"
-                )
-            else:
-                errors.append("frame_parser: missing 'type'")
-
-    # Validate the optional send_frame block (send-side packet framing — the
-    # send twin of frame_parser). Only length_prefix is supported; the header
-    # bytes are literal-escape strings and length_size must be a positive int.
+    errors.extend(frame_parser_errors(driver_def))
     errors.ctx = "send_frame"
-    send_frame = driver_def.get("send_frame")
-    if send_frame is not None:
-        if not isinstance(send_frame, dict):
-            errors.append("send_frame: must be a mapping")
-        else:
-            sf_type = send_frame.get("type", "length_prefix")
-            if sf_type not in SEND_FRAME_TYPES:
-                errors.append(
-                    f"send_frame: unknown type '{sf_type}' (expected 'length_prefix')"
-                )
-            else:
-                length_size = send_frame.get("length_size", 4)
-                if (
-                    isinstance(length_size, bool)
-                    or not isinstance(length_size, int)
-                    or length_size < 1
-                ):
-                    errors.append(
-                        f"send_frame: length_size must be a positive integer "
-                        f"(got {length_size!r})"
-                    )
-                sf_endian = send_frame.get("length_endian", "big")
-                if sf_endian not in LENGTH_ENDIANS:
-                    errors.append(
-                        f"send_frame: length_endian must be 'big' or 'little' "
-                        f"(got {sf_endian!r})"
-                    )
-                for byte_key in ("header", "after_length"):
-                    byte_val = send_frame.get(byte_key)
-                    if byte_val is not None and not isinstance(byte_val, str):
-                        errors.append(
-                            f"send_frame: {byte_key} must be a string (got {byte_val!r})"
-                        )
+    errors.extend(send_frame_errors(driver_def))
 
     # What one child type says about itself (its name, id_format, state
     # variables and instances: roster) is checked in child_type_checks. Each

@@ -11,7 +11,8 @@ own checks, run after the type and the keys:
   to (never 0: a person types this port into the device);
 * ``tcp_listener`` opens a local port the device dials back to after a
   registration command tells it where (``{listener_port}``; 0 lets the OS
-  pick), with its own frame parser for the pushed frames;
+  pick), with its own frame parser for the pushed frames (a ``struct_frame``'s
+  fields judged from ``framing_checks``' table, the other types' not at all);
 * ``sse`` holds GET path(s) open on the driver's own HTTP session, with an
   optional device session the stream carries;
 * ``http_listener`` accepts device POSTs on a platform-assigned callback path
@@ -37,13 +38,12 @@ import re
 from typing import Any, Callable
 
 from openavc.drivers.declared_names import config_field_names
+from openavc.drivers.framing_checks import FRAME_FIELDS, field_problems, spoken_choices
 from openavc.drivers.spec import (
-    LENGTH_ENDIANS,
     PUSH_FRAME_PARSER_TYPES,
     PUSH_REGISTER_ENTRY_KEYS,
     PUSH_SESSION_KEYS,
     PUSH_TYPE_KEYS,
-    STRUCT_LENGTH_SIZES,
     is_multicast_group,
 )
 from openavc.utils.regex_safety import regex_safety_error
@@ -57,9 +57,6 @@ _ANY_TYPE_KEYS = frozenset({
 
 # The session keys that must be non-empty text when present.
 _SESSION_TEXT_KEYS = ("header", "event", "key", "close_event")
-
-# A struct_frame parser's reserved byte counts.
-_STRUCT_RESERVES = ("header_reserve", "mid_reserve", "trailer_reserve")
 
 
 def push_block_errors(driver_def: dict[str, Any]) -> list[str]:
@@ -153,10 +150,6 @@ def _not_positive_seconds(value: Any) -> bool:
     return isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0
 
 
-def _not_a_count(value: Any) -> bool:
-    return isinstance(value, bool) or not isinstance(value, int) or value < 0
-
-
 def _blank(value: Any) -> bool:
     return not isinstance(value, str) or not value.strip()
 
@@ -194,28 +187,15 @@ def _tcp_listener_checks(check: _PushCheck) -> None:
         return
     frame_type = frame.get("type")
     if frame_type not in PUSH_FRAME_PARSER_TYPES:
-        check.found.append(
-            f"push: frame_parser type {frame_type!r} must be struct_frame, "
-            f"length_prefix, or fixed_length"
-        )
+        choices = spoken_choices(PUSH_FRAME_PARSER_TYPES, quoted=False)
+        check.found.append(f"push: frame_parser type {frame_type!r} must be {choices}")
     elif frame_type == "struct_frame":
-        check.found.extend(_struct_frame_errors(frame))
-
-
-def _struct_frame_errors(frame: dict[str, Any]) -> list[str]:
-    errors = [
-        f"push: frame_parser {key} must be a non-negative integer"
-        for key in _STRUCT_RESERVES
-        if _not_a_count(frame.get(key, 0))
-    ]
-    if frame.get("length_size", 2) not in STRUCT_LENGTH_SIZES:
-        errors.append("push: frame_parser length_size must be 1, 2, or 4")
-    adjust = frame.get("length_adjust", 0)
-    if isinstance(adjust, bool) or not isinstance(adjust, int):
-        errors.append("push: frame_parser length_adjust must be an integer")
-    if frame.get("length_endian", "big") not in LENGTH_ENDIANS:
-        errors.append("push: frame_parser length_endian must be 'big' or 'little'")
-    return errors
+        # Only a struct_frame's fields are judged here; the framing checks
+        # hold every type's (framing_checks.FRAME_FIELDS).
+        check.found.extend(
+            f"push: frame_parser {key} must be {words}"
+            for key, words, _ in field_problems(FRAME_FIELDS[frame_type], frame)
+        )
 
 
 def _sse_checks(check: _PushCheck) -> None:
