@@ -119,6 +119,14 @@ describe("nudging with the arrow keys", () => {
     expect(undoLog()).toEqual([]);
   });
 
+  it("writes no box for a selected id that is not on the page", async () => {
+    selected(["gone", "btn_1"]);
+    await renderPage(UIBuilderView);
+    press("ArrowRight");
+    expect(box("main", "btn_1").x).toBe(15);
+    expect(Object.keys(pageOf("main").layouts[0].placements)).not.toContain("gone");
+  });
+
   it("moves a master's box for the orientation on screen, and not a locked one", async () => {
     reseed(makeProject(), { selectedPageId: "main", selectedMasterElementId: "m_1", activeLayoutId: "main_port" });
     await renderPage(UIBuilderView);
