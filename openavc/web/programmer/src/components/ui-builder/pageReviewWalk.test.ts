@@ -217,6 +217,27 @@ describe("the container chain", () => {
     expect(findings.map((f) => f.message)).toEqual([tooSmallIn("outer")]);
   });
 
+  it("measures each container above as it is drawn, not as it is stored", () => {
+    const findings = reviewPage(
+      page(nested, { led: FULL, inner: { x: 0, y: 0, w: 50, h: 100 }, outer: { x: 0, y: 0, w: 4.4, h: 100 } }),
+    );
+    expect(findings.map((f) => f.message)).toEqual([
+      "led (status_led) is 28x800px at the 1280x800 reference, too small for what it draws: " +
+        "28px wide, needs 29px (led-dot is 20px). 'inner' is 28px wide, too small to hold it " +
+        "at any width: give 'inner' w at least 51.49% of 'outer'.",
+    ]);
+  });
+
+  it("stops at the control itself when a parent cycle leads back to it", () => {
+    const cycle = [{ ...LED, parent: "g" }, { id: "g", type: "group", parent: "led" }];
+    const findings = reviewPage(page(cycle, { led: FULL, g: { x: 0, y: 0, w: 2, h: 100 } }));
+    expect(findings.map((f) => f.message)).toEqual([
+      "led (status_led) is 26x800px at the 1280x800 reference, too small for what it draws: " +
+        "26px wide, needs 29px (led-dot is 20px). 'g' is 26px wide, too small to hold it " +
+        "at any width: give 'g' w at least 2.27% of the page.",
+    ]);
+  });
+
   it("stops at an unplaced container in the middle, short of a placed one above it", () => {
     const chain = [
       { ...LED, parent: "c1" },

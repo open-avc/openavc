@@ -1,11 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  absolutePlacements,
   alignElements,
   commitGesturePlacements,
   descendantIds,
   dropTargetFor,
   outlineRows,
   referenceParentBox,
+  reparentElement,
   topmostSelection,
 } from "./uiBuilderHelpers";
 import type { Layout, Placement, UIElement, UIPage } from "../../api/types";
@@ -104,6 +106,14 @@ describe("referenceParentBox: the reference pixels a control's percentages are o
   });
 });
 
+describe("an element's container: a parent that names another element on the page", () => {
+  it("measures a control whose parent names nothing on the page against the page, even where a layout keeps a box under that name", () => {
+    const p = page([el("c", "button", "ghost")], [primary({ ghost: box(50, 50, 50, 50), c: box(10, 10, 10, 10) })]);
+    const abs = absolutePlacements(p);
+    expect(abs).toEqual({ c: box(10, 10, 10, 10) });
+  });
+});
+
 describe("a parent cycle, read and written back", () => {
   it("aligns a container in a cycle against a box the read never measured it against", () => {
     const p = page(
@@ -137,6 +147,14 @@ describe("descendantIds: everything hanging off an element", () => {
     expect([...descendantIds(p, "a")]).toEqual(["b", "a"]);
   });
 
+  it("walks every child of a container whose first child repeats an id already collected", () => {
+    const p = page(
+      [el("r", "group"), el("y", "button", "r"), el("x", "group", "r"), el("y", "button", "x"), el("z", "button", "x")],
+      [primary({})],
+    );
+    expect([...descendantIds(p, "r")]).toEqual(["y", "x", "z"]);
+  });
+
   it("finds the children of an id the page does not hold", () => {
     const p = page([el("a", "button", "ghost"), el("b", "button", "ghost")], [primary({})]);
     expect([...descendantIds(p, "ghost")]).toEqual(["a", "b"]);
@@ -151,6 +169,11 @@ describe("topmostSelection: a selected container already carries what it holds",
     );
     expect(topmostSelection(p, ["a", "b", "g"])).toEqual(["b", "g"]);
     expect(topmostSelection(p, ["a", "h"])).toEqual(["h"]);
+  });
+
+  it("drops nothing for a selected id the page does not hold, even one a control names as its parent", () => {
+    const p = page([el("c", "button", "ghost"), el("d")], [primary({})]);
+    expect(topmostSelection(p, ["c", "ghost", "d"])).toEqual(["c", "ghost", "d"]);
   });
 
   it("keeps both controls of a selected cycle, and a control whose parent names nothing", () => {
@@ -274,6 +297,14 @@ describe("dropTargetFor: which container a dragged control belongs to", () => {
     expect(dropTargetFor(p, "a", box(10, 10, 5, 5))).toBe("g1");
   });
 
+  it("never puts a control inside something that is not a container, however tightly it holds the box", () => {
+    const p = page(
+      [el("g", "group"), el("card", "image"), el("a")],
+      [primary({ g: box(0, 0, 50, 50), card: box(5, 5, 10, 10), a: box(90, 90, 5, 5) })],
+    );
+    expect(dropTargetFor(p, "a", box(6, 6, 2, 2))).toBe("g");
+  });
+
   it("passes over a container with no box in this arrangement, and anything that is not a container", () => {
     const p = page(
       [el("nobox", "group"), el("btn"), el("g", "group"), el("a")],
@@ -333,5 +364,20 @@ describe("commitGesturePlacements: where everything landed, and what it landed i
     const [out] = commitGesturePlacements([p], "pg", { a: box(300, 0, 10, 10) });
     expect(out.elements.find((e) => e.id === "a")?.parent).toBeNull();
     expect(out.layouts[0].placements.a).toEqual(box(150, 0, 5, 5));
+  });
+});
+
+describe("reparentElement on a primary that inherits another arrangement", () => {
+  it("gives the primary a box of its own against the new container, and leaves an arrangement where the container has no box alone", () => {
+    const p = page(
+      [el("g", "group"), el("a")],
+      [
+        primary({ g: box(20, 20, 50, 50) }, { inherits: "base" }),
+        { id: "base", orientation: "landscape", primary: false, placements: { a: box(30, 30, 10, 10) }, hidden: [] },
+      ],
+    );
+    const [out] = reparentElement([p], "pg", "a", "g");
+    expect(out.layouts[0].placements).toEqual({ g: box(20, 20, 50, 50), a: box(20, 20, 20, 20) });
+    expect(out.layouts[1].placements).toEqual({ a: box(30, 30, 10, 10) });
   });
 });
