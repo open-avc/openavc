@@ -18,7 +18,8 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.avcdriver_semantic import _poll_lines, validate_driver_definition
+from openavc.drivers.avcdriver_semantic import validate_driver_definition
+from openavc.drivers.driver_warnings import _poll_lines
 from openavc.drivers.configurable import create_configurable_driver_class
 
 _INTERVAL = 0.1
