@@ -14,21 +14,18 @@ import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { Modal } from "../shared/Modal";
 import { PanelPreviewFrame } from "./PanelPreviewFrame";
 import { NumericInput } from "../shared/NumericInput";
-import {
-  parseColor, rgbToHex6, contrastRatio, wcagLevel,
-  CSS_VAR_FALLBACKS, type WcagLevel,
-} from "./colorUtils";
+import { contrastRatio, wcagLevel, CSS_VAR_FALLBACKS, type WcagLevel } from "./colorUtils";
+import { ColorPickerCell } from "./ColorPickerCell";
+import { ElementSections } from "./ElementSections";
+import { ResetToSaved, StudioSection } from "./StudioParts";
 import { parseApiError } from "../../api/errors";
-import { editableCopy, withVariable, withElementDefault, withPageDefaults } from "./themeEdits";
+import { editableCopy, withVariable, withElementDefault, withPageDefaults, differsFromSaved } from "./themeEdits";
 import { withSurfaceStyle, type SurfaceStyle } from "./quickAdjust";
 import { QuickAdjustSection } from "./QuickAdjustSection";
 import { themeFile, savedFile, previewColors, customCopy, duplicateOf, keptBeside } from "./themeFiles";
 
 // --- Constants ---
 
-const CHECKER_BG =
-  "linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%), " +
-  "linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%)";
 
 interface ThemeTokenDef {
   key: string;
@@ -52,264 +49,6 @@ const THEME_TOKENS: ThemeTokenDef[] = [
   { key: "border_radius", label: "Border Radius (px)", type: "number", hint: "Roundness of every element. 0 sharp, 16+ very round" },
   { key: "font_family", label: "Font Family", type: "font", hint: "Typeface across the entire panel" },
 ];
-
-// Per-element style controls. Each control routes to either a CSS variable
-// (kind: "var") or an element_defaults entry (kind: "default"). Combining
-// both sources here lets us present one coherent section per element.
-type ControlSource = { kind: "var"; key: string } | { kind: "default"; key: string };
-
-interface ElementControl {
-  label: string;
-  type: "color" | "number" | "text";
-  source: ControlSource;
-  hint?: string;
-}
-
-// Per-element style controls. Each control routes to either a CSS variable
-// (kind: "var") or an element_defaults entry (kind: "default"). The source
-// is determined by where the value canonically lives so there's never a
-// duplicate edit path.
-//
-// Button-derivative types (page_nav, camera_preset, keypad) inherit the
-// button_* CSS variables by default, but built-in themes ship per-type
-// element_defaults that override them — so each gets its own section here to
-// author those overrides. Clearing a derivative's color reverts it to the
-// button/CSS default (the element_defaults key is deleted).
-
-const STANDARD_BORDER_CONTROLS: ElementControl[] = [
-  { label: "Border Color", type: "color", source: { kind: "default", key: "border_color" } },
-  { label: "Border Width (px)", type: "number", source: { kind: "default", key: "border_width" } },
-];
-
-const BOX_SHADOW_CONTROL: ElementControl = {
-  label: "Box Shadow",
-  type: "text",
-  source: { kind: "default", key: "box_shadow" },
-  hint: "CSS syntax, e.g. '0 2px 4px rgba(0,0,0,0.3)' or 'none'",
-};
-
-const ELEMENT_CONTROLS: Record<string, ElementControl[]> = {
-  button: [
-    // Button colors live as CSS variables, so they're the base for camera
-    // presets and keypad keys (which use the same vars) and the border for
-    // page nav — each can override its own in its section below. Active button
-    // bg derives from Accent (no separate token); active text uses Button Text.
-    { label: "Background", type: "color", source: { kind: "var", key: "button_bg" }, hint: "Base for camera presets and keypad keys (override per-type below)" },
-    { label: "Text", type: "color", source: { kind: "var", key: "button_text" }, hint: "Also the active button text, and camera-preset / keypad-key text" },
-    { label: "Border Color", type: "color", source: { kind: "var", key: "button_border" }, hint: "Base border for page nav, camera presets, and keypad keys (override per-type below)" },
-    { label: "Border Width (px)", type: "number", source: { kind: "default", key: "border_width" } },
-    BOX_SHADOW_CONTROL,
-  ],
-  page_nav: [
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" }, hint: "Page nav is transparent by default; set a color to fill it" },
-    { label: "Text", type: "color", source: { kind: "default", key: "text_color" }, hint: "Defaults to Accent" },
-    ...STANDARD_BORDER_CONTROLS,
-    BOX_SHADOW_CONTROL,
-  ],
-  camera_preset: [
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" }, hint: "Defaults to Button Background" },
-    { label: "Text", type: "color", source: { kind: "default", key: "text_color" }, hint: "Defaults to Button Text" },
-    ...STANDARD_BORDER_CONTROLS,
-    BOX_SHADOW_CONTROL,
-  ],
-  keypad: [
-    { label: "Container Background", type: "color", source: { kind: "default", key: "bg_color" }, hint: "The number keys themselves use the Button colors" },
-    { label: "Text Color", type: "color", source: { kind: "default", key: "text_color" }, hint: "Label and entry-display text" },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  label: [
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
-    { label: "Text Color", type: "color", source: { kind: "default", key: "text_color" }, hint: "Overrides Page Text just for labels" },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  slider: [
-    { label: "Wrapper Background", type: "color", source: { kind: "default", key: "bg_color" }, hint: "Track uses Surface, fill uses Accent" },
-    { label: "Label Color", type: "color", source: { kind: "default", key: "text_color" } },
-    { label: "Thumb Size (px)", type: "number", source: { kind: "default", key: "thumb_size" }, hint: "Larger = easier to grab on touch (44 is standard)" },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  fader: [
-    { label: "Wrapper Background", type: "color", source: { kind: "default", key: "bg_color" }, hint: "Track uses Surface, handle uses Accent" },
-    { label: "Label Color", type: "color", source: { kind: "default", key: "text_color" } },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  status_led: [
-    { label: "Active Color", type: "color", source: { kind: "default", key: "bg_color" }, hint: "Color shown when bound state is true" },
-    { label: "Label Color", type: "color", source: { kind: "default", key: "text_color" } },
-    { label: "Border Color", type: "color", source: { kind: "default", key: "border_color" } },
-  ],
-  gauge: [
-    { label: "Gauge Color", type: "color", source: { kind: "default", key: "gauge_color" }, hint: "Filled portion" },
-    { label: "Gauge Background", type: "color", source: { kind: "default", key: "gauge_bg_color" }, hint: "Empty portion" },
-    { label: "Text Color", type: "color", source: { kind: "default", key: "text_color" } },
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  level_meter: [
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" }, hint: "Zone colors come from Success / Warning / Danger" },
-    ...STANDARD_BORDER_CONTROLS,
-    { label: "Green Threshold (dB)", type: "number", source: { kind: "default", key: "green_to" }, hint: "Levels below are green; default −12" },
-    { label: "Yellow Threshold (dB)", type: "number", source: { kind: "default", key: "yellow_to" }, hint: "Above is red; default −3" },
-  ],
-  list: [
-    { label: "Item Background", type: "color", source: { kind: "default", key: "item_bg" } },
-    { label: "Selected Item", type: "color", source: { kind: "default", key: "item_active_bg" }, hint: "Highlighted row" },
-    { label: "Text Color", type: "color", source: { kind: "default", key: "text_color" } },
-    { label: "Wrapper Background", type: "color", source: { kind: "default", key: "bg_color" } },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  matrix: [
-    { label: "Active Route", type: "color", source: { kind: "default", key: "crosspoint_active_color" }, hint: "Crosspoint dot when route is connected" },
-    { label: "Inactive Route", type: "color", source: { kind: "default", key: "crosspoint_inactive_color" } },
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  select: [
-    { label: "Wrapper Background", type: "color", source: { kind: "default", key: "bg_color" }, hint: "The dropdown itself uses Surface" },
-    { label: "Label Color", type: "color", source: { kind: "default", key: "text_color" } },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  text_input: [
-    { label: "Wrapper Background", type: "color", source: { kind: "default", key: "bg_color" }, hint: "The input itself uses Surface" },
-    { label: "Label Color", type: "color", source: { kind: "default", key: "text_color" } },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  image: [
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  group: [
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
-    { label: "Title Color", type: "color", source: { kind: "default", key: "text_color" }, hint: "Group label text" },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-  clock: [
-    { label: "Background", type: "color", source: { kind: "default", key: "bg_color" } },
-    { label: "Text Color", type: "color", source: { kind: "default", key: "text_color" } },
-    ...STANDARD_BORDER_CONTROLS,
-  ],
-};
-
-// Order in which element sections render. Buttons first (most common) with
-// their derivatives grouped right after, then other interactive elements, then
-// displays, then layout/utility.
-const ELEMENT_ORDER = [
-  "button", "page_nav", "camera_preset", "keypad",
-  "label", "slider", "fader", "select", "text_input",
-  "status_led", "gauge", "level_meter",
-  "list", "matrix", "group",
-  "image", "clock",
-];
-
-const ELEMENT_TYPE_LABELS: Record<string, string> = {
-  button: "Button",
-  label: "Label",
-  slider: "Slider",
-  page_nav: "Page Nav",
-  select: "Select",
-  text_input: "Text Input",
-  status_led: "Status LED",
-  image: "Image",
-  camera_preset: "Camera Preset",
-  gauge: "Gauge",
-  level_meter: "Level Meter",
-  fader: "Fader",
-  group: "Group",
-  clock: "Clock",
-  keypad: "Keypad",
-  list: "List",
-  matrix: "Matrix",
-};
-
-// --- ColorPickerCell ---
-
-interface ColorPickerCellProps {
-  value: string;
-  onChange: (next: string) => void;
-  /** Effective value shown when `value` is empty (the inherited/fallback color). */
-  fallback?: string;
-}
-
-function ColorPickerCell({ value, onChange, fallback }: ColorPickerCellProps) {
-  const raw = value || "";
-  const parsed = parseColor(raw);
-  const fallbackParsed = fallback ? parseColor(fallback) : null;
-
-  // The native <input type=color> only speaks 6-digit hex. Use it whenever the
-  // value (or, when unset, the fallback) is a fully-opaque color we can represent
-  // losslessly — including 3-digit hex and named colors, which used to be misread
-  // as "not a color" and reset to #000000 on a single click (silent data loss).
-  const opaque =
-    parsed && parsed.a === 1
-      ? parsed
-      : !raw && fallbackParsed && fallbackParsed.a === 1
-        ? fallbackParsed
-        : null;
-  if (opaque) {
-    return (
-      <input
-        type="color"
-        value={rgbToHex6(opaque)}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: 28,
-          height: 22,
-          padding: 0,
-          border: "1px solid var(--border-color)",
-          borderRadius: 3,
-          cursor: "pointer",
-          flexShrink: 0,
-        }}
-      />
-    );
-  }
-
-  // Transparent, translucent (alpha < 1), or unset: show a swatch that opens the
-  // OS picker via a hidden, seeded color input. Only an explicit pick fires
-  // onChange, so a stray click can never overwrite a deliberate value.
-  const isClear = !raw || raw === "transparent" || (parsed != null && parsed.a === 0);
-  const seed = parsed ? rgbToHex6(parsed) : fallbackParsed ? rgbToHex6(fallbackParsed) : "#888888";
-  const title = !raw
-    ? "Inherits the theme default: pick or type a color to set one"
-    : raw === "transparent"
-      ? "Transparent: pick or type a color to change"
-      : `${raw}: pick or type a color to change`;
-  return (
-    <label
-      title={title}
-      style={{
-        position: "relative",
-        width: 28,
-        height: 22,
-        border: "1px solid var(--border-color)",
-        borderRadius: 3,
-        cursor: "pointer",
-        flexShrink: 0,
-        display: "block",
-        background: isClear ? CHECKER_BG : raw,
-        backgroundSize: isClear ? "8px 8px" : undefined,
-        backgroundPosition: isClear ? "0 0, 4px 4px" : undefined,
-      }}
-    >
-      <input
-        type="color"
-        aria-label="Pick a color"
-        value={seed}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          opacity: 0,
-          border: "none",
-          padding: 0,
-          cursor: "pointer",
-        }}
-      />
-    </label>
-  );
-}
 
 // --- Element gallery (synthetic preview page showing every common element type) ---
 
@@ -612,7 +351,6 @@ export function ThemeStudio({
   // user's Overwrite / Keep both choice.
   const [importCollision, setImportCollision] = useState<{ file: File; id: string; name: string } | null>(null);
   const [previewView, setPreviewView] = useState<string>("gallery");
-  const [focusedElement, setFocusedElement] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const galleryPage = useMemo(() => buildGalleryPage(), []);
@@ -891,26 +629,6 @@ export function ThemeStudio({
     onClose();
   };
 
-  // Listen for element clicks from the preview iframe
-  useEffect(() => {
-    if (!open) return;
-    const onMsg = (e: MessageEvent) => {
-      // The preview iframe is served same-origin; ignore anything else so a
-      // stray window can't drive which element section is focused.
-      if (e.origin !== window.location.origin) return;
-      if (e.data?.type === "openavc:theme-element-click") {
-        const elType = e.data.elementType as string;
-        // Every common type — including the button derivatives page_nav /
-        // camera_preset / keypad — now has its own section, so focus it directly.
-        if (elType && ELEMENT_CONTROLS[elType]) {
-          setFocusedElement(elType);
-        }
-      }
-    };
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, [open]);
-
   // Contrast checks on working copy variables
   const contrastChecks = useMemo(() => {
     const v = (working?.variables || {}) as Record<string, string>;
@@ -1091,8 +809,6 @@ export function ThemeStudio({
                 savedDefaults={savedTheme?.element_defaults || {}}
                 pageDefaults={(working?.page_defaults as Record<string, unknown>) || {}}
                 savedPageDefaults={(savedTheme?.page_defaults as Record<string, unknown>) || {}}
-                focusedElement={focusedElement}
-                onClearFocus={() => setFocusedElement(null)}
                 onSaveChanges={handleSaveChanges}
                 onSaveAsCustom={handleSaveAsCustom}
                 onDiscard={handleDiscard}
@@ -1835,8 +1551,6 @@ interface EditorColumnProps {
   savedDefaults: Record<string, Record<string, unknown>>;
   pageDefaults: Record<string, unknown>;
   savedPageDefaults: Record<string, unknown>;
-  focusedElement: string | null;
-  onClearFocus: () => void;
   onSaveChanges: () => void;
   onSaveAsCustom: () => void;
   onDiscard: () => void;
@@ -1864,8 +1578,6 @@ function EditorColumn({
   savedDefaults,
   pageDefaults,
   savedPageDefaults,
-  focusedElement,
-  onClearFocus,
   onSaveChanges,
   onSaveAsCustom,
   onDiscard,
@@ -1873,88 +1585,6 @@ function EditorColumn({
   onDelete,
   onClearOverrides,
 }: EditorColumnProps) {
-  const elementRefs = useRef<Record<string, HTMLDetailsElement | null>>({});
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const highlightTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-  // The scroll container only mounts once `working` loads (a placeholder renders
-  // until then). Effects that read scrollContainerRef must re-run on this flip,
-  // not just on mount, or they'd permanently no-op on the common first-open path.
-  const hasWorking = working != null;
-
-  useEffect(() => {
-    if (!focusedElement) return;
-    // Cancel any in-flight highlight timer and clear all outlines
-    if (highlightTimer.current) clearTimeout(highlightTimer.current);
-    for (const ref of Object.values(elementRefs.current)) {
-      if (ref) {
-        ref.style.outline = "";
-        ref.style.outlineOffset = "";
-        ref.style.borderRadius = "";
-      }
-    }
-    // Collapse all, expand target, scroll into view, briefly highlight
-    for (const [elType, ref] of Object.entries(elementRefs.current)) {
-      if (ref) ref.open = elType === focusedElement;
-    }
-    const target = elementRefs.current[focusedElement];
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      target.style.outline = "2px solid var(--accent)";
-      target.style.outlineOffset = "-2px";
-      target.style.borderRadius = "4px";
-      highlightTimer.current = setTimeout(() => {
-        target.style.outline = "";
-        target.style.outlineOffset = "";
-        target.style.borderRadius = "";
-        highlightTimer.current = undefined;
-      }, 1200);
-    }
-    onClearFocus();
-  }, [focusedElement, onClearFocus]);
-
-  useEffect(() => {
-    return () => { if (highlightTimer.current) clearTimeout(highlightTimer.current); };
-  }, []);
-
-  // Keyboard arrows navigate between element sections. Depend on hasWorking so
-  // the listener attaches once the scroll container actually mounts (it isn't
-  // rendered behind the loading placeholder on first open).
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-      // Only activate when a summary or details has focus
-      const active = document.activeElement;
-      if (!active || !container.contains(active)) return;
-      const summary = active.closest("summary");
-      if (!summary) return;
-      const details = summary.parentElement as HTMLDetailsElement | null;
-      if (!details) return;
-      const currentIdx = ELEMENT_ORDER.indexOf(
-        Object.entries(elementRefs.current).find(([, ref]) => ref === details)?.[0] || "",
-      );
-      if (currentIdx < 0) return;
-      e.preventDefault();
-      const nextIdx = e.key === "ArrowDown"
-        ? Math.min(currentIdx + 1, ELEMENT_ORDER.length - 1)
-        : Math.max(currentIdx - 1, 0);
-      const nextType = ELEMENT_ORDER[nextIdx];
-      const nextDetails = elementRefs.current[nextType];
-      if (nextDetails) {
-        for (const [, ref] of Object.entries(elementRefs.current)) {
-          if (ref) ref.open = false;
-        }
-        nextDetails.open = true;
-        const nextSummary = nextDetails.querySelector("summary");
-        nextSummary?.focus();
-        nextDetails.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }
-    };
-    container.addEventListener("keydown", onKey);
-    return () => container.removeEventListener("keydown", onKey);
-  }, [hasWorking]);
-
   if (!working) {
     return (
       <div
@@ -1971,22 +1601,6 @@ function EditorColumn({
       </div>
     );
   }
-
-  const sectionStyle: React.CSSProperties = {
-    background: "var(--bg-surface)",
-    borderRadius: 6,
-    border: "1px solid var(--border-color)",
-    marginBottom: 10,
-  };
-  const sectionTitleStyle: React.CSSProperties = {
-    fontSize: 10,
-    fontWeight: 700,
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-    color: "var(--text-secondary)",
-    padding: "8px 10px",
-    borderBottom: "1px solid var(--border-color)",
-  };
 
   const vars = working.variables || {};
   const defaults = working.element_defaults || {};
@@ -2187,10 +1801,8 @@ function EditorColumn({
         </div>
       )}
 
-      <div ref={scrollContainerRef} style={{ flex: 1, overflow: "auto", padding: 10 }}>
-        {/* Theme info */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Theme Info</div>
+      <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
+        <StudioSection title="Theme Info">
           <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <label style={{ width: 70, fontSize: 11, color: "var(--text-secondary)" }}>Name</label>
@@ -2211,7 +1823,7 @@ function EditorColumn({
               />
             </div>
           </div>
-        </div>
+        </StudioSection>
 
         {/* Quick Adjust — composed controls for the most common tweaks */}
         <QuickAdjustSection
@@ -2224,13 +1836,12 @@ function EditorColumn({
         />
 
         {/* Theme tokens — foundational values used across many elements */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Theme</div>
+        <StudioSection title="Theme">
           <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
             {THEME_TOKENS.map((tok) => {
               const val = vars[tok.key];
               const saved = savedVars[tok.key];
-              const isModified = String(val ?? "") !== String(saved ?? "");
+              const isModified = differsFromSaved(val, saved);
               // When a color token is cleared the panel renders the CSS :root
               // fallback — show that effective value (swatch + placeholder) rather
               // than a misleading blank/black field.
@@ -2293,32 +1904,13 @@ function EditorColumn({
                         <option value="monospace">Monospace</option>
                       </select>
                     )}
-                    {isModified && (
-                      <button
-                        type="button"
-                        onClick={() => onSetVar(tok.key, saved)}
-                        title={`Reset to saved: ${saved}`}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          padding: 2,
-                          background: "transparent",
-                          border: "none",
-                          cursor: "pointer",
-                          color: "var(--accent)",
-                          flexShrink: 0,
-                          opacity: 0.7,
-                        }}
-                      >
-                        <RotateCcw size={11} />
-                      </button>
-                    )}
+                    {isModified && <ResetToSaved saved={saved} size={11} onReset={() => onSetVar(tok.key, saved)} />}
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        </StudioSection>
 
         {/* Page background — theme-level page_defaults */}
         <PageBackgroundSection
@@ -2328,210 +1920,27 @@ function EditorColumn({
           onChange={onSetPageDefaults}
         />
 
-        {/* Per-element styling */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Elements</div>
-          <div style={{ padding: 10 }}>
-            {ELEMENT_ORDER.map((elType) => {
-              const controls = ELEMENT_CONTROLS[elType];
-              if (!controls) return null;
-              return (
-                <details
-                  key={elType}
-                  ref={(el) => { elementRefs.current[elType] = el; }}
-                  style={{ marginBottom: 6 }}
-                >
-                  <summary
-                    style={{
-                      cursor: "pointer",
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: "var(--text-primary)",
-                      padding: "4px 0",
-                    }}
-                  >
-                    {ELEMENT_TYPE_LABELS[elType] || elType}
-                  </summary>
-                  <div style={{ paddingLeft: 12, paddingTop: 4, display: "flex", flexDirection: "column", gap: 4 }}>
-                    {controls.map((control) => {
-                      const val =
-                        control.source.kind === "var"
-                          ? vars[control.source.key]
-                          : defaults[elType]?.[control.source.key];
-                      const savedVal =
-                        control.source.kind === "var"
-                          ? savedVars[control.source.key]
-                          : savedDefaults[elType]?.[control.source.key];
-                      const isModified = String(val ?? "") !== String(savedVal ?? "");
-                      // A cleared var-backed color inherits the CSS :root default;
-                      // a cleared element_defaults color inherits the theme/CSS
-                      // default (no single literal). Show the effective value where
-                      // we know it, else flag it as inherited.
-                      const controlFallback =
-                        control.source.kind === "var" ? CSS_VAR_FALLBACKS[control.source.key] : undefined;
-                      const isInherited = val == null || val === "";
-                      const setControl = (next: unknown) => {
-                        if (control.source.kind === "var") {
-                          onSetVar(control.source.key, next);
-                        } else {
-                          onSetElementDefault(elType, control.source.key, next);
-                        }
-                      };
-                      const resetControl = () => {
-                        if (control.source.kind === "var") {
-                          onSetVar(control.source.key, savedVal);
-                        } else {
-                          onSetElementDefault(elType, control.source.key, savedVal);
-                        }
-                      };
-                      const isBoxShadow = control.source.kind === "default" && control.source.key === "box_shadow";
-                      return (
-                        <div key={`${control.source.kind}:${control.source.key}`}>
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 6,
-                              alignItems: isBoxShadow ? "flex-start" : "center",
-                            }}
-                          >
-                            <label
-                              title={control.hint}
-                              style={{
-                                width: 130,
-                                fontSize: 10,
-                                color: isModified ? "var(--accent)" : "var(--text-muted)",
-                                fontWeight: isModified ? 600 : 400,
-                                paddingTop: isBoxShadow ? 4 : 0,
-                              }}
-                            >
-                              {control.label}
-                            </label>
-                            {control.type === "color" ? (
-                              <>
-                                <ColorPickerCell
-                                  value={String(val ?? "")}
-                                  fallback={controlFallback}
-                                  onChange={(next) => setControl(next)}
-                                />
-                                <input
-                                  type="text"
-                                  value={String(val ?? "")}
-                                  placeholder={
-                                    isInherited
-                                      ? controlFallback
-                                        ? `${controlFallback} (inherited)`
-                                        : "inherited"
-                                      : ""
-                                  }
-                                  title={
-                                    isInherited
-                                      ? controlFallback
-                                        ? `Inherits ${controlFallback}`
-                                        : "Inherits the theme default"
-                                      : undefined
-                                  }
-                                  onChange={(e) => setControl(e.target.value)}
-                                  style={{ flex: 1, fontSize: 10, fontFamily: "monospace" }}
-                                />
-                              </>
-                            ) : control.type === "number" ? (
-                              <input
-                                type="number"
-                                value={
-                                  val == null || val === ""
-                                    ? ""
-                                    : (displayStyleValue(control.source.key, Number(val)) as number)
-                                }
-                                onChange={(e) =>
-                                  setControl(
-                                    e.target.value === ""
-                                      ? undefined
-                                      : storeStyleValue(control.source.key, Number(e.target.value)),
-                                  )
-                                }
-                                style={{ flex: 1, fontSize: 10 }}
-                              />
-                            ) : isBoxShadow ? (
-                              <textarea
-                                value={String(val ?? "")}
-                                onChange={(e) => setControl(e.target.value)}
-                                placeholder="none"
-                                title={String(val ?? "")}
-                                rows={2}
-                                spellCheck={false}
-                                style={{
-                                  flex: 1,
-                                  fontSize: 10,
-                                  fontFamily: "monospace",
-                                  resize: "vertical",
-                                  minHeight: 32,
-                                  lineHeight: 1.3,
-                                }}
-                              />
-                            ) : (
-                              <input
-                                type="text"
-                                value={String(val ?? "")}
-                                onChange={(e) => setControl(e.target.value)}
-                                placeholder="none"
-                                title={String(val ?? "")}
-                                style={{ flex: 1, fontSize: 10, fontFamily: "monospace" }}
-                              />
-                            )}
-                            {isModified && (
-                              <button
-                                type="button"
-                                onClick={resetControl}
-                                title={`Reset to saved: ${savedVal}`}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  padding: 2,
-                                  background: "transparent",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  color: "var(--accent)",
-                                  flexShrink: 0,
-                                  opacity: 0.7,
-                                }}
-                              >
-                                <RotateCcw size={10} />
-                              </button>
-                            )}
-                          </div>
-                          {control.hint && (
-                            <div
-                              style={{
-                                fontSize: 9,
-                                color: "var(--text-muted)",
-                                paddingLeft: 136,
-                                marginTop: 1,
-                                lineHeight: 1.3,
-                              }}
-                            >
-                              {control.hint}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </details>
-              );
-            })}
-          </div>
-        </div>
+        <ElementSections
+          vars={vars}
+          defaults={defaults}
+          savedVars={savedVars}
+          savedDefaults={savedDefaults}
+          onSetVar={onSetVar}
+          onSetElementDefault={onSetElementDefault}
+        />
 
-        {/* Contrast */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>
-            Contrast (WCAG)
-            {failingContrasts.length > 0 && (
-              <span style={{ color: "#ef5350", marginLeft: 6, fontWeight: 600 }}>
-                {failingContrasts.length} failing
-              </span>
-            )}
-          </div>
+        <StudioSection
+          title={
+            <>
+              Contrast (WCAG)
+              {failingContrasts.length > 0 && (
+                <span style={{ color: "#ef5350", marginLeft: 6, fontWeight: 600 }}>
+                  {failingContrasts.length} failing
+                </span>
+              )}
+            </>
+          }
+        >
           <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 4 }}>
             {contrastChecks.map((c) => (
               <div
@@ -2589,7 +1998,7 @@ function EditorColumn({
               WCAG AA requires 4.5:1 for normal text. AAA requires 7:1.
             </div>
           </div>
-        </div>
+        </StudioSection>
       </div>
     </div>
   );
