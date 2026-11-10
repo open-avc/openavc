@@ -4,8 +4,9 @@
  *
  * A new palette type's starting fields are one entry in `NEW_ELEMENT_FIELDS`,
  * beside its size in `DEFAULT_ELEMENT_SIZES` and, when it has one, its lock in
- * `DEFAULT_ASPECT_LOCKS`; its palette entry (`ELEMENT_TYPES`) and what it can
- * bind (`BINDING_CAPABILITIES`) are in uiBuilderHelpers.ts. A plugin element
+ * `DEFAULT_ASPECT_LOCKS`; its palette entry (`ELEMENT_TYPES`) is in
+ * uiBuilderHelpers.ts and what it can bind (`BINDING_CAPABILITIES`) in
+ * bindingCapabilities.ts. A plugin element
  * is spelled `plugin:<plugin_id>:<plugin_type>`, and `pluginElementType` is
  * the one reading of that spelling all three answers ask.
  *
