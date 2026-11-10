@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { DndContext, DragOverlay } from "@dnd-kit/core";
+import { DndContext } from "@dnd-kit/core";
 import { useProjectStore } from "../store/projectStore";
 import { useFlushBeforeUnload } from "../store/saveState";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
@@ -9,7 +9,7 @@ import { useEditRun } from "./ui-builder/useEditRun";
 import { useBuilderShortcuts } from "./ui-builder/builderShortcuts";
 import { useElementEdits } from "./ui-builder/useElementEdits";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
-import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
+import { PaletteDragOverlay } from "./ui-builder/PaletteDragGhost";
 import { useValidation } from "./ui-builder/ValidationReport";
 import { BuilderDialogs, themeListChange, useBuilderDialogs } from "./ui-builder/BuilderDialogs";
 import { BuilderContextMenu } from "./ui-builder/BuilderContextMenu";
@@ -130,12 +130,7 @@ export function UIBuilderView() {
         }
       />
 
-      {/* Drag overlay — outlined footprint sized to the drop target, with the
-          element type label. Only shown while the pointer is OFF the canvas;
-          over it, the canvas draws the snapped footprint in its place. */}
-      <DragOverlay dropAnimation={null}>
-        {palette.ghost ? <PaletteDragGhost {...palette.ghost} /> : null}
-      </DragOverlay>
+      <PaletteDragOverlay ghost={palette.ghost} />
 
       <BuilderContextMenu edits={edits} />
 

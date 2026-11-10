@@ -1,11 +1,21 @@
 /**
- * The cross-panel ghost for a palette drag: an outlined box the size the
- * control will land at, labelled with its type, centred under the pointer.
- * It hides itself the moment the snapped canvas footprint takes over, and it
- * subscribes to the store itself so the per-pointer-move re-render stays
- * contained here instead of re-running the whole page.
+ * A palette drag as drawn outside the canvas: the drag library's overlay, with
+ * no drop animation, holding the ghost while a drag is under way
+ * (`PaletteDragOverlay`, which the page places inside its drag context).
+ *
+ * The ghost is an outlined box the size the control will land at, labelled with
+ * its type, centred under the pointer. It hides itself the moment the snapped
+ * canvas footprint takes over, and it subscribes to the store itself so the
+ * per-pointer-move re-render stays contained here instead of re-running the
+ * whole page.
  */
+import { DragOverlay } from "@dnd-kit/core";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
+import type { PaletteGhost } from "./usePaletteDrop";
+
+export function PaletteDragOverlay({ ghost }: { ghost: PaletteGhost | null }) {
+  return <DragOverlay dropAnimation={null}>{ghost ? <PaletteDragGhost {...ghost} /> : null}</DragOverlay>;
+}
 
 export function PaletteDragGhost({
   label,
