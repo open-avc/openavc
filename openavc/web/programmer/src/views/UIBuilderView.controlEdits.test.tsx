@@ -255,6 +255,16 @@ describe("what an edit reads of the selection", () => {
     expect(builder().selectedMasterElementId).toBe("m_2");
   });
 
+  it("hides a control in the arrangement chosen after the page was drawn", async () => {
+    seed(makeProject(), { selectedPageId: "main", activeLayoutId: "main_land" });
+    await renderPage(UIBuilderView);
+    showOutline();
+    call(() => builder().selectLayout("main_port"));
+    call(() => outline().onToggleHidden("btn_1"));
+    expect(pageOf("main").layouts[1].hidden).toEqual(["btn_1"]);
+    expect(pageOf("main").layouts[0].hidden).toEqual([]);
+  });
+
   it("copies the whole selection with Ctrl+C, in the page's order", async () => {
     seed(makeProject(), { selectedPageId: "main", selectedElementIds: ["lbl_1", "btn_1"] });
     await renderPage(UIBuilderView);
