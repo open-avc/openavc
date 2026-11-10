@@ -52,6 +52,7 @@ from openavc.drivers.child_routes import (
     compile_osc_child_set,
 )
 from openavc.drivers.json_value_spec import FLAT, json_value_mapping
+from openavc.drivers.spec import CONVERSION_KEYS as CONVERSION_KEYS
 from openavc.transport.binary_helpers import (
     DEFAULT_MAX_BUFFER,
     encode_escape_sequences,
@@ -475,9 +476,8 @@ def coerce_osc_value(value: Any, value_type: str) -> Any:
 # the state variable that holds the value and on the command parameter that
 # sets it: real = raw * scale + offset. ``unknown`` lists the raw values that
 # mean "no reading", stored as None. The runtime, the simulator and the
-# validator all convert through these two functions.
-
-CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset", "unknown")
+# validator all convert through these two functions. The keys themselves are
+# the contract's (spec.CONVERSION_KEYS), which the validator reads too.
 
 
 def conversion_of(decl: Any) -> dict[str, Any] | None:

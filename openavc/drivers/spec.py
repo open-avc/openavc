@@ -559,6 +559,12 @@ VALUE_UNKNOWN: dict = {
     'since': '0.37.0',
 }
 
+# The keys a declaration converts through, in the order the checks name them:
+# what compiled_protocol reads off a state variable or param, and what
+# conversion_checks refuses where nothing would apply them. The registry
+# entries above carry the same names (tests/test_conversion_keys.py).
+CONVERSION_KEYS: tuple[str, ...] = ("scale", "offset", "unknown")
+
 # Column types for a table config field: the scalar config types (a table
 # inside a table cell is not a thing).
 _COLUMN_TYPES: tuple[str, ...] = tuple(t for t in CONFIG_FIELD_TYPES if t != "table")
