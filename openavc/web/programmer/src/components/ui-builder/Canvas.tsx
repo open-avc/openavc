@@ -15,6 +15,7 @@ import {
   movedBox,
   resizedBox,
   aspectLockOf,
+  sameBox,
   containerOf,
   containersAbove,
   getPlacement,
@@ -700,32 +701,8 @@ export function Canvas({
         pushLivePreview(next);
       };
 
-      let lastEvent: PointerEvent | null = null;
-      const onMove = (ev: PointerEvent) => {
-        lastEvent = ev;
-        apply(ev, ev.clientX - startX, ev.clientY - startY);
-      };
-
-      const cleanup = () => {
-        document.removeEventListener("pointermove", onMove);
-        document.removeEventListener("pointerup", onUp);
-        document.removeEventListener("keydown", onKey);
-        // keyup too — a leaked keyup handler re-runs the snap math after the
-        // commit, so releasing Alt after the drop visibly re-snapped the
-        // element while the store kept the bypassed position.
-        document.removeEventListener("keyup", onKey);
-        cleanupGestureRef.current = null;
-      };
-
-      const revert = () => {
-        settleLivePreview(startBoxes);
-        gestureRef.current = null;
-        setGesture(null);
-      };
-
-      const onUp = () => {
+      const finish = () => {
         const finished = gestureRef.current;
-        cleanup();
         gestureRef.current = null;
         setGesture(null);
         if (!finished) {
@@ -734,7 +711,7 @@ export function Canvas({
         }
         const changed = Object.entries(finished.placements).some(([id, p]) => {
           const before = startBoxes[id];
-          return !before || before.x !== p.x || before.y !== p.y || before.w !== p.w || before.h !== p.h;
+          return !before || !sameBox(before, p);
         });
         // Either way, the frame still owed is dropped and the boxes are stated
         // once: where they landed, or — nothing moved — where the store still
@@ -743,25 +720,13 @@ export function Canvas({
         if (changed) commitPlacements(finished.placements, kind);
       };
 
-      const onKey = (ev: KeyboardEvent) => {
-        if (ev.key === "Escape") {
-          cleanup();
-          revert();
-          return;
-        }
-        // Alt and Shift change the answer mid-gesture, so re-run the last
-        // pointer position through the new modifiers rather than waiting for
-        // the pointer to twitch.
-        if ((ev.key === "Alt" || ev.key === "Shift") && lastEvent) {
-          apply(ev, lastEvent.clientX - startX, lastEvent.clientY - startY);
-        }
+      const cancel = () => {
+        settleLivePreview(startBoxes);
+        gestureRef.current = null;
+        setGesture(null);
       };
 
-      cleanupGestureRef.current = cleanup;
-      document.addEventListener("pointermove", onMove);
-      document.addEventListener("pointerup", onUp);
-      document.addEventListener("keydown", onKey);
-      document.addEventListener("keyup", onKey);
+      followPointer({ x: startX, y: startY }, { apply, finish, cancel }, cleanupGestureRef);
     },
     [previewMode, project, page, placements, absolute, snap, activeLayoutId,
      commitPlacements, pushLivePreview, settleLivePreview],
@@ -819,35 +784,12 @@ export function Canvas({
         pushLivePreview(placements);
       };
 
-      let lastEvent: PointerEvent | null = null;
-      const onMove = (ev: PointerEvent) => {
-        lastEvent = ev;
-        apply(ev, ev.clientX - startX, ev.clientY - startY);
-      };
-
-      const cleanup = () => {
-        document.removeEventListener("pointermove", onMove);
-        document.removeEventListener("pointerup", onUp);
-        document.removeEventListener("keydown", onKey);
-        document.removeEventListener("keyup", onKey);
-        cleanupGestureRef.current = null;
-      };
-
-      const revert = () => {
-        settleLivePreview({ [masterId]: start });
-        gestureRef.current = null;
-        setGesture(null);
-      };
-
-      const onUp = () => {
+      const finish = () => {
         const finished = gestureRef.current;
-        cleanup();
         gestureRef.current = null;
         setGesture(null);
         const box = finished?.placements[masterId];
-        const moved =
-          !!box &&
-          (box.x !== start.x || box.y !== start.y || box.w !== start.w || box.h !== start.h);
+        const moved = !!box && !sameBox(box, start);
         settleLivePreview({ [masterId]: moved && box ? box : start });
         if (!moved || !box) return;
         pushUndo(
@@ -865,22 +807,13 @@ export function Canvas({
         touchMutation();
       };
 
-      const onKey = (ev: KeyboardEvent) => {
-        if (ev.key === "Escape") {
-          cleanup();
-          revert();
-          return;
-        }
-        if ((ev.key === "Alt" || ev.key === "Shift") && lastEvent) {
-          apply(ev, lastEvent.clientX - startX, lastEvent.clientY - startY);
-        }
+      const cancel = () => {
+        settleLivePreview({ [masterId]: start });
+        gestureRef.current = null;
+        setGesture(null);
       };
 
-      cleanupGestureRef.current = cleanup;
-      document.addEventListener("pointermove", onMove);
-      document.addEventListener("pointerup", onUp);
-      document.addEventListener("keydown", onKey);
-      document.addEventListener("keyup", onKey);
+      followPointer({ x: startX, y: startY }, { apply, finish, cancel }, cleanupGestureRef);
     },
     [previewMode, project, lockedElementIds, canvasOrientation, topLevel, absolute,
      visibleMasters, snap, pushLivePreview, settleLivePreview, pushUndo, update,
@@ -1210,6 +1143,59 @@ export function Canvas({
  * edge matches and draw hairlines that attracted nothing. Now the snapping is
  * done by the gesture and these are simply the answer, drawn.
  */
+/**
+ * Follow a press until the pointer lets go. Every pointer move runs `apply`
+ * with the travel since the press; pressing or letting go of Alt or Shift runs
+ * it again at the last position, because they change the answer and the
+ * pointer may not twitch; Escape ends the gesture through `cancel` and letting
+ * go through `finish`, each once the listeners are gone. Until then `endRef`
+ * holds what ends it early, which a new press and the canvas unmounting call.
+ */
+function followPointer(
+  from: { x: number; y: number },
+  gesture: {
+    apply: (ev: PointerEvent | KeyboardEvent, dx: number, dy: number) => void;
+    finish: () => void;
+    cancel: () => void;
+  },
+  endRef: { current: (() => void) | null },
+): void {
+  let lastEvent: PointerEvent | null = null;
+  const onMove = (ev: PointerEvent) => {
+    lastEvent = ev;
+    gesture.apply(ev, ev.clientX - from.x, ev.clientY - from.y);
+  };
+  const end = () => {
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    document.removeEventListener("keydown", onKey);
+    // keyup too — a leaked keyup handler re-runs the snap math after the
+    // commit, so releasing Alt after the drop visibly re-snapped the
+    // element while the store kept the bypassed position.
+    document.removeEventListener("keyup", onKey);
+    endRef.current = null;
+  };
+  const onUp = () => {
+    end();
+    gesture.finish();
+  };
+  const onKey = (ev: KeyboardEvent) => {
+    if (ev.key === "Escape") {
+      end();
+      gesture.cancel();
+      return;
+    }
+    if ((ev.key === "Alt" || ev.key === "Shift") && lastEvent) {
+      gesture.apply(ev, lastEvent.clientX - from.x, lastEvent.clientY - from.y);
+    }
+  };
+  endRef.current = end;
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+  document.addEventListener("keydown", onKey);
+  document.addEventListener("keyup", onKey);
+}
+
 function SnapGuides({ guidesX, guidesY }: { guidesX: number[]; guidesY: number[] }) {
   if (!guidesX.length && !guidesY.length) return null;
   return (

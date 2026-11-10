@@ -600,6 +600,12 @@ export interface Travel {
   frame: { width: number; height: number };
 }
 
+/** Two boxes with the same four numbers: a gesture that ends on its start
+ *  box changed nothing. */
+export function sameBox(a: Placement, b: Placement): boolean {
+  return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
+}
+
 /** A control's aspect lock (its width over its height, in pixels), when it
  *  has one that is a positive number. */
 export function aspectLockOf(el: Pick<UIElement, "aspect_lock"> | undefined): number | null {
