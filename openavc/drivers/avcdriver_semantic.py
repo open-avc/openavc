@@ -5,11 +5,12 @@ is reached through this module: ``validate_driver_definition`` walks the
 definition section by section and asks a check module about each command
 (``command_checks``), response rule (``response_rule_checks``), query entry
 (``query_entry_checks``), child type and the references into it
-(``child_type_checks``), state variable (``state_variable_checks``), the
-push block (``push_block_checks``), the Quick Action blocks
-(``action_checks``), the framing each way (``framing_checks``), the sign-in
-(``sign_in_checks``), the watchdog (``liveness_checks``) and the ``routing:``
-block (``routing_checks``). The runtime
+(``child_type_checks``), state variable (``state_variable_checks``), device
+setting and learned config field (``setting_checks``), the push block
+(``push_block_checks``), the Quick Action blocks (``action_checks``), the
+framing each way (``framing_checks``), the sign-in (``sign_in_checks``), the
+watchdog (``liveness_checks``) and the ``routing:`` block
+(``routing_checks``). The runtime
 loader wraps it (adding the discovery-block check, which needs the
 discovery engine's parser), and the community driver catalog runs a copy of
 the same rules in its CI, so a definition that passes catalog review is
@@ -40,11 +41,10 @@ from openavc.drivers.child_type_checks import (
     child_type_errors,
     undeclared_child_type_reason as undeclared_child_type_reason,
 )
-from openavc.drivers.command_checks import CommandSection, osc_args_errors
+from openavc.drivers.command_checks import CommandSection
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY,
     closest_name,
-    declared_enum_values,
     substitution_names,
 )
 from openavc.drivers.framing_checks import (
@@ -64,9 +64,14 @@ from openavc.drivers.response_rule_checks import response_rule_errors
 from openavc.drivers.routing_checks import (
     routing_block_errors as routing_block_errors,
 )
+from openavc.drivers.setting_checks import (
+    config_learned_from_errors as config_learned_from_errors,
+    device_setting_errors,
+    device_setting_map_errors as device_setting_map_errors,
+    device_setting_state_key_errors as device_setting_state_key_errors,
+)
 from openavc.drivers.sign_in_checks import auth_errors
 from openavc.drivers.spec import (
-    CONNECTION_FIELDS,
     DEFAULT_LINE_GAP_S,
     DEFS,
     FIELDS,
@@ -76,7 +81,6 @@ from openavc.drivers.spec import (
     PORT_OPEN_TRANSPORTS,
     REQUIRED_FIELDS,
     SILENCE_CHECK_TRANSPORTS,
-    VALUE_TYPES,
     YAML_TRANSPORTS,
     block_has_fixed_keys,
     is_secret_setting,
@@ -598,12 +602,9 @@ def validate_driver_definition(
         errors.ctx = frame_key
         errors.extend(command_affix_errors(driver_def, frame_key))
 
-    # Device settings: each entry must be writable (a `write:` block — the
-    # runtime raises NotImplementedError without one) and its state_key must
-    # name a declared state variable. A typo'd state_key used to load fine
-    # and just show "(not set)" forever while writes silently fired.
-    # (`declared_vars` is hoisted above the command loop.)
-    valid_setting_types = set(VALUE_TYPES)
+    # A config field's learned_from and each device setting, checked in
+    # setting_checks against the driver's own state variables (`declared_vars`
+    # is read above the command loop).
     raw_config_schema = driver_def.get("config_schema")
     if isinstance(raw_config_schema, dict):
         for field_name, field_def in raw_config_schema.items():
@@ -620,36 +621,7 @@ def validate_driver_definition(
     elif isinstance(device_settings, dict):
         for setting_name, setting_def in device_settings.items():
             errors.ctx = f"device_settings.{setting_name}"
-            where = f"Device setting '{setting_name}'"
-            if not isinstance(setting_def, dict):
-                errors.append(f"{where}: must be a mapping")
-                continue
-            stype = setting_def.get("type", "")
-            if stype and stype not in valid_setting_types:
-                errors.append(f"{where}: unknown type '{stype}'")
-            errors.extend(
-                device_setting_state_key_errors(
-                    where, setting_name, setting_def, declared_vars,
-                )
-            )
-            mn, mx = setting_def.get("min"), setting_def.get("max")
-            if (
-                isinstance(mn, (int, float)) and isinstance(mx, (int, float))
-                and not isinstance(mn, bool) and not isinstance(mx, bool)
-                and mn > mx
-            ):
-                errors.append(f"{where}: min ({mn}) is greater than max ({mx})")
-            write = setting_def.get("write")
-            if not isinstance(write, dict):
-                errors.append(
-                    f"{where}: missing 'write' block (send / path / address); "
-                    f"a device setting must be writable"
-                )
-            elif write.get("address") is not None:
-                # OSC writes share the command arg encoder — validate their
-                # arg types too so a bad tag fails at load, not write time.
-                errors.extend(osc_args_errors(f"{where} write", write.get("args")))
-            errors.extend(device_setting_map_errors(where, setting_def))
+            errors.extend(device_setting_errors(setting_name, setting_def, declared_vars))
 
     # Validate the Phase 6 ``discovery:`` block. Templates (generic_*)
     # are exempt — they don't participate in discovery. Phase 8 dropped
@@ -1216,145 +1188,4 @@ def value_conversion_errors(
                     f"a setting's value only for YAML drivers, and a Python "
                     f"driver writes its settings in its own code"
                 )
-    return errors
-
-
-def device_setting_state_key_errors(
-    where: str,
-    setting_name: str,
-    setting_def: dict[str, Any],
-    declared_vars: Any,
-) -> list[str]:
-    """A device setting's ``state_key`` must name a declared state variable.
-
-    Lifted out of the YAML walk so the Python surface can reach the same rule
-    rather than grow a second one. It is called from exactly where it always
-    ran, with the same message, so YAML error order is unchanged.
-
-    A typo'd ``state_key`` loads fine and shows "(not set)" forever while
-    writes fire into nothing — a setting that appears to work and never reads
-    back.
-
-    ``declared_vars`` may be an unreadable block on the Python surface (a
-    driver that builds its state variables at runtime). "Not in a set we could
-    not read" proves nothing, so that case is left to the caller's skip
-    reporting rather than turned into an error.
-    """
-    if not isinstance(declared_vars, dict) or UNEVALUATED_KEY in declared_vars:
-        return []
-    state_key = setting_def.get("state_key", setting_name)
-    if not isinstance(state_key, str):
-        return []
-    if state_key in declared_vars:
-        return []
-    return [
-        f"{where}: state_key '{state_key}' is not a declared "
-        f"state variable, so the setting would never read back"
-    ]
-
-
-def config_learned_from_errors(
-    field_name: str,
-    field_def: dict[str, Any],
-    declared_vars: Any,
-) -> list[str]:
-    """A config field's ``learned_from`` names the state variable the device
-    reports the value in, and the platform saves that report into the field.
-
-    One rule for both surfaces, like ``device_setting_state_key_errors``. A
-    name that is not a declared state variable is never reported, so the
-    field is silently never filled in. A secret is never learned (the value
-    would have to sit in visible state first), a table has no single value
-    to learn, and a connection field is saved to the connections table, where
-    a reported value would move where the device dials. A state-variable
-    block built at runtime cannot be judged from the source and is skipped,
-    not failed.
-    """
-    learned_from = field_def.get("learned_from")
-    if learned_from is None:
-        return []
-    where = f"Config field '{field_name}'"
-    if not isinstance(learned_from, str) or not learned_from.strip():
-        return [f"{where}: learned_from must name a state variable"]
-    errors: list[str] = []
-    if is_secret_setting(field_name, field_def):
-        errors.append(
-            f"{where}: a secret field cannot be learned_from a state variable, "
-            f"because the value would have to be shown as state first"
-        )
-    if field_def.get("type") == "table":
-        errors.append(
-            f"{where}: a table field cannot be learned_from a state variable, "
-            f"because it has no single value to fill in"
-        )
-    if field_name in CONNECTION_FIELDS:
-        errors.append(
-            f"{where}: a connection field cannot be learned_from a state "
-            f"variable, because a reported value would change how the device "
-            f"is reached"
-        )
-    if isinstance(declared_vars, dict) and UNEVALUATED_KEY not in declared_vars:
-        if learned_from not in declared_vars:
-            errors.append(
-                f"{where}: learned_from '{learned_from}' is not a declared "
-                f"state variable, so the field would never be filled in"
-            )
-    return errors
-
-
-def device_setting_map_errors(where: str, setting_def: dict[str, Any]) -> list[str]:
-    """A device setting's ``map``: the device's own word for each value.
-
-    The keys are values the setting can take, so a key the editor can never
-    write is a word that is never sent: on a ``boolean`` setting only true and
-    false, on an ``enum`` only its declared values. Other types take any key.
-
-    A bare YAML ``true`` / ``on`` / ``yes`` (key or word) loads as a boolean,
-    which the published schema refuses, so it is refused here with the remedy
-    rather than left to fail in catalog CI. Same shape rule as a command
-    param's ``map``.
-    """
-    value_map = setting_def.get("map")
-    if value_map is None:
-        return []
-    if not isinstance(value_map, dict) or not value_map:
-        return [
-            f"{where}: map must be a non-empty mapping of setting value -> "
-            f"device word"
-        ]
-    errors: list[str] = []
-    stype = setting_def.get("type", "string")
-    allowed = declared_enum_values(setting_def) if stype == "enum" else None
-    for key, word in value_map.items():
-        if isinstance(key, bool):
-            errors.append(
-                f"{where}: map key '{key}' is not text; YAML reads a bare "
-                f"true, false, on, off, yes or no as a boolean. Put it in quotes."
-            )
-            continue
-        if isinstance(word, bool):
-            errors.append(
-                f"{where}: map word for '{key}' is not text; YAML reads a bare "
-                f"ON, OFF, YES or NO as a boolean. Put it in quotes."
-            )
-            continue
-        if not (
-            isinstance(key, (str, int, float))
-            and isinstance(word, (str, int, float))
-        ):
-            errors.append(
-                f"{where}: map entries must be setting value -> device word "
-                f"pairs of text or numbers"
-            )
-            continue
-        if stype == "boolean" and str(key).strip().lower() not in ("true", "false"):
-            errors.append(
-                f"{where}: map key '{key}' is not a value a boolean setting "
-                f"takes; use \"true\" and \"false\""
-            )
-        elif allowed is not None and str(key) not in allowed:
-            errors.append(
-                f"{where}: map key '{key}' is not one of the setting's values "
-                f"({', '.join(allowed)})"
-            )
     return errors
