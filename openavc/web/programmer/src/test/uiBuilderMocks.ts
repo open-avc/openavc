@@ -53,9 +53,10 @@ export const stubs = {
   ThemeStudio: { ThemeStudio: recorder("ThemeStudio") },
   StylesheetEditor: { StylesheetEditor: recorder("StylesheetEditor") },
   panels: {
-    PanelGroup: ({ children }: { children: ReactNode }) => h("div", { "data-testid": "panel-group" }, children),
-    Panel: ({ children, defaultSize }: { children: ReactNode; defaultSize?: number }) =>
-      h("div", { "data-testid": "panel", "data-size": defaultSize }, children),
+    PanelGroup: ({ children, direction }: { children: ReactNode; direction?: string }) =>
+      h("div", { "data-testid": "panel-group", "data-direction": direction }, children),
+    Panel: ({ children, defaultSize, minSize, maxSize }: { children: ReactNode; defaultSize?: number; minSize?: number; maxSize?: number }) =>
+      h("div", { "data-testid": "panel", "data-size": defaultSize, "data-min": minSize, "data-max": maxSize }, children),
     PanelResizeHandle: () => h("div", { "data-testid": "resize-handle" }),
   },
 };

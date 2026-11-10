@@ -28,6 +28,7 @@ import {
   installFetch,
   makeProject,
   page,
+  press,
   project,
   renderPage,
   resetMocks,
@@ -98,6 +99,93 @@ describe("preview", () => {
     expect(screen.getAllByTestId("panel").map((p) => p.dataset.size)).toEqual(["100"]);
     expect(seen.Canvas.previewMode).toBe(true);
     expect(screen.queryByTestId("stub-PropertiesPanel")).toBeNull();
+  });
+});
+
+/** The columns side by side, left to right: each panel as its size and limits
+ *  ("-" for none), each resize handle as "|". */
+function columns(): string[] {
+  const group = screen.getByTestId("panel-group");
+  expect(group.dataset.direction).toBe("horizontal");
+  return Array.from(group.children).map((c) => {
+    const d = (c as HTMLElement).dataset;
+    return c.getAttribute("data-testid") === "panel" ? [d.size, d.min ?? "-", d.max ?? "-"].join("/") : "|";
+  });
+}
+
+describe("the columns", () => {
+  it("draws the palette, the canvas and the Properties panel with a handle between each, at their sizes and limits", async () => {
+    await renderPage(UIBuilderView);
+    expect(columns()).toEqual(["15/10/25", "|", "60/-/-", "|", "25/15/40"]);
+    expect(within(screen.getAllByTestId("panel")[0]).getByTestId("stub-ElementPalette")).toBeInTheDocument();
+    expect(within(screen.getAllByTestId("panel")[1]).getByTestId("stub-Canvas")).toBeInTheDocument();
+    expect(within(screen.getAllByTestId("panel")[2]).getByTestId("stub-PropertiesPanel")).toBeInTheDocument();
+  });
+
+  it("takes the palette and its handle away with Ctrl+E, leaving the canvas its size, and both side panels in preview", async () => {
+    await renderPage(UIBuilderView);
+    press("e", { ctrl: true });
+    expect(columns()).toEqual(["60/-/-", "|", "25/15/40"]);
+    press("p", { ctrl: true });
+    expect(columns()).toEqual(["100/-/-"]);
+    press("e", { ctrl: true });
+    expect(columns()).toEqual(["100/-/-"]);
+    press("p", { ctrl: true });
+    expect(columns()).toEqual(["15/10/25", "|", "60/-/-", "|", "25/15/40"]);
+  });
+
+  it("says there are no pages in the canvas's own column, preview or not", async () => {
+    seed(makeProject({ pages: [] }));
+    await renderPage(UIBuilderView);
+    const note = "No pages yet. Click + to add a page.";
+    expect(within(screen.getAllByTestId("panel")[1]).getByText(note)).toBeInTheDocument();
+    expect(seen.Canvas).toBeUndefined();
+    call(() => builder().setPreviewMode(true));
+    expect(within(screen.getAllByTestId("panel")[0]).getByText(note)).toBeInTheDocument();
+  });
+
+  it("draws nothing else while the project loads, and the whole Builder once it is there", async () => {
+    seed(null);
+    await renderPage(UIBuilderView);
+    expect(screen.queryByTestId("panel-group")).toBeNull();
+    expect(seen.CanvasToolbar).toBeUndefined();
+    expect(seen.ThemeStudio).toBeUndefined();
+    call(() => useProjectStore.setState({ project: makeProject() }));
+    expect(screen.queryByText("Loading project...")).toBeNull();
+    expect(columns()).toEqual(["15/10/25", "|", "60/-/-", "|", "25/15/40"]);
+    expect(seen.CanvasToolbar.pages).toHaveLength(2);
+    expect(seen.ThemeStudio.open).toBe(false);
+  });
+});
+
+describe("the toolbar's view settings, changed once the page is drawn", () => {
+  it("reach the canvas: the zoom, the grid, the screen, the arrangement and preview", async () => {
+    seed(makeProject(), { selectedPageId: "main" });
+    await renderPage(UIBuilderView);
+    expect(seen.Canvas).toMatchObject({ previewMode: false, showGrid: true, zoom: 1, screenWidth: 1024, screenHeight: 600 });
+    call(() => builder().setZoom(0.7));
+    expect(seen.Canvas.zoom).toBe(0.7);
+    call(() => builder().toggleGrid());
+    expect(seen.Canvas.showGrid).toBe(false);
+    call(() => builder().setScreenPresetIndex(3));
+    expect(seen.Canvas).toMatchObject({ screenWidth: 1920, screenHeight: 1080 });
+    call(() => builder().selectLayout("main_port"));
+    expect(seen.Canvas).toMatchObject({ screenWidth: 1080, screenHeight: 1920 });
+    call(() => builder().setPreviewMode(true));
+    expect(seen.Canvas).toMatchObject({ previewMode: true, showGrid: false, zoom: 0.7, screenWidth: 1080, screenHeight: 1920 });
+  });
+
+  it("reach both previews: a preset chosen later sizes the Theme Studio and the stylesheet, as chosen", async () => {
+    seed(makeProject(), { selectedPageId: "main", activeLayoutId: "main_port" });
+    await renderPage(UIBuilderView);
+    expect(seen.ThemeStudio).toMatchObject({ panelWidth: 1024, panelHeight: 600 });
+    call(() => builder().setScreenPresetIndex(2));
+    expect(seen.ThemeStudio).toMatchObject({ panelWidth: 1024, panelHeight: 768 });
+    fireEvent.click(screen.getByTitle("Edit the project stylesheet (custom CSS)"));
+    expect(seen.StylesheetEditor).toMatchObject({ panelWidth: 1024, panelHeight: 768 });
+    call(() => builder().setScreenPresetIndex(3));
+    expect(seen.StylesheetEditor).toMatchObject({ panelWidth: 1920, panelHeight: 1080 });
+    expect(seen.ThemeStudio).toMatchObject({ panelWidth: 1920, panelHeight: 1080 });
   });
 });
 
