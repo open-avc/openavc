@@ -410,6 +410,25 @@ CASES: dict[str, dict[str, Any]] = {
     "poll_delay_fractional_ms": {
         "transport": "udp", **poll(*["Q"] * 100, poll_interval=1, inter_command_delay=0.0299),
     },
+    # A roster whose largest value is one is still raised to it.
+    "poll_largest_roster_top_one": {
+        "child_entity_types": {
+            "output": OUTPUTS,
+            "one": {"id_format": {"type": "integer", "max": 1}, "instances": {"count_from": "one"}},
+        },
+        **poll({"each_child": "output", "send": "O{child_id}"},
+               {"each_child": "one", "send": "N{child_id}"},
+               poll_interval=1, outputs=2, one=0),
+    },
+    # A delay below zero over UDP or HTTP is no spacing at all, even an infinite one.
+    "poll_udp_delay_negative_infinite": {
+        "transport": "udp", **poll(*["Q"] * 30, poll_interval=1, inter_command_delay="-inf"),
+    },
+    # A poll whose queries are a mapping is not counted, however short its interval.
+    "poll_queries_mapping_short_interval": {
+        "polling": {"queries": {"a": "Q", "b": "Q"}},
+        "default_config": {"zone": 1, "poll_interval": 0.01},
+    },
     "poll_largest_roster_schema_not_mapping": {
         "child_entity_types": {"output": OUTPUTS},
         "config_schema": ["outputs"],
@@ -1143,6 +1162,15 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
                                    'and each reading refreshes every 4.2 s. Poll less per child, '
                                    "set a longer poll_interval, or lower the roster's max to the "
                                    'largest unit the driver supports.')],
+ 'poll_largest_roster_top_one': [('warning',
+                                  'polling.queries',
+                                  'At the largest roster this driver accepts (outputs 64, one 1), '
+                                  'each poll sends 65 lines, 3.2 s at 50 ms apart (the spacing '
+                                  'used when no inter_command_delay is set), longer than the 1 s '
+                                  'poll interval: the device answers polls more than half the '
+                                  'time, and each reading refreshes every 4.2 s. Poll less per '
+                                  "child, set a longer poll_interval, or lower the roster's max to "
+                                  'the largest unit the driver supports.')],
  'poll_largest_roster_tops_unusable': [('error',
                                         'child_entity_types.a',
                                         'child_entity_types.a.id_format: max must be an integer '
@@ -1236,6 +1264,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
                       '(only config values substitute here), so it would be sent to the device as '
                       'written')],
  'poll_queries_mapping': [],
+ 'poll_queries_mapping_short_interval': [],
  'poll_queries_not_list': [],
  'poll_serial': [('warning',
                   'polling.queries',
@@ -1254,6 +1283,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
                      'interval: the device answers polls more than half the time, and each reading '
                      'refreshes every 2.5 s. Poll less per cycle, or set a longer poll_interval in '
                      'default_config.')],
+ 'poll_udp_delay_negative_infinite': [],
  'poll_udp_no_delay': [],
  'poll_with_delay': [('warning',
                       'polling.queries',
