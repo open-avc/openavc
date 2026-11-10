@@ -24,9 +24,10 @@ references its parameters make into ``child_entity_types``
 
 A value ``python_info`` could not read from the source (a constant, a call)
 is not judged. Two rules say so, and they are not the same: ``_unevaluated``
-matches that reader's placeholder exactly, where the file rules'
-``_judgeable`` judges only None and a plain scalar, list, tuple or mapping, so
-there a date YAML reads is skipped too.
+matches that reader's placeholder by its class name (this module cannot import
+the reader, which imports it), where the file rules' ``_judgeable`` judges only
+None and a plain scalar, list, tuple or mapping, so there a date YAML reads is
+skipped too.
 
 Purity contract, as for ``avcdriver_semantic``: standard library and the
 sibling contract modules only. The module is vendored with the rest of the
@@ -107,10 +108,11 @@ class CommandSection:
         where = f"Command '{cmd_name}'"
         if not isinstance(cmd_def, dict):
             return [f"{where}: must be a dict"]
-        errors = _form_errors(where, cmd_def)
-        if cmd_def.get("address") is not None:
+        forms = _forms(cmd_def)
+        errors = _form_errors(where, forms)
+        if "address" in forms:
             errors.extend(osc_args_errors(where, cmd_def.get("args")))
-        if cmd_def.get("udp") is not None:
+        if "udp" in forms:
             errors.extend(udp_block_errors(where, cmd_def.get("udp"), self.config_names))
         errors.extend(param_aid_errors(where, cmd_def.get("params")))
         errors.extend(self._state_name_errors(where, cmd_def))
@@ -215,9 +217,8 @@ def _literal_or_param(value: Any, params: dict[str, Any]) -> bool:
     return bool(ref) and ref.group(1) in params
 
 
-def _form_errors(where: str, cmd_def: dict[str, Any]) -> list[str]:
-    """A command sends exactly one way."""
-    forms = _forms(cmd_def)
+def _form_errors(where: str, forms: list[str]) -> list[str]:
+    """A command sends exactly one way (``forms``: the ways it declares)."""
     if not forms:
         return [f"{where}: must have {_ONE_FORM}"]
     if len(forms) > 1:
