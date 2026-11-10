@@ -10,9 +10,8 @@ import { isPlainObject } from "./authoredValues";
 import { resolveMatrixAxis } from "./matrixModel";
 import type { ReviewFinding } from "./reviewFinding";
 
-//
 // Mirrors do_action_findings in openavc/ui/page_review.py. The other half of the
-// same silence: `bindingFindings` above answers whether this type's renderer
+// same silence: `bindingFindings` (reviewBindings.ts) answers whether this type's renderer
 // READS a show slot, this answers whether the runtime DISPATCHES a do action.
 // Both closed sets are generated from the modules that own them, so a new
 // action name or a new macro step arrives here without anyone typing it.

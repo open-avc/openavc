@@ -39,9 +39,7 @@ import { rewriteElement } from "./projectRewrites";
 import { descendantIds, reparentPlacements, topmostSelection } from "./containerTree";
 import { CASCADE_STEP, autoPlace } from "./gestureBoxes";
 import { isPlainObject } from "./authoredValues";
-
 import type { ElementDefaults } from "./controlMinimums";
-
 import {
   reviewMasterElement,
   reviewPage,
@@ -49,6 +47,7 @@ import {
   type ReviewOptions,
 } from "./pageReview";
 import { showOf } from "./reviewFinding";
+
 // The panel's rem size, generated from Python with the per-control floors
 // (openavc/ui/minimums_gen.py), because it is a measured fact rather than a
 // design decision.

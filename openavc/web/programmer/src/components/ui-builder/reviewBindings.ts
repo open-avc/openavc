@@ -8,7 +8,10 @@
  * (uiBindingReach.gen.ts).
  *
  * Mirrors "Binding findings" in openavc/ui/page_review.py, from
- * `element_type_finding` to `_keyless_slot_findings`, and `custom_page_findings`.
+ * `element_type_finding` to `_keyless_slot_findings`, and `custom_page_findings`,
+ * which Python keeps in its masters section; the property, content, keypad and
+ * matrix findings Python also files under "Binding findings" are
+ * reviewProperties.ts and reviewMatrix.ts.
  */
 
 import type { UIElement, UIPage } from "../../api/types";

@@ -453,14 +453,14 @@ def test_the_finger_rule_matches_the_builders() -> None:
         r"\s*pxPerInch:\s*(\d+)\s*\}",
         builder_source,
     )
-    assert reference, "could not find TOUCH_REFERENCE in the Builder helpers"
+    assert reference, "could not find TOUCH_REFERENCE in the Builder"
     assert (int(reference.group(1)), int(reference.group(2))) == (
         REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX,
     )
     assert float(reference.group(3)) == TOUCH_PX_PER_INCH
 
     minimum = re.search(r"TOUCH_MIN_MM\s*=\s*([\d.]+)", builder_source)
-    assert minimum, "could not find TOUCH_MIN_MM in the Builder helpers"
+    assert minimum, "could not find TOUCH_MIN_MM in the Builder"
     assert float(minimum.group(1)) == TOUCH_MIN_MM
 
 
@@ -492,7 +492,7 @@ def test_a_turned_panel_swaps_its_pixels_and_keeps_its_density() -> None:
         r":\s*\{\s*width:\s*TOUCH_REFERENCE\.(\w+),\s*height:\s*TOUCH_REFERENCE\.(\w+)\s*\}",
         builder_source,
     )
-    assert turned, "could not find referenceBox's swap in the Builder helpers"
+    assert turned, "could not find referenceBox's swap in the Builder"
     assert turned.groups() == ("height", "width", "width", "height"), (
         "the Builder's portrait box is not the landscape one turned"
     )
@@ -507,14 +507,14 @@ def test_the_same_types_are_treated_as_touchable() -> None:
     block = re.search(
         r"const TOUCHABLE_TYPES = new Set\(\[(.*?)\]\)", builder_source, re.S,
     )
-    assert block, "could not find TOUCHABLE_TYPES in the Builder helpers"
+    assert block, "could not find TOUCHABLE_TYPES in the Builder"
     assert frozenset(re.findall(r'"([\w_]+)"', block.group(1))) == TOUCHABLE_TYPES
 
 
 def test_the_degenerate_threshold_matches_the_builders() -> None:
     builder_source = _builder("reviewGeometry")
     found = re.search(r"MINIMUM_VISIBLE_PX = ([\d.]+)", builder_source)
-    assert found, "could not find MINIMUM_VISIBLE_PX in the Builder helpers"
+    assert found, "could not find MINIMUM_VISIBLE_PX in the Builder"
     assert float(found.group(1)) == MINIMUM_VISIBLE_PX
 
 
@@ -627,12 +627,12 @@ def test_the_builder_reads_the_same_visibility_operators() -> None:
 
     def spellings(name: str) -> set[str]:
         block = re.search(rf"const {name} = new Set\(\[(.*?)\]\)", builder_source, re.S)
-        assert block, f"could not find {name} in the Builder helpers"
+        assert block, f"could not find {name} in the Builder"
         return set(re.findall(r'"([^"]+)"', block.group(1)))
 
     def bounds(name: str) -> dict[str, bool]:
         block = re.search(rf"const {name}: Record<string, boolean> = \{{(.*?)\}};", builder_source)
-        assert block, f"could not find {name} in the Builder helpers"
+        assert block, f"could not find {name} in the Builder"
         pairs = re.findall(r'"?([^\s":,]+)"?:\s*(true|false)', block.group(1))
         return {spelling: value == "true" for spelling, value in pairs}
 
@@ -661,5 +661,5 @@ def test_the_keypad_defaults_are_the_panels(panel_method_bodies: dict[str, str])
         ("KEYPAD_SEND_DELAY_DEFAULT_MS", KEYPAD_SEND_DELAY_DEFAULT_MS),
     ):
         found = re.search(rf"const {name} = (\d+);", builder_source)
-        assert found, f"could not find {name} in the Builder helpers"
+        assert found, f"could not find {name} in the Builder"
         assert int(found.group(1)) == value
