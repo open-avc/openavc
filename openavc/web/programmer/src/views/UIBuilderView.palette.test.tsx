@@ -110,6 +110,18 @@ describe("click to add", () => {
     expect({ primary: boxOf("main", "label_1", 0), portrait: boxOf("main", "label_1", 1) }).toEqual({ primary: { x: 15, y: 0, w: 25, h: 12.5 }, portrait: undefined });
   });
 
+  it("cascades from the page centre with snap off, one step further for each control on the page", async () => {
+    seed(makeProject({ pages: [page("main", [el("a", "label"), el("b", "label")], { a: { x: 0, y: 0, w: 5, h: 5 }, b: { x: 90, y: 90, w: 5, h: 5 } }, { snap: { enabled: false, x: 5, y: 5 } })] }));
+    await renderPage(UIBuilderView);
+    call(() => seen.ElementPalette.onAdd("label"));
+    const first = boxOf("main", "label_1");
+    call(() => seen.ElementPalette.onAdd("label"));
+    const second = boxOf("main", "label_2");
+    expect(second.x - first.x).toBeCloseTo(2.5, 5);
+    expect(second.y - first.y).toBeCloseTo(2.5, 5);
+    expect(first.x + first.w / 2).toBeCloseTo(55, 5);
+  });
+
   it("names a master's id as taken", async () => {
     seed(makeProject({ masters: [{ ...makeProject().ui.master_elements![0], id: "label_1" }] }));
     await renderPage(UIBuilderView);
@@ -226,6 +238,80 @@ describe("dragging a control in from the palette", () => {
     expect(builder().paletteDragPreview!.placement).toEqual(snapped);
     end();
     expect(boxOf("main", added().id)).toEqual(snapped);
+  });
+
+  it("drops where the preview showed even when Alt, held at the start, was let go", async () => {
+    canvas();
+    await renderPage(UIBuilderView);
+    start("button", { x: 30, y: 35 }, { altKey: true });
+    move(613, 307);
+    const shown = builder().paletteDragPreview!.placement;
+    end(true, { altKey: true });
+    expect(boxOf("main", added().id)).toEqual(shown);
+    // Snapped, not free: the start's Alt is not what the preview used.
+    expect(shown.x + shown.w / 2).not.toBeCloseTo(51.3, 5);
+  });
+
+  it("snaps to the page's own controls, never to a control's box inside its container", async () => {
+    canvas();
+    seed(
+      makeProject({
+        pages: [page(
+          "main",
+          [el("card", "group"), el("inner", "button", { parent: "card" } as never)],
+          { card: { x: 0, y: 0, w: 20, h: 20 }, inner: { x: 43, y: 43, w: 10, h: 10 } },
+          { snap: { enabled: false, x: 5, y: 5 } },
+        )],
+      }),
+      { selectedPageId: "main" },
+    );
+    const helpers = await import("../components/ui-builder/uiBuilderHelpers");
+    await renderPage(UIBuilderView);
+    start("label");
+    move(100 + 10 * 46.5, 50 + 5 * 46.5);
+    const shown = builder().paletteDragPreview!.placement;
+    const size = { w: shown.w, h: shown.h };
+    const ctx = (others: Array<{ x: number; y: number; w: number; h: number }>) => ({ snap: { enabled: false, x: 5, y: 5 }, bypass: false, others });
+    const topLevel = helpers.paletteDragPlacement({ x: 46.5, y: 46.5 }, size, ctx([{ x: 0, y: 0, w: 20, h: 20 }])).placement;
+    const everything = helpers.paletteDragPlacement({ x: 46.5, y: 46.5 }, size, ctx([{ x: 0, y: 0, w: 20, h: 20 }, { x: 43, y: 43, w: 10, h: 10 }])).placement;
+    expect(everything).not.toEqual(topLevel);
+    expect(shown).toEqual(topLevel);
+    builder().setPaletteDragPreview(null);
+    end(true, { type: "label" });
+    expect(boxOf("main", added().id)).toEqual(topLevel);
+  });
+
+  it("names a dropped control past the masters' ids too", async () => {
+    canvas();
+    seed(makeProject({ masters: [{ ...makeProject().ui.master_elements![0], id: "button_1" }] }), { selectedPageId: "main" });
+    await renderPage(UIBuilderView);
+    start("button");
+    move(600, 300);
+    end();
+    expect(added().id).toBe("button_2");
+  });
+
+  it("lets go of the pointer when the drag is cancelled or ends", async () => {
+    canvas();
+    await renderPage(UIBuilderView);
+    const listening = () => {
+      const adds = addSpy.mock.calls.filter((c) => c[0] === "pointermove").length;
+      const removes = removeSpy.mock.calls.filter((c) => c[0] === "pointermove").length;
+      return adds - removes;
+    };
+    const addSpy = vi.spyOn(window, "addEventListener");
+    const removeSpy = vi.spyOn(window, "removeEventListener");
+    start("button");
+    expect(listening()).toBe(1);
+    call(() => dnd().onDragCancel());
+    expect(listening()).toBe(0);
+    start("button");
+    start("button");
+    expect(listening()).toBe(1);
+    end();
+    expect(listening()).toBe(0);
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
   });
 
   it("sizes the ghost to the landing box and centres it under the pointer", async () => {

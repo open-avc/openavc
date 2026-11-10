@@ -131,6 +131,42 @@ describe("a run of quick edits is one undo entry", () => {
     }
   });
 
+  it("ends a run on a structural edit that leaves the selection as it was", async () => {
+    seed(makeProject(), { selectedPageId: "main", contextMenu: { x: 0, y: 0, elementId: "btn_1", isMaster: false } });
+    await drawn();
+    const steps: Array<[string, () => unknown]> = [
+      ["Bring to front", () => menu().onBringToFront("btn_1")],
+      ["Promote to master", () => menu().onPromoteToMaster("btn_1")],
+    ];
+    for (const [words, fire] of steps) {
+      call(() => props().onPageChange({ name: "A" }));
+      call(fire);
+      call(() => props().onPageChange({ name: "B" }));
+      expect(undoLog().slice(-3).map((e) => e[0]), words).toEqual(["Edit page properties", words, "Edit page properties"]);
+      call(() => vi.advanceTimersByTime(800));
+    }
+    expect(builder().selectedElementIds).toEqual([]);
+  });
+
+  it("ends a run when Panel Settings saves", async () => {
+    await drawn();
+    call(() => props().onPageChange({ name: "A" }));
+    call(() => fireEvent.click(screen.getByTitle("Panel Settings")));
+    call(() => fireEvent.change(screen.getByPlaceholderText("Leave empty for no lock"), { target: { value: "1234" } }));
+    call(() => fireEvent.click(screen.getByRole("button", { name: "Save" })));
+    call(() => props().onPageChange({ name: "B" }));
+    expect(undoLog().map((e) => e[0])).toEqual(["Edit page properties", "Edit project settings", "Edit page properties"]);
+  });
+
+  it("ends a run when one master is swapped for another", async () => {
+    seed(makeProject({ masters: [master("m_1"), master("m_2")] }), { selectedPageId: "main", selectedMasterElementId: "m_1" });
+    await drawn();
+    call(() => props().onMasterElementChange("m_1", { label: "A" }));
+    call(() => builder().selectMasterElement("m_2"));
+    call(() => props().onMasterElementChange("m_2", { label: "B" }));
+    expect(undoLog().map((e) => e[0])).toEqual(["Edit master element", "Edit master element"]);
+  });
+
   it("ends a run when the selection changes", async () => {
     await drawn();
     call(() => props().onChange("btn_1", { label: "A" }));
