@@ -448,6 +448,12 @@ describe("resizing a page control", () => {
     expect(resize("n", 0, 50, { extra: { aspect_lock: 0.01 } as Partial<UIElement> })).toEqual({ x: 10, y: 20, w: 1, h: 10 });
   });
 
+  it("holds the starting ratio on Shift when the aspect lock is 0", () => {
+    expect(resize("e", 100, 0, { extra: { aspect_lock: 0 } as Partial<UIElement>, mods: { shiftKey: true } })).toEqual(
+      { x: 10, y: 10, w: 30, h: 30 },
+    );
+  });
+
   it("ignores an aspect lock that is not a positive number", () => {
     expect(resize("e", 100, 0, { extra: { aspect_lock: 0 } as Partial<UIElement> })).toEqual({ x: 10, y: 10, w: 30, h: 20 });
     expect(resize("e", 100, 0, { extra: { aspect_lock: "2" } as unknown as Partial<UIElement> })).toEqual(
@@ -564,6 +570,37 @@ describe("a page gesture's keys and its end", () => {
     release();
     expect(stored("a")).toEqual(A);
     expect(stored("b")).toEqual({ x: 47.7, y: 60, w: 10, h: 10 });
+    expect(posted.at(-1)).toEqual({ type: "openavc:editor-placements", placements: { b: { x: 47.7, y: 60, w: 10, h: 10 } } });
+    expect(undoLabels()).toEqual(["Move element"]);
+  });
+
+  it("a move pressed after an unfinished resize saves as a move, landing in a container", () => {
+    load(
+      makePage([el("a"), el("b"), el("g", { type: "group" })], {
+        a: A,
+        b: { x: 5, y: 60, w: 10, h: 10 },
+        g: { x: 40, y: 40, w: 50, h: 50 },
+      }),
+      { selected: ["a"] },
+    );
+    press(handle(node("a"), "e"));
+    drag(50, 0);
+    press(node("b"));
+    drag(450, 0);
+    release();
+    expect(storedEl("b")!.parent).toBe("g");
+    expect(undoLabels()).toEqual(["Move element"]);
+  });
+
+  it("stops following the pointer when the canvas goes away mid-drag", () => {
+    load(makePage([el("a")], { a: A }));
+    press(node("a"));
+    drag(153, 0);
+    act(() => view.unmount());
+    drag(300, 0);
+    release();
+    expect(stored("a")).toEqual(A);
+    expect(undoLabels()).toEqual([]);
   });
 });
 
