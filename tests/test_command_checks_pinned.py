@@ -484,6 +484,34 @@ CASES.update({
     }},
 })
 
+# And what the breaks of the moved code found unwatched, recorded from the code
+# before the move.
+CASES.update({
+    # an ir: that is present but empty is still a way of sending
+    "an_empty_ir_is_a_form": cmds(
+        a={"send": "X\r", "ir": ""},
+        b={"ir": False},
+    ),
+    # read_back: true is the boolean, not a value equal to it
+    "read_back_one_is_not_true": cmds(
+        a={"address": "/a", "read_back": 1},
+        b={"address": "/a", "read_back": 1.0},
+    ),
+    # no rounding is a rounding rule
+    "decimals_zero": cmds(
+        a=picker(a={"type": "number", "decimals": 0}),
+    ),
+    # one parameter's aids are reported in a fixed order
+    "every_aid_on_one_param": cmds(
+        a=picker(
+            a={"type": "string", "pattern": 5, "min": "x", "max": 1, "decimals": -1,
+               "trim": "no", "map": {}, "options_state": "",
+               "options_from": {"param": "nope", "source": "x"},
+               "type_from": {"param": "nope"}},
+        ),
+    ),
+})
+
 
 def _definition(case: str) -> dict[str, Any]:
     over = CASES[case]
@@ -914,6 +942,31 @@ EXPECTED.update({'a_config_field_name_that_is_not_text': [('commands.a.send',
                           "Command 'over': 'udp.port' must be between 1 and 65535, got 65536"),
                          ('commands.spaced',
                           "Command 'spaced': 'udp.port' must be between 1 and 65535, got  65536 ")]})
+
+EXPECTED.update({'an_empty_ir_is_a_form': [('commands.a',
+                            "Command 'a': declares send and ir, but a command sends one way. Keep one of "
+                            "'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or 'udp' (a "
+                            'datagram beside the main transport)')],
+ 'decimals_zero': [],
+ 'every_aid_on_one_param': [('commands.a',
+                             "Command 'a' param 'a': pattern: pattern must be a string, got int"),
+                            ('commands.a', "Command 'a' param 'a': min must be a number"),
+                            ('commands.a', "Command 'a' param 'a': decimals must be a non-negative integer"),
+                            ('commands.a', "Command 'a' param 'a': trim must be true or false"),
+                            ('commands.a',
+                             "Command 'a' param 'a': map must be a non-empty mapping of value -> wire value"),
+                            ('commands.a', "Command 'a' param 'a': options_state must be a non-empty string"),
+                            ('commands.a',
+                             "Command 'a' param 'a': options_from.source must be one of ['child_schema']"),
+                            ('commands.a',
+                             "Command 'a' param 'a': options_from.param 'nope' is not a param of this "
+                             'command'),
+                            ('commands.a',
+                             "Command 'a' param 'a': type_from.param 'nope' is not a param of this command")],
+ 'read_back_one_is_not_true': [('commands.a',
+                                "Command 'a': 'read_back' must be true, a query, or a list of queries"),
+                               ('commands.b',
+                                "Command 'b': 'read_back' must be true, a query, or a list of queries")]})
 
 
 @pytest.mark.parametrize("case", sorted(EXPECTED))
