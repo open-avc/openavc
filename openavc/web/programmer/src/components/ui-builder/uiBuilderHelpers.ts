@@ -2412,21 +2412,6 @@ export { validateElementId, renameElement, type RenameResult } from "./projectRe
  *  forgive it, so the two surfaces disagreed about the same file. */
 const BOUNDS_EPSILON = 0.0001;
 
-/**
- * True when a box hangs outside its parent.
- *
- * Free positioning WARNS, it does not prevent -- containers don't clip, and a
- * control nudged past an edge stays visible. This is what puts the badge on it.
- */
-export function isOutOfBounds(p: Placement): boolean {
-  return (
-    p.x < -BOUNDS_EPSILON ||
-    p.y < -BOUNDS_EPSILON ||
-    p.x + p.w > 100 + BOUNDS_EPSILON ||
-    p.y + p.h > 100 + BOUNDS_EPSILON
-  );
-}
-
 // --- Touch-target warning (plan section 3.7) ---
 
 /** The reference glass every warning is estimated against.
