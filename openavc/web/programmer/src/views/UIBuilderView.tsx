@@ -11,7 +11,6 @@ import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { usePluginStore } from "../store/pluginStore";
 import { Canvas } from "../components/ui-builder/Canvas";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
-import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 import { SCREEN_PRESETS } from "../components/ui-builder/uiBuilderHelpers";
 import { canvasScreen } from "../components/ui-builder/canvasScreen";
 import { useEditRun } from "./ui-builder/useEditRun";
@@ -25,6 +24,7 @@ import { BuilderContextMenu } from "./ui-builder/BuilderContextMenu";
 import { SaveFailedBanner } from "./ui-builder/SaveFailedBanner";
 import { ToolbarActions } from "./ui-builder/ToolbarActions";
 import { BuilderSidebar, type SidebarTab } from "./ui-builder/BuilderSidebar";
+import { BuilderProperties } from "./ui-builder/BuilderProperties";
 import { useBuilderTheme } from "./ui-builder/builderTheme";
 import { usePanelEdits } from "./ui-builder/panelEdits";
 import { useShownPage } from "./ui-builder/useShownPage";
@@ -61,7 +61,6 @@ export function UIBuilderView() {
   const dialogs = useBuilderDialogs();
   const validation = useValidation(project);
   const theme = useBuilderTheme(project?.ui?.settings?.theme_id);
-  const themes = theme.themes;
 
   // Autosave is driven by useProjectStore.debouncedSave, called from
   // touchMutation() on every UI Builder mutation. See store/uiBuilderStore.ts.
@@ -74,13 +73,6 @@ export function UIBuilderView() {
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
 
-  // Derived data
-  const selectedElement = currentPage?.elements.find(
-    (e) => e.id === selectedElementId,
-  ) || null;
-  const selectedMasterElement = selectedMasterElementId
-    ? masterElements.find((m) => m.id === selectedMasterElementId) || null
-    : null;
   const preset = SCREEN_PRESETS[screenPresetIndex];
   const { width: screenWidth, height: screenHeight } = canvasScreen(screenPresetIndex, currentPage, activeLayoutId);
 
@@ -235,33 +227,15 @@ export function UIBuilderView() {
                 }}
               />
               <Panel defaultSize={25} minSize={15} maxSize={40}>
-                <div
-                  style={{
-                    height: "100%",
-                    overflow: "auto",
-                    borderLeft: "1px solid var(--border-color)",
-                    background: "var(--bg-surface)",
-                  }}
-                >
-                  <PropertiesPanel
-                    element={selectedElement}
-                    selectedElementIds={selectedElementIds}
-                    masterElement={selectedMasterElement}
-                    page={currentPage}
-                    project={project}
-                    themeDefaults={theme.defaults}
-                    themes={themes}
-                    onThemeChange={themeListChange(dialogs, panelEdits.chooseTheme)}
-                    onOpenStylesheet={() => dialogs.show("stylesheet")}
-                    onChange={edits.editControl}
-                    onRenameElement={edits.rename}
-                    onPageChange={edits.editPage}
-                    onReparent={edits.reparent}
-                    onMasterElementChange={edits.editMaster}
-                    onDemoteMaster={edits.demote}
-                    onDeleteMaster={edits.deleteMaster}
-                  />
-                </div>
+                <BuilderProperties
+                  page={currentPage}
+                  masters={masterElements}
+                  project={project}
+                  theme={theme}
+                  onThemeChange={themeListChange(dialogs, panelEdits.chooseTheme)}
+                  onOpenStylesheet={() => dialogs.show("stylesheet")}
+                  edits={edits}
+                />
               </Panel>
             </>
           )}
