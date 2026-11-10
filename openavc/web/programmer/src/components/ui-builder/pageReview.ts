@@ -17,7 +17,8 @@
  * This module walks a page, each of its arrangements and a master element
  * through the checks, the twin of "One element, wherever it is drawn" and "The
  * whole page" in page_review.py; the checks are the review*.ts modules beside
- * it, one per section of that file, and what they say is reviewFinding.ts.
+ * it, split along that file's sections (finer where one section holds several
+ * kinds of check), and what they say is reviewFinding.ts.
  */
 
 import type {
