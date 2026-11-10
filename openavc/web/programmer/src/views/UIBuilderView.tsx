@@ -6,10 +6,8 @@ import {
   PanelResizeHandle,
 } from "react-resizable-panels";
 import type { MasterElement } from "../api/types";
-import * as wsClient from "../api/wsClient";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
-import { useNavigationStore } from "../store/navigationStore";
 import { usePluginStore } from "../store/pluginStore";
 import { Canvas } from "../components/ui-builder/Canvas";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
@@ -18,13 +16,8 @@ import { ContextMenu } from "../components/ui-builder/ContextMenu";
 import { ThemeStudio } from "../components/ui-builder/ThemeStudio";
 import { StylesheetEditor } from "../components/ui-builder/StylesheetEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
-import {
-  SCREEN_PRESETS,
-  lockedIdsFor,
-  presetForOrientation,
-  layoutOrientation,
-  resolveHidden,
-} from "../components/ui-builder/uiBuilderHelpers";
+import { SCREEN_PRESETS } from "../components/ui-builder/uiBuilderHelpers";
+import { canvasScreen } from "../components/ui-builder/canvasScreen";
 import { showSuccess } from "../store/toastStore";
 import { projectEdit, useEditRun } from "./ui-builder/useEditRun";
 import { useBuilderShortcuts } from "./ui-builder/builderShortcuts";
@@ -37,13 +30,15 @@ import { SaveFailedBanner } from "./ui-builder/SaveFailedBanner";
 import { ToolbarActions } from "./ui-builder/ToolbarActions";
 import { BuilderSidebar, type SidebarTab } from "./ui-builder/BuilderSidebar";
 import { themeFallbackMode, useBuilderTheme, withoutThemeStyles } from "./ui-builder/builderTheme";
+import { useShownPage } from "./ui-builder/useShownPage";
 
 export function UIBuilderView() {
   const project = useProjectStore((s) => s.project);
   const run = useEditRun();
+  const { pages, page: currentPage, masters: masterElements, locked: lockedElementIds, hidden: hiddenElementIds } =
+    useShownPage(project);
 
   // Reactive selectors — only subscribe to values that affect render
-  const selectedPageId = useUIBuilderStore((s) => s.selectedPageId);
   const selectedElementId = useUIBuilderStore((s) => s.selectedElementId);
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
@@ -55,24 +50,12 @@ export function UIBuilderView() {
   const clipboard = useUIBuilderStore((s) => s.clipboard);
 
   // Stable action refs — use getState() to avoid re-render subscriptions
-  const { selectPage, selectElement, undo, redo } = useMemo(() => ({
-    selectPage: (...args: any[]) => (useUIBuilderStore.getState().selectPage as any)(...args),
+  const { selectElement, undo, redo } = useMemo(() => ({
     selectElement: (...args: any[]) => (useUIBuilderStore.getState().selectElement as any)(...args),
     undo: () => useUIBuilderStore.getState().undo(),
     redo: () => useUIBuilderStore.getState().redo(),
   }), []);
 
-  // Consume pending focus from navigation store (on mount)
-  useEffect(() => {
-    const focus = useNavigationStore.getState().consumeFocus();
-    if (focus?.type === "element") {
-      const pageId = focus.detail?.startsWith("page:") ? focus.detail.slice(5) : undefined;
-      if (pageId) selectPage(pageId);
-      // Small delay so the page renders before selecting the element
-      requestAnimationFrame(() => selectElement(focus.id));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const contextMenu = useUIBuilderStore((s) => s.contextMenu);
   const setContextMenu = useUIBuilderStore((s) => s.setContextMenu);
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
@@ -88,25 +71,6 @@ export function UIBuilderView() {
   const theme = useBuilderTheme(project?.ui?.settings?.theme_id);
   const themes = theme.themes;
 
-  // Auto-select first page if none selected
-  useEffect(() => {
-    if (!selectedPageId && project?.ui?.pages?.length) {
-      selectPage(project.ui.pages[0].id);
-    }
-  }, [selectedPageId, project, selectPage]);
-
-
-  // Listen for server-initiated page navigation (preview mode)
-  useEffect(() => {
-    if (!previewMode) return;
-    const unsub = wsClient.onMessage((msg: Record<string, unknown>) => {
-      if (msg.type === "ui.navigate" && msg.page_id) {
-        selectPage(String(msg.page_id));
-      }
-    });
-    return unsub;
-  }, [previewMode, selectPage]);
-
   // Autosave is driven by useProjectStore.debouncedSave, called from
   // touchMutation() on every UI Builder mutation. See store/uiBuilderStore.ts.
 
@@ -119,33 +83,14 @@ export function UIBuilderView() {
   }, []);
 
   // Derived data
-  const pages = project?.ui?.pages ?? [];
-  const currentPage = pages.find((p) => p.id === selectedPageId) || pages[0] || null;
   const selectedElement = currentPage?.elements.find(
     (e) => e.id === selectedElementId,
   ) || null;
-  const masterElements = project?.ui?.master_elements || [];
   const selectedMasterElement = selectedMasterElementId
     ? masterElements.find((m) => m.id === selectedMasterElementId) || null
     : null;
-  // Lock is a project field now rather than session state, so it comes off the
-  // elements themselves and survives a reload.
-  const lockedElementIds = lockedIdsFor(currentPage ?? undefined, masterElements);
-  // What the arrangement being authored leaves out. Inherited hides included,
-  // because that is what the panel would actually draw.
-  const hiddenElementIds = currentPage
-    ? resolveHidden(currentPage, activeLayoutId)
-    : new Set<string>();
-
-  // The screen presets are all landscape. A portrait arrangement gets the same
-  // screen turned, because a portrait panel authored on a landscape canvas is
-  // not something anyone can design in. vmin is the shorter edge either way, so
-  // turning the canvas does not resize a single glyph.
   const preset = SCREEN_PRESETS[screenPresetIndex];
-  const { width: screenWidth, height: screenHeight } = presetForOrientation(
-    preset,
-    layoutOrientation(currentPage ?? undefined, activeLayoutId),
-  );
+  const { width: screenWidth, height: screenHeight } = canvasScreen(screenPresetIndex, currentPage, activeLayoutId);
 
   const edits = useElementEdits({
     project,

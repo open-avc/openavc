@@ -41,6 +41,7 @@ import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { saveFailure, saveNow } from "../../store/saveState";
 import { isCustomPage } from "./customPage";
+import { canvasScreen } from "./canvasScreen";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { PromptDialog } from "../shared/PromptDialog";
 import { NumericInput } from "../shared/NumericInput";
@@ -64,8 +65,6 @@ import {
   removeLayout,
   layoutById,
   missingOrientations,
-  presetForOrientation,
-  layoutOrientation,
   type AlignAction,
   type DistributeAxis,
   type MatchSizeAction,
@@ -387,13 +386,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
     setPendingDeleteLayoutId(null);
   };
 
-  // The presets are all landscape; a portrait arrangement gets the same screen
-  // turned, because nobody can design a portrait panel on a landscape canvas.
-  const preset = SCREEN_PRESETS[screenPresetIndex];
-  const presetSize = presetForOrientation(
-    preset,
-    layoutOrientation(currentPage ?? undefined, activeLayoutId),
-  );
+  const presetSize = canvasScreen(screenPresetIndex, currentPage, activeLayoutId);
 
   const snap = currentPage ? pageSnap(currentPage) : null;
   const handleSnapChange = (patch: Partial<SnapConfig>) => {
