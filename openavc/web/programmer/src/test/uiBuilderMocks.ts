@@ -70,8 +70,10 @@ export async function dndKit(importOriginal: () => Promise<any>) {
       seen.DndContext = props;
       return h(Fragment, null, props.children);
     },
-    DragOverlay: ({ children }: { children: ReactNode }) =>
-      h("div", { "data-testid": "drag-overlay" }, children),
+    DragOverlay: (props: any) => {
+      seen.DragOverlay = props;
+      return h("div", { "data-testid": "drag-overlay" }, props.children);
+    },
   };
 }
 

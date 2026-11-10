@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, screen, fireEvent } from "@testing-library/react";
+import { act, screen, fireEvent, within } from "@testing-library/react";
 
 // Adding a control from the palette, by click and by drag: where it lands
 // (the live preview's box, else the same rule worked out at the drop), which
@@ -404,6 +404,15 @@ describe("dragging a control in from the palette", () => {
     end(true, { type: "plugin:acme:dial" });
     expect(boxOf("main", added().id)).toEqual(box);
     expect(added().type).toBe("plugin");
+  });
+
+  it("draws the ghost in the drag library's overlay, which has no drop animation", async () => {
+    canvas();
+    await renderPage(UIBuilderView);
+    expect(seen.DragOverlay.dropAnimation).toBeNull();
+    start("label", { x: 70, y: 70 });
+    expect(within(screen.getByTestId("drag-overlay")).getByText("label")).toBeInTheDocument();
+    expect(seen.DragOverlay.dropAnimation).toBeNull();
   });
 
   it("draws no ghost and adds nothing for a drag that did not come from the palette", async () => {
