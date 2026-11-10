@@ -122,6 +122,7 @@ describe("a theme sent without variables or element defaults", () => {
     getTheme.mockResolvedValue({ id: "bare", name: "Bare", _source: "custom", description: "" });
     await loaded({ currentThemeId: "bare" });
     expect(json(working())).toBe(json({ id: "bare", name: "Bare", _source: "custom", description: "", variables: {}, element_defaults: {} }));
+    expect(screen.queryByText("Unsaved")).toBeNull();
     expect((tokenRow("Border Radius (px)").querySelector("input") as HTMLInputElement).value).toBe("0");
     expect(within(sectionBody("Quick Adjust")).getByRole("radio", { name: "Standard" })).toBeChecked();
     fireEvent.change(textIn(controlRow("Label", "Text Color")), { target: { value: "#0f0f0f" } });
@@ -154,6 +155,18 @@ describe("the Theme section", () => {
     expect(text).toHaveAttribute("placeholder", "#2196F3 (inherited)");
     expect(text).toHaveAttribute("title", "Inherits #2196F3");
     expect((tokenRow("Accent").querySelector('input[type="color"]') as HTMLInputElement).value).toBe("#2196f3");
+  });
+
+  it("marks a field saved empty as unchanged once it is cleared again", async () => {
+    getTheme.mockResolvedValue({ ...customTheme(), variables: { ...customTheme().variables, danger: "" } });
+    await loaded();
+    expect(within(tokenRow("Danger")).queryByTitle(/Reset to saved/)).toBeNull();
+    fireEvent.change(textIn(tokenRow("Danger")), { target: { value: "#ff0000" } });
+    expect(within(tokenRow("Danger")).getByTitle(/^Reset to saved:\s*$/)).toBeInTheDocument();
+    fireEvent.change(textIn(tokenRow("Danger")), { target: { value: "" } });
+    expect("danger" in working().variables).toBe(false);
+    expect(within(tokenRow("Danger")).queryByTitle(/Reset to saved/)).toBeNull();
+    expect(within(tokenRow("Danger")).getByText("Danger")).toHaveStyle({ fontWeight: "400" });
   });
 
   it("puts a colour set again after clearing it at the end, which reads as unsaved", async () => {
@@ -282,6 +295,23 @@ describe("the Elements section", () => {
     fireEvent.change(box, { target: { value: "none" } });
     expect(working().element_defaults.button.box_shadow).toBe("none");
     expect(controlRow("Page Nav", "Box Shadow").querySelector("textarea")!.value).toBe("");
+  });
+
+  it("draws a clear or see-through colour as a swatch that says what it is", async () => {
+    await loaded();
+    const field = textIn(controlRow("Label", "Background"));
+    const swatch = () => controlRow("Label", "Background").querySelector("label[title]") as HTMLLabelElement;
+    expect(swatch()).toHaveAttribute("title", "Inherits the theme default: pick or type a color to set one");
+    fireEvent.change(field, { target: { value: "transparent" } });
+    expect(swatch()).toHaveAttribute("title", "Transparent: pick or type a color to change");
+    expect(swatch().style.backgroundSize).toBe("8px 8px");
+    fireEvent.change(field, { target: { value: "rgba(255, 0, 0, 0.5)" } });
+    expect(swatch()).toHaveAttribute("title", "rgba(255, 0, 0, 0.5): pick or type a color to change");
+    expect(swatch().style.backgroundSize).toBe("");
+    expect((swatch().querySelector("input") as HTMLInputElement).value).toBe("#ff0000");
+    fireEvent.input(swatch().querySelector("input")!, { target: { value: "#00ff00" } });
+    expect(working().element_defaults.label.bg_color).toBe("#00ff00");
+    expect(controlRow("Label", "Background").querySelector("label[title]")).toBeNull();
   });
 
   it("writes a picked element colour", async () => {
@@ -451,8 +481,10 @@ describe("a control clicked in the preview", () => {
     ["a type with no section", { type: "openavc:theme-element-click", elementType: "custom" }, undefined],
   ])("is ignored from %s", async (_why, data, origin) => {
     await loaded();
+    elementSection("Label").open = true;
     post(data, origin);
-    expect([...sectionBody("Elements").querySelectorAll("details")].some((d) => d.open)).toBe(false);
+    expect([...sectionBody("Elements").querySelectorAll("details")].filter((d) => d.open))
+      .toEqual([elementSection("Label")]);
   });
 });
 

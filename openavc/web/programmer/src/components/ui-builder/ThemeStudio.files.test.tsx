@@ -386,6 +386,15 @@ describe("Import", () => {
     expect(cb.onChangeTheme).toHaveBeenCalledWith(id);
   });
 
+  it("numbers a kept import past the colliding id even when the theme list does not have it yet", async () => {
+    importTheme.mockRejectedValue(new ThemeExistsError("elsewhere", "Elsewhere"));
+    const { container, user } = await loaded();
+    await user.upload(fileInput(container), file({ id: "elsewhere", name: "Elsewhere" }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Keep both" }));
+    await screen.findByText('Imported as "Elsewhere (2)"');
+    expect(createTheme.mock.lastCall![0]).toMatchObject({ id: "elsewhere-2" });
+  });
+
   it("says why keeping both failed", async () => {
     importTheme.mockRejectedValue(new ThemeExistsError("studio-sample", "Sample"));
     createTheme.mockRejectedValue(new Error("bad file"));
