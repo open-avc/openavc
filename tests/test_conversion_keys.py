@@ -9,7 +9,7 @@ schema accepts what the runtime converts.
 """
 from __future__ import annotations
 
-from openavc.drivers import compiled_protocol, spec
+from openavc.drivers import compiled_protocol, conversion_checks, spec
 
 # The registry entries a conversion may be declared on, and the conversion
 # fields each one carries.
@@ -23,6 +23,7 @@ _CONVERSION_FIELDS = (spec.VALUE_SCALE, spec.VALUE_OFFSET, spec.VALUE_UNKNOWN)
 
 def test_both_readers_read_the_contract_tuple() -> None:
     assert compiled_protocol.CONVERSION_KEYS is spec.CONVERSION_KEYS
+    assert conversion_checks.CONVERSION_KEYS is spec.CONVERSION_KEYS
 
 
 def test_the_registry_declares_a_field_for_each_key() -> None:

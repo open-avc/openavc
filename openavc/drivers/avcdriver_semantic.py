@@ -10,7 +10,8 @@ setting and learned config field (``setting_checks``), the push block
 (``push_block_checks``), the Quick Action blocks (``action_checks``), the
 framing each way (``framing_checks``), the sign-in (``sign_in_checks``), the
 watchdog (``liveness_checks``), the ``routing:`` block
-(``routing_checks``) and the ``{name}`` placeholders in its wire templates
+(``routing_checks``), where a value conversion may be declared
+(``conversion_checks``) and the ``{name}`` placeholders in its wire templates
 (``substitution_checks``). ``validate_driver_warnings`` walks it the same
 way for the rules that only warn (``driver_warnings``). The runtime
 loader wraps it (adding the discovery-block check, which needs the
@@ -41,6 +42,9 @@ from openavc.drivers.child_type_checks import (
     undeclared_child_type_reason as undeclared_child_type_reason,
 )
 from openavc.drivers.command_checks import CommandSection
+from openavc.drivers.conversion_checks import (
+    value_conversion_errors as value_conversion_errors,
+)
 from openavc.drivers.declared_names import UNEVALUATED_KEY as UNEVALUATED_KEY
 from openavc.drivers.driver_warnings import (
     masked_default_warnings,
@@ -495,7 +499,8 @@ def validate_driver_definition(
         )
 
     # scale / offset / unknown on state variables, child state variables and
-    # command params: the shared rule (python_info runs it with python=True).
+    # command and action params, checked in conversion_checks (python_info asks
+    # it with python=True). Every message is tagged state_variables.
     errors.ctx = "state_variables"
     errors.extend(value_conversion_errors(driver_def))
 
@@ -671,84 +676,3 @@ def validate_driver_issues(
     )
     warnings = validate_driver_warnings(driver_def)
     return _as_issues(errors, "error") + _as_issues(warnings, "warning")
-
-
-_CONVERTIBLE_TYPES = ("integer", "number", "float")
-
-
-def value_conversion_errors(
-    driver_def: dict[str, Any], *, python: bool = False
-) -> list[str]:
-    """Where ``scale`` / ``offset`` / ``unknown`` may appear, and on what.
-
-    The platform converts a YAML driver's values; a Python driver converts in
-    its own code, so on the Python surface (``python=True``) every one is
-    refused rather than silently doing nothing, and so is a device setting's
-    ``map``, which only the YAML write applies. On a YAML driver all three
-    need a numeric type, a scale of 0 cannot be converted back, and an
-    action's params are never converted (the command's own params are).
-    """
-    errors: list[str] = []
-
-    def check(where: str, decl: Any, *, in_action: bool = False) -> None:
-        if not isinstance(decl, dict):
-            return
-        present = [k for k in ("scale", "offset", "unknown") if k in decl]
-        if not present:
-            return
-        if python:
-            names = ", ".join(present)
-            errors.append(
-                f"{where}: remove {names}; the platform converts values only "
-                f"for YAML drivers, and a Python driver converts in its own code"
-            )
-            return
-        if in_action:
-            errors.append(
-                f"{where}: put scale and offset on the command's own "
-                f"parameter; an action's parameters are not converted"
-            )
-            return
-        if decl.get("type", "string") not in _CONVERTIBLE_TYPES:
-            errors.append(
-                f"{where}: the type must be integer, number or float to use "
-                f"{', '.join(present)}"
-            )
-        scale = decl.get("scale")
-        if isinstance(scale, (int, float)) and not isinstance(scale, bool) and scale == 0:
-            errors.append(f"{where}: scale cannot be 0")
-
-    def entries(block: Any) -> list[tuple[Any, Any]]:
-        return list(block.items()) if isinstance(block, dict) else []
-
-    for name, decl in entries(driver_def.get("state_variables")):
-        check(f"State variable '{name}'", decl)
-    for ctype, type_def in entries(driver_def.get("child_entity_types")):
-        if isinstance(type_def, dict):
-            for name, decl in entries(type_def.get("state_variables")):
-                check(f"child_entity_types.{ctype}.state_variables.{name}", decl)
-    for cmd_name, cmd_def in entries(driver_def.get("commands")):
-        if isinstance(cmd_def, dict):
-            for pname, pdef in entries(cmd_def.get("params")):
-                check(f"Command '{cmd_name}' param '{pname}'", pdef)
-    actions = driver_def.get("actions")
-    for action in actions if isinstance(actions, list) else []:
-        if isinstance(action, dict):
-            for pname, pdef in entries(action.get("params")):
-                check(
-                    f"Action '{action.get('id')}' param '{pname}'",
-                    pdef,
-                    in_action=True,
-                )
-    # A device setting's map is applied by the YAML runtime's write; a Python
-    # driver writes its settings in code (on YAML the key is checked with the
-    # rest of the setting, device_setting_map_errors).
-    if python:
-        for name, sdef in entries(driver_def.get("device_settings")):
-            if isinstance(sdef, dict) and "map" in sdef:
-                errors.append(
-                    f"Device setting '{name}': remove map; the platform maps "
-                    f"a setting's value only for YAML drivers, and a Python "
-                    f"driver writes its settings in its own code"
-                )
-    return errors

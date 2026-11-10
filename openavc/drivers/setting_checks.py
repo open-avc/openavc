@@ -16,7 +16,9 @@ write's args, through the command encoder's own check), the ``map``. The
 ``state_key`` and ``learned_from`` rules are shared with a Python driver's
 ``DRIVER_INFO`` (``python_info``), which words its own shape messages and
 judges nothing else of a setting; a state-variable block built at runtime
-(``UNEVALUATED_KEY``) is skipped there, not failed.
+(``UNEVALUATED_KEY``) is skipped there, not failed. A Python driver's
+setting is refused a ``map`` (``python_setting_map_errors``, beside the YAML
+rule for one), since only the YAML write applies it.
 
 Purity contract, as for ``avcdriver_semantic``: standard library and the
 sibling contract modules (``spec``, ``declared_names``, ``command_checks``).
@@ -200,7 +202,7 @@ def device_setting_map_errors(where: str, setting_def: dict[str, Any]) -> list[s
     which the published schema refuses, so it is refused here with the remedy
     rather than left to fail in catalog CI. Same shape rule as a command
     param's ``map``. A Python driver writes its settings in its own code, so
-    there the key is refused outright (``value_conversion_errors``).
+    there the key is refused outright (``python_setting_map_errors``).
     """
     value_map = setting_def.get("map")
     if value_map is None:
@@ -218,6 +220,23 @@ def device_setting_map_errors(where: str, setting_def: dict[str, Any]) -> list[s
         if error:
             errors.append(error)
     return errors
+
+
+def python_setting_map_errors(info: dict[str, Any]) -> list[str]:
+    """A Python driver's settings, refused a ``map``: the YAML runtime's write
+    applies it, and a Python driver writes its settings in its own code, so
+    any ``map`` key is refused, whatever it holds. Reported last of the keys
+    only a YAML driver's values use (``conversion_checks``)."""
+    settings = info.get("device_settings")
+    if not isinstance(settings, dict):
+        return []
+    return [
+        f"Device setting '{name}': remove map; the platform maps a setting's "
+        f"value only for YAML drivers, and a Python driver writes its settings "
+        f"in its own code"
+        for name, setting_def in settings.items()
+        if isinstance(setting_def, dict) and "map" in setting_def
+    ]
 
 
 def _map_pair_error(where: str, key: Any, word: Any) -> str | None:

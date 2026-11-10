@@ -1085,7 +1085,7 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
         for name in (
             "action_checks.py",
             "avcdriver_semantic.py", "child_type_checks.py", "command_checks.py",
-            "condition_checks.py",
+            "condition_checks.py", "conversion_checks.py",
             "declared_names.py", "driver_warnings.py", "framing_checks.py",
             "liveness_checks.py",
             "param_aid_checks.py",
