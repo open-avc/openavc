@@ -15,7 +15,7 @@ import {
   matrixRouteValue,
   matrixSourceReports,
   resolveMatrixAxis,
-} from "./uiBuilderHelpers";
+} from "./matrixModel";
 
 const destinations = (spec: unknown) => resolveMatrixAxis({ destinations: spec }, "destinations");
 const sources = (spec: unknown) => resolveMatrixAxis({ sources: spec }, "sources");

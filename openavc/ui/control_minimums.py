@@ -298,8 +298,9 @@ class RepeatedInternal:
 
 
 #: Every condition a ConditionalPart may name. A closed set on purpose: each one
-#: is mirrored in TypeScript (``partIsPresent`` in uiBuilderHelpers.ts), so it is
-#: four cases in two languages rather than an expression language in either.
+#: is mirrored in TypeScript (``partIsPresent`` in the Builder's
+#: controlMinimums.ts), so it is four cases in two languages rather than an
+#: expression language in either.
 CONDITIONS = ("label", "presets", "lock_column", "mute_column")
 
 #: Every layout a RepeatedInternal may name, closed for the same reason.
@@ -330,9 +331,9 @@ def tile_grid_shape(count: int, orientation: str = "landscape") -> tuple[int, in
     179. Orientation is knowable without measuring the box, which is what keeps
     the floor from depending on the box it is judging.
 
-    Mirrored in ``panel.js`` (which draws it) and in ``uiBuilderHelpers.ts``
-    (which mirrors this file). All three have to agree or the floor is for a
-    shape nothing renders.
+    Mirrored in ``panel.js`` (which draws it) and in the Builder's
+    ``controlMinimums.ts`` (which mirrors this file). All three have to agree
+    or the floor is for a shape nothing renders.
     """
     if count <= 0:
         return 0, 0
@@ -636,7 +637,7 @@ def _style_px(element: Mapping[str, Any], key: str) -> float | None:
 
 
 def part_is_present(when: str, element: Mapping[str, Any]) -> bool:
-    """Whether a ConditionalPart is drawn. Mirrored in uiBuilderHelpers.ts.
+    """Whether a ConditionalPart is drawn. Mirrored in the Builder's controlMinimums.ts.
 
     Each case is ``renderMatrix``'s own test, written the same way round: the
     lock column is drawn only when it is asked for, and the mute column

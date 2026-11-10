@@ -38,9 +38,9 @@ translation from config to rows-and-columns exists in exactly one renderer.
 The one other place that resolves is the page review, which exists twice by
 design (``page_review.py`` and ``reviewPage`` in uiBuilderHelpers.ts) and is
 pinned message-for-message by ``tests/test_ui_review_parity.py``. Its TypeScript
-half therefore mirrors this module, and the same test that catches a review
-drifting catches a resolver drifting -- which is not true of a renderer, and is
-why the renderer does not get a copy.
+half therefore mirrors this module, as the Builder's matrixModel.ts, and the
+same test that catches a review drifting catches a resolver drifting -- which is
+not true of a renderer, and is why the renderer does not get a copy.
 
 Pure stdlib, so ``control_minimums.py`` can ask it how many rows a matrix draws
 without either of them growing an import.
