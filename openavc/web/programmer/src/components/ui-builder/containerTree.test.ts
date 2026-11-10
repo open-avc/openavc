@@ -241,6 +241,7 @@ describe("outlineRows: the Outline's tree", () => {
     const rows = outlineRows(elements, { matchIds: new Set(["a", "b", "c", "d"]) });
     expect(rowIds(rows)).toEqual(["a@0", "b@0", "g@0", "c@1", "d@1"]);
     expect(rows[1]).toMatchObject({ prevSiblingId: "a", nextSiblingId: "g" });
+    expect(rows[2]).toMatchObject({ prevSiblingId: "b", nextSiblingId: undefined });
     expect(rows[3]).toMatchObject({ prevSiblingId: undefined, nextSiblingId: "d" });
     expect(rows[4]).toMatchObject({ prevSiblingId: "c", nextSiblingId: undefined });
   });
