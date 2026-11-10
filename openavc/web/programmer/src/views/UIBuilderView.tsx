@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import {
   Panel,
@@ -18,8 +18,7 @@ import { StylesheetEditor } from "../components/ui-builder/StylesheetEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { SCREEN_PRESETS } from "../components/ui-builder/uiBuilderHelpers";
 import { canvasScreen } from "../components/ui-builder/canvasScreen";
-import { showSuccess } from "../store/toastStore";
-import { projectEdit, useEditRun } from "./ui-builder/useEditRun";
+import { useEditRun } from "./ui-builder/useEditRun";
 import { useBuilderShortcuts } from "./ui-builder/builderShortcuts";
 import { useElementEdits } from "./ui-builder/useElementEdits";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
@@ -29,7 +28,8 @@ import { PanelSettingsDialog } from "./ui-builder/PanelSettingsDialog";
 import { SaveFailedBanner } from "./ui-builder/SaveFailedBanner";
 import { ToolbarActions } from "./ui-builder/ToolbarActions";
 import { BuilderSidebar, type SidebarTab } from "./ui-builder/BuilderSidebar";
-import { themeFallbackMode, useBuilderTheme, withoutThemeStyles } from "./ui-builder/builderTheme";
+import { useBuilderTheme } from "./ui-builder/builderTheme";
+import { usePanelEdits } from "./ui-builder/panelEdits";
 import { useShownPage } from "./ui-builder/useShownPage";
 
 export function UIBuilderView() {
@@ -101,35 +101,7 @@ export function UIBuilderView() {
     selected: { elementId: selectedElementId, masterId: selectedMasterElementId },
   });
 
-  // --- Theme handlers (also used by ThemeStudio) ---
-
-  const handleThemeChange = useCallback(
-    (id: string) => {
-      if (!project) return;
-      const settings = project.ui.settings;
-      // settings.theme is the fallback used when theme_id can't be resolved.
-      const mode = themeFallbackMode(themes, id);
-      // Clear accent_color / font_family / theme_overrides when switching
-      // themes. These are per-project overrides that were tuned for the
-      // PREVIOUS theme — carrying them forward makes the new theme look
-      // wrong (e.g. blue accent on a gold-themed Luxury preset).
-      run.commit(projectEdit(project, {
-        settings: { ...settings, theme_id: id, theme: mode, accent_color: "", font_family: "", theme_overrides: {} },
-      }, "Change theme"));
-    },
-    [project, themes, run],
-  );
-
-  // Live theme variable overrides — burst-undo so dragging a color picker
-  // produces one undo entry, not 50.
-  const handleUpdateThemeOverrides = useCallback(
-    (overrides: Record<string, unknown>) => {
-      if (!project) return;
-      const settings = project.ui.settings;
-      run.join(projectEdit(project, { settings: { ...settings, theme_overrides: overrides } }, "Edit theme overrides"));
-    },
-    [project, run],
-  );
+  const panelEdits = usePanelEdits(project, run, theme);
 
   const palette = usePaletteDrop({
     page: currentPage,
@@ -287,7 +259,7 @@ export function UIBuilderView() {
                     project={project}
                     themeDefaults={theme.defaults}
                     themes={themes}
-                    onThemeChange={showThemeStudio ? undefined : handleThemeChange}
+                    onThemeChange={showThemeStudio ? undefined : panelEdits.chooseTheme}
                     onOpenStylesheet={() => setShowStylesheet(true)}
                     onChange={edits.editControl}
                     onRenameElement={edits.rename}
@@ -346,8 +318,8 @@ export function UIBuilderView() {
           project={project}
           currentThemeId={project.ui.settings.theme_id || "dark-default"}
           themeOverrides={project.ui.settings.theme_overrides || {}}
-          onChangeTheme={handleThemeChange}
-          onClearOverrides={() => handleUpdateThemeOverrides({})}
+          onChangeTheme={panelEdits.chooseTheme}
+          onClearOverrides={panelEdits.clearOverrides}
           onRefreshThemes={theme.loadThemes}
           onThemeSaved={theme.refetch}
           onResetElementStyles={() => setConfirmResetStyles(true)}
@@ -365,10 +337,7 @@ export function UIBuilderView() {
           previewPageId={currentPage?.id ?? null}
           panelWidth={preset?.width ?? 1024}
           panelHeight={preset?.height ?? 600}
-          onSave={(css) => {
-            run.commit(projectEdit(project, { custom_css: css }, "Edit project stylesheet"));
-            showSuccess("Project stylesheet saved");
-          }}
+          onSave={panelEdits.saveStylesheet}
           onClose={() => setShowStylesheet(false)}
         />
       )}
@@ -381,10 +350,7 @@ export function UIBuilderView() {
           onCancel={() => setConfirmResetStyles(false)}
           onConfirm={() => {
             setConfirmResetStyles(false);
-            if (!project) return;
-            const newPages = withoutThemeStyles(project.ui.pages, theme.defaults);
-            run.commit(projectEdit(project, { pages: newPages }, "Reset element styles to theme"));
-            showSuccess("Element styles reset to theme defaults");
+            panelEdits.resetStyles();
           }}
         />
       )}
@@ -398,7 +364,7 @@ export function UIBuilderView() {
         <PanelSettingsDialog
           settings={project.ui.settings}
           pages={project.ui.pages}
-          onUpdate={(settings) => run.commit(projectEdit(project, { settings }, "Edit project settings"))}
+          onUpdate={panelEdits.saveSettings}
           onClose={() => setShowSettings(false)}
         />
       )}

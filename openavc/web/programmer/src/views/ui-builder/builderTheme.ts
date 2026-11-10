@@ -13,9 +13,7 @@
  * not here: the canvas reports what it drew (uiBuilderStore.textDefaultsRem).
  */
 import { useCallback, useEffect, useState } from "react";
-import type { UIPage } from "../../api/types";
 import { getTunnelPrefix, listThemes } from "../../api/restClient";
-import { isLightColor } from "../../components/ui-builder/colorUtils";
 import { showError } from "../../store/toastStore";
 
 export type ThemeDefaults = Record<string, Record<string, unknown>>;
@@ -108,36 +106,6 @@ function fillBaseline(out: ThemeDefaults, vars: Record<string, unknown>) {
       if (d[k] === undefined) d[k] = v;
     }
   }
-}
-
-/**
- * The light or dark treatment a project falls back on when its theme cannot
- * be found: from the theme's panel background, and only when that cannot be
- * read, from its id. A light theme whose id lacks "light" is still light.
- */
-export function themeFallbackMode(themes: ThemeSummary[], id: string): "light" | "dark" {
-  const bg = themes.find((t) => t.id === id)?.variables?.panel_bg;
-  const light = typeof bg === "string" ? isLightColor(bg) : null;
-  if (light !== null) return light ? "light" : "dark";
-  return id.includes("light") || id === "minimal" ? "light" : "dark";
-}
-
-/** The pages with each control's style overrides removed wherever its type's
- *  theme defaults name the property. A type the theme says nothing about is
- *  left exactly as it was. */
-export function withoutThemeStyles(pages: UIPage[], defaults: ThemeDefaults): UIPage[] {
-  return pages.map((page) => ({
-    ...page,
-    elements: page.elements.map((el) => {
-      const keysToReset = new Set(Object.keys(defaults[el.type] || {}));
-      if (keysToReset.size === 0) return el;
-      const cleaned: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(el.style || {})) {
-        if (!keysToReset.has(k)) cleaned[k] = v;
-      }
-      return { ...el, style: cleaned };
-    }),
-  }));
 }
 
 /**
