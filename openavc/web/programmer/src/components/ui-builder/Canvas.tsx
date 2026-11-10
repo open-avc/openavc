@@ -15,6 +15,8 @@ import {
   movedBox,
   resizedBox,
   aspectLockOf,
+  containerOf,
+  containersAbove,
   getPlacement,
   roundPlacement,
   topmostSelection,
@@ -376,10 +378,11 @@ export function Canvas({
     const byParent = new Map<string, typeof page.elements>();
     const roots: typeof page.elements = [];
     for (const el of page.elements) {
-      if (el.parent && ids.has(el.parent) && el.parent !== el.id) {
-        const list = byParent.get(el.parent);
+      const parent = containerOf(el, ids);
+      if (parent) {
+        const list = byParent.get(parent);
         if (list) list.push(el);
-        else byParent.set(el.parent, [el]);
+        else byParent.set(parent, [el]);
       } else {
         roots.push(el);
       }
@@ -611,18 +614,10 @@ export function Canvas({
       // Whichever box actually moves drives the gesture. Grab a child while
       // its container is also selected and the container is what travels, so
       // the container is what the snapping and the guides are measured on.
-      const anchorId = (() => {
-        if (moving.includes(elementId)) return elementId;
-        const byId = new Map(page.elements.map((el) => [el.id, el]));
-        const seen = new Set<string>([elementId]);
-        let cursor = byId.get(elementId)?.parent ?? null;
-        while (cursor && byId.has(cursor) && !seen.has(cursor)) {
-          if (moving.includes(cursor)) return cursor;
-          seen.add(cursor);
-          cursor = byId.get(cursor)?.parent ?? null;
-        }
-        return null;
-      })();
+      const byId = new Map(page.elements.map((el) => [el.id, el]));
+      const anchorId = moving.includes(elementId)
+        ? elementId
+        : (containersAbove(elementId, byId).find((id) => moving.includes(id)) ?? null);
       if (!anchorId) return;
 
       // Percentages are of the PARENT box, so each element converts pixels

@@ -382,6 +382,8 @@ export {
   presetForOrientation,
   absolutePlacements,
   toPageBox,
+  containerOf,
+  containersAbove,
 } from "./pageGeometry";
 
 // --- A pointer, and the snap increment ---
