@@ -314,8 +314,8 @@ describe("structural edits", () => {
     const { api, THEMES } = await import("../test/uiBuilderHarness");
     api.listThemes.mockResolvedValue([
       ...THEMES,
-      { ...THEMES[0], id: "light-sky", variables: { panel_bg: "var(--sky)" } },
-      { ...THEMES[0], id: "night", variables: { panel_bg: "var(--night)" } },
+      { ...THEMES[0], id: "light-sky", variables: { panel_bg: "sky gradient" } },
+      { ...THEMES[0], id: "night", variables: { panel_bg: "night gradient" } },
     ]);
     await renderPage(UIBuilderView);
     call(() => props().onThemeChange("light-sky"));
