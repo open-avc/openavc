@@ -21,7 +21,7 @@ import { listThemes, getTunnelPrefix } from "../api/restClient";
 import { commandIssues } from "../api/commandIssues";
 import { showError } from "../store/toastStore";
 import { useProjectStore } from "../store/projectStore";
-import { useUIBuilderStore } from "../store/uiBuilderStore";
+import { useUIBuilderStore, type UndoScope } from "../store/uiBuilderStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { usePluginStore } from "../store/pluginStore";
 import { ElementPalette } from "../components/ui-builder/ElementPalette";
@@ -77,6 +77,7 @@ import {
 } from "../components/ui-builder/uiBuilderHelpers";
 import { isLightColor } from "../components/ui-builder/colorUtils";
 import { showSuccess, showInfo } from "../store/toastStore";
+import { useEditRun } from "./ui-builder/useEditRun";
 
 /** Arrow-key travel, in percent, when snapping is off or bypassed. Small
  *  enough to place a control by eye, large enough to see it move. */
@@ -84,8 +85,8 @@ const FINE_NUDGE = 0.25;
 
 export function UIBuilderView() {
   const project = useProjectStore((s) => s.project);
-  const update = useProjectStore((s) => s.update);
   const save = useProjectStore((s) => s.save);
+  const run = useEditRun();
 
   // Reactive selectors — only subscribe to values that affect render
   const selectedPageId = useUIBuilderStore((s) => s.selectedPageId);
@@ -100,14 +101,12 @@ export function UIBuilderView() {
   const clipboard = useUIBuilderStore((s) => s.clipboard);
 
   // Stable action refs — use getState() to avoid re-render subscriptions
-  const { selectPage, selectElement, selectMasterElement, pushUndo, undo, redo, touchMutation, setClipboard } = useMemo(() => ({
+  const { selectPage, selectElement, selectMasterElement, undo, redo, setClipboard } = useMemo(() => ({
     selectPage: (...args: any[]) => (useUIBuilderStore.getState().selectPage as any)(...args),
     selectElement: (...args: any[]) => (useUIBuilderStore.getState().selectElement as any)(...args),
     selectMasterElement: (...args: any[]) => (useUIBuilderStore.getState().selectMasterElement as any)(...args),
-    pushUndo: (...args: any[]) => (useUIBuilderStore.getState().pushUndo as any)(...args),
     undo: () => useUIBuilderStore.getState().undo(),
     redo: () => useUIBuilderStore.getState().redo(),
-    touchMutation: () => useUIBuilderStore.getState().touchMutation(),
     setClipboard: (...args: any[]) => (useUIBuilderStore.getState().setClipboard as any)(...args),
   }), []);
 
@@ -419,17 +418,14 @@ export function UIBuilderView() {
       if ((e.ctrlKey || e.metaKey) && !inInput) {
         if (e.key === "z" && !e.shiftKey) {
           e.preventDefault();
-          // End any in-flight property-edit burst so the next edit captures a
-          // fresh undo snapshot (a property-edit undo keeps the selection, so
-          // the selection-change reset effect doesn't fire on its own).
-          propertyUndoPushed.current = false;
-          clearTimeout(propertyUndoTimer.current);
+          // A property-edit undo keeps the selection, so nothing else would
+          // end the run before the next edit.
+          run.endRun();
           undo();
         }
         if ((e.key === "z" && e.shiftKey) || e.key === "y") {
           e.preventDefault();
-          propertyUndoPushed.current = false;
-          clearTimeout(propertyUndoTimer.current);
+          run.endRun();
           redo();
         }
         if (e.key === "s" && !e.shiftKey) {
@@ -496,41 +492,21 @@ export function UIBuilderView() {
     layoutOrientation(currentPage ?? undefined, activeLayoutId),
   );
 
-  // Property changes debounce undo: push undo only once per editing burst,
-  // not on every keystroke. The timer resets on each change; the flag clears
-  // 800ms after the last edit, or whenever a structural mutation bookends the burst.
-  const propertyUndoPushed = useRef(false);
-  const propertyUndoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
   // --- Mutation helpers ---
-  // When `coalesce` is set the mutation joins the current property-edit burst:
-  // undo is pushed once and re-armed on an 800ms idle timer, so a held arrow
-  // (one nudge per keypress) collapses into a single undoable gesture instead
-  // of flooding the 50-entry undo stack. Structural mutations leave it false,
-  // which bookends any in-flight burst and starts a fresh entry.
+  // An edit of the pages. `coalesce` makes it a run edit, so a held arrow
+  // (one nudge per keypress) is one undo entry rather than fifty.
   const applyMutation = useCallback(
     (mutate: (pages: UIPage[]) => UIPage[], description: string, coalesce = false) => {
       if (!project) return;
-      if (coalesce) {
-        if (!propertyUndoPushed.current) {
-          pushUndo({ pages: project.ui.pages }, description);
-          propertyUndoPushed.current = true;
-        }
-      } else {
-        pushUndo({ pages: project.ui.pages }, description);
-        propertyUndoPushed.current = false;
-      }
-      clearTimeout(propertyUndoTimer.current);
-      const newPages = mutate(project.ui.pages);
-      update({ ui: { ...project.ui, pages: newPages } });
-      touchMutation();
-      if (coalesce) {
-        propertyUndoTimer.current = setTimeout(() => {
-          propertyUndoPushed.current = false;
-        }, 800);
-      }
+      const edit = {
+        before: { pages: project.ui.pages },
+        description,
+        patch: { ui: { ...project.ui, pages: mutate(project.ui.pages) } },
+      };
+      if (coalesce) run.join(edit);
+      else run.commit(edit);
     },
-    [project, pushUndo, update, touchMutation],
+    [project, run],
   );
 
   const handleDeleteElement = useCallback(
@@ -630,53 +606,35 @@ export function UIBuilderView() {
 
   const handlePromoteToMaster = useCallback((elementId: string) => {
     if (!project || !currentPage) return;
-    pushUndo(
-      { pages: project.ui.pages, master_elements: project.ui.master_elements || [] },
-      "Promote to master",
-    );
-    propertyUndoPushed.current = false;
-    clearTimeout(propertyUndoTimer.current);
     const result = promoteToMaster(
       project.ui.pages,
       project.ui.master_elements || [],
       currentPage.id,
       elementId,
     );
-    update({
-      ui: {
-        ...project.ui,
-        pages: result.pages,
-        master_elements: result.masterElements,
-      },
+    run.commit({
+      before: { pages: project.ui.pages, master_elements: project.ui.master_elements || [] },
+      description: "Promote to master",
+      patch: { ui: { ...project.ui, pages: result.pages, master_elements: result.masterElements } },
     });
-    touchMutation();
     selectElement(null);
-  }, [project, currentPage, pushUndo, update, touchMutation, selectElement]);
+  }, [project, currentPage, run, selectElement]);
 
   const handleDemoteFromMaster = useCallback((masterElementId: string) => {
     if (!project || !currentPage) return;
-    pushUndo(
-      { pages: project.ui.pages, master_elements: project.ui.master_elements || [] },
-      "Demote from master",
-    );
-    propertyUndoPushed.current = false;
-    clearTimeout(propertyUndoTimer.current);
     const result = demoteFromMaster(
       project.ui.pages,
       project.ui.master_elements || [],
       masterElementId,
       currentPage.id,
     );
-    update({
-      ui: {
-        ...project.ui,
-        pages: result.pages,
-        master_elements: result.masterElements,
-      },
+    run.commit({
+      before: { pages: project.ui.pages, master_elements: project.ui.master_elements || [] },
+      description: "Demote from master",
+      patch: { ui: { ...project.ui, pages: result.pages, master_elements: result.masterElements } },
     });
-    touchMutation();
     selectMasterElement(null);
-  }, [project, currentPage, pushUndo, update, touchMutation, selectMasterElement]);
+  }, [project, currentPage, run, selectMasterElement]);
 
   const handleRenameElement = useCallback(
     (oldId: string, newId: string) => {
@@ -700,24 +658,20 @@ export function UIBuilderView() {
       // Snapshot only the scopes that actually changed (skip ones the helper
       // didn't touch — e.g. variables stay reference-equal if no var.source_key
       // matched). Keeps the undo entry small and the rollback honest.
-      const snapshot: Parameters<typeof pushUndo>[0] = {};
+      const snapshot: UndoScope = {};
       if (result.pages !== project.ui.pages) snapshot.pages = project.ui.pages;
       if (result.master_elements !== masters) snapshot.master_elements = masters;
       if (result.macros !== (project.macros || [])) snapshot.macros = project.macros || [];
       if (result.variables !== (project.variables || [])) snapshot.variables = project.variables || [];
-      pushUndo(snapshot, `Rename element ${oldId} → ${newId}`);
-      propertyUndoPushed.current = false;
-      clearTimeout(propertyUndoTimer.current);
-      update({
-        ui: {
-          ...project.ui,
-          pages: result.pages,
-          master_elements: result.master_elements,
+      run.commit({
+        before: snapshot,
+        description: `Rename element ${oldId} → ${newId}`,
+        patch: {
+          ui: { ...project.ui, pages: result.pages, master_elements: result.master_elements },
+          macros: result.macros,
+          variables: result.variables,
         },
-        macros: result.macros,
-        variables: result.variables,
       });
-      touchMutation();
       // Re-select the renamed element under its new ID so the properties panel
       // doesn't lose focus and refresh into "nothing selected".
       if (selectedElementId === oldId) selectElement(newId);
@@ -729,33 +683,23 @@ export function UIBuilderView() {
         );
       }
     },
-    [project, pushUndo, update, touchMutation, selectedElementId, selectedMasterElementId, selectElement, selectMasterElement],
+    [project, run, selectedElementId, selectedMasterElementId, selectElement, selectMasterElement],
   );
 
   const handleDeleteMasterElement = useCallback((masterElementId: string) => {
     if (!project) return;
-    pushUndo(
-      { master_elements: project.ui.master_elements || [] },
-      "Delete master element",
-    );
-    propertyUndoPushed.current = false;
-    clearTimeout(propertyUndoTimer.current);
-    const newMasters = removeMasterElement(project.ui.master_elements || [], masterElementId);
-    update({
-      ui: {
-        ...project.ui,
-        master_elements: newMasters,
+    run.commit({
+      before: { master_elements: project.ui.master_elements || [] },
+      description: "Delete master element",
+      patch: {
+        ui: {
+          ...project.ui,
+          master_elements: removeMasterElement(project.ui.master_elements || [], masterElementId),
+        },
       },
     });
-    touchMutation();
     selectMasterElement(null);
-  }, [project, pushUndo, update, touchMutation, selectMasterElement]);
-
-  // Reset undo burst tracking when selected element changes
-  useEffect(() => {
-    propertyUndoPushed.current = false;
-    clearTimeout(propertyUndoTimer.current);
-  }, [selectedElementId, selectedMasterElementId]);
+  }, [project, run, selectMasterElement]);
 
   // --- Theme handlers (also used by ThemeStudio) ---
 
@@ -763,9 +707,6 @@ export function UIBuilderView() {
     (id: string) => {
       if (!project) return;
       const settings = project.ui.settings;
-      pushUndo({ settings }, "Change theme");
-      propertyUndoPushed.current = false;
-      clearTimeout(propertyUndoTimer.current);
       // Derive the light/dark fallback (settings.theme) from the theme's actual
       // panel background luminance, not its id. settings.theme is only the
       // fallback used when theme_id can't be resolved; a light theme whose id
@@ -780,22 +721,25 @@ export function UIBuilderView() {
       // themes. These are per-project overrides that were tuned for the
       // PREVIOUS theme — carrying them forward makes the new theme look
       // wrong (e.g. blue accent on a gold-themed Luxury preset).
-      update({
-        ui: {
-          ...project.ui,
-          settings: {
-            ...settings,
-            theme_id: id,
-            theme: mode,
-            accent_color: "",
-            font_family: "",
-            theme_overrides: {},
+      run.commit({
+        before: { settings },
+        description: "Change theme",
+        patch: {
+          ui: {
+            ...project.ui,
+            settings: {
+              ...settings,
+              theme_id: id,
+              theme: mode,
+              accent_color: "",
+              font_family: "",
+              theme_overrides: {},
+            },
           },
         },
       });
-      touchMutation();
     },
-    [project, themes, pushUndo, update, touchMutation],
+    [project, themes, run],
   );
 
   // Live theme variable overrides — burst-undo so dragging a color picker
@@ -804,69 +748,42 @@ export function UIBuilderView() {
     (overrides: Record<string, unknown>) => {
       if (!project) return;
       const settings = project.ui.settings;
-      if (!propertyUndoPushed.current) {
-        pushUndo({ settings }, "Edit theme overrides");
-        propertyUndoPushed.current = true;
-      }
-      update({
-        ui: { ...project.ui, settings: { ...settings, theme_overrides: overrides } },
+      run.join({
+        before: { settings },
+        description: "Edit theme overrides",
+        patch: { ui: { ...project.ui, settings: { ...settings, theme_overrides: overrides } } },
       });
-      touchMutation();
-      clearTimeout(propertyUndoTimer.current);
-      propertyUndoTimer.current = setTimeout(() => {
-        propertyUndoPushed.current = false;
-      }, 800);
     },
-    [project, pushUndo, update, touchMutation],
+    [project, run],
   );
 
   const handlePropertyChange = useCallback(
     (elementId: string, patch: Partial<UIElement>) => {
       if (!currentPage || !project) return;
-
-      // Push undo once at the start of an editing burst
-      if (!propertyUndoPushed.current) {
-        pushUndo({ pages: project.ui.pages }, "Edit element");
-        propertyUndoPushed.current = true;
-      }
-
-      // Apply the change without pushing another undo
-      const newPages = updateElementInPage(
-        project.ui.pages,
-        currentPage.id,
-        elementId,
-        patch,
-      );
-      update({ ui: { ...project.ui, pages: newPages } });
-      touchMutation();
-
-      // Reset the flag after a pause (next edit burst will push undo again)
-      clearTimeout(propertyUndoTimer.current);
-      propertyUndoTimer.current = setTimeout(() => {
-        propertyUndoPushed.current = false;
-      }, 800);
+      run.join({
+        before: { pages: project.ui.pages },
+        description: "Edit element",
+        patch: {
+          ui: { ...project.ui, pages: updateElementInPage(project.ui.pages, currentPage.id, elementId, patch) },
+        },
+      });
     },
-    [currentPage, project, pushUndo, update, touchMutation],
+    [currentPage, project, run],
   );
 
   const handlePageChange = useCallback(
     (patch: Partial<UIPage>) => {
       if (!currentPage || !project) return;
-      if (!propertyUndoPushed.current) {
-        pushUndo({ pages: project.ui.pages }, "Edit page properties");
-        propertyUndoPushed.current = true;
-      }
       const newPages = project.ui.pages.map((p) =>
         p.id === currentPage.id ? { ...p, ...patch } : p,
       );
-      update({ ui: { ...project.ui, pages: newPages } });
-      touchMutation();
-      clearTimeout(propertyUndoTimer.current);
-      propertyUndoTimer.current = setTimeout(() => {
-        propertyUndoPushed.current = false;
-      }, 800);
+      run.join({
+        before: { pages: project.ui.pages },
+        description: "Edit page properties",
+        patch: { ui: { ...project.ui, pages: newPages } },
+      });
     },
-    [currentPage, project, pushUndo, update, touchMutation],
+    [currentPage, project, run],
   );
 
   // Moving a control into a container (or back out) is a geometry change as
@@ -888,29 +805,14 @@ export function UIBuilderView() {
   const handleMasterElementPropertyChange = useCallback(
     (elementId: string, patch: Partial<MasterElement>) => {
       if (!project) return;
-
-      if (!propertyUndoPushed.current) {
-        pushUndo(
-          { master_elements: project.ui.master_elements || [] },
-          "Edit master element",
-        );
-        propertyUndoPushed.current = true;
-      }
-
-      const newMasters = updateMasterElement(
-        project.ui.master_elements || [],
-        elementId,
-        patch,
-      );
-      update({ ui: { ...project.ui, master_elements: newMasters } });
-      touchMutation();
-
-      clearTimeout(propertyUndoTimer.current);
-      propertyUndoTimer.current = setTimeout(() => {
-        propertyUndoPushed.current = false;
-      }, 800);
+      const masters = project.ui.master_elements || [];
+      run.join({
+        before: { master_elements: masters },
+        description: "Edit master element",
+        patch: { ui: { ...project.ui, master_elements: updateMasterElement(masters, elementId, patch) } },
+      });
     },
-    [project, pushUndo, update, touchMutation],
+    [project, run],
   );
 
   // --- DnD ---
@@ -1590,11 +1492,11 @@ export function UIBuilderView() {
           panelWidth={preset?.width ?? 1024}
           panelHeight={preset?.height ?? 600}
           onSave={(css) => {
-            pushUndo({ custom_css: project.ui.custom_css ?? "" }, "Edit project stylesheet");
-            propertyUndoPushed.current = false;
-            clearTimeout(propertyUndoTimer.current);
-            update({ ui: { ...project.ui, custom_css: css } });
-            touchMutation();
+            run.commit({
+              before: { custom_css: project.ui.custom_css ?? "" },
+              description: "Edit project stylesheet",
+              patch: { ui: { ...project.ui, custom_css: css } },
+            });
             showSuccess("Project stylesheet saved");
           }}
           onClose={() => setShowStylesheet(false)}
@@ -1610,9 +1512,6 @@ export function UIBuilderView() {
           onConfirm={() => {
             setConfirmResetStyles(false);
             if (!project) return;
-            pushUndo({ pages: project.ui.pages }, "Reset element styles to theme");
-            propertyUndoPushed.current = false;
-            clearTimeout(propertyUndoTimer.current);
             const newPages = project.ui.pages.map((page) => ({
               ...page,
               elements: page.elements.map((el) => {
@@ -1627,8 +1526,11 @@ export function UIBuilderView() {
                 return { ...el, style: cleaned };
               }),
             }));
-            update({ ui: { ...project.ui, pages: newPages } });
-            touchMutation();
+            run.commit({
+              before: { pages: project.ui.pages },
+              description: "Reset element styles to theme",
+              patch: { ui: { ...project.ui, pages: newPages } },
+            });
             showSuccess("Element styles reset to theme defaults");
           }}
         />
@@ -1695,13 +1597,11 @@ export function UIBuilderView() {
         <UISettingsDialog
           settings={project.ui.settings}
           pages={project.ui.pages}
-          onUpdate={(settings) => {
-            pushUndo({ settings: project.ui.settings }, "Edit project settings");
-            propertyUndoPushed.current = false;
-            clearTimeout(propertyUndoTimer.current);
-            update({ ui: { ...project.ui, settings } });
-            touchMutation();
-          }}
+          onUpdate={(settings) => run.commit({
+            before: { settings: project.ui.settings },
+            description: "Edit project settings",
+            patch: { ui: { ...project.ui, settings } },
+          })}
           onClose={() => setShowSettings(false)}
         />
       )}
