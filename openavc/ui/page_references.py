@@ -16,8 +16,8 @@ Why this is a separate module from the review it rides beside
 ------------------------------------------------------------
 Every check here needs the PROJECT (its pages, devices and macros) or the
 driver registry, and ``review_page`` deliberately takes only a page. More to the
-point, the Builder already runs these checks -- ``validateProject`` in
-``uiBuilderHelpers.ts`` has resolved page ids, device ids and macro ids for a
+point, the Builder already runs these checks -- ``validateProject`` (in
+``validateProject.ts``) has resolved page ids, device ids and macro ids for a
 while, including recursion into ``value_map``. So this is not a mirror waiting
 to be written; it is the AI door catching up to the surface a human already had.
 Keeping it out of ``page_review`` keeps that straight: what lives there is
