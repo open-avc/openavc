@@ -658,6 +658,8 @@ describe("the theme the Properties panel shows", () => {
     seed(makeProject({ settings: { theme_id: "", theme_overrides: undefined } }));
     await renderPage(UIBuilderView);
     expect(seen.ThemeStudio).toMatchObject({ currentThemeId: "dark-default", themeOverrides: {} });
+    // toMatchObject takes undefined for {}: none set is an empty set, not none.
+    expect(seen.ThemeStudio.themeOverrides).toEqual({});
   });
 });
 

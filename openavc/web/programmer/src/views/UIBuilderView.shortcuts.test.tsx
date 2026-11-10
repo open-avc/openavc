@@ -408,6 +408,19 @@ describe("the page's own listeners", () => {
     expect(builder().selectedElementId).toBeNull();
   });
 
+  it("ignores a pending focus that is not a control even when it names a page, once its frame has run", async () => {
+    reseed(makeProject(), { selectedPageId: "other" });
+    useNavigationStore.setState({ pendingFocus: { type: "device", id: "btn_1", detail: "page:main" } } as never);
+    const frames: FrameRequestCallback[] = [];
+    const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => { frames.push(cb); return 0; });
+    await renderPage(UIBuilderView);
+    call(() => frames.splice(0).forEach((f) => f(0)));
+    expect(builder().selectedPageId).toBe("other");
+    expect(builder().selectedElementId).toBeNull();
+    expect(useNavigationStore.getState().pendingFocus).toBeNull();
+    raf.mockRestore();
+  });
+
   it("flushes the pending save before the tab unloads, until it is gone", async () => {
     const r = await renderPage(UIBuilderView);
     window.dispatchEvent(new Event("beforeunload"));

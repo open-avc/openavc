@@ -13,9 +13,9 @@ import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { usePluginStore } from "../store/pluginStore";
-import { api, commands, seen, toast, ws } from "./uiBuilderMocks";
+import { api, commands, mounts, seen, toast, ws } from "./uiBuilderMocks";
 
-export { api, commands, seen, toast, ws };
+export { api, commands, mounts, seen, toast, ws };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -123,6 +123,7 @@ export function seed(project: ProjectConfig | null = makeProject(), builder: Rec
 
 export function resetMocks() {
   for (const k of Object.keys(seen)) delete seen[k];
+  for (const k of Object.keys(mounts)) delete mounts[k];
   ws.listeners = [];
   ws.unsubscribed = 0;
   for (const f of [...Object.values(toast), ...Object.values(saves), api.listThemes, commands.commandIssues]) f.mockReset();

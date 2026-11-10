@@ -6,7 +6,7 @@
 //
 // Each test file mocks with
 //   vi.mock("<path>", async () => (await import("../test/uiBuilderMocks")).stubs.<Name>)
-import { createElement as h, Fragment, type ReactNode } from "react";
+import { createElement as h, Fragment, useEffect, type ReactNode } from "react";
 import { vi } from "vitest";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -14,9 +14,25 @@ import { vi } from "vitest";
 /** The props each stubbed child was last drawn with, by component name. */
 export const seen: Record<string, any> = {};
 
+/** How many times each stubbed child was mounted and unmounted: a child that
+ *  keeps state of its own (the canvas's panel frame, the Theme Studio's
+ *  working copy) loses it on a remount, which its props alone cannot show. */
+export const mounts: Record<string, { mounted: number; unmounted: number }> = {};
+
+function useMountCount(name: string) {
+  useEffect(() => {
+    const m = (mounts[name] ??= { mounted: 0, unmounted: 0 });
+    m.mounted++;
+    return () => {
+      m.unmounted++;
+    };
+  }, [name]);
+}
+
 function recorder(name: string) {
   return (props: any) => {
     seen[name] = props;
+    useMountCount(name);
     return h("div", { "data-testid": `stub-${name}` });
   };
 }
@@ -28,6 +44,7 @@ export const stubs = {
   CanvasToolbar: {
     CanvasToolbar: (props: any) => {
       seen.CanvasToolbar = props;
+      useMountCount("CanvasToolbar");
       return h("div", { "data-testid": "stub-CanvasToolbar" }, props.trailing ?? null);
     },
   },

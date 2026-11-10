@@ -6,6 +6,7 @@ import { render, screen } from "@testing-library/react";
 
 import { CanvasToolbar } from "./CanvasToolbar";
 import { useProjectStore } from "../../store/projectStore";
+import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { makeProject, resetMocks, seed } from "../../test/uiBuilderHarness";
 
 beforeEach(() => {
@@ -23,5 +24,16 @@ describe("a page tab", () => {
     render(<CanvasToolbar pages={pages} selectedPageId="main" />);
     expect(screen.getByTitle("Main: shows a page you wrote. Double-click to rename, right-click for more.")).toBeTruthy();
     expect(screen.getByTitle("Other: 1 element. Double-click to rename, right-click for more.")).toBeTruthy();
+  });
+});
+
+describe("the screen preset list", () => {
+  it("says the size the canvas draws: the preset, turned for a portrait arrangement", () => {
+    const { rerender } = render(<CanvasToolbar pages={useProjectStore.getState().project!.ui.pages} selectedPageId="main" />);
+    const list = () => screen.getByTitle(/^Canvas: /);
+    expect(list().title).toBe("Canvas: 1024x600");
+    useUIBuilderStore.setState({ activeLayoutId: "main_port", screenPresetIndex: 1 });
+    rerender(<CanvasToolbar pages={useProjectStore.getState().project!.ui.pages} selectedPageId="main" />);
+    expect(list().title).toBe("Canvas: 800x1280");
   });
 });

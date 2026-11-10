@@ -1,0 +1,209 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { act, screen, fireEvent } from "@testing-library/react";
+
+// The UI Builder page's layout as its children live through it: which of them
+// stay mounted (and so keep their own state) through preview, Ctrl+E, a dialog,
+// the canvas menu and a page switch, and which are drawn fresh each time.
+
+vi.mock("../api/restClient", async (orig) => (await import("../test/uiBuilderMocks")).restModule(orig));
+vi.mock("../api/wsClient", async () => (await import("../test/uiBuilderMocks")).wsModule);
+vi.mock("../api/commandIssues", async () => (await import("../test/uiBuilderMocks")).commands);
+vi.mock("../store/toastStore", async (orig) => (await import("../test/uiBuilderMocks")).toastModule(orig));
+vi.mock("@dnd-kit/core", async (orig) => (await import("../test/uiBuilderMocks")).dndKit(orig));
+vi.mock("react-resizable-panels", async () => (await import("../test/uiBuilderMocks")).stubs.panels);
+vi.mock("../components/ui-builder/ElementPalette", async () => (await import("../test/uiBuilderMocks")).stubs.ElementPalette);
+vi.mock("../components/ui-builder/OutlinePanel", async () => (await import("../test/uiBuilderMocks")).stubs.OutlinePanel);
+vi.mock("../components/ui-builder/Canvas", async () => (await import("../test/uiBuilderMocks")).stubs.Canvas);
+vi.mock("../components/ui-builder/CanvasToolbar", async () => (await import("../test/uiBuilderMocks")).stubs.CanvasToolbar);
+vi.mock("../components/ui-builder/PropertiesPanel", async () => (await import("../test/uiBuilderMocks")).stubs.PropertiesPanel);
+vi.mock("../components/ui-builder/ContextMenu", async () => (await import("../test/uiBuilderMocks")).stubs.ContextMenu);
+vi.mock("../components/ui-builder/ThemeStudio", async () => (await import("../test/uiBuilderMocks")).stubs.ThemeStudio);
+vi.mock("../components/ui-builder/StylesheetEditor", async () => (await import("../test/uiBuilderMocks")).stubs.StylesheetEditor);
+
+import { UIBuilderView } from "./UIBuilderView";
+import {
+  builder,
+  installFetch,
+  makeProject,
+  mounts,
+  press,
+  renderPage,
+  resetMocks,
+  seed,
+  seen,
+  themeFetch,
+  ui,
+  undoLog,
+} from "../test/uiBuilderHarness";
+
+const call = (fn: () => unknown) => act(() => { fn(); });
+const count = (name: string) => [mounts[name]?.mounted ?? 0, mounts[name]?.unmounted ?? 0];
+const click = (title: string) => call(() => fireEvent.click(screen.getByTitle(title)));
+
+beforeEach(() => {
+  resetMocks();
+  installFetch();
+  seed();
+});
+
+/** Every way the page changes around the canvas, one after the other. */
+async function everyChange() {
+  press("p", { ctrl: true });
+  press("p", { ctrl: true });
+  press("e", { ctrl: true });
+  press("e", { ctrl: true });
+  click("Open Theme Studio");
+  call(() => seen.ThemeStudio.onClose());
+  click("Edit the project stylesheet (custom CSS)");
+  call(() => seen.StylesheetEditor.onClose());
+  click("Panel Settings");
+  call(() => fireEvent.click(screen.getByRole("button", { name: "Cancel" })));
+  call(() => builder().setContextMenu({ x: 1, y: 2, elementId: "btn_1", isMaster: false }));
+  call(() => seen.ContextMenu.onClose());
+  call(() => seen.ThemeStudio.onResetElementStyles());
+  call(() => fireEvent.click(screen.getByRole("button", { name: "Cancel" })));
+  await act(async () => { await seen.CanvasToolbar.onValidate(); });
+  call(() => fireEvent.click(screen.getByRole("button", { name: "×" })));
+  call(() => builder().selectPage("other"));
+}
+
+describe("what stays mounted", () => {
+  it("keeps the canvas, the toolbar and the Theme Studio through every change around them", async () => {
+    await renderPage(UIBuilderView);
+    expect([count("Canvas"), count("CanvasToolbar"), count("ThemeStudio")]).toEqual([[1, 0], [1, 0], [1, 0]]);
+    await everyChange();
+    expect(seen.Canvas.page.id).toBe("other");
+    expect([count("Canvas"), count("CanvasToolbar"), count("ThemeStudio")]).toEqual([[1, 0], [1, 0], [1, 0]]);
+  });
+
+  it("draws the Properties panel again after preview, and keeps it through Ctrl+E, the dialogs and the menu", async () => {
+    await renderPage(UIBuilderView);
+    expect(count("PropertiesPanel")).toEqual([1, 0]);
+    press("p", { ctrl: true });
+    expect(count("PropertiesPanel")).toEqual([1, 1]);
+    press("p", { ctrl: true });
+    expect(count("PropertiesPanel")).toEqual([2, 1]);
+    press("e", { ctrl: true });
+    press("e", { ctrl: true });
+    click("Open Theme Studio");
+    call(() => seen.ThemeStudio.onClose());
+    click("Edit the project stylesheet (custom CSS)");
+    call(() => seen.StylesheetEditor.onClose());
+    call(() => builder().setContextMenu({ x: 1, y: 2, elementId: "btn_1", isMaster: false }));
+    call(() => seen.ContextMenu.onClose());
+    call(() => builder().selectPage("other"));
+    expect(count("PropertiesPanel")).toEqual([2, 1]);
+  });
+
+  it("draws the palette again after preview and after Ctrl+E, and keeps it through the dialogs and the menu", async () => {
+    await renderPage(UIBuilderView);
+    expect(count("ElementPalette")).toEqual([1, 0]);
+    press("p", { ctrl: true });
+    press("p", { ctrl: true });
+    expect(count("ElementPalette")).toEqual([2, 1]);
+    press("e", { ctrl: true });
+    press("e", { ctrl: true });
+    expect(count("ElementPalette")).toEqual([3, 2]);
+    click("Open Theme Studio");
+    call(() => seen.ThemeStudio.onClose());
+    click("Panel Settings");
+    call(() => fireEvent.click(screen.getByRole("button", { name: "Cancel" })));
+    call(() => builder().setContextMenu({ x: 1, y: 2, elementId: "btn_1", isMaster: false }));
+    call(() => seen.ContextMenu.onClose());
+    expect(count("ElementPalette")).toEqual([3, 2]);
+  });
+
+  it("draws the stylesheet editor fresh each time it opens, from the toolbar or the Properties panel", async () => {
+    await renderPage(UIBuilderView);
+    expect(count("StylesheetEditor")).toEqual([0, 0]);
+    click("Edit the project stylesheet (custom CSS)");
+    expect(count("StylesheetEditor")).toEqual([1, 0]);
+    call(() => seen.StylesheetEditor.onClose());
+    expect(count("StylesheetEditor")).toEqual([1, 1]);
+    call(() => seen.PropertiesPanel.onOpenStylesheet());
+    expect(count("StylesheetEditor")).toEqual([2, 1]);
+    // Opening it again while it is open draws nothing new.
+    call(() => seen.PropertiesPanel.onOpenStylesheet());
+    expect(count("StylesheetEditor")).toEqual([2, 1]);
+  });
+
+  it("keeps one canvas menu while it moves to another control, and lets it go when closed", async () => {
+    await renderPage(UIBuilderView);
+    call(() => builder().setContextMenu({ x: 1, y: 2, elementId: "btn_1", isMaster: false }));
+    call(() => builder().setContextMenu({ x: 30, y: 40, elementId: "m_1", isMaster: true }));
+    expect(count("ContextMenu")).toEqual([1, 0]);
+    expect(seen.ContextMenu).toMatchObject({ x: 30, y: 40, elementId: "m_1", isMaster: true });
+    call(() => seen.ContextMenu.onClose());
+    expect(count("ContextMenu")).toEqual([1, 1]);
+    expect(screen.queryByTestId("stub-ContextMenu")).toBeNull();
+  });
+
+  it("draws the Theme Studio closed from the start, with the stylesheet, the question and the report all closed", async () => {
+    await renderPage(UIBuilderView);
+    expect(seen.ThemeStudio.open).toBe(false);
+    expect(screen.queryByTestId("stub-StylesheetEditor")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
+describe("the dialogs one over another", () => {
+  it("asks the reset question over the open Theme Studio, and leaves the Studio open after either answer", async () => {
+    themeFetch.byId["dark-default"] = { variables: {}, element_defaults: { label: { bg_color: "#000" } } };
+    await renderPage(UIBuilderView);
+    click("Open Theme Studio");
+    call(() => seen.ThemeStudio.onResetElementStyles());
+    expect(screen.getByText("Reset element styles to theme defaults?")).toBeInTheDocument();
+    expect(seen.ThemeStudio.open).toBe(true);
+    call(() => fireEvent.click(screen.getByRole("button", { name: "Reset Styles" })));
+    expect(screen.queryByText("Reset element styles to theme defaults?")).toBeNull();
+    expect(seen.ThemeStudio.open).toBe(true);
+    expect(undoLog()).toEqual([["Reset element styles to theme", "pages"]]);
+    call(() => seen.ThemeStudio.onResetElementStyles());
+    call(() => fireEvent.click(screen.getByRole("button", { name: "Cancel" })));
+    expect(seen.ThemeStudio.open).toBe(true);
+  });
+
+  it("keeps a dialog open across preview, which only the canvas's surroundings follow", async () => {
+    await renderPage(UIBuilderView);
+    click("Edit the project stylesheet (custom CSS)");
+    click("Open Theme Studio");
+    press("p", { ctrl: true });
+    expect(seen.ThemeStudio.open).toBe(true);
+    expect(screen.getByTestId("stub-StylesheetEditor")).toBeInTheDocument();
+    expect(count("StylesheetEditor")).toEqual([1, 0]);
+  });
+
+  it("previews the stylesheet on the screen as the preset has it, not turned for the arrangement", async () => {
+    seed(makeProject(), { selectedPageId: "main", activeLayoutId: "main_port", screenPresetIndex: 1 });
+    await renderPage(UIBuilderView);
+    click("Edit the project stylesheet (custom CSS)");
+    expect(seen.StylesheetEditor.panelWidth).toBeGreaterThan(seen.StylesheetEditor.panelHeight);
+    expect(seen.StylesheetEditor.panelWidth).toBe(seen.ThemeStudio.panelWidth);
+    expect(seen.StylesheetEditor.panelHeight).toBe(seen.ThemeStudio.panelHeight);
+    expect(seen.Canvas.screenWidth).toBeLessThan(seen.Canvas.screenHeight);
+  });
+
+  it("previews the stylesheet on the page on screen, and the next page once it changes", async () => {
+    seed(makeProject(), { selectedPageId: "other" });
+    await renderPage(UIBuilderView);
+    click("Edit the project stylesheet (custom CSS)");
+    expect(seen.StylesheetEditor.previewPageId).toBe("other");
+    call(() => builder().selectPage("main"));
+    expect(seen.StylesheetEditor.previewPageId).toBe("main");
+  });
+});
+
+describe("a project with no masters list", () => {
+  it("hands the canvas no list at all, and the outline and the keys an empty one", async () => {
+    const p = makeProject();
+    delete (p.ui as { master_elements?: unknown }).master_elements;
+    seed(p, { selectedPageId: "main" });
+    await renderPage(UIBuilderView);
+    expect(seen.Canvas.masterElements).toBeUndefined();
+    call(() => fireEvent.click(screen.getByRole("button", { name: "Outline" })));
+    expect(seen.OutlinePanel.masterElements).toEqual([]);
+    expect(seen.PropertiesPanel.masterElement).toBeNull();
+    expect(ui().master_elements).toBeUndefined();
+  });
+});
