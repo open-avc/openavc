@@ -195,6 +195,27 @@ describe("the dialogs one over another", () => {
   });
 });
 
+describe("the order the dialogs stack in", () => {
+  it("draws the Theme Studio, the stylesheet, the reset question, Validate's report and Panel Settings in that order, each later one over the one before", async () => {
+    await renderPage(UIBuilderView);
+    click("Edit the project stylesheet (custom CSS)");
+    click("Open Theme Studio");
+    call(() => seen.ThemeStudio.onResetElementStyles());
+    await act(async () => { await seen.CanvasToolbar.onValidate(); });
+    click("Panel Settings");
+    const drawn = [
+      screen.getByTestId("stub-ThemeStudio"),
+      screen.getByTestId("stub-StylesheetEditor"),
+      screen.getByRole("alertdialog"),
+      screen.getByText(/^Project Validation/),
+      screen.getByRole("dialog", { name: "Panel Settings" }),
+    ];
+    for (let i = 1; i < drawn.length; i++) {
+      expect(drawn[i - 1].compareDocumentPosition(drawn[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+});
+
 describe("each dialog on its own", () => {
   it("opens only the dialog asked for, from each of its openers", async () => {
     await renderPage(UIBuilderView);
