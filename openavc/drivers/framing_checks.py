@@ -8,9 +8,11 @@ through one interpreter (``transport/frame_parsers.build_frame_parser``), and
 ``send_frame:`` through ``compiled_protocol.build_send_frame``. So each framing
 type's fields are one table here (``FRAME_FIELDS``, ``SEND_FRAME_FIELDS``):
 the key, the value the runtime falls back to when it is absent, and the rule
-the value is held to. A field a type gains is one row; a type is a table and
-its name in ``spec``. The blocks differ only in the types they take and in how
-a message is worded:
+the value is held to. A field a type gains is a row here, beside its entry in
+``spec.DEFS`` and the runtime's read of it, and ``tests/test_framing_tables.py``
+holds the rows to both. The blocks differ in the types they take and in how a
+message is worded, and today each reads its own rows; what they share is the
+rules:
 
 * the driver's ``frame_parser:`` takes ``spec.FRAME_PARSER_TYPES`` and words
   each field ``frame_parser: <key> must be <rule> (got <value>)``;
@@ -19,7 +21,8 @@ a message is worded:
 * a push block's ``frame_parser`` takes ``spec.PUSH_FRAME_PARSER_TYPES`` and
   judges only a ``struct_frame``'s fields (``push_block_checks``, worded
   ``push: frame_parser <key> must be <rule>``): a ``length_prefix`` or
-  ``fixed_length`` there loads unjudged.
+  ``fixed_length`` there loads unjudged, and judging them is one condition
+  there.
 
 A type is matched by ``in`` over a tuple and a rule by a type test or ``in``,
 never by hashing the value, so a ``type`` YAML reads as a list is reported, not
@@ -56,7 +59,7 @@ def spoken_choices(values: tuple[Any, ...], *, quoted: bool) -> str:
 
 
 @dataclass(frozen=True)
-class _Rule:
+class FieldRule:
     """What a field must be: the words a message uses, and the test."""
 
     words: str
@@ -79,54 +82,54 @@ def _not_text_if_set(value: Any) -> bool:
     return value is not None and not isinstance(value, str)
 
 
-def _one_of(values: tuple[Any, ...], *, quoted: bool) -> _Rule:
-    return _Rule(spoken_choices(values, quoted=quoted), lambda value: value not in values)
+def _one_of(values: tuple[Any, ...], *, quoted: bool) -> FieldRule:
+    return FieldRule(spoken_choices(values, quoted=quoted), lambda value: value not in values)
 
 
-_INTEGER = _Rule("an integer", _not_an_integer)
-_COUNT = _Rule("a non-negative integer", _not_a_count)
-_POSITIVE = _Rule("a positive integer", _not_positive)
-_TEXT = _Rule("a string", _not_text_if_set)
+_INTEGER = FieldRule("an integer", _not_an_integer)
+_COUNT = FieldRule("a non-negative integer", _not_a_count)
+_POSITIVE = FieldRule("a positive integer", _not_positive)
+_TEXT = FieldRule("a string", _not_text_if_set)
 _ENDIAN = _one_of(LENGTH_ENDIANS, quoted=True)
 
 
 @dataclass(frozen=True)
-class _Field:
+class FrameField:
     key: str
     default: Any
-    rule: _Rule
+    rule: FieldRule
 
 
 #: Each frame parser type's fields, in the order they are reported.
-FRAME_FIELDS: dict[str, tuple[_Field, ...]] = {
+FRAME_FIELDS: dict[str, tuple[FrameField, ...]] = {
     "length_prefix": (
-        _Field("header_size", 2, _one_of(LENGTH_HEADER_SIZES, quoted=False)),
-        _Field("header_offset", 0, _INTEGER),
+        FrameField("header_size", 2, _one_of(LENGTH_HEADER_SIZES, quoted=False)),
+        FrameField("header_offset", 0, _INTEGER),
         # The length need not open the frame (eISCP: at offset 8, behind the
         # magic and the header size, followed by the version and reserved bytes).
-        _Field("length_offset", 0, _COUNT),
-        _Field("header_extra", 0, _COUNT),
-        _Field("length_endian", "big", _ENDIAN),
+        FrameField("length_offset", 0, _COUNT),
+        FrameField("header_extra", 0, _COUNT),
+        FrameField("length_endian", "big", _ENDIAN),
     ),
-    "fixed_length": (_Field("length", 1, _POSITIVE),),
+    "fixed_length": (FrameField("length", 1, _POSITIVE),),
     "struct_frame": (
-        _Field("header_reserve", 0, _COUNT),
-        _Field("mid_reserve", 0, _COUNT),
-        _Field("trailer_reserve", 0, _COUNT),
-        _Field("length_size", 2, _one_of(STRUCT_LENGTH_SIZES, quoted=False)),
-        _Field("length_adjust", 0, _INTEGER),
-        _Field("length_endian", "big", _ENDIAN),
+        FrameField("header_reserve", 0, _COUNT),
+        FrameField("mid_reserve", 0, _COUNT),
+        FrameField("trailer_reserve", 0, _COUNT),
+        FrameField("length_size", 2, _one_of(STRUCT_LENGTH_SIZES, quoted=False)),
+        FrameField("length_adjust", 0, _INTEGER),
+        FrameField("length_endian", "big", _ENDIAN),
     ),
 }
 
 #: Each send_frame type's fields, in the order they are reported. The header
 #: bytes are escape-decoded text.
-SEND_FRAME_FIELDS: dict[str, tuple[_Field, ...]] = {
+SEND_FRAME_FIELDS: dict[str, tuple[FrameField, ...]] = {
     "length_prefix": (
-        _Field("length_size", 4, _POSITIVE),
-        _Field("length_endian", "big", _ENDIAN),
-        _Field("header", None, _TEXT),
-        _Field("after_length", None, _TEXT),
+        FrameField("length_size", 4, _POSITIVE),
+        FrameField("length_endian", "big", _ENDIAN),
+        FrameField("header", None, _TEXT),
+        FrameField("after_length", None, _TEXT),
     ),
 }
 
@@ -135,7 +138,7 @@ COMMAND_AFFIXES: tuple[str, ...] = ("command_prefix", "command_suffix")
 
 
 def field_problems(
-    fields: tuple[_Field, ...], block: dict[str, Any]
+    fields: tuple[FrameField, ...], block: dict[str, Any]
 ) -> Iterator[tuple[str, str, Any]]:
     """Each field of ``block`` its rule refuses, in the table's order: the key,
     what the value must be, and the value (the default when it is absent)."""
