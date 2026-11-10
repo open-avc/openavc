@@ -117,6 +117,13 @@ CASES: dict[str, dict[str, Any]] = {
         send="X", read_back=["Q{lvl}", "noop", 5, "Q{level}", "", "R{x}", "set"],
     ),
     "cmd_read_back_true": command(send="X", read_back=True),
+    # A read-back naming a command is that command's, even when the name
+    # itself reads as a placeholder.
+    "cmd_read_back_names_a_templated_command": commands(
+        **{"Q{lvl}": {"send": "Q\r"}},
+        set={"send": "X", "params": LEVEL, "read_back": ["Q{lvl}", "R{lvl}"]},
+        get={"send": "Y", "params": LEVEL, "read_back": "Q{lvl}"},
+    ),
     "cmd_read_back_mapping": command(send="X", read_back={"q": "{x}"}),
     "cmd_udp": command(
         send="X",
@@ -388,6 +395,21 @@ CASES: dict[str, dict[str, Any]] = {
         **poll(*[{"each_child": t, "send": "{child_id}"} for t in "abcdefghij"],
                poll_interval=1),
     },
+    # A field max that is a boolean is no maximum.
+    "poll_largest_roster_top_bool": {
+        "child_entity_types": {
+            "output": OUTPUTS,
+            "k": {"id_format": {"type": "integer"}, "instances": {"count_from": "k"}},
+        },
+        "config_schema": {**BASE["config_schema"], "k": {"type": "integer", "max": True}},
+        **poll({"each_child": "output", "send": "O{child_id}"},
+               {"each_child": "k", "send": "K{child_id}"},
+               poll_interval=1, outputs=2, k=0),
+    },
+    # The spacing is rounded to the nearest millisecond.
+    "poll_delay_fractional_ms": {
+        "transport": "udp", **poll(*["Q"] * 100, poll_interval=1, inter_command_delay=0.0299),
+    },
     "poll_largest_roster_schema_not_mapping": {
         "child_entity_types": {"output": OUTPUTS},
         "config_schema": ["outputs"],
@@ -432,6 +454,8 @@ CASES: dict[str, dict[str, Any]] = {
         "default_config": {"zone": 1, "poll_interval": 5},
     },
     "silence_http": {"transport": "http", "responses": [RULE]},
+    # A number too large for a float is read only where each rule reads it.
+    "poll_interval_too_large_unread": {"transport": "osc", **poll("Q", poll_interval=10**400)},
     "silence_defaults_not_mapping": {
         "responses": [RULE], "polling": {"queries": ["Q"]}, "default_config": "x",
     },
@@ -468,17 +492,32 @@ RAISING_CASES: dict[str, dict[str, Any]] = {
         "transport": "udp", **poll("Q", poll_interval=1, inter_command_delay="inf"),
     },
     "poll_tcp_delay_infinite": poll("Q", poll_interval=1, inter_command_delay="inf"),
+    "poll_interval_too_large": poll("Q", poll_interval=10**400),
+    "poll_interval_too_large_at_no_gap": {"transport": "udp", **poll("Q", poll_interval=10**400)},
+    "poll_delay_too_large": {"transport": "osc", **poll("Q", inter_command_delay=10**400)},
+    "silence_interval_too_large": {
+        "transport": "osc", "responses": [RULE], **poll("Q", poll_interval=10**400),
+    },
+    "silence_interval_too_large_no_queries": {
+        "transport": "osc", "responses": [RULE],
+        "default_config": {"zone": 1, "poll_interval": 10**400},
+    },
 }
 
 # Raised by validate_driver_warnings (and so by validate_driver_issues);
 # validate_driver_definition alone accepts or refuses each shape without
 # raising.
 RAISES: dict[str, type[BaseException]] = {
+    'poll_delay_too_large': OverflowError,
     'poll_each_child_unhashable': TypeError,
+    'poll_interval_too_large': OverflowError,
+    'poll_interval_too_large_at_no_gap': OverflowError,
     'poll_tcp_delay_infinite': OverflowError,
     'poll_udp_delay_infinite': OverflowError,
     'poll_udp_delay_nan': ValueError,
     'silence_extra_unhashable': TypeError,
+    'silence_interval_too_large': OverflowError,
+    'silence_interval_too_large_no_queries': OverflowError,
     'silence_transport_unhashable': TypeError,
 }
 
@@ -486,7 +525,7 @@ RAISES: dict[str, type[BaseException]] = {
 TOKENS: list[str] = [
     "{a}", "{a:02d}", "{a:}", "{a:x:y}", "{1}", "{_a}", "{a1}", "{A}", "{\u00e9}",
     "{a b}", "{ a}", "{a-b}", "{{a}}", "{a{b}}", "{a:{b}}", '{"x": {a}}',
-    "{a:0{2}d}", "{a}{b}", "{b}x{b}", "{a", "a}", "{}", "{:02d}", "{a:\n}", "x{a}y{c:>4}z",
+    "{a:0{2}d}", "{a}{b}", "{b}x{b}", "{q:}", "{a", "a}", "{}", "{:02d}", "{a:\n}", "x{a}y{c:>4}z",
 ]
 TOKEN_PARAMS = {"a": {"type": "integer"}, "b": {"type": "string"}, "c": {"type": "string"}}
 
@@ -689,6 +728,12 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
                             'commands.set',
                             "Command 'set': 'read_back' must be true, a query, or a list of "
                             'queries')],
+ 'cmd_read_back_names_a_templated_command': [('error',
+                                              'commands.set.read_back[1]',
+                                              "commands.set.read_back[1]: '{lvl}' resolves to "
+                                              "nothing (did you mean 'level'?). It names no "
+                                              'parameter of this command and no config field, so '
+                                              'it would be sent to the device as written')],
  'cmd_read_back_text': [('error',
                          'commands.set.read_back',
                          "commands.set.read_back: '{lvl}' resolves to nothing (did you mean "
@@ -915,6 +960,12 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
                       'inter_command_delay is set), longer than the 1 s poll interval: the device '
                       'answers polls more than half the time, and each reading refreshes every 2.5 '
                       's. Poll less per cycle, or set a longer poll_interval in default_config.')],
+ 'poll_delay_fractional_ms': [('warning',
+                               'polling.queries',
+                               'Each poll sends 100 lines, 3 s at 30 ms apart, longer than the 1 s '
+                               'poll interval: the device answers polls more than half the time, '
+                               'and each reading refreshes every 4 s. Poll less per cycle, or set '
+                               'a longer poll_interval in default_config.')],
  'poll_delay_negative': [('warning',
                           'polling.queries',
                           'Each poll sends 30 lines, 1.5 s at 50 ms apart (the spacing used when '
@@ -1016,6 +1067,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
                          'device answers polls more than half the time, and each reading refreshes '
                          'every 2.5 s. Poll less per cycle, or set a longer poll_interval in '
                          'default_config.')],
+ 'poll_interval_too_large_unread': [],
  'poll_interval_zero': [],
  'poll_largest_one_roster_already_there': [('warning',
                                             'polling.queries',
@@ -1082,6 +1134,15 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
                                              'reading refreshes every 4.2 s. Poll less per child, '
                                              "set a longer poll_interval, or lower the roster's "
                                              'max to the largest unit the driver supports.')],
+ 'poll_largest_roster_top_bool': [('warning',
+                                   'polling.queries',
+                                   'At the largest roster this driver accepts (outputs 64), each '
+                                   'poll sends 64 lines, 3.2 s at 50 ms apart (the spacing used '
+                                   'when no inter_command_delay is set), longer than the 1 s poll '
+                                   'interval: the device answers polls more than half the time, '
+                                   'and each reading refreshes every 4.2 s. Poll less per child, '
+                                   "set a longer poll_interval, or lower the roster's max to the "
+                                   'largest unit the driver supports.')],
  'poll_largest_roster_tops_unusable': [('error',
                                         'child_entity_types.a',
                                         'child_entity_types.a.id_format: max must be an integer '
@@ -1699,6 +1760,17 @@ TOKEN_EXPECTED: dict[str, dict[str, Any]] = {'a}': {'declared_placeholders': [],
              'runtime_wire': '{b}x{b}',
              'send_regex': '(.+)x(.+)',
              'validator': []},
+ '{q:}': {'declared_placeholders': [],
+          'is_passthrough_send': False,
+          'osc_read_back': ["No simulator handler matches OSC read_back query: '1'"],
+          'runtime_warned': ["[acme] commands.t: '{q}' was not substituted and goes to the device "
+                             'literally — it names no parameter passed to this call and no config '
+                             'field. Declare it, or pass it when calling the command.'],
+          'runtime_wire': '{q:}',
+          'send_regex': '\\{q:\\}',
+          'validator': ["commands.t.send: '{q}' resolves to nothing. It names no parameter of this "
+                        'command and no config field, so it would be sent to the device as '
+                        'written']},
  '{{a}}': {'declared_placeholders': ['a'],
            'is_passthrough_send': False,
            'osc_read_back': ["No simulator handler matches OSC read_back query: '{1}'"],
