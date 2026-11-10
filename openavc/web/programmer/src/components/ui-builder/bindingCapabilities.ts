@@ -13,6 +13,11 @@
  * (`value.link`) and whose interactions send no command is reported there.
  * Which show slots the panel itself honours per type is a separate,
  * generated table (`HONORED_SHOW_SLOTS` in api/uiBindingReach.gen.ts).
+ *
+ * A control type's other per-type entries: its palette entry (`ELEMENT_TYPES`,
+ * uiBuilderHelpers.ts), its starting fields and size (newElement.ts), whether a
+ * finger has to hit it (`TOUCHABLE_TYPES`, touchTarget.ts) and whether Validate
+ * expects it to act when touched (`INTERACTIVE_TYPES`, validateProject.ts).
  */
 
 export type ValueEditorKind = "slider" | "text";

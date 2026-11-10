@@ -1286,5 +1286,8 @@ export function assignPageToGroup(pageGroups: PageGroup[], pageId: string, group
 export { validateElementId, renameElement, type RenameResult } from "./projectRewrites";
 
 // --- Validate ---
+//
+// Forwarded because the Builder view's Validate report and dialogs import it
+// from here.
 
 export { validateProject, type ValidationIssue } from "./validateProject";

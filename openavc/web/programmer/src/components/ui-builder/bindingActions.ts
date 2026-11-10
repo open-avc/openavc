@@ -126,6 +126,8 @@ export interface BrokenReference {
  * empty or resolves. One action only: a value_map's options are each caller's to
  * walk, because the binding card's badge and Validate read them differently
  * (`valueMapActions`). Each caller words what it finds in its own place.
+ * Validate reads a macro step through this too, since a step names its device
+ * or macro in the same field an action does.
  */
 export function brokenReference(a: Record<string, unknown>, ids: BindingRefIds): BrokenReference | null {
   const kind = NAMED_BY_ACTION.get(a.action);
