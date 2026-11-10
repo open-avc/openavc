@@ -25,14 +25,13 @@ import re
 from typing import Any, Callable
 
 from openavc.drivers.child_ids import declared_child_ids, page_starts
+from openavc.drivers.child_type_checks import RosterNames, child_type_errors
 from openavc.drivers.command_checks import CommandSection, osc_args_errors
 from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY,
     closest_name,
-    config_field_names,
     declared_enum_values,
-    declared_id_kind,
     did_you_mean,
     substitution_names,
 )
@@ -49,13 +48,11 @@ from openavc.drivers.spec import (
     AUTH_TRANSPORTS,
     AUTH_TYPES,
     AVAILABILITIES,
-    CHILD_ID_TYPES,
     CONNECTION_FIELDS,
     DEFAULT_LINE_GAP_S,
     DEFS,
     FIELDS,
     GENERIC_ID_PREFIXES,
-    INSTANCE_SOURCES,
     LENGTH_ENDIANS,
     LENGTH_HEADER_SIZES,
     LINE_GAP_TRANSPORTS,
@@ -73,7 +70,6 @@ from openavc.drivers.spec import (
     platform_requirements,
 )
 from openavc.drivers.state_variable_checks import (
-    CHILD_VARIABLE,
     DEVICE_VARIABLE,
     state_variable_errors,
 )
@@ -895,210 +891,18 @@ def validate_driver_definition(
                             f"send_frame: {byte_key} must be a string (got {byte_val!r})"
                         )
 
-    # Validate child_entity_types keys. The child type name becomes a key
-    # segment — device.<id>.<child_type>.<local_id>.<prop> — and feeds
-    # subscribe_children's "device.<id>.<child_type>.*" pattern. A dot would
-    # corrupt the key structure; a glob metachar (* ? [) breaks the fnmatch
-    # dispatch the platform uses to route per-child state changes.
+    # What one child type says about itself (its name, id_format, state
+    # variables and instances: roster) is checked in child_type_checks. Each
+    # type's messages are tagged with its place.
     errors.ctx = "child_entity_types"
     child_types = driver_def.get("child_entity_types", {})
     if child_types and not isinstance(child_types, dict):
         errors.append("child_entity_types: must be a mapping")
     elif isinstance(child_types, dict):
+        roster_names = RosterNames(driver_def)
         for child_type, type_def in child_types.items():
             errors.ctx = f"child_entity_types.{child_type}"
-            if not isinstance(child_type, str) or not child_type:
-                errors.append(f"child_entity_types: type name {child_type!r} must be a non-empty string")
-                continue
-            if "." in child_type:
-                errors.append(
-                    f"child_entity_types: type name '{child_type}' must not contain dots (used as state key separator)"
-                )
-            bad = [c for c in "*?[" if c in child_type]
-            if bad:
-                errors.append(
-                    f"child_entity_types: type name '{child_type}' must not contain "
-                    f"glob metacharacters ({', '.join(bad)}); they break state-change dispatch"
-                )
-            # Deep-validate the schema so a malformed declaration fails at
-            # load with a clear message — not at connect() (a bad id_format
-            # used to surface as a confusing device-offline) or silently
-            # (an invalid cloud_priority just fell to the default tier).
-            where = f"child_entity_types.{child_type}"
-            if not isinstance(type_def, dict):
-                errors.append(f"{where}: must be a mapping")
-                continue
-            id_format = type_def.get("id_format")
-            if id_format is not None:
-                if not isinstance(id_format, dict):
-                    errors.append(f"{where}.id_format: must be a mapping")
-                else:
-                    id_type = id_format.get("type", "integer")
-                    if id_type not in CHILD_ID_TYPES:
-                        errors.append(
-                            f"{where}.id_format: unknown type '{id_type}' "
-                            f"(expected 'integer' or 'string')"
-                        )
-                    mn, mx = id_format.get("min"), id_format.get("max")
-                    for label, val in (("min", mn), ("max", mx)):
-                        if val is not None and (
-                            isinstance(val, bool) or not isinstance(val, int)
-                        ):
-                            errors.append(
-                                f"{where}.id_format: {label} must be an integer "
-                                f"(got {val!r})"
-                            )
-                    if isinstance(mn, int) and isinstance(mx, int) and mn > mx:
-                        errors.append(
-                            f"{where}.id_format: min ({mn}) is greater than max ({mx})"
-                        )
-                    pad = id_format.get("pad_width")
-                    # 0 means "don't pad" — it is the runtime's own default
-                    # (base.py renders the id bare when pad_width is falsy)
-                    # and the field registry declares a minimum of 0. This
-                    # rule used to demand 1 or more, which made every child
-                    # type the Driver Builder creates unsaveable (it seeds
-                    # pad_width 0) and would have made a hand-authored
-                    # driver using the schema's own legal value disappear at
-                    # load. Only a negative width is meaningless.
-                    if pad is not None and (
-                        isinstance(pad, bool) or not isinstance(pad, int) or pad < 0
-                    ):
-                        errors.append(
-                            f"{where}.id_format: pad_width must be zero or a "
-                            f"positive integer (got {pad!r})"
-                        )
-            child_vars = type_def.get("state_variables")
-            if child_vars is not None and not isinstance(child_vars, dict):
-                errors.append(f"{where}.state_variables: must be a mapping")
-            elif isinstance(child_vars, dict):
-                for var_name, var_def in child_vars.items():
-                    if not isinstance(var_def, dict):
-                        errors.append(
-                            f"{where}.state_variables.{var_name}: must be a mapping"
-                        )
-                        continue
-                    errors.extend(
-                        state_variable_errors(
-                            f"{where}.state_variables.{var_name}", var_def, CHILD_VARIABLE
-                        )
-                    )
-
-            # Validate the optional `instances:` roster block (declarative
-            # children). A misdeclared block would silently register nothing
-            # — the exact "declared types, empty panel" failure it replaces.
-            instances = type_def.get("instances")
-            if instances is not None:
-                if not isinstance(instances, dict):
-                    errors.append(f"{where}.instances: must be a mapping")
-                else:
-                    # config_derived keys resolve into config at runtime, so
-                    # count_from / ids_from may name them too.
-                    config_fields = config_field_names(driver_def)
-                    id_fmt = type_def.get("id_format")
-                    id_fmt = id_fmt if isinstance(id_fmt, dict) else {}
-                    id_type = declared_id_kind(type_def)
-                    cfs = instances.get("count_from_state")
-                    if cfs is not None:
-                        if not isinstance(cfs, str) or not cfs:
-                            errors.append(
-                                f"{where}.instances: count_from_state must "
-                                f"name a state variable"
-                            )
-                        elif cfs not in (driver_def.get("state_variables") or {}):
-                            errors.append(
-                                f"{where}.instances: count_from_state {cfs!r} "
-                                f"is not a declared state variable"
-                            )
-                    sources = [
-                        k for k in INSTANCE_SOURCES
-                        if k in instances
-                    ]
-                    if len(sources) != 1:
-                        errors.append(
-                            f"{where}.instances: declare exactly one of "
-                            f"'count', 'count_from', 'ids_from', 'ids'"
-                        )
-                    elif sources[0] == "ids":
-                        raw_ids = instances["ids"]
-                        if not isinstance(raw_ids, list) or not raw_ids:
-                            errors.append(
-                                f"{where}.instances: ids must be a non-empty "
-                                f"list of literal child ids"
-                            )
-                        else:
-                            for item in raw_ids:
-                                if isinstance(item, bool) or not isinstance(
-                                    item, (str, int)
-                                ):
-                                    errors.append(
-                                        f"{where}.instances: ids entries must "
-                                        f"be scalars (got {item!r})"
-                                    )
-                                    break
-                                if id_type == "integer":
-                                    try:
-                                        int(str(item).strip())
-                                    except ValueError:
-                                        errors.append(
-                                            f"{where}.instances: id {item!r} "
-                                            f"is not an integer ({child_type} "
-                                            f"declares integer ids)"
-                                        )
-                                        break
-                    elif sources[0] == "count":
-                        count = instances["count"]
-                        if (
-                            isinstance(count, bool)
-                            or not isinstance(count, int)
-                            or count < 1
-                        ):
-                            errors.append(
-                                f"{where}.instances: count must be an "
-                                f"integer >= 1 (got {count!r})"
-                            )
-                        else:
-                            mx = id_fmt.get("max")
-                            if (
-                                isinstance(mx, int)
-                                and not isinstance(mx, bool)
-                                and count > mx
-                            ):
-                                errors.append(
-                                    f"{where}.instances: count ({count}) "
-                                    f"exceeds id_format.max ({mx})"
-                                )
-                        if id_type == "string":
-                            errors.append(
-                                f"{where}.instances: 'count' requires integer "
-                                f"ids (id_format.type is 'string'; use "
-                                f"'ids_from')"
-                            )
-                    else:
-                        src_key = sources[0]
-                        field = instances[src_key]
-                        if not isinstance(field, str) or not field:
-                            errors.append(
-                                f"{where}.instances: {src_key} must name a "
-                                f"config field"
-                            )
-                        elif field not in config_fields:
-                            errors.append(
-                                f"{where}.instances: {src_key} '{field}' is "
-                                f"not a declared config field (config_schema "
-                                f"/ default_config / config_derived)"
-                            )
-                        if src_key == "count_from" and id_type == "string":
-                            errors.append(
-                                f"{where}.instances: 'count_from' requires "
-                                f"integer ids (id_format.type is 'string'; "
-                                f"use 'ids_from')"
-                            )
-                    label = instances.get("label")
-                    if label is not None and not isinstance(label, str):
-                        errors.append(
-                            f"{where}.instances: label must be a string"
-                        )
+            errors.extend(child_type_errors(child_type, type_def, roster_names))
 
     # The query entries: the poll's, the start-up's and each text rule's
     # then_query, checked in query_entry_checks against what the definition
