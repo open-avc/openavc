@@ -486,7 +486,7 @@ describe("the ids a copy may not take: every page's, not just the first one's", 
 
   it("a duplicate counts past an id held on another page", () => {
     const pages = [first(), second(), page([el("button_1", "label")], [primary({})], "third")];
-    const out = duplicateElementInPage(pages, "second", "b");
+    const out = duplicateElementInPage(pages, { pageId: "second", layoutId: null }, "b", []);
     expect(out[1].elements.map((e) => e.id)).toEqual(["b", "button_2"]);
   });
 
@@ -503,7 +503,7 @@ describe("the ids a copy may not take: every page's, not just the first one's", 
   it("a paste renames a control whose id is held on another page", () => {
     const pages = [first(), second(), page([el("pasted", "label")], [primary({})], "third")];
     const clipboard = { elements: [el("pasted")], placements: { pasted: box(0, 0, 10, 10) } };
-    const out = pasteIntoPage(pages, "second", clipboard);
+    const out = pasteIntoPage(pages, { pageId: "second", layoutId: null }, clipboard, []);
     expect(out[1].elements.map((e) => e.id)).toEqual(["b", "button_1"]);
   });
 });

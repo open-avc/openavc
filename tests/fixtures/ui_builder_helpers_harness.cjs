@@ -439,10 +439,10 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
       ],
     },
   ];
-  const withoutReserved = H.duplicateElementInPage(pages, "p1", "button_1");
+  const withoutReserved = H.duplicateElementInPage(pages, { pageId: "p1", layoutId: null }, "button_1", []);
   const noResId = withoutReserved[0].elements[1].id;
   // master "button_2" reserved → the duplicate must skip to button_3.
-  const withReserved = H.duplicateElementInPage(pages, "p1", "button_1", ["button_2"]);
+  const withReserved = H.duplicateElementInPage(pages, { pageId: "p1", layoutId: null }, "button_1", ["button_2"]);
   const resId = withReserved[0].elements[1].id;
   results.h039_dup_reserved_skips_master = {
     pass: noResId === "button_2" && resId === "button_3",
@@ -683,7 +683,7 @@ function makeValidationProject(elements) {
       ],
     },
   ];
-  const after = H.duplicateElementInPage(pages, "p1", "btn_x");
+  const after = H.duplicateElementInPage(pages, { pageId: "p1", layoutId: null }, "btn_x", []);
   const dup = after[0].elements[1];
   const orig = after[0].elements[0];
   results.m143_duplicate_rewrites_self_ref = {
@@ -2286,7 +2286,7 @@ const variantPage = () => ({
   const page = H.withPlacement(
     H.addLayout(variantPage(), "portrait"), "a", { x: 50, y: 50, w: 10, h: 10 }, "portrait",
   );
-  const out = H.duplicateElementInPage([page], "pg", "a", [], "portrait");
+  const out = H.duplicateElementInPage([page], { pageId: "pg", layoutId: "portrait" }, "a", []);
   const copy = out[0].elements[out[0].elements.length - 1];
   results.v113_duplicate_measures_the_layout_on_screen = {
     pass:

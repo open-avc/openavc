@@ -32,9 +32,9 @@ const clipboard = { elements: [{ id: "a", type: "button" }] as UIElement[], plac
 
 describe("a page that is not there", () => {
   it.each([
-    ["duplicate one", (pages: UIPage[]) => duplicateElementInPage(pages, "nope", "a", ["m"], "land")],
-    ["duplicate several", (pages: UIPage[]) => duplicateElementsInPage(pages, "nope", ["a", "b"], ["m"], "land")],
-    ["paste", (pages: UIPage[]) => pasteIntoPage(pages, "nope", clipboard, ["m"], "land")],
+    ["duplicate one", (pages: UIPage[]) => duplicateElementInPage(pages, { pageId: "nope", layoutId: "land" }, "a", ["m"])],
+    ["duplicate several", (pages: UIPage[]) => duplicateElementsInPage(pages, { pageId: "nope", elementIds: ["a", "b"], layoutId: "land" }, ["m"])],
+    ["paste", (pages: UIPage[]) => pasteIntoPage(pages, { pageId: "nope", layoutId: "land" }, clipboard, ["m"])],
   ])("%s hands back the same pages", (_name, run) => {
     const pages = [onePage()];
     expect(run(pages)).toBe(pages);
@@ -54,12 +54,12 @@ describe("a page that is not there", () => {
 
 describe("a page that is there, with a control the selection names twice or not at all", () => {
   it("duplicate several copies a repeated id each time it is named and skips a missing one", () => {
-    const out = duplicateElementsInPage([onePage()], "pg", ["a", "a", "ghost"]);
+    const out = duplicateElementsInPage([onePage()], { pageId: "pg", elementIds: ["a", "a", "ghost"], layoutId: null }, []);
     expect(out[0].elements.map((e) => e.id)).toEqual(["a", "b", "c", "button_1", "button_2"]);
   });
 
   it("duplicate one of a control that is not on the page hands back the same pages", () => {
     const pages = [onePage()];
-    expect(duplicateElementInPage(pages, "pg", "ghost")).toBe(pages);
+    expect(duplicateElementInPage(pages, { pageId: "pg", layoutId: null }, "ghost", [])).toBe(pages);
   });
 });

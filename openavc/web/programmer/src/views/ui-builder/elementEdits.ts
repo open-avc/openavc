@@ -111,7 +111,7 @@ export function duplicateControls({ page, editPages, layoutId, masterIds }: Maki
   const roots = topmostSelection(page, ids);
   if (roots.length === 0) return;
   editPages(
-    (pages) => duplicateElementsInPage(pages, page.id, ids, masterIds, layoutId),
+    (pages) => duplicateElementsInPage(pages, { pageId: page.id, elementIds: ids, layoutId }, masterIds),
     counted("Duplicate", roots.length),
   );
 }
@@ -126,7 +126,7 @@ export function copyControls({ page, layoutId }: Omit<InLayout, "editPages">, id
 export function pasteControls({ page, editPages, layoutId, masterIds }: Making, clipboard: ElementClipboard | null): void {
   const held = clipboard?.elements.length ?? 0;
   if (!page || held === 0) return;
-  editPages((pages) => pasteIntoPage(pages, page.id, clipboard!, masterIds, layoutId), counted("Paste", held));
+  editPages((pages) => pasteIntoPage(pages, { pageId: page.id, layoutId }, clipboard!, masterIds), counted("Paste", held));
 }
 
 /** Hiding is per arrangement: it writes to the layout being authored and

@@ -474,13 +474,17 @@ function cloneWithIds(el: UIElement, idMap: Map<string, string>): UIElement {
  * not an empty frame the same size. Only the top copy is nudged: a child's
  * percentages are of its container, the container has already moved, and
  * nudging them again would slide the contents around inside the copy.
+ *
+ * `reservedIds` are the ids a new control may not take beyond the pages' own:
+ * the masters', which share the `ui.<id>` namespace. Required, as the
+ * arrangement is, so a caller cannot name a copy after a master by leaving them
+ * out; the paste below takes them the same way.
  */
 export function duplicateElementInPage(
   pages: UIPage[],
-  pageId: string,
+  { pageId, layoutId }: OnScreen,
   elementId: string,
-  reservedIds: string[] = [],
-  layoutId?: string | null,
+  reservedIds: string[],
 ): UIPage[] {
   const page = pages.find((p) => p.id === pageId);
   if (!page) return pages;
@@ -517,16 +521,14 @@ export function duplicateElementInPage(
  */
 export function duplicateElementsInPage(
   pages: UIPage[],
-  pageId: string,
-  elementIds: string[],
-  reservedIds: string[] = [],
-  layoutId?: string | null,
+  selection: PageSelection,
+  reservedIds: string[],
 ): UIPage[] {
-  const page = pages.find((p) => p.id === pageId);
+  const page = pages.find((p) => p.id === selection.pageId);
   if (!page) return pages;
   let result = pages;
-  for (const id of topmostSelection(page, elementIds)) {
-    result = duplicateElementInPage(result, pageId, id, reservedIds, layoutId);
+  for (const id of topmostSelection(page, selection.elementIds)) {
+    result = duplicateElementInPage(result, selection, id, reservedIds);
   }
   return result;
 }
@@ -588,10 +590,9 @@ function keepsItsParent(el: UIElement, copied: Set<string>): boolean {
  */
 export function pasteIntoPage(
   pages: UIPage[],
-  pageId: string,
+  { pageId, layoutId }: OnScreen,
   clipboard: ElementClipboard,
-  reservedIds: string[] = [],
-  layoutId?: string | null,
+  reservedIds: string[],
 ): UIPage[] {
   const page = pages.find((p) => p.id === pageId);
   if (!page || clipboard.elements.length === 0) return pages;

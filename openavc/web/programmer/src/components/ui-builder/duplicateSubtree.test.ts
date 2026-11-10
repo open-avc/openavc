@@ -58,7 +58,7 @@ function added(before: UIPage, after: UIPage): UIElement[] {
 describe("duplicating a container", () => {
   it("brings its contents, parented to the copy and placed the same", () => {
     const before = cardPage();
-    const after = pageOf(duplicateElementInPage([before], "main", "card"));
+    const after = pageOf(duplicateElementInPage([before], { pageId: "main", layoutId: null }, "card", []));
     const copies = added(before, after);
 
     expect(copies.map((e) => e.type)).toEqual(["group", "button", "label"]);
@@ -78,7 +78,7 @@ describe("duplicating a container", () => {
 
   it("gives every copied element a fresh id", () => {
     const before = cardPage();
-    const after = pageOf(duplicateElementInPage([before], "main", "card"));
+    const after = pageOf(duplicateElementInPage([before], { pageId: "main", layoutId: null }, "card", []));
     const copies = added(before, after);
 
     const originals = new Set(before.elements.map((e) => e.id));
@@ -88,7 +88,7 @@ describe("duplicating a container", () => {
 
   it("lands the contents after the container, in the order they were in", () => {
     const before = cardPage();
-    const after = pageOf(duplicateElementInPage([before], "main", "card"));
+    const after = pageOf(duplicateElementInPage([before], { pageId: "main", layoutId: null }, "card", []));
     const copies = added(before, after);
     const at = (id: string) => after.elements.findIndex((e) => e.id === id);
 
@@ -98,7 +98,7 @@ describe("duplicating a container", () => {
 
   it("leaves the original alone", () => {
     const before = cardPage();
-    const after = pageOf(duplicateElementInPage([before], "main", "card"));
+    const after = pageOf(duplicateElementInPage([before], { pageId: "main", layoutId: null }, "card", []));
 
     for (const original of before.elements) {
       const still = after.elements.find((e) => e.id === original.id)!;
@@ -131,7 +131,7 @@ describe("duplicating a container", () => {
       ],
     } as unknown as UIPage;
 
-    const after = pageOf(duplicateElementInPage([before], "main", "outer"));
+    const after = pageOf(duplicateElementInPage([before], { pageId: "main", layoutId: null }, "outer", []));
     const [outer, inner, deep] = added(before, after);
 
     expect(inner.parent).toBe(outer.id);
@@ -147,7 +147,7 @@ describe("duplicating a container", () => {
       bindings: { show: { value: { source: "state", key: "ui.btn.value" } } },
     } as unknown as UIElement;
 
-    const after = pageOf(duplicateElementInPage([before], "main", "card"));
+    const after = pageOf(duplicateElementInPage([before], { pageId: "main", layoutId: null }, "card", []));
     const [, button, label] = added(before, after);
 
     const key = (
@@ -169,7 +169,7 @@ describe("duplicating a container", () => {
     // The ids this page would otherwise hand out, claimed by masters. Masters
     // share the ui.<id> runtime namespace, so a collision is a real one.
     const masters = ["group_1", "button_1", "label_1"];
-    const after = pageOf(duplicateElementInPage([before], "main", "card", masters));
+    const after = pageOf(duplicateElementInPage([before], { pageId: "main", layoutId: null }, "card", masters));
 
     for (const c of added(before, after)) expect(masters).not.toContain(c.id);
   });
@@ -178,7 +178,7 @@ describe("duplicating a container", () => {
 describe("duplicating a selection", () => {
   it("does not copy a child twice when its container is selected too", () => {
     const before = cardPage();
-    const after = pageOf(duplicateElementsInPage([before], "main", ["card", "btn"]));
+    const after = pageOf(duplicateElementsInPage([before], { pageId: "main", elementIds: ["card", "btn"], layoutId: null }, []));
     const copies = added(before, after);
 
     expect(copies).toHaveLength(3);
@@ -188,7 +188,7 @@ describe("duplicating a selection", () => {
 
   it("still copies two unrelated selections", () => {
     const before = cardPage();
-    const after = pageOf(duplicateElementsInPage([before], "main", ["card", "loose"]));
+    const after = pageOf(duplicateElementsInPage([before], { pageId: "main", elementIds: ["card", "loose"], layoutId: null }, []));
 
     expect(added(before, after)).toHaveLength(4);
   });
@@ -200,7 +200,7 @@ describe("copy and paste", () => {
     const clip = clipboardForSelection(before, ["card"]);
     expect(clip.elements.map((e) => e.id)).toEqual(["card", "btn", "lbl"]);
 
-    const after = pageOf(pasteIntoPage([before], "main", clip));
+    const after = pageOf(pasteIntoPage([before], { pageId: "main", layoutId: null }, clip, []));
     const [group, button, label] = added(before, after);
 
     expect(group.parent ?? null).toBeNull();
@@ -218,7 +218,7 @@ describe("copy and paste", () => {
     // card is 40x40 at (10,10); btn is 5%,5% 50x20 of that.
     expect(clip.placements.btn).toEqual({ x: 12, y: 12, w: 20, h: 8 });
 
-    const after = pageOf(pasteIntoPage([before], "main", clip));
+    const after = pageOf(pasteIntoPage([before], { pageId: "main", layoutId: null }, clip, []));
     const [pasted] = added(before, after);
     expect(pasted.parent ?? null).toBeNull();
     const box = getPlacement(after, pasted.id);
@@ -241,7 +241,7 @@ describe("copy and paste", () => {
     const before = cardPage();
     const masters = ["group_1", "button_1", "label_1"];
     const clip = clipboardForSelection(before, ["card"]);
-    const after = pageOf(pasteIntoPage([before], "main", clip, masters));
+    const after = pageOf(pasteIntoPage([before], { pageId: "main", layoutId: null }, clip, masters));
 
     for (const c of added(before, after)) expect(masters).not.toContain(c.id);
   });
@@ -254,7 +254,7 @@ describe("copy and paste", () => {
     } as unknown as UIElement;
 
     const clip = clipboardForSelection(before, ["card"]);
-    const after = pageOf(pasteIntoPage([before], "main", clip));
+    const after = pageOf(pasteIntoPage([before], { pageId: "main", layoutId: null }, clip, []));
     const [, button, label] = added(before, after);
 
     const key = (
@@ -291,11 +291,7 @@ describe("undo after duplicating a container", () => {
     // Exactly what the view does: one undo entry, one mutation.
     const builder = useUIBuilderStore.getState();
     builder.pushUndo({ pages: useProjectStore.getState().project!.ui.pages }, "Duplicate element");
-    const duplicated = duplicateElementInPage(
-      useProjectStore.getState().project!.ui.pages,
-      "main",
-      "card",
-    );
+    const duplicated = duplicateElementInPage(useProjectStore.getState().project!.ui.pages, { pageId: "main", layoutId: null }, "card", []);
     useProjectStore.getState().update({
       ui: { ...useProjectStore.getState().project!.ui, pages: duplicated },
     });
