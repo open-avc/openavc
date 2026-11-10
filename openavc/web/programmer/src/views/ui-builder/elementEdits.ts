@@ -251,7 +251,8 @@ export function rename(on: OnProject, selected: Selected, oldId: string, newId: 
 /** The rename as an undo entry. It puts back only the parts the rename
  *  changed (the variables stay the same object when no `source_key` named the
  *  control), while its patch writes all four. A part the project does not
- *  have (no macros, say) is always put back, as an empty list. */
+ *  have (no macros, say) comes back from the rename as a list, so it is always
+ *  put back, as an empty one. */
 export function renameEdit(project: ProjectConfig, masters: MasterElement[], oldId: string, newId: string): ProjectEdit {
   const { macros, variables } = project;
   const result = renameElement(project.ui.pages, masters, macros || [], variables || [], project.scripts || [], oldId, newId);
@@ -263,7 +264,7 @@ export function renameEdit(project: ProjectConfig, masters: MasterElement[], old
   ];
   const before: Record<string, unknown[]> = {};
   for (const [part, was, now] of parts) {
-    if (!was || now !== was) before[part] = was || [];
+    if (now !== was) before[part] = was || [];
   }
   return {
     before: before as UndoScope,
