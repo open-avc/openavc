@@ -1527,6 +1527,12 @@ export const TOUCH_MIN_MM = 9;
 /** The millimetre rule in reference pixels, derived so the two cannot drift. */
 export const TOUCH_MIN_PX = (TOUCH_MIN_MM / 25.4) * TOUCH_REFERENCE.pxPerInch;
 
+/** Reference pixels as millimetres of finger, at the reference density.
+ *  Mirrors `_to_mm` in page_review.py. */
+function toMm(px: number): number {
+  return (px / TOUCH_REFERENCE.pxPerInch) * 25.4;
+}
+
 export interface TouchWarning {
   /** Which axis is too small, for the message. */
   axis: "width" | "height" | "both";
@@ -1553,7 +1559,6 @@ export function touchTargetWarning(
   const narrow = widthPx < TOUCH_MIN_PX;
   const short = heightPx < TOUCH_MIN_PX;
   if (!narrow && !short) return null;
-  const toMm = (px: number) => (px / TOUCH_REFERENCE.pxPerInch) * 25.4;
   return {
     axis: narrow && short ? "both" : narrow ? "width" : "height",
     widthPx: Math.round(widthPx),
@@ -1668,10 +1673,6 @@ export interface ReviewFinding {
 // The floor each control is measured against is controlMinimums.ts, the twin
 // of openavc/ui/control_minimums.py.
 export type { ElementDefaults } from "./controlMinimums";
-
-function toMm(px: number): number {
-  return (px / TOUCH_REFERENCE.pxPerInch) * 25.4;
-}
 
 /** An element's `show` bindings, when it carries an object of them.
  *
@@ -3688,7 +3689,7 @@ const MATRIX_CHECKS: readonly MatrixCheck[] = [
 export function matrixFindings(el: UIElement): ReviewFinding[] {
   if (el.type !== "matrix") return [];
   const config = el.matrix_config as Record<string, unknown> | undefined;
-  if (!config || typeof config !== "object" || !Object.keys(config).length) {
+  if (!hasMatrixConfig(config)) {
     return [{
       elementId: el.id,
       kind: "matrix_not_configured",
@@ -3701,6 +3702,17 @@ export function matrixFindings(el: UIElement): ReviewFinding[] {
     }];
   }
   return MATRIX_CHECKS.flatMap((check) => check(el.id, config));
+}
+
+/**
+ * Whether a matrix carries a config to check: any object with a key of its own.
+ *
+ * A list with entries counts, its positions read as keys, where `matrix_findings`
+ * in page_review.py takes only a mapping; that is left as it is, since narrowing it
+ * here would change what such a matrix is told.
+ */
+function hasMatrixConfig(config: unknown): config is Record<string, unknown> {
+  return !!config && typeof config === "object" && Object.keys(config).length > 0;
 }
 
 /** The page-space box an element's percentages are measured against, in px. */
