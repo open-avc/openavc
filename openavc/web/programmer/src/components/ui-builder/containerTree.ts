@@ -13,7 +13,7 @@
  * so a write that sets `parent` alone moves the control; `reparentElement` and
  * `reparentPlacements` do both halves.
  *
- * The Outline lists this tree through `outlineRows` in the helpers file, and
+ * The Outline lists this tree through `outlineRows` (outlineRows.ts), and
  * the canvas, the Outline, the properties panel and the view call these
  * through the helpers file's re-exports.
  */

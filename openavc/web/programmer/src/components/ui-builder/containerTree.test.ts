@@ -5,10 +5,10 @@ import {
   commitGesturePlacements,
   descendantIds,
   dropTargetFor,
-  outlineRows,
   reparentElement,
   topmostSelection,
 } from "./uiBuilderHelpers";
+import { outlineRows } from "./outlineRows";
 import { referenceParentBox } from "./touchTarget";
 import type { Layout, Placement, UIElement, UIPage } from "../../api/types";
 

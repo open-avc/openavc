@@ -7,7 +7,8 @@ import {
   Star, Layers, Code,
 } from "lucide-react";
 import type { UIPage, UIElement, MasterElement } from "../../api/types";
-import { outlineRows, outlineDropParent } from "./uiBuilderHelpers";
+import { outlineDropParent } from "./uiBuilderHelpers";
+import { outlineRows } from "./outlineRows";
 
 const ICONS: Record<string, React.ReactNode> = {
   button: <MousePointerClick size={12} />,
