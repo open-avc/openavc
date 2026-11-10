@@ -145,6 +145,8 @@ CASES: dict[str, dict[str, Any]] = {
     "routing_inherited_false": routing(
         destination_child_type=False, command=False, planes=[plane()],
     ),
+    "routing_bad_key_no_planes": routing(command=5),
+    "routing_bad_key_empty_planes": routing(destination_child_type="", planes=[]),
     "routing_inherited_good_bad_plane": routing(
         destination_child_type="output", command="route", destination_param="output",
         source_param="input", planes="x",
@@ -245,6 +247,14 @@ CASES: dict[str, dict[str, Any]] = {
     ),
     "routing_block_param_no_command": routing(
         destination_child_type="output", source_param="input", planes=[plane()],
+    ),
+    "routing_block_param_plane_null_no_command": routing(
+        destination_child_type="output", destination_param="output",
+        planes=[plane(destination_param=None)],
+    ),
+    "routing_block_source_param_plane_null_no_command": routing(
+        destination_child_type="output", source_param="input",
+        planes=[plane(source_param=None, destination_param=None)],
     ),
     "routing_block_dest_param_empty_no_command": routing(
         destination_child_type="output", destination_param="", planes=[plane()],
@@ -743,6 +753,17 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'learned_blank': [('config_schema.
  'order_strict': [('device_settings.volume', "device_settings.volume: unknown key 'colour'"),
                   ('routing.planes[0]', "routing.planes[0]: unknown key 'hue'")],
  'routing_absent': [],
+ 'routing_bad_key_empty_planes': [('routing',
+                                   "routing: needs a non-empty 'planes' list, the independent "
+                                   'things this device routes (usually one; a decoder that routes '
+                                   'video, audio and USB separately declares three)'),
+                                  ('routing',
+                                   'routing.destination_child_type: must be a non-empty string')],
+ 'routing_bad_key_no_planes': [('routing',
+                                "routing: needs a non-empty 'planes' list, the independent things "
+                                'this device routes (usually one; a decoder that routes video, '
+                                'audio and USB separately declares three)'),
+                               ('routing', 'routing.command: must be a non-empty string')],
  'routing_block_dest_param_empty_no_command': [('routing',
                                                 'routing.destination_param: must be a non-empty '
                                                 'string'),
@@ -760,9 +781,18 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'learned_blank': [('config_schema.
                                      'routing.planes[0]: names a routing parameter but no '
                                      "'command'. Declare the routing command here or on the "
                                      'routing block')],
+ 'routing_block_param_plane_null_no_command': [('routing',
+                                                'routing.planes[0]: names a routing parameter but '
+                                                "no 'command'. Declare the routing command here or "
+                                                'on the routing block')],
  'routing_block_params_no_command': [],
  'routing_block_params_not_mapping': [],
  'routing_block_params_unknown': [],
+ 'routing_block_source_param_plane_null_no_command': [('routing',
+                                                       'routing.planes[0]: names a routing '
+                                                       "parameter but no 'command'. Declare the "
+                                                       'routing command here or on the routing '
+                                                       'block')],
  'routing_child_types_list': [('child_entity_types', 'child_entity_types: must be a mapping'),
                               ('routing',
                                "routing.planes[0]: destination_child_type 'output' is not a "
