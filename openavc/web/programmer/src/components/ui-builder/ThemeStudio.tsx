@@ -15,15 +15,16 @@ import { Modal } from "../shared/Modal";
 import { PanelPreviewFrame } from "./PanelPreviewFrame";
 import { NumericInput } from "../shared/NumericInput";
 import {
-  parseColor, rgbToHex6, contrastRatio, wcagLevel, deriveSurfaceBorder,
+  parseColor, rgbToHex6, contrastRatio, wcagLevel,
   CSS_VAR_FALLBACKS, type WcagLevel,
 } from "./colorUtils";
 import { parseApiError } from "../../api/errors";
 import { editableCopy, withVariable, withElementDefault, withPageDefaults } from "./themeEdits";
+import { withSurfaceStyle, type SurfaceStyle } from "./quickAdjust";
+import { QuickAdjustSection } from "./QuickAdjustSection";
 
 // --- Constants ---
 
-const HEX_RE = /^#[0-9a-f]{6}$/i;
 const CHECKER_BG =
   "linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%), " +
   "linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%)";
@@ -661,56 +662,7 @@ export function ThemeStudio({
     edit((t) => withElementDefault(t, elType, key, value));
   const setPageDefaults = (next: Record<string, unknown>) => edit((t) => withPageDefaults(t, next));
 
-  const applySurfaceStyle = (style: "flat" | "layered" | "outlined") => {
-    setWorking((prev) => {
-      if (!prev) return prev;
-      const vars = { ...(prev.variables || {}) };
-      const defaults = JSON.parse(JSON.stringify(prev.element_defaults || {}));
-      const borderEls = [
-        "button", "label", "slider", "fader", "select", "text_input",
-        "gauge", "level_meter", "list", "matrix", "group", "image", "clock",
-      ];
-      const shadowEls = ["button", "slider", "camera_preset", "page_nav"];
-      if (style === "flat") {
-        for (const el of borderEls) {
-          if (!defaults[el]) defaults[el] = {};
-          defaults[el].border_width = 0;
-        }
-        for (const el of shadowEls) {
-          if (!defaults[el]) defaults[el] = {};
-          defaults[el].box_shadow = "none";
-        }
-        if (vars.surface) vars.surface_border = String(vars.surface);
-      } else if (style === "layered") {
-        for (const el of borderEls) {
-          if (!defaults[el]) defaults[el] = {};
-          defaults[el].border_width = 1 / REM_BASE_PX;
-        }
-        if (!defaults.button) defaults.button = {};
-        defaults.button.box_shadow = "0 2px 4px rgba(0,0,0,0.3)";
-        if (!defaults.slider) defaults.slider = {};
-        defaults.slider.box_shadow = "inset 0 1px 3px rgba(0,0,0,0.3)";
-        if (defaults.camera_preset) defaults.camera_preset.box_shadow = "0 2px 4px rgba(0,0,0,0.3)";
-        if (defaults.page_nav) defaults.page_nav.box_shadow = "0 1px 3px rgba(0,0,0,0.2)";
-        if (vars.surface && String(vars.surface) === String(vars.surface_border)) {
-          vars.surface_border = deriveSurfaceBorder(String(vars.surface));
-        }
-      } else {
-        for (const el of borderEls) {
-          if (!defaults[el]) defaults[el] = {};
-          defaults[el].border_width = 1 / REM_BASE_PX;
-        }
-        for (const el of shadowEls) {
-          if (!defaults[el]) defaults[el] = {};
-          defaults[el].box_shadow = "none";
-        }
-        if (vars.surface && String(vars.surface) === String(vars.surface_border)) {
-          vars.surface_border = deriveSurfaceBorder(String(vars.surface));
-        }
-      }
-      return { ...prev, variables: vars, element_defaults: defaults };
-    });
-  };
+  const applySurfaceStyle = (style: SurfaceStyle) => edit((t) => withSurfaceStyle(t, style));
 
   const setName = (name: string) => edit((t) => ({ ...t, name }));
   const setDesc = (description: string) => edit((t) => ({ ...t, description }));
@@ -1668,246 +1620,6 @@ function ThemePickerColumn({
   );
 }
 
-// --- Quick Adjust components ---
-
-function SegmentedControl({
-  options,
-  value,
-  onChange,
-  ariaLabel,
-}: {
-  options: { value: string; label: string }[];
-  value: string | null;
-  onChange: (value: string) => void;
-  ariaLabel?: string;
-}) {
-  return (
-    <div
-      role="radiogroup"
-      aria-label={ariaLabel}
-      style={{
-        display: "inline-flex",
-        borderRadius: 6,
-        overflow: "hidden",
-        border: "1px solid var(--border-color)",
-      }}
-    >
-      {options.map((opt, i) => {
-        const selected = value === opt.value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            onClick={() => onChange(opt.value)}
-            style={{
-              padding: "5px 14px",
-              fontSize: 11,
-              fontWeight: selected ? 600 : 400,
-              background: selected ? "var(--accent-bg)" : "var(--bg-hover)",
-              color: selected ? "#fff" : "var(--text-secondary)",
-              border: "none",
-              borderRight: i < options.length - 1 ? "1px solid var(--border-color)" : "none",
-              cursor: "pointer",
-            }}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-interface QuickAdjustProps {
-  vars: Record<string, unknown>;
-  defaults: Record<string, Record<string, unknown>>;
-  savedVars: Record<string, unknown>;
-  savedDefaults: Record<string, Record<string, unknown>>;
-  onSetVar: (key: string, value: unknown) => void;
-  onApplySurfaceStyle: (style: "flat" | "layered" | "outlined") => void;
-}
-
-function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar, onApplySurfaceStyle }: QuickAdjustProps) {
-  const accent = String(vars.accent ?? "#2196F3");
-  const borderRadius = Number(displayStyleValue("border_radius", vars.border_radius ?? 8 / REM_BASE_PX));
-  const fontFamily = String(vars.font_family ?? "Inter, system-ui, sans-serif");
-
-  const roundnessPreset =
-    borderRadius === 0 ? "sharp" : borderRadius === 8 ? "standard" : borderRadius === 16 ? "round" : null;
-
-  const buttonShadow = String(defaults.button?.box_shadow ?? "");
-  const buttonBorderWidth = Number(defaults.button?.border_width ?? 1);
-  const hasShadow = buttonShadow !== "" && buttonShadow !== "none";
-  const surfaceStyle: string | null =
-    !hasShadow && buttonBorderWidth === 0 ? "flat" : hasShadow ? "layered" : "outlined";
-
-  const typographyPreset =
-    fontFamily.includes("Inter") || fontFamily.startsWith("system-ui") ? "sans"
-    : fontFamily.includes("Georgia") || (fontFamily.includes("serif") && !fontFamily.includes("sans-serif")) ? "serif"
-    : fontFamily === "monospace" || fontFamily.includes("Mono") || fontFamily.includes("Fira") ? "mono"
-    : null;
-
-  // Detect which controls have been modified from the saved theme
-  const accentModified = String(vars.accent ?? "") !== String(savedVars.accent ?? "");
-  const roundnessModified = String(vars.border_radius ?? "") !== String(savedVars.border_radius ?? "");
-  const fontModified = String(vars.font_family ?? "") !== String(savedVars.font_family ?? "");
-  const savedButtonShadow = String(savedDefaults.button?.box_shadow ?? "");
-  const savedButtonBorderWidth = Number(savedDefaults.button?.border_width ?? 1);
-  const savedHasShadow = savedButtonShadow !== "" && savedButtonShadow !== "none";
-  const savedSurfaceStyle =
-    !savedHasShadow && savedButtonBorderWidth === 0 ? "flat" : savedHasShadow ? "layered" : "outlined";
-  const surfaceModified = surfaceStyle !== savedSurfaceStyle;
-
-  const modifiedPill = (
-    <span style={{ fontSize: 9, color: "var(--accent)", fontWeight: 600, marginLeft: 6 }}>
-      modified
-    </span>
-  );
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: 12,
-    fontWeight: 600,
-    color: "var(--text-primary)",
-    marginBottom: 2,
-  };
-  const hintStyle: React.CSSProperties = {
-    fontSize: 10,
-    color: "var(--text-muted)",
-    lineHeight: 1.3,
-    marginBottom: 4,
-  };
-
-  return (
-    <div
-      style={{
-        background: "var(--bg-surface)",
-        borderRadius: 6,
-        border: "1px solid var(--border-color)",
-        marginBottom: 10,
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          color: "var(--text-secondary)",
-          padding: "8px 10px",
-          borderBottom: "1px solid var(--border-color)",
-        }}
-      >
-        Quick Adjust
-      </div>
-      <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 14 }}>
-        {/* Brand Accent */}
-        <div>
-          <div style={labelStyle}>Brand Accent{accentModified && modifiedPill}</div>
-          <div style={hintStyle}>
-            Active buttons, slider fills, fader handles, focus rings, and highlights
-          </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              type="color"
-              aria-label="Brand accent color"
-              value={HEX_RE.test(accent) ? accent : "#2196F3"}
-              onChange={(e) => onSetVar("accent", e.target.value)}
-              style={{
-                width: 36,
-                height: 28,
-                padding: 0,
-                border: "1px solid var(--border-color)",
-                borderRadius: 4,
-                cursor: "pointer",
-                flexShrink: 0,
-              }}
-            />
-            <input
-              type="text"
-              aria-label="Brand accent hex value"
-              value={accent}
-              onChange={(e) => onSetVar("accent", e.target.value)}
-              style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
-            />
-          </div>
-        </div>
-
-        {/* Roundness */}
-        <div>
-          <div style={labelStyle}>Roundness{roundnessModified && modifiedPill}</div>
-          <div style={hintStyle}>Corner radius for buttons, sliders, and all elements</div>
-          <SegmentedControl
-            ariaLabel="Roundness"
-            options={[
-              { value: "sharp", label: "Sharp" },
-              { value: "standard", label: "Standard" },
-              { value: "round", label: "Round" },
-            ]}
-            value={roundnessPreset}
-            onChange={(v) => {
-              const map: Record<string, number> = { sharp: 0, standard: 8, round: 16 };
-              onSetVar("border_radius", storeStyleValue("border_radius", map[v]));
-            }}
-          />
-          {roundnessPreset === null && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-              Custom ({borderRadius}px), adjust in the Theme section below
-            </div>
-          )}
-        </div>
-
-        {/* Surface Style */}
-        <div>
-          <div style={labelStyle}>Surface Style{surfaceModified && modifiedPill}</div>
-          <div style={hintStyle}>
-            How elements sit on the page: flat, with depth shadows, or with outlines
-          </div>
-          <SegmentedControl
-            ariaLabel="Surface style"
-            options={[
-              { value: "flat", label: "Flat" },
-              { value: "layered", label: "Layered" },
-              { value: "outlined", label: "Outlined" },
-            ]}
-            value={surfaceStyle}
-            onChange={(v) => onApplySurfaceStyle(v as "flat" | "layered" | "outlined")}
-          />
-        </div>
-
-        {/* Typography */}
-        <div>
-          <div style={labelStyle}>Typography{fontModified && modifiedPill}</div>
-          <div style={hintStyle}>Font family across the entire panel</div>
-          <SegmentedControl
-            ariaLabel="Typography"
-            options={[
-              { value: "sans", label: "Sans" },
-              { value: "serif", label: "Serif" },
-              { value: "mono", label: "Mono" },
-            ]}
-            value={typographyPreset}
-            onChange={(v) => {
-              const fonts: Record<string, string> = {
-                sans: "Inter, system-ui, sans-serif",
-                serif: "Georgia, 'Times New Roman', serif",
-                mono: "monospace",
-              };
-              onSetVar("font_family", fonts[v]);
-            }}
-          />
-          {typographyPreset === null && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 3 }}>
-              Custom: {fontFamily}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // --- Page background (theme page_defaults) ---
 
 interface ThemeGradient { from?: string; to?: string; angle?: number; }
@@ -2173,7 +1885,7 @@ interface EditorColumnProps {
   onSetVar: (key: string, value: unknown) => void;
   onSetElementDefault: (elType: string, key: string, value: unknown) => void;
   onSetPageDefaults: (next: Record<string, unknown>) => void;
-  onApplySurfaceStyle: (style: "flat" | "layered" | "outlined") => void;
+  onApplySurfaceStyle: (style: SurfaceStyle) => void;
   savedVars: Record<string, unknown>;
   savedDefaults: Record<string, Record<string, unknown>>;
   pageDefaults: Record<string, unknown>;
