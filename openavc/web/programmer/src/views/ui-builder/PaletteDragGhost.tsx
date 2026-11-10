@@ -17,7 +17,7 @@ export function PaletteDragOverlay({ ghost }: { ghost: PaletteGhost | null }) {
   return <DragOverlay dropAnimation={null}>{ghost ? <PaletteDragGhost {...ghost} /> : null}</DragOverlay>;
 }
 
-export function PaletteDragGhost({
+function PaletteDragGhost({
   label,
   width,
   height,
