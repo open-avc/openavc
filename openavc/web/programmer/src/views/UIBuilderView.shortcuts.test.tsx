@@ -75,6 +75,16 @@ describe("nudging with the arrow keys", () => {
     expect(undoLog()).toEqual([["Nudge right", "pages"]]);
   });
 
+  it("rounds each nudged box the way a drag rounds it", async () => {
+    reseed(makeProject({ pages: [page("main", [el("btn_1", "button")], { btn_1: { x: 10.123456, y: 10, w: 20, h: 10 } })] }), { selectedPageId: "main", selectedElementIds: ["btn_1"] });
+    await renderPage(UIBuilderView);
+    press("ArrowRight");
+    const { roundPct } = await import("../components/ui-builder/uiBuilderHelpers");
+    const x = box("main", "btn_1").x;
+    expect(x).toBe(roundPct(15.123456));
+    expect(x).not.toBe(10.123456 + 5);
+  });
+
   it("moves a hair when the page does not snap", async () => {
     reseed(makeProject({ pages: [page("main", [el("btn_1", "button")], { btn_1: { x: 10, y: 10, w: 20, h: 10 } }, { snap: { enabled: false, x: 5, y: 5 } })] }), { selectedPageId: "main", selectedElementIds: ["btn_1"] });
     await renderPage(UIBuilderView);
@@ -243,6 +253,7 @@ describe("the other keys", () => {
     expect(screen.getByTestId("stub-ElementPalette")).toBeInTheDocument();
     expect(press("e", { ctrl: true }).defaultPrevented).toBe(true);
     expect(screen.queryByTestId("stub-ElementPalette")).toBeNull();
+    expect(builder().previewMode).toBe(false);
     press("p", { ctrl: true });
     press("e", { meta: true });
     press("p", { ctrl: true });

@@ -195,6 +195,11 @@ describe("dragging a control in from the palette", () => {
     expect(builder().paletteDragPreview).not.toBeNull();
     move(50, 300);
     expect(builder().paletteDragPreview).toBeNull();
+    move(600, 300);
+    move(600, 551);
+    expect(builder().paletteDragPreview).toBeNull();
+    move(600, 49);
+    expect(builder().paletteDragPreview).toBeNull();
     end(false);
     expect(undoLog()).toEqual([]);
     expect(builder().activeDragSource).toBeNull();
@@ -356,6 +361,8 @@ describe("dragging a control in from the palette", () => {
     usePluginStore.setState({ extensions: { ...usePluginStore.getState().extensions, panel_elements: [{ plugin_id: "acme", type: "dial", default_size: { w: 2, h: 2 } }] } } as never);
     await renderPage(UIBuilderView);
     start("plugin:acme:dial");
+    // The ghost names what the control will be.
+    expect(screen.getByTestId("drag-overlay")).toHaveTextContent(/^plugin$/);
     move(600, 300);
     const box = builder().paletteDragPreview!.placement;
     end(true, { type: "plugin:acme:dial" });
