@@ -1,5 +1,5 @@
 "use strict";
-// Runs the Builder's page review (uiBuilderHelpers.ts, bundled on the fly with
+// Runs the Builder's page review (pageReview.ts, bundled on the fly with
 // the esbuild already in openavc/web/programmer/node_modules) over a set of projects
 // handed in as JSON, and prints its findings. The Python wrapper runs the same
 // projects through openavc/ui/page_review.py and compares message for message.
@@ -10,17 +10,17 @@
 // of them is edited -- and the drift is silent, because each side looks right
 // on its own.
 //
-// argv[2] = path to uiBuilderHelpers.ts
+// argv[2] = path to pageReview.ts
 // argv[3] = path to a JSON file: { "<case name>": <project>, ... }
 const fs = require("fs");
 const path = require("path");
 
-const helpersPath = process.argv[2];
+const reviewPath = process.argv[2];
 const casesPath = process.argv[3];
 
 const esbuild = require("esbuild");
 const built = esbuild.buildSync({
-  entryPoints: [helpersPath],
+  entryPoints: [reviewPath],
   bundle: true,
   format: "cjs",
   platform: "node",
@@ -32,7 +32,7 @@ const fn = new Function(
   "exports", "require", "module", "__filename", "__dirname",
   built.outputFiles[0].text,
 );
-fn(moduleObj.exports, require, moduleObj, helpersPath, path.dirname(helpersPath));
+fn(moduleObj.exports, require, moduleObj, reviewPath, path.dirname(reviewPath));
 const H = moduleObj.exports;
 
 const cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));

@@ -14,9 +14,10 @@ const esbuild = require("esbuild");
 // minimums and binding-reach tables and their sibling modules (the binding
 // actions, a new control, renames and page deletes), which are real runtime
 // values and have to come along; uiBuilderHelpers.ts re-exports the sibling
-// modules' names, and the entry below adds the finger rule (touchTarget.ts)
-// beside it, so every scenario reads them through H.
-const entryModules = [path.basename(helpersPath, ".ts"), "touchTarget"];
+// modules' names, and the entry below adds the finger rule (touchTarget.ts) and
+// the page review (pageReview.ts) beside it, so every scenario reads them
+// through H.
+const entryModules = [path.basename(helpersPath, ".ts"), "touchTarget", "pageReview"];
 const built = esbuild.buildSync({
   stdin: {
     contents: entryModules.map((name) => `export * from "./${name}";`).join("\n"),

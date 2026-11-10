@@ -14,7 +14,8 @@
 import { describe, expect, it } from "vitest";
 import type { UIElement } from "../../api/types";
 import { controlMinimumBox, controlMinimumPercent, matrixTileGridShape } from "./controlMinimums";
-import { reviewPage, starvationFinding } from "./uiBuilderHelpers";
+import { reviewPage } from "./pageReview";
+import { starvationFinding } from "./reviewGeometry";
 
 const el = (fields: Record<string, unknown>): UIElement =>
   ({ id: "m1", type: "matrix", ...fields }) as unknown as UIElement;

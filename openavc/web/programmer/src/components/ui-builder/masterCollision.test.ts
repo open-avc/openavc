@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reviewWarningsByElement } from "./uiBuilderHelpers";
+import { reviewWarningsByElement } from "./pageReview";
 import type { MasterElement, UIPage } from "../../api/types";
 
 // The canvas badge is the surface this had to reach. A master is not in

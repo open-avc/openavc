@@ -1,23 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { doActionFindings } from "./reviewActions";
+import { bindingFindings } from "./reviewBindings";
 import {
-  bindingFindings,
-  buriedMasterFindings,
-  contentFindings,
   degenerateFinding,
-  doActionFindings,
-  keypadFindings,
-  masterBox,
-  matrixFindings,
-  mutuallyExclusive,
   overlapFindings,
-  propertyFindings,
   starvationFinding,
   styleFinding,
   touchFinding,
-} from "./uiBuilderHelpers";
-import type { DrawnPage, ElementDefaults, Seat } from "./uiBuilderHelpers";
+} from "./reviewGeometry";
+import { buriedMasterFindings, masterBox } from "./reviewMasters";
+import { matrixFindings } from "./reviewMatrix";
+import { contentFindings, keypadFindings, propertyFindings } from "./reviewProperties";
+import { mutuallyExclusive } from "./reviewStacking";
+import type { ElementDefaults } from "./controlMinimums";
+import type { Seat } from "./reviewFinding";
+import type { DrawnPage } from "./reviewMasters";
 import type { MasterElement, Placement, UIElement } from "../../api/types";
 
 // The Builder's single-element review checks, held sentence for sentence to the

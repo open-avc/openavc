@@ -37,9 +37,9 @@ from openavc.ui.page_review import review_master_element, review_page
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "ui_review_parity_harness.cjs"
-HELPERS = (
+REVIEW = (
     OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder"
-    / "uiBuilderHelpers.ts"
+    / "pageReview.ts"
 )
 NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 ESBUILD_DIR = NODE_MODULES / "esbuild"
@@ -1652,8 +1652,8 @@ def _toolchain_reason() -> str | None:
         return "esbuild not installed (run `npm ci` in openavc/web/programmer)"
     if not HARNESS.is_file():
         return "ui review parity harness missing"
-    if not HELPERS.is_file():
-        return "uiBuilderHelpers.ts missing"
+    if not REVIEW.is_file():
+        return "pageReview.ts missing"
     return None
 
 
@@ -1677,7 +1677,7 @@ def verdicts(tmp_path_factory) -> dict[str, tuple[list[dict], list[dict]]]:
     cases_file.write_text(json.dumps(dumps), encoding="utf-8")
 
     proc = subprocess.run(
-        ["node", str(HARNESS), str(HELPERS), str(cases_file)],
+        ["node", str(HARNESS), str(REVIEW), str(cases_file)],
         capture_output=True,
         text=True,
         cwd=str(OPENAVC_ROOT),

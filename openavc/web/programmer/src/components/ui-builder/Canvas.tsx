@@ -8,8 +8,6 @@ import { CanvasMasterElement } from "./CanvasMasterElement";
 import {
   commitGesturePlacements,
   moveElementsInPage,
-  reviewWarningsByElement,
-  sliderThemeDefaults,
   resolvePlacements,
   pageSnap,
   movedBox,
@@ -34,6 +32,7 @@ import {
   updateMasterElement,
   patchForTextPath,
 } from "./uiBuilderHelpers";
+import { reviewWarningsByElement, sliderThemeDefaults } from "./pageReview";
 import { getTunnelPrefix } from "../../api/restClient";
 import { resolveProjectMatrices } from "../../api/matrixPreview";
 import { useConnectionStore } from "../../store/connectionStore";

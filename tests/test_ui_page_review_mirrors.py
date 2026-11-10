@@ -512,7 +512,7 @@ def test_the_same_types_are_treated_as_touchable() -> None:
 
 
 def test_the_degenerate_threshold_matches_the_builders() -> None:
-    builder_source = _builder("uiBuilderHelpers")
+    builder_source = _builder("reviewGeometry")
     found = re.search(r"MINIMUM_VISIBLE_PX = ([\d.]+)", builder_source)
     assert found, "could not find MINIMUM_VISIBLE_PX in the Builder helpers"
     assert float(found.group(1)) == MINIMUM_VISIBLE_PX
@@ -623,7 +623,7 @@ def test_the_visibility_operators_are_the_ones_the_panel_evaluates(
 
 
 def test_the_builder_reads_the_same_visibility_operators() -> None:
-    builder_source = _builder("uiBuilderHelpers")
+    builder_source = _builder("reviewStacking")
 
     def spellings(name: str) -> set[str]:
         block = re.search(rf"const {name} = new Set\(\[(.*?)\]\)", builder_source, re.S)
@@ -655,7 +655,7 @@ def test_the_keypad_defaults_are_the_panels(panel_method_bodies: dict[str, str])
     assert digits and delay, "could not find the keypad's defaults in renderKeypad"
     assert int(digits.group(1)) == KEYPAD_DIGITS_DEFAULT
     assert int(delay.group(1)) == KEYPAD_SEND_DELAY_DEFAULT_MS
-    builder_source = _builder("uiBuilderHelpers")
+    builder_source = _builder("reviewProperties")
     for name, value in (
         ("KEYPAD_DIGITS_DEFAULT", KEYPAD_DIGITS_DEFAULT),
         ("KEYPAD_SEND_DELAY_DEFAULT_MS", KEYPAD_SEND_DELAY_DEFAULT_MS),

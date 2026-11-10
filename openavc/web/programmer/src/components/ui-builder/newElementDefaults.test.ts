@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { ELEMENT_TYPES, createDefaultElement, reviewPage } from "./uiBuilderHelpers";
+import { ELEMENT_TYPES, createDefaultElement } from "./uiBuilderHelpers";
+import { reviewPage } from "./pageReview";
 import type { UIPage } from "../../api/types";
 
 // A control fresh from the palette has had no authoring decision made yet, so

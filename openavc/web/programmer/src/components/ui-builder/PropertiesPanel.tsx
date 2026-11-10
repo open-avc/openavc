@@ -28,8 +28,8 @@ import {
   resolveHidden,
   withHidden,
   layoutById,
-  sliderThemeDefaults,
 } from "./uiBuilderHelpers";
+import { sliderThemeDefaults } from "./pageReview";
 import { referenceBox, referenceParentBox } from "./touchTarget";
 
 interface ThemeSummary {

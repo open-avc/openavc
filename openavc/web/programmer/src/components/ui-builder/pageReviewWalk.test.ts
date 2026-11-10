@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reviewPage, reviewMasterElement, reviewWarningsByElement } from "./uiBuilderHelpers";
+import { reviewPage, reviewMasterElement, reviewWarningsByElement } from "./pageReview";
 import type { MasterElement, UIElement, UIPage } from "../../api/types";
 
 // The Builder's page review walks a page twice: element by element (the checks

@@ -5,12 +5,8 @@ import { CopyButton } from "../../shared/CopyButton";
 import { IconPicker } from "../IconPicker";
 import { AssetPicker } from "../AssetPicker";
 import { getAssetUrl } from "../../../api/systemClient";
-import {
-  KEYPAD_DIGITS_DEFAULT,
-  KEYPAD_SEND_DELAY_DEFAULT_MS,
-  pxToRem,
-  remToPx,
-} from "../uiBuilderHelpers";
+import { pxToRem, remToPx } from "../uiBuilderHelpers";
+import { KEYPAD_DIGITS_DEFAULT, KEYPAD_SEND_DELAY_DEFAULT_MS } from "../reviewProperties";
 import { resolveMatrixAxis } from "../matrixModel";
 import { HONORED_PROPERTIES, MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
