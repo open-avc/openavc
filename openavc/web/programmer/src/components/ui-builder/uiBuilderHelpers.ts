@@ -1324,6 +1324,16 @@ export function emptyCommitDeletes(path: (string | number)[]): boolean {
   return typeof last === "string" && TRUTHINESS_READ_SLOTS.has(last);
 }
 
+type PathContainer = Record<string | number, unknown>;
+
+/** A copy of what a path segment indexes into: a list for a position, an
+ *  object for a field name. Anything else found there is replaced by an empty
+ *  one, so a path always lands. */
+function containerCopy(node: unknown, seg: string | number): PathContainer {
+  if (typeof seg === "number") return (Array.isArray(node) ? [...node] : []) as unknown as PathContainer;
+  return { ...(node && typeof node === "object" ? node : {}) } as PathContainer;
+}
+
 /**
  * Turn a recorded source path plus a new string into a patch for the element.
  *
@@ -1347,32 +1357,14 @@ export function patchForTextPath(
   if (path.length === 0) return null;
   const drop = value === "" && emptyCommitDeletes(path);
 
+  // `drop` is only ever true for a path ending in a field name.
   const write = (node: unknown, depth: number): unknown => {
     const seg = path[depth];
-    const last = depth === path.length - 1;
-
-    if (last) {
-      if (typeof seg === "number") {
-        const arr = Array.isArray(node) ? [...node] : [];
-        arr[seg] = value;
-        return arr;
-      }
-      const obj = { ...(node && typeof node === "object" ? node : {}) } as
-        Record<string, unknown>;
-      if (drop) delete obj[seg];
-      else obj[seg] = value;
-      return obj;
-    }
-
-    if (typeof seg === "number") {
-      const arr = Array.isArray(node) ? [...node] : [];
-      arr[seg] = write(arr[seg], depth + 1);
-      return arr;
-    }
-    const obj = { ...(node && typeof node === "object" ? node : {}) } as
-      Record<string, unknown>;
-    obj[seg] = write(obj[seg], depth + 1);
-    return obj;
+    const copy = containerCopy(node, seg);
+    if (depth < path.length - 1) copy[seg] = write(copy[seg], depth + 1);
+    else if (drop) delete copy[seg];
+    else copy[seg] = value;
+    return copy;
   };
 
   const top = path[0];
