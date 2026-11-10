@@ -310,6 +310,20 @@ describe("structural edits", () => {
     expect(ui().settings.theme).toBe("dark");
   });
 
+  it("goes by the id when the theme's background is not a colour it can read", async () => {
+    const { api, THEMES } = await import("../test/uiBuilderHarness");
+    api.listThemes.mockResolvedValue([
+      ...THEMES,
+      { ...THEMES[0], id: "light-sky", variables: { panel_bg: "var(--sky)" } },
+      { ...THEMES[0], id: "night", variables: { panel_bg: "var(--night)" } },
+    ]);
+    await renderPage(UIBuilderView);
+    call(() => props().onThemeChange("light-sky"));
+    expect(ui().settings.theme).toBe("light");
+    call(() => props().onThemeChange("night"));
+    expect(ui().settings.theme).toBe("dark");
+  });
+
   it("hands the Properties panel no theme changer while the Theme Studio is open", async () => {
     await renderPage(UIBuilderView);
     expect(typeof props().onThemeChange).toBe("function");
