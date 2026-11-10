@@ -17,10 +17,9 @@ the ``udp:`` and ``ir:`` ones; ``rereads.py`` sends a ``read_back``;
 ``core/device_sleep.py`` waits out a ``sleeps_device``; ``command_files.py``
 is how a Python driver takes a file and hands one back. The simulator answers
 ``sets:`` and ``query_for:`` (``simulator/yaml_auto.py``). Two checks
-of a command live in ``avcdriver_semantic`` and run after every command: the
-references its parameters make into ``child_entity_types``
-(``child_param_reference_errors``) and the placeholders in its templates
-(``validate_substitutions``).
+of a command run after every command: the references its parameters make into
+``child_entity_types`` (``child_type_checks.child_param_reference_errors``) and
+the placeholders in its templates (``avcdriver_semantic.validate_substitutions``).
 
 A value ``python_info`` could not read from the source (a constant, a call)
 is not judged. Two rules say so, and they are not the same: ``_unevaluated``

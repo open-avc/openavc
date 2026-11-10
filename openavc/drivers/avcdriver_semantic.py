@@ -25,7 +25,12 @@ import re
 from typing import Any, Callable
 
 from openavc.drivers.child_ids import declared_child_ids, page_starts
-from openavc.drivers.child_type_checks import RosterNames, child_type_errors
+from openavc.drivers.child_type_checks import (
+    RosterNames,
+    child_param_reference_errors,
+    child_type_errors,
+    undeclared_child_type_reason as undeclared_child_type_reason,
+)
 from openavc.drivers.command_checks import CommandSection, osc_args_errors
 from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import (
@@ -572,10 +577,9 @@ def validate_driver_definition(
         errors.ctx = f"commands.{cmd_name}"
         errors.extend(section.command_errors(cmd_name, cmd_def))
 
-    # References out of a command's params into child_entity_types. Shared
-    # with the Python surface (a Python driver reaches the same function
-    # through python_info), so a dangling child_type reads identically
-    # whichever kind of driver declared it.
+    # References out of a command's params into child_entity_types, checked
+    # in child_type_checks; a Python driver reaches the same function through
+    # python_info.
     errors.ctx = "commands"
     _child_ref_errors, _ = child_param_reference_errors(driver_def)
     errors.extend(_child_ref_errors)
@@ -1755,161 +1759,6 @@ def device_setting_map_errors(where: str, setting_def: dict[str, Any]) -> list[s
                 f"{where}: map key '{key}' is not one of the setting's values "
                 f"({', '.join(allowed)})"
             )
-    return errors
-
-
-def undeclared_child_type_reason(
-    child_type: str, child_types: dict[str, Any],
-) -> str:
-    """Why a ``child_type`` reference does not resolve, as one reason fragment.
-
-    Shared with the runtime, which is the point. The static rule below rejects
-    this before a driver is published; a driver copied straight into
-    ``driver_repo/`` only warns at load, so the dispatch gate meets the same
-    fault again at command time and has to describe it the same way — the
-    alternative was the gate falling through to integer coercion and blaming
-    the value the user typed. A fragment rather than a sentence, so each
-    surface frames it: the static rule prefixes the dotted path, the gate
-    prefixes the command and parameter name.
-    """
-    declared = sorted(k for k in child_types if k != UNEVALUATED_KEY)
-    return (
-        f"child_type '{child_type}' is not a declared child_entity_type"
-        + (
-            f" (declared: {', '.join(declared)})"
-            if declared
-            else " (the driver declares none)"
-        )
-    )
-
-
-def child_param_reference_errors(
-    driver_def: dict[str, Any],
-) -> tuple[list[str], list[str]]:
-    """Every reference a command parameter makes into ``child_entity_types``.
-
-    Two references, both decidable from the definition alone, and both missing
-    on *every* surface until now — a YAML driver was no better covered than a
-    Python one:
-
-      * ``commands.*.params.*.child_type`` must name a declared child type.
-        A typo does not fail; it falls through to plain integer coercion at
-        the dispatch gate, so the user is told the value they typed is wrong
-        when it is the driver that is wrong.
-      * a ``child_id`` param's own ``min``/``max`` must sit inside that type's
-        ``id_format`` range, so the two declarations cannot contradict each
-        other and leave the runtime to pick a winner.
-
-    Returns ``(errors, skipped)``. ``skipped`` names each reference that could
-    not be decided because its *target set* is computed rather than declared:
-    a Python driver may build ``commands`` or ``child_entity_types`` at
-    runtime, and a check whose target set is unknown has to say so rather than
-    report a dangling reference it cannot see the target of. The skip is per
-    reference, never per driver — an unreadable ``child_entity_types`` silences
-    only the references that resolve against it, and every other rule still
-    runs. Callers print the skips; none of them change a verdict.
-    """
-    errors: list[str] = []
-    skipped: list[str] = []
-
-    commands = driver_def.get("commands")
-    if commands is None:
-        return errors, skipped
-    if not isinstance(commands, dict):
-        skipped.append("commands is computed, so no command params were checked")
-        return errors, skipped
-
-    raw_types = driver_def.get("child_entity_types")
-    if raw_types is not None and not isinstance(raw_types, dict):
-        skipped.append(
-            "child_entity_types is computed, so no child_type reference was "
-            "checked"
-        )
-        return errors, skipped
-    if UNEVALUATED_KEY in commands:
-        skipped.append(
-            f"{len(commands) - 1} of an unknown number of commands were "
-            f"readable; params of the rest were not checked"
-        )
-    child_types: dict[str, Any] = raw_types if isinstance(raw_types, dict) else {}
-    # The type NAMES themselves were built at runtime, so "not in this map"
-    # proves nothing about whether the reference resolves.
-    types_computed = UNEVALUATED_KEY in child_types
-
-    for cmd_name, cmd_def in commands.items():
-        if cmd_name == UNEVALUATED_KEY or not isinstance(cmd_def, dict):
-            continue
-        params = cmd_def.get("params")
-        if not isinstance(params, dict):
-            continue
-        for param_name, param_def in params.items():
-            if not isinstance(param_def, dict):
-                continue
-            if param_def.get("type") != "child_id":
-                continue
-            where = f"commands.{cmd_name}.params.{param_name}"
-            child_type = param_def.get("child_type")
-
-            if child_type is None:
-                errors.append(
-                    f"{where}: a child_id param must declare 'child_type' "
-                    f"(without it the id cannot be resolved to a child type "
-                    f"and is coerced as a plain integer)"
-                )
-                continue
-            if not isinstance(child_type, str):
-                skipped.append(f"{where}: child_type is computed")
-                continue
-            if child_type not in child_types:
-                if types_computed:
-                    skipped.append(
-                        f"{where}: child_type '{child_type}', because "
-                        f"child_entity_types keys are computed"
-                    )
-                    continue
-                errors.append(
-                    f"{where}: "
-                    f"{undeclared_child_type_reason(child_type, child_types)}"
-                )
-                continue
-
-            type_def = child_types.get(child_type)
-            id_format = type_def.get("id_format") if isinstance(type_def, dict) else None
-            if not isinstance(id_format, dict):
-                continue
-            errors.extend(
-                _child_id_bound_errors(where, child_type, param_def, id_format)
-            )
-
-    return errors, skipped
-
-
-def _child_id_bound_errors(
-    where: str, child_type: str, param_def: dict[str, Any], id_format: dict[str, Any],
-) -> list[str]:
-    """A child_id param's declared bounds against its type's ``id_format``."""
-    errors: list[str] = []
-
-    def _num(value: Any) -> int | float | None:
-        if isinstance(value, bool) or not isinstance(value, (int, float)):
-            return None
-        return value
-
-    fmt_min, fmt_max = _num(id_format.get("min")), _num(id_format.get("max"))
-    param_min, param_max = _num(param_def.get("min")), _num(param_def.get("max"))
-
-    if param_min is not None and fmt_min is not None and param_min < fmt_min:
-        errors.append(
-            f"{where}: min {param_min:g} is below "
-            f"child_entity_types.{child_type}.id_format.min ({fmt_min:g}), so "
-            f"the gate would accept an id the child type cannot have"
-        )
-    if param_max is not None and fmt_max is not None and param_max > fmt_max:
-        errors.append(
-            f"{where}: max {param_max:g} is above "
-            f"child_entity_types.{child_type}.id_format.max ({fmt_max:g}), so "
-            f"the gate would accept an id the child type cannot have"
-        )
     return errors
 
 
