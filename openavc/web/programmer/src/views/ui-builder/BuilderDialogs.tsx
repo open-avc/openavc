@@ -12,17 +12,17 @@
  * after either answer. While the Studio is open the Properties panel offers no
  * theme list of its own (`themeListChange`): choosing there would switch the
  * theme under the Studio's unsaved edits. Both previews are drawn on the screen
- * preset as the toolbar has it chosen (read from the Builder store, as the canvas
- * reads it), not turned for the arrangement behind them: a preview is about
+ * preset as the toolbar has it chosen (`useChosenScreen`, as the canvas reads
+ * it), not turned for the arrangement behind them: a preview is about
  * colour and type, and should not change shape with the arrangement selected.
  */
 import { useCallback, useState } from "react";
 import type { ProjectConfig, UIPage } from "../../api/types";
-import { SCREEN_PRESETS, type ValidationIssue } from "../../components/ui-builder/uiBuilderHelpers";
+import type { ValidationIssue } from "../../components/ui-builder/uiBuilderHelpers";
+import { useChosenScreen, type Screen } from "../../components/ui-builder/canvasScreen";
 import { ThemeStudio } from "../../components/ui-builder/ThemeStudio";
 import { StylesheetEditor } from "../../components/ui-builder/StylesheetEditor";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
-import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import type { ThemeSummary } from "./builderTheme";
 import type { PanelEdits } from "./panelEdits";
 import { PanelSettingsDialog } from "./PanelSettingsDialog";
@@ -70,7 +70,7 @@ export interface BuilderDialogsProps {
 }
 
 /** The size both previews are drawn at: the preset's own, else the 7" tablet's. */
-function previewSize(preset: { width: number; height: number } | undefined) {
+function previewSize(preset: Screen | undefined) {
   return { panelWidth: preset?.width ?? 1024, panelHeight: preset?.height ?? 600 };
 }
 
@@ -87,8 +87,7 @@ const RESET_MESSAGE =
 
 export function BuilderDialogs({ dialogs, project, page, theme, edits, validation }: BuilderDialogsProps) {
   const { open, show, hide } = dialogs;
-  const presetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
-  const size = previewSize(SCREEN_PRESETS[presetIndex]);
+  const size = previewSize(useChosenScreen());
   return (
     <>
       <ThemeStudio

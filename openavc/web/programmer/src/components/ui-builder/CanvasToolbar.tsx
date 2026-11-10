@@ -41,7 +41,7 @@ import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { saveFailure, saveNow } from "../../store/saveState";
 import { isCustomPage } from "./customPage";
-import { canvasScreen } from "./canvasScreen";
+import { canvasScreen, useChosenScreen } from "./canvasScreen";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { PromptDialog } from "../shared/PromptDialog";
 import { NumericInput } from "../shared/NumericInput";
@@ -120,6 +120,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
   const zoom = useUIBuilderStore((s) => s.zoom);
   const setZoom = useUIBuilderStore((s) => s.setZoom);
   const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
+  const chosenScreen = useChosenScreen();
   const setScreenPresetIndex = useUIBuilderStore((s) => s.setScreenPresetIndex);
   const selectedElementIds = useUIBuilderStore((s) => s.selectedElementIds);
   const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
@@ -386,7 +387,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
     setPendingDeleteLayoutId(null);
   };
 
-  const presetSize = canvasScreen(screenPresetIndex, currentPage, activeLayoutId);
+  const presetSize = canvasScreen(chosenScreen, currentPage, activeLayoutId);
 
   const snap = currentPage ? pageSnap(currentPage) : null;
   const handleSnapChange = (patch: Partial<SnapConfig>) => {
