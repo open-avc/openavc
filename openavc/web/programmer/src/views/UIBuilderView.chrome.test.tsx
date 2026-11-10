@@ -331,7 +331,7 @@ describe("Panel Settings, field by field", () => {
   });
 
   it("shows the panel's own default where the project leaves a setting blank", async () => {
-    seed(makeProject({ settings: { accent_color: "", page_transition: undefined, element_entry: undefined } }));
+    seed(makeProject({ settings: { accent_color: "", page_transition: undefined, page_transition_duration: undefined, element_entry: undefined } }));
     await renderPage(UIBuilderView);
     open();
     const accent = field("Accent Color").querySelectorAll("input");
