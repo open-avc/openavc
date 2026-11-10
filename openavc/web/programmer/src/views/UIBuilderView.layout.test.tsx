@@ -26,6 +26,7 @@ import {
   installFetch,
   makeProject,
   mounts,
+  page,
   press,
   renderPage,
   resetMocks,
@@ -225,6 +226,30 @@ describe("each dialog on its own", () => {
     expect(seen.ThemeStudio).toMatchObject({ panelWidth: 1280, panelHeight: 800 });
     expect(seen.StylesheetEditor).toMatchObject({ panelWidth: 1280, panelHeight: 800 });
     expect(seen.Canvas).toMatchObject({ screenWidth: 800, screenHeight: 1280 });
+  });
+});
+
+describe("a project with no pages", () => {
+  it("previews the stylesheet on no page", async () => {
+    seed(makeProject({ pages: [] }));
+    await renderPage(UIBuilderView);
+    click("Edit the project stylesheet (custom CSS)");
+    expect(seen.StylesheetEditor.previewPageId).toBeNull();
+  });
+});
+
+describe("resetting styles on a control with no style of its own", () => {
+  it("gives it an empty style where its theme defines defaults, and leaves one the theme says nothing about alone", async () => {
+    themeFetch.byId["dark-default"] = { variables: {}, element_defaults: { button: { bg_color: "#000" } } };
+    const bare = { id: "bare", type: "button", label: "B" } as never;
+    const plain = { id: "plain", type: "clock", label: "C" } as never;
+    seed(makeProject({ pages: [page("main", [bare, plain], { bare: { x: 0, y: 0, w: 10, h: 10 }, plain: { x: 20, y: 0, w: 10, h: 10 } })] }));
+    await renderPage(UIBuilderView);
+    call(() => seen.ThemeStudio.onResetElementStyles());
+    call(() => fireEvent.click(screen.getByRole("button", { name: "Reset Styles" })));
+    const els = ui().pages[0].elements as unknown as Array<Record<string, unknown>>;
+    expect(els[0].style).toEqual({});
+    expect("style" in els[1]).toBe(false);
   });
 });
 
