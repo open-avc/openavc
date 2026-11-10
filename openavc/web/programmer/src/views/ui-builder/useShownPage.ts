@@ -1,9 +1,10 @@
 /**
  * Which page the UI Builder shows, and what its panels are handed of it.
  *
- * The page on screen is the one selected, else the first. The page is drawn
- * with the first while nothing is selected yet, and the first is then
- * selected, so the toolbar, the canvas and the stores agree from the next draw.
+ * The page on screen is the one selected, else the first (`pageOnScreen`). The
+ * page is drawn with the first while nothing is selected yet, and the page drawn
+ * is then selected, so the toolbar, the canvas and the stores agree from the
+ * next draw.
  * Two things choose a page from outside the Builder: a control another screen
  * pointed at (the navigation store's pending focus, read once as the page
  * opens, the control selected a frame later so its page is drawn first) and, in
@@ -35,11 +36,11 @@ export interface ShownPage {
 const store = () => useUIBuilderStore.getState();
 
 /** The page selected, else the first, else none. */
-export function pageOnScreen(pages: UIPage[], selectedPageId: string | null): UIPage | null {
+function pageOnScreen(pages: UIPage[], selectedPageId: string | null): UIPage | null {
   return pages.find((p) => p.id === selectedPageId) || pages[0] || null;
 }
 
-export function shownPage(
+function shownPage(
   project: ProjectConfig | null,
   selectedPageId: string | null,
   layoutId: string | null,
@@ -79,7 +80,8 @@ export function useShownPage(project: ProjectConfig | null): ShownPage {
 
   useEffect(goToPointedAt, []);
   useEffect(() => {
-    if (!selectedPageId && project?.ui?.pages?.length) store().selectPage(project.ui.pages[0].id);
+    const first = selectedPageId ? null : pageOnScreen(project?.ui?.pages ?? [], null);
+    if (first) store().selectPage(first.id);
   }, [selectedPageId, project]);
   useEffect(() => (previewMode ? followServerPage() : undefined), [previewMode]);
 

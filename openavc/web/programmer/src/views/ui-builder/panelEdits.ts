@@ -24,7 +24,7 @@ import { projectEdit, type EditRun, type ProjectEdit } from "./useEditRun";
  * be found: from the theme's panel background, and only when that cannot be
  * read, from its id. A light theme whose id lacks "light" is still light.
  */
-export function themeFallbackMode(themes: ThemeSummary[], id: string): "light" | "dark" {
+function themeFallbackMode(themes: ThemeSummary[], id: string): "light" | "dark" {
   const bg = themes.find((t) => t.id === id)?.variables?.panel_bg;
   const light = typeof bg === "string" ? isLightColor(bg) : null;
   if (light !== null) return light ? "light" : "dark";
@@ -34,7 +34,7 @@ export function themeFallbackMode(themes: ThemeSummary[], id: string): "light" |
 /** The pages with each control's style overrides removed wherever its type's
  *  theme defaults name the property. A type the theme says nothing about is
  *  left exactly as it was. */
-export function withoutThemeStyles(pages: UIPage[], defaults: ThemeDefaults): UIPage[] {
+function withoutThemeStyles(pages: UIPage[], defaults: ThemeDefaults): UIPage[] {
   return pages.map((page) => ({
     ...page,
     elements: page.elements.map((el) => {
@@ -49,7 +49,7 @@ export function withoutThemeStyles(pages: UIPage[], defaults: ThemeDefaults): UI
   }));
 }
 
-export function chooseTheme(project: ProjectConfig, themes: ThemeSummary[], id: string): ProjectEdit {
+function chooseTheme(project: ProjectConfig, themes: ThemeSummary[], id: string): ProjectEdit {
   const settings = project.ui.settings;
   const theme = themeFallbackMode(themes, id);
   return projectEdit(project, {
@@ -57,19 +57,19 @@ export function chooseTheme(project: ProjectConfig, themes: ThemeSummary[], id: 
   }, "Change theme");
 }
 
-export function clearThemeOverrides(project: ProjectConfig): ProjectEdit {
+function clearThemeOverrides(project: ProjectConfig): ProjectEdit {
   return projectEdit(project, { settings: { ...project.ui.settings, theme_overrides: {} } }, "Edit theme overrides");
 }
 
-export function resetStylesToTheme(project: ProjectConfig, defaults: ThemeDefaults): ProjectEdit {
+function resetStylesToTheme(project: ProjectConfig, defaults: ThemeDefaults): ProjectEdit {
   return projectEdit(project, { pages: withoutThemeStyles(project.ui.pages, defaults) }, "Reset element styles to theme");
 }
 
-export function saveStylesheet(project: ProjectConfig, css: string): ProjectEdit {
+function saveStylesheet(project: ProjectConfig, css: string): ProjectEdit {
   return projectEdit(project, { custom_css: css }, "Edit project stylesheet");
 }
 
-export function saveSettings(project: ProjectConfig, settings: UISettings): ProjectEdit {
+function saveSettings(project: ProjectConfig, settings: UISettings): ProjectEdit {
   return projectEdit(project, { settings }, "Edit project settings");
 }
 
