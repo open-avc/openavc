@@ -387,6 +387,18 @@ describe("resizing a page control", () => {
     expect(undoLabels()).toEqual(["Resize element"]);
   });
 
+  it("draws the guide a dragged edge lands on, down and across", () => {
+    load(makePage([el("a")], { a: A }), { selected: ["a"] });
+    press(handle(node("a"), "s"));
+    drag(0, 98);
+    expect(guides()).toEqual({ x: [], y: ["50%"] });
+    release();
+    press(handle(node("a"), "e"));
+    drag(198, 0);
+    expect(guides()).toEqual({ x: ["50%"], y: [] });
+    release();
+  });
+
   it("snaps only the dragged edges, and Alt sets the snap aside", () => {
     expect(resize("se", 60, 60, { snap: SNAP_ON })).toEqual({ x: 10, y: 10, w: 23.3333, h: 27.5 });
     expect(resize("se", 60, 60, { snap: SNAP_ON, mods: { altKey: true } })).toEqual({ x: 10, y: 10, w: 26, h: 32 });
