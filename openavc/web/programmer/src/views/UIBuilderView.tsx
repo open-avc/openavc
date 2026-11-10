@@ -9,10 +9,8 @@ import { useProjectStore } from "../store/projectStore";
 import { useFlushBeforeUnload } from "../store/saveState";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { usePluginStore } from "../store/pluginStore";
-import { Canvas } from "../components/ui-builder/Canvas";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
 import { SCREEN_PRESETS } from "../components/ui-builder/uiBuilderHelpers";
-import { canvasScreen } from "../components/ui-builder/canvasScreen";
 import { useEditRun } from "./ui-builder/useEditRun";
 import { useBuilderShortcuts } from "./ui-builder/builderShortcuts";
 import { useElementEdits } from "./ui-builder/useElementEdits";
@@ -28,6 +26,8 @@ import { BuilderProperties } from "./ui-builder/BuilderProperties";
 import { useBuilderTheme } from "./ui-builder/builderTheme";
 import { usePanelEdits } from "./ui-builder/panelEdits";
 import { useShownPage } from "./ui-builder/useShownPage";
+import { BuilderCanvas } from "./ui-builder/BuilderCanvas";
+import { BuilderNote } from "./ui-builder/BuilderNote";
 
 export function UIBuilderView() {
   const project = useProjectStore((s) => s.project);
@@ -41,8 +41,6 @@ export function UIBuilderView() {
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
   const previewMode = useUIBuilderStore((s) => s.previewMode);
   const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
-  const showGrid = useUIBuilderStore((s) => s.showGrid);
-  const zoom = useUIBuilderStore((s) => s.zoom);
   const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
   const clipboard = useUIBuilderStore((s) => s.clipboard);
 
@@ -58,7 +56,6 @@ export function UIBuilderView() {
   useFlushBeforeUnload();
 
   const preset = SCREEN_PRESETS[screenPresetIndex];
-  const { width: screenWidth, height: screenHeight } = canvasScreen(screenPresetIndex, currentPage, activeLayoutId);
 
   const edits = useElementEdits({
     project,
@@ -92,21 +89,7 @@ export function UIBuilderView() {
     run,
   });
 
-  if (!project) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "100%",
-          color: "var(--text-muted)",
-        }}
-      >
-        Loading project...
-      </div>
-    );
-  }
+  if (!project) return <BuilderNote>Loading project...</BuilderNote>;
 
   return (
     <DndContext {...palette.dndProps}>
@@ -165,30 +148,7 @@ export function UIBuilderView() {
 
           {/* Center: Canvas */}
           <Panel defaultSize={previewMode ? 100 : 60}>
-            {currentPage ? (
-              <Canvas
-                page={currentPage}
-                previewMode={previewMode}
-                showGrid={showGrid}
-                zoom={zoom}
-                screenWidth={screenWidth}
-                screenHeight={screenHeight}
-                masterElements={project?.ui?.master_elements}
-                themeVariables={theme.variables}
-              />
-            ) : (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  height: "100%",
-                  color: "var(--text-muted)",
-                }}
-              >
-                No pages yet. Click + to add a page.
-              </div>
-            )}
+            <BuilderCanvas page={currentPage} masters={project.ui?.master_elements} themeVariables={theme.variables} />
           </Panel>
 
           {/* Right: Properties Panel */}
