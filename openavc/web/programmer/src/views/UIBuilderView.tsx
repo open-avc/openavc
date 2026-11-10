@@ -8,7 +8,6 @@ import {
 } from "react-resizable-panels";
 import type { UIElement, UIPage, UISettings, MasterElement } from "../api/types";
 import * as wsClient from "../api/wsClient";
-import { commandIssues } from "../api/commandIssues";
 import { showError } from "../store/toastStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore, type UndoScope } from "../store/uiBuilderStore";
@@ -45,14 +44,11 @@ import {
   removeMasterElement,
   renameElement,
   validateElementId,
-  validateProject,
-  projectCommandActions,
   lockedIdsFor,
   presetForOrientation,
   layoutOrientation,
   resolveHidden,
   withHidden,
-  type ValidationIssue,
 } from "../components/ui-builder/uiBuilderHelpers";
 import { showSuccess, showInfo } from "../store/toastStore";
 import { projectEdit, useEditRun } from "./ui-builder/useEditRun";
@@ -60,6 +56,7 @@ import { nudgedPages, useBuilderShortcuts } from "./ui-builder/builderShortcuts"
 import { takenIds, type Landing } from "./ui-builder/paletteDrop";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
 import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
+import { useValidation, ValidationReport } from "./ui-builder/ValidationReport";
 import { themeFallbackMode, useBuilderTheme, withoutThemeStyles } from "./ui-builder/builderTheme";
 
 export function UIBuilderView() {
@@ -114,17 +111,8 @@ export function UIBuilderView() {
   const [leftTab, setLeftTab] = useState<"elements" | "outline">("elements");
   const [showThemeStudio, setShowThemeStudio] = useState(false);
   const [showStylesheet, setShowStylesheet] = useState(false);
-  const [validationIssues, setValidationIssues] = useState<ValidationIssue[] | null>(null);
+  const validation = useValidation(project);
   const [confirmResetStyles, setConfirmResetStyles] = useState(false);
-  // Validate asks the platform one question it cannot answer itself: whether
-  // each chosen command has the parameters its driver requires. Everything
-  // else is derived from the project in hand, so a request that fails still
-  // leaves a full report -- it just cannot speak to that one thing.
-  const runValidation = useCallback(async () => {
-    if (!project) return;
-    const found = await commandIssues(projectCommandActions(project));
-    setValidationIssues(validateProject(project, found));
-  }, [project]);
   const theme = useBuilderTheme(project?.ui?.settings?.theme_id);
   const themes = theme.themes;
 
@@ -596,7 +584,7 @@ export function UIBuilderView() {
         <CanvasToolbar
           pages={pages}
           selectedPageId={currentPage?.id || null}
-          onValidate={runValidation}
+          onValidate={validation.run}
           trailing={
             !previewMode ? (
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", flexShrink: 0 }}>
@@ -921,60 +909,8 @@ export function UIBuilderView() {
         />
       )}
 
-      {/* Validation results */}
-      {validationIssues !== null && (
-        <Modal
-          onClose={() => setValidationIssues(null)}
-          label="Validation Results"
-          overlayStyle={{ background: "rgba(0,0,0,0.5)" }}
-          panelStyle={{
-            borderRadius: 8,
-            border: "1px solid var(--border-color)",
-            padding: 20, minWidth: 400, maxWidth: 600, maxHeight: "70vh",
-            display: "flex", flexDirection: "column", gap: 12,
-          }}
-        >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ margin: 0, fontSize: 14 }}>
-                Project Validation {validationIssues.length === 0 ? "(No Issues)" : `(${validationIssues.length} issue${validationIssues.length === 1 ? "" : "s"})`}
-              </h3>
-              <button onClick={() => setValidationIssues(null)} style={{ background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 16 }}>&times;</button>
-            </div>
-            {validationIssues.length === 0 ? (
-              <div style={{ color: "var(--color-success)", fontSize: 13, padding: "12px 0" }}>
-                All bindings, pages, devices, and macros are valid.
-              </div>
-            ) : (
-              <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: 4 }}>
-                {validationIssues.map((issue, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: "flex", gap: 8, padding: "6px 8px", borderRadius: 4, fontSize: 12,
-                      background: issue.severity === "error" ? "rgba(244,67,54,0.08)" : "rgba(255,152,0,0.08)",
-                      border: `1px solid ${issue.severity === "error" ? "rgba(244,67,54,0.2)" : "rgba(255,152,0,0.2)"}`,
-                      cursor: issue.pageId ? "pointer" : "default",
-                    }}
-                    onClick={() => {
-                      if (issue.pageId) {
-                        selectPage(issue.pageId);
-                        if (issue.elementId) selectElement(issue.elementId);
-                        setValidationIssues(null);
-                      }
-                    }}
-                  >
-                    <span style={{ color: issue.severity === "error" ? "var(--color-error)" : "#ff9800", fontWeight: 600, flexShrink: 0 }}>
-                      {issue.severity === "error" ? "ERR" : "WARN"}
-                    </span>
-                    <div>
-                      <div style={{ fontWeight: 500 }}>{issue.message}</div>
-                      <div style={{ color: "var(--text-muted)", fontSize: 11 }}>{issue.location}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-        </Modal>
+      {validation.issues !== null && (
+        <ValidationReport issues={validation.issues} onClose={validation.close} />
       )}
 
       {/* Settings dialog */}
