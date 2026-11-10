@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import type { UIElement, ProjectConfig } from "../../../api/types";
-import { slotActions, actionsCommandDevice, actionDanglingRef, actionIncompleteCheck, elementCommandActions, stateKeyDevice } from "../uiBuilderHelpers";
+import { slotActions, actionsCommandDevice, actionDanglingRef, actionIncompleteCheck, elementCommandActions } from "../uiBuilderHelpers";
 import { BINDING_CAPABILITIES, type BindingCapability } from "../bindingCapabilities";
+import { stateKeyDevice } from "../validateProject";
 import { commandIssues, type CommandIssues } from "../../../api/commandIssues";
 import { ButtonBindingEditor, type ButtonBindings } from "../../shared/ButtonBindingEditor";
 import { PressBindingEditor } from "../BindingEditor/PressBindingEditor";

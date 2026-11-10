@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateProject } from "./uiBuilderHelpers";
+import { validateProject } from "./validateProject";
 import type { ProjectConfig } from "../../api/types";
 
 // Validate is the list an integrator reads before handing a room over. These

@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   elementCommandActions,
   projectCommandActions,
-  validateProject,
 } from "./uiBuilderHelpers";
+import { validateProject } from "./validateProject";
 import type { ProjectConfig, UIElement } from "../../api/types";
 
 // Validate is the check an integrator runs before handing a room over, and it
