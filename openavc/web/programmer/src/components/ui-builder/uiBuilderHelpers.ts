@@ -657,11 +657,23 @@ export function swapElementsInOrder(
     if (p.id !== pageId) return p;
     const a = p.elements.findIndex((e) => e.id === elementId);
     const b = p.elements.findIndex((e) => e.id === neighborId);
-    if (a === -1 || b === -1 || a === b) return p;
-    const els = [...p.elements];
-    [els[a], els[b]] = [els[b], els[a]];
-    return { ...p, elements: els };
+    const els = swapped(p.elements, a, b);
+    return els ? { ...p, elements: els } : p;
   });
+}
+
+/**
+ * A copy of a list with the items at two positions traded, or null when there
+ * is nothing to trade: either is not a position in the list (a -1 from a
+ * lookup that found nothing, or one step past an end), or they are the same.
+ */
+function swapped<T>(list: T[], i: number, j: number): T[] | null {
+  const inList = (n: number) => n >= 0 && n < list.length;
+  const both = inList(i) && inList(j);
+  if (!both || i === j) return null;
+  const out = [...list];
+  [out[i], out[j]] = [out[j], out[i]];
+  return out;
 }
 
 // --- Page reordering ---
@@ -672,12 +684,8 @@ export function reorderPage(
   direction: "left" | "right",
 ): UIPage[] {
   const idx = pages.findIndex((p) => p.id === pageId);
-  if (idx === -1) return pages;
   const newIdx = direction === "left" ? idx - 1 : idx + 1;
-  if (newIdx < 0 || newIdx >= pages.length) return pages;
-  const result = [...pages];
-  [result[idx], result[newIdx]] = [result[newIdx], result[idx]];
-  return result;
+  return swapped(pages, idx, newIdx) ?? pages;
 }
 
 // --- Page duplication ---
