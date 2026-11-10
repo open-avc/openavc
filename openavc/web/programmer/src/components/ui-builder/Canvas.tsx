@@ -30,8 +30,8 @@ import {
   resolveHidden,
   updateElementInPage,
   updateMasterElement,
-  patchForTextPath,
 } from "./uiBuilderHelpers";
+import { patchForTextPath } from "./textPathPatch";
 import { reviewWarningsByElement, sliderThemeDefaults } from "./pageReview";
 import { getTunnelPrefix } from "../../api/restClient";
 import { resolveProjectMatrices } from "../../api/matrixPreview";

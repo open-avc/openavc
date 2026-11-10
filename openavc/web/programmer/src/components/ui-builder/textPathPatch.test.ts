@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { patchForTextPath, emptyCommitDeletes } from "./uiBuilderHelpers";
+import { patchForTextPath, emptyCommitDeletes } from "./textPathPatch";
 import type { UIElement } from "../../api/types";
 
 /**
