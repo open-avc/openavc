@@ -50,7 +50,6 @@ from openavc.drivers.spec import (
     AUTH_TYPES,
     AVAILABILITIES,
     CHILD_ID_TYPES,
-    CLOUD_PRIORITIES,
     CONNECTION_FIELDS,
     DEFAULT_LINE_GAP_S,
     DEFS,
@@ -72,6 +71,11 @@ from openavc.drivers.spec import (
     is_secret_setting,
     parse_version,
     platform_requirements,
+)
+from openavc.drivers.state_variable_checks import (
+    CHILD_VARIABLE,
+    DEVICE_VARIABLE,
+    state_variable_errors,
 )
 from openavc.utils.regex_safety import regex_safety_error as _regex_redos_error
 
@@ -775,8 +779,8 @@ def validate_driver_definition(
         if isinstance(entry, dict) and isinstance(entry.get("params"), dict):
             errors.extend(param_aid_errors(f"actions[{i}]", entry.get("params")))
 
-    # Validate state_variables structure
-    valid_types = set(VALUE_TYPES)
+    # The driver's own state variables: each one's fields are checked in
+    # state_variable_checks, which a child type's variables ask too.
     errors.ctx = "state_variables"
     state_variables = driver_def.get("state_variables", {})
     if not isinstance(state_variables, dict):
@@ -787,32 +791,9 @@ def validate_driver_definition(
         if not isinstance(var_def, dict):
             errors.append(f"State variable '{var_name}': must be a dict")
             continue
-        var_type = var_def.get("type", "")
-        if var_type and var_type not in valid_types:
-            errors.append(f"State variable '{var_name}': unknown type '{var_type}'")
-        if not var_def.get("label"):
-            errors.append(f"State variable '{var_name}': missing 'label'")
-        unit = var_def.get("unit")
-        if unit is not None and not isinstance(unit, str):
-            errors.append(
-                f"State variable '{var_name}': unit must be a string "
-                f"(got {unit!r})"
-            )
-        control = var_def.get("control")
-        if control is not None and not isinstance(control, bool):
-            errors.append(
-                f"State variable '{var_name}': control must be true or false "
-                f"(got {control!r})"
-            )
-        # The cloud state relay reads this tag to pick the forwarding tier;
-        # a typo would silently fall back to the default cadence.
-        cloud_priority = var_def.get("cloud_priority")
-        if cloud_priority is not None and cloud_priority not in CLOUD_PRIORITIES:
-            errors.append(
-                f"State variable '{var_name}': cloud_priority must be 'low' "
-                f"or 'high' (got {cloud_priority!r}); omit it for the "
-                f"default cadence"
-            )
+        errors.extend(
+            state_variable_errors(f"State variable '{var_name}'", var_def, DEVICE_VARIABLE)
+        )
 
     # scale / offset / unknown on state variables, child state variables and
     # command params: the shared rule (python_info runs it with python=True).
@@ -997,30 +978,11 @@ def validate_driver_definition(
                             f"{where}.state_variables.{var_name}: must be a mapping"
                         )
                         continue
-                    vt = var_def.get("type", "")
-                    if vt and vt not in valid_types:
-                        errors.append(
-                            f"{where}.state_variables.{var_name}: unknown type '{vt}'"
+                    errors.extend(
+                        state_variable_errors(
+                            f"{where}.state_variables.{var_name}", var_def, CHILD_VARIABLE
                         )
-                    cp = var_def.get("cloud_priority")
-                    if cp is not None and cp not in CLOUD_PRIORITIES:
-                        errors.append(
-                            f"{where}.state_variables.{var_name}: cloud_priority "
-                            f"must be 'low' or 'high' (got {cp!r}); omit it for "
-                            f"the default cadence"
-                        )
-                    cunit = var_def.get("unit")
-                    if cunit is not None and not isinstance(cunit, str):
-                        errors.append(
-                            f"{where}.state_variables.{var_name}: unit must be "
-                            f"a string (got {cunit!r})"
-                        )
-                    cctl = var_def.get("control")
-                    if cctl is not None and not isinstance(cctl, bool):
-                        errors.append(
-                            f"{where}.state_variables.{var_name}: control must "
-                            f"be true or false (got {cctl!r})"
-                        )
+                    )
 
             # Validate the optional `instances:` roster block (declarative
             # children). A misdeclared block would silently register nothing
