@@ -36,11 +36,11 @@ import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
 import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
 import { useValidation, ValidationReport } from "./ui-builder/ValidationReport";
 import { PanelSettingsDialog } from "./ui-builder/PanelSettingsDialog";
+import { SaveFailedBanner } from "./ui-builder/SaveFailedBanner";
 import { themeFallbackMode, useBuilderTheme, withoutThemeStyles } from "./ui-builder/builderTheme";
 
 export function UIBuilderView() {
   const project = useProjectStore((s) => s.project);
-  const save = useProjectStore((s) => s.save);
   const run = useEditRun();
 
   // Reactive selectors — only subscribe to values that affect render
@@ -115,11 +115,6 @@ export function UIBuilderView() {
 
   // Autosave is driven by useProjectStore.debouncedSave, called from
   // touchMutation() on every UI Builder mutation. See store/uiBuilderStore.ts.
-  const error = useProjectStore((s) => s.error);
-  // A version conflict already has its own banner, above the whole app, saying
-  // the same sentence with the only two answers that can work. This one would
-  // repeat it and offer Retry beside them, which can only conflict again.
-  const conflictDetected = useProjectStore((s) => s.conflictDetected);
 
   // Flush pending save before the tab unloads so the 2 s debounce window
   // can't lose the last edit.
@@ -258,53 +253,7 @@ export function UIBuilderView() {
           overflow: "hidden",
         }}
       >
-        {/* Save error banner */}
-        {error && !conflictDetected && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "6px 16px",
-              background: "rgba(244,67,54,0.15)",
-              color: "var(--color-error)",
-              fontSize: "var(--font-size-sm)",
-              borderBottom: "1px solid var(--color-error)",
-              flexShrink: 0,
-            }}
-          >
-            <span style={{ flex: 1 }}>Save failed: {error}</span>
-            <button
-              onClick={() => save()}
-              style={{
-                padding: "2px 10px",
-                fontSize: 11,
-                fontWeight: 600,
-                borderRadius: 3,
-                border: "1px solid var(--color-error)",
-                background: "transparent",
-                color: "var(--color-error)",
-                cursor: "pointer",
-              }}
-            >
-              Retry
-            </button>
-            <button
-              onClick={() => useProjectStore.setState({ error: null })}
-              style={{
-                padding: "2px 10px",
-                fontSize: 11,
-                borderRadius: 3,
-                border: "1px solid var(--border-color)",
-                background: "transparent",
-                color: "var(--text-secondary)",
-                cursor: "pointer",
-              }}
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
+        <SaveFailedBanner />
 
         {/* Toolbar — two fixed rows; Theme/Settings dock at the end of the pages row */}
         <CanvasToolbar

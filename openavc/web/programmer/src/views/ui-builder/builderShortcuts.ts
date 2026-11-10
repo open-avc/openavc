@@ -24,7 +24,7 @@ import {
   roundPlacement,
   withMasterPlacement,
 } from "../../components/ui-builder/uiBuilderHelpers";
-import { useProjectStore } from "../../store/projectStore";
+import { saveNow } from "../../store/saveState";
 
 /** Arrow-key travel, in percent, when snapping is off or bypassed. Small
  *  enough to place a control by eye, large enough to see it move. */
@@ -248,13 +248,4 @@ function chordAction(e: KeyboardEvent, k: BuilderKeys): (() => void) | null {
     default:
       return null;
   }
-}
-
-/** Ctrl+S: the save waiting on its timer now, and a direct one while changes
- *  are unsaved and none is running (flushSave does nothing with no timer). The
- *  store is read once, before the flush. */
-function saveNow(): void {
-  const store = useProjectStore.getState();
-  store.flushSave();
-  if (store.dirty && !store.saving) store.save();
 }

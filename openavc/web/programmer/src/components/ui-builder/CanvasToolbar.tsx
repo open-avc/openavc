@@ -39,6 +39,7 @@ import {
 import type { UIPage, PageGroup, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
+import { saveFailure, saveNow } from "../../store/saveState";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { PromptDialog } from "../shared/PromptDialog";
 import { NumericInput } from "../shared/NumericInput";
@@ -136,7 +137,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
   const saving = useProjectStore((s) => s.saving);
   const savePending = useProjectStore((s) => s.savePending);
   const error = useProjectStore((s) => s.error);
-  const conflictDetected = useProjectStore((s) => s.conflictDetected);
+  const failure = useProjectStore(saveFailure);
   const undo = useUIBuilderStore((s) => s.undo);
   const redo = useUIBuilderStore((s) => s.redo);
   const undoStack = useUIBuilderStore((s) => s.undoStack);
@@ -1128,8 +1129,8 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
 
         {/* Save state + manual Save button */}
         <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, flexShrink: 0 }}>
-          {error && !conflictDetected ? (
-            <span style={{ color: "var(--color-error, #d33)", fontWeight: 500 }} title={error}>
+          {failure ? (
+            <span style={{ color: "var(--color-error, #d33)", fontWeight: 500 }} title={failure}>
               Save failed
             </span>
           ) : saving ? (
@@ -1150,11 +1151,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
             </span>
           )}
           <button
-            onClick={() => {
-              const store = useProjectStore.getState();
-              store.flushSave();
-              if (store.dirty && !store.saving) store.save();
-            }}
+            onClick={saveNow}
             disabled={!dirty && !error}
             title="Save now (Ctrl+S)"
             style={{
