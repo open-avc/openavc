@@ -54,9 +54,10 @@ import {
   type MatrixEntry,
 } from "./matrixModel";
 // Both generated, both from Python, because both are measured facts rather than
-// design decisions: the per-control floors were binary-searched against a real
-// browser, and the binding-reach table is read off the panel renderer itself.
-// See openavc/ui/minimums_gen.py and openavc/ui/review_gen.py.
+// design decisions: the floors' slack and the panel's rem size come with the
+// per-control floors, binary-searched against a real browser, and the
+// binding-reach table is read off the panel renderer itself. See
+// openavc/ui/minimums_gen.py and openavc/ui/review_gen.py.
 import { PIXEL_SLACK, REM_BASE_PX } from "../../api/uiMinimums.gen";
 import {
   DISPATCHED_ACTIONS,
@@ -1666,7 +1667,7 @@ export interface ReviewFinding {
 
 // The floor each control is measured against is controlMinimums.ts, the twin
 // of openavc/ui/control_minimums.py.
-export { controlMinimumBox, controlMinimumPercent, type ElementDefaults } from "./controlMinimums";
+export type { ElementDefaults } from "./controlMinimums";
 
 function toMm(px: number): number {
   return (px / TOUCH_REFERENCE.pxPerInch) * 25.4;
@@ -3268,10 +3269,6 @@ export function doActionFindings(el: UIElement): ReviewFinding[] {
   }
   return findings;
 }
-
-// What a matrix is, once the shorthand is expanded, is matrixModel.ts, the
-// twin of openavc/ui/matrix_model.py.
-export { resolveMatrixAxis } from "./matrixModel";
 
 /**
  * Controls that are inert without one particular thing, and what to set.

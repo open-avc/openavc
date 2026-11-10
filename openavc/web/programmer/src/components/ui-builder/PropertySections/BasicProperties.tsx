@@ -10,8 +10,8 @@ import {
   KEYPAD_SEND_DELAY_DEFAULT_MS,
   pxToRem,
   remToPx,
-  resolveMatrixAxis,
 } from "../uiBuilderHelpers";
+import { resolveMatrixAxis } from "../matrixModel";
 import { HONORED_PROPERTIES, MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";

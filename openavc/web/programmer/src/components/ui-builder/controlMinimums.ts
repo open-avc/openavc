@@ -188,11 +188,20 @@ function grow(box: ControlMinimumBox, axis: "width" | "height", px: number): voi
   else box.heightPx += px;
 }
 
+/** The parts a rule declares at a fixed size, less the ones it repeats: a
+ *  repeated part's declared cell gives way to the cell it resolves to. */
+function declaredInternals(rule: ControlMinimumRule): ResolvedInternal[] {
+  const repeatedParts = new Set(rule.repeated.map((r) => r.part));
+  return rule.internals
+    .filter((i) => !repeatedParts.has(i.part))
+    .map((i) => ({ part: i.part, widthPx: i.widthPx, heightPx: i.heightPx }));
+}
+
 /**
- * The repeated parts: each adds its count of cells along its axis, and its
- * resolved cell replaces the declared one, so a warning blames the size this
- * matrix actually draws. A crosspoint declares the same part on both axes, so
- * the two are merged into one internal rather than reported twice.
+ * The repeated parts: each adds its count of cells along its axis, and the
+ * cell it resolves to is added to the internals, so a warning blames the size
+ * this matrix actually draws. A crosspoint declares the same part on both axes,
+ * so the two are merged into one internal rather than reported twice.
  */
 function addRepeatedParts(
   box: ControlMinimumBox,
@@ -200,10 +209,6 @@ function addRepeatedParts(
   el: UIElement,
   orientation: string,
 ): void {
-  const repeatedParts = new Set(rule.repeated.map((r) => r.part));
-  box.internals = rule.internals
-    .filter((i) => !repeatedParts.has(i.part))
-    .map((i) => ({ part: i.part, widthPx: i.widthPx, heightPx: i.heightPx }));
   const resolved = new Map<string, ResolvedInternal>();
   for (const r of rule.repeated) {
     const size = stylePx(el, r.sizeProperty) ?? r.sizePx;
@@ -258,7 +263,7 @@ export function controlMinimumBox(
   const box: ControlMinimumBox = {
     widthPx: rule.baseWidthPx,
     heightPx: rule.baseHeightPx,
-    internals: [],
+    internals: declaredInternals(rule),
   };
   addRepeatedParts(box, rule, el, orientation);
   addConditionalParts(box, rule, el);

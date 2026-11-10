@@ -1,12 +1,6 @@
 import type { UIElement, Placement } from "../../../api/types";
-import {
-  touchTargetWarning,
-  isTouchable,
-  TOUCH_MIN_MM,
-  controlMinimumBox,
-  controlMinimumPercent,
-  type ElementDefaults,
-} from "../uiBuilderHelpers";
+import { touchTargetWarning, isTouchable, TOUCH_MIN_MM } from "../uiBuilderHelpers";
+import { controlMinimumBox, controlMinimumPercent, type ElementDefaults } from "../controlMinimums";
 import { NumericInput } from "../../shared/NumericInput";
 
 interface LayoutPropertiesProps {

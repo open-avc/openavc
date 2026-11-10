@@ -164,8 +164,8 @@ const MATRIX_TILE_MIN_H_EM = 3.25;
  * tiles need 576px of height when they draw perfectly in 179. Orientation is
  * knowable without measuring the box, which is what keeps the floor from
  * depending on the box it is judging. Mirrored there as tile_grid_shape and in
- * uiBuilderHelpers.ts; all three agree or the floor is for a shape nothing
- * renders.
+ * the Builder's controlMinimums.ts; all three agree or the floor is for a shape
+ * nothing renders.
  */
 function matrixTileGridShape(count, orientation) {
     if (count <= 0) return [0, 0];
