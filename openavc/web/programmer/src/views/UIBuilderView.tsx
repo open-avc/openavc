@@ -10,7 +10,6 @@ import { useFlushBeforeUnload } from "../store/saveState";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { usePluginStore } from "../store/pluginStore";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
-import { SCREEN_PRESETS } from "../components/ui-builder/uiBuilderHelpers";
 import { useEditRun } from "./ui-builder/useEditRun";
 import { useBuilderShortcuts } from "./ui-builder/builderShortcuts";
 import { useElementEdits } from "./ui-builder/useElementEdits";
@@ -41,7 +40,6 @@ export function UIBuilderView() {
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
   const previewMode = useUIBuilderStore((s) => s.previewMode);
   const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
-  const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
   const clipboard = useUIBuilderStore((s) => s.clipboard);
 
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
@@ -54,8 +52,6 @@ export function UIBuilderView() {
   const theme = useBuilderTheme(project?.ui?.settings?.theme_id);
 
   useFlushBeforeUnload();
-
-  const preset = SCREEN_PRESETS[screenPresetIndex];
 
   const edits = useElementEdits({
     project,
@@ -190,7 +186,6 @@ export function UIBuilderView() {
         dialogs={dialogs}
         project={project}
         page={currentPage}
-        preset={preset}
         theme={theme}
         edits={panelEdits}
         validation={validation}

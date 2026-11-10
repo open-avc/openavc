@@ -11,16 +11,18 @@
  * they open. The reset question is asked over the Studio, which stays open
  * after either answer. While the Studio is open the Properties panel offers no
  * theme list of its own (`themeListChange`): choosing there would switch the
- * theme under the Studio's unsaved edits. Both previews are drawn on the preset
- * as chosen, not turned for the arrangement behind them: a preview is about
+ * theme under the Studio's unsaved edits. Both previews are drawn on the screen
+ * preset as the toolbar has it chosen (read from the Builder store, as the canvas
+ * reads it), not turned for the arrangement behind them: a preview is about
  * colour and type, and should not change shape with the arrangement selected.
  */
 import { useCallback, useState } from "react";
 import type { ProjectConfig, UIPage } from "../../api/types";
-import type { ValidationIssue } from "../../components/ui-builder/uiBuilderHelpers";
+import { SCREEN_PRESETS, type ValidationIssue } from "../../components/ui-builder/uiBuilderHelpers";
 import { ThemeStudio } from "../../components/ui-builder/ThemeStudio";
 import { StylesheetEditor } from "../../components/ui-builder/StylesheetEditor";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
+import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import type { ThemeSummary } from "./builderTheme";
 import type { PanelEdits } from "./panelEdits";
 import { PanelSettingsDialog } from "./PanelSettingsDialog";
@@ -61,8 +63,6 @@ export interface BuilderDialogsProps {
   project: ProjectConfig;
   /** The page on screen, which the stylesheet's preview shows. */
   page: UIPage | null;
-  /** The screen preset as chosen, if there is one. */
-  preset: { width: number; height: number } | undefined;
   theme: { themes: ThemeSummary[]; loadThemes: () => void; refetch: () => void };
   edits: PanelEdits;
   /** Validate's last report, null while none is open. */
@@ -85,9 +85,10 @@ const RESET_MESSAGE =
   "This removes per-element style overrides for every property the current theme defines defaults for. " +
   "Elements will inherit their appearance from the theme. This can be undone with Ctrl+Z.";
 
-export function BuilderDialogs({ dialogs, project, page, preset, theme, edits, validation }: BuilderDialogsProps) {
+export function BuilderDialogs({ dialogs, project, page, theme, edits, validation }: BuilderDialogsProps) {
   const { open, show, hide } = dialogs;
-  const size = previewSize(preset);
+  const presetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
+  const size = previewSize(SCREEN_PRESETS[presetIndex]);
   return (
     <>
       <ThemeStudio
