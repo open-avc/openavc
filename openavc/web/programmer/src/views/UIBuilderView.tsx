@@ -1,10 +1,5 @@
 import { useState } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
-import {
-  Panel,
-  PanelGroup,
-  PanelResizeHandle,
-} from "react-resizable-panels";
 import { useProjectStore } from "../store/projectStore";
 import { useFlushBeforeUnload } from "../store/saveState";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
@@ -18,7 +13,6 @@ import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
 import { useValidation } from "./ui-builder/ValidationReport";
 import { BuilderDialogs, themeListChange, useBuilderDialogs } from "./ui-builder/BuilderDialogs";
 import { BuilderContextMenu } from "./ui-builder/BuilderContextMenu";
-import { SaveFailedBanner } from "./ui-builder/SaveFailedBanner";
 import { ToolbarActions } from "./ui-builder/ToolbarActions";
 import { BuilderSidebar, type SidebarTab } from "./ui-builder/BuilderSidebar";
 import { BuilderProperties } from "./ui-builder/BuilderProperties";
@@ -27,6 +21,7 @@ import { usePanelEdits } from "./ui-builder/panelEdits";
 import { useShownPage } from "./ui-builder/useShownPage";
 import { BuilderCanvas } from "./ui-builder/BuilderCanvas";
 import { BuilderNote } from "./ui-builder/BuilderNote";
+import { BuilderFrame, frameParts } from "./ui-builder/BuilderFrame";
 
 export function UIBuilderView() {
   const project = useProjectStore((s) => s.project);
@@ -86,92 +81,54 @@ export function UIBuilderView() {
   });
 
   if (!project) return <BuilderNote>Loading project...</BuilderNote>;
+  const parts = frameParts(previewMode, showPalette);
 
   return (
     <DndContext {...palette.dndProps}>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-          overflow: "hidden",
-        }}
-      >
-        <SaveFailedBanner />
-
-        {/* Toolbar — two fixed rows; Theme/Settings dock at the end of the pages row */}
-        <CanvasToolbar
-          pages={pages}
-          selectedPageId={currentPage?.id || null}
-          onValidate={validation.run}
-          trailing={
-            !previewMode ? (
-              <ToolbarActions
-                onTheme={() => dialogs.show("studio")}
-                onStylesheet={() => dialogs.show("stylesheet")}
-                onSettings={() => dialogs.show("settings")}
-              />
-            ) : undefined
-          }
-        />
-
-        {/* Main 3-panel layout */}
-        <PanelGroup direction="horizontal" style={{ flex: 1 }}>
-          {/* Left: Element Palette / Outline (Ctrl+E to toggle) */}
-          {!previewMode && showPalette && (
-            <>
-              <Panel defaultSize={15} minSize={10} maxSize={25}>
-                <BuilderSidebar
-                  tab={leftTab}
-                  onTab={setLeftTab}
-                  page={currentPage}
-                  masters={masterElements}
-                  locked={lockedElementIds}
-                  hidden={hiddenElementIds}
-                  onAdd={palette.add}
-                  edits={edits}
+      <BuilderFrame
+        parts={parts}
+        toolbar={
+          // Two fixed rows; the dialogs' buttons dock at the end of the pages row.
+          <CanvasToolbar
+            pages={pages}
+            selectedPageId={currentPage?.id || null}
+            onValidate={validation.run}
+            trailing={
+              parts.dialogButtons ? (
+                <ToolbarActions
+                  onTheme={() => dialogs.show("studio")}
+                  onStylesheet={() => dialogs.show("stylesheet")}
+                  onSettings={() => dialogs.show("settings")}
                 />
-              </Panel>
-              <PanelResizeHandle
-                style={{
-                  width: 4,
-                  background: "var(--border-color)",
-                  cursor: "col-resize",
-                }}
-              />
-            </>
-          )}
-
-          {/* Center: Canvas */}
-          <Panel defaultSize={previewMode ? 100 : 60}>
-            <BuilderCanvas page={currentPage} masters={project.ui?.master_elements} themeVariables={theme.variables} />
-          </Panel>
-
-          {/* Right: Properties Panel */}
-          {!previewMode && (
-            <>
-              <PanelResizeHandle
-                style={{
-                  width: 4,
-                  background: "var(--border-color)",
-                  cursor: "col-resize",
-                }}
-              />
-              <Panel defaultSize={25} minSize={15} maxSize={40}>
-                <BuilderProperties
-                  page={currentPage}
-                  masters={masterElements}
-                  project={project}
-                  theme={theme}
-                  onThemeChange={themeListChange(dialogs, panelEdits.chooseTheme)}
-                  onOpenStylesheet={() => dialogs.show("stylesheet")}
-                  edits={edits}
-                />
-              </Panel>
-            </>
-          )}
-        </PanelGroup>
-      </div>
+              ) : undefined
+            }
+          />
+        }
+        left={
+          <BuilderSidebar
+            tab={leftTab}
+            onTab={setLeftTab}
+            page={currentPage}
+            masters={masterElements}
+            locked={lockedElementIds}
+            hidden={hiddenElementIds}
+            onAdd={palette.add}
+            edits={edits}
+          />
+        }
+        canvas={<BuilderCanvas page={currentPage} masters={project.ui?.master_elements} themeVariables={theme.variables} />}
+        right={
+          <BuilderProperties
+            page={currentPage}
+            masters={masterElements}
+            project={project}
+            theme={theme}
+            onThemeChange={themeListChange(dialogs, panelEdits.chooseTheme)}
+            onOpenStylesheet={() => dialogs.show("stylesheet")}
+            edits={edits}
+          />
+        }
+      />
 
       {/* Drag overlay — outlined footprint sized to the drop target, with the
           element type label. Only shown while the pointer is OFF the canvas;

@@ -5,7 +5,7 @@
  *
  * The control selected is looked for among the page on screen's controls and
  * the master among the masters; what is selected is the Builder store's. The
- * panel is not drawn in preview, so the page places it.
+ * frame draws it except in preview (`frameParts`, BuilderFrame.tsx).
  */
 import type { MasterElement, ProjectConfig, UIElement, UIPage } from "../../api/types";
 import { PropertiesPanel } from "../../components/ui-builder/PropertiesPanel";

@@ -2,9 +2,10 @@
  * The UI Builder's left panel: the Elements tab (the palette) and the Outline
  * tab (the page's controls and the masters as a tree), one shown at a time.
  *
- * Which tab is shown is the page's to hold: the panel is not drawn in preview
- * or while Ctrl+E has it closed, and the tab must be the same when it comes
- * back. What is selected, collapsed and locked is the Builder store's.
+ * Which tab is shown is the page's to hold: the frame does not draw the panel
+ * in preview or while Ctrl+E has it closed (`frameParts`, BuilderFrame.tsx), and
+ * the tab must be the same when it comes back. What is selected, collapsed and
+ * locked is the Builder store's.
  */
 import type { MasterElement, UIPage } from "../../api/types";
 import { ElementPalette } from "../../components/ui-builder/ElementPalette";
