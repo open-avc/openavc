@@ -219,6 +219,9 @@ export function paletteDragPlacement(
 
 // --- A box moved or resized by the pointer ---
 
+/** The smallest box a resize or an auto-place will produce, in percent. */
+const MIN_ELEMENT_SIZE = 1;
+
 /** How far the pointer has travelled since the press, and the box a gesture's
  *  percentages are of: a page control's container (or the page), a master
  *  element's screen. */
@@ -320,10 +323,10 @@ function pixelRatio(box: Placement, frame: Travel["frame"]): number {
 
 /**
  * The box with the side the grip does not drive set from the side it does,
- * through `ratio`: a grip that moves the width (east or west) sets the
- * height, any other sets the width. When the grip also drags that side's
- * start edge (north for the height, west for the width), its far edge stays
- * put. The side set this way is held at MIN_ELEMENT_SIZE or more.
+ * through `ratio`. A grip that moves the width (any with east or west in it)
+ * sets the height, and when it also drags the north edge the bottom edge stays
+ * put; a north or south grip alone sets the width, which keeps its left edge.
+ * The side set this way is held at MIN_ELEMENT_SIZE or more.
  */
 function keptRatio(box: Placement, direction: string, ratio: number, frame: Travel["frame"]): Placement {
   if (direction.includes("e") || direction.includes("w")) {
@@ -332,20 +335,16 @@ function keptRatio(box: Placement, direction: string, ratio: number, frame: Trav
     return { ...box, y, h };
   }
   const wPx = ((box.h / 100) * frame.height) * ratio;
-  const [x, w] = following(box.x, box.w, (wPx / frame.width) * 100, direction.includes("w"));
-  return { ...box, x, w };
+  return { ...box, w: Math.max(MIN_ELEMENT_SIZE, (wPx / frame.width) * 100) };
 }
 
-/** One side's start and size once it takes `size`: the start moves only when
- *  the grip holds that side's start edge, so the far edge stays where it was. */
+/** The height's top and size once it takes `size`: the top moves only when the
+ *  grip holds the north edge, so the bottom edge stays where it was. */
 function following(origin: number, current: number, size: number, fromStart: boolean): [number, number] {
   return [fromStart ? origin + (current - size) : origin, Math.max(MIN_ELEMENT_SIZE, size)];
 }
 
 // --- Auto-placement (the pointerless paths) ---
-
-/** The smallest box a resize or an auto-place will produce, in percent. */
-const MIN_ELEMENT_SIZE = 1;
 
 /** The down-right nudge, in percent, a copy takes from where it would
  *  otherwise sit: each step of the cascade, and a duplicate from its original. */

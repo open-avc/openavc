@@ -1131,13 +1131,6 @@ export function Canvas({
 }
 
 /**
- * The lines a gesture is currently magnetised to.
- *
- * This is what "SnapGuides gains magnetism" means: it used to compute exact
- * edge matches and draw hairlines that attracted nothing. Now the snapping is
- * done by the gesture and these are simply the answer, drawn.
- */
-/**
  * Follow a press until the pointer lets go. Every pointer move runs `apply`
  * with the travel since the press; pressing or letting go of Alt or Shift runs
  * it again at the last position, because they change the answer and the
@@ -1190,6 +1183,10 @@ function followPointer(
   document.addEventListener("keyup", onKey);
 }
 
+/**
+ * The lines a gesture is currently stuck to. The gesture does the snapping
+ * (gestureBoxes.ts); these are its answer, drawn.
+ */
 function SnapGuides({ guidesX, guidesY }: { guidesX: number[]; guidesY: number[] }) {
   if (!guidesX.length && !guidesY.length) return null;
   return (
