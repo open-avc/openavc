@@ -558,6 +558,57 @@ describe("validateProject: macro steps", () => {
       { severity: "error", message: "nested said", location: 'Macro "M" > macro' },
     ]);
   });
+
+  it("says nothing about a step's page, the panel's own targets included", () => {
+    const macros = [{
+      id: "m", name: "M",
+      steps: [
+        { action: "ui.navigate", page: "ghost_page" },
+        { action: "ui.navigate", page: "$back", description: "Back" },
+      ],
+    }];
+    expect(checked(project({ macros }))).toEqual([]);
+  });
+
+  it("reads only the field the step's action names", () => {
+    const macros = [{
+      id: "m", name: "M",
+      steps: [
+        { action: "state.set", key: "var.x", value: 1, device: "ghost_dev", macro: "ghost_macro" },
+        { action: "device.command", device: "amp", command: "on", macro: "ghost_macro" },
+        { action: "macro", macro: "all_on", device: "ghost_dev" },
+        { action: "delay", seconds: 1, device: "ghost_dev" },
+      ],
+    }];
+    expect(checked(project({ macros }))).toEqual([]);
+  });
+
+  it("says nothing about a step whose id is empty or missing", () => {
+    const macros = [{
+      id: "m", name: "M",
+      steps: [
+        { action: "device.command", device: "", command: "on" },
+        { action: "device.command", command: "on" },
+        { action: "macro", macro: "" },
+        { action: "macro" },
+      ],
+    }];
+    expect(checked(project({ macros }))).toEqual([]);
+  });
+
+  it("writes an id that is not text as the text it reads as", () => {
+    const macros = [{
+      id: "m", name: "M",
+      steps: [
+        { action: "device.command", device: 5, command: "on" },
+        { action: "macro", macro: 7, description: "Seven" },
+      ],
+    }];
+    expect(checked(project({ macros }))).toEqual([
+      { severity: "error", message: 'Device "5" not found', location: 'Macro "M" > device.command' },
+      { severity: "error", message: 'Macro "7" not found', location: 'Macro "M" > Seven' },
+    ]);
+  });
 });
 
 describe("validateProject: what is left out of a project", () => {

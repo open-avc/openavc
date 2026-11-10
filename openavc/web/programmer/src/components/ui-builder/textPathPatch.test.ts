@@ -186,3 +186,61 @@ describe("an empty commit", () => {
     expect(emptyCommitDeletes(["bindings", "show", "look", "states", "muted", "label"])).toBe(false);
   });
 });
+
+/**
+ * The shapes no writer in panel.js records today, pinned as the walk answers
+ * them: a path that ends at a list position, a position over something that is
+ * not a list, and a path that does not start with a field name.
+ */
+describe("patchForTextPath: list positions", () => {
+  it("writes the position a path ends at, keeping the rest of the list", () => {
+    const element = el({ items: ["a", "b", "c"] } as Partial<UIElement>);
+    const patch = patchForTextPath(element, ["items", 1], "z");
+    expect(JSON.stringify(patch)).toBe(JSON.stringify({ items: ["a", "z", "c"] }));
+    expect((element as unknown as { items: string[] }).items).toEqual(["a", "b", "c"]);
+  });
+
+  it("starts a list where a path ends at a position over nothing, or over an object", () => {
+    expect(JSON.stringify(patchForTextPath(el(), ["items", 0], "x"))).toBe(JSON.stringify({ items: ["x"] }));
+    const overObject = el({ items: { a: 1 } } as Partial<UIElement>);
+    expect(JSON.stringify(patchForTextPath(overObject, ["items", 0], "x"))).toBe(JSON.stringify({ items: ["x"] }));
+  });
+
+  it("stores an emptied position as an empty string, never removing it", () => {
+    const element = el({ items: ["a", "b"] } as Partial<UIElement>);
+    expect(JSON.stringify(patchForTextPath(element, ["items", 0], ""))).toBe(JSON.stringify({ items: ["", "b"] }));
+  });
+
+  it("fills the gap before a position past the end of the list", () => {
+    const element = el({ items: ["a"] } as Partial<UIElement>);
+    expect(JSON.stringify(patchForTextPath(element, ["items", 2], "c"))).toBe(JSON.stringify({ items: ["a", null, "c"] }));
+  });
+
+  it("replaces an object a position walks through with a list holding only the written path", () => {
+    const element = el({
+      bindings: { do: { press: { action: "macro", macro: "m", on_label: "ON" } } },
+    } as Partial<UIElement>);
+    const patch = patchForTextPath(element, ["bindings", "do", "press", 0, "on_label"], "LIVE");
+    expect(JSON.stringify(patch)).toBe(JSON.stringify({ bindings: { do: { press: [{ on_label: "LIVE" }] } } }));
+  });
+
+  it("walks a list a position names, writing into the entry there", () => {
+    const element = el({
+      bindings: { do: { press: [{ action: "macro", macro: "m" }, { action: "delay" }] } },
+    } as Partial<UIElement>);
+    const patch = patchForTextPath(element, ["bindings", "do", "press", 1, "off_label"], "OFF");
+    expect(JSON.stringify(patch)).toBe(JSON.stringify({
+      bindings: { do: { press: [{ action: "macro", macro: "m" }, { action: "delay", off_label: "OFF" }] } },
+    }));
+  });
+
+  it("answers null for a path that starts with a position", () => {
+    expect(patchForTextPath(el(), [0, "label"], "x")).toBeNull();
+    expect(patchForTextPath(el(), [0], "x")).toBeNull();
+  });
+
+  it("replaces text a field name walks through with an object holding the written path", () => {
+    const element = el({ label: "Power" });
+    expect(JSON.stringify(patchForTextPath(element, ["label", "x"], "v"))).toBe(JSON.stringify({ label: { x: "v" } }));
+  });
+});
