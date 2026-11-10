@@ -234,6 +234,17 @@ describe("the edit the toolbar's Settings button makes", () => {
 });
 
 describe("Validate's report, row by row", () => {
+  it("lists what the platform answered about a chosen command, against the step that chose it", async () => {
+    const p = makeProject();
+    p.macros = [{ id: "m2", name: "Startup", steps: [{ action: "device.command", device: "amp", command: "set_fader", params: {} }] }] as never;
+    seed(p);
+    commands.commandIssues.mockImplementationOnce(async (actions: unknown[]) => new Map([[actions[0], ["'set_fader': 'channel' is required"]]]));
+    await renderPage(UIBuilderView);
+    await act(async () => { await seen.CanvasToolbar.onValidate(); });
+    const row = screen.getByText("'set_fader': 'channel' is required").parentElement!.parentElement!;
+    expect(row.textContent).toBe(`ERR'set_fader': 'channel' is requiredMacro "Startup" > device.command`);
+  });
+
   it("counts one issue in the singular, marks an error, and goes to a page-wide issue's page", async () => {
     const clean = { id: "lbl", type: "label", text: "Hi", style: {} } as never;
     seed(
