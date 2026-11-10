@@ -6,11 +6,10 @@ import {
   PanelGroup,
   PanelResizeHandle,
 } from "react-resizable-panels";
-import type { UIElement, UIPage, MasterElement } from "../api/types";
+import type { MasterElement } from "../api/types";
 import * as wsClient from "../api/wsClient";
-import { showError } from "../store/toastStore";
 import { useProjectStore } from "../store/projectStore";
-import { useUIBuilderStore, type UndoScope } from "../store/uiBuilderStore";
+import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useNavigationStore } from "../store/navigationStore";
 import { usePluginStore } from "../store/pluginStore";
 import { ElementPalette } from "../components/ui-builder/ElementPalette";
@@ -24,34 +23,15 @@ import { StylesheetEditor } from "../components/ui-builder/StylesheetEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import {
   SCREEN_PRESETS,
-  createDefaultElement,
-  addElementToPage,
-  removeElementFromPage,
-  updateElementInPage,
-  duplicateElementInPage,
-  duplicateElementsInPage,
-  clipboardForSelection,
-  pasteIntoPage,
-  topmostSelection,
-  reorderElement,
-  swapElementsInOrder,
-  reparentElement,
-  promoteToMaster,
-  demoteFromMaster,
-  updateMasterElement,
-  removeMasterElement,
-  renameElement,
-  validateElementId,
   lockedIdsFor,
   presetForOrientation,
   layoutOrientation,
   resolveHidden,
-  withHidden,
 } from "../components/ui-builder/uiBuilderHelpers";
-import { showSuccess, showInfo } from "../store/toastStore";
+import { showSuccess } from "../store/toastStore";
 import { projectEdit, useEditRun } from "./ui-builder/useEditRun";
-import { nudgedPages, useBuilderShortcuts } from "./ui-builder/builderShortcuts";
-import { takenIds, type Landing } from "./ui-builder/paletteDrop";
+import { useBuilderShortcuts } from "./ui-builder/builderShortcuts";
+import { useElementEdits } from "./ui-builder/useElementEdits";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
 import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
 import { useValidation, ValidationReport } from "./ui-builder/ValidationReport";
@@ -76,13 +56,12 @@ export function UIBuilderView() {
   const clipboard = useUIBuilderStore((s) => s.clipboard);
 
   // Stable action refs — use getState() to avoid re-render subscriptions
-  const { selectPage, selectElement, selectMasterElement, undo, redo, setClipboard } = useMemo(() => ({
+  const { selectPage, selectElement, selectMasterElement, undo, redo } = useMemo(() => ({
     selectPage: (...args: any[]) => (useUIBuilderStore.getState().selectPage as any)(...args),
     selectElement: (...args: any[]) => (useUIBuilderStore.getState().selectElement as any)(...args),
     selectMasterElement: (...args: any[]) => (useUIBuilderStore.getState().selectMasterElement as any)(...args),
     undo: () => useUIBuilderStore.getState().undo(),
     redo: () => useUIBuilderStore.getState().redo(),
-    setClipboard: (...args: any[]) => (useUIBuilderStore.getState().setClipboard as any)(...args),
   }), []);
 
   // Consume pending focus from navigation store (on mount)
@@ -184,206 +163,14 @@ export function UIBuilderView() {
     layoutOrientation(currentPage ?? undefined, activeLayoutId),
   );
 
-  // --- Mutation helpers ---
-  // An edit of the pages. `coalesce` makes it a run edit, so a held arrow
-  // (one nudge per keypress) is one undo entry rather than fifty.
-  const applyMutation = useCallback(
-    (mutate: (pages: UIPage[]) => UIPage[], description: string, coalesce = false) => {
-      if (!project) return;
-      const edit = projectEdit(project, { pages: mutate(project.ui.pages) }, description);
-      if (coalesce) run.join(edit);
-      else run.commit(edit);
-    },
-    [project, run],
-  );
-
-  const handleDeleteElement = useCallback(
-    (elementId: string) => {
-      if (!currentPage) return;
-      applyMutation((p) => removeElementFromPage(p, currentPage.id, elementId), "Delete element");
-      selectElement(null);
-    },
-    [currentPage, applyMutation, selectElement],
-  );
-
-  const handleDeleteSelection = useCallback(() => {
-    if (!currentPage) return;
-    applyMutation((pages) => {
-      let result = pages;
-      for (const eid of selectedElementIds) {
-        result = removeElementFromPage(result, currentPage.id, eid);
-      }
-      return result;
-    }, `Delete ${selectedElementIds.length} elements`);
-    selectElement(null);
-  }, [currentPage, selectedElementIds, applyMutation, selectElement]);
-
-  const handleDuplicateElement = useCallback(
-    (elementId: string) => {
-      if (!currentPage) return;
-      const masterIds = masterElements.map((m) => m.id);
-      applyMutation((p) => duplicateElementInPage(p, currentPage.id, elementId, masterIds, activeLayoutId), "Duplicate element");
-    },
-    [currentPage, masterElements, applyMutation, activeLayoutId],
-  );
-
-  // Duplicating a selection copies each container's contents with it, so a
-  // selection holding a container and something inside it produces one copy of
-  // that child, not two. The count in the label is what actually gets copied.
-  const handleDuplicateSelection = useCallback(() => {
-    if (!currentPage) return;
-    const masterIds = masterElements.map((m) => m.id);
-    const roots = topmostSelection(currentPage, selectedElementIds);
-    if (roots.length === 0) return;
-    applyMutation(
-      (p) => duplicateElementsInPage(p, currentPage.id, selectedElementIds, masterIds, activeLayoutId),
-      roots.length === 1 ? "Duplicate element" : `Duplicate ${roots.length} elements`,
-    );
-  }, [currentPage, masterElements, selectedElementIds, applyMutation, activeLayoutId]);
-
-  // Hiding is per-arrangement: it writes to the layout being authored and leaves
-  // every other one showing the control.
-  const handleToggleHidden = useCallback(
-    (elementId: string) => {
-      if (!currentPage) return;
-      const hidden = resolveHidden(currentPage, activeLayoutId).has(elementId);
-      applyMutation(
-        (p) =>
-          p.map((pg) =>
-            pg.id === currentPage.id
-              ? withHidden(pg, elementId, !hidden, activeLayoutId)
-              : pg,
-          ),
-        hidden ? "Show in this layout" : "Hide in this layout",
-      );
-    },
-    [currentPage, activeLayoutId, applyMutation],
-  );
-
-  const handleCopyElement = useCallback(
-    (elementIds: string[]) => {
-      if (!currentPage) return;
-      const payload = clipboardForSelection(currentPage, elementIds, activeLayoutId);
-      if (payload.elements.length === 0) return;
-      setClipboard(payload);
-    },
-    [currentPage, activeLayoutId, setClipboard],
-  );
-
-  const handlePasteElement = useCallback(() => {
-    if (!clipboard || clipboard.elements.length === 0 || !currentPage) return;
-    const masterIds = masterElements.map((m) => m.id);
-    const count = clipboard.elements.length;
-    applyMutation(
-      (p) => pasteIntoPage(p, currentPage.id, clipboard, masterIds, activeLayoutId),
-      `Paste ${count === 1 ? "element" : `${count} elements`}`,
-    );
-  }, [clipboard, currentPage, masterElements, applyMutation, activeLayoutId]);
-
-  const handleBringToFront = useCallback(
-    (elementId: string) => {
-      if (!currentPage) return;
-      applyMutation((p) =>
-        reorderElement(p, currentPage.id, elementId, "front"),
-        "Bring to front",
-      );
-    },
-    [currentPage, applyMutation],
-  );
-
-  const handleSendToBack = useCallback(
-    (elementId: string) => {
-      if (!currentPage) return;
-      applyMutation((p) =>
-        reorderElement(p, currentPage.id, elementId, "back"),
-        "Send to back",
-      );
-    },
-    [currentPage, applyMutation],
-  );
-
-  // --- Master element mutation handlers ---
-
-  const handlePromoteToMaster = useCallback((elementId: string) => {
-    if (!project || !currentPage) return;
-    const result = promoteToMaster(
-      project.ui.pages,
-      project.ui.master_elements || [],
-      currentPage.id,
-      elementId,
-    );
-    run.commit(projectEdit(project, { pages: result.pages, master_elements: result.masterElements }, "Promote to master"));
-    selectElement(null);
-  }, [project, currentPage, run, selectElement]);
-
-  const handleDemoteFromMaster = useCallback((masterElementId: string) => {
-    if (!project || !currentPage) return;
-    const result = demoteFromMaster(
-      project.ui.pages,
-      project.ui.master_elements || [],
-      masterElementId,
-      currentPage.id,
-    );
-    run.commit(projectEdit(project, { pages: result.pages, master_elements: result.masterElements }, "Demote from master"));
-    selectMasterElement(null);
-  }, [project, currentPage, run, selectMasterElement]);
-
-  const handleRenameElement = useCallback(
-    (oldId: string, newId: string) => {
-      if (!project) return;
-      const masters = project.ui.master_elements || [];
-      const err = validateElementId(newId, oldId, project.ui.pages, masters);
-      if (err) {
-        showError(err);
-        return;
-      }
-      if (newId === oldId) return;
-      const result = renameElement(
-        project.ui.pages,
-        masters,
-        project.macros || [],
-        project.variables || [],
-        project.scripts || [],
-        oldId,
-        newId,
-      );
-      // Snapshot only the scopes that actually changed (skip ones the helper
-      // didn't touch — e.g. variables stay reference-equal if no var.source_key
-      // matched). Keeps the undo entry small and the rollback honest.
-      const snapshot: UndoScope = {};
-      if (result.pages !== project.ui.pages) snapshot.pages = project.ui.pages;
-      if (result.master_elements !== masters) snapshot.master_elements = masters;
-      if (result.macros !== (project.macros || [])) snapshot.macros = project.macros || [];
-      if (result.variables !== (project.variables || [])) snapshot.variables = project.variables || [];
-      run.commit({
-        before: snapshot,
-        description: `Rename element ${oldId} → ${newId}`,
-        patch: {
-          ui: { ...project.ui, pages: result.pages, master_elements: result.master_elements },
-          macros: result.macros,
-          variables: result.variables,
-        },
-      });
-      // Re-select the renamed element under its new ID so the properties panel
-      // doesn't lose focus and refresh into "nothing selected".
-      if (selectedElementId === oldId) selectElement(newId);
-      if (selectedMasterElementId === oldId) selectMasterElement(newId);
-      showSuccess(`Renamed to ${newId}`);
-      if ((project.scripts || []).length > 0) {
-        showInfo(
-          `If any scripts reference "ui.${oldId}.*", update them manually.`,
-        );
-      }
-    },
-    [project, run, selectedElementId, selectedMasterElementId, selectElement, selectMasterElement],
-  );
-
-  const handleDeleteMasterElement = useCallback((masterElementId: string) => {
-    if (!project) return;
-    const masters = removeMasterElement(project.ui.master_elements || [], masterElementId);
-    run.commit(projectEdit(project, { master_elements: masters }, "Delete master element"));
-    selectMasterElement(null);
-  }, [project, run, selectMasterElement]);
+  const edits = useElementEdits({
+    project,
+    page: currentPage,
+    layoutId: activeLayoutId,
+    run,
+    clipboard,
+    selected: { elementId: selectedElementId, masterId: selectedMasterElementId },
+  });
 
   // --- Theme handlers (also used by ThemeStudio) ---
 
@@ -415,65 +202,11 @@ export function UIBuilderView() {
     [project, run],
   );
 
-  const handlePropertyChange = useCallback(
-    (elementId: string, patch: Partial<UIElement>) => {
-      if (!currentPage) return;
-      applyMutation((p) => updateElementInPage(p, currentPage.id, elementId, patch), "Edit element", true);
-    },
-    [currentPage, applyMutation],
-  );
-
-  const handlePageChange = useCallback(
-    (patch: Partial<UIPage>) => {
-      if (!currentPage) return;
-      applyMutation((pages) => pages.map((p) => (p.id === currentPage.id ? { ...p, ...patch } : p)), "Edit page properties", true);
-    },
-    [currentPage, applyMutation],
-  );
-
-  // Moving a control into a container (or back out) is a geometry change as
-  // much as a structural one: its percentages are of whatever holds it, so the
-  // helper converts through page space and the element stays exactly where it
-  // is drawn.
-  const handleReparentElement = useCallback(
-    (elementId: string, newParentId: string | null) => {
-      if (!currentPage) return;
-      applyMutation(
-        (p) => reparentElement(p, currentPage.id, elementId, newParentId),
-        newParentId ? "Move into container" : "Move out of container",
-      );
-      selectElement(elementId);
-    },
-    [currentPage, applyMutation, selectElement],
-  );
-
-  const handleMasterElementPropertyChange = useCallback(
-    (elementId: string, patch: Partial<MasterElement>) => {
-      if (!project) return;
-      const masters = updateMasterElement(project.ui.master_elements || [], elementId, patch);
-      run.join(projectEdit(project, { master_elements: masters }, "Edit master element"));
-    },
-    [project, run],
-  );
-
-  // A control new from the palette, made where its gesture landed it
-  // (paletteDrop.ts), dropped or clicked: the one edit both make.
-  const handleAddControl = useCallback(
-    (type: string, landing: Landing) => {
-      if (!currentPage || !project) return;
-      const newElement = createDefaultElement(type, takenIds(pages, masterElements));
-      if (landing.parentId) newElement.parent = landing.parentId;
-      applyMutation((p) => addElementToPage(p, currentPage.id, newElement, landing.placement), `Add ${type}`);
-      selectElement(newElement.id);
-    },
-    [currentPage, pages, masterElements, project, applyMutation, selectElement],
-  );
-
   const palette = usePaletteDrop({
     page: currentPage,
     layoutId: activeLayoutId,
     panelElements,
-    onAdd: handleAddControl,
+    onAdd: edits.add,
   });
 
   useBuilderShortcuts({
@@ -488,21 +221,15 @@ export function UIBuilderView() {
     togglePreview: () => useUIBuilderStore.getState().setPreviewMode(!previewMode),
     togglePalette: () => setShowPalette((v) => !v),
     deselect: () => selectElement(null),
-    moveMaster: (id, placements) =>
-      handleMasterElementPropertyChange(id, { placements } as Partial<MasterElement>),
-    nudge: (ids, offset, description) => {
-      if (!currentPage) return;
-      applyMutation((pages) => nudgedPages(pages, currentPage.id, { ids, ...offset }, activeLayoutId), description, true);
-    },
-    deleteMaster: handleDeleteMasterElement,
-    deleteOne: handleDeleteElement,
-    deleteSelection: handleDeleteSelection,
+    moveMaster: (id, placements) => edits.editMaster(id, { placements } as Partial<MasterElement>),
+    nudge: edits.nudge,
+    deleteMaster: edits.deleteMaster,
+    remove: edits.remove,
     undo: () => { run.endRun(); undo(); },
     redo: () => { run.endRun(); redo(); },
-    copy: () => handleCopyElement(selectedElementIds),
-    paste: handlePasteElement,
-    duplicateOne: handleDuplicateElement,
-    duplicateSelection: handleDuplicateSelection,
+    copy: edits.copy,
+    paste: edits.paste,
+    duplicate: edits.duplicate,
   });
 
   if (!project) {
@@ -720,8 +447,8 @@ export function UIBuilderView() {
                         hiddenElementIds={hiddenElementIds}
                         collapsedIds={collapsedOutlineIds}
                         onToggleCollapse={toggleOutlineCollapse}
-                        onToggleHidden={handleToggleHidden}
-                        onReparent={handleReparentElement}
+                        onToggleHidden={edits.toggleHidden}
+                        onReparent={edits.reparent}
                         onSelectElement={(id, shift) => {
                           if (shift) {
                             useUIBuilderStore.getState().toggleSelectElement(id);
@@ -730,13 +457,7 @@ export function UIBuilderView() {
                           }
                         }}
                         onSelectMasterElement={selectMasterElement}
-                        onMoveOrder={(elementId, neighborId) => {
-                          if (!currentPage) return;
-                          applyMutation(
-                            (p) => swapElementsInOrder(p, currentPage.id, elementId, neighborId),
-                            "Reorder element",
-                          );
-                        }}
+                        onMoveOrder={edits.swapOrder}
                         onToggleLock={(id) => useUIBuilderStore.getState().toggleLock(id)}
                       />
                     )}
@@ -810,13 +531,13 @@ export function UIBuilderView() {
                     themes={themes}
                     onThemeChange={showThemeStudio ? undefined : handleThemeChange}
                     onOpenStylesheet={() => setShowStylesheet(true)}
-                    onChange={handlePropertyChange}
-                    onRenameElement={handleRenameElement}
-                    onPageChange={handlePageChange}
-                    onReparent={handleReparentElement}
-                    onMasterElementChange={handleMasterElementPropertyChange}
-                    onDemoteMaster={handleDemoteFromMaster}
-                    onDeleteMaster={handleDeleteMasterElement}
+                    onChange={edits.editControl}
+                    onRenameElement={edits.rename}
+                    onPageChange={edits.editPage}
+                    onReparent={edits.reparent}
+                    onMasterElementChange={edits.editMaster}
+                    onDemoteMaster={edits.demote}
+                    onDeleteMaster={edits.deleteMaster}
                   />
                 </div>
               </Panel>
@@ -841,17 +562,19 @@ export function UIBuilderView() {
           isMaster={contextMenu.isMaster}
           multiSelectCount={selectedElementIds.length}
           onClose={() => setContextMenu(null)}
-          onDuplicate={handleDuplicateElement}
-          onDelete={handleDeleteElement}
-          onDeleteAll={handleDeleteSelection}
-          onDuplicateAll={handleDuplicateSelection}
-          onCopy={(ids) => handleCopyElement(selectedElementIds.length > 1 ? selectedElementIds : ids)}
-          onPaste={handlePasteElement}
-          onBringToFront={handleBringToFront}
-          onSendToBack={handleSendToBack}
-          onPromoteToMaster={handlePromoteToMaster}
-          onDemoteFromMaster={handleDemoteFromMaster}
-          onDeleteMaster={handleDeleteMasterElement}
+          // Its one-control rows act on the control clicked, its rows for a
+          // selection of several on the selection.
+          onDuplicate={(id) => edits.duplicate([id])}
+          onDelete={(id) => edits.remove([id])}
+          onDeleteAll={() => edits.remove(selectedElementIds)}
+          onDuplicateAll={() => edits.duplicate(selectedElementIds)}
+          onCopy={(ids) => edits.copy(selectedElementIds.length > 1 ? selectedElementIds : ids)}
+          onPaste={edits.paste}
+          onBringToFront={edits.bringToFront}
+          onSendToBack={edits.sendToBack}
+          onPromoteToMaster={edits.promote}
+          onDemoteFromMaster={edits.demote}
+          onDeleteMaster={edits.deleteMaster}
           hasClipboard={!!clipboard}
         />
       )}

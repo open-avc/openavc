@@ -54,16 +54,15 @@ export interface BuilderKeys {
   /** Move these controls by the offset, in percent; joins the run in progress. */
   nudge: (ids: string[], offset: Offset, description: string) => void;
   deleteMaster: (id: string) => void;
-  deleteOne: (id: string) => void;
-  deleteSelection: () => void;
+  /** Delete, copy and duplicate are handed the selection. */
+  remove: (ids: string[]) => void;
   /** Undo and redo end the run first: an undo that keeps the selection would
    *  otherwise leave the next edit inside the entry just undone. */
   undo: () => void;
   redo: () => void;
-  copy: () => void;
+  copy: (ids: string[]) => void;
   paste: () => void;
-  duplicateOne: (id: string) => void;
-  duplicateSelection: () => void;
+  duplicate: (ids: string[]) => void;
 }
 
 export function handleBuilderKey(e: KeyboardEvent, k: BuilderKeys): void {
@@ -219,8 +218,7 @@ function deleteKey(e: KeyboardEvent, k: BuilderKeys): boolean {
   if (k.selectedIds.length === 0 || !k.page) return false;
   if (k.selectedIds.some((id) => k.locked.has(id))) return true;
   e.preventDefault();
-  if (k.selectedIds.length === 1) k.deleteOne(k.selectedIds[0]);
-  else k.deleteSelection();
+  k.remove(k.selectedIds);
   return true;
 }
 
@@ -242,12 +240,11 @@ function chordAction(e: KeyboardEvent, k: BuilderKeys): (() => void) | null {
     case "s":
       return e.shiftKey ? null : saveNow;
     case "c":
-      return hasSelection ? k.copy : null;
+      return hasSelection ? () => k.copy(k.selectedIds) : null;
     case "v":
       return k.hasClipboard && k.page ? k.paste : null;
     case "d":
-      if (!hasSelection) return null;
-      return k.selectedIds.length === 1 ? () => k.duplicateOne(k.selectedIds[0]) : k.duplicateSelection;
+      return hasSelection ? () => k.duplicate(k.selectedIds) : null;
     default:
       return null;
   }
