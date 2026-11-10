@@ -4,6 +4,7 @@ import {
   alignElements,
   distributeElements,
   duplicateElementInPage,
+  demoteFromMaster,
   duplicatePage,
   matchSizeElements,
   pasteIntoPage,
@@ -487,6 +488,16 @@ describe("the ids a copy may not take: every page's, not just the first one's", 
     const pages = [first(), second(), page([el("button_1", "label")], [primary({})], "third")];
     const out = duplicateElementInPage(pages, "second", "b");
     expect(out[1].elements.map((e) => e.id)).toEqual(["b", "button_2"]);
+  });
+
+  it("a demoted master that collides with a page control is renamed past the remaining masters' ids", () => {
+    const pages = [page([el("x", "label")], [primary({ x: box(0, 0, 10, 10) })], "first")];
+    const masters = [
+      { id: "x", type: "button", bindings: {}, pages: "*", placements: { landscape: box(0, 0, 10, 10) } },
+      { id: "button_1", type: "button", bindings: {}, pages: "*", placements: { landscape: box(0, 0, 10, 10) } },
+    ] as unknown as Parameters<typeof demoteFromMaster>[1];
+    const out = demoteFromMaster(pages, masters, "x", "first");
+    expect(out.pages[0].elements.map((e) => e.id)).toEqual(["x", "button_2"]);
   });
 
   it("a paste renames a control whose id is held on another page", () => {
