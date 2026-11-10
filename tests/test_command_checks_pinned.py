@@ -512,6 +512,22 @@ CASES.update({
     ),
 })
 
+# And what breaking the moved checks again, in review, found unwatched.
+CASES.update({
+    # a parameter named by a key that is not text is named as written
+    "an_aid_on_a_param_named_by_a_number": cmds(
+        a={"send": "X {a}\r", "params": {1: {"type": "string", "pattern": "["}}},
+    ),
+    # a wake packet's field that is only spaces is a name, and not a config field
+    "a_magic_packet_field_of_spaces": cmds(
+        a=udp(magic_packet=" "),
+    ),
+    # a sets: value with no brace is a literal, whatever it says
+    "sets_literal_values": cmds(
+        a={"send": "X\r", "sets": {"power": "on", "volume": 5}},
+    ),
+})
+
 
 def _definition(case: str) -> dict[str, Any]:
     over = CASES[case]
@@ -968,6 +984,19 @@ EXPECTED.update({'an_empty_ir_is_a_form': [('commands.a',
                                ('commands.b',
                                 "Command 'b': 'read_back' must be true, a query, or a list of queries")]})
 
+EXPECTED.update({'a_magic_packet_field_of_spaces': [('commands.a',
+                                     "Command 'a': 'udp.magic_packet' names ' ', which is not a config "
+                                     'field. Declare it in config_schema so the MAC can be typed in; a state '
+                                     'variable of the same name is read first once the device reports one')],
+ 'an_aid_on_a_param_named_by_a_number': [('commands.a',
+                                          "Command 'a' param '1': pattern: invalid regex '[': unterminated "
+                                          'character set at position 0'),
+                                         ('commands.a.send',
+                                          "commands.a.send: '{a}' resolves to nothing. It names no parameter "
+                                          'of this command and no config field, so it would be sent to the '
+                                          'device as written')],
+ 'sets_literal_values': []})
+
 
 @pytest.mark.parametrize("case", sorted(EXPECTED))
 def test_errors_their_order_and_their_tags(case: str) -> None:
@@ -1032,6 +1061,15 @@ PYTHON_COMMANDS.update({
     },
 })
 
+PYTHON_COMMANDS.update({
+    # a wake command the reader could see is judged even when the map has computed keys
+    "sleeps_device_into_a_partly_computed_map": {
+        "off": {"sleeps_device": "wake"},
+        "wake": {"available_offline": False},
+        "<unevaluated>": UNEVALUATED,
+    },
+})
+
 PYTHON_EXPECTED: dict[str, list[str]] = {'confirm': ["Command 'b': 'confirm' must be a boolean or a message string"],
  'sleeps_device': ["Command 'off3': 'sleeps_device' names 'gone', which is not a declared command",
                    "Command 'off4': 'sleeps_device' names 'wake2', which does not set available_offline: "
@@ -1058,6 +1096,13 @@ PYTHON_EXPECTED: dict[str, list[str]] = {'confirm': ["Command 'b': 'confirm' mus
 PYTHON_EXPECTED.update({'file_accept_endings': ['Command \'a\' param \'f\': accept must list file-name endings, e.g. [".bin"]',
                          'Command \'b\' param \'f\': accept must list file-name endings, e.g. [".bin"]'],
  'file_accept_with_an_unread_item': []})
+
+PYTHON_EXPECTED.update({'sleeps_device_into_a_partly_computed_map': ["Command 'off': 'sleeps_device' names 'wake', which does not "
+                                              'set available_offline: true, so it cannot wake a device that '
+                                              'is off the network',
+                                              "Command 'off': 'sleeps_device' names 'wake', which declares "
+                                              'no restarts_device_for: give it the measured seconds the '
+                                              "device takes to come back after 'wake'"]})
 
 
 def _python_info(case: str) -> dict[str, Any]:
