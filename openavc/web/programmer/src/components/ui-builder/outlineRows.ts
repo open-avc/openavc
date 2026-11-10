@@ -11,7 +11,8 @@
  *
  * The rule worth knowing before changing anything here: the walks guard against
  * a cycle or a repeated id each its own way, and containerTree.test.ts pins
- * each answer, those cases included.
+ * what each guard makes the rows say. The reach walk's skip of an element it
+ * has already reached changes no answer; it bounds the work when ids repeat.
  *
  * Read by the Outline (OutlinePanel.tsx); it reads only the container rule.
  */

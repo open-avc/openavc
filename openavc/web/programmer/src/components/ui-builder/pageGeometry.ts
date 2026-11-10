@@ -354,11 +354,12 @@ export function withMasterPlacement(
  * of the element's parent -- for a container child that is the container, not
  * the page -- so each converts through the flattened page space, per
  * orientation: a portrait arrangement's position becomes the master's portrait
- * box instead of being discarded. Of two arrangements of one orientation the
- * primary's box wins, else the first; the primary's orientation always gets a
- * box, the default one when the page has no arrangement to read it from.
+ * box instead of being discarded. An orientation takes the primary's box when
+ * the primary places the control, else the first arrangement of it that does;
+ * the primary's orientation always gets one, the default box when none of its
+ * arrangements places the control.
  */
-export function masterPlacementsOf(page: UIPage, elementId: string): Record<string, Placement> {
+export function masterPlacementsFromPage(page: UIPage, elementId: string): Record<string, Placement> {
   const primary = primaryLayout(page);
   const placements: Record<string, Placement> = {};
   for (const layout of page.layouts ?? []) {

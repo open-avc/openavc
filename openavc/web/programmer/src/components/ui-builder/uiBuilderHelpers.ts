@@ -13,7 +13,7 @@ import {
   absolutePlacements,
   getPlacement,
   masterPlacement,
-  masterPlacementsOf,
+  masterPlacementsFromPage,
   pageSnap,
   withAbsolutePlacements,
   withPlacement,
@@ -1060,7 +1060,7 @@ function underFreeId(element: UIElement, taken: Set<string>): UIElement {
 /**
  * Make a page control a master element, drawn on every page.
  *
- * It keeps the box it had on screen in each orientation (`masterPlacementsOf`),
+ * It keeps the box it had on screen in each orientation (`masterPlacementsFromPage`),
  * and leaves its parent link behind: masters are placed against the viewport,
  * never inside a page's container. If a whole container is being promoted, its
  * children stay behind on the page, re-homed to the container's own parent
@@ -1079,7 +1079,7 @@ export function promoteToMaster(
   const element = page.elements.find(e => e.id === elementId);
   if (!element) return { pages, masterElements };
 
-  const placements = masterPlacementsOf(page, elementId);
+  const placements = masterPlacementsFromPage(page, elementId);
   const newPages = removeElementFromPage(pages, pageId, elementId);
   const promoted = underFreeId(element, takenElementIds(newPages, masterElements.map((m) => m.id)));
   const masterEl: MasterElement = {
