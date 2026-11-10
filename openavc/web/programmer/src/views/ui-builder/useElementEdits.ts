@@ -13,7 +13,6 @@
 import { useCallback, useMemo } from "react";
 import type { MasterElement, ProjectConfig, UIElement, UIPage } from "../../api/types";
 import type { ElementClipboard } from "../../components/ui-builder/uiBuilderHelpers";
-import type { Offset } from "./builderShortcuts";
 import * as edit from "./elementEdits";
 import type { Landing } from "./paletteDrop";
 import type { EditRun } from "./useEditRun";
@@ -31,7 +30,7 @@ export interface ElementEdits {
   add: (type: string, landing: Landing) => void;
   editControl: (id: string, patch: Partial<UIElement>) => void;
   editPage: (patch: Partial<UIPage>) => void;
-  nudge: (ids: string[], offset: Offset, description: string) => void;
+  nudge: (ids: string[], offset: edit.Offset, description: string) => void;
   editMaster: (id: string, patch: Partial<MasterElement>) => void;
   promote: (id: string) => void;
   demote: (masterId: string) => void;
@@ -83,7 +82,7 @@ export function useElementEdits({ project, page, layoutId, run, clipboard, selec
   );
   const editPage = useCallback((patch: Partial<UIPage>) => edit.editPage({ page, editPages }, patch), [page, editPages]);
   const nudge = useCallback(
-    (ids: string[], offset: Offset, description: string) => edit.nudge({ page, editPages, layoutId }, ids, offset, description),
+    (ids: string[], offset: edit.Offset, description: string) => edit.nudge({ page, editPages, layoutId }, ids, offset, description),
     [page, editPages, layoutId],
   );
   const editMaster = useCallback(

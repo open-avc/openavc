@@ -8,12 +8,15 @@
  * with no Ctrl or Cmd (the field's); Escape; the arrow keys; Delete and
  * Backspace; then the Ctrl chords, which a field keeps for itself.
  *
- * What a key does to the project is the page's (`BuilderKeys`); which box an
- * arrow moves, and how far, is here. `useBuilderShortcuts` registers again on
- * every render, so a key always acts on the page as it was last drawn.
+ * The page hands the keyboard the Builder as it was last drawn, with the edits
+ * a key can make and the undo run (`BuilderKeys`); which edit each key makes,
+ * which box an arrow moves and how far, are here. Undo, redo, Escape, Ctrl+P
+ * and Ctrl+S are the Builder store's own. `useBuilderShortcuts` registers
+ * again on every render, so a key always acts on the page as it was last
+ * drawn.
  */
 import { useEffect } from "react";
-import type { MasterElement, Placement, SnapConfig, UIPage } from "../../api/types";
+import type { MasterElement, SnapConfig, UIPage } from "../../api/types";
 import { isModalOpen } from "../../components/shared/Modal";
 import {
   layoutOrientation,
@@ -22,18 +25,16 @@ import {
   withMasterPlacement,
 } from "../../components/ui-builder/uiBuilderHelpers";
 import { saveNow } from "../../store/saveState";
+import { useUIBuilderStore } from "../../store/uiBuilderStore";
+import type { Offset } from "./elementEdits";
+import type { EditRun } from "./useEditRun";
+import type { ElementEdits } from "./useElementEdits";
 
 /** Arrow-key travel, in percent, when snapping is off or bypassed. Small
  *  enough to place a control by eye, large enough to see it move. */
 export const FINE_NUDGE = 0.25;
 
-/** How far a box moves, in percent of what holds it. */
-export interface Offset {
-  dx: number;
-  dy: number;
-}
-
-/** The page as the keyboard needs it, and what each key asks the page to do. */
+/** The page as the keyboard needs it, as last drawn, and what a key acts on. */
 export interface BuilderKeys {
   previewMode: boolean;
   page: UIPage | null;
@@ -43,23 +44,26 @@ export interface BuilderKeys {
   selectedMasterId: string | null;
   locked: Set<string>;
   hasClipboard: boolean;
-  togglePreview: () => void;
+  /** Ctrl+E: whether the palette shows is the page's. */
   togglePalette: () => void;
-  deselect: () => void;
-  /** A master's boxes after a nudge; joins the run in progress. */
-  moveMaster: (id: string, placements: Record<string, Placement>) => void;
-  /** Move these controls by the offset, in percent; joins the run in progress. */
-  nudge: (ids: string[], offset: Offset, description: string) => void;
-  deleteMaster: (id: string) => void;
-  /** Delete, copy and duplicate are handed the selection. */
-  remove: (ids: string[]) => void;
-  /** Undo and redo end the run first: an undo that keeps the selection would
-   *  otherwise leave the next edit inside the entry just undone. */
-  undo: () => void;
-  redo: () => void;
-  copy: (ids: string[]) => void;
-  paste: () => void;
-  duplicate: (ids: string[]) => void;
+  /** Delete, copy and duplicate are handed the selection; a nudge, of
+   *  controls or of a master, joins the run in progress. */
+  edits: Pick<ElementEdits, "nudge" | "editMaster" | "deleteMaster" | "remove" | "copy" | "paste" | "duplicate">;
+  run: Pick<EditRun, "endRun">;
+}
+
+const store = () => useUIBuilderStore.getState();
+
+/** Undo and redo end the run first: an undo that keeps the selection would
+ *  otherwise leave the next edit inside the entry just undone. */
+function undo(k: BuilderKeys) {
+  k.run.endRun();
+  store().undo();
+}
+
+function redo(k: BuilderKeys) {
+  k.run.endRun();
+  store().redo();
 }
 
 export function handleBuilderKey(e: KeyboardEvent, k: BuilderKeys): void {
@@ -81,7 +85,7 @@ export function handleBuilderKey(e: KeyboardEvent, k: BuilderKeys): void {
 function selectionKey(e: KeyboardEvent, k: BuilderKeys): boolean {
   if (e.key === "Escape") {
     e.preventDefault();
-    k.deselect();
+    store().selectElement(null);
     return true;
   }
   if (DIRECTIONS.has(e.key) && k.page) return arrowKey(e, k, k.page);
@@ -115,7 +119,7 @@ function typingInField(e: KeyboardEvent): boolean {
 
 /** Ctrl+P (preview) and Ctrl+E (the palette), which work in preview too. */
 const TOGGLES = new Map<string, (k: BuilderKeys) => void>([
-  ["p", (k) => k.togglePreview()],
+  ["p", (k) => store().setPreviewMode(!k.previewMode)],
   ["e", (k) => k.togglePalette()],
 ]);
 
@@ -161,7 +165,7 @@ function arrowKey(e: KeyboardEvent, k: BuilderKeys, page: UIPage): boolean {
   e.preventDefault();
   const movable = k.selectedIds.filter((id) => page.elements.some((el) => el.id === id));
   if (movable.length > 0) {
-    k.nudge(movable, offset, `Nudge ${e.key.replace("Arrow", "").toLowerCase()}`);
+    k.edits.nudge(movable, offset, `Nudge ${e.key.replace("Arrow", "").toLowerCase()}`);
   }
   return true;
 }
@@ -182,7 +186,7 @@ function nudgeMaster(e: KeyboardEvent, k: BuilderKeys, page: UIPage, { dx, dy }:
   const current = masterPlacement(master, orientation);
   if (!current) return;
   const moved = withMasterPlacement(master, orientation, { ...current, x: current.x + dx, y: current.y + dy });
-  k.moveMaster(id, moved.placements);
+  k.edits.editMaster(id, { placements: moved.placements });
 }
 
 /** Delete and Backspace: the selected master, else the selected controls. A
@@ -191,13 +195,13 @@ function deleteKey(e: KeyboardEvent, k: BuilderKeys): boolean {
   if (k.selectedMasterId) {
     if (k.locked.has(k.selectedMasterId)) return true;
     e.preventDefault();
-    k.deleteMaster(k.selectedMasterId);
+    k.edits.deleteMaster(k.selectedMasterId);
     return true;
   }
   if (k.selectedIds.length === 0 || !k.page) return false;
   if (k.selectedIds.some((id) => k.locked.has(id))) return true;
   e.preventDefault();
-  k.remove(k.selectedIds);
+  k.edits.remove(k.selectedIds);
   return true;
 }
 
@@ -213,17 +217,17 @@ function chordAction(e: KeyboardEvent, k: BuilderKeys): (() => void) | null {
   const hasSelection = k.selectedIds.length > 0 && !!k.page;
   switch (e.key) {
     case "z":
-      return e.shiftKey ? k.redo : k.undo;
+      return e.shiftKey ? () => redo(k) : () => undo(k);
     case "y":
-      return k.redo;
+      return () => redo(k);
     case "s":
       return e.shiftKey ? null : saveNow;
     case "c":
-      return hasSelection ? () => k.copy(k.selectedIds) : null;
+      return hasSelection ? () => k.edits.copy(k.selectedIds) : null;
     case "v":
-      return k.hasClipboard && k.page ? k.paste : null;
+      return k.hasClipboard && k.page ? k.edits.paste : null;
     case "d":
-      return hasSelection ? () => k.duplicate(k.selectedIds) : null;
+      return hasSelection ? () => k.edits.duplicate(k.selectedIds) : null;
     default:
       return null;
   }

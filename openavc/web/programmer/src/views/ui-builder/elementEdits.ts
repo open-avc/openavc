@@ -43,7 +43,6 @@ import {
   withHidden,
   type ElementClipboard,
 } from "../../components/ui-builder/uiBuilderHelpers";
-import type { Offset } from "./builderShortcuts";
 import { takenIds, type Landing } from "./paletteDrop";
 import { projectEdit, type EditRun, type ProjectEdit } from "./useEditRun";
 
@@ -187,6 +186,12 @@ export function editControl({ page, editPages }: OnPage, id: string, patch: Part
 
 export function editPage({ page, editPages }: OnPage, patch: Partial<UIPage>): void {
   if (page) editPages((pages) => pages.map((p) => (p.id === page.id ? { ...p, ...patch } : p)), "Edit page properties", true);
+}
+
+/** How far a box moves, in percent of what holds it. */
+export interface Offset {
+  dx: number;
+  dy: number;
 }
 
 /** The pages with these controls moved by (dx, dy) in the arrangement being

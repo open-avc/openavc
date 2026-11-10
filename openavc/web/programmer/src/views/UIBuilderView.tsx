@@ -1,11 +1,10 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import {
   Panel,
   PanelGroup,
   PanelResizeHandle,
 } from "react-resizable-panels";
-import type { MasterElement } from "../api/types";
 import { useProjectStore } from "../store/projectStore";
 import { useFlushBeforeUnload } from "../store/saveState";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
@@ -46,13 +45,6 @@ export function UIBuilderView() {
   const zoom = useUIBuilderStore((s) => s.zoom);
   const screenPresetIndex = useUIBuilderStore((s) => s.screenPresetIndex);
   const clipboard = useUIBuilderStore((s) => s.clipboard);
-
-  // Stable action refs — use getState() to avoid re-render subscriptions
-  const { selectElement, undo, redo } = useMemo(() => ({
-    selectElement: (...args: any[]) => (useUIBuilderStore.getState().selectElement as any)(...args),
-    undo: () => useUIBuilderStore.getState().undo(),
-    redo: () => useUIBuilderStore.getState().redo(),
-  }), []);
 
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
 
@@ -95,18 +87,9 @@ export function UIBuilderView() {
     selectedMasterId: selectedMasterElementId,
     locked: lockedElementIds,
     hasClipboard: !!clipboard,
-    togglePreview: () => useUIBuilderStore.getState().setPreviewMode(!previewMode),
     togglePalette: () => setShowPalette((v) => !v),
-    deselect: () => selectElement(null),
-    moveMaster: (id, placements) => edits.editMaster(id, { placements } as Partial<MasterElement>),
-    nudge: edits.nudge,
-    deleteMaster: edits.deleteMaster,
-    remove: edits.remove,
-    undo: () => { run.endRun(); undo(); },
-    redo: () => { run.endRun(); redo(); },
-    copy: edits.copy,
-    paste: edits.paste,
-    duplicate: edits.duplicate,
+    edits,
+    run,
   });
 
   if (!project) {
