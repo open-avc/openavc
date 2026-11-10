@@ -573,7 +573,6 @@ describe("the theme the Properties panel shows", () => {
       "button", "camera_preset", "clock", "fader", "gauge", "group", "keypad", "label", "level_meter", "list",
       "matrix", "page_nav", "select", "slider", "status_led", "text_input",
     ]);
-    expect(seen.Canvas.themeVariables).toMatchObject({ accent: "#ac" });
     expect(themeFetch.calls).toEqual(["/api/themes/dark-default"]);
   });
 
@@ -604,7 +603,6 @@ describe("the theme the Properties panel shows", () => {
     themeFetch.fail = true;
     await renderPage(UIBuilderView);
     expect(props().themeDefaults).toEqual({});
-    expect(seen.Canvas.themeVariables).toEqual({});
   });
 
   it("clears what it showed when the next theme cannot be read", async () => {
@@ -615,7 +613,6 @@ describe("the theme the Properties panel shows", () => {
     call(() => props().onThemeChange("paper"));
     await settle();
     expect(props().themeDefaults).toEqual({});
-    expect(seen.Canvas.themeVariables).toEqual({});
   });
 
   it("treats a theme the server does not have as one with nothing in it", async () => {

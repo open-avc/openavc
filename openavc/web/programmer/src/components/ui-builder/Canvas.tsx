@@ -48,7 +48,6 @@ interface CanvasProps {
   screenWidth: number;
   screenHeight: number;
   masterElements?: MasterElement[];
-  themeVariables?: Record<string, unknown>;
 }
 
 /** A gesture in flight: what is moving, and where it has got to so far. */
@@ -72,7 +71,6 @@ export function Canvas({
   screenWidth,
   masterElements,
   screenHeight,
-  themeVariables,
 }: CanvasProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -304,7 +302,6 @@ export function Canvas({
 
   // iframeReady is informational for now — kept to allow future gating if needed.
   void iframeReady;
-  void themeVariables;
 
   // Everything this arrangement will draw wrong, per element, from the same
   // review the AI write path answers with: a control starved of the parts inside

@@ -21,10 +21,9 @@ export interface BuilderCanvasProps {
   /** The masters as the project holds them: none at all, rather than an
    *  empty list, when it has no list. */
   masters: MasterElement[] | undefined;
-  themeVariables: Record<string, unknown>;
 }
 
-export function BuilderCanvas({ page, masters, themeVariables }: BuilderCanvasProps) {
+export function BuilderCanvas({ page, masters }: BuilderCanvasProps) {
   const previewMode = useUIBuilderStore((s) => s.previewMode);
   const showGrid = useUIBuilderStore((s) => s.showGrid);
   const zoom = useUIBuilderStore((s) => s.zoom);
@@ -42,7 +41,6 @@ export function BuilderCanvas({ page, masters, themeVariables }: BuilderCanvasPr
       screenWidth={screen.width}
       screenHeight={screen.height}
       masterElements={masters}
-      themeVariables={themeVariables}
     />
   );
 }

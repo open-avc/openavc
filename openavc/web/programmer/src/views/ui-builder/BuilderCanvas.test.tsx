@@ -22,11 +22,9 @@ describe("the canvas column", () => {
   it("draws the canvas as the store's view settings change, drawn once by its parent", () => {
     const project = makeProject();
     const page = project.ui.pages[0];
-    const vars = { accent: "#1" };
-    render(<BuilderCanvas page={page} masters={project.ui.master_elements} themeVariables={vars} />);
+    render(<BuilderCanvas page={page} masters={project.ui.master_elements} />);
     expect(seen.Canvas).toMatchObject({ page, previewMode: false, showGrid: true, zoom: 1, screenWidth: 1024, screenHeight: 600 });
     expect(seen.Canvas.masterElements).toBe(project.ui.master_elements);
-    expect(seen.Canvas.themeVariables).toBe(vars);
     call(() => builder().setPreviewMode(true));
     expect(seen.Canvas.previewMode).toBe(true);
     call(() => builder().selectLayout("main_port"));
@@ -38,7 +36,7 @@ describe("the canvas column", () => {
   });
 
   it("says there are no pages yet, and draws no canvas, without a page", () => {
-    render(<BuilderCanvas page={null} masters={undefined} themeVariables={{}} />);
+    render(<BuilderCanvas page={null} masters={undefined} />);
     expect(screen.getByText("No pages yet. Click + to add a page.")).toBeInTheDocument();
     expect(seen.Canvas).toBeUndefined();
   });

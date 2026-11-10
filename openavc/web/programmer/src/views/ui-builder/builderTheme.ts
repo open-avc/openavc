@@ -1,7 +1,7 @@
 /**
- * The theme as the UI Builder shows it: the list of themes, the effective
- * default of every themed property for each control type, and the variables
- * the canvas draws with.
+ * The theme as the UI Builder shows it: the list of themes and the effective
+ * default of every themed property for each control type. The canvas is the
+ * panel itself, which reads the theme on its own.
  *
  * `effectiveThemeDefaults` is the Builder's copy of where the panel's
  * stylesheet gets each control's look: the theme's own `element_defaults`,
@@ -116,7 +116,6 @@ function fillBaseline(out: ThemeDefaults, vars: Record<string, unknown>) {
 export function useBuilderTheme(themeId: string | undefined) {
   const [themes, setThemes] = useState<ThemeSummary[]>([]);
   const [defaults, setDefaults] = useState<ThemeDefaults>({});
-  const [variables, setVariables] = useState<Record<string, unknown>>({});
   const [fetchKey, setFetchKey] = useState(0);
 
   const loadThemes = useCallback(() => {
@@ -130,11 +129,10 @@ export function useBuilderTheme(themeId: string | undefined) {
       .then((res) => (res.ok ? res.json() : null))
       .then((theme: ThemeFile | null) => {
         setDefaults(effectiveThemeDefaults(theme));
-        setVariables(theme?.variables || {});
       })
-      .catch(() => { setDefaults({}); setVariables({}); });
+      .catch(() => setDefaults({}));
   }, [themeId, fetchKey]);
 
   const refetch = useCallback(() => setFetchKey((k) => k + 1), []);
-  return { themes, loadThemes, defaults, variables, refetch };
+  return { themes, loadThemes, defaults, refetch };
 }

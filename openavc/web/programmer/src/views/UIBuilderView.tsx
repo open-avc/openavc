@@ -116,7 +116,7 @@ export function UIBuilderView() {
             edits={edits}
           />
         }
-        canvas={<BuilderCanvas page={currentPage} masters={project.ui?.master_elements} themeVariables={theme.variables} />}
+        canvas={<BuilderCanvas page={currentPage} masters={project.ui?.master_elements} />}
         right={
           <BuilderProperties
             page={currentPage}
