@@ -7,8 +7,9 @@ definition section by section and asks a check module about each command
 (``query_entry_checks``), child type and the references into it
 (``child_type_checks``), state variable (``state_variable_checks``), the
 push block (``push_block_checks``), the Quick Action blocks
-(``action_checks``), the framing each way (``framing_checks``) and the
-sign-in (``sign_in_checks``). The runtime loader wraps it (adding the discovery-block check, which needs the
+(``action_checks``), the framing each way (``framing_checks``), the sign-in
+(``sign_in_checks``) and the watchdog (``liveness_checks``). The runtime
+loader wraps it (adding the discovery-block check, which needs the
 discovery engine's parser), and the community driver catalog runs a copy of
 the same rules in its CI, so a definition that passes catalog review is
 exactly a definition the platform will load.
@@ -52,6 +53,7 @@ from openavc.drivers.framing_checks import (
     frame_parser_errors,
     send_frame_errors,
 )
+from openavc.drivers.liveness_checks import liveness_errors
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.query_entry_checks import (
     FollowUp,
@@ -82,7 +84,6 @@ from openavc.drivers.state_variable_checks import (
     DEVICE_VARIABLE,
     state_variable_errors,
 )
-from openavc.utils.regex_safety import regex_safety_error as _regex_redos_error
 
 # One ``{name}`` or ``{name:format_spec}`` token. Deliberately requires an
 # identifier, so a literal JSON body — ``{"vol": {level}}`` — matches only on
@@ -668,60 +669,9 @@ def validate_driver_definition(
     errors.ctx = "auth"
     errors.extend(auth_errors(driver_def))
 
-    # Validate the optional `liveness:` watchdog block ("send X every N, await
-    # a reply within T, reconnect after K misses"). A misdeclared block would
-    # silently never arm (no watchdog — the exact never-goes-offline failure it
-    # exists to fix) or tear healthy devices down; enforce at load time.
+    # The watchdog's probe while the link is up, checked in liveness_checks.
     errors.ctx = "liveness"
-    liveness_def = driver_def.get("liveness")
-    if liveness_def is not None:
-        if not isinstance(liveness_def, dict):
-            errors.append("liveness: must be a mapping")
-        else:
-            # HTTP polling already awaits every response and raises on
-            # failure, so the missed-poll watchdog covers it; `bridge` devices
-            # own no transport. The probe only makes sense on the socket
-            # transports that can die silently.
-            if transport and transport not in LIVENESS_TRANSPORTS:
-                errors.append(
-                    f"liveness: not supported on transport '{transport}' "
-                    f"(only tcp/serial/udp/osc)"
-                )
-            send = liveness_def.get("send")
-            if not isinstance(send, str) or not send:
-                errors.append(
-                    "liveness: missing required 'send' (the probe payload: "
-                    "a raw protocol string, or an OSC address on osc)"
-                )
-            expect = liveness_def.get("expect")
-            if expect is not None:
-                if not isinstance(expect, str) or not expect:
-                    errors.append("liveness: 'expect' must be a regex string")
-                else:
-                    err = _regex_redos_error("liveness.expect", expect)
-                    if err:
-                        errors.append(err)
-            for key, minimum in (("interval", 1.0), ("timeout", 0.1)):
-                value = liveness_def.get(key)
-                if value is not None:
-                    if not isinstance(value, (int, float)) or isinstance(
-                        value, bool
-                    ) or value < minimum:
-                        errors.append(
-                            f"liveness: '{key}' must be a number >= {minimum}"
-                        )
-            max_failures = liveness_def.get("max_failures")
-            if max_failures is not None and (
-                not isinstance(max_failures, int)
-                or isinstance(max_failures, bool)
-                or max_failures < 1
-            ):
-                errors.append("liveness: 'max_failures' must be an integer >= 1")
-            if liveness_def.get("args") is not None:
-                if transport != "osc":
-                    errors.append("liveness: 'args' is only valid on osc")
-                elif not isinstance(liveness_def["args"], list):
-                    errors.append("liveness: 'args' must be a list")
+    errors.extend(liveness_errors(driver_def))
 
     # The Quick Action blocks, checked in action_checks: the rule a Python
     # driver's DRIVER_INFO shares, every message tagged actions, then a YAML
