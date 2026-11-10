@@ -39,6 +39,9 @@ import {
 } from "../test/uiBuilderHarness";
 
 const call = (fn: () => unknown) => act(() => { fn(); });
+const RELATIVE_BOX = { x: 18.75, y: 18.75, w: 62.5, h: 62.5 };
+const PORTRAIT_FREE_SPOT = { x: 0, y: 0, w: 25, h: 12.5 };
+const PLUGIN_BOX = { x: 0, y: 0, w: 60, h: 50 };
 const ids = (pageId: string) => pageOf(pageId).elements.map((e) => e.id);
 const added = (pageId = "main") => pageOf(pageId).elements.at(-1)!;
 const boxOf = (pageId: string, id: string, layout = 0) => pageOf(pageId).layouts[layout].placements[id];
@@ -90,6 +93,23 @@ beforeEach(() => {
 });
 
 describe("click to add", () => {
+  it("measures the free spot against the boxes the arrangement on screen draws, not the primary's", async () => {
+    const moved = page("main", [el("button_1", "button")], { button_1: { x: 0, y: 0, w: 15, h: 12 } });
+    moved.layouts[1].placements = { button_1: { x: 50, y: 50, w: 15, h: 12 } };
+    seed(makeProject({ pages: [moved] }), { selectedPageId: "main", activeLayoutId: "main_port" });
+    await renderPage(UIBuilderView);
+    call(() => seen.ElementPalette.onAdd("label"));
+    expect(boxOf("main", "label_1", 0)).toEqual(PORTRAIT_FREE_SPOT);
+  });
+
+  it("sizes a plugin control from what its plugin declares", async () => {
+    seed(makeProject({ pages: [page("main", [], {})] }));
+    usePluginStore.setState({ extensions: { ...usePluginStore.getState().extensions, panel_elements: [{ plugin_id: "acme", type: "dial", default_size: { w: 60, h: 50 } }] } } as never);
+    await renderPage(UIBuilderView);
+    call(() => seen.ElementPalette.onAdd("plugin:acme:dial"));
+    expect(boxOf("main", added().id)).toEqual(PLUGIN_BOX);
+  });
+
   it("adds the control at the first free spot, named past every page's and master's ids, and selects it", async () => {
     seed(makeProject({ pages: [page("main", [el("button_1", "button")], { button_1: { x: 0, y: 0, w: 15, h: 12 } }), page("other", [el("button_2", "button")], {})] }));
     await renderPage(UIBuilderView);
@@ -185,6 +205,8 @@ describe("dragging a control in from the palette", () => {
     const rel = boxOf("main", dropped.id);
     expect(rel.x).toBeGreaterThan(0);
     expect(rel.x + rel.w).toBeLessThanOrEqual(100);
+    // Its box is a fraction of the group's, not of the page's.
+    expect(rel).toEqual(RELATIVE_BOX);
   });
 
   it("clears the preview when the pointer leaves the canvas, and adds nothing dropped off it", async () => {
