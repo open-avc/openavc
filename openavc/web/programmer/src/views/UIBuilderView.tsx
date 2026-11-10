@@ -6,7 +6,7 @@ import {
   PanelGroup,
   PanelResizeHandle,
 } from "react-resizable-panels";
-import type { UIElement, UIPage, UISettings, Placement, MasterElement } from "../api/types";
+import type { UIElement, UIPage, UISettings, MasterElement } from "../api/types";
 import * as wsClient from "../api/wsClient";
 import { commandIssues } from "../api/commandIssues";
 import { showError } from "../store/toastStore";
@@ -47,11 +47,7 @@ import {
   validateElementId,
   validateProject,
   projectCommandActions,
-  autoPlace,
-  defaultElementSize,
   lockedIdsFor,
-  pageSnap,
-  resolveDropParent,
   presetForOrientation,
   layoutOrientation,
   resolveHidden,
@@ -61,7 +57,7 @@ import {
 import { showSuccess, showInfo } from "../store/toastStore";
 import { projectEdit, useEditRun } from "./ui-builder/useEditRun";
 import { nudgedPages, useBuilderShortcuts } from "./ui-builder/builderShortcuts";
-import { takenIds, topLevelBoxes } from "./ui-builder/paletteDrop";
+import { takenIds, type Landing } from "./ui-builder/paletteDrop";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
 import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
 import { themeFallbackMode, useBuilderTheme, withoutThemeStyles } from "./ui-builder/builderTheme";
@@ -473,32 +469,24 @@ export function UIBuilderView() {
     [project, run],
   );
 
-  // A control new from the palette, dropped at `placement` (page terms): a
-  // drop inside a container becomes a child of it, re-expressed relative to
-  // that container, which is what the author just showed they meant by
-  // dropping it there. Measured against the arrangement on screen: a
-  // container can sit somewhere else entirely in another layout, and the
-  // pointer was over THIS one.
-  const handlePaletteDrop = useCallback(
-    (type: string, placement: Placement) => {
+  // A control new from the palette, made where its gesture landed it
+  // (paletteDrop.ts), dropped or clicked: the one edit both make.
+  const handleAddControl = useCallback(
+    (type: string, landing: Landing) => {
       if (!currentPage || !project) return;
       const newElement = createDefaultElement(type, takenIds(pages, masterElements));
-      const { parentId, relative } = resolveDropParent(currentPage, placement, activeLayoutId);
-      if (parentId) newElement.parent = parentId;
-      applyMutation(
-        (p) => addElementToPage(p, currentPage.id, newElement, relative),
-        `Add ${type}`,
-      );
+      if (landing.parentId) newElement.parent = landing.parentId;
+      applyMutation((p) => addElementToPage(p, currentPage.id, newElement, landing.placement), `Add ${type}`);
       selectElement(newElement.id);
     },
-    [currentPage, pages, masterElements, project, applyMutation, selectElement, activeLayoutId],
+    [currentPage, pages, masterElements, project, applyMutation, selectElement],
   );
 
   const palette = usePaletteDrop({
     page: currentPage,
     layoutId: activeLayoutId,
     panelElements,
-    onDrop: handlePaletteDrop,
+    onAdd: handleAddControl,
   });
 
   useBuilderShortcuts({
@@ -733,26 +721,7 @@ export function UIBuilderView() {
                             ? "This page shows a page you wrote, so controls placed here are not drawn."
                             : undefined
                         }
-                        onAdd={(type) => {
-                          if (!currentPage || !project) return;
-                          const newElement = createDefaultElement(type, takenIds(pages, masterElements));
-                          // Click-to-add has no pointer to land on, so it takes
-                          // the auto-placement rule: the first free snap cell,
-                          // scanning row-major — which is exactly where the old
-                          // grid would have put it — or the page centre plus a
-                          // cascade when snap is off.
-                          const placement = autoPlace(
-                            topLevelBoxes(currentPage, activeLayoutId),
-                            defaultElementSize(type, panelElements),
-                            pageSnap(currentPage),
-                            currentPage.elements.length,
-                          );
-                          applyMutation(
-                            (p) => addElementToPage(p, currentPage.id, newElement, placement),
-                            `Add ${type}`,
-                          );
-                          selectElement(newElement.id);
-                        }}
+                        onAdd={palette.add}
                       />
                     ) : (
                       <OutlinePanel

@@ -1,6 +1,6 @@
 /**
- * Dragging a control in from the palette: the gesture, from the drag
- * library's start to its drop or cancel.
+ * Adding a control from the palette: dragged in, the gesture from the drag
+ * library's start to its drop or cancel, or clicked (`add`).
  *
  * The preview follows the REAL pointer, from a native listener, never the
  * drag library's delta: the delta folds in scroll compensation, so when the
@@ -12,8 +12,8 @@
  * sees the new state.
  *
  * Only the palette drags through the library: moving a control already on the
- * canvas is a pointer gesture the canvas owns. What a drop adds is the page's
- * (`onDrop`); where it lands is paletteDrop.ts.
+ * canvas is a pointer gesture the canvas owns. Where a control lands, dropped
+ * or clicked, is paletteDrop.ts; making it there is the page's (`onAdd`).
  */
 import { useCallback, useEffect, useRef } from "react";
 import {
@@ -28,7 +28,17 @@ import type { Placement, UIPage } from "../../api/types";
 import type { PluginExtension } from "../../api/pluginClient";
 import { createDefaultElement, defaultElementSize } from "../../components/ui-builder/uiBuilderHelpers";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
-import { canvasRect, landingAt, pointerInside, previewAt, type Point, type Size } from "./paletteDrop";
+import {
+  canvasRect,
+  clickLanding,
+  dropLanding,
+  landingAt,
+  pointerInside,
+  previewAt,
+  type Landing,
+  type Point,
+  type Size,
+} from "./paletteDrop";
 
 type DragData = { source: string; elementType?: string; elementId?: string } | undefined;
 
@@ -163,10 +173,10 @@ export function usePaletteDrop(opts: {
   page: UIPage | null;
   layoutId: string | null;
   panelElements: PluginExtension[] | undefined;
-  /** Add a control of `type` at `placement` on the page, in page terms. */
-  onDrop: (type: string, placement: Placement) => void;
+  /** Add a control of `type` on the page where it landed. */
+  onAdd: (type: string, landing: Landing) => void;
 }) {
-  const { page, layoutId, panelElements, onDrop } = opts;
+  const { page, layoutId, panelElements, onAdd } = opts;
   const activeDragSource = useUIBuilderStore((s) => s.activeDragSource);
   const d = useRef<Drag>({
     start: null, type: null, label: null, size: null,
@@ -188,21 +198,26 @@ export function usePaletteDrop(opts: {
     const preview = useUIBuilderStore.getState().paletteDragPreview;
     const pointer = finish(d);
     const landed = page ? landing(d, event, { preview, pointer }, { page, layoutId, panelElements }) : null;
-    if (!landed) return;
-    onDrop(landed.type, landed.placement);
+    if (!landed || !page) return;
+    onAdd(landed.type, dropLanding(page, landed.placement, layoutId));
     d.start = null;
-  }, [d, page, layoutId, panelElements, onDrop]);
+  }, [d, page, layoutId, panelElements, onAdd]);
 
   const onDragCancel = useCallback(() => {
     finish(d);
     d.start = null;
   }, [d]);
 
+  const add = useCallback((type: string) => {
+    if (page) onAdd(type, clickLanding(page, layoutId, defaultElementSize(type, panelElements)));
+  }, [page, layoutId, panelElements, onAdd]);
+
   // A drag in flight when the view unmounts would leave the tracker attached.
   useEffect(() => () => d.stopTracking?.(), [d]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   return {
+    add,
     ghost: activeDragSource ? ghostOf(d) : null,
     dndProps: { sensors, ...DROP_RULES, onDragStart, onDragEnd, onDragCancel },
   };

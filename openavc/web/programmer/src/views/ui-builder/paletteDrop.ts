@@ -4,15 +4,17 @@
  * A drop lands where the pointer is, worked out by `landingAt`, which the
  * preview asks on every pointer move and the drop asks again only when the
  * preview never saw the pointer: so what the preview shows is where the
- * control goes. Click-to-add has no pointer and takes the first free spot
- * instead (`autoPlace`, on the page); it and the drop's snapping both measure
- * against the page's top-level controls in the arrangement being authored
+ * control goes. A drop inside a container makes the control its child
+ * (`dropLanding`). Click-to-add has no pointer and takes the first free spot
+ * instead (`clickLanding`); it and the drop's snapping both measure against
+ * the page's top-level controls in the arrangement being authored
  * (`topLevelBoxes`): a control inside a container stores its box in the
- * container's terms, so it is left out. Both name a new control past
- * `takenIds`.
+ * container's terms, so it is left out. Either way the page makes the control
+ * from the `Landing` alone, named past `takenIds`.
  */
 import type { MasterElement, Placement, UIPage } from "../../api/types";
 import {
+  autoPlace,
   getPlacement,
   pageSnap,
   paletteDragPlacement,
@@ -28,6 +30,13 @@ export interface Point {
 export interface Size {
   w: number;
   h: number;
+}
+
+/** Where a new control goes: the container that adopts it, if one does, and
+ *  its box in that container's terms (the page's when none does). */
+export interface Landing {
+  parentId: string | null;
+  placement: Placement;
 }
 
 /** The page's top-level boxes in the arrangement being authored. */
@@ -75,6 +84,24 @@ export function landingAt(
   });
 }
 
+/** A drop at `placement`, in page terms. Inside a container the control
+ *  becomes its child, re-expressed relative to it, which is what dropping it
+ *  there shows was meant. Measured against the arrangement on screen: a
+ *  container can sit somewhere else entirely in another layout, and the
+ *  pointer was over THIS one. */
+export function dropLanding(page: UIPage, placement: Placement, layoutId: string | null): Landing {
+  const { parentId, relative } = resolveDropParent(page, placement, layoutId);
+  return { parentId, placement: relative };
+}
+
+/** Click-to-add: the first free snap cell, scanning row-major, or the page
+ *  centre plus a cascade of one step per control on the page when snap is
+ *  off. */
+export function clickLanding(page: UIPage, layoutId: string | null, size: Size): Landing {
+  const placement = autoPlace(topLevelBoxes(page, layoutId), size, pageSnap(page), page.elements.length);
+  return { parentId: null, placement };
+}
+
 /** What the canvas draws while the pointer is over it: the landing box, its
  *  guides, and the container that would adopt it, measured against the
  *  arrangement on screen. */
@@ -85,12 +112,11 @@ export function previewAt(
   place: { page: UIPage; layoutId: string | null; bypass: boolean; label: string },
 ) {
   const outcome = landingAt(pointer, rect, size, place);
-  const { parentId } = resolveDropParent(place.page, outcome.placement, place.layoutId);
   return {
     placement: outcome.placement,
     guidesX: outcome.guidesX,
     guidesY: outcome.guidesY,
-    adoptInto: parentId,
+    adoptInto: dropLanding(place.page, outcome.placement, place.layoutId).parentId,
     label: place.label,
   };
 }
