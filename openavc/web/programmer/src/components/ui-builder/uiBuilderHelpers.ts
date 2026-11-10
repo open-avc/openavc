@@ -450,44 +450,51 @@ function magnetTargets(others: Placement[], axis: "x" | "y"): number[] {
   return targets;
 }
 
+/** How far one axis's moving edges travel, and the lines they land on. */
+interface Pull {
+  delta: number;
+  guides: number[];
+}
+
 /**
- * Pull one moving edge onto the nearest attractive line.
- *
- * Element edges, page edges, centre and thirds win when they are within
- * MAGNET_TOLERANCE, because being flush with a neighbour is what the author
- * meant. Failing that the snap increment takes it, which is a coarser pull with
- * no tolerance -- there is always a nearest increment.
+ * Pull a set of moving edges onto the nearest line within MAGNET_TOLERANCE of
+ * any of them, because being flush with a neighbour or the page is what the
+ * author meant; the first of two equally near wins. Every line an edge ends up
+ * on gets a guide, once, so a flush left AND a flush centre both draw. Null
+ * when no line is in reach.
  */
-function snapAxis(
-  edges: number[],
-  increment: number,
-  gridOn: boolean,
-  targets: number[],
-): { delta: number; guides: number[] } {
-  let best: { delta: number; guide: number } | null = null;
+function magnetPull(edges: number[], targets: number[]): Pull | null {
+  let best: number | null = null;
   for (const edge of edges) {
     for (const target of targets) {
       const delta = target - edge;
       if (Math.abs(delta) > MAGNET_TOLERANCE) continue;
-      if (!best || Math.abs(delta) < Math.abs(best.delta)) best = { delta, guide: target };
+      if (best === null || Math.abs(delta) < Math.abs(best)) best = delta;
     }
   }
-  if (best) {
-    // Every edge that ends up on an attractive line gets a guide, so a flush
-    // top AND a flush left both draw.
-    const moved = edges.map((e) => e + best!.delta);
-    const guides = targets.filter((t) => moved.some((m) => Math.abs(m - t) < 1e-6));
-    return { delta: best.delta, guides: [...new Set(guides)] };
+  if (best === null) return null;
+  const delta = best;
+  const moved = edges.map((e) => e + delta);
+  const guides = targets.filter((t) => moved.some((m) => Math.abs(m - t) < 1e-6));
+  return { delta, guides: [...new Set(guides)] };
+}
+
+/** Pull a set of moving edges onto the snap increment nearest any of them, the
+ *  first of two equally near winning. A coarser pull with no tolerance: there
+ *  is always a nearest increment. */
+function gridPull(edges: number[], increment: number): Pull {
+  let best: number | null = null;
+  for (const edge of edges) {
+    const delta = snapToIncrement(edge, increment) - edge;
+    if (best === null || Math.abs(delta) < Math.abs(best)) best = delta;
   }
-  if (gridOn) {
-    let gridBest: number | null = null;
-    for (const edge of edges) {
-      const delta = snapToIncrement(edge, increment) - edge;
-      if (gridBest === null || Math.abs(delta) < Math.abs(gridBest)) gridBest = delta;
-    }
-    if (gridBest !== null) return { delta: gridBest, guides: [] };
-  }
-  return { delta: 0, guides: [] };
+  return { delta: best ?? 0, guides: [] };
+}
+
+/** One axis of a gesture: a line within reach wins, else the snap increment
+ *  when snap is on, else the edges stay where the pointer put them. */
+function snapAxis(edges: number[], increment: number, gridOn: boolean, targets: number[]): Pull {
+  return magnetPull(edges, targets) ?? (gridOn ? gridPull(edges, increment) : { delta: 0, guides: [] });
 }
 
 /**
