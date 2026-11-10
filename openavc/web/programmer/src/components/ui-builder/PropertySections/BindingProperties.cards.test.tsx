@@ -11,13 +11,27 @@ import type { ProjectConfig, UIElement } from "../../../api/types";
 // gets without depending on what each draws inside.
 
 vi.mock("../BindingEditor/FeedbackBindingEditor", () => ({
-  FeedbackBindingEditor: () => <div>editor: feedback</div>,
+  FeedbackBindingEditor: ({ showTextColor }: { showTextColor?: boolean }) => (
+    <div>{showTextColor === false ? "editor: feedback, no text colour" : "editor: feedback"}</div>
+  ),
 }));
 vi.mock("../BindingEditor/SelectFeedbackEditor", () => ({
   SelectFeedbackEditor: () => <div>editor: select feedback</div>,
 }));
 vi.mock("../BindingEditor/ColorBindingEditor", () => ({
   ColorBindingEditor: () => <div>editor: color</div>,
+}));
+vi.mock("../BindingEditor/SelectChangeEditor", () => ({
+  SelectChangeEditor: () => <div>does: select change</div>,
+}));
+vi.mock("../BindingEditor/PressBindingEditor", () => ({
+  PressBindingEditor: () => <div>does: actions</div>,
+}));
+vi.mock("../BindingEditor/TextBindingEditor", () => ({
+  TextBindingEditor: () => <div>value: text</div>,
+}));
+vi.mock("../../shared/ButtonBindingEditor", () => ({
+  ButtonBindingEditor: () => <div>does: button</div>,
 }));
 
 const project = {
@@ -61,8 +75,8 @@ describe("the binding card's cards, per control type", () => {
       ["select", "editor: select feedback"],
       ["status_led", "editor: color"],
       ["label", "editor: feedback"],
-      ["image", "editor: feedback"],
-      ["group", "editor: feedback"],
+      ["image", "editor: feedback, no text colour"],
+      ["group", "editor: feedback, no text colour"],
       ["page_nav", "editor: feedback"],
       ["camera_preset", "editor: feedback"],
     ];
@@ -77,6 +91,31 @@ describe("the binding card's cards, per control type", () => {
     for (const type of ["slider", "fader", "text_input", "gauge", "level_meter", "keypad", "list", "matrix", "clock", "custom"]) {
       const { unmount } = cardsOf(type);
       expect(screen.queryByText(/^editor: /), type).toBeNull();
+      unmount();
+    }
+  });
+
+  it("opens each action list in its own editor: a select's in the option picker, a button's in its own", () => {
+    const cases: [string, string[]][] = [
+      ["select", ["does: select change"]],
+      ["slider", ["does: actions"]],
+      ["keypad", ["does: actions"]],
+      ["matrix", ["does: actions", "does: actions", "does: actions", "does: actions"]],
+      ["button", ["does: button"]],
+      ["label", []],
+      ["status_led", []],
+    ];
+    for (const [type, editors] of cases) {
+      const { unmount } = cardsOf(type);
+      expect(screen.queryAllByText(/^does: /).map((e) => e.textContent), type).toEqual(editors);
+      unmount();
+    }
+  });
+
+  it("draws a label's Value as text and the rest as a state pick", () => {
+    for (const [type, texts] of [["label", 1], ["slider", 0], ["list", 0], ["gauge", 0], ["button", 0]] as const) {
+      const { unmount } = cardsOf(type);
+      expect(screen.queryAllByText("value: text").length, type).toBe(texts);
       unmount();
     }
   });

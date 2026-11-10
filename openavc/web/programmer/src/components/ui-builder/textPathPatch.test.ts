@@ -239,6 +239,13 @@ describe("patchForTextPath: list positions", () => {
     expect(patchForTextPath(el(), [0], "x")).toBeNull();
   });
 
+  it("spreads a list a field name walks through into an object keyed by position", () => {
+    const element = el({ label: ["a", "b"] } as unknown as Partial<UIElement>);
+    expect(JSON.stringify(patchForTextPath(element, ["label", "x"], "v"))).toBe(
+      JSON.stringify({ label: { 0: "a", 1: "b", x: "v" } }),
+    );
+  });
+
   it("replaces text a field name walks through with an object holding the written path", () => {
     const element = el({ label: "Power" });
     expect(JSON.stringify(patchForTextPath(element, ["label", "x"], "v"))).toBe(JSON.stringify({ label: { x: "v" } }));
