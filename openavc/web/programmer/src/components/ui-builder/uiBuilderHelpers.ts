@@ -1598,17 +1598,20 @@ function masterIssues(mel: MasterElement, refs: ProjectRefs, theme: ElementDefau
   return issues;
 }
 
-/** The device or macro a step names that is not in the project. A step's page
- *  is not checked. `at` places a finding, given what to call a step with no
- *  description. */
+/** What a finding calls a step with no description, by the kind of thing the
+ *  step names. A step's page is not checked, so a page has no entry. */
+const UNNAMED_STEP: Record<Exclude<BrokenReference["kind"], "page">, string> = {
+  device: "device.command",
+  macro: "call macro",
+};
+
+/** The device or macro a step names that is not in the project: the field an
+ *  action names, read as a control's action is (`brokenReference`), in the same
+ *  words. `at` places a finding, given what to call a step with no description. */
 function stepReferenceIssues(step: MacroStep, at: (unnamed: string) => string, refs: ProjectRefs): ValidationIssue[] {
-  if (step.action === "device.command" && step.device && !refs.deviceIds.has(step.device)) {
-    return [{ severity: "error", message: `Device "${step.device}" not found`, location: at(step.action) }];
-  }
-  if (step.action === "macro" && step.macro && !refs.macroIds.has(step.macro)) {
-    return [{ severity: "error", message: `Macro "${step.macro}" not found`, location: at("call macro") }];
-  }
-  return [];
+  const broken = brokenReference(step as unknown as Record<string, unknown>, refs);
+  if (!broken || broken.kind === "page") return [];
+  return [{ severity: "error", message: validateSays(broken), location: at(UNNAMED_STEP[broken.kind]) }];
 }
 
 /** One macro step: what it names that is not there, then what the platform
