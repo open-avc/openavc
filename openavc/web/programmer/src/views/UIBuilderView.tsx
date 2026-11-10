@@ -8,7 +8,6 @@ import {
 } from "react-resizable-panels";
 import type { UIElement, UIPage, UISettings, Placement, MasterElement } from "../api/types";
 import * as wsClient from "../api/wsClient";
-import { listThemes, getTunnelPrefix } from "../api/restClient";
 import { commandIssues } from "../api/commandIssues";
 import { showError } from "../store/toastStore";
 import { useProjectStore } from "../store/projectStore";
@@ -59,13 +58,13 @@ import {
   withHidden,
   type ValidationIssue,
 } from "../components/ui-builder/uiBuilderHelpers";
-import { isLightColor } from "../components/ui-builder/colorUtils";
 import { showSuccess, showInfo } from "../store/toastStore";
 import { useEditRun } from "./ui-builder/useEditRun";
 import { nudgedPages, useBuilderShortcuts } from "./ui-builder/builderShortcuts";
 import { takenIds, topLevelBoxes } from "./ui-builder/paletteDrop";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
 import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
+import { themeFallbackMode, useBuilderTheme, withoutThemeStyles } from "./ui-builder/builderTheme";
 
 export function UIBuilderView() {
   const project = useProjectStore((s) => s.project);
@@ -130,18 +129,8 @@ export function UIBuilderView() {
     const found = await commandIssues(projectCommandActions(project));
     setValidationIssues(validateProject(project, found));
   }, [project]);
-  const [themeElementDefaults, setThemeElementDefaults] = useState<Record<string, Record<string, unknown>>>({});
-  const [themeVariables, setThemeVariables] = useState<Record<string, unknown>>({});
-  const [themes, setThemes] = useState<{ id: string; name: string; version: string; author: string; description: string; preview_colors: string[]; variables: Record<string, unknown>; source: string }[]>([]);
-  // Bumped by the Theme Studio after Save Changes to force the canvas iframe
-  // to re-fetch the theme from the server (same theme_id but changed file).
-  const [themeFetchKey, setThemeFetchKey] = useState(0);
-
-  // Load themes list
-  const loadThemes = useCallback(() => {
-    listThemes().then(setThemes).catch(() => showError("Failed to load themes"));
-  }, []);
-  useEffect(() => { loadThemes(); }, [loadThemes]);
+  const theme = useBuilderTheme(project?.ui?.settings?.theme_id);
+  const themes = theme.themes;
 
   // Auto-select first page if none selected
   useEffect(() => {
@@ -150,75 +139,6 @@ export function UIBuilderView() {
     }
   }, [selectedPageId, project, selectPage]);
 
-  // Load the full set of effective defaults for every element type so the
-  // Properties panel always shows the real value the element renders with.
-  // Sources: theme element_defaults (per-type), theme variables (CSS-derived),
-  // and CSS baseline defaults. Every themed property must be present here —
-  // if it's missing, the Properties panel shows blank instead of the real value.
-  const themeId = project?.ui?.settings?.theme_id;
-  useEffect(() => {
-    const id = themeId || "dark-default";
-    fetch(`${getTunnelPrefix()}/api/themes/${id}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((theme) => {
-        const vars = theme?.variables || {};
-        const baseDefaults = theme?.element_defaults || {};
-
-        // Start with the full element_defaults from the theme — these already
-        // have bg_color, text_color, border_color, border_radius, border_width,
-        // box_shadow, etc. for every element type the theme author defined.
-        const synthesized: Record<string, Record<string, unknown>> = {};
-        for (const [type, defaults] of Object.entries(baseDefaults)) {
-          synthesized[type] = { ...(defaults as Record<string, unknown>) };
-        }
-
-        // Button types get their base colors from button_* CSS variables,
-        // not element_defaults. Overlay these so the Properties panel shows them.
-        const buttonTypes = ["button", "page_nav", "camera_preset", "keypad"];
-        for (const t of buttonTypes) {
-          if (!synthesized[t]) synthesized[t] = {};
-          if (vars.button_bg && !synthesized[t].bg_color) synthesized[t].bg_color = vars.button_bg;
-          if (vars.button_text && !synthesized[t].text_color) synthesized[t].text_color = vars.button_text;
-          if (vars.button_border && !synthesized[t].border_color) synthesized[t].border_color = vars.button_border;
-        }
-
-        // Interactive elements get accent_color and track_color from CSS
-        // variables (--el-accent from vars.accent, --el-surface from vars.surface).
-        // These aren't in element_defaults — they're set at render time.
-        const interactiveTypes = ["slider", "fader", "select", "text_input", "page_nav", "keypad"];
-        for (const t of interactiveTypes) {
-          if (!synthesized[t]) synthesized[t] = {};
-          if (vars.accent) synthesized[t].accent_color = vars.accent;
-          if (vars.surface) synthesized[t].track_color = vars.surface;
-        }
-
-        // Non-button elements inherit panel_text via CSS. Fill in any type
-        // that doesn't already have text_color from element_defaults.
-        if (vars.panel_text) {
-          for (const t of ["label", "slider", "fader", "gauge", "level_meter", "list", "select", "text_input", "group", "clock", "matrix", "status_led"]) {
-            if (!synthesized[t]) synthesized[t] = {};
-            if (!synthesized[t].text_color) synthesized[t].text_color = vars.panel_text;
-          }
-        }
-
-        // CSS baseline defaults that every element inherits if nothing else is
-        // set. NOT font_size: that used to be a hard-coded 1rem here, which was
-        // the Builder's private idea of the panel's text default and drifted
-        // from the stylesheet's. The panel canvas now reports what it actually
-        // drew (uiBuilderStore.textDefaultsRem) and the Style panel shows that.
-        const cssBaseline: Record<string, unknown> = {};
-        if (vars.border_radius) cssBaseline.border_radius = vars.border_radius;
-        if (vars.font_family) cssBaseline.font_family = vars.font_family;
-        for (const t of Object.keys(synthesized)) {
-          for (const [k, v] of Object.entries(cssBaseline)) {
-            if (synthesized[t][k] === undefined) synthesized[t][k] = v;
-          }
-        }
-        setThemeElementDefaults(synthesized);
-        setThemeVariables(vars);
-      })
-      .catch(() => { setThemeElementDefaults({}); setThemeVariables({}); });
-  }, [themeId, themeFetchKey]);
 
   // Listen for server-initiated page navigation (preview mode)
   useEffect(() => {
@@ -508,16 +428,8 @@ export function UIBuilderView() {
     (id: string) => {
       if (!project) return;
       const settings = project.ui.settings;
-      // Derive the light/dark fallback (settings.theme) from the theme's actual
-      // panel background luminance, not its id. settings.theme is only the
-      // fallback used when theme_id can't be resolved; a light theme whose id
-      // lacks "light" must still fall back to a light treatment. Fall back to the
-      // id heuristic only when the background can't be read.
-      const bg = themes.find((t) => t.id === id)?.variables?.panel_bg;
-      const light = typeof bg === "string" ? isLightColor(bg) : null;
-      const mode = light === null
-        ? (id.includes("light") || id === "minimal" ? "light" : "dark")
-        : (light ? "light" : "dark");
+      // settings.theme is the fallback used when theme_id can't be resolved.
+      const mode = themeFallbackMode(themes, id);
       // Clear accent_color / font_family / theme_overrides when switching
       // themes. These are per-project overrides that were tuned for the
       // PREVIOUS theme — carrying them forward makes the new theme look
@@ -951,7 +863,7 @@ export function UIBuilderView() {
                 screenWidth={screenWidth}
                 screenHeight={screenHeight}
                 masterElements={project?.ui?.master_elements}
-                themeVariables={themeVariables}
+                themeVariables={theme.variables}
               />
             ) : (
               <div
@@ -993,7 +905,7 @@ export function UIBuilderView() {
                     masterElement={selectedMasterElement}
                     page={currentPage}
                     project={project}
-                    themeDefaults={themeElementDefaults}
+                    themeDefaults={theme.defaults}
                     themes={themes}
                     onThemeChange={showThemeStudio ? undefined : handleThemeChange}
                     onOpenStylesheet={() => setShowStylesheet(true)}
@@ -1054,8 +966,8 @@ export function UIBuilderView() {
           themeOverrides={project.ui.settings.theme_overrides || {}}
           onChangeTheme={handleThemeChange}
           onClearOverrides={() => handleUpdateThemeOverrides({})}
-          onRefreshThemes={loadThemes}
-          onThemeSaved={() => setThemeFetchKey((k) => k + 1)}
+          onRefreshThemes={theme.loadThemes}
+          onThemeSaved={theme.refetch}
           onResetElementStyles={() => setConfirmResetStyles(true)}
           // The raw preset, NOT the layout-turned one: a theme preview is about
           // colour and type, and it should not change shape because of which
@@ -1092,20 +1004,7 @@ export function UIBuilderView() {
           onConfirm={() => {
             setConfirmResetStyles(false);
             if (!project) return;
-            const newPages = project.ui.pages.map((page) => ({
-              ...page,
-              elements: page.elements.map((el) => {
-                const keysToReset = new Set(
-                  Object.keys(themeElementDefaults[el.type] || {}),
-                );
-                if (keysToReset.size === 0) return el;
-                const cleaned: Record<string, unknown> = {};
-                for (const [k, v] of Object.entries(el.style || {})) {
-                  if (!keysToReset.has(k)) cleaned[k] = v;
-                }
-                return { ...el, style: cleaned };
-              }),
-            }));
+            const newPages = withoutThemeStyles(project.ui.pages, theme.defaults);
             run.commit({
               before: { pages: project.ui.pages },
               description: "Reset element styles to theme",
