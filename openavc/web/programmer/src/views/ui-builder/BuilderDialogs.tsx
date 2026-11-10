@@ -19,7 +19,7 @@
 import { useCallback, useState } from "react";
 import type { ProjectConfig, UIPage } from "../../api/types";
 import type { ValidationIssue } from "../../components/ui-builder/uiBuilderHelpers";
-import { useChosenScreen, type Screen } from "../../components/ui-builder/canvasScreen";
+import { useChosenScreen, type ScreenSize } from "../../components/ui-builder/canvasScreen";
 import { ThemeStudio } from "../../components/ui-builder/ThemeStudio";
 import { StylesheetEditor } from "../../components/ui-builder/StylesheetEditor";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
@@ -70,7 +70,7 @@ export interface BuilderDialogsProps {
 }
 
 /** The size both previews are drawn at: the preset's own, else the 7" tablet's. */
-function previewSize(preset: Screen | undefined) {
+function previewSize(preset: ScreenSize | undefined) {
   return { panelWidth: preset?.width ?? 1024, panelHeight: preset?.height ?? 600 };
 }
 

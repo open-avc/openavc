@@ -11,16 +11,16 @@ import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { layoutOrientation, presetForOrientation } from "./pageGeometry";
 import { SCREEN_PRESETS } from "./uiBuilderHelpers";
 
-export interface Screen {
+export interface ScreenSize {
   width: number;
   height: number;
 }
 
 /** The screen preset chosen in the toolbar, if the store's index names one. */
-export function useChosenScreen(): Screen | undefined {
+export function useChosenScreen(): ScreenSize | undefined {
   return SCREEN_PRESETS[useUIBuilderStore((s) => s.screenPresetIndex)];
 }
 
-export function canvasScreen(chosen: Screen | undefined, page: UIPage | null, layoutId: string | null): Screen {
+export function canvasScreen(chosen: ScreenSize | undefined, page: UIPage | null, layoutId: string | null): ScreenSize {
   return presetForOrientation(chosen, layoutOrientation(page ?? undefined, layoutId));
 }

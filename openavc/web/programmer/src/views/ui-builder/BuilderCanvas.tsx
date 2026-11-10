@@ -6,8 +6,9 @@
  * the screen (the chosen preset turned for the arrangement being authored,
  * `useChosenScreen` and `canvasScreen`). Those are read from the Builder store
  * here, as the two side panels read what is selected, so a view setting reaches
- * the canvas without passing through the page. The page hands it the page on screen and what the
- * project holds for it.
+ * the canvas without passing through the page. The canvas itself still takes
+ * them as props, so this column is the adapter between the store and it. The
+ * page hands it the page on screen and what the project holds for it.
  */
 import type { MasterElement, UIPage } from "../../api/types";
 import { Canvas } from "../../components/ui-builder/Canvas";
