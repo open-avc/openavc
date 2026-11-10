@@ -36,7 +36,7 @@ iframe of the same panel -- both receive lists that are already resolved, so the
 translation from config to rows-and-columns exists in exactly one renderer.
 
 The one other place that resolves is the page review, which exists twice by
-design (``page_review.py`` and ``reviewPage`` in uiBuilderHelpers.ts) and is
+design (``page_review.py`` and ``reviewPage`` in pageReview.ts) and is
 pinned message-for-message by ``tests/test_ui_review_parity.py``. Its TypeScript
 half therefore mirrors this module, as the Builder's matrixModel.ts, and the
 same test that catches a review drifting catches a resolver drifting -- which is

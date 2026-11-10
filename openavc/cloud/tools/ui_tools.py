@@ -287,7 +287,7 @@ def _rounded_placement(box: Any) -> Any:
     """A Placement quantized to 4 decimal places, exactly as the Builder stores.
 
     Percentages are stored to 4dp at every write path (GEOMETRY_PRECISION in
-    uiBuilderHelpers.ts); an unrounded value is the float jitter that dirties
+    pageGeometry.ts); an unrounded value is the float jitter that dirties
     the save-reconcile diff and arms phantom autosaves. The Builder quantizes
     with JS Math.round, which rounds a half toward +infinity, while Python's
     round() is banker's -- so mirror the JS arithmetic, or the same reparent

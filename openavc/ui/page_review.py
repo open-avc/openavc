@@ -82,7 +82,7 @@ from openavc.ui.page_geometry import (
 # --- The finger rule -------------------------------------------------------
 #
 # Mirrored from the Builder (TOUCH_REFERENCE / TOUCH_MIN_MM in
-# uiBuilderHelpers.ts), which is where they were measured against real panel
+# touchTarget.ts), which is where they were measured against real panel
 # diagonals: 1280x800 in the field is a 10.1" panel, so ~149ppi rather than the
 # ~100 an earlier version assumed. Millimetres because the question is physical
 # -- whether a thumb can hit the thing does not depend on pixel density.
@@ -873,7 +873,7 @@ def _letter_breach(style: Mapping[str, Any], width_px: float, height_px: float) 
 #: Every style measurement that can outgrow its box, in the order a finding reads
 #: them out. A new one is a function asking ``_past_one_side`` or
 #: ``_meets_in_middle`` for its room and an entry here, and the same in
-#: ``STYLE_BREACHES``, its twin in uiBuilderHelpers.ts.
+#: ``STYLE_BREACHES``, its twin in reviewGeometry.ts.
 _STYLE_BREACHES: tuple[Callable[[Mapping[str, Any], float, float], _StyleBreach | None], ...] = (
     _font_breach,
     _padding_down,
@@ -2084,7 +2084,7 @@ def _blind_destination_findings(el_id: str, config: Mapping[str, Any]) -> list[F
 
 
 #: The checks a configured matrix gets, in the order they report. A new one is
-#: an entry here and one in ``MATRIX_CHECKS``, its twin in uiBuilderHelpers.ts.
+#: an entry here and one in ``MATRIX_CHECKS``, its twin in reviewMatrix.ts.
 _MATRIX_CHECKS: tuple[Callable[[str, Mapping[str, Any]], list[Finding]], ...] = (
     _unread_config_findings,
     _axis_findings,
@@ -2813,7 +2813,7 @@ class _ReviewScope:
 class _Arrangement:
     """One arrangement of a page as the panel resolves it.
 
-    The Builder's twin is ``Arrangement`` in uiBuilderHelpers.ts, built by
+    The Builder's twin is ``Arrangement`` in pageReview.ts, built by
     ``resolveArrangement``, with these methods as free functions there
     (``parentIn``, ``parentNameIn``, ``ancestorsIn``, ``seatIn``, ``isDrawn``).
 
