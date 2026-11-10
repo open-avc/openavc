@@ -12,7 +12,6 @@ import { usePluginStore } from "../store/pluginStore";
 import { Canvas } from "../components/ui-builder/Canvas";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
-import { ContextMenu } from "../components/ui-builder/ContextMenu";
 import { SCREEN_PRESETS } from "../components/ui-builder/uiBuilderHelpers";
 import { canvasScreen } from "../components/ui-builder/canvasScreen";
 import { useEditRun } from "./ui-builder/useEditRun";
@@ -22,6 +21,7 @@ import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
 import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
 import { useValidation } from "./ui-builder/ValidationReport";
 import { BuilderDialogs, themeListChange, useBuilderDialogs } from "./ui-builder/BuilderDialogs";
+import { BuilderContextMenu } from "./ui-builder/BuilderContextMenu";
 import { SaveFailedBanner } from "./ui-builder/SaveFailedBanner";
 import { ToolbarActions } from "./ui-builder/ToolbarActions";
 import { BuilderSidebar, type SidebarTab } from "./ui-builder/BuilderSidebar";
@@ -53,8 +53,6 @@ export function UIBuilderView() {
     redo: () => useUIBuilderStore.getState().redo(),
   }), []);
 
-  const contextMenu = useUIBuilderStore((s) => s.contextMenu);
-  const setContextMenu = useUIBuilderStore((s) => s.setContextMenu);
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
 
   const [showPalette, setShowPalette] = useState(true);
@@ -277,31 +275,7 @@ export function UIBuilderView() {
         {palette.ghost ? <PaletteDragGhost {...palette.ghost} /> : null}
       </DragOverlay>
 
-      {/* Context menu */}
-      {contextMenu && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          elementId={contextMenu.elementId}
-          isMaster={contextMenu.isMaster}
-          multiSelectCount={selectedElementIds.length}
-          onClose={() => setContextMenu(null)}
-          // Its one-control rows act on the control clicked, its rows for a
-          // selection of several on the selection.
-          onDuplicate={(id) => edits.duplicate([id])}
-          onDelete={(id) => edits.remove([id])}
-          onDeleteAll={() => edits.remove(selectedElementIds)}
-          onDuplicateAll={() => edits.duplicate(selectedElementIds)}
-          onCopy={(ids) => edits.copy(selectedElementIds.length > 1 ? selectedElementIds : ids)}
-          onPaste={edits.paste}
-          onBringToFront={edits.bringToFront}
-          onSendToBack={edits.sendToBack}
-          onPromoteToMaster={edits.promote}
-          onDemoteFromMaster={edits.demote}
-          onDeleteMaster={edits.deleteMaster}
-          hasClipboard={!!clipboard}
-        />
-      )}
+      <BuilderContextMenu edits={edits} />
 
       <BuilderDialogs
         dialogs={dialogs}
