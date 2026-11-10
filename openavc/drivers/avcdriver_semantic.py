@@ -170,70 +170,103 @@ def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
     devices offline — worse than the typo. The loader logs these as warnings;
     only the authoring gates treat them as errors.
     """
-    errors = _TaggedErrors()
+    walk = _KeyWalk()
+    walk.walk({"fields": FIELDS, "extra": False}, driver_def, "")
+    return walk.errors
 
-    def walk(node: Any, value: Any, loc: str) -> None:
+
+class _KeyWalk:
+    """``unknown_key_errors``' descent: a definition's value read against the
+    registry node that declares it, one method per kind of node. A reference
+    is followed, a list's entries are read against its ``items``, a block of
+    author-chosen names against its ``extra`` and a block of declared
+    ``fields`` against those fields; anything else is not descended. Each
+    message is tagged with the place the walk last set, which is why a name
+    that is not text is tagged with the place its map's previous entry left.
+    """
+
+    def __init__(self) -> None:
+        self.errors = _TaggedErrors()
+
+    def walk(self, node: Any, value: Any, loc: str) -> None:
         if not isinstance(node, dict):
             return
         if "ref" in node:
-            walk(DEFS.get(node["ref"]), value, loc)
-            return
-        if isinstance(value, list):
-            item = node.get("items")
-            if item is not None:
-                for i, entry in enumerate(value):
-                    walk(item, entry, f"{loc}[{i}]")
-            return
-        if not isinstance(value, dict):
-            return
+            self.walk(DEFS.get(node["ref"]), value, loc)
+        elif isinstance(value, list):
+            self._entries(node.get("items"), value, loc)
+        elif isinstance(value, dict):
+            self._block(node, value, loc)
 
+    def _entries(self, item: Any, value: list[Any], loc: str) -> None:
+        if item is None:
+            return
+        for i, entry in enumerate(value):
+            self.walk(item, entry, f"{loc}[{i}]")
+
+    def _block(self, node: dict[str, Any], value: dict[Any, Any], loc: str) -> None:
         fields = node.get("fields")
         extra = node.get("extra")
-
         # A block whose keys are author-chosen names (commands, state
         # variables, a config map) declares its value shape in `extra`. The
-        # names are data, not contract keys — descend, don't judge.
-        #
-        # The one thing worth judging is whether the name is text at all.
-        # YAML reads a bare `on`, `off`, `yes` or `no` as a boolean and bare
-        # digits as a number, so a parameter an author reasonably calls `on`
-        # arrives as the key `True`. Nothing downstream can substitute it,
-        # and the failure surfaces far from the cause.
+        # names are data, not contract keys: descend, don't judge them.
         if isinstance(extra, dict) and not fields:
-            errors.ctx = loc
-            for key, sub in value.items():
-                if not isinstance(key, str):
-                    where = f"{loc}: " if loc else ""
-                    errors.append(
-                        f"{where}name '{key}' is not text. YAML reads bare "
-                        f"on/off/yes/no/true/false as booleans and bare "
-                        f"digits as numbers. Put it in quotes."
-                    )
-                walk(extra, sub, f"{loc}.{key}" if loc else str(key))
-            return
+            self._names(extra, value, loc)
+        elif isinstance(fields, dict):
+            self._fields(node, fields, value, loc)
 
-        if isinstance(fields, dict):
-            # Flagged only where the registry says the key set is fixed, so
-            # this and the schema always agree; an open or type-conditional
-            # block is still descended, just never judged here.
-            if block_has_fixed_keys(node):
-                known = set(fields)
-                # This walk already knows exactly where it is, so it tags its
-                # own entries rather than inheriting the caller's section.
-                errors.ctx = loc
-                for key in sorted(set(value) - known):
-                    close = _difflib.get_close_matches(
-                        str(key), sorted(known), n=1, cutoff=0.7
-                    )
-                    hint = f" (did you mean '{close[0]}'?)" if close else ""
-                    where = f"{loc}: " if loc else ""
-                    errors.append(f"{where}unknown key '{key}'{hint}")
-            for key, sub_node in fields.items():
-                if key in value:
-                    walk(sub_node, value[key], f"{loc}.{key}" if loc else str(key))
+    def _names(self, extra: dict[str, Any], value: dict[Any, Any], loc: str) -> None:
+        """A block of names the author chose. The one thing worth judging is
+        whether a name is text at all: YAML reads a bare ``on``, ``off``,
+        ``yes`` or ``no`` as a boolean and bare digits as a number, so a
+        parameter an author reasonably calls ``on`` arrives as the key
+        ``True``. Nothing downstream can substitute it, and the failure
+        surfaces far from the cause."""
+        errors = self.errors
+        errors.ctx = loc
+        for key, sub in value.items():
+            if not isinstance(key, str):
+                errors.append(
+                    f"{_at(loc)}name '{key}' is not text. YAML reads bare "
+                    f"on/off/yes/no/true/false as booleans and bare "
+                    f"digits as numbers. Put it in quotes."
+                )
+            self.walk(extra, sub, _inside(loc, key))
 
-    walk({"fields": FIELDS, "extra": False}, driver_def, "")
-    return errors
+    def _fields(
+        self, node: dict[str, Any], fields: dict[str, Any], value: dict[Any, Any], loc: str,
+    ) -> None:
+        """A block of declared fields: a key it does not declare is reported
+        only where the registry says the key set is fixed, so this and the
+        schema always agree; an open or type-conditional block is still
+        descended, just never judged here."""
+        if block_has_fixed_keys(node):
+            self._undeclared(set(fields), value, loc)
+        for key, sub_node in fields.items():
+            if key in value:
+                self.walk(sub_node, value[key], _inside(loc, key))
+
+    def _undeclared(self, known: set[str], value: dict[Any, Any], loc: str) -> None:
+        # This walk knows exactly where it is, so it tags its own entries
+        # rather than inheriting the caller's section.
+        errors = self.errors
+        errors.ctx = loc
+        for key in sorted(set(value) - known):
+            close = _difflib.get_close_matches(
+                str(key), sorted(known), n=1, cutoff=0.7
+            )
+            hint = f" (did you mean '{close[0]}'?)" if close else ""
+            errors.append(f"{_at(loc)}unknown key '{key}'{hint}")
+
+
+def _at(loc: str) -> str:
+    """A message's opening: the place it names, or nothing at the top."""
+    return f"{loc}: " if loc else ""
+
+
+def _inside(loc: str, key: Any) -> str:
+    """The place of ``key`` inside ``loc``."""
+    return f"{loc}.{key}" if loc else str(key)
 
 
 # How many offending fields a min_platform_version message names before it
