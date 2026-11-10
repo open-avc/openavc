@@ -356,6 +356,20 @@ describe("dragging a control in from the palette", () => {
     expect([ghost.style.width, ghost.style.height]).toEqual(["120px", "60px"]);
   });
 
+  it("keeps the last drag's ghost size and grab for a drag the canvas cannot measure", async () => {
+    const grid = canvas();
+    await renderPage(UIBuilderView);
+    start("level_meter", { x: 30, y: 35 });
+    const first = screen.getByText("level meter").style;
+    const [w, h, transform] = [first.width, first.height, first.transform];
+    expect(w).not.toBe("120px");
+    call(() => dnd().onDragCancel());
+    grid.remove();
+    start("label", { x: 70, y: 70 });
+    const second = screen.getByText("label").style;
+    expect([second.width, second.height, second.transform]).toEqual([w, h, transform]);
+  });
+
   it("sizes a plugin control from what its plugin declares", async () => {
     canvas();
     usePluginStore.setState({ extensions: { ...usePluginStore.getState().extensions, panel_elements: [{ plugin_id: "acme", type: "dial", default_size: { w: 2, h: 2 } }] } } as never);

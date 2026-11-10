@@ -306,6 +306,17 @@ describe("the other keys", () => {
     expect(press("d", { ctrl: true }).defaultPrevented).toBe(false);
   });
 
+  it("ignores a key it has no use for, whatever its name", async () => {
+    selected(["btn_1"]);
+    await renderPage(UIBuilderView);
+    for (const key of ["toString", "constructor", "__proto__", "hasOwnProperty", "Arrow", "q"]) {
+      expect(press(key).defaultPrevented, key).toBe(false);
+      expect(press(key, { ctrl: true }).defaultPrevented, key).toBe(false);
+    }
+    expect(box("main", "btn_1").x).toBe(10);
+    expect(undoLog()).toEqual([]);
+  });
+
   it("stands down while a dialog is open", async () => {
     selected(["btn_1"]);
     await renderPage(UIBuilderView);
@@ -317,6 +328,7 @@ describe("the other keys", () => {
     expect(screen.queryByText("Panel Settings", { selector: "h3" })).toBeNull();
     expect(builder().selectedElementIds).toEqual(["btn_1"]);
     expect(builder().previewMode).toBe(false);
+    expect(screen.getByTestId("stub-ElementPalette")).toBeInTheDocument();
     expect(box("main", "btn_1").x).toBe(10);
     expect(ids("main")).toContain("btn_1");
   });
