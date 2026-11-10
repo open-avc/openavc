@@ -936,8 +936,8 @@ export function resolveDropParent(
   // Page space, not stored percentages: a container inside another container is
   // stored as a fraction of ITS parent, so comparing that to a pointer's page
   // coordinate would test the wrong rectangle the moment containers nest.
-  const base = parentId ? absolutePlacements(page, layoutId)[parentId] : null;
-  if (!hasArea(base)) {
+  const base = parentId ? containerBox(parentId, absolutePlacements(page, layoutId)) : null;
+  if (!base) {
     return { parentId: null, relative: roundPlacement(box) };
   }
   return { parentId, relative: roundPlacement(parentSpace(box, base)) };
@@ -1487,26 +1487,59 @@ export function absolutePlacements(
   const byId = new Map(page.elements.map((e) => [e.id, e]));
   const out: Record<string, Placement> = {};
 
+  // `seen` is the chain walked so far: a container already on it reads as no
+  // container, which breaks a cycle at the element the walk started from.
   const resolve = (id: string, seen: Set<string>): Placement | null => {
     const memo = out[id];
     if (memo) return memo;
     const p = placements[id];
     if (!p) return null;
-    const named = byId.get(id)?.parent;
-    // A parent that is missing, self-referential or already on the chain gets
-    // treated as no parent -- a hand-edited project still has to draw.
-    const parentId = named && named !== id && byId.has(named) && !seen.has(named) ? named : null;
-    if (!parentId) {
-      out[id] = { ...p };
-      return out[id];
-    }
-    const base = resolve(parentId, new Set(seen).add(parentId));
+    const parentId = containerOf(byId.get(id), byId);
+    const base = parentId && !seen.has(parentId) ? resolve(parentId, new Set(seen).add(parentId)) : null;
     out[id] = base ? pageSpace(p, base) : { ...p };
     return out[id];
   };
 
   for (const el of page.elements) resolve(el.id, new Set([el.id]));
   return out;
+}
+
+/** The ids an element's parent is looked up among: a page's, or a list's. */
+type OnPage = { has(id: string): boolean };
+
+/**
+ * The container an element's box is measured against: its `parent`, when that
+ * names another element on this page. A parent that names nothing here, or the
+ * element itself, leaves it at page level, because a hand-edited project still
+ * has to draw. A cycle is not this rule's concern: a walk up the chain stops
+ * where it comes back round (`containersAbove`, and `absolutePlacements`' own).
+ *
+ * The panel groups a page the same way (`renderPage` in panel.js), except that
+ * it takes a self-parent at its word, so that element is drawn nowhere.
+ */
+function containerOf(el: UIElement | undefined, onPage: OnPage): string | null {
+  if (!el) return null;
+  const named = el.parent;
+  return named && named !== el.id && onPage.has(named) ? named : null;
+}
+
+/** Every container above an element, innermost first, stopping where a cycle comes back round. */
+function containersAbove(id: string, byId: ReadonlyMap<string, UIElement>): string[] {
+  const chain: string[] = [];
+  const seen = new Set<string>([id]);
+  let cursor = containerOf(byId.get(id), byId);
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    chain.push(cursor);
+    cursor = containerOf(byId.get(cursor), byId);
+  }
+  return chain;
+}
+
+/** A container's page-space box, when it has one with room to measure against. */
+function containerBox(id: string | null, absolute: Record<string, Placement>): Placement | null {
+  const box = id ? absolute[id] : undefined;
+  return hasArea(box) ? box : null;
 }
 
 /** The whole page, as a box. What a page-level element's percentages are of. */
@@ -1547,15 +1580,18 @@ function hasArea(box: Placement | null | undefined): box is Placement {
   return !!box && box.w > 0 && box.h > 0;
 }
 
-/** The page-space box an element's own percentages are measured against. */
+/** The page-space box an element's own percentages are measured against, its
+ *  container read off the first control on the page with that id. A parent
+ *  cycle is not broken here the way `absolutePlacements` breaks it, so for an
+ *  element in one this can be a different box from the one it was read in. */
 function parentAbsoluteBox(
   page: UIPage,
   elementId: string,
   absolute: Record<string, Placement>,
+  onPage: OnPage,
 ): Placement {
-  const parent = page.elements.find((e) => e.id === elementId)?.parent;
-  const box = parent && parent !== elementId ? absolute[parent] : undefined;
-  return hasArea(box) ? box : { ...PAGE_BOX };
+  const parent = containerOf(page.elements.find((e) => e.id === elementId), onPage);
+  return containerBox(parent, absolute) ?? { ...PAGE_BOX };
 }
 
 /** Write page-space boxes back as percentages of whatever each element's own
@@ -1567,9 +1603,10 @@ function withAbsolutePlacements(
   absolute: Record<string, Placement>,
   layoutId?: string | null,
 ): UIPage {
+  const onPage = new Set(page.elements.map((e) => e.id));
   const relative: Record<string, Placement> = {};
   for (const [id, box] of Object.entries(absoluteBoxes)) {
-    relative[id] = parentSpace(box, parentAbsoluteBox(page, id, absolute));
+    relative[id] = parentSpace(box, parentAbsoluteBox(page, id, absolute, onPage));
   }
   return withPlacements(page, relative, layoutId);
 }
@@ -1651,8 +1688,8 @@ function reparentPlacements(
   let next = target;
   for (const layout of source.layouts ?? []) {
     const absolute = absolutePlacements(source, layout.id);
-    const base = newParentId ? absolute[newParentId] : { ...PAGE_BOX };
-    if (!hasArea(base)) continue;
+    const base = newParentId ? containerBox(newParentId, absolute) : { ...PAGE_BOX };
+    if (!base) continue;
     const own = layout.placements ?? {};
     const rewritten: Record<string, Placement> = {};
     for (const id of ids) {
@@ -1771,8 +1808,7 @@ export function outlineRows(
   const ids = new Set(elements.map((e) => e.id));
   const byParent = new Map<string | null, UIElement[]>();
   for (const el of elements) {
-    const named = el.parent;
-    const key = named && named !== el.id && ids.has(named) ? named : null;
+    const key = containerOf(el, ids);
     const list = byParent.get(key);
     if (list) list.push(el);
     else byParent.set(key, [el]);
@@ -1983,16 +2019,7 @@ export function outlineDropParent(
 export function topmostSelection(page: UIPage, elementIds: string[]): string[] {
   const selected = new Set(elementIds);
   const byId = new Map(page.elements.map((e) => [e.id, e]));
-  return elementIds.filter((id) => {
-    const seen = new Set<string>([id]);
-    let cursor = byId.get(id)?.parent ?? null;
-    while (cursor && byId.has(cursor) && !seen.has(cursor)) {
-      if (selected.has(cursor)) return false;
-      seen.add(cursor);
-      cursor = byId.get(cursor)?.parent ?? null;
-    }
-    return true;
-  });
+  return elementIds.filter((id) => !containersAbove(id, byId).some((c) => selected.has(c)));
 }
 
 /**
@@ -2511,18 +2538,11 @@ export function referenceParentBox(
 ): { width: number; height: number } {
   const placements = resolvePlacements(page, layoutId);
   const byId = new Map(page.elements.map((e) => [e.id, e]));
-  const chain: string[] = [];
-  let cursor = byId.get(elementId)?.parent ?? null;
-  const seen = new Set<string>([elementId]);
-  while (cursor && byId.has(cursor) && !seen.has(cursor)) {
-    seen.add(cursor);
-    chain.unshift(cursor);
-    cursor = byId.get(cursor)?.parent ?? null;
-  }
   const ref = referenceBox(layoutOrientation(page, layoutId));
   let width = ref.width;
   let height = ref.height;
-  for (const id of chain) {
+  // Outermost first: the same products, in the same order, every time.
+  for (const id of containersAbove(elementId, byId).reverse()) {
     const box = placements[id];
     if (!box) continue;
     width = (box.w / 100) * width;
@@ -5280,8 +5300,7 @@ function isDrawn(arr: Arrangement, id: string): boolean {
 }
 
 function parentIn(arr: Arrangement, id: string): string | null {
-  const named = arr.byId.get(id)?.parent;
-  return named && arr.byId.has(named) && named !== id ? named : null;
+  return containerOf(arr.byId.get(id), arr.byId);
 }
 
 function parentNameIn(arr: Arrangement, id: string): string {
@@ -5295,18 +5314,14 @@ function parentNameIn(arr: Arrangement, id: string): string {
  *  never positions ends the chain rather than guessing a size for it. */
 function ancestorsIn(arr: Arrangement, id: string): Container[] {
   const chain: Container[] = [];
-  const seen = new Set<string>([id]);
-  let cursor = parentIn(arr, id);
-  while (cursor && !seen.has(cursor)) {
-    seen.add(cursor);
-    const box = own(arr.absolute, cursor);
+  for (const container of containersAbove(id, arr.byId)) {
+    const box = own(arr.absolute, container);
     if (!box) break;
     chain.push({
-      label: `'${cursor}'`,
+      label: `'${container}'`,
       widthPx: (box.w / 100) * arr.reference.width,
       heightPx: (box.h / 100) * arr.reference.height,
     });
-    cursor = parentIn(arr, cursor);
   }
   return chain;
 }
