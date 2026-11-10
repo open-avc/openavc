@@ -655,6 +655,7 @@ export function Canvas({
         const snapped =
           kind === "move" ? movedBox(start, travel, held) : resizedBox(start, direction, travel, { ...held, lock });
         const next: Record<string, Placement> = {};
+        let adoptInto: string | null = null;
         if (kind === "move") {
           // The primary decides where the selection lands; everyone else
           // travels by the same distance in pixels so the group keeps its
@@ -673,27 +674,20 @@ export function Canvas({
                     y: b.y + ((deltaY / 100) * primaryRect.height / rect.height) * 100,
                   });
           }
+          // What this drag would put the element into, live. Only a move can
+          // change a parent -- a resize reshapes the box you grabbed and
+          // nothing else -- and only a change is worth drawing.
+          const target = dropTargetFor(
+            page,
+            anchorId,
+            toPageBox(snapped.placement, parentId ? absolute[parentId] : null),
+            activeLayoutId,
+          );
+          if (target !== parentId) adoptInto = target;
         } else {
           next[anchorId] = snapped.placement;
         }
         const { guidesX, guidesY } = snapped;
-
-        // What this drag would put the element into, live. Only a move can
-        // change a parent -- a resize reshapes the box you grabbed and nothing
-        // else -- and only a change is worth drawing.
-        let adoptInto: string | null = null;
-        if (kind === "move") {
-          const landed = next[anchorId];
-          if (landed) {
-            const target = dropTargetFor(
-              page,
-              anchorId,
-              toPageBox(landed, parentId ? absolute[parentId] : null),
-              activeLayoutId,
-            );
-            if (target !== parentId) adoptInto = target;
-          }
-        }
 
         const live: LiveGesture = { kind, placements: next, guidesX, guidesY, adoptInto };
         gestureRef.current = live;
