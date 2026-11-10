@@ -1057,6 +1057,15 @@ def test_actions_that_are_not_a_list_declare_nothing(actions: Any) -> None:
     assert value_conversion_errors({"actions": actions}, python=True) == []
 
 
+def test_a_python_drivers_settings_are_refused_their_map_in_declared_order() -> None:
+    info = {**PY_BASE, "device_settings": {"zeta": {"map": {}}, "alpha": {"map": {"x": "y"}}}}
+    tail = "the platform maps a setting's value only for YAML drivers, and a Python driver writes its settings in its own code"
+    assert value_conversion_errors(info, python=True) == [
+        f"Device setting 'zeta': remove map; {tail}",
+        f"Device setting 'alpha': remove map; {tail}",
+    ]
+
+
 def test_value_conversion_takes_a_definition_with_nothing_in_it() -> None:
     assert value_conversion_errors({}) == []
     assert value_conversion_errors({}, python=True) == []
