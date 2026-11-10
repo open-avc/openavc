@@ -346,6 +346,33 @@ export function withMasterPlacement(
 }
 
 /**
+ * The boxes a page control keeps when it becomes a master element, one per
+ * orientation.
+ *
+ * A master's box is a percentage of the VIEWPORT, so it is valid on every page
+ * whatever those pages are arranged like. The STORED placement is a percentage
+ * of the element's parent -- for a container child that is the container, not
+ * the page -- so each converts through the flattened page space, per
+ * orientation: a portrait arrangement's position becomes the master's portrait
+ * box instead of being discarded. Of two arrangements of one orientation the
+ * primary's box wins, else the first; the primary's orientation always gets a
+ * box, the default one when the page has no arrangement to read it from.
+ */
+export function masterPlacementsOf(page: UIPage, elementId: string): Record<string, Placement> {
+  const primary = primaryLayout(page);
+  const placements: Record<string, Placement> = {};
+  for (const layout of page.layouts ?? []) {
+    const key = layout.orientation ?? "landscape";
+    if (key in placements && layout.id !== primary?.id) continue;
+    const box = absolutePlacements(page, layout.id)[elementId];
+    if (box) placements[key] = roundPlacement(box);
+  }
+  const primaryKey = primary?.orientation ?? "landscape";
+  if (!(primaryKey in placements)) placements[primaryKey] = { ...DEFAULT_PLACEMENT };
+  return placements;
+}
+
+/**
  * The canvas size for an arrangement.
  *
  * The screen presets are all landscape, and a portrait layout authored on a

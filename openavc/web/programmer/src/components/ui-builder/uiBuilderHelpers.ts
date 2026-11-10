@@ -13,9 +13,9 @@ import {
   absolutePlacements,
   containerOf,
   getPlacement,
+  masterPlacement,
+  masterPlacementsOf,
   pageSnap,
-  primaryLayout,
-  roundPlacement,
   withAbsolutePlacements,
   withPlacement,
   withPlacements,
@@ -1141,6 +1141,32 @@ export function lockedIdsFor(
 
 // --- Master element helpers ---
 
+/**
+ * A control crossing between a page and the master elements, under an id the
+ * shared ui.<id> namespace leaves free.
+ *
+ * Masters and page elements share ui.<id>, and two same-id elements would
+ * break ui.<id> resolution at runtime. So when the id is already taken (an
+ * imported or hand-edited project, or a page control created with this id
+ * while it lived as a master), the control takes a fresh one and its
+ * references to itself follow it.
+ */
+function underFreeId(element: UIElement, taken: Set<string>): UIElement {
+  if (!taken.has(element.id)) return element;
+  return rewriteElement(element, element.id, generateId(element.type, taken));
+}
+
+/**
+ * Make a page control a master element, drawn on every page.
+ *
+ * It keeps the box it had on screen in each orientation (`masterPlacementsOf`),
+ * and leaves its parent link behind: masters are placed against the viewport,
+ * never inside a page's container. If a whole container is being promoted, its
+ * children stay behind on the page, re-homed to the container's own parent
+ * without moving -- a master cannot be anyone's parent, and losing six wired
+ * controls to one promote is not a trade anybody wants. Same conversion a
+ * container delete does.
+ */
 export function promoteToMaster(
   pages: UIPage[],
   masterElements: MasterElement[],
@@ -1152,42 +1178,9 @@ export function promoteToMaster(
   const element = page.elements.find(e => e.id === elementId);
   if (!element) return { pages, masterElements };
 
-  // A master's box is a percentage of the VIEWPORT, so it is valid on every
-  // page whatever those pages are arranged like. The STORED placement is a
-  // percentage of the element's parent -- for a container child that is the
-  // container, not the page -- so convert through the flattened page space,
-  // and do it per orientation: a portrait arrangement's position becomes the
-  // master's portrait placement instead of being discarded.
-  const primary = primaryLayout(page);
-  const placements: Record<string, Placement> = {};
-  for (const layout of page.layouts ?? []) {
-    const key = layout.orientation ?? "landscape";
-    if (key in placements && layout.id !== primary?.id) continue;
-    const box = absolutePlacements(page, layout.id)[elementId];
-    if (box) placements[key] = roundPlacement(box);
-  }
-  const primaryKey = primary?.orientation ?? "landscape";
-  if (!(primaryKey in placements)) placements[primaryKey] = { ...DEFAULT_PLACEMENT };
-
-  // Remove from page, dropping its box in every layout. If a whole container
-  // is being promoted its children stay behind on the page, re-homed to the
-  // container's own parent without moving -- a master cannot be anyone's
-  // parent, and losing six wired controls to one promote is not a trade
-  // anybody wants. Same conversion a container delete does.
+  const placements = masterPlacementsOf(page, elementId);
   const newPages = removeElementFromPage(pages, pageId, elementId);
-
-  // Masters and page elements share the ui.<id> namespace. If the promoted
-  // id is already taken (possible in imported/hand-edited projects), rename
-  // the promoted copy and rewrite its self-references.
-  const taken = takenElementIds(newPages, masterElements.map((m) => m.id));
-  let promoted: UIElement = element;
-  if (taken.has(promoted.id)) {
-    const newId = generateId(promoted.type, taken);
-    promoted = rewriteElement(promoted, promoted.id, newId);
-  }
-
-  // Add to master elements with pages: "*". The parent link stays behind --
-  // masters are placed against the viewport, never inside a page's container.
+  const promoted = underFreeId(element, takenElementIds(newPages, masterElements.map((m) => m.id)));
   const masterEl: MasterElement = {
     ...promoted,
     parent: null,
@@ -1198,6 +1191,13 @@ export function promoteToMaster(
   return { pages: newPages, masterElements: [...masterElements, masterEl] };
 }
 
+/**
+ * Put a master element back on a page as an ordinary control.
+ *
+ * The master-only fields go; the box it comes back with is the one a landscape
+ * arrangement draws it at (`masterPlacement`, its fallbacks included, else the
+ * default box), written into the page's primary arrangement.
+ */
 export function demoteFromMaster(
   pages: UIPage[],
   masterElements: MasterElement[],
@@ -1207,29 +1207,10 @@ export function demoteFromMaster(
   const masterEl = masterElements.find(m => m.id === masterElementId);
   if (!masterEl) return { pages, masterElements };
 
-  // Remove from masters
   const newMasters = masterElements.filter(m => m.id !== masterElementId);
-
-  // Strip the master-only fields; the box comes back as a page placement.
-  const { pages: _pagesField, placements: masterPlacements, hidden: _hidden, ...elementFields } =
-    masterEl;
-  let demoted = elementFields as UIElement;
-  const box =
-    masterPlacements?.landscape ??
-    masterPlacements?.portrait ??
-    Object.values(masterPlacements ?? {})[0] ??
-    { ...DEFAULT_PLACEMENT };
-
-  // The destination shares the ui.<id> namespace with every page element and
-  // the remaining masters. On collision (e.g. a page element was created with
-  // this id while it lived as a master in an imported project), rename the
-  // demoted copy and rewrite its self-references — two same-id elements would
-  // break ui.<id> resolution at runtime.
-  const taken = takenElementIds(pages, newMasters.map((m) => m.id));
-  if (taken.has(demoted.id)) {
-    const newId = generateId(demoted.type, taken);
-    demoted = rewriteElement(demoted, demoted.id, newId);
-  }
+  const { pages: _pagesField, placements: _placements, hidden: _hidden, ...elementFields } = masterEl;
+  const box = masterPlacement(masterEl, "landscape") ?? { ...DEFAULT_PLACEMENT };
+  const demoted = underFreeId(elementFields as UIElement, takenElementIds(pages, newMasters.map((m) => m.id)));
 
   const newPages = pages.map(p =>
     p.id === targetPageId
