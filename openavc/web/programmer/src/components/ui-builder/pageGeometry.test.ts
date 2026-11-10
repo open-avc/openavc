@@ -213,7 +213,7 @@ describe("alignElements", () => {
     ["align-middle", box(10, 35, 20, 10), box(50, 25, 10, 30)],
     ["align-bottom", box(10, 60, 20, 10), box(50, 40, 10, 30)],
   ])("%s lines two controls up on the box they span", (action, a, b) => {
-    const [out] = alignElements([two()], "pg", ["a", "b"], action);
+    const [out] = alignElements([two()], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, action);
     expect(out.layouts[0].placements).toEqual({ a, b });
   });
 
@@ -222,7 +222,7 @@ describe("alignElements", () => {
     ["align-bottom", box(10, 90, 20, 10)],
   ])("%s on one control lines it up on the page", (action, a) => {
     const p = page([el("a")], [primary({ a: box(10, 10, 20, 10) })]);
-    expect(alignElements([p], "pg", ["a"], action)[0].layouts[0].placements.a).toEqual(a);
+    expect(alignElements([p], { pageId: "pg", elementIds: ["a"], layoutId: null }, action)[0].layouts[0].placements.a).toEqual(a);
   });
 
   it("lines one control in a container up on the page and writes it back against the container", () => {
@@ -230,7 +230,7 @@ describe("alignElements", () => {
       [el("g", "group"), el("kid", "button", "g")],
       [primary({ g: box(0, 0, 50, 50), kid: box(0, 0, 20, 20) })],
     );
-    const [out] = alignElements([p], "pg", ["kid"], "align-right");
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["kid"], layoutId: null }, "align-right");
     expect(out.layouts[0].placements.kid).toEqual(box(180, 0, 20, 20));
   });
 
@@ -239,7 +239,7 @@ describe("alignElements", () => {
       [el("g", "group"), el("kid", "button", "g")],
       [primary({ g: box(40, 40, 0, 20), kid: box(0, 0, 20, 20) })],
     );
-    const [out] = alignElements([p], "pg", ["kid"], "align-left");
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["kid"], layoutId: null }, "align-left");
     expect(out.layouts[0].placements.kid).toEqual(box(0, 40, 0, 4));
   });
 
@@ -248,7 +248,7 @@ describe("alignElements", () => {
       [el("g", "group"), el("kid", "button", "g")],
       [primary({ g: box(0, 0, 50, 25), kid: box(0, 0, 20, 40) })],
     );
-    const [out] = alignElements([p], "pg", ["kid"], "align-bottom");
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["kid"], layoutId: null }, "align-bottom");
     expect(out.layouts[0].placements.kid).toEqual(box(0, 360, 20, 40));
   });
 
@@ -257,41 +257,41 @@ describe("alignElements", () => {
       [el("g", "group"), el("kid", "button", "g")],
       [primary({ g: box(10, 10, 50, 0), kid: box(0, 0, 20, 20) })],
     );
-    const [out] = alignElements([p], "pg", ["kid"], "align-left");
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["kid"], layoutId: null }, "align-left");
     expect(out.layouts[0].placements.kid).toEqual(box(0, 10, 10, 0));
   });
 
   it("writes a control that names itself as its container back as a page box", () => {
     const p = page([el("self", "button", "self")], [primary({ self: box(10, 10, 20, 10) })]);
-    const [out] = alignElements([p], "pg", ["self"], "align-right");
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["self"], layoutId: null }, "align-right");
     expect(out.layouts[0].placements.self).toEqual(box(80, 10, 20, 10));
   });
 
   it("measures a control with no box from the default box and writes it one", () => {
     const p = page([el("a"), el("b")], [primary({ a: box(50, 10, 20, 10) })]);
-    const [out] = alignElements([p], "pg", ["a", "b"], "align-right");
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, "align-right");
     expect(out.layouts[0].placements).toEqual({ a: box(50, 10, 20, 10), b: box(45, 0, 25, 12.5) });
   });
 
   it("writes new boxes in page order whatever order the controls were selected in", () => {
     const p = page([el("a"), el("b")], [primary({})]);
-    const [out] = alignElements([p], "pg", ["b", "a"], "align-left");
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["b", "a"], layoutId: null }, "align-left");
     expect(Object.keys(out.layouts[0].placements)).toEqual(["a", "b"]);
   });
 
   it("hands back the same page when nothing selected is on it, or everything selected is locked", () => {
     const p = two();
-    expect(alignElements([p], "pg", ["nope"], "align-left")[0]).toBe(p);
+    expect(alignElements([p], { pageId: "pg", elementIds: ["nope"], layoutId: null }, "align-left")[0]).toBe(p);
     const locked = page(
       [el("a", "button", null, { locked: true }), el("b", "button", null, { locked: true })],
       p.layouts,
     );
-    expect(alignElements([locked], "pg", ["a", "b"], "align-left")[0]).toBe(locked);
+    expect(alignElements([locked], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, "align-left")[0]).toBe(locked);
   });
 
   it("leaves every other page as it was", () => {
     const other = page([el("a")], [primary({ a: box(10, 10, 20, 10) })], "other");
-    const out = alignElements([other, two()], "pg", ["a", "b"], "align-left");
+    const out = alignElements([other, two()], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, "align-left");
     expect(out[0]).toBe(other);
   });
 });
@@ -302,7 +302,7 @@ describe("distributeElements", () => {
       [el("a"), el("c"), el("b"), el("d")],
       [primary({ a: box(0, 0, 10, 10), b: box(30, 0, 10, 10), c: box(30, 0, 20, 10), d: box(90, 0, 10, 10) })],
     );
-    const [out] = distributeElements([p], "pg", ["a", "b", "c", "d"], "horizontal");
+    const [out] = distributeElements([p], { pageId: "pg", elementIds: ["a", "b", "c", "d"], layoutId: null }, "horizontal");
     expect(out.layouts[0].placements.b.x).toBe(26.6667);
     expect(out.layouts[0].placements.c.x).toBe(53.3333);
   });
@@ -312,7 +312,7 @@ describe("distributeElements", () => {
       [el("a"), el("b"), el("c"), el("d")],
       [primary({ a: box(0, 0, 10, 10), b: box(30, 0, 20, 10), c: box(30, 0, 10, 10), d: box(90, 0, 10, 10) })],
     );
-    const [out] = distributeElements([p], "pg", ["a", "b", "c", "d"], "horizontal");
+    const [out] = distributeElements([p], { pageId: "pg", elementIds: ["a", "b", "c", "d"], layoutId: null }, "horizontal");
     expect(out.layouts[0].placements.c.x).toBe(26.6667);
     expect(out.layouts[0].placements.b.x).toBe(53.3333);
   });
@@ -325,7 +325,7 @@ describe("distributeElements", () => {
       order.map((id) => el(id)),
       [primary({ a: box(0, 0, 10, 10), b: box(30, 0, 10, 10), c: box(30, 0, 10, 10), d: box(90, 0, 10, 10) })],
     );
-    const [out] = distributeElements([p], "pg", ["a", "b", "c", "d"], "horizontal");
+    const [out] = distributeElements([p], { pageId: "pg", elementIds: ["a", "b", "c", "d"], layoutId: null }, "horizontal");
     expect(out.layouts[0].placements.b.x).toBe(30);
     expect(out.layouts[0].placements.c.x).toBe(60);
   });
@@ -335,7 +335,7 @@ describe("distributeElements", () => {
       [el("a"), el("b", "button", null, { locked: true }), el("c"), el("d")],
       [primary({ a: box(0, 0, 10, 10), b: box(15, 0, 10, 10), c: box(20, 0, 10, 10), d: box(90, 0, 10, 10) })],
     );
-    const [out] = distributeElements([p], "pg", ["a", "b", "c", "d"], "horizontal");
+    const [out] = distributeElements([p], { pageId: "pg", elementIds: ["a", "b", "c", "d"], layoutId: null }, "horizontal");
     expect(out.layouts[0].placements.b).toEqual(box(15, 0, 10, 10));
     expect(out.layouts[0].placements.c.x).toBe(60);
   });
@@ -345,7 +345,7 @@ describe("distributeElements", () => {
       [el("a"), el("b", "button", null, { locked: true }), el("c")],
       [primary({ a: box(0, 0, 10, 10), b: box(15, 0, 10, 10), c: box(90, 0, 10, 10) })],
     );
-    expect(distributeElements([p], "pg", ["a", "b", "c"], "horizontal")[0]).toBe(p);
+    expect(distributeElements([p], { pageId: "pg", elementIds: ["a", "b", "c"], layoutId: null }, "horizontal")[0]).toBe(p);
   });
 
   it("measures a control with no box from the default box", () => {
@@ -353,7 +353,7 @@ describe("distributeElements", () => {
       [el("a"), el("b"), el("c")],
       [primary({ a: box(0, 0, 10, 10), c: box(0, 90, 10, 10) })],
     );
-    const [out] = distributeElements([p], "pg", ["a", "b", "c"], "vertical");
+    const [out] = distributeElements([p], { pageId: "pg", elementIds: ["a", "b", "c"], layoutId: null }, "vertical");
     expect(out.layouts[0].placements.b).toEqual(box(0, 43.75, 25, 12.5));
   });
 
@@ -363,7 +363,7 @@ describe("distributeElements", () => {
       [el("g", "group"), el("kid", "button", "g"), el("c")],
       [primary({ g: box(0, 0, 50, 50), kid: box(0, 0, 10, 10), c: box(90, 0, 10, 10) })],
     );
-    const out = distributeElements([other, p], "pg", ["g", "kid", "c"], "horizontal");
+    const out = distributeElements([other, p], { pageId: "pg", elementIds: ["g", "kid", "c"], layoutId: null }, "horizontal");
     expect(out[0]).toBe(other);
     expect(out[1]).toBe(p);
   });
@@ -372,7 +372,7 @@ describe("distributeElements", () => {
 describe("matchSizeElements", () => {
   it("hands back the same page when the first control selected has no box", () => {
     const p = page([el("a"), el("b")], [primary({ b: box(0, 0, 10, 10) })]);
-    expect(matchSizeElements([p], "pg", ["a", "b"], "match-both")[0]).toBe(p);
+    expect(matchSizeElements([p], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, "match-both")[0]).toBe(p);
   });
 
   it("skips a control with no box, and a locked one", () => {
@@ -380,7 +380,7 @@ describe("matchSizeElements", () => {
       [el("a"), el("b"), el("c", "button", null, { locked: true }), el("d")],
       [primary({ a: box(0, 0, 30, 40), c: box(0, 0, 10, 10), d: box(5, 5, 10, 10) })],
     );
-    const [out] = matchSizeElements([p], "pg", ["a", "b", "c", "d"], "match-both");
+    const [out] = matchSizeElements([p], { pageId: "pg", elementIds: ["a", "b", "c", "d"], layoutId: null }, "match-both");
     expect(out.layouts[0].placements).toEqual({
       a: box(0, 0, 30, 40),
       c: box(0, 0, 10, 10),
@@ -391,7 +391,7 @@ describe("matchSizeElements", () => {
   it("hands back the same page for one control, and leaves other pages alone", () => {
     const other = page([el("a")], [primary({ a: box(0, 0, 10, 10) })], "other");
     const p = page([el("a")], [primary({ a: box(0, 0, 10, 10) })]);
-    const out = matchSizeElements([other, p], "pg", ["a"], "match-width");
+    const out = matchSizeElements([other, p], { pageId: "pg", elementIds: ["a"], layoutId: null }, "match-width");
     expect(out[0]).toBe(other);
     expect(out[1]).toBe(p);
   });
@@ -515,9 +515,9 @@ describe("an arranging tool with too little selected never reads the page's boxe
     ({ id: "pg", name: "Page", elements: [el("a"), el("b")], layouts: { landscape: {} } }) as unknown as UIPage;
 
   it.each([
-    ["align, nothing on the page selected", (p: UIPage) => alignElements([p], "pg", ["nope"], "align-left")],
-    ["distribute, two selected", (p: UIPage) => distributeElements([p], "pg", ["a", "b"], "horizontal")],
-    ["match size, one selected", (p: UIPage) => matchSizeElements([p], "pg", ["a"], "match-both")],
+    ["align, nothing on the page selected", (p: UIPage) => alignElements([p], { pageId: "pg", elementIds: ["nope"], layoutId: null }, "align-left")],
+    ["distribute, two selected", (p: UIPage) => distributeElements([p], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, "horizontal")],
+    ["match size, one selected", (p: UIPage) => matchSizeElements([p], { pageId: "pg", elementIds: ["a"], layoutId: null }, "match-both")],
   ])("%s hands the page back", (_name, run) => {
     const p = broken();
     expect(run(p)[0]).toBe(p);

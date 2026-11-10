@@ -120,7 +120,7 @@ describe("two controls sharing an id, written back", () => {
       [el("g", "group"), el("a", "button", "g"), el("a")],
       [primary({ g: box(0, 0, 50, 50), a: box(10, 10, 10, 10) })],
     );
-    const [out] = alignElements([p], "pg", ["a"], "align-left");
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["a"], layoutId: null }, "align-left");
     expect(out.layouts[0].placements.a).toEqual(box(20, 20, 20, 20));
   });
 });
@@ -131,7 +131,7 @@ describe("a parent cycle, read and written back", () => {
       [el("a", "group", "b"), el("b", "group", "a")],
       [primary({ a: box(10, 10, 50, 50), b: box(20, 20, 50, 50) })],
     );
-    const [out] = alignElements([p], "pg", ["b"], "align-left");
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["b"], layoutId: null }, "align-left");
     expect(out.layouts[0].placements.b).toEqual(box(-100, -20, 200, 200));
     expect(out.layouts[0].placements.a).toEqual(box(10, 10, 50, 50));
   });

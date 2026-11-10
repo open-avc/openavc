@@ -1171,7 +1171,7 @@ const alignPage = (elements, placements) => ({
       free: { x: 70, y: 10, w: 20, h: 10 },
     },
   );
-  const out = H.alignElements([page], "pg", ["kid", "free"], "align-left");
+  const out = H.alignElements([page], { pageId: "pg", elementIds: ["kid", "free"], layoutId: null }, "align-left");
   const abs = H.absolutePlacements(out[0]);
   const stored = out[0].layouts[0].placements;
   results.a101_align_left_across_container = {
@@ -1196,7 +1196,7 @@ const alignPage = (elements, placements) => ({
     },
   );
   const kept = H.topmostSelection(page, ["box", "kid", "free"]);
-  const out = H.alignElements([page], "pg", ["box", "kid", "free"], "align-left");
+  const out = H.alignElements([page], { pageId: "pg", elementIds: ["box", "kid", "free"], layoutId: null }, "align-left");
   const stored = out[0].layouts[0].placements;
   results.a101_topmost_selection_drops_children = {
     pass: eq(kept, ["box", "free"]) && eq(stored.kid, { x: 50, y: 50, w: 50, h: 50 }),
@@ -1218,7 +1218,7 @@ const alignPage = (elements, placements) => ({
       b: { x: 60, y: 40, w: 20, h: 10 },
     },
   );
-  const out = H.alignElements([page], "pg", ["pinned", "a", "b"], "align-left");
+  const out = H.alignElements([page], { pageId: "pg", elementIds: ["pinned", "a", "b"], layoutId: null }, "align-left");
   const stored = out[0].layouts[0].placements;
   results.a101_locked_anchors_but_does_not_move = {
     pass: near(stored.pinned.x, 5) && near(stored.a.x, 5) && near(stored.b.x, 5),
@@ -1240,7 +1240,7 @@ const alignPage = (elements, placements) => ({
       c: { x: 90, y: 0, w: 10, h: 10 },
     },
   );
-  const out = H.distributeElements([page], "pg", ["a", "b", "c"], "horizontal");
+  const out = H.distributeElements([page], { pageId: "pg", elementIds: ["a", "b", "c"], layoutId: null }, "horizontal");
   const p = out[0].layouts[0].placements;
   // span 0..100 = 100, widths 10+40+10 = 60, so each of the two gaps is 20.
   const gap1 = p.b.x - (p.a.x + p.a.w);
@@ -1266,7 +1266,7 @@ const alignPage = (elements, placements) => ({
   // Span is edge to edge -- 3 to 87 is 84, less 60 of element leaves 24 to
   // split, so b starts one 12-wide gap after a's far edge at 13. Passing the
   // ids out of order proves the helper sorts rather than trusting the caller.
-  const out = H.distributeElements([page], "pg", ["c", "a", "b"], "horizontal");
+  const out = H.distributeElements([page], { pageId: "pg", elementIds: ["c", "a", "b"], layoutId: null }, "horizontal");
   const p = out[0].layouts[0].placements;
   results.a102_distribute_pins_first_and_last = {
     pass: near(p.a.x, 3) && near(p.c.x, 77) && near(p.b.x, 25),
@@ -1283,7 +1283,7 @@ const alignPage = (elements, placements) => ({
       c: { x: 5, y: 90, w: 10, h: 10 },
     },
   );
-  const out = H.distributeElements([page], "pg", ["a", "b", "c"], "vertical");
+  const out = H.distributeElements([page], { pageId: "pg", elementIds: ["a", "b", "c"], layoutId: null }, "vertical");
   const p = out[0].layouts[0].placements;
   const gap1 = p.b.y - (p.a.y + p.a.h);
   const gap2 = p.c.y - (p.b.y + p.b.h);
@@ -1299,7 +1299,7 @@ const alignPage = (elements, placements) => ({
     [{ id: "a", type: "button" }, { id: "b", type: "button" }],
     { a: { x: 0, y: 0, w: 10, h: 10 }, b: { x: 50, y: 0, w: 10, h: 10 } },
   );
-  const out = H.distributeElements([page], "pg", ["a", "b"], "horizontal");
+  const out = H.distributeElements([page], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, "horizontal");
   results.a102_distribute_needs_three = { pass: out[0] === page, detail: out[0] === page };
 }
 
@@ -1314,11 +1314,11 @@ const alignPage = (elements, placements) => ({
       c: { x: 70, y: 0, w: 5, h: 5 },
     },
   );
-  const w = H.matchSizeElements([page], "pg", ["a", "b", "c"], "match-width")[0]
+  const w = H.matchSizeElements([page], { pageId: "pg", elementIds: ["a", "b", "c"], layoutId: null }, "match-width")[0]
     .layouts[0].placements;
-  const h = H.matchSizeElements([page], "pg", ["a", "b", "c"], "match-height")[0]
+  const h = H.matchSizeElements([page], { pageId: "pg", elementIds: ["a", "b", "c"], layoutId: null }, "match-height")[0]
     .layouts[0].placements;
-  const both = H.matchSizeElements([page], "pg", ["a", "b", "c"], "match-both")[0]
+  const both = H.matchSizeElements([page], { pageId: "pg", elementIds: ["a", "b", "c"], layoutId: null }, "match-both")[0]
     .layouts[0].placements;
   results.a103_match_width_height_both = {
     pass:
@@ -1345,7 +1345,7 @@ const alignPage = (elements, placements) => ({
       kid: { x: 0, y: 0, w: 10, h: 10 },
     },
   );
-  const out = H.matchSizeElements([page], "pg", ["free", "kid"], "match-width");
+  const out = H.matchSizeElements([page], { pageId: "pg", elementIds: ["free", "kid"], layoutId: null }, "match-width");
   const stored = out[0].layouts[0].placements;
   const abs = H.absolutePlacements(out[0]);
   results.a103_match_width_matches_what_is_drawn = {
@@ -1359,7 +1359,7 @@ const alignPage = (elements, placements) => ({
     [{ id: "a", type: "button" }, { id: "b", type: "button", locked: true }],
     { a: { x: 0, y: 0, w: 25, h: 12 }, b: { x: 40, y: 0, w: 10, h: 30 } },
   );
-  const out = H.matchSizeElements([page], "pg", ["a", "b"], "match-both");
+  const out = H.matchSizeElements([page], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, "match-both");
   results.a103_match_skips_locked_target = { pass: out[0] === page, detail: "unchanged" };
 }
 
@@ -1466,7 +1466,7 @@ const alignPage = (elements, placements) => ({
         a: { x: 80, y: 40, w: 10, h: 10 } }, hidden: [] },
     ],
   };
-  const out = H.alignElements([page], "pg", ["a", "b"], "align-left", "portrait");
+  const out = H.alignElements([page], { pageId: "pg", elementIds: ["a", "b"], layoutId: "portrait" }, "align-left");
   const landscape = out[0].layouts[0].placements;
   const portrait = out[0].layouts[1].placements;
   results.a106_align_writes_named_layout_only = {

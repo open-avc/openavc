@@ -69,6 +69,7 @@ import {
   type DistributeAxis,
   type MatchSizeAction,
   type Orientation,
+  type PageSelection,
 } from "./uiBuilderHelpers";
 
 interface CanvasToolbarProps {
@@ -325,26 +326,29 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
     setRenamingPageId(null);
   };
 
+  // What the arrange tools act on: the controls selected on the page on screen,
+  // in the arrangement being authored.
+  const selection: PageSelection | null = selectedPageId
+    ? { pageId: selectedPageId, elementIds: selectedElementIds, layoutId: activeLayoutId }
+    : null;
+
   const handleAlign = (action: AlignAction) => {
-    if (selectedElementIds.length === 0 || !selectedPageId) return;
-    applyPageMutation(
-      (p) => alignElements(p, selectedPageId!, selectedElementIds, action, activeLayoutId),
-      `Align ${action}`,
-    );
+    if (!selection || selection.elementIds.length === 0) return;
+    applyPageMutation((p) => alignElements(p, selection, action), `Align ${action}`);
   };
 
   const handleDistribute = (axis: DistributeAxis) => {
-    if (selectedElementIds.length < 3 || !selectedPageId) return;
+    if (!selection || selection.elementIds.length < 3) return;
     applyPageMutation(
-      (p) => distributeElements(p, selectedPageId!, selectedElementIds, axis, activeLayoutId),
+      (p) => distributeElements(p, selection, axis),
       axis === "horizontal" ? "Distribute horizontally" : "Distribute vertically",
     );
   };
 
   const handleMatchSize = (action: MatchSizeAction) => {
-    if (selectedElementIds.length < 2 || !selectedPageId) return;
+    if (!selection || selection.elementIds.length < 2) return;
     applyPageMutation(
-      (p) => matchSizeElements(p, selectedPageId!, selectedElementIds, action, activeLayoutId),
+      (p) => matchSizeElements(p, selection, action),
       action === "match-width"
         ? "Match width"
         : action === "match-height"

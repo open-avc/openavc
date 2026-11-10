@@ -41,9 +41,9 @@ describe("a page that is not there", () => {
   });
 
   it.each([
-    ["align", (pages: UIPage[]) => alignElements(pages, "nope", ["a", "b"], "align-left", "land")],
-    ["distribute", (pages: UIPage[]) => distributeElements(pages, "nope", ["a", "b", "c"], "horizontal", "land")],
-    ["match size", (pages: UIPage[]) => matchSizeElements(pages, "nope", ["a", "b"], "match-both", "land")],
+    ["align", (pages: UIPage[]) => alignElements(pages, { pageId: "nope", elementIds: ["a", "b"], layoutId: "land" }, "align-left")],
+    ["distribute", (pages: UIPage[]) => distributeElements(pages, { pageId: "nope", elementIds: ["a", "b", "c"], layoutId: "land" }, "horizontal")],
+    ["match size", (pages: UIPage[]) => matchSizeElements(pages, { pageId: "nope", elementIds: ["a", "b"], layoutId: "land" }, "match-both")],
   ])("%s hands back every page as it was", (_name, run) => {
     const pages = [onePage()];
     const out = run(pages);

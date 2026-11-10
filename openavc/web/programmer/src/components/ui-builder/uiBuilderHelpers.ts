@@ -404,6 +404,24 @@ export function moveElementsInPage(
 }
 
 /**
+ * The page an edit is aimed at, and the arrangement on screen: where a tool
+ * measures the boxes it reads and stores the ones it moves.
+ *
+ * The arrangement is required, never left to a default: a caller that forgot it
+ * would read and write the primary while the author looks at another (null is
+ * the primary, said on purpose).
+ */
+export interface OnScreen {
+  pageId: string;
+  layoutId: string | null;
+}
+
+/** ... and the controls selected on it, in the order they were selected. */
+export interface PageSelection extends OnScreen {
+  elementIds: string[];
+}
+
+/**
  * An element and everything living inside it, in page order.
  *
  * Page order is z-order, so carrying it across is what makes a copy stack the
@@ -805,12 +823,11 @@ type Arranged = Record<string, Placement>;
 
 function arrangeSelection(
   pages: UIPage[],
-  pageId: string,
-  selection: { elementIds: string[]; layoutId?: string | null },
+  selection: PageSelection,
   arrange: (sel: Arranging) => Arranged,
 ): UIPage[] {
   return pages.map((p) => {
-    if (p.id !== pageId) return p;
+    if (p.id !== selection.pageId) return p;
     const ids = topmostSelection(p, selection.elementIds);
     const kept = new Set(ids);
     let absolute: Record<string, Placement> | undefined;
@@ -864,14 +881,8 @@ function alignSpan(count: number, boxes: Placement[]): Span {
   };
 }
 
-export function alignElements(
-  pages: UIPage[],
-  pageId: string,
-  elementIds: string[],
-  action: AlignAction,
-  layoutId?: string | null,
-): UIPage[] {
-  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ targets, pageBoxes, movable }) => {
+export function alignElements(pages: UIPage[], selection: PageSelection, action: AlignAction): UIPage[] {
+  return arrangeSelection(pages, selection, ({ targets, pageBoxes, movable }) => {
     if (targets.length === 0) return {};
     const absolute = pageBoxes();
     const boxes = new Map(
@@ -904,14 +915,8 @@ export type DistributeAxis = "horizontal" | "vertical";
  * Overlapping elements produce a negative gap, which spreads the overlap evenly
  * rather than refusing -- the same thing every design tool does.
  */
-export function distributeElements(
-  pages: UIPage[],
-  pageId: string,
-  elementIds: string[],
-  axis: DistributeAxis,
-  layoutId?: string | null,
-): UIPage[] {
-  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ targets, pageBoxes, movable }) => {
+export function distributeElements(pages: UIPage[], selection: PageSelection, axis: DistributeAxis): UIPage[] {
+  return arrangeSelection(pages, selection, ({ targets, pageBoxes, movable }) => {
     if (targets.length < 3) return {};
     const absolute = pageBoxes();
     const pos = axis === "horizontal" ? "x" : "y";
@@ -971,14 +976,8 @@ export type MatchSizeAction = "match-width" | "match-height" | "match-both";
  * the same width on screen as its page-level neighbour rather than the same
  * percentage of a different box.
  */
-export function matchSizeElements(
-  pages: UIPage[],
-  pageId: string,
-  elementIds: string[],
-  action: MatchSizeAction,
-  layoutId?: string | null,
-): UIPage[] {
-  return arrangeSelection(pages, pageId, { elementIds, layoutId }, ({ ids, pageBoxes, movable }) => {
+export function matchSizeElements(pages: UIPage[], selection: PageSelection, action: MatchSizeAction): UIPage[] {
+  return arrangeSelection(pages, selection, ({ ids, pageBoxes, movable }) => {
     if (ids.length < 2) return {};
     const absolute = pageBoxes();
     const anchor = absolute[ids[0]];
