@@ -101,6 +101,7 @@ CASES: dict[str, dict[str, Any]] = {
     "name_with_every_glob": types(**{"[a?*": {}}),
     "name_with_a_dot_and_a_glob": types(**{"a.b?": {"id_format": 1}}),
     "name_with_a_space": types(**{"a b": {}}),
+    "name_with_a_dot_and_a_bad_declaration": types(**{"a.b*": 1}),
     # --- the type's declaration ----------------------------------------
     "type_def_a_list": types(zone=["x"]),
     "type_def_none": types(zone=None),
@@ -110,6 +111,8 @@ CASES: dict[str, dict[str, Any]] = {
     "id_format_a_list": zone(id_format=["integer"]),
     "id_format_a_string": zone(id_format="integer"),
     "id_format_none": zone(id_format=None),
+    "id_format_an_empty_list": zone(id_format=[]),
+    "id_format_zero": zone(id_format=0),
     "id_format_empty": zone(id_format={}),
     "id_format_unknown_type": zone(id_format={"type": "uuid"}),
     "id_format_type_a_number": zone(id_format={"type": 3}),
@@ -153,6 +156,7 @@ CASES: dict[str, dict[str, Any]] = {
     # an empty cloud_priority is a value, not an absent one, and is refused
     "child_var_cloud_priority_empty": zone(state_variables={"a": {"cloud_priority": ""}}),
     "child_var_unit": zone(state_variables={"a": {"unit": 5}, "b": {"unit": "dB"}}),
+    "child_var_unit_falsy": zone(state_variables={"a": {"unit": 0}, "b": {"unit": []}, "c": {"unit": ""}}),
     "child_var_control": zone(state_variables={"a": {"control": "yes"}, "b": {"control": True}}),
     "child_var_control_a_number": zone(state_variables={"a": {"control": 1}}),
     "child_var_everything_wrong": zone(
@@ -171,6 +175,7 @@ CASES: dict[str, dict[str, Any]] = {
     "instances_only_a_label": roster(label="Zone"),
     "instances_label_a_number": roster(count=2, label=5),
     "instances_label_none": roster(count=2, label=None),
+    "instances_label_falsy": roster(count=2, label=0),
     "instances_label_with_no_source": roster(label=5),
     # count_from_state
     "count_from_state_declared": roster(count=2, count_from_state="power"),
@@ -179,6 +184,7 @@ CASES: dict[str, dict[str, Any]] = {
     "count_from_state_a_number": roster(count=2, count_from_state=4),
     "count_from_state_none": roster(count=2, count_from_state=None),
     "count_from_state_alone": roster(count_from_state="power"),
+    "count_from_state_and_the_source_both_wrong": roster(count=0, count_from_state="outputs"),
     "count_from_state_over_a_list_of_variables": {
         **roster(count=2, count_from_state="power"),
         "state_variables": ["power"],
@@ -250,6 +256,11 @@ CASES: dict[str, dict[str, Any]] = {
         **{"": {"id_format": 1, "instances": 2}}, ok={"instances": 2}
     ),
     "a_bad_declaration_skips_the_rest": types(zone=1, mic={"instances": 2}),
+    "one_type_wrong_everywhere": zone(
+        id_format={"type": "uuid", "pad_width": -1},
+        state_variables={"a": {"type": "decimal"}, "b": 1},
+        instances={"count": 0, "label": 5},
+    ),
     # --- the driver's own state variables -------------------------------
     "vars_a_list": {"state_variables": ["power"]},
     "vars_a_string": {"state_variables": "power"},
@@ -282,6 +293,7 @@ CASES: dict[str, dict[str, Any]] = {
     },
     "var_names_not_text": {"state_variables": {2: {"label": "Two"}, True: 5}},
     "var_cloud_priority_empty": {"state_variables": {"a": {"label": "A", "cloud_priority": ""}}},
+    "var_unit_falsy": {"state_variables": {"a": {"label": "A", "unit": False}, "b": {"label": "B", "unit": 0}}},
     "var_unit_a_date": {"state_variables": {"a": {"label": "A", "unit": datetime.date(2026, 1, 2)}}},
     "vars_and_child_vars_side_by_side": {
         "state_variables": {"a": {"type": "decimal", "unit": 5, "control": 0, "cloud_priority": "x"}},
@@ -381,6 +393,8 @@ REFERENCE_CASES: dict[str, dict[str, Any]] = {
     "commands_none": _ref_info(None, ZONE_TYPE),
     "commands_computed": _ref_info(UNEVALUATED, ZONE_TYPE),
     "commands_a_list": _ref_info(["route"], ZONE_TYPE),
+    "commands_an_empty_list": _ref_info([], ZONE_TYPE),
+    "commands_empty": _ref_info({}, ZONE_TYPE),
     "types_computed": _ref_info(_route(z=CHILD_ID), UNEVALUATED),
     "types_a_list": _ref_info(_route(z=CHILD_ID), ["zone"]),
     "types_none": _ref_info(_route(z=CHILD_ID), None),
@@ -437,6 +451,7 @@ REASON_CASES: dict[str, tuple[str, dict[str, Any]]] = {
     "only_computed": ("zone", {UNEVALUATED_KEY: UNEVALUATED}),
     "computed_and_declared": ("out", {"zone": {}, UNEVALUATED_KEY: UNEVALUATED}),
 }
+
 
 
 EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest': [('child_entity_types.zone',
@@ -586,6 +601,10 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'child_var_type_none': [],
  'child_var_unit': [('child_entity_types.zone',
                      'child_entity_types.zone.state_variables.a: unit must be a string (got 5)')],
+ 'child_var_unit_falsy': [('child_entity_types.zone',
+                           'child_entity_types.zone.state_variables.a: unit must be a string (got 0)'),
+                          ('child_entity_types.zone',
+                           'child_entity_types.zone.state_variables.b: unit must be a string (got [])')],
  'child_var_unknown_type': [('child_entity_types.zone',
                              "child_entity_types.zone.state_variables.a: unknown type 'decimal'")],
  'child_vars_a_list': [('child_entity_types.zone',
@@ -627,6 +646,12 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'count_from_state_alone': [('child_entity_types.zone',
                              "child_entity_types.zone.instances: declare exactly one of 'count', "
                              "'count_from', 'ids_from', 'ids'")],
+ 'count_from_state_and_the_source_both_wrong': [('child_entity_types.zone',
+                                                 'child_entity_types.zone.instances: count_from_state '
+                                                 "'outputs' is not a declared state variable"),
+                                                ('child_entity_types.zone',
+                                                 'child_entity_types.zone.instances: count must be an '
+                                                 'integer >= 1 (got 0)')],
  'count_from_state_declared': [],
  'count_from_state_empty': [('child_entity_types.zone',
                              'child_entity_types.zone.instances: count_from_state must name a state '
@@ -676,6 +701,8 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
                  'child_entity_types.zone.instances: count must be an integer >= 1 (got 0)')],
  'id_format_a_list': [('child_entity_types.zone', 'child_entity_types.zone.id_format: must be a mapping')],
  'id_format_a_string': [('child_entity_types.zone', 'child_entity_types.zone.id_format: must be a mapping')],
+ 'id_format_an_empty_list': [('child_entity_types.zone',
+                              'child_entity_types.zone.id_format: must be a mapping')],
  'id_format_both_floats': [('child_entity_types.zone',
                             'child_entity_types.zone.id_format: min must be an integer (got 9.0)'),
                            ('child_entity_types.zone',
@@ -736,6 +763,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'id_format_unknown_type': [('child_entity_types.zone',
                              "child_entity_types.zone.id_format: unknown type 'uuid' (expected 'integer' or "
                              "'string')")],
+ 'id_format_zero': [('child_entity_types.zone', 'child_entity_types.zone.id_format: must be a mapping')],
  'ids_a_boolean_first': [('child_entity_types.zone',
                           'child_entity_types.zone.instances: ids entries must be scalars (got True)')],
  'ids_a_float': [('child_entity_types.zone',
@@ -783,6 +811,8 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
                              "'count_from', 'ids_from', 'ids'")],
  'instances_label_a_number': [('child_entity_types.zone',
                                'child_entity_types.zone.instances: label must be a string')],
+ 'instances_label_falsy': [('child_entity_types.zone',
+                            'child_entity_types.zone.instances: label must be a string')],
  'instances_label_none': [],
  'instances_label_with_no_source': [('child_entity_types.zone',
                                      "child_entity_types.zone.instances: declare exactly one of 'count', "
@@ -803,6 +833,14 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'name_with_a_dot': [('child_entity_types.a.b',
                       "child_entity_types: type name 'a.b' must not contain dots (used as state key "
                       'separator)')],
+ 'name_with_a_dot_and_a_bad_declaration': [('child_entity_types.a.b*',
+                                            "child_entity_types: type name 'a.b*' must not contain dots "
+                                            '(used as state key separator)'),
+                                           ('child_entity_types.a.b*',
+                                            "child_entity_types: type name 'a.b*' must not contain glob "
+                                            'metacharacters (*); they break state-change dispatch'),
+                                           ('child_entity_types.a.b*',
+                                            'child_entity_types.a.b*: must be a mapping')],
  'name_with_a_dot_and_a_glob': [('child_entity_types.a.b?',
                                  "child_entity_types: type name 'a.b?' must not contain dots (used as state "
                                  'key separator)'),
@@ -818,6 +856,20 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'name_with_one_glob': [('child_entity_types.a*',
                          "child_entity_types: type name 'a*' must not contain glob metacharacters (*); they "
                          'break state-change dispatch')],
+ 'one_type_wrong_everywhere': [('child_entity_types.zone',
+                                "child_entity_types.zone.id_format: unknown type 'uuid' (expected 'integer' "
+                                "or 'string')"),
+                               ('child_entity_types.zone',
+                                'child_entity_types.zone.id_format: pad_width must be zero or a positive '
+                                'integer (got -1)'),
+                               ('child_entity_types.zone',
+                                "child_entity_types.zone.state_variables.a: unknown type 'decimal'"),
+                               ('child_entity_types.zone',
+                                'child_entity_types.zone.state_variables.b: must be a mapping'),
+                               ('child_entity_types.zone',
+                                'child_entity_types.zone.instances: count must be an integer >= 1 (got 0)'),
+                               ('child_entity_types.zone',
+                                'child_entity_types.zone.instances: label must be a string')],
  'two_types_in_order': [('child_entity_types.zone',
                          "child_entity_types.zone.id_format: unknown type 'uuid' (expected 'integer' or "
                          "'string')"),
@@ -871,6 +923,8 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'var_unit': [('state_variables.a', "State variable 'a': unit must be a string (got 5)")],
  'var_unit_a_date': [('state_variables.a',
                       "State variable 'a': unit must be a string (got datetime.date(2026, 1, 2))")],
+ 'var_unit_falsy': [('state_variables.a', "State variable 'a': unit must be a string (got False)"),
+                    ('state_variables.b', "State variable 'b': unit must be a string (got 0)")],
  'var_unknown_type': [('state_variables.a', "State variable 'a': unknown type 'decimal'")],
  'vars_a_list': [('state_variables', 'state_variables: must be a mapping')],
  'vars_a_string': [('state_variables', 'state_variables: must be a mapping')],
@@ -911,7 +965,9 @@ REFERENCE_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_command_named_l
  'child_type_computed': ([], ['commands.route.params.z: child_type is computed']),
  'command_computed': ([], []),
  'commands_a_list': ([], ['commands is computed, so no command params were checked']),
+ 'commands_an_empty_list': ([], ['commands is computed, so no command params were checked']),
  'commands_computed': ([], ['commands is computed, so no command params were checked']),
+ 'commands_empty': ([], []),
  'commands_none': ([], []),
  'commands_only_computed': ([],
                             ['0 of an unknown number of commands were readable; params of the rest were not '
@@ -968,7 +1024,9 @@ PYTHON_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_command_named_like
  'child_type_computed': ([], ['commands.route.params.z: child_type is computed']),
  'command_computed': ([], []),
  'commands_a_list': ([], ['commands is computed, so no command params were checked']),
+ 'commands_an_empty_list': ([], ['commands is computed, so no command params were checked']),
  'commands_computed': ([], ['commands is computed, so no command params were checked']),
+ 'commands_empty': ([], []),
  'commands_none': ([], []),
  'commands_only_computed': ([],
                             ['0 of an unknown number of commands were readable; params of the rest were not '
