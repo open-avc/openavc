@@ -236,6 +236,15 @@ describe("outlineRows: the Outline's tree", () => {
     expect(rows[2]).toMatchObject({ prevSiblingId: undefined, nextSiblingId: undefined });
   });
 
+  it("gives a row the neighbours a search leaves, not the ones it hid", () => {
+    const elements = [el("a"), el("x"), el("b"), el("g", "group"), el("c", "button", "g"), el("y", "button", "g"), el("d", "button", "g")];
+    const rows = outlineRows(elements, { matchIds: new Set(["a", "b", "c", "d"]) });
+    expect(rowIds(rows)).toEqual(["a@0", "b@0", "g@0", "c@1", "d@1"]);
+    expect(rows[1]).toMatchObject({ prevSiblingId: "a", nextSiblingId: "g" });
+    expect(rows[3]).toMatchObject({ prevSiblingId: undefined, nextSiblingId: "d" });
+    expect(rows[4]).toMatchObject({ prevSiblingId: "c", nextSiblingId: undefined });
+  });
+
   it("matches a container on its own name without showing its children", () => {
     const rows = outlineRows([el("g", "group"), el("a", "button", "g")], { matchIds: new Set(["g"]) });
     expect(rows).toEqual([

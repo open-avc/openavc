@@ -142,7 +142,7 @@ describe("demoteFromMaster: the box a control comes back with", () => {
 
   it.each([
     ["the landscape box first", { portrait: box(1, 1, 1, 1), landscape: box(2, 2, 2, 2) }, box(2, 2, 2, 2)],
-    ["the portrait box with no landscape one", { portrait: box(1, 1, 1, 1), other: box(3, 3, 3, 3) }, box(1, 1, 1, 1)],
+    ["the portrait box with no landscape one", { other: box(3, 3, 3, 3), portrait: box(1, 1, 1, 1) }, box(1, 1, 1, 1)],
     ["the first box stored, with neither", { other: box(3, 3, 3, 3), more: box(4, 4, 4, 4) }, box(3, 3, 3, 3)],
     ["the default box with none stored", {}, DEFAULT_PLACEMENT],
     ["the default box with no placements at all", undefined, DEFAULT_PLACEMENT],
