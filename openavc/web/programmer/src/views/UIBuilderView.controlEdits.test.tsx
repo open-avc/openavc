@@ -243,6 +243,26 @@ describe("what a menu edit hands on", () => {
   });
 });
 
+describe("what an edit reads of the selection", () => {
+  it("renames the control selected after the page was drawn, and keeps it selected", async () => {
+    seed(makeProject(), { selectedPageId: "main" });
+    await renderPage(UIBuilderView);
+    call(() => builder().selectElement("btn_1"));
+    call(() => props().onRenameElement("btn_1", "btn_x"));
+    expect(builder().selectedElementId).toBe("btn_x");
+    call(() => builder().selectMasterElement("m_1"));
+    call(() => props().onRenameElement("m_1", "m_2"));
+    expect(builder().selectedMasterElementId).toBe("m_2");
+  });
+
+  it("copies the whole selection with Ctrl+C, in the page's order", async () => {
+    seed(makeProject(), { selectedPageId: "main", selectedElementIds: ["lbl_1", "btn_1"] });
+    await renderPage(UIBuilderView);
+    press("c", { ctrl: true });
+    expect(builder().clipboard!.elements.map((e) => e.id)).toEqual(["btn_1", "lbl_1"]);
+  });
+});
+
 describe("the toolbar's own buttons and the save banner, as drawn", () => {
   it("docks Theme, Stylesheet, Settings and the shortcuts list at the toolbar's end, in that order, alike but the last", async () => {
     seed(makeProject(), { selectedPageId: "main" });
