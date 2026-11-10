@@ -292,6 +292,14 @@ CASES: dict[str, dict[str, Any]] = {
     ),
     "routing_dest_list": routed(plane(destination_child_type=["output"], source_child_type={"a": 1})),
     "routing_command_list": routed(plane(command=["route"])),
+    "routing_params_on_command_without_params": {
+        "commands": {**BASE["commands"], "route": {"send": "R"}},
+        **routed(plane(params={"signal": "VIDEO"})),
+    },
+    "routing_params_on_command_params_list": {
+        "commands": {**BASE["commands"], "route": {"send": "R", "params": ["signal"]}},
+        **routed(plane(params={"signal": "VIDEO"})),
+    },
     "routing_params_on_unevaluated_command": {
         "commands": {**BASE["commands"], "route": {"send": "R", "params": UNEVALUATED_KEY}},
         **routed(plane(params={"anything": 1})),
@@ -424,6 +432,15 @@ CASES: dict[str, dict[str, Any]] = {
     "settings_map_enum_no_values": settings(picture={"type": "enum", "write": WRITE, "map": {"x": "X"}}),
     "settings_map_enum_values_text": settings(picture={"type": "enum", "values": "vivid", "write": WRITE, "map": {"x": "X"}}),
     "settings_map_type_missing": settings(volume={"write": WRITE, "map": {"x": "X"}}),
+    "settings_map_false_key": setting(map={False: "OFF", "1": "ON"}),
+    "settings_map_boolean_bad_key_bool_word": settings(
+        power={"type": "boolean", "write": WRITE, "map": {"on": True, "maybe": "M"}},
+    ),
+    "settings_map_enum_empty_values": settings(picture={"type": "enum", "values": [], "write": WRITE, "map": {"x": "X"}}),
+    "settings_map_enum_values_without_value": settings(
+        picture={"type": "enum", "values": [{"label": "A"}], "write": WRITE, "map": {"x": "X"}},
+    ),
+    "settings_map_values_on_integer": setting(values=["a"], map={"b": "B"}),
     "settings_map_on_string": settings(picture={"type": "string", "write": WRITE, "map": {"anything": "A"}}),
     # --- device_settings: everything at once ----------------------------
     "settings_everything_wrong": settings(
@@ -445,6 +462,7 @@ CASES: dict[str, dict[str, Any]] = {
     "learned_password_type": learned(learned_from="picture", type="password"),
     "learned_secret_name": {"config_schema": {"password": {"type": "string", "learned_from": "picture"}}},
     "learned_table": learned(learned_from="picture", type="table"),
+    "learned_list_type": learned(learned_from="picture", type="list"),
     "learned_connection_host": {"config_schema": {"host": {"type": "string", "learned_from": "picture"}}},
     "learned_connection_port": {"config_schema": {"port": {"type": "integer", "learned_from": "volume"}}},
     "learned_everything": {
@@ -499,6 +517,17 @@ RAISES: dict[str, type[BaseException]] = {
 }
 RAISING_CASES: dict[str, dict[str, Any]] = {
     "routing_params_numeric_keys": routed(plane(params={1: "a", 2.5: "b"})),
+}
+
+# A device setting whose type is not hashable reaches the lookup of the known
+# types, which cannot take it; the walk raises.
+WALK_RAISES: dict[str, type[BaseException]] = {
+    "settings_type_list": TypeError,
+    "settings_type_mapping": TypeError,
+}
+WALK_RAISING_CASES: dict[str, dict[str, Any]] = {
+    "settings_type_list": setting(type=["integer"]),
+    "settings_type_mapping": setting(type={"integer": 1}),
 }
 
 # --- the Python surface --------------------------------------------------
@@ -646,6 +675,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'learned_blank': [('config_schema.
  'learned_good': [],
  'learned_list': [('config_schema.zone',
                    "Config field 'zone': learned_from must name a state variable")],
+ 'learned_list_type': [],
  'learned_none': [],
  'learned_number': [('config_schema.zone',
                      "Config field 'zone': learned_from must name a state variable")],
@@ -980,6 +1010,12 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'learned_blank': [('config_schema.
  'routing_params_not_mapping': [('routing',
                                  "routing.planes[0]: 'params' must be a mapping of parameter name "
                                  'to value')],
+ 'routing_params_on_command_params_list': [('routing',
+                                            'routing.planes[0]: params.signal is not a parameter '
+                                            "of command 'route'")],
+ 'routing_params_on_command_without_params': [('routing',
+                                               'routing.planes[0]: params.signal is not a '
+                                               "parameter of command 'route'")],
  'routing_params_on_unevaluated_command': [],
  'routing_params_overwrite_dest': [('routing',
                                     "routing.planes[0]: params.output is already the route's "
@@ -1163,6 +1199,14 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'learned_blank': [('config_schema.
                             ('device_settings.volume',
                              "Device setting 'volume': map word for '2' is not text; YAML reads a "
                              'bare ON, OFF, YES or NO as a boolean. Put it in quotes.')],
+ 'settings_map_boolean_bad_key_bool_word': [('device_settings.power',
+                                             "Device setting 'power': map word for 'on' is not "
+                                             'text; YAML reads a bare ON, OFF, YES or NO as a '
+                                             'boolean. Put it in quotes.'),
+                                            ('device_settings.power',
+                                             "Device setting 'power': map key 'maybe' is not a "
+                                             'value a boolean setting takes; use "true" and '
+                                             '"false"')],
  'settings_map_boolean_bad_keys': [('device_settings.power',
                                     "Device setting 'power': map key 'on' is not a value a boolean "
                                     'setting takes; use "true" and "false"'),
@@ -1180,6 +1224,9 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'learned_blank': [('config_schema.
  'settings_map_enum_bad_key': [('device_settings.picture',
                                 "Device setting 'picture': map key 'vivd' is not one of the "
                                 "setting's values (vivid, cinema)")],
+ 'settings_map_enum_empty_values': [('device_settings.picture',
+                                     "Device setting 'picture': map key 'x' is not one of the "
+                                     "setting's values ()")],
  'settings_map_enum_good': [],
  'settings_map_enum_no_values': [],
  'settings_map_enum_number_keys': [('device_settings.picture',
@@ -1189,6 +1236,13 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'learned_blank': [('config_schema.
                                       "Device setting 'picture': map key 'no value' is not one of "
                                       "the setting's values (vivid, 3)")],
  'settings_map_enum_values_text': [],
+ 'settings_map_enum_values_without_value': [('device_settings.picture',
+                                             "Device setting 'picture': map key 'x' is not one of "
+                                             "the setting's values ()")],
+ 'settings_map_false_key': [('device_settings.volume',
+                             "Device setting 'volume': map key 'False' is not text; YAML reads a "
+                             'bare true, false, on, off, yes or no as a boolean. Put it in '
+                             'quotes.')],
  'settings_map_good': [],
  'settings_map_list': [('device_settings.volume',
                         "Device setting 'volume': map must be a non-empty mapping of setting value "
@@ -1208,6 +1262,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'learned_blank': [('config_schema.
                         "Device setting 'volume': map must be a non-empty mapping of setting value "
                         '-> device word')],
  'settings_map_type_missing': [],
+ 'settings_map_values_on_integer': [],
  'settings_max_bool': [],
  'settings_min_bool': [],
  'settings_min_equals_max': [],
@@ -1392,6 +1447,12 @@ def test_shapes_that_raise(case: str) -> None:
         routing_block_errors(definition)
 
 
+@pytest.mark.parametrize("case", sorted(WALK_RAISES))
+def test_settings_that_raise(case: str) -> None:
+    with pytest.raises(WALK_RAISES[case]):
+        validate_driver_definition({**BASE, **WALK_RAISING_CASES[case]})
+
+
 @pytest.mark.parametrize("case", sorted(PY_EXPECTED))
 def test_the_python_surface(case: str) -> None:
     assert python_driver_info_issues(_python_info(case)) == PY_EXPECTED[case]
@@ -1407,3 +1468,4 @@ def test_every_case_has_an_expectation() -> None:
     assert set(PY_CASES) == set(PY_EXPECTED)
     assert set(DIRECT) == set(DIRECT_EXPECTED)
     assert set(RAISES) == set(RAISING_CASES)
+    assert set(WALK_RAISES) == set(WALK_RAISING_CASES)
