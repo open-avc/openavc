@@ -22,6 +22,7 @@ import { parseApiError } from "../../api/errors";
 import { editableCopy, withVariable, withElementDefault, withPageDefaults } from "./themeEdits";
 import { withSurfaceStyle, type SurfaceStyle } from "./quickAdjust";
 import { QuickAdjustSection } from "./QuickAdjustSection";
+import { themeFile, savedFile, previewColors, customCopy, duplicateOf, keptBeside } from "./themeFiles";
 
 // --- Constants ---
 
@@ -698,8 +699,7 @@ export function ThemeStudio({
   const previewPageId = isGallery ? GALLERY_PAGE_ID : previewView;
   const previewDemoState = isGallery ? GALLERY_DEMO_STATE : undefined;
 
-  const slugify = (s: string) =>
-    s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const takenIds = () => new Set(themes.map((t) => t.id));
 
   const refreshAndReload = async (themeId: string) => {
     onRefreshThemes();
@@ -712,12 +712,7 @@ export function ThemeStudio({
     setBusy(true);
     setStatusMsg(null);
     try {
-      const payload: ThemeDefinition = {
-        ...working,
-        preview_colors: derivePreviewColors(working.variables),
-      };
-      delete (payload as { _source?: string })._source;
-      await updateTheme(working.id, payload);
+      await updateTheme(working.id, savedFile(working));
       if (Object.keys(themeOverrides).length > 0) onClearOverrides();
       await refreshAndReload(working.id);
       onThemeSaved?.();
@@ -732,44 +727,20 @@ export function ThemeStudio({
   };
 
   // --- Save as Custom ---
-  // Auto-renames + auto-disambiguates the id so we can never collide with a
-  // built-in or an existing custom (which would 409 the POST).
+  // A new name and id, numbered past every theme in the list, so the POST
+  // never collides with a built-in or an existing custom theme (a 409).
   const handleSaveAsCustom = async (): Promise<boolean> => {
     if (!working) return false;
-    let baseName = working.name.trim();
-    if (!baseName) {
+    const copy = customCopy(working.name, isCustom, takenIds());
+    if (!copy) {
       setStatusMsg({ kind: "error", text: "Enter a theme name" });
       return false;
     }
-    // Visually distinguish the new theme from its source so the picker
-    // doesn't end up with two cards labeled the same.
-    const suffix = isCustom ? " (Copy)" : " (Custom)";
-    const alreadySuffixed = / \((Copy|Custom)( \d+)?\)$/.test(baseName);
-    if (!alreadySuffixed) baseName = `${baseName}${suffix}`;
-    let baseSlug = slugify(baseName);
-    if (!baseSlug) baseSlug = "custom-theme";
-    // Find an unused id (and matching unused name) by appending -2, -3…
-    const existing = new Set(themes.map((t) => t.id));
-    let id = baseSlug;
-    let name = baseName;
-    let n = 2;
-    while (existing.has(id)) {
-      id = `${baseSlug}-${n}`;
-      name = `${baseName} ${n}`;
-      n++;
-    }
+    const { id, name } = copy;
     setBusy(true);
     setStatusMsg(null);
     try {
-      const payload: ThemeDefinition = {
-        ...working,
-        id,
-        name,
-        author: "Custom",
-        preview_colors: derivePreviewColors(working.variables),
-      };
-      delete (payload as { _source?: string })._source;
-      await createTheme(payload);
+      await createTheme(themeFile(working, { id, name, author: "Custom", preview_colors: previewColors(working.variables) }));
       if (Object.keys(themeOverrides).length > 0) onClearOverrides();
       onChangeTheme(id);
       onRefreshThemes();
@@ -813,21 +784,11 @@ export function ThemeStudio({
     setStatusMsg(null);
     try {
       const source = await getTheme(sourceId);
-      const baseSlug = sourceId.replace(/-copy(-\d+)?$/, "");
-      const existing = new Set(themes.map((t) => t.id));
-      let newId = `${baseSlug}-copy`;
-      let n = 2;
-      while (existing.has(newId)) {
-        newId = `${baseSlug}-copy-${n++}`;
-      }
-      const baseName = sourceName.replace(/\s*\(Copy(?:\s+\d+)?\)\s*$/, "");
-      const copyName = n === 2 ? `${baseName} (Copy)` : `${baseName} (Copy ${n - 1})`;
-      const payload: ThemeDefinition = { ...source, id: newId, name: copyName, author: "Custom" };
-      delete (payload as { _source?: string })._source;
-      await createTheme(payload);
-      onChangeTheme(newId);
+      const copy = duplicateOf(sourceId, sourceName, takenIds());
+      await createTheme(themeFile(source, { ...copy, author: "Custom" }));
+      onChangeTheme(copy.id);
       onRefreshThemes();
-      setStatusMsg({ kind: "info", text: `Duplicated as "${copyName}"` });
+      setStatusMsg({ kind: "info", text: `Duplicated as "${copy.name}"` });
     } catch (e) {
       setStatusMsg({ kind: "error", text: parseApiError(e) || "Duplicate failed" });
     }
@@ -837,12 +798,7 @@ export function ThemeStudio({
   // --- Export / Import ---
   const handleExport = () => {
     if (!working) return;
-    const exportData: ThemeDefinition = {
-      ...working,
-      preview_colors: derivePreviewColors(working.variables),
-    };
-    delete (exportData as { _source?: string })._source;
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(savedFile(working), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -899,17 +855,11 @@ export function ThemeStudio({
     setBusy(true);
     try {
       const parsed = JSON.parse(await file.text()) as ThemeDefinition;
-      const existing = new Set(themes.map((t) => t.id));
-      let n = 2;
-      let newId = `${id}-${n}`;
-      while (existing.has(newId)) newId = `${id}-${++n}`;
-      const baseName = (parsed.name || id).replace(/\s*\(\d+\)\s*$/, "");
-      const payload: ThemeDefinition = { ...parsed, id: newId, name: `${baseName} (${n})` };
-      delete (payload as { _source?: string })._source;
-      await createTheme(payload);
-      onChangeTheme(newId);
+      const kept = keptBeside(id, parsed.name, takenIds());
+      await createTheme(themeFile(parsed, kept));
+      onChangeTheme(kept.id);
       onRefreshThemes();
-      setStatusMsg({ kind: "info", text: `Imported as "${payload.name}"` });
+      setStatusMsg({ kind: "info", text: `Imported as "${kept.name}"` });
     } catch (err) {
       setStatusMsg({ kind: "error", text: `Import failed: ${parseApiError(err)}` });
     }
@@ -1292,11 +1242,6 @@ export function ThemeStudio({
         )}
     </Modal>
   );
-}
-
-function derivePreviewColors(vars: Record<string, unknown> | undefined): string[] {
-  const v = vars || {};
-  return [v.panel_bg, v.surface || v.button_bg, v.accent, v.panel_text].filter(Boolean) as string[];
 }
 
 // --- Picker column ---
