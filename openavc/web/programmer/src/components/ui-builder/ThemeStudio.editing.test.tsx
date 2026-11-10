@@ -460,6 +460,7 @@ describe("the arrow keys on a section's name", () => {
   it("open the next or previous section alone and stop at either end", async () => {
     await loaded();
     const summary = (name: string) => elementSection(name).querySelector("summary")!;
+    elementSection("Label").open = true;
     summary("Button").focus();
     fireEvent.keyDown(summary("Button"), { key: "ArrowDown" });
     expect(document.activeElement).toBe(summary("Page Nav"));
