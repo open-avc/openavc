@@ -260,6 +260,30 @@ FOLLOW_UP_SETTLE_S = 2.0
 # like every other one.
 PORT_OPEN_TRANSPORTS: tuple[str, ...] = ("tcp", "http")
 
+# --- templates ---------------------------------------------------------------
+
+# One `{name}` or `{name:spec}` placeholder in a wire template: the name (group
+# 1) and the format spec after its colon (group 2), which takes no braces so a
+# token never spans two. The name has to be an identifier, so a literal JSON
+# body, `{"vol": {level}}`, matches only on the real placeholder and never on
+# the brace that opens the object. The placeholder check (substitution_checks),
+# a udp: port's config field (command_checks), the runtime's warning for one
+# that survives substitution (ConfigurableDriver._substitute_for_wire) and the
+# simulator's read-back coverage check read templates with it; the simulator's
+# send-template reader keeps a copy, held equal by tests/test_placeholder_token.py
+# because that module imports nothing outside the standard library. The runtime
+# fills a wider set of names
+# (compiled_protocol.safe_substitute takes any `\w+`), so every placeholder
+# found here is one it fills when the name is given.
+PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::([^{}]*))?\}")
+
+
+def placeholder_names(template: str) -> list[str]:
+    """The name in each :data:`PLACEHOLDER` of ``template``, in order,
+    repeats kept."""
+    return [match.group(1) for match in PLACEHOLDER.finditer(template)]
+
+
 # --- framing -----------------------------------------------------------------
 
 # Receive-side frame_parser types a YAML driver may declare, and the

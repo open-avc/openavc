@@ -78,6 +78,7 @@ from openavc.drivers.compiled_protocol import (
 )
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 from openavc.simulator.send_templates import is_passthrough_send, send_regex
+from openavc.drivers.spec import PLACEHOLDER
 
 
 # ── Result types ──
@@ -1206,7 +1207,7 @@ def _check_osc_read_back_coverage(
             if not isinstance(line, str) or not line or line in commands:
                 continue
             sample = _substitute_config(line, config)
-            sample = re.sub(r"\{[A-Za-z_][A-Za-z0-9_]*(?::[^{}]*)?\}", "1", sample)
+            sample = PLACEHOLDER.sub("1", sample)
             if not _osc_address_covered(sample, patterns):
                 result.error(
                     "poll_coverage",

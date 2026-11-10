@@ -45,7 +45,6 @@ poll loop judges, the frame parser, and where an incoming frame goes.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from openavc.drivers import compiled_protocol
@@ -70,6 +69,7 @@ from openavc.drivers.send_framing import SendFraming
 from openavc.drivers.setting_writes import SettingWrites
 from openavc.drivers.side_sends import SideSends
 from openavc.drivers.sign_in import SignIn
+from openavc.drivers.spec import placeholder_names
 from openavc.drivers.start_up_and_poll import StartUpAndPoll
 from openavc.drivers.text_replies import TextReplies
 from openavc.drivers.yaml_driver_info import driver_info_for
@@ -91,12 +91,6 @@ def _param_wire_value(name: str, value: Any, pdef: dict[str, Any]) -> dict[str, 
     if pdef.get("scale") is not None or pdef.get("offset") is not None:
         return {name: compiled_protocol.value_to_wire(value, pdef)}
     return {}
-
-
-# One {name} / {name:spec} token left unsubstituted on the way to the wire.
-# Same shape the authoring check uses, so both agree on what counts as a
-# placeholder and a literal JSON brace is neither.
-_WIRE_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
 
 
 class ConfigurableDriver(
@@ -438,7 +432,7 @@ class ConfigurableDriver(
         and the device ignores it, or a poll query is never answered and the
         device eventually drops on its watchdog. Nothing said a word.
 
-        The authoring check (``validate_substitutions``) catches this before a
+        The authoring check (``substitution_checks``) catches this before a
         driver is saved, but only where the file alone is wrong. It cannot
         cover a command that declares no params, because the caller may
         legitimately supply one at call time — which is exactly the case only
@@ -452,8 +446,8 @@ class ConfigurableDriver(
         out = self._safe_substitute(template, params)
         if "{" not in out:
             return out
-        own = set(_WIRE_PLACEHOLDER.findall(template))
-        for name in _WIRE_PLACEHOLDER.findall(out):
+        own = set(placeholder_names(template))
+        for name in placeholder_names(out):
             if name not in own or (where, name) in self._warned_unresolved:
                 continue
             self._warned_unresolved.add((where, name))

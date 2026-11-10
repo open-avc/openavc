@@ -33,7 +33,10 @@ from typing import Any
 # validator checks the simulator's coverage with it.
 
 
-#: Any {name} / {name:spec} token whose name is an identifier, declared or not.
+#: Any {name} / {name:spec} token whose name is an identifier, declared or not:
+#: the driver contract's ``spec.PLACEHOLDER``, written out again because this
+#: module imports nothing but the standard library
+#: (``tests/test_placeholder_token.py`` holds the two equal).
 _ANY_PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::([^{}]*))?\}")
 
 

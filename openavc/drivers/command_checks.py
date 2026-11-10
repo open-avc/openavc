@@ -19,7 +19,7 @@ is how a Python driver takes a file and hands one back. The simulator answers
 ``sets:`` and ``query_for:`` (``simulator/yaml_auto.py``). Two checks
 of a command run after every command: the references its parameters make into
 ``child_entity_types`` (``child_type_checks.child_param_reference_errors``) and
-the placeholders in its templates (``avcdriver_semantic.validate_substitutions``).
+the placeholders in its templates (``substitution_checks``).
 
 A value ``python_info`` could not read from the source (a constant, a call)
 is not judged. Two rules say so, and they are not the same: ``_unevaluated``
@@ -49,6 +49,7 @@ from openavc.drivers.spec import (
     FILE_PARAM_EXCLUDED_KEYS,
     FILE_PARAM_MAX_BYTES,
     OSC_ARG_TYPES,
+    PLACEHOLDER,
 )
 
 # Each way a command can send, and how its declaration says so. An empty
@@ -250,9 +251,6 @@ def osc_args_errors(where: str, arg_defs: Any) -> list[str]:
     return errors
 
 
-_UDP_CONFIG_PLACEHOLDER = re.compile(r"^\{([A-Za-z_][A-Za-z0-9_]*)\}$")
-
-
 def udp_block_errors(where: str, udp_def: Any, config_names: set[str]) -> list[str]:
     """A command's ``udp:`` block, a datagram sent beside the transport.
 
@@ -313,15 +311,24 @@ def _udp_port_errors(
     return _port_text_errors(where, port, config_names)
 
 
+def _bare_placeholder(text: str) -> str | None:
+    """The name in a value that is one placeholder with no format spec, else
+    None: a port is a number, so a spec has nothing to format."""
+    match = PLACEHOLDER.fullmatch(text)
+    if match is None or match.group(2) is not None:
+        return None
+    return match.group(1)
+
+
 def _port_text_errors(where: str, port: str, config_names: set[str]) -> list[str]:
     """A port written as text: a ``{config_field}`` the driver declares, or
     digits."""
-    placeholder = _UDP_CONFIG_PLACEHOLDER.match(port.strip())
-    if placeholder is not None:
-        if placeholder.group(1) in config_names:
+    field = _bare_placeholder(port.strip())
+    if field is not None:
+        if field in config_names:
             return []
         return [
-            f"{where}: 'udp.port' names config field '{placeholder.group(1)}', "
+            f"{where}: 'udp.port' names config field '{field}', "
             f"which the driver does not declare"
         ]
     if not port.strip().isdigit():

@@ -9,16 +9,16 @@ definition section by section and asks a check module about each command
 setting and learned config field (``setting_checks``), the push block
 (``push_block_checks``), the Quick Action blocks (``action_checks``), the
 framing each way (``framing_checks``), the sign-in (``sign_in_checks``), the
-watchdog (``liveness_checks``) and the ``routing:`` block
-(``routing_checks``). The runtime
+watchdog (``liveness_checks``), the ``routing:`` block
+(``routing_checks``) and the ``{name}`` placeholders in its wire templates
+(``substitution_checks``). The runtime
 loader wraps it (adding the discovery-block check, which needs the
 discovery engine's parser), and the community driver catalog runs a copy of
 the same rules in its CI, so a definition that passes catalog review is
 exactly a definition the platform will load.
 
 Purity contract: standard library plus the sibling contract modules (the
-``spec`` constants table and the check modules) and the stdlib-only
-regex-safety helper. Nothing here may import
+``spec`` constants table and the check modules). Nothing here may import
 the server runtime, transports, or discovery machinery; checks that need
 them are passed in (see ``validate_driver_definition``'s
 ``discovery_validator`` hook). An import-guard test enforces this.
@@ -27,7 +27,6 @@ them are passed in (see ``validate_driver_definition``'s
 from __future__ import annotations
 
 import difflib as _difflib
-import re
 from typing import Any, Callable
 
 from openavc.drivers.action_checks import (
@@ -42,11 +41,7 @@ from openavc.drivers.child_type_checks import (
     undeclared_child_type_reason as undeclared_child_type_reason,
 )
 from openavc.drivers.command_checks import CommandSection
-from openavc.drivers.declared_names import (
-    UNEVALUATED_KEY,
-    closest_name,
-    substitution_names,
-)
+from openavc.drivers.declared_names import UNEVALUATED_KEY as UNEVALUATED_KEY
 from openavc.drivers.framing_checks import (
     COMMAND_AFFIXES,
     command_affix_errors,
@@ -91,184 +86,9 @@ from openavc.drivers.state_variable_checks import (
     DEVICE_VARIABLE,
     state_variable_errors,
 )
-
-# One ``{name}`` or ``{name:format_spec}`` token. Deliberately requires an
-# identifier, so a literal JSON body — ``{"vol": {level}}`` — matches only on
-# the real placeholder and never on the brace that opens the object.
-_SUBSTITUTION_TOKEN = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)(?::[^{}]*)?\}")
-
-# What each position is allowed to interpolate, phrased for the message.
-_CMD_SOURCES = "no parameter of this command and no config field"
-_CFG_SOURCES = "no config field (only config values substitute here)"
-
-
-def _unresolved_substitutions(
-    where: str, template: Any, resolvable: set[str], sources: str,
-    effect: str = "it would be sent to the device as written",
-) -> list[str]:
-    """Report ``{name}`` tokens in one template that resolve to nothing.
-
-    ``safe_substitute`` leaves an unknown placeholder verbatim rather than
-    raising — deliberately, so a JSON body full of braces cannot crash a send.
-    The cost is that a typo travels to the device as literal text and nothing
-    says so: the command appears to do nothing, or a response pattern compiles
-    to a regex that can never match. The runtime stays lenient; this is the
-    authoring gate that makes the typo visible instead.
-
-    ``sources`` names what this template is allowed to interpolate, because
-    that differs by position — a command sees its own params and the config, a
-    response pattern is matched long after any params are gone. ``effect`` is
-    what the unresolved token would do there.
-    """
-    if not isinstance(template, str):
-        return []
-    errors: list[str] = []
-    for match in _SUBSTITUTION_TOKEN.finditer(template):
-        name = match.group(1)
-        if name in resolvable:
-            continue
-        suggestion = closest_name(name, resolvable)
-        hint = f" (did you mean '{suggestion}'?)" if suggestion else ""
-        errors.append(
-            f"{where}: '{{{name}}}' resolves to nothing{hint}. It names "
-            f"{sources}, so {effect}"
-        )
-    return errors
-
-
-def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
-    """Every ``{name}`` a driver writes into a wire template must resolve.
-
-    Covers the three places a placeholder reaches the device or the matcher:
-    a command's send/path/body/address/headers, a response's ``match``
-    pattern, and the query lists (polling, on_connect and each response
-    rule's then_query).
-
-    Mirrored into the community catalog's validator by the vendored copy of
-    this module (``openavc-drivers/scripts/_vendor/``).
-    """
-    errors: list[str] = []
-    config_names = substitution_names(driver_def)
-
-    commands = driver_def.get("commands")
-    if isinstance(commands, dict) and UNEVALUATED_KEY not in commands:
-        for name, cmd in commands.items():
-            if not isinstance(cmd, dict):
-                continue
-            params = cmd.get("params")
-            # A computed params block is a SUBSET of the real one, so "not in
-            # it" proves nothing — skip this command rather than report a
-            # working driver as broken. Same rule as the actions check.
-            if isinstance(params, dict) and UNEVALUATED_KEY in params:
-                continue
-            # A command that declares no params is making no claim about its
-            # placeholders, and the runtime substitutes whatever the caller
-            # passed: `send: "IN{input}"` with no params block works, because a
-            # macro or script can supply `input` at call time. That is a loose
-            # shape — an undeclared param gets no type coercion, no range gate
-            # and no UI control — but it is not a wrong one, so this check has
-            # no standing to call it an error.
-            #
-            # Once a command DOES declare params it has named its inputs, and a
-            # token outside that set sitting beside a near-identical one inside
-            # it is the typo this rule exists to catch.
-            if not isinstance(params, dict) or not params:
-                continue
-            resolvable = config_names | {k for k in params if isinstance(k, str)}
-            for field in ("send", "path", "body", "address"):
-                errors.extend(
-                    _unresolved_substitutions(
-                        f"commands.{name}.{field}",
-                        cmd.get(field),
-                        resolvable,
-                        _CMD_SOURCES,
-                    )
-                )
-            headers = cmd.get("headers")
-            if isinstance(headers, dict):
-                for key, value in headers.items():
-                    errors.extend(
-                        _unresolved_substitutions(
-                            f"commands.{name}.headers.{key}",
-                            value,
-                            resolvable,
-                            _CMD_SOURCES,
-                        )
-                    )
-            # A read-back query is filled from this command's parameters too;
-            # one that names a command is that command's to fill.
-            read_back = cmd.get("read_back")
-            read_backs = (
-                [read_back] if isinstance(read_back, str)
-                else read_back if isinstance(read_back, list) else []
-            )
-            for i, entry in enumerate(read_backs):
-                if not isinstance(entry, str) or entry in commands:
-                    continue
-                errors.extend(
-                    _unresolved_substitutions(
-                        f"commands.{name}.read_back"
-                        + (f"[{i}]" if isinstance(read_back, list) else ""),
-                        entry,
-                        resolvable,
-                        _CMD_SOURCES,
-                    )
-                )
-            udp = cmd.get("udp")
-            if isinstance(udp, dict):
-                for field in ("payload", "host", "port"):
-                    if isinstance(udp.get(field), str):
-                        errors.extend(
-                            _unresolved_substitutions(
-                                f"commands.{name}.udp.{field}",
-                                udp[field],
-                                resolvable,
-                                _CMD_SOURCES,
-                            )
-                        )
-
-    # A response pattern is substituted against the config alone — it is
-    # matched long after any command's params are gone.
-    responses = driver_def.get("responses")
-    if isinstance(responses, list):
-        for i, response in enumerate(responses):
-            if isinstance(response, dict):
-                errors.extend(
-                    _unresolved_substitutions(
-                        f"responses[{i}].match",
-                        response.get("match"),
-                        config_names,
-                        _CFG_SOURCES,
-                        effect="the pattern would look for it as written",
-                    )
-                )
-
-    polling = driver_def.get("polling")
-    query_lists: list[tuple[str, Any]] = [
-        ("polling.queries",
-         polling.get("queries") if isinstance(polling, dict) else None),
-        ("on_connect", driver_def.get("on_connect")),
-    ]
-    if isinstance(responses, list):
-        query_lists += [
-            (f"responses[{i}].then_query", response.get("then_query"))
-            for i, response in enumerate(responses)
-            if isinstance(response, dict)
-        ]
-    for where, entries in query_lists:
-        if not isinstance(entries, list):
-            continue
-        for i, entry in enumerate(entries):
-            template = entry if isinstance(entry, str) else None
-            if isinstance(entry, dict):
-                template = entry.get("send") or entry.get("address")
-            errors.extend(
-                _unresolved_substitutions(
-                    f"{where}[{i}]", template, config_names, _CFG_SOURCES
-                )
-            )
-
-    return errors
+from openavc.drivers.substitution_checks import (
+    validate_substitutions as validate_substitutions,
+)
 
 
 class _TaggedErrors(list):
