@@ -24,8 +24,6 @@ interface UIBuilderStore {
   showGrid: boolean;
   zoom: number;
   screenPresetIndex: number;
-  customWidth: number;
-  customHeight: number;
   /** Copied elements plus where they sat — geometry lives in the page's
    *  layout now, not on the element, so a copy has to carry both halves. */
   clipboard: { elements: UIElement[]; placements: Record<string, Placement> } | null;
@@ -71,7 +69,6 @@ interface UIBuilderStore {
   toggleGrid: () => void;
   setZoom: (zoom: number) => void;
   setScreenPresetIndex: (index: number) => void;
-  setCustomSize: (w: number, h: number) => void;
   setClipboard: (
     el: { elements: UIElement[]; placements: Record<string, Placement> } | null,
   ) => void;
@@ -116,8 +113,6 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   showGrid: true,
   zoom: 1,
   screenPresetIndex: 0,
-  customWidth: 1024,
-  customHeight: 600,
   clipboard: null,
   contextMenu: null,
   undoStack: [],
@@ -179,9 +174,6 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   setZoom: (zoom) => set({ zoom: Math.max(0.25, Math.min(2, zoom)) }),
 
   setScreenPresetIndex: (screenPresetIndex) => set({ screenPresetIndex }),
-
-  setCustomSize: (customWidth, customHeight) =>
-    set({ customWidth, customHeight }),
 
   setClipboard: (clipboard) => set({ clipboard }),
 
