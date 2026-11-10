@@ -53,6 +53,27 @@ describe("matrixFindings", () => {
   });
 });
 
+// The Builder's own reading of a matrix_config written as a list, which the AI
+// side calls not configured whatever it holds: an empty list is not
+// configured here too, and a list with entries is read as a config whose keys
+// are its positions. Recorded as the code reads it today.
+describe("matrixFindings: a matrix_config written as a list", () => {
+  const matrix = (config: unknown) =>
+    ({ id: "mx", type: "matrix", matrix_config: config }) as unknown as UIElement;
+
+  it("an empty list is not configured", () => {
+    expect(matrixFindings(matrix([])).map((f) => f.key)).toEqual(["matrix_not_configured|mx"]);
+  });
+
+  it("a list with entries is checked as a config keyed by position", () => {
+    expect(matrixFindings(matrix([1])).map((f) => f.key)).toEqual([
+      "matrix_config_unread|mx|0",
+      "matrix_default_size|mx|sources",
+      "matrix_default_size|mx|destinations",
+    ]);
+  });
+});
+
 describe("styleFinding", () => {
   it.each(corpus.style_finding.map((c) => [c.name, c] as const))("%s", (_name, c) => {
     const [width, height] = c.box_px as [number, number];
