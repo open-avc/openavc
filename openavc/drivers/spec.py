@@ -382,6 +382,20 @@ OSC_ARG_TYPES: tuple[str, ...] = ("f", "i", "s", "h", "d", "T", "F", "N")
 # Sources a param's option list can cascade from (`options_from.source`).
 PARAM_OPTIONS_FROM_SOURCES: tuple[str, ...] = ("child_schema",)
 
+# --- routing -----------------------------------------------------------------
+
+# The keys a routing plane takes from the routing: block above it, in the order
+# the block declares them: every key but its planes and its params. The load-time
+# check (routing_checks) and the runtime that reads the block
+# (ui/matrix_inference) both merge a plane over these.
+ROUTING_INHERITED: tuple[str, ...] = (
+    "destination_child_type",
+    "source_child_type",
+    "command",
+    "destination_param",
+    "source_param",
+)
+
 # --- actions -----------------------------------------------------------------
 
 # Action kinds the platform understands. "command" promotes an existing command

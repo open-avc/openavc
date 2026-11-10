@@ -42,7 +42,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from openavc.drivers.child_ids import coerce_child_local_id, declared_child_ids
-from openavc.drivers.routing_checks import ROUTING_INHERITED
+from openavc.drivers.spec import ROUTING_INHERITED
 
 #: A state variable on a child that holds "what is routed here".
 #:

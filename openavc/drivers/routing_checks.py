@@ -11,10 +11,13 @@ nothing, found in a commissioned space weeks later. Declaring the block
 REPLACES the guess, so an unusable declaration is worse than none: it takes
 the place of an inference that would have worked.
 
-A plane takes the keys in ``ROUTING_INHERITED`` from the block above it and
-its own value wins, None and empty text included, which is how the runtime
-merges it too. The plane's fixed ``params`` are its own; the block's are
-not judged here. Names are read against what the driver declares
+A plane takes the keys in ``spec.ROUTING_INHERITED`` from the block above
+it and its own value wins, None and empty text included, which is how the
+runtime merges it too. A few rules read the plane's own fields rather than
+the merge, as they always have: its routed property and its fixed
+``params`` (the block's ``params``, which the runtime falls back to, are not
+judged here), and the route parameters that need a command, which count
+from the plane or the block each as written. Names are read against what the driver declares
 (``_Targets``); a set built at runtime (``UNEVALUATED_KEY``) is not judged.
 
 Each part of a plane is one method of ``_PlaneChecks``, in the order its
@@ -24,7 +27,7 @@ on, the route's two ends, the fixed extras; then whether an earlier plane
 already watches the same property and routes it the same way.
 
 Purity contract, as for ``avcdriver_semantic``: standard library and the
-sibling ``declared_names``. The module is vendored with the rest of the driver
+sibling ``declared_names`` and ``spec``. The module is vendored with the rest of the driver
 contract (openavc-drivers' catalog CI, openavc-sdk).
 """
 
@@ -33,15 +36,7 @@ from __future__ import annotations
 from typing import Any
 
 from openavc.drivers.declared_names import UNEVALUATED_KEY, did_you_mean
-
-#: The keys a plane may inherit from the block above it.
-ROUTING_INHERITED: tuple[str, ...] = (
-    "destination_child_type",
-    "source_child_type",
-    "command",
-    "destination_param",
-    "source_param",
-)
+from openavc.drivers.spec import ROUTING_INHERITED
 
 _ENDS: tuple[str, str] = ("destination_param", "source_param")
 
@@ -240,8 +235,9 @@ class _PlaneChecks:
     def _needs_a_command_errors(self) -> list[str]:
         """A parameter name, or a fixed extra, without a command to send it
         on: nothing would carry it, so it reads as configured and does
-        nothing. A route parameter counts from the plane or the block; fixed
-        extras only from the plane."""
+        nothing. A route parameter counts from the plane or the block, each
+        read as written (a plane's null does not hide the block's); fixed
+        extras only from the plane's own."""
         if self.command:
             return []
         if self.raw.get("params") is not None:
@@ -305,7 +301,9 @@ class _PlaneChecks:
         ``source_video`` and route nothing alike. Keying on the property
         alone refused the combined plane, which is the one an integrator wants
         first: a video-only matrix on that gear leaves audio, USB and serial
-        on the previous source with nothing to say so."""
+        on the previous source with nothing to say so. The params are the
+        plane's own and the command is as written, not as the checks read it,
+        so a command of 5 keys as "5"."""
         fixed = self.raw.get("params")
         return (
             self.dest_type or "",
