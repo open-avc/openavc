@@ -319,6 +319,23 @@ describe("moving a page control", () => {
     expect(stored("a")).toEqual({ x: 20, y: 20, w: 40, h: 40 });
   });
 
+  it("lights up no container while a control moves within its own, and measures where it lands in page space", () => {
+    FRAMES = { g: { width: 500, height: 250 } };
+    load(
+      makePage([el("h", { type: "group" }), el("g", { type: "group" }), el("k", { parent: "g" })], {
+        h: { x: 0, y: 0, w: 50, h: 50 },
+        g: { x: 50, y: 50, w: 50, h: 50 },
+        k: { x: 10, y: 10, w: 20, h: 20 },
+      }),
+    );
+    press(node("k"));
+    drag(53, 13);
+    expect((node("g") as HTMLElement).style.outline).not.toBe("2px dashed var(--accent)");
+    expect((node("h") as HTMLElement).style.outline).not.toBe("2px dashed var(--accent)");
+    release();
+    expect(storedEl("k")!.parent).toBe("g");
+  });
+
   it("shows a live box while dragging and says where it landed to the panel", () => {
     load(makePage([el("a")], { a: A }));
     press(node("a"));
@@ -402,6 +419,17 @@ describe("resizing a page control", () => {
     );
   });
 
+  it("holds a ratio that is not 1 the right way up, and leaves a box with no height to its grips", () => {
+    expect(resize("e", 100, 0, { mods: { shiftKey: true } })).toEqual({ x: 10, y: 10, w: 30, h: 30 });
+    expect(resize("s", 0, 100, { a: { x: 10, y: 10, w: 20, h: 0 }, mods: { shiftKey: true } })).toEqual(
+      { x: 10, y: 10, w: 20, h: 20 },
+    );
+  });
+
+  it("rounds the box a ratio sets to four places", () => {
+    expect(resize("e", 100, 0, { extra: { aspect_lock: 7 } as Partial<UIElement> })).toEqual({ x: 10, y: 10, w: 30, h: 8.5714 });
+  });
+
   it("keeps the side the ratio sets at 1% or more", () => {
     expect(resize("e", 10, 0, { extra: { aspect_lock: 100 } as Partial<UIElement> })).toEqual({ x: 10, y: 10, w: 21, h: 1 });
     expect(resize("n", 0, 50, { extra: { aspect_lock: 0.01 } as Partial<UIElement> })).toEqual({ x: 10, y: 20, w: 1, h: 10 });
@@ -420,6 +448,7 @@ describe("resizing a page control", () => {
     });
     press(handle(node("a"), "w"));
     drag(30, 0);
+    expect((node("g") as HTMLElement).style.outline).not.toBe("2px dashed var(--accent)");
     release();
     expect(storedEl("a")!.parent).toBeUndefined();
     expect(stored("a")).toEqual({ x: 48, y: 45, w: 17, h: 20 });
@@ -496,6 +525,21 @@ describe("a page gesture's keys and its end", () => {
     release();
     expect(stored("a")).toEqual({ x: 25.3, y: 10, w: 20, h: 20 });
     expect(undoLabels()).toEqual(["Move element"]);
+  });
+
+  it("draws nothing more once it lets go, whatever the pointer or Alt does next", () => {
+    load(makePage([el("a")], { a: A }, { snap: SNAP_ON }));
+    press(node("a"));
+    drag(153, 0);
+    key("keydown", "Alt", { altKey: true });
+    release();
+    const sent = posted.length;
+    key("keyup", "Alt");
+    drag(400, 0);
+    // No live box comes back: the hit box draws the page the canvas was handed.
+    expect((node("a") as HTMLElement).style.left).toBe("10%");
+    expect(posted.length).toBe(sent);
+    expect(stored("a")).toEqual({ x: 25.3, y: 10, w: 20, h: 20 });
   });
 
   it("a new press ends the gesture still running", () => {
@@ -617,6 +661,7 @@ describe("moving and resizing a master element", () => {
       ["e", -100, 0, {}, { shiftKey: true }, { x: 70, y: 70, w: 10, h: 10 }],
       ["e", -100, 0, { aspect_lock: 4 }, { shiftKey: true }, { x: 70, y: 70, w: 10, h: 5 }],
       ["e", -195, 0, { aspect_lock: 100 }, {}, { x: 70, y: 70, w: 1, h: 1 }],
+      ["e", -100, 0, { aspect_lock: 3 }, {}, { x: 70, y: 70, w: 10, h: 6.6667 }],
     ];
     for (const [direction, dx, dy, extra, mods, want] of cases) {
       loadMaster(master("m", { landscape: M }, extra));
@@ -654,6 +699,28 @@ describe("moving and resizing a master element", () => {
     expect(storedMaster("m")).toEqual(M);
     expect(undoLabels()).toEqual([]);
     expect(posted.at(-1)).toEqual({ type: "openavc:editor-placements", placements: { m: M } });
+  });
+
+  it("keeps to one axis the moment Shift goes down mid-drag", () => {
+    loadMaster(master("m", { landscape: M }));
+    press(masterNode("m"));
+    drag(-103, -40);
+    key("keydown", "Shift", { shiftKey: true });
+    release();
+    expect(storedMaster("m")).toEqual({ x: 59.7, y: 70, w: 20, h: 20 });
+  });
+
+  it("draws nothing more once it lets go, whatever the pointer or Alt does next", () => {
+    loadMaster(master("m", { landscape: M }), { snap: SNAP_ON });
+    press(masterNode("m"));
+    drag(-103, 0);
+    key("keydown", "Alt", { altKey: true });
+    release();
+    const sent = posted.length;
+    key("keyup", "Alt");
+    drag(-300, 0);
+    expect((masterNode("m") as HTMLElement).style.left).toBe("70%");
+    expect(posted.length).toBe(sent);
   });
 
   it("re-runs the last pointer position when Alt or Shift changes, and stops following once it lets go", () => {

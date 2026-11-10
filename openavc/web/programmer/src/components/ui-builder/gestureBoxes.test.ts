@@ -136,3 +136,43 @@ describe("where a control lands with no pointer", () => {
     expect(autoPlace([box(0, 0, 100, 100)], { w: 20, h: 20 }, TWELFTHS, 2)).toEqual(box(45, 45, 20, 20));
   });
 });
+
+describe("the edges of the pulls and the grid", () => {
+  it("reaches a line exactly 1.5% away", () => {
+    expect(snapMove(box(48.5, 60, 10, 10), { snap: OFF, others: [] })).toEqual({
+      placement: box(50, 60, 10, 10),
+      guidesX: [50],
+      guidesY: [],
+    });
+  });
+
+  it("draws a guide only on a line an edge lands on exactly, not one a hair away", () => {
+    const others = [box(40, 0, 10, 10), box(40.0005, 20, 10, 10)];
+    const r = snapMove(box(40.3, 60, 5, 5), { snap: OFF, others });
+    expect(r.placement.x).toBe(40.0005);
+    expect(r.guidesX).toEqual([40.0005, 45.0005]);
+  });
+
+  it("draws the guide a south grip lands on", () => {
+    expect(snapResize(box(10, 10, 20, 39.6), "s", { snap: OFF })).toEqual({
+      placement: box(10, 10, 20, 40),
+      guidesX: [],
+      guidesY: [50],
+    });
+  });
+
+  it("does not move an edge for an increment below zero", () => {
+    expect(snapMove(box(12.3, 71, 6, 3), { snap: { enabled: true, x: 0, y: -5 } }).placement).toEqual(box(12.3, 71, 6, 3));
+  });
+
+  it("takes a cell whose far edge passes 100 by float noise only", () => {
+    const sixths = { enabled: true, x: 100 / 6, y: 12.5 };
+    const row = Array.from({ length: 5 }, (_, c) => box((c * 100) / 6, 0, 100 / 6, 12.5));
+    expect(autoPlace(row, { w: 100 / 6, h: 12.5 }, sixths)).toEqual(box(83.3333, 0, 16.6667, 12.5));
+  });
+
+  it("counts only the whole cells that fit across the page", () => {
+    const forties = { enabled: true, x: 40, y: 40 };
+    expect(autoPlace([box(0, 0, 80, 40)], { w: 10, h: 10 }, forties)).toEqual(box(0, 40, 10, 10));
+  });
+});
