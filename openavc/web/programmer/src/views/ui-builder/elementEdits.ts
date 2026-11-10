@@ -7,13 +7,15 @@
  * says which controls it acts on: an edit that can take several (delete,
  * duplicate, copy) takes them as a list, and its words count what it changed.
  * An edit of a control does nothing while there is no page on screen; a
- * master's own edits need none, but promoting and demoting do.
+ * master's own edits need none, but promoting and demoting do. Not here:
+ * locking a control (the Builder store's own entry) and the canvas's drags and
+ * the toolbar's tools, which push their own entries.
  *
  * Page controls and masters share the `ui.<id>` namespace, so a new control
  * (added, duplicated or pasted) avoids every master's id as well as every
  * page's, and a rename is refused onto either.
  */
-import type { MasterElement, ProjectConfig, UIElement, UIPage } from "../../api/types";
+import type { MasterElement, Placement, ProjectConfig, UIElement, UIPage } from "../../api/types";
 import { showError, showInfo, showSuccess } from "../../store/toastStore";
 import { useUIBuilderStore, type UndoScope } from "../../store/uiBuilderStore";
 import {
@@ -22,6 +24,8 @@ import {
   createDefaultElement,
   demoteFromMaster,
   duplicateElementsInPage,
+  getPlacement,
+  moveElementsInPage,
   pasteIntoPage,
   promoteToMaster,
   removeElementFromPage,
@@ -29,6 +33,7 @@ import {
   renameElement,
   reorderElement,
   reparentElement,
+  roundPlacement,
   resolveHidden,
   swapElementsInOrder,
   topmostSelection,
@@ -38,7 +43,7 @@ import {
   withHidden,
   type ElementClipboard,
 } from "../../components/ui-builder/uiBuilderHelpers";
-import { nudgedPages, type Offset } from "./builderShortcuts";
+import type { Offset } from "./builderShortcuts";
 import { takenIds, type Landing } from "./paletteDrop";
 import { projectEdit, type EditRun, type ProjectEdit } from "./useEditRun";
 
@@ -182,6 +187,24 @@ export function editControl({ page, editPages }: OnPage, id: string, patch: Part
 
 export function editPage({ page, editPages }: OnPage, patch: Partial<UIPage>): void {
   if (page) editPages((pages) => pages.map((p) => (p.id === page.id ? { ...p, ...patch } : p)), "Edit page properties", true);
+}
+
+/** The pages with these controls moved by (dx, dy) in the arrangement being
+ *  authored, each box rounded the way a drag rounds it. */
+export function nudgedPages(
+  pages: UIPage[],
+  pageId: string,
+  { ids, dx, dy }: Offset & { ids: string[] },
+  layoutId: string | null,
+): UIPage[] {
+  const target = pages.find((p) => p.id === pageId);
+  if (!target) return pages;
+  const moved: Record<string, Placement> = {};
+  for (const id of ids) {
+    const box = getPlacement(target, id, layoutId);
+    moved[id] = roundPlacement({ ...box, x: box.x + dx, y: box.y + dy });
+  }
+  return moveElementsInPage(pages, pageId, moved, layoutId);
 }
 
 export function nudge({ page, editPages, layoutId }: InLayout, ids: string[], offset: Offset, description: string): void {

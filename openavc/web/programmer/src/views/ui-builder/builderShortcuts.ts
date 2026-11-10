@@ -16,12 +16,9 @@ import { useEffect } from "react";
 import type { MasterElement, Placement, SnapConfig, UIPage } from "../../api/types";
 import { isModalOpen } from "../../components/shared/Modal";
 import {
-  getPlacement,
   layoutOrientation,
   masterPlacement,
-  moveElementsInPage,
   pageSnap,
-  roundPlacement,
   withMasterPlacement,
 } from "../../components/ui-builder/uiBuilderHelpers";
 import { saveNow } from "../../store/saveState";
@@ -186,24 +183,6 @@ function nudgeMaster(e: KeyboardEvent, k: BuilderKeys, page: UIPage, { dx, dy }:
   if (!current) return;
   const moved = withMasterPlacement(master, orientation, { ...current, x: current.x + dx, y: current.y + dy });
   k.moveMaster(id, moved.placements);
-}
-
-/** The pages with these controls moved by (dx, dy) in the arrangement being
- *  authored, each box rounded the way a drag rounds it. */
-export function nudgedPages(
-  pages: UIPage[],
-  pageId: string,
-  { ids, dx, dy }: Offset & { ids: string[] },
-  layoutId: string | null,
-): UIPage[] {
-  const target = pages.find((p) => p.id === pageId);
-  if (!target) return pages;
-  const moved: Record<string, Placement> = {};
-  for (const id of ids) {
-    const box = getPlacement(target, id, layoutId);
-    moved[id] = roundPlacement({ ...box, x: box.x + dx, y: box.y + dy });
-  }
-  return moveElementsInPage(pages, pageId, moved, layoutId);
 }
 
 /** Delete and Backspace: the selected master, else the selected controls. A

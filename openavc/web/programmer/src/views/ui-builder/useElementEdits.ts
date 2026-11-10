@@ -3,10 +3,12 @@
  * page hands them to the canvas menu, the outline, the Properties panel, the
  * palette and the keyboard.
  *
- * Each edit is bound to what it reads from the page as last drawn, and keeps
- * its identity until one of those changes: the Properties panel's image
- * probe and the palette's drop handler are rebuilt on a new one, so an edit
- * that changed identity on every draw would rerun them.
+ * Each edit is bound to what it reads from the page as last drawn and keeps
+ * its identity until one of those changes, as the page's own handlers did
+ * (the masters are held while the project is the same, where the page's list
+ * for a project with none was new on every draw). What reads an edit's
+ * identity is a hook's list: the palette's drop and add (`usePaletteDrop`) and
+ * the outline's drag (`onReparent`); none reruns an effect on a new one.
  */
 import { useCallback, useMemo } from "react";
 import type { MasterElement, ProjectConfig, UIElement, UIPage } from "../../api/types";
@@ -97,11 +99,8 @@ export function useElementEdits({ project, page, layoutId, run, clipboard, selec
     [project, masters, run, elementId, masterId],
   );
 
-  return useMemo(() => ({
+  return {
     remove, duplicate, copy, paste, toggleHidden, bringToFront, sendToBack, swapOrder, reparent, add,
     editControl, editPage, nudge, editMaster, promote, demote, deleteMaster, rename,
-  }), [
-    remove, duplicate, copy, paste, toggleHidden, bringToFront, sendToBack, swapOrder, reparent, add,
-    editControl, editPage, nudge, editMaster, promote, demote, deleteMaster, rename,
-  ]);
+  };
 }
