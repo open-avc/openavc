@@ -1089,7 +1089,7 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
             "declared_names.py", "framing_checks.py", "param_aid_checks.py",
             "push_block_checks.py",
             "query_entry_checks.py", "response_rule_checks.py",
-            "state_variable_checks.py",
+            "sign_in_checks.py", "state_variable_checks.py",
             "python_info.py",
             "check.py",
         )

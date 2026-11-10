@@ -7,8 +7,8 @@ definition section by section and asks a check module about each command
 (``query_entry_checks``), child type and the references into it
 (``child_type_checks``), state variable (``state_variable_checks``), the
 push block (``push_block_checks``), the Quick Action blocks
-(``action_checks``) and the framing each way (``framing_checks``). The
-runtime loader wraps it (adding the discovery-block check, which needs the
+(``action_checks``), the framing each way (``framing_checks``) and the
+sign-in (``sign_in_checks``). The runtime loader wraps it (adding the discovery-block check, which needs the
 discovery engine's parser), and the community driver catalog runs a copy of
 the same rules in its CI, so a definition that passes catalog review is
 exactly a definition the platform will load.
@@ -59,9 +59,8 @@ from openavc.drivers.query_entry_checks import (
     then_query_errors,
 )
 from openavc.drivers.response_rule_checks import response_rule_errors
+from openavc.drivers.sign_in_checks import auth_errors
 from openavc.drivers.spec import (
-    AUTH_TRANSPORTS,
-    AUTH_TYPES,
     CONNECTION_FIELDS,
     DEFAULT_LINE_GAP_S,
     DEFS,
@@ -664,48 +663,10 @@ def validate_driver_definition(
     errors.ctx = "push"
     errors.extend(push_block_errors(driver_def))
 
-    # Validate the optional `auth:` login handshake block. The runtime swaps to
-    # raw byte buffering and types credentials before any other traffic — so a
-    # misdeclared block silently connects unauthenticated or mangles the
-    # transport's data path instead of erroring. Enforce the requirements at
-    # load time where the author can see them.
+    # The sign-in the platform types before any other traffic, checked in
+    # sign_in_checks.
     errors.ctx = "auth"
-    auth_def = driver_def.get("auth")
-    if auth_def is not None:
-        if not isinstance(auth_def, dict):
-            errors.append("auth: must be a mapping")
-        else:
-            auth_type = auth_def.get("type", "telnet_login")
-            if auth_type not in AUTH_TYPES:
-                errors.append(
-                    f"auth: unsupported type '{auth_type}' (only 'telnet_login')"
-                )
-            # The handshake assumes a TCP/serial byte stream; on udp/http/osc the
-            # frame-parser swap and raw buffering break the normal data path.
-            if transport and transport not in AUTH_TRANSPORTS:
-                errors.append(
-                    f"auth: login handshake is only supported on tcp/serial "
-                    f"transports, not '{transport}'"
-                )
-            # Both prompts are required — without them the handshake silently
-            # no-ops and the device connects unauthenticated.
-            for required in ("username_prompt", "password_prompt"):
-                if not auth_def.get(required):
-                    errors.append(f"auth: missing required '{required}'")
-            # The prompt/success/failure regexes run synchronously on raw
-            # pre-auth device bytes, so they get the same ReDoS check as
-            # response patterns.
-            for key in (
-                "username_prompt",
-                "password_prompt",
-                "success_pattern",
-                "failure_pattern",
-            ):
-                pat = auth_def.get(key)
-                if pat:
-                    err = _regex_redos_error(f"auth.{key}", pat)
-                    if err:
-                        errors.append(err)
+    errors.extend(auth_errors(driver_def))
 
     # Validate the optional `liveness:` watchdog block ("send X every N, await
     # a reply within T, reconnect after K misses"). A misdeclared block would
