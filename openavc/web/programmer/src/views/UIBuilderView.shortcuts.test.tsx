@@ -247,6 +247,8 @@ describe("the other keys", () => {
     await renderPage(UIBuilderView);
     expect(press("p", { ctrl: true }).defaultPrevented).toBe(true);
     expect(builder().previewMode).toBe(true);
+    expect(builder().selectedElementIds).toEqual([]);
+    expect(builder().selectedElementId).toBeNull();
     call(() => builder().selectElement("btn_1"));
     expect(press("Delete").defaultPrevented).toBe(false);
     expect(press("Escape").defaultPrevented).toBe(false);
