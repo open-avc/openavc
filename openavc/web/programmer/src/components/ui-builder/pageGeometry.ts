@@ -17,9 +17,10 @@
  * the panel runtime reads all of this the same way (`_selectLayout`,
  * `_masterPlacement` and the grouping in `_renderPageElements`, in panel.js).
  *
- * A leaf: the container tree, the arranging tools, the canvas and the page
- * review import it, and it imports only the project's types and the first-free
- * naming rule a new layout's id takes.
+ * A leaf: the container tree, the arranging tools and the page review import
+ * it (the canvas, the toolbar and the properties panel read it through the
+ * helpers file's re-exports), and it imports only the project's types and the
+ * first-free naming rule a new layout's id takes.
  */
 import type { Layout, MasterElement, Placement, SnapConfig, UIElement, UIPage } from "../../api/types";
 import { firstFree } from "./newElement";
@@ -412,7 +413,9 @@ type OnPage = { has(id: string): boolean };
  *
  * The panel groups a page the same way (`_renderPageElements` in panel.js),
  * except that it takes a self-parent at its word, so that element is drawn
- * nowhere.
+ * nowhere. The page review asks this too, so a change here changes what the
+ * review says and has to move `parent_of` in openavc/ui/page_review.py with it
+ * (tests/test_ui_review_parity.py holds the two to the same words).
  */
 export function containerOf(el: UIElement | undefined, onPage: OnPage): string | null {
   if (!el) return null;
