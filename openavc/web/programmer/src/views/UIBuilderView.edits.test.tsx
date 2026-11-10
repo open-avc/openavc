@@ -299,6 +299,8 @@ describe("structural edits", () => {
     expect(undoLog()).toEqual([["Change theme", "settings"]]);
     expect(builder().undoStack[0].snapshot.settings!.theme_id).toBe("dark-default");
     expect(ui().settings).toMatchObject({ theme_id: "paper", theme: "light", accent_color: "", font_family: "", theme_overrides: {} });
+    // toMatchObject takes any object for {}: the old theme's overrides are gone.
+    expect(ui().settings.theme_overrides).toEqual({});
     call(() => props().onThemeChange("dark-default"));
     expect(ui().settings.theme).toBe("dark");
     // No background to read: the id says.

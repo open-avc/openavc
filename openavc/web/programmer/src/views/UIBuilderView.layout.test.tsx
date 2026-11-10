@@ -194,6 +194,40 @@ describe("the dialogs one over another", () => {
   });
 });
 
+describe("each dialog on its own", () => {
+  it("opens only the dialog asked for, from each of its openers", async () => {
+    await renderPage(UIBuilderView);
+    const shown = () => [
+      seen.ThemeStudio.open,
+      !!screen.queryByTestId("stub-StylesheetEditor"),
+      !!screen.queryByRole("dialog", { name: "Panel Settings" }),
+      !!screen.queryByText("Reset element styles to theme defaults?"),
+    ];
+    click("Open Theme Studio");
+    expect(shown()).toEqual([true, false, false, false]);
+    call(() => seen.ThemeStudio.onClose());
+    click("Edit the project stylesheet (custom CSS)");
+    expect(shown()).toEqual([false, true, false, false]);
+    call(() => seen.StylesheetEditor.onClose());
+    call(() => seen.PropertiesPanel.onOpenStylesheet());
+    expect(shown()).toEqual([false, true, false, false]);
+    call(() => seen.StylesheetEditor.onClose());
+    click("Panel Settings");
+    expect(shown()).toEqual([false, false, true, false]);
+    call(() => fireEvent.click(screen.getByRole("button", { name: "Cancel" })));
+    expect(shown()).toEqual([false, false, false, false]);
+  });
+
+  it("draws both previews at the chosen preset's own size", async () => {
+    seed(makeProject(), { selectedPageId: "main", activeLayoutId: "main_port", screenPresetIndex: 1 });
+    await renderPage(UIBuilderView);
+    click("Edit the project stylesheet (custom CSS)");
+    expect(seen.ThemeStudio).toMatchObject({ panelWidth: 1280, panelHeight: 800 });
+    expect(seen.StylesheetEditor).toMatchObject({ panelWidth: 1280, panelHeight: 800 });
+    expect(seen.Canvas).toMatchObject({ screenWidth: 800, screenHeight: 1280 });
+  });
+});
+
 describe("a project with no masters list", () => {
   it("hands the canvas no list at all, and the outline and the keys an empty one", async () => {
     const p = makeProject();
