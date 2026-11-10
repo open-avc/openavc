@@ -7755,5 +7755,235 @@
         "share": 25.0
       }
     }
+  ],
+  "container_remedy": [
+    {
+      "name": "the container grows within its parent",
+      "ancestors": [
+        {
+          "label": "'grp'",
+          "width_px": 100,
+          "height_px": 80
+        },
+        {
+          "label": "'outer'",
+          "width_px": 200,
+          "height_px": 160
+        }
+      ],
+      "blocked": [
+        [
+          "width",
+          30,
+          20
+        ]
+      ],
+      "page": null,
+      "expected": {
+        "holder": "'grp'",
+        "parent": "'outer'",
+        "needs": {
+          "width": 150.0
+        }
+      }
+    },
+    {
+      "name": "grown to exactly its parent",
+      "ancestors": [
+        {
+          "label": "'grp'",
+          "width_px": 100,
+          "height_px": 80
+        },
+        {
+          "label": "'outer'",
+          "width_px": 200,
+          "height_px": 160
+        }
+      ],
+      "blocked": [
+        [
+          "width",
+          40,
+          20
+        ]
+      ],
+      "page": null,
+      "expected": {
+        "holder": "'grp'",
+        "parent": "'outer'",
+        "needs": {
+          "width": 200.0
+        }
+      }
+    },
+    {
+      "name": "grown inside the half pixel of slack",
+      "ancestors": [
+        {
+          "label": "'grp'",
+          "width_px": 100,
+          "height_px": 80
+        },
+        {
+          "label": "'outer'",
+          "width_px": 200,
+          "height_px": 160
+        }
+      ],
+      "blocked": [
+        [
+          "width",
+          40.08,
+          20
+        ]
+      ],
+      "page": null,
+      "expected": {
+        "holder": "'grp'",
+        "parent": "'outer'",
+        "needs": {
+          "width": 200.4
+        }
+      }
+    },
+    {
+      "name": "grown past the half pixel, the fix is one level out",
+      "ancestors": [
+        {
+          "label": "'grp'",
+          "width_px": 100,
+          "height_px": 80
+        },
+        {
+          "label": "'outer'",
+          "width_px": 200,
+          "height_px": 160
+        }
+      ],
+      "blocked": [
+        [
+          "width",
+          40.12,
+          20
+        ]
+      ],
+      "page": null,
+      "expected": {
+        "holder": "'outer'",
+        "parent": "the page",
+        "needs": {
+          "width": 401.19999999999993
+        }
+      }
+    },
+    {
+      "name": "one axis fits and the other does not",
+      "ancestors": [
+        {
+          "label": "'grp'",
+          "width_px": 100,
+          "height_px": 80
+        },
+        {
+          "label": "'outer'",
+          "width_px": 200,
+          "height_px": 160
+        }
+      ],
+      "blocked": [
+        [
+          "width",
+          30,
+          20
+        ],
+        [
+          "height",
+          50,
+          20
+        ]
+      ],
+      "page": null,
+      "expected": {
+        "holder": "'outer'",
+        "parent": "the page",
+        "needs": {
+          "width": 300.0,
+          "height": 400.0
+        }
+      }
+    },
+    {
+      "name": "a zero box has no share to scale",
+      "ancestors": [
+        {
+          "label": "'grp'",
+          "width_px": 100,
+          "height_px": 80
+        },
+        {
+          "label": "'outer'",
+          "width_px": 200,
+          "height_px": 160
+        }
+      ],
+      "blocked": [
+        [
+          "width",
+          30,
+          0
+        ]
+      ],
+      "page": null,
+      "expected": null
+    },
+    {
+      "name": "nothing up the chain can hold it",
+      "ancestors": [
+        {
+          "label": "'grp'",
+          "width_px": 100,
+          "height_px": 80
+        }
+      ],
+      "blocked": [
+        [
+          "width",
+          300,
+          20
+        ]
+      ],
+      "page": {
+        "label": "the page",
+        "width_px": 1000,
+        "height_px": 800
+      },
+      "expected": null
+    },
+    {
+      "name": "the page is the landscape reference when none is given",
+      "ancestors": [
+        {
+          "label": "'grp'",
+          "width_px": 100,
+          "height_px": 80
+        }
+      ],
+      "blocked": [
+        [
+          "height",
+          90,
+          9
+        ]
+      ],
+      "page": null,
+      "expected": {
+        "holder": "'grp'",
+        "parent": "the page",
+        "needs": {
+          "height": 800.0
+        }
+      }
+    }
   ]
 }

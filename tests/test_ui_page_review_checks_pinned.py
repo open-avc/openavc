@@ -29,15 +29,15 @@ from pathlib import Path
 import pytest
 
 from openavc.ui.page_review import (
-    Container,
-    DrawnPage,
-    Seat,
     binding_findings,
     buried_master_findings,
+    Container,
+    container_remedy,
     content_findings,
     degenerate_finding,
     do_action_dicts,
     do_action_findings,
+    DrawnPage,
     keypad_findings,
     master_box,
     matrix_findings,
@@ -47,6 +47,7 @@ from openavc.ui.page_review import (
     precision_review,
     property_findings,
     range_review,
+    Seat,
     starvation_finding,
     style_finding,
     touch_finding,
@@ -158,6 +159,20 @@ def test_do_action_findings(case) -> None:
 def test_overlap_findings(case) -> None:
     pairs = [tuple(pair) for pair in case["pairs"]]
     assert _said(overlap_findings(pairs, case["types"], case["parent_name"])) == case["expected"]
+
+
+@pytest.mark.parametrize("case", _cases("container_remedy"))
+def test_container_remedy(case) -> None:
+    def box(raw: dict) -> Container:
+        return Container(raw["label"], raw["width_px"], raw["height_px"])
+
+    found = container_remedy(
+        tuple(box(a) for a in case["ancestors"]),
+        [tuple(b) for b in case["blocked"]],
+        None if case["page"] is None else box(case["page"]),
+    )
+    said = None if found is None else {"holder": found[0].label, "parent": found[1].label, "needs": found[2]}
+    assert said == case["expected"]
 
 
 @pytest.mark.parametrize("case", _cases("overlap_extent"))

@@ -4,6 +4,7 @@ import { resolve } from "path";
 import { doActionFindings } from "./reviewActions";
 import { bindingFindings } from "./reviewBindings";
 import {
+  containerRemedy,
   degenerateFinding,
   overlapExtent,
   overlapFindings,
@@ -16,7 +17,7 @@ import { matrixFindings } from "./reviewMatrix";
 import { contentFindings, keypadFindings, propertyFindings } from "./reviewProperties";
 import { mutuallyExclusive } from "./reviewStacking";
 import type { ElementDefaults } from "./controlMinimums";
-import type { Seat } from "./reviewFinding";
+import type { Container, Seat } from "./reviewFinding";
 import type { DrawnPage } from "./reviewMasters";
 import type { MasterElement, Placement, UIElement } from "../../api/types";
 
@@ -180,6 +181,22 @@ describe("overlapFindings", () => {
       pairs, toMap(c.types as Record<string, string>), c.parent_name as string,
     );
     expect(said(findings)).toEqual(c.expected);
+  });
+});
+
+describe("containerRemedy", () => {
+  type RawBox = { label: string; width_px: number; height_px: number };
+  const box = (raw: RawBox): Container => ({ label: raw.label, widthPx: raw.width_px, heightPx: raw.height_px });
+  it.each(corpus.container_remedy.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const blocked = (c.blocked as [string, number, number][]).map(([axis, wants, has]) => ({
+      axis: axis as "width" | "height", wants, has,
+    }));
+    const ancestors = (c.ancestors as RawBox[]).map(box);
+    const found = c.page
+      ? containerRemedy(ancestors, blocked, box(c.page as RawBox))
+      : containerRemedy(ancestors, blocked);
+    const said = found ? { holder: found.holder.label, parent: found.parent.label, needs: found.needs } : null;
+    expect(said).toEqual(c.expected);
   });
 });
 
