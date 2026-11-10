@@ -5,7 +5,7 @@
 * *does this element type's renderer read this binding* -- which lives in
   ``openavc/web/panel/panel.js``, in whichever render function the type dispatches to.
 * *is this big enough for a finger* -- which lives in the Builder
-  (``uiBuilderHelpers.ts``), measured against real panel diagonals.
+  (``touchTarget.ts``), measured against real panel diagonals.
 
 Both are copies, and a copy of a fact drifts silently. These tests re-derive
 each from its source and fail when they part company. The failure mode they
@@ -55,10 +55,7 @@ from openavc.ui.control_minimums import (
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
-BUILDER_HELPERS = (
-    OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder"
-    / "uiBuilderHelpers.ts"
-)
+BUILDER_DIR = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder"
 
 # A class method at the top level of the panel renderer. Used only to find where
 # one method's body ends -- without it, the last render function's body runs to
@@ -434,14 +431,15 @@ def test_resolve_press_agrees_with_that_rule() -> None:
         assert event == "press", f"{reported!r} should have read as off"
 
 
-@pytest.fixture(scope="module")
-def builder_source() -> str:
-    if not BUILDER_HELPERS.is_file():  # pragma: no cover - the repo always has it
-        pytest.fail(f"builder helpers not found at {BUILDER_HELPERS}")
-    return BUILDER_HELPERS.read_text(encoding="utf-8")
+def _builder(module: str) -> str:
+    """The source of the Builder module that holds the twin a test reads."""
+    path = BUILDER_DIR / f"{module}.ts"
+    if not path.is_file():  # pragma: no cover - the repo always has it
+        pytest.fail(f"Builder module not found at {path}")
+    return path.read_text(encoding="utf-8")
 
 
-def test_the_finger_rule_matches_the_builders(builder_source: str) -> None:
+def test_the_finger_rule_matches_the_builders() -> None:
     """Same millimetres, same density, so both surfaces reach the same verdict.
 
     These were re-measured in the Builder against real panel diagonals (a
@@ -449,6 +447,7 @@ def test_the_finger_rule_matches_the_builders(builder_source: str) -> None:
     reported a control as half again more finger than it gets. A Python copy
     that missed that correction would be the same bug on the other side.
     """
+    builder_source = _builder("touchTarget")
     reference = re.search(
         r"TOUCH_REFERENCE\s*=\s*\{\s*width:\s*(\d+),\s*height:\s*(\d+),"
         r"\s*pxPerInch:\s*(\d+)\s*\}",
@@ -465,9 +464,7 @@ def test_the_finger_rule_matches_the_builders(builder_source: str) -> None:
     assert float(minimum.group(1)) == TOUCH_MIN_MM
 
 
-def test_a_turned_panel_swaps_its_pixels_and_keeps_its_density(
-    builder_source: str,
-) -> None:
+def test_a_turned_panel_swaps_its_pixels_and_keeps_its_density() -> None:
     """Portrait is the same glass on its side, on both surfaces.
 
     Two claims, and the second is the one worth a test. The pixels swap: a
@@ -487,6 +484,8 @@ def test_a_turned_panel_swaps_its_pixels_and_keeps_its_density(
     # layout with no orientation resolves to.
     assert reference_box("") == (REFERENCE_WIDTH_PX, REFERENCE_HEIGHT_PX)
 
+    builder_source = _builder("touchTarget")
+
     turned = re.search(
         r'return orientation === "portrait"\s*'
         r"\?\s*\{\s*width:\s*TOUCH_REFERENCE\.(\w+),\s*height:\s*TOUCH_REFERENCE\.(\w+)\s*\}\s*"
@@ -503,7 +502,8 @@ def test_a_turned_panel_swaps_its_pixels_and_keeps_its_density(
     )
 
 
-def test_the_same_types_are_treated_as_touchable(builder_source: str) -> None:
+def test_the_same_types_are_treated_as_touchable() -> None:
+    builder_source = _builder("touchTarget")
     block = re.search(
         r"const TOUCHABLE_TYPES = new Set\(\[(.*?)\]\)", builder_source, re.S,
     )
@@ -511,7 +511,8 @@ def test_the_same_types_are_treated_as_touchable(builder_source: str) -> None:
     assert frozenset(re.findall(r'"([\w_]+)"', block.group(1))) == TOUCHABLE_TYPES
 
 
-def test_the_degenerate_threshold_matches_the_builders(builder_source: str) -> None:
+def test_the_degenerate_threshold_matches_the_builders() -> None:
+    builder_source = _builder("uiBuilderHelpers")
     found = re.search(r"MINIMUM_VISIBLE_PX = ([\d.]+)", builder_source)
     assert found, "could not find MINIMUM_VISIBLE_PX in the Builder helpers"
     assert float(found.group(1)) == MINIMUM_VISIBLE_PX
@@ -621,7 +622,9 @@ def test_the_visibility_operators_are_the_ones_the_panel_evaluates(
     assert panel == _review_meanings()
 
 
-def test_the_builder_reads_the_same_visibility_operators(builder_source: str) -> None:
+def test_the_builder_reads_the_same_visibility_operators() -> None:
+    builder_source = _builder("uiBuilderHelpers")
+
     def spellings(name: str) -> set[str]:
         block = re.search(rf"const {name} = new Set\(\[(.*?)\]\)", builder_source, re.S)
         assert block, f"could not find {name} in the Builder helpers"
@@ -639,9 +642,7 @@ def test_the_builder_reads_the_same_visibility_operators(builder_source: str) ->
     assert bounds("UPPER_OPS") == _UPPER
 
 
-def test_the_keypad_defaults_are_the_panels(
-    panel_method_bodies: dict[str, str], builder_source: str,
-) -> None:
+def test_the_keypad_defaults_are_the_panels(panel_method_bodies: dict[str, str]) -> None:
     """The defaults the panel fills in, which the review also uses as its threshold.
 
     A Send Delay under the panel's own default is what the review warns about,
@@ -654,6 +655,7 @@ def test_the_keypad_defaults_are_the_panels(
     assert digits and delay, "could not find the keypad's defaults in renderKeypad"
     assert int(digits.group(1)) == KEYPAD_DIGITS_DEFAULT
     assert int(delay.group(1)) == KEYPAD_SEND_DELAY_DEFAULT_MS
+    builder_source = _builder("uiBuilderHelpers")
     for name, value in (
         ("KEYPAD_DIGITS_DEFAULT", KEYPAD_DIGITS_DEFAULT),
         ("KEYPAD_SEND_DELAY_DEFAULT_MS", KEYPAD_SEND_DELAY_DEFAULT_MS),

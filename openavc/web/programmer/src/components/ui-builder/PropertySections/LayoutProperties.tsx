@@ -1,5 +1,5 @@
 import type { UIElement, Placement } from "../../../api/types";
-import { touchTargetWarning, isTouchable, TOUCH_MIN_MM } from "../uiBuilderHelpers";
+import { touchTargetWarning, isTouchable, TOUCH_MIN_MM } from "../touchTarget";
 import { controlMinimumBox, controlMinimumPercent, type ElementDefaults } from "../controlMinimums";
 import { NumericInput } from "../../shared/NumericInput";
 

@@ -6,10 +6,10 @@ import {
   descendantIds,
   dropTargetFor,
   outlineRows,
-  referenceParentBox,
   reparentElement,
   topmostSelection,
 } from "./uiBuilderHelpers";
+import { referenceParentBox } from "./touchTarget";
 import type { Layout, Placement, UIElement, UIPage } from "../../api/types";
 
 // The container tree: which element a box is measured against, the chain of

@@ -18,8 +18,6 @@ import {
   getPlacement,
   withPlacement,
   pageSnap,
-  referenceBox,
-  referenceParentBox,
   containerChoices,
   displayStyleValue,
   storeStyleValue,
@@ -32,6 +30,7 @@ import {
   layoutById,
   sliderThemeDefaults,
 } from "./uiBuilderHelpers";
+import { referenceBox, referenceParentBox } from "./touchTarget";
 
 interface ThemeSummary {
   id: string;
