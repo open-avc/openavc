@@ -13,9 +13,6 @@ import { Canvas } from "../components/ui-builder/Canvas";
 import { CanvasToolbar } from "../components/ui-builder/CanvasToolbar";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 import { ContextMenu } from "../components/ui-builder/ContextMenu";
-import { ThemeStudio } from "../components/ui-builder/ThemeStudio";
-import { StylesheetEditor } from "../components/ui-builder/StylesheetEditor";
-import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { SCREEN_PRESETS } from "../components/ui-builder/uiBuilderHelpers";
 import { canvasScreen } from "../components/ui-builder/canvasScreen";
 import { useEditRun } from "./ui-builder/useEditRun";
@@ -23,8 +20,8 @@ import { useBuilderShortcuts } from "./ui-builder/builderShortcuts";
 import { useElementEdits } from "./ui-builder/useElementEdits";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
 import { PaletteDragGhost } from "./ui-builder/PaletteDragGhost";
-import { useValidation, ValidationReport } from "./ui-builder/ValidationReport";
-import { PanelSettingsDialog } from "./ui-builder/PanelSettingsDialog";
+import { useValidation } from "./ui-builder/ValidationReport";
+import { BuilderDialogs, themeListChange, useBuilderDialogs } from "./ui-builder/BuilderDialogs";
 import { SaveFailedBanner } from "./ui-builder/SaveFailedBanner";
 import { ToolbarActions } from "./ui-builder/ToolbarActions";
 import { BuilderSidebar, type SidebarTab } from "./ui-builder/BuilderSidebar";
@@ -60,14 +57,11 @@ export function UIBuilderView() {
   const setContextMenu = useUIBuilderStore((s) => s.setContextMenu);
   const panelElements = usePluginStore((s) => s.extensions.panel_elements);
 
-  const [showSettings, setShowSettings] = useState(false);
   const [showPalette, setShowPalette] = useState(true);
   // The left panel's tab outlives the panel, which preview and Ctrl+E take away.
   const [leftTab, setLeftTab] = useState<SidebarTab>("elements");
-  const [showThemeStudio, setShowThemeStudio] = useState(false);
-  const [showStylesheet, setShowStylesheet] = useState(false);
+  const dialogs = useBuilderDialogs();
   const validation = useValidation(project);
-  const [confirmResetStyles, setConfirmResetStyles] = useState(false);
   const theme = useBuilderTheme(project?.ui?.settings?.theme_id);
   const themes = theme.themes;
 
@@ -169,9 +163,9 @@ export function UIBuilderView() {
           trailing={
             !previewMode ? (
               <ToolbarActions
-                onTheme={() => setShowThemeStudio(true)}
-                onStylesheet={() => setShowStylesheet(true)}
-                onSettings={() => setShowSettings(true)}
+                onTheme={() => dialogs.show("studio")}
+                onStylesheet={() => dialogs.show("stylesheet")}
+                onSettings={() => dialogs.show("settings")}
               />
             ) : undefined
           }
@@ -259,8 +253,8 @@ export function UIBuilderView() {
                     project={project}
                     themeDefaults={theme.defaults}
                     themes={themes}
-                    onThemeChange={showThemeStudio ? undefined : panelEdits.chooseTheme}
-                    onOpenStylesheet={() => setShowStylesheet(true)}
+                    onThemeChange={themeListChange(dialogs, panelEdits.chooseTheme)}
+                    onOpenStylesheet={() => dialogs.show("stylesheet")}
                     onChange={edits.editControl}
                     onRenameElement={edits.rename}
                     onPageChange={edits.editPage}
@@ -309,66 +303,15 @@ export function UIBuilderView() {
         />
       )}
 
-      {/* Theme Studio */}
-      {project && (
-        <ThemeStudio
-          open={showThemeStudio}
-          onClose={() => setShowThemeStudio(false)}
-          themes={themes}
-          project={project}
-          currentThemeId={project.ui.settings.theme_id || "dark-default"}
-          themeOverrides={project.ui.settings.theme_overrides || {}}
-          onChangeTheme={panelEdits.chooseTheme}
-          onClearOverrides={panelEdits.clearOverrides}
-          onRefreshThemes={theme.loadThemes}
-          onThemeSaved={theme.refetch}
-          onResetElementStyles={() => setConfirmResetStyles(true)}
-          // The raw preset, NOT the layout-turned one: a theme preview is about
-          // colour and type, and it should not change shape because of which
-          // arrangement happened to be selected behind the dialog.
-          panelWidth={preset?.width ?? 1024}
-          panelHeight={preset?.height ?? 600}
-        />
-      )}
-      {/* Project stylesheet */}
-      {project && showStylesheet && (
-        <StylesheetEditor
-          project={project}
-          previewPageId={currentPage?.id ?? null}
-          panelWidth={preset?.width ?? 1024}
-          panelHeight={preset?.height ?? 600}
-          onSave={panelEdits.saveStylesheet}
-          onClose={() => setShowStylesheet(false)}
-        />
-      )}
-      {confirmResetStyles && (
-        <ConfirmDialog
-          title="Reset element styles to theme defaults?"
-          message="This removes per-element style overrides for every property the current theme defines defaults for. Elements will inherit their appearance from the theme. This can be undone with Ctrl+Z."
-          confirmLabel="Reset Styles"
-          destructive
-          onCancel={() => setConfirmResetStyles(false)}
-          onConfirm={() => {
-            setConfirmResetStyles(false);
-            panelEdits.resetStyles();
-          }}
-        />
-      )}
-
-      {validation.issues !== null && (
-        <ValidationReport issues={validation.issues} onClose={validation.close} />
-      )}
-
-      {/* Settings dialog */}
-      {showSettings && (
-        <PanelSettingsDialog
-          settings={project.ui.settings}
-          pages={project.ui.pages}
-          onUpdate={panelEdits.saveSettings}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
-
+      <BuilderDialogs
+        dialogs={dialogs}
+        project={project}
+        page={currentPage}
+        preset={preset}
+        theme={theme}
+        edits={panelEdits}
+        validation={validation}
+      />
     </DndContext>
   );
 }
