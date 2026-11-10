@@ -42,6 +42,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from openavc.drivers.child_ids import coerce_child_local_id, declared_child_ids
+from openavc.drivers.routing_checks import ROUTING_INHERITED
 
 #: A state variable on a child that holds "what is routed here".
 #:
@@ -907,16 +908,6 @@ def _proposal_warnings(
     return warnings
 
 
-#: Keys a declared plane may inherit from the ``routing:`` block above it.
-_INHERITED: tuple[str, ...] = (
-    "destination_child_type",
-    "source_child_type",
-    "command",
-    "destination_param",
-    "source_param",
-)
-
-
 class _Plane:
     """One routing plane, however it was arrived at: guessed or declared.
 
@@ -1020,7 +1011,7 @@ def _declared_planes(
     for raw in raw_planes:
         if not isinstance(raw, Mapping):
             continue
-        merged: dict[str, Any] = {k: block.get(k) for k in _INHERITED}
+        merged: dict[str, Any] = {k: block.get(k) for k in ROUTING_INHERITED}
         merged.update(raw)
         prop = str(merged.get("route_property") or "").strip()
         if not prop:
