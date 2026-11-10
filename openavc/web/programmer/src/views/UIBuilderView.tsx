@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { DndContext, DragOverlay } from "@dnd-kit/core";
 import {
   Panel,
@@ -7,6 +7,7 @@ import {
 } from "react-resizable-panels";
 import type { MasterElement } from "../api/types";
 import { useProjectStore } from "../store/projectStore";
+import { useFlushBeforeUnload } from "../store/saveState";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { usePluginStore } from "../store/pluginStore";
 import { Canvas } from "../components/ui-builder/Canvas";
@@ -62,16 +63,7 @@ export function UIBuilderView() {
   const validation = useValidation(project);
   const theme = useBuilderTheme(project?.ui?.settings?.theme_id);
 
-  // Autosave is driven by useProjectStore.debouncedSave, called from
-  // touchMutation() on every UI Builder mutation. See store/uiBuilderStore.ts.
-
-  // Flush pending save before the tab unloads so the 2 s debounce window
-  // can't lose the last edit.
-  useEffect(() => {
-    const handler = () => useProjectStore.getState().flushSave();
-    window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
-  }, []);
+  useFlushBeforeUnload();
 
   const preset = SCREEN_PRESETS[screenPresetIndex];
   const { width: screenWidth, height: screenHeight } = canvasScreen(screenPresetIndex, currentPage, activeLayoutId);

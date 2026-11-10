@@ -9,8 +9,11 @@
  * Saving now is what Ctrl+S and the toolbar's Save button do: the save waiting
  * on its timer goes now, and a direct one while changes are unsaved and none is
  * running (flushSave does nothing with no timer). The banner's Retry is a
- * direct save, whatever is waiting.
+ * direct save, whatever is waiting. While the Builder is open, the save
+ * waiting on its timer also goes out as the browser tab unloads, so the last
+ * edit is not lost to the wait (`useFlushBeforeUnload`).
  */
+import { useEffect } from "react";
 import { useProjectStore } from "./projectStore";
 
 interface SaveStatus {
@@ -28,4 +31,12 @@ export function saveNow(): void {
   const store = useProjectStore.getState();
   store.flushSave();
   if (store.dirty && !store.saving) store.save();
+}
+
+export function useFlushBeforeUnload(): void {
+  useEffect(() => {
+    const handler = () => useProjectStore.getState().flushSave();
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, []);
 }
