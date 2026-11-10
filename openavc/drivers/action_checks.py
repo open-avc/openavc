@@ -16,10 +16,12 @@ hand back a file, because a button has no file to give. ``quick_actions``
 names the command; a ``kind: command`` action names it in ``command``, or by
 its own id.
 
-The runtime twin is ``actions.resolve_device_actions``, which drops what these
-checks refuse rather than raising, because a Python driver whose block they
-refuse still loads (the loader only warns); a field added here is read there
-too.
+The runtime twin is ``actions.resolve_device_actions``, which builds the buttons
+from the same blocks for any driver that loads, and a Python driver whose block
+these checks refuse still loads (the loader only warns). It drops only what it
+cannot draw or run (an entry that is not a mapping, a missing or duplicate id,
+an unknown kind, a file command, a quick id that is not declared) and makes do
+with the rest, so a field added here is read there too.
 
 Purity: standard library plus the contract's own modules, as for every
 module the validator imports; it is vendored with them.
@@ -74,7 +76,7 @@ class _Commands:
         return self._commands is not None and is_file_command(self._commands.get(name))
 
     def promotion_errors(
-        self, where: str, named: str, name: str, *, judge_declared: bool = True,
+        self, where: str, name: str, *, named: str, judge_declared: bool = True,
     ) -> list[str]:
         """Why the command ``name`` cannot be a button, if it cannot.
 
@@ -100,15 +102,20 @@ def _quick_action_errors(quick: Any, commands: _Commands) -> list[str]:
         if not isinstance(cid, str) or not cid:
             errors.append(f"{where}: must be a non-empty command id string")
         else:
-            errors.extend(commands.promotion_errors(where, f"'{cid}'", cid))
+            errors.extend(commands.promotion_errors(where, cid, named=f"'{cid}'"))
     return errors
 
 
 # --- one actions entry's own fields, in the order they are reported --------
 
 
+def _kind(entry: dict[str, Any]) -> Any:
+    """An entry's kind: a button promotes a command unless it says otherwise."""
+    return entry.get("kind", "command")
+
+
 def _kind_errors(where: str, entry: dict[str, Any]) -> list[str]:
-    kind = entry.get("kind", "command")
+    kind = _kind(entry)
     if kind in ACTION_KINDS:
         return []
     return [f"{where}: unknown kind '{kind}' (expected one of {list(ACTION_KINDS)})"]
@@ -154,7 +161,7 @@ def _url_errors(where: str, entry: dict[str, Any]) -> list[str]:
     url = entry.get("url")
     if url is None:
         return []
-    if entry.get("kind", "command") != "link":
+    if _kind(entry) != "link":
         return [f"{where}: 'url' is only valid on a kind:link action"]
     if isinstance(url, str) and url:
         return []
@@ -206,12 +213,13 @@ class _Entries:
         """The command a ``kind: command`` action promotes: its ``command``,
         else its own id.
 
-        An action with no usable id, or whose ``command`` is not text, has no
-        settled target, so whether that target is declared is not judged; it
-        is still refused if the name it falls back to is a file command.
+        An id that is not text ends it: nothing is promoted. An empty id, or a
+        ``command`` that is not text, leaves the target unsettled, so whether
+        it is declared is not judged; it is still refused if the name it falls
+        back to is a file command.
         """
         action_id = entry.get("id")
-        if entry.get("kind", "command") != "command" or not isinstance(action_id, str):
+        if _kind(entry) != "command" or not isinstance(action_id, str):
             return []
         command_id = entry.get("command")
         errors: list[str] = []
@@ -223,7 +231,7 @@ class _Entries:
         if isinstance(target, str):
             errors.extend(
                 self._commands.promotion_errors(
-                    where, f"command '{target}'", target, judge_declared=judge_declared,
+                    where, target, named=f"command '{target}'", judge_declared=judge_declared,
                 )
             )
         return errors
@@ -266,8 +274,10 @@ def yaml_action_errors(where: str, entry: Any) -> list[str]:
     if not isinstance(entry, dict):
         return []
     errors: list[str] = []
-    kind = entry.get("kind")
+    kind = _kind(entry)
     if kind in PYTHON_ONLY_ACTION_KINDS:
+        # The sentence is setup's (its handler): a second Python-only kind
+        # needs its own.
         errors.append(
             f"{where}: kind '{kind}' requires a Python driver "
             f"(a run_setup_action handler); YAML drivers support "
