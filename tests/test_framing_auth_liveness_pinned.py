@@ -33,6 +33,9 @@ from openavc.drivers.avcdriver_semantic import (
 NAN = float("nan")
 INF = float("inf")
 
+# A case key set to this is left out of the definition altogether.
+DROP = "<left out>"
+
 BASE: dict[str, Any] = {
     "id": "acme_widget",
     "name": "Acme Widget",
@@ -225,6 +228,10 @@ CASES: dict[str, dict[str, Any]] = {
         "transport": "osc", **live(send="/ping", args=[{"type": "nope", "value": 1}]),
     },
     "live_args_on_empty_transport": {"transport": "", **live(args=["x"])},
+    "live_args_on_none_transport": {"transport": None, **live(args=["x"])},
+    "live_args_on_absent_transport": {"transport": DROP, **live(args=["x"])},
+    "live_on_absent_transport": {"transport": DROP, **live()},
+    "auth_on_absent_transport": {"transport": DROP, **auth(**PROMPTS)},
     "live_everything_wrong": {
         "transport": "http",
         "liveness": {
@@ -487,6 +494,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'affix_both_wrong': [('command_pre
  'auth_no_password_prompt': [('auth', "auth: missing required 'password_prompt'")],
  'auth_no_username_prompt': [('auth', "auth: missing required 'username_prompt'")],
  'auth_none': [],
+ 'auth_on_absent_transport': [('', 'Missing required field: transport')],
  'auth_on_bridge': [('auth',
                      'auth: login handshake is only supported on tcp/serial transports, not '
                      "'bridge'")],
@@ -649,7 +657,10 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'affix_both_wrong': [('command_pre
  'live_args_empty_on_tcp': [('liveness', "liveness: 'args' is only valid on osc")],
  'live_args_mapping_on_osc': [('liveness', "liveness: 'args' must be a list")],
  'live_args_none_on_tcp': [],
+ 'live_args_on_absent_transport': [('', 'Missing required field: transport'),
+                                   ('liveness', "liveness: 'args' is only valid on osc")],
  'live_args_on_empty_transport': [('liveness', "liveness: 'args' is only valid on osc")],
+ 'live_args_on_none_transport': [('liveness', "liveness: 'args' is only valid on osc")],
  'live_args_on_osc': [],
  'live_args_on_tcp': [('liveness', "liveness: 'args' is only valid on osc")],
  'live_args_text_on_osc': [('liveness', "liveness: 'args' must be a list")],
@@ -714,6 +725,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'affix_both_wrong': [('command_pre
  'live_interval_true': [('liveness', "liveness: 'interval' must be a number >= 1.0")],
  'live_interval_zero': [('liveness', "liveness: 'interval' must be a number >= 1.0")],
  'live_none': [],
+ 'live_on_absent_transport': [('', 'Missing required field: transport')],
  'live_on_bridge': [('liveness',
                      "liveness: not supported on transport 'bridge' (only tcp/serial/udp/osc)")],
  'live_on_empty_transport': [],
@@ -948,7 +960,8 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'affix_both_wrong': [('command_pre
 
 
 def _definition(case: str) -> dict[str, Any]:
-    return {**BASE, **CASES[case]}
+    merged = {**BASE, **CASES[case]}
+    return {key: value for key, value in merged.items() if value is not DROP}
 
 
 @pytest.mark.parametrize("case", sorted(EXPECTED))
