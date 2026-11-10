@@ -1083,6 +1083,7 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
     sources = [
         _ROOT / "openavc" / "drivers" / name
         for name in (
+            "action_checks.py",
             "avcdriver_semantic.py", "child_type_checks.py", "command_checks.py",
             "condition_checks.py",
             "declared_names.py", "param_aid_checks.py", "push_block_checks.py",

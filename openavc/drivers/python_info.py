@@ -244,8 +244,9 @@ def python_driver_info_issues(
     # narrower (it checked shape but never that a kind:"command" action names
     # a command that exists) and worded differently, so the same broken
     # driver was described one way by the catalog and another by the Builder.
-    # ``validate_actions`` is surface-neutral: the one YAML-only action rule
-    # (kind:"setup" needs a Python driver) lives in its caller, not in it.
+    # ``validate_actions`` is surface-neutral: what a YAML definition's
+    # actions are held to on top of it (kind:"setup" needs a Python driver,
+    # an entry's param aids) is ``action_checks.yaml_action_errors``.
     issues.extend(validate_actions(info))
 
     # The same rule the YAML half gets from validate_driver_definition's

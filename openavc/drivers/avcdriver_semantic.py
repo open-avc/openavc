@@ -5,8 +5,9 @@ is reached through this module: ``validate_driver_definition`` walks the
 definition section by section and asks a check module about each command
 (``command_checks``), response rule (``response_rule_checks``), query entry
 (``query_entry_checks``), child type and the references into it
-(``child_type_checks``), state variable (``state_variable_checks``) and the
-push block (``push_block_checks``). The
+(``child_type_checks``), state variable (``state_variable_checks``), the
+push block (``push_block_checks``) and the Quick Action blocks
+(``action_checks``). The
 runtime loader wraps it (adding the discovery-block check, which needs the
 discovery engine's parser), and the community driver catalog runs a copy of
 the same rules in its CI, so a definition that passes catalog review is
@@ -26,6 +27,10 @@ import difflib as _difflib
 import re
 from typing import Any, Callable
 
+from openavc.drivers.action_checks import (
+    validate_actions as validate_actions,
+    yaml_action_errors,
+)
 from openavc.drivers.child_ids import declared_child_ids, page_starts
 from openavc.drivers.child_type_checks import (
     RosterNames,
@@ -34,7 +39,6 @@ from openavc.drivers.child_type_checks import (
     undeclared_child_type_reason as undeclared_child_type_reason,
 )
 from openavc.drivers.command_checks import CommandSection, osc_args_errors
-from openavc.drivers.condition_checks import condition_block_errors
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY,
     closest_name,
@@ -42,7 +46,6 @@ from openavc.drivers.declared_names import (
     did_you_mean,
     substitution_names,
 )
-from openavc.drivers.param_aid_checks import param_aid_errors
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.query_entry_checks import (
     FollowUp,
@@ -51,10 +54,8 @@ from openavc.drivers.query_entry_checks import (
 )
 from openavc.drivers.response_rule_checks import response_rule_errors
 from openavc.drivers.spec import (
-    ACTION_KINDS,
     AUTH_TRANSPORTS,
     AUTH_TYPES,
-    AVAILABILITIES,
     CONNECTION_FIELDS,
     DEFAULT_LINE_GAP_S,
     DEFS,
@@ -71,7 +72,6 @@ from openavc.drivers.spec import (
     VALUE_TYPES,
     YAML_TRANSPORTS,
     block_has_fixed_keys,
-    is_file_command,
     is_secret_setting,
     parse_version,
     platform_requirements,
@@ -762,24 +762,14 @@ def validate_driver_definition(
                 elif not isinstance(liveness_def["args"], list):
                     errors.append("liveness: 'args' must be a list")
 
-    # Validate the optional actions / quick_actions blocks (Quick Action strip).
-    # quick_actions promote command ids to buttons; actions is the full form
-    # (kind:"command" promotes a command, kind:"setup" is a provisioning wizard).
+    # The Quick Action blocks, checked in action_checks: the rule a Python
+    # driver's DRIVER_INFO shares, every message tagged actions, then a YAML
+    # definition's own, entry by entry.
     errors.ctx = "actions"
     errors.extend(validate_actions(driver_def))
-    # A YAML driver is interpreted by ConfigurableDriver, which has no
-    # run_setup_action handler — so kind:"setup" can never do anything here.
-    # Reject it at load time rather than render a button that errors on click.
     for i, entry in enumerate(driver_def.get("actions") or []):
         errors.ctx = f"actions[{i}]"
-        if isinstance(entry, dict) and entry.get("kind") == "setup":
-            errors.append(
-                f"actions[{i}]: kind 'setup' requires a Python driver "
-                f"(a run_setup_action handler); YAML drivers support "
-                f"kind 'command' only"
-            )
-        if isinstance(entry, dict) and isinstance(entry.get("params"), dict):
-            errors.extend(param_aid_errors(f"actions[{i}]", entry.get("params")))
+        errors.extend(yaml_action_errors(f"actions[{i}]", entry))
 
     # The driver's own state variables: each one's fields are checked in
     # state_variable_checks, which a child type's variables ask too.
@@ -1761,153 +1751,4 @@ def device_setting_map_errors(where: str, setting_def: dict[str, Any]) -> list[s
                 f"{where}: map key '{key}' is not one of the setting's values "
                 f"({', '.join(allowed)})"
             )
-    return errors
-
-
-def validate_actions(driver_def: dict[str, Any]) -> list[str]:
-    """Validate the ``actions`` + ``quick_actions`` blocks of a driver
-    definition. Returns a list of error strings (empty when valid).
-
-    Mirrored by the catalog validator in ``openavc-drivers/scripts/
-    build_index.py`` (kept stdlib-only there); keep the two in sync.
-    """
-    errors: list[str] = []
-    commands = driver_def.get("commands")
-    command_ids = set(commands.keys()) if isinstance(commands, dict) else set()
-    # A Python driver may merge commands in from a module constant or build
-    # them at runtime, and the reader marks the block when it could not see
-    # every key. The set is then a SUBSET of the real one, so "not in it"
-    # proves nothing — checking anyway reports a working driver as broken.
-    # (`sony_bravia` merges `**_IRCC_COMMANDS`: 15 keys visible, the action's
-    # target among the ones that are not.) The skip is named by
-    # ``python_info.python_driver_reference_skips`` rather than swallowed. A
-    # YAML definition can never contain the marker, so this is a no-op there.
-    commands_partial = UNEVALUATED_KEY in command_ids
-
-    quick = driver_def.get("quick_actions")
-    if quick is not None:
-        if not isinstance(quick, list):
-            errors.append("quick_actions: must be a list of command ids")
-        else:
-            for i, cid in enumerate(quick):
-                if not isinstance(cid, str) or not cid:
-                    errors.append(
-                        f"quick_actions[{i}]: must be a non-empty command id string"
-                    )
-                elif command_ids and not commands_partial and cid not in command_ids:
-                    errors.append(
-                        f"quick_actions[{i}]: '{cid}' is not a declared command"
-                    )
-                elif _is_file_command_id(commands, cid):
-                    errors.append(
-                        f"quick_actions[{i}]: '{cid}' {_FILE_ACTION_REASON}"
-                    )
-
-    actions = driver_def.get("actions")
-    if actions is not None:
-        if not isinstance(actions, list):
-            errors.append("actions: must be a list")
-        else:
-            seen: set[str] = set()
-            for i, entry in enumerate(actions):
-                errors.extend(
-                    _validate_action_entry(
-                        i,
-                        entry,
-                        set() if commands_partial else command_ids,
-                        seen,
-                    )
-                )
-                if (
-                    isinstance(entry, dict)
-                    and entry.get("kind", "command") == "command"
-                    and isinstance(entry.get("id"), str)
-                ):
-                    target = entry.get("command") or entry["id"]
-                    if isinstance(target, str) and _is_file_command_id(commands, target):
-                        errors.append(
-                            f"actions[{i}]: command '{target}' {_FILE_ACTION_REASON}"
-                        )
-
-    return errors
-
-
-# A promoted button has no file to give and nowhere to put one that comes
-# back: the command runs from Send Command on the device page instead.
-_FILE_ACTION_REASON = (
-    "takes or hands back a file, so it cannot be a Quick Action; it runs "
-    "from Send Command on the device page"
-)
-
-
-def _is_file_command_id(commands: Any, command_id: str) -> bool:
-    return isinstance(commands, dict) and is_file_command(commands.get(command_id))
-
-
-def _validate_action_entry(
-    index: int, entry: Any, command_ids: set[str], seen: set[str],
-) -> list[str]:
-    errors: list[str] = []
-    where = f"actions[{index}]"
-    if not isinstance(entry, dict):
-        return [f"{where}: must be a mapping"]
-
-    action_id = entry.get("id")
-    if not isinstance(action_id, str) or not action_id:
-        errors.append(f"{where}: missing required 'id' (non-empty string)")
-    else:
-        if action_id in seen:
-            errors.append(f"{where}: duplicate action id '{action_id}'")
-        seen.add(action_id)
-
-    kind = entry.get("kind", "command")
-    if kind not in ACTION_KINDS:
-        errors.append(
-            f"{where}: unknown kind '{kind}' (expected one of {list(ACTION_KINDS)})"
-        )
-
-    label = entry.get("label")
-    if label is not None and not isinstance(label, str):
-        errors.append(f"{where}: 'label' must be a string")
-
-    icon = entry.get("icon")
-    if icon is not None and not isinstance(icon, str):
-        errors.append(f"{where}: 'icon' must be a string (lucide icon name)")
-
-    availability = entry.get("availability")
-    if availability is not None and availability not in AVAILABILITIES:
-        errors.append(
-            f"{where}: 'availability' must be one of {list(AVAILABILITIES)}"
-        )
-
-    confirm = entry.get("confirm")
-    if confirm is not None and not isinstance(confirm, (bool, str)):
-        errors.append(f"{where}: 'confirm' must be a boolean or a message string")
-
-    params = entry.get("params")
-    if params is not None and not isinstance(params, dict):
-        errors.append(f"{where}: 'params' must be a mapping")
-
-    url = entry.get("url")
-    if kind == "link":
-        if url is not None and (not isinstance(url, str) or not url):
-            errors.append(f"{where}: 'url' must be a non-empty string")
-    elif url is not None:
-        errors.append(f"{where}: 'url' is only valid on a kind:link action")
-
-    errors.extend(condition_block_errors(where, entry.get("visible_when")))
-
-    # A kind:"command" action must resolve to a declared command. The command
-    # is the explicit `command` field, or the action id itself.
-    if kind == "command" and isinstance(action_id, str) and action_id:
-        command_id = entry.get("command")
-        if command_id is not None and not isinstance(command_id, str):
-            errors.append(f"{where}: 'command' must be a string")
-        else:
-            target = command_id or action_id
-            if command_ids and target not in command_ids:
-                errors.append(
-                    f"{where}: command '{target}' is not a declared command"
-                )
-
     return errors
