@@ -1,0 +1,1062 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`the Elements section > lists the element types in order, each with its controls and hints 1`] = `
+[
+  {
+    "controls": [
+      [
+        "Background",
+        "Base for camera presets and keypad keys (override per-type below)",
+      ],
+      [
+        "Text",
+        "Also the active button text, and camera-preset / keypad-key text",
+      ],
+      [
+        "Border Color",
+        "Base border for page nav, camera presets, and keypad keys (override per-type below)",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+      [
+        "Box Shadow",
+        "CSS syntax, e.g. '0 2px 4px rgba(0,0,0,0.3)' or 'none'",
+      ],
+    ],
+    "name": "Button",
+  },
+  {
+    "controls": [
+      [
+        "Background",
+        "Page nav is transparent by default; set a color to fill it",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Text",
+        "Defaults to Accent",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+      [
+        "Box Shadow",
+        "CSS syntax, e.g. '0 2px 4px rgba(0,0,0,0.3)' or 'none'",
+      ],
+    ],
+    "name": "Page Nav",
+  },
+  {
+    "controls": [
+      [
+        "Background",
+        "Defaults to Button Background",
+      ],
+      [
+        "Text",
+        "Defaults to Button Text",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+      [
+        "Box Shadow",
+        "CSS syntax, e.g. '0 2px 4px rgba(0,0,0,0.3)' or 'none'",
+      ],
+    ],
+    "name": "Camera Preset",
+  },
+  {
+    "controls": [
+      [
+        "Container Background",
+        "The number keys themselves use the Button colors",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Text Color",
+        "Label and entry-display text",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Keypad",
+  },
+  {
+    "controls": [
+      [
+        "Background",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Text Color",
+        "Overrides Page Text just for labels",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Label",
+  },
+  {
+    "controls": [
+      [
+        "Wrapper Background",
+        "Track uses Surface, fill uses Accent",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Label Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Thumb Size (px)",
+        "Larger = easier to grab on touch (44 is standard)",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Slider",
+  },
+  {
+    "controls": [
+      [
+        "Wrapper Background",
+        "Track uses Surface, handle uses Accent",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Label Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Fader",
+  },
+  {
+    "controls": [
+      [
+        "Wrapper Background",
+        "The dropdown itself uses Surface",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Label Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Select",
+  },
+  {
+    "controls": [
+      [
+        "Wrapper Background",
+        "The input itself uses Surface",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Label Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Text Input",
+  },
+  {
+    "controls": [
+      [
+        "Active Color",
+        "Color shown when bound state is true",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Label Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+    ],
+    "name": "Status LED",
+  },
+  {
+    "controls": [
+      [
+        "Gauge Color",
+        "Filled portion",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Gauge Background",
+        "Empty portion",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Text Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Background",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Gauge",
+  },
+  {
+    "controls": [
+      [
+        "Background",
+        "Zone colors come from Success / Warning / Danger",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+      [
+        "Green Threshold (dB)",
+        "Levels below are green; default −12",
+      ],
+      [
+        "Yellow Threshold (dB)",
+        "Above is red; default −3",
+      ],
+    ],
+    "name": "Level Meter",
+  },
+  {
+    "controls": [
+      [
+        "Item Background",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Selected Item",
+        "Highlighted row",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Text Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Wrapper Background",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "List",
+  },
+  {
+    "controls": [
+      [
+        "Active Route",
+        "Crosspoint dot when route is connected",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Inactive Route",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Background",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Matrix",
+  },
+  {
+    "controls": [
+      [
+        "Background",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Title Color",
+        "Group label text",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Group",
+  },
+  {
+    "controls": [
+      [
+        "Background",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Image",
+  },
+  {
+    "controls": [
+      [
+        "Background",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Text Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Color",
+        "",
+      ],
+      [
+        "",
+        "Inherits the theme default: pick or type a color to set one",
+      ],
+      [
+        "Border Width (px)",
+        "",
+      ],
+    ],
+    "name": "Clock",
+  },
+]
+`;
+
+exports[`the Theme section > lists every token with its hint 1`] = `
+[
+  [
+    "Page Background",
+    "Behind every page",
+  ],
+  [
+    "Text Color",
+    "Default text on labels, sliders, gauges, lists, inputs",
+  ],
+  [
+    "Surface",
+    "Slider tracks, dropdowns, text inputs, list rows, fader track, keypad display",
+  ],
+  [
+    "Surface Border",
+    "Thin border around surfaces above",
+  ],
+  [
+    "Accent",
+    "Slider fill, fader handle, focus, active button, page nav text",
+  ],
+  [
+    "Danger",
+    "Red zone of level meters, mute indicators, error states",
+  ],
+  [
+    "Success",
+    "Green zone of level meters, OK states",
+  ],
+  [
+    "Warning",
+    "Yellow zone of level meters, lock indicators, caution states",
+  ],
+  [
+    "",
+    "not-a-colour: pick or type a color to change",
+  ],
+  [
+    "Border Radius (px)",
+    "Roundness of every element. 0 sharp, 16+ very round",
+  ],
+  [
+    "Font Family",
+    "Typeface across the entire panel",
+  ],
+]
+`;
+
+exports[`the contrast checks > rate each pair, with an unset colour read as its default and an unreadable one as n/a 1`] = `
+[
+  "Text on Background21.0:1 AAA",
+  "Button Text on Button3.6:1 fail",
+  "Accent on Background4.5:1 fail",
+  "Button Text on Active1.0:1 fail",
+  "Danger on Background5.7:1 AA",
+  "Success on Background7.6:1 AAA",
+  "Warning on Background— n/a",
+]
+`;
+
+exports[`the preview > draws the gallery page with its demo values 1`] = `
+{
+  "elements": [
+    {
+      "bindings": {},
+      "id": "g_header",
+      "style": {
+        "font_size": 2.5714285714285716,
+        "font_weight": 700,
+        "text_align": "center",
+      },
+      "text": "Theme Preview Gallery",
+      "type": "label",
+    },
+    {
+      "bindings": {},
+      "id": "g_button",
+      "label": "Button",
+      "style": {},
+      "type": "button",
+    },
+    {
+      "bindings": {},
+      "id": "g_button_active",
+      "label": "Active",
+      "style": {
+        "bg_color": "var(--panel-accent)",
+        "text_color": "var(--panel-button-text)",
+      },
+      "type": "button",
+    },
+    {
+      "bindings": {},
+      "id": "g_label_demo",
+      "style": {},
+      "text": "Demo label text",
+      "type": "label",
+    },
+    {
+      "bindings": {
+        "color": {
+          "default": "#9E9E9E",
+          "key": "gallery.led_on",
+          "map": {
+            "true": "var(--panel-success)",
+          },
+        },
+      },
+      "id": "g_led_ok",
+      "label": "OK",
+      "style": {},
+      "type": "status_led",
+    },
+    {
+      "bindings": {
+        "color": {
+          "default": "#9E9E9E",
+          "key": "gallery.led_on",
+          "map": {
+            "true": "var(--panel-warning)",
+          },
+        },
+      },
+      "id": "g_led_warn",
+      "label": "Warn",
+      "style": {},
+      "type": "status_led",
+    },
+    {
+      "bindings": {},
+      "clock_mode": "current_time",
+      "format": "HH:mm",
+      "id": "g_clock",
+      "style": {},
+      "type": "clock",
+    },
+    {
+      "bindings": {},
+      "id": "g_camera",
+      "label": "Preset",
+      "preset_number": 1,
+      "style": {},
+      "type": "camera_preset",
+    },
+    {
+      "bindings": {
+        "value": {
+          "key": "gallery.slider",
+        },
+      },
+      "id": "g_slider",
+      "label": "Volume",
+      "max": 100,
+      "min": 0,
+      "orientation": "horizontal",
+      "style": {
+        "show_value": true,
+      },
+      "type": "slider",
+    },
+    {
+      "bindings": {},
+      "id": "g_pagenav",
+      "label": "Pages",
+      "style": {},
+      "target_page": "_studio_gallery",
+      "type": "page_nav",
+    },
+    {
+      "bindings": {
+        "value": {
+          "key": "gallery.select",
+        },
+      },
+      "id": "g_select",
+      "options": [
+        {
+          "label": "HDMI 1",
+          "value": "hdmi1",
+        },
+        {
+          "label": "HDMI 2",
+          "value": "hdmi2",
+        },
+        {
+          "label": "USB-C",
+          "value": "usbc",
+        },
+      ],
+      "style": {},
+      "type": "select",
+    },
+    {
+      "bindings": {
+        "value": {
+          "key": "gallery.text",
+        },
+      },
+      "id": "g_text",
+      "placeholder": "Type here…",
+      "style": {},
+      "type": "text_input",
+    },
+    {
+      "bindings": {
+        "value": {
+          "key": "gallery.gauge",
+        },
+      },
+      "id": "g_gauge",
+      "label": "CPU",
+      "max": 100,
+      "min": 0,
+      "style": {},
+      "type": "gauge",
+      "unit": "%",
+    },
+    {
+      "bindings": {
+        "value": {
+          "key": "gallery.meter",
+        },
+      },
+      "id": "g_meter",
+      "max": 0,
+      "min": -60,
+      "orientation": "vertical",
+      "style": {},
+      "type": "level_meter",
+    },
+    {
+      "bindings": {
+        "value": {
+          "key": "gallery.fader",
+        },
+      },
+      "id": "g_fader",
+      "label": "Mic 1",
+      "max": 10,
+      "min": -60,
+      "orientation": "vertical",
+      "style": {},
+      "type": "fader",
+    },
+    {
+      "bindings": {},
+      "digits": 4,
+      "id": "g_keypad",
+      "keypad_style": "numeric",
+      "show_display": true,
+      "style": {},
+      "type": "keypad",
+    },
+    {
+      "bindings": {
+        "selected": {
+          "key": "gallery.list",
+        },
+      },
+      "id": "g_list",
+      "items": [
+        {
+          "label": "Lecture mode",
+          "value": "p1",
+        },
+        {
+          "label": "Discussion",
+          "value": "p2",
+        },
+        {
+          "label": "Presentation",
+          "value": "p3",
+        },
+        {
+          "label": "Hybrid",
+          "value": "p4",
+        },
+      ],
+      "style": {},
+      "type": "list",
+    },
+    {
+      "bindings": {},
+      "id": "g_matrix",
+      "matrix_config": {
+        "destinations": [
+          {
+            "label": "Main",
+            "route_key": "gallery.route.1",
+            "value": 1,
+          },
+          {
+            "label": "Conf",
+            "route_key": "gallery.route.2",
+            "value": 2,
+          },
+          {
+            "label": "Stream",
+            "route_key": "gallery.route.3",
+            "value": 3,
+          },
+        ],
+        "sources": [
+          {
+            "label": "Cam 1",
+            "value": 1,
+          },
+          {
+            "label": "PC",
+            "value": 2,
+          },
+          {
+            "label": "Doc",
+            "value": 3,
+          },
+        ],
+      },
+      "style": {
+        "cell_size": 2.2857142857142856,
+      },
+      "type": "matrix",
+    },
+  ],
+  "id": "_studio_gallery",
+  "layouts": [
+    {
+      "hidden": [],
+      "id": "landscape",
+      "orientation": "landscape",
+      "placements": {
+        "g_button": {
+          "h": 12.5,
+          "w": 18.75,
+          "x": 0,
+          "y": 6.25,
+        },
+        "g_button_active": {
+          "h": 12.5,
+          "w": 18.75,
+          "x": 18.75,
+          "y": 6.25,
+        },
+        "g_camera": {
+          "h": 12.5,
+          "w": 12.5,
+          "x": 87.5,
+          "y": 6.25,
+        },
+        "g_clock": {
+          "h": 12.5,
+          "w": 18.75,
+          "x": 68.75,
+          "y": 6.25,
+        },
+        "g_fader": {
+          "h": 37.5,
+          "w": 18.75,
+          "x": 25,
+          "y": 31.25,
+        },
+        "g_gauge": {
+          "h": 37.5,
+          "w": 18.75,
+          "x": 0,
+          "y": 31.25,
+        },
+        "g_header": {
+          "h": 6.25,
+          "w": 100,
+          "x": 0,
+          "y": 0,
+        },
+        "g_keypad": {
+          "h": 37.5,
+          "w": 31.25,
+          "x": 43.75,
+          "y": 31.25,
+        },
+        "g_label_demo": {
+          "h": 12.5,
+          "w": 18.75,
+          "x": 37.5,
+          "y": 6.25,
+        },
+        "g_led_ok": {
+          "h": 12.5,
+          "w": 6.25,
+          "x": 56.25,
+          "y": 6.25,
+        },
+        "g_led_warn": {
+          "h": 12.5,
+          "w": 6.25,
+          "x": 62.5,
+          "y": 6.25,
+        },
+        "g_list": {
+          "h": 37.5,
+          "w": 25,
+          "x": 75,
+          "y": 31.25,
+        },
+        "g_matrix": {
+          "h": 31.25,
+          "w": 50,
+          "x": 0,
+          "y": 68.75,
+        },
+        "g_meter": {
+          "h": 37.5,
+          "w": 6.25,
+          "x": 18.75,
+          "y": 31.25,
+        },
+        "g_pagenav": {
+          "h": 12.5,
+          "w": 25,
+          "x": 31.25,
+          "y": 18.75,
+        },
+        "g_select": {
+          "h": 12.5,
+          "w": 18.75,
+          "x": 56.25,
+          "y": 18.75,
+        },
+        "g_slider": {
+          "h": 12.5,
+          "w": 31.25,
+          "x": 0,
+          "y": 18.75,
+        },
+        "g_text": {
+          "h": 12.5,
+          "w": 25,
+          "x": 75,
+          "y": 18.75,
+        },
+      },
+      "primary": true,
+    },
+  ],
+  "name": "Element Gallery",
+  "page_type": "page",
+  "snap": {
+    "enabled": true,
+    "x": 6.25,
+    "y": 6.25,
+  },
+}
+`;
+
+exports[`the preview > draws the gallery page with its demo values 2`] = `
+{
+  "gallery.btn_active": true,
+  "gallery.fader": -6,
+  "gallery.gauge": 72,
+  "gallery.led_off": false,
+  "gallery.led_on": true,
+  "gallery.list": "p2",
+  "gallery.meter": -8,
+  "gallery.route.Conf": "PC",
+  "gallery.route.Main": "Cam 1",
+  "gallery.route.Stream": "Doc",
+  "gallery.select": "hdmi2",
+  "gallery.slider": 65,
+  "gallery.text": "Conference Room A",
+}
+`;
