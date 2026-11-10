@@ -585,6 +585,125 @@ export function paletteDragPlacement(
   );
 }
 
+// --- A box moved or resized by the pointer ---
+
+/** How far the pointer has travelled since the press, and the box a gesture's
+ *  percentages are of: a page control's container (or the page), a master
+ *  element's screen. */
+export interface Travel {
+  /** Pointer travel in screen pixels. */
+  dx: number;
+  dy: number;
+  /** That box's size on screen, in pixels. */
+  frame: { width: number; height: number };
+}
+
+/** A control's aspect lock (its width over its height, in pixels), when it
+ *  has one that is a positive number. */
+export function aspectLockOf(el: Pick<UIElement, "aspect_lock"> | undefined): number | null {
+  const lock = el?.aspect_lock;
+  return typeof lock === "number" && lock > 0 ? lock : null;
+}
+
+/** The keys held during a gesture: Alt (`bypass`) sets snapping aside, Shift
+ *  (`constrain`) keeps a move to one axis and a resize to its starting ratio. */
+export interface GestureContext extends SnapContext {
+  constrain?: boolean;
+}
+
+/**
+ * A box MOVED by the pointer: Shift keeps it to whichever axis has travelled
+ * further (x on a tie), the standard "keep it in line" modifier, and then it
+ * is snapped like any move.
+ */
+export function movedBox(start: Placement, travel: Travel, ctx: GestureContext): SnapOutcome {
+  let { dx, dy } = travel;
+  if (ctx.constrain) {
+    if (Math.abs(dx) >= Math.abs(dy)) dy = 0;
+    else dx = 0;
+  }
+  return snapMove(
+    {
+      ...start,
+      x: start.x + (dx / travel.frame.width) * 100,
+      y: start.y + (dy / travel.frame.height) * 100,
+    },
+    ctx,
+  );
+}
+
+/**
+ * A box RESIZED from one of its grips by the pointer.
+ *
+ * The edges the grip drags travel with it and the others stay put, neither
+ * side goes under MIN_ELEMENT_SIZE, and the dragged edges are snapped. Then a
+ * box with a ratio to keep keeps it: its aspect lock (`lock`), or on Shift the
+ * ratio it started with. The ratio is in PIXELS, so it converts back to
+ * percentages through the frame's own proportions.
+ */
+export function resizedBox(
+  start: Placement,
+  direction: string,
+  travel: Travel,
+  ctx: GestureContext & { lock: number | null },
+): SnapOutcome {
+  const snapped = snapResize(draggedEdges(start, direction, travel), direction, ctx);
+  const ratio =
+    ctx.lock ?? (ctx.constrain && start.h > 0 ? pixelRatio(start, travel.frame) : null);
+  const box = ratio ? keptRatio(snapped.placement, direction, ratio, travel.frame) : snapped.placement;
+  return { placement: roundPlacement(box), guidesX: snapped.guidesX, guidesY: snapped.guidesY };
+}
+
+/** The box with the edges a grip drags moved by the pointer's travel, each
+ *  side held at MIN_ELEMENT_SIZE or more. */
+function draggedEdges(start: Placement, direction: string, travel: Travel): Placement {
+  const ddx = (travel.dx / travel.frame.width) * 100;
+  const ddy = (travel.dy / travel.frame.height) * 100;
+  const raw = { ...start };
+  if (direction.includes("e")) raw.w = start.w + ddx;
+  if (direction.includes("w")) {
+    raw.x = start.x + ddx;
+    raw.w = start.w - ddx;
+  }
+  if (direction.includes("s")) raw.h = start.h + ddy;
+  if (direction.includes("n")) {
+    raw.y = start.y + ddy;
+    raw.h = start.h - ddy;
+  }
+  raw.w = Math.max(MIN_ELEMENT_SIZE, raw.w);
+  raw.h = Math.max(MIN_ELEMENT_SIZE, raw.h);
+  return raw;
+}
+
+/** A box's width over its height, in the frame's pixels. */
+function pixelRatio(box: Placement, frame: Travel["frame"]): number {
+  return ((box.w / 100) * frame.width) / ((box.h / 100) * frame.height);
+}
+
+/**
+ * The box with the side the grip does not drive set from the side it does,
+ * through `ratio`: a grip that moves the width (east or west) sets the
+ * height, any other sets the width. When the grip also drags that side's
+ * start edge (north for the height, west for the width), its far edge stays
+ * put. The side set this way is held at MIN_ELEMENT_SIZE or more.
+ */
+function keptRatio(box: Placement, direction: string, ratio: number, frame: Travel["frame"]): Placement {
+  if (direction.includes("e") || direction.includes("w")) {
+    const hPx = ((box.w / 100) * frame.width) / ratio;
+    const [y, h] = following(box.y, box.h, (hPx / frame.height) * 100, direction.includes("n"));
+    return { ...box, y, h };
+  }
+  const wPx = ((box.h / 100) * frame.height) * ratio;
+  const [x, w] = following(box.x, box.w, (wPx / frame.width) * 100, direction.includes("w"));
+  return { ...box, x, w };
+}
+
+/** One side's start and size once it takes `size`: the start moves only when
+ *  the grip holds that side's start edge, so the far edge stays where it was. */
+function following(origin: number, current: number, size: number, fromStart: boolean): [number, number] {
+  return [fromStart ? origin + (current - size) : origin, Math.max(MIN_ELEMENT_SIZE, size)];
+}
+
 // --- Auto-placement (the pointerless paths) ---
 
 /** The smallest box a resize or an auto-place will produce, in percent. */

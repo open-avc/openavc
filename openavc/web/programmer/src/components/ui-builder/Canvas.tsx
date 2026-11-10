@@ -12,8 +12,9 @@ import {
   sliderThemeDefaults,
   resolvePlacements,
   pageSnap,
-  snapMove,
-  snapResize,
+  movedBox,
+  resizedBox,
+  aspectLockOf,
   getPlacement,
   roundPlacement,
   topmostSelection,
@@ -29,7 +30,6 @@ import {
   updateElementInPage,
   updateMasterElement,
   patchForTextPath,
-  MIN_ELEMENT_SIZE,
 } from "./uiBuilderHelpers";
 import { getTunnelPrefix } from "../../api/restClient";
 import { resolveProjectMatrices } from "../../api/matrixPreview";
@@ -641,10 +641,7 @@ export function Canvas({
       if (!primaryRect || !(primaryRect.width > 0) || !(primaryRect.height > 0)) return;
 
       const element = page.elements.find((el) => el.id === anchorId);
-      const lock =
-        typeof element?.aspect_lock === "number" && element.aspect_lock > 0
-          ? element.aspect_lock
-          : null;
+      const lock = aspectLockOf(element);
 
       // Siblings under the same parent are what edges snap to — a box in
       // another container is not a line this one should stick to.
@@ -656,97 +653,34 @@ export function Canvas({
         .filter((p): p is Placement => !!p);
 
       const apply = (ev: PointerEvent | KeyboardEvent, dx: number, dy: number) => {
-        const bypass = ev.altKey;
-        const constrain = ev.shiftKey;
+        const travel = { dx, dy, frame: primaryRect };
+        const held = { snap, bypass: ev.altKey, constrain: ev.shiftKey, others: siblings };
+        const start = startBoxes[anchorId];
+        const snapped =
+          kind === "move" ? movedBox(start, travel, held) : resizedBox(start, direction, travel, { ...held, lock });
         const next: Record<string, Placement> = {};
-        let guidesX: number[] = [];
-        let guidesY: number[] = [];
-
         if (kind === "move") {
-          // Shift locks the drag to whichever axis has travelled further —
-          // the standard "keep it in line" modifier.
-          let px = dx;
-          let py = dy;
-          if (constrain) {
-            if (Math.abs(dx) >= Math.abs(dy)) py = 0;
-            else px = 0;
-          }
-          const start = startBoxes[anchorId];
-          const raw = {
-            ...start,
-            x: start.x + (px / primaryRect.width) * 100,
-            y: start.y + (py / primaryRect.height) * 100,
-          };
-          const snapped = snapMove(raw, { snap, bypass, others: siblings });
-          guidesX = snapped.guidesX;
-          guidesY = snapped.guidesY;
           // The primary decides where the selection lands; everyone else
-          // travels by the same amount so the group keeps its shape.
+          // travels by the same distance in pixels so the group keeps its
+          // shape, converted into each one's own parent's percentages.
           const deltaX = snapped.placement.x - start.x;
           const deltaY = snapped.placement.y - start.y;
           for (const id of moving) {
             const rect = parentRects.get(id) ?? primaryRect;
             const b = startBoxes[id];
-            if (id === anchorId) {
-              next[id] = snapped.placement;
-            } else {
-              // Convert the primary's percentage travel back to pixels, then
-              // into this element's own parent's percentages.
-              next[id] = roundPlacement({
-                ...b,
-                x: b.x + ((deltaX / 100) * primaryRect.width / rect.width) * 100,
-                y: b.y + ((deltaY / 100) * primaryRect.height / rect.height) * 100,
-              });
-            }
+            next[id] =
+              id === anchorId
+                ? snapped.placement
+                : roundPlacement({
+                    ...b,
+                    x: b.x + ((deltaX / 100) * primaryRect.width / rect.width) * 100,
+                    y: b.y + ((deltaY / 100) * primaryRect.height / rect.height) * 100,
+                  });
           }
         } else {
-          const start = startBoxes[anchorId];
-          const raw = { ...start };
-          const ddx = (dx / primaryRect.width) * 100;
-          const ddy = (dy / primaryRect.height) * 100;
-          if (direction.includes("e")) raw.w = start.w + ddx;
-          if (direction.includes("w")) {
-            raw.x = start.x + ddx;
-            raw.w = start.w - ddx;
-          }
-          if (direction.includes("s")) raw.h = start.h + ddy;
-          if (direction.includes("n")) {
-            raw.y = start.y + ddy;
-            raw.h = start.h - ddy;
-          }
-          raw.w = Math.max(MIN_ELEMENT_SIZE, raw.w);
-          raw.h = Math.max(MIN_ELEMENT_SIZE, raw.h);
-
-          const snapped = snapResize(raw, direction, { snap, bypass, others: siblings });
-          const box = { ...snapped.placement };
-          guidesX = snapped.guidesX;
-          guidesY = snapped.guidesY;
-
-          // An aspect-locked element keeps its ratio while you resize it, and
-          // shift asks any element to keep the ratio it started with. The
-          // ratio is in PIXELS, so converting it back to percentages has to go
-          // through the parent's own proportions.
-          const ratio =
-            lock ??
-            (constrain && start.h > 0
-              ? ((start.w / 100) * primaryRect.width) / ((start.h / 100) * primaryRect.height)
-              : null);
-          if (ratio) {
-            const drivenByWidth = direction.includes("e") || direction.includes("w");
-            if (drivenByWidth) {
-              const hPx = ((box.w / 100) * primaryRect.width) / ratio;
-              const newH = (hPx / primaryRect.height) * 100;
-              if (direction.includes("n")) box.y += box.h - newH;
-              box.h = Math.max(MIN_ELEMENT_SIZE, newH);
-            } else {
-              const wPx = ((box.h / 100) * primaryRect.height) * ratio;
-              const newW = (wPx / primaryRect.width) * 100;
-              if (direction.includes("w")) box.x += box.w - newW;
-              box.w = Math.max(MIN_ELEMENT_SIZE, newW);
-            }
-          }
-          next[anchorId] = roundPlacement(box);
+          next[anchorId] = snapped.placement;
         }
+        const { guidesX, guidesY } = snapped;
 
         // What this drag would put the element into, live. Only a move can
         // change a parent -- a resize reshapes the box you grabbed and nothing
@@ -874,84 +808,16 @@ export function Canvas({
         ...visibleMasters.filter((m) => m.master.id !== masterId).map((m) => m.box),
       ];
 
-      const lock =
-        typeof master.aspect_lock === "number" && master.aspect_lock > 0
-          ? master.aspect_lock
-          : null;
+      const lock = aspectLockOf(master);
 
       const apply = (ev: PointerEvent | KeyboardEvent, dx: number, dy: number) => {
-        const bypass = ev.altKey;
-        const constrain = ev.shiftKey;
-        let box: Placement;
-        let guidesX: number[];
-        let guidesY: number[];
-
-        if (kind === "move") {
-          let px = dx;
-          let py = dy;
-          if (constrain) {
-            if (Math.abs(dx) >= Math.abs(dy)) py = 0;
-            else px = 0;
-          }
-          const snapped = snapMove(
-            {
-              ...start,
-              x: start.x + (px / rect.width) * 100,
-              y: start.y + (py / rect.height) * 100,
-            },
-            { snap, bypass, others },
-          );
-          box = snapped.placement;
-          guidesX = snapped.guidesX;
-          guidesY = snapped.guidesY;
-        } else {
-          const raw = { ...start };
-          const ddx = (dx / rect.width) * 100;
-          const ddy = (dy / rect.height) * 100;
-          if (direction.includes("e")) raw.w = start.w + ddx;
-          if (direction.includes("w")) {
-            raw.x = start.x + ddx;
-            raw.w = start.w - ddx;
-          }
-          if (direction.includes("s")) raw.h = start.h + ddy;
-          if (direction.includes("n")) {
-            raw.y = start.y + ddy;
-            raw.h = start.h - ddy;
-          }
-          raw.w = Math.max(MIN_ELEMENT_SIZE, raw.w);
-          raw.h = Math.max(MIN_ELEMENT_SIZE, raw.h);
-
-          const snapped = snapResize(raw, direction, { snap, bypass, others });
-          box = { ...snapped.placement };
-          guidesX = snapped.guidesX;
-          guidesY = snapped.guidesY;
-
-          // Same ratio rule as a page element: the ratio is in PIXELS, so it
-          // converts back to percentages through the box it is a percentage of
-          // -- here the viewport rather than a parent.
-          const ratio =
-            lock ??
-            (constrain && start.h > 0
-              ? ((start.w / 100) * rect.width) / ((start.h / 100) * rect.height)
-              : null);
-          if (ratio) {
-            const drivenByWidth = direction.includes("e") || direction.includes("w");
-            if (drivenByWidth) {
-              const hPx = ((box.w / 100) * rect.width) / ratio;
-              const newH = (hPx / rect.height) * 100;
-              if (direction.includes("n")) box.y += box.h - newH;
-              box.h = Math.max(MIN_ELEMENT_SIZE, newH);
-            } else {
-              const wPx = ((box.h / 100) * rect.height) * ratio;
-              const newW = (wPx / rect.width) * 100;
-              if (direction.includes("w")) box.x += box.w - newW;
-              box.w = Math.max(MIN_ELEMENT_SIZE, newW);
-            }
-          }
-          box = roundPlacement(box);
-        }
-
-        const placements = { [masterId]: box };
+        // The same move and resize as a page control's, measured against the
+        // screen rather than a parent.
+        const travel = { dx, dy, frame: rect };
+        const held = { snap, bypass: ev.altKey, constrain: ev.shiftKey, others };
+        const { placement, guidesX, guidesY } =
+          kind === "move" ? movedBox(start, travel, held) : resizedBox(start, direction, travel, { ...held, lock });
+        const placements = { [masterId]: placement };
         const live: LiveGesture = { kind, placements, guidesX, guidesY, adoptInto: null };
         gestureRef.current = live;
         setGesture(live);
