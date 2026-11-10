@@ -127,10 +127,14 @@ def test_view_shortcuts_stand_down_while_a_dialog_is_open() -> None:
         "acting on a keypress"
     )
     handler = text[text.index("export function handleBuilderKey"):]
-    guard = handler.index("if (isModalOpen()) return;")
-    first_action = handler.index("preventDefault")
-    assert guard < first_action, (
-        "the isModalOpen() guard must come before any shortcut handling"
+    body = handler[handler.index("{") + 1:]
+    statements = [
+        line.strip() for line in body.splitlines()
+        if line.strip() and not line.strip().startswith("//")
+    ]
+    assert statements[0] == "if (isModalOpen()) return;", (
+        "the isModalOpen() guard must be the keyboard handler's first statement, "
+        "before any shortcut handling"
     )
 
 

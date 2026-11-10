@@ -1,14 +1,15 @@
 /**
- * Where a control new from the palette lands and what it may be called: one
- * rule for the live preview of a drag, the drop, and click-to-add.
+ * Where a control new from the palette lands and what it may be called.
  *
  * A drop lands where the pointer is, worked out by `landingAt`, which the
  * preview asks on every pointer move and the drop asks again only when the
  * preview never saw the pointer: so what the preview shows is where the
- * control goes. Snapping and click-to-add both measure against the page's
- * top-level controls in the arrangement being authored (`topLevelBoxes`); a
- * control inside a container stores its box in the container's terms, so it
- * is left out.
+ * control goes. Click-to-add has no pointer and takes the first free spot
+ * instead (`autoPlace`, on the page); it and the drop's snapping both measure
+ * against the page's top-level controls in the arrangement being authored
+ * (`topLevelBoxes`): a control inside a container stores its box in the
+ * container's terms, so it is left out. Both name a new control past
+ * `takenIds`.
  */
 import type { MasterElement, Placement, UIPage } from "../../api/types";
 import {

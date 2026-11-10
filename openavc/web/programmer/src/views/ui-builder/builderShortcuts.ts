@@ -88,7 +88,7 @@ function selectionKey(e: KeyboardEvent, k: BuilderKeys): boolean {
     k.deselect();
     return true;
   }
-  if (e.key in DIRECTIONS && k.page) return arrowKey(e, k, k.page);
+  if (DIRECTIONS.has(e.key) && k.page) return arrowKey(e, k, k.page);
   return (e.key === "Delete" || e.key === "Backspace") && deleteKey(e, k);
 }
 
@@ -101,12 +101,12 @@ export function useBuilderShortcuts(k: BuilderKeys): void {
 }
 
 /** Which way each arrow moves a box, as (x, y) signs. */
-const DIRECTIONS: Record<string, [number, number]> = {
-  ArrowLeft: [-1, 0],
-  ArrowRight: [1, 0],
-  ArrowUp: [0, -1],
-  ArrowDown: [0, 1],
-};
+const DIRECTIONS = new Map<string, [number, number]>([
+  ["ArrowLeft", [-1, 0]],
+  ["ArrowRight", [1, 0]],
+  ["ArrowUp", [0, -1]],
+  ["ArrowDown", [0, 1]],
+]);
 
 function commandKey(e: KeyboardEvent): boolean {
   return e.ctrlKey || e.metaKey;
@@ -141,7 +141,7 @@ export function nudgeOffset(
   snap: SnapConfig,
   mods: { alt: boolean; shift: boolean },
 ): Offset {
-  const [sx, sy] = DIRECTIONS[key];
+  const [sx, sy] = DIRECTIONS.get(key) ?? [0, 0];
   const fine = mods.alt || !snap.enabled;
   const mult = mods.shift ? 10 : 1;
   return {
@@ -221,7 +221,7 @@ function deleteKey(e: KeyboardEvent, k: BuilderKeys): boolean {
   e.preventDefault();
   if (k.selectedIds.length === 1) k.deleteOne(k.selectedIds[0]);
   else k.deleteSelection();
-  return false;
+  return true;
 }
 
 /** The Ctrl (or Cmd) chords: undo, redo, save, copy, paste, duplicate. */
