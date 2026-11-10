@@ -406,7 +406,7 @@ export {
  * the reserved ones (master elements share the ui.<id> namespace, so a copy, or
  * a control promoted to or demoted from a master, cannot be named onto one).
  */
-function takenElementIds(pages: UIPage[], reservedIds: string[]): Set<string> {
+export function takenElementIds(pages: UIPage[], reservedIds: string[]): Set<string> {
   const taken = new Set(pages.flatMap((p) => p.elements.map((e) => e.id)));
   for (const id of reservedIds) taken.add(id);
   return taken;
