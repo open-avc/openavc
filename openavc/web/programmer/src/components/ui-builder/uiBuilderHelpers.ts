@@ -717,11 +717,14 @@ export function reorderPage(
  * (`cloneWithIds`), the container hierarchy included. Geometry does not live
  * on the elements: every arrangement keys its placements and hidden list by
  * element id, so the renames reach them too (`layoutRenamed`).
+ *
+ * `reservedIds` are the masters' ids, required as they are for a duplicate
+ * of a control (`duplicateElementInPage`).
  */
 export function duplicatePage(
   pages: UIPage[],
   pageId: string,
-  reservedIds: string[] = [],
+  reservedIds: string[],
 ): UIPage[] {
   const idx = pages.findIndex((p) => p.id === pageId);
   if (idx === -1) return pages;

@@ -415,7 +415,7 @@ describe("duplicatePage", () => {
 
   it("hands back the same pages when the page is not there", () => {
     const pages = [source()];
-    expect(duplicatePage(pages, "nope")).toBe(pages);
+    expect(duplicatePage(pages, "nope", [])).toBe(pages);
   });
 
   it("inserts the copy straight after the page, with the next free id and name", () => {
@@ -424,7 +424,7 @@ describe("duplicatePage", () => {
       { id: "p1_copy", name: "Main (Copy)", elements: [], layouts: [] } as unknown as UIPage,
       { id: "after", name: "After", elements: [], layouts: [] } as unknown as UIPage,
     ];
-    const out = duplicatePage(pages, "p1");
+    const out = duplicatePage(pages, "p1", []);
     expect(out.map((p) => p.id)).toEqual(["p1", "p1_copy_2", "p1_copy", "after"]);
     expect(out[1].name).toBe("Main (Copy 2)");
   });
@@ -440,7 +440,7 @@ describe("duplicatePage", () => {
 
   it("counts on past an id it has just handed out to a control of the same type", () => {
     const two = { id: "p1", name: "Main", elements: [el("a"), el("b")], layouts: [] } as unknown as UIPage;
-    expect(duplicatePage([two], "p1")[1].elements.map((e) => e.id)).toEqual(["button_p1_copy_1", "button_p1_copy_2"]);
+    expect(duplicatePage([two], "p1", [])[1].elements.map((e) => e.id)).toEqual(["button_p1_copy_1", "button_p1_copy_2"]);
   });
 
   it("renames every layout's boxes in their order and its hidden list, keeping ids it does not know", () => {
@@ -461,7 +461,7 @@ describe("duplicatePage", () => {
   it("copies the rest of the page deep and leaves the source as it was", () => {
     const src = source();
     const before = JSON.stringify(src);
-    const out = duplicatePage([src], "p1");
+    const out = duplicatePage([src], "p1", []);
     expect(out[1].snap).toEqual(src.snap);
     expect(out[1].snap).not.toBe(src.snap);
     expect(JSON.stringify(src)).toBe(before);
@@ -470,7 +470,7 @@ describe("duplicatePage", () => {
 
   it("gives a page with no layouts an empty list", () => {
     const bare = { id: "p1", name: "Main", elements: [el("a")] } as unknown as UIPage;
-    expect(duplicatePage([bare], "p1")[1].layouts).toEqual([]);
+    expect(duplicatePage([bare], "p1", [])[1].layouts).toEqual([]);
   });
 });
 
@@ -480,7 +480,7 @@ describe("the ids a copy may not take: every page's, not just the first one's", 
 
   it("a page copy counts past an id held on another page", () => {
     const pages = [second(), page([el("button_second_copy_1", "label")], [primary({})], "third")];
-    const out = duplicatePage(pages, "second");
+    const out = duplicatePage(pages, "second", []);
     expect(out[1].elements.map((e) => e.id)).toEqual(["button_second_copy_2"]);
   });
 

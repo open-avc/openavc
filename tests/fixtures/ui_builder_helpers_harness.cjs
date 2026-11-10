@@ -703,7 +703,7 @@ function makeValidationProject(elements) {
       ],
     },
   ];
-  const after = H.duplicatePage(pages, "p1");
+  const after = H.duplicatePage(pages, "p1", []);
   const copy = after[1];
   const aCopy = copy.elements[0];
   const bCopy = copy.elements[1];
@@ -2420,7 +2420,7 @@ const variantPage = () => ({
         placements: { grp_a: { x: 5, y: 40, w: 90, h: 40 } }, hidden: ["btn_a"] },
     ],
   }];
-  const after = H.duplicatePage(pages, "p1");
+  const after = H.duplicatePage(pages, "p1", []);
   const copy = after[1];
   const grpCopy = copy.elements[0];
   const btnCopy = copy.elements[1];
