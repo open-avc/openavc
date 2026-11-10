@@ -426,8 +426,9 @@ describe("resizing a page control", () => {
     );
   });
 
-  it("rounds the box a ratio sets to four places", () => {
+  it("rounds the box a ratio sets to four places, in what it saves and what it tells the panel", () => {
     expect(resize("e", 100, 0, { extra: { aspect_lock: 7 } as Partial<UIElement> })).toEqual({ x: 10, y: 10, w: 30, h: 8.5714 });
+    expect(posted.at(-1)).toEqual({ type: "openavc:editor-placements", placements: { a: { x: 10, y: 10, w: 30, h: 8.5714 } } });
   });
 
   it("keeps the side the ratio sets at 1% or more", () => {
@@ -671,6 +672,14 @@ describe("moving and resizing a master element", () => {
       expect({ direction, extra, mods, box: storedMaster("m") }).toEqual({ direction, extra, mods, box: want });
     }
     expect(undoLabels()).toEqual(["Resize master element"]);
+  });
+
+  it("tells the panel the rounded box a ratio sets", () => {
+    loadMaster(master("m", { landscape: M }, { aspect_lock: 3 }));
+    press(handle(masterNode("m"), "e"));
+    drag(-100, 0);
+    release();
+    expect(posted.at(-1)).toEqual({ type: "openavc:editor-placements", placements: { m: { x: 70, y: 70, w: 10, h: 6.6667 } } });
   });
 
   it("writes the arrangement on screen and leaves the other alone", () => {
