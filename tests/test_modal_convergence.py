@@ -121,12 +121,12 @@ def test_view_shortcuts_stand_down_while_a_dialog_is_open() -> None:
     belong to the dialog — and worse, the view's handler renders in response to
     the same keypress, which used to swallow the dialog's Escape entirely.
     """
-    text = (SRC / "views" / "UIBuilderView.tsx").read_text(encoding="utf-8")
+    text = (SRC / "views" / "ui-builder" / "builderShortcuts.ts").read_text(encoding="utf-8")
     assert "isModalOpen" in text, (
-        "UIBuilderView must ask Modal whether a dialog is open before acting on "
-        "a keypress"
+        "the UI Builder's keyboard must ask Modal whether a dialog is open before "
+        "acting on a keypress"
     )
-    handler = text[text.index("const handleKeyDown"):]
+    handler = text[text.index("export function handleBuilderKey"):]
     guard = handler.index("if (isModalOpen()) return;")
     first_action = handler.index("preventDefault")
     assert guard < first_action, (

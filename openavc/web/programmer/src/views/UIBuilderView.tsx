@@ -33,7 +33,7 @@ import { ContextMenu } from "../components/ui-builder/ContextMenu";
 import { ThemeStudio } from "../components/ui-builder/ThemeStudio";
 import { StylesheetEditor } from "../components/ui-builder/StylesheetEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
-import { Modal, isModalOpen } from "../components/shared/Modal";
+import { Modal } from "../components/shared/Modal";
 import { NumericInput } from "../components/shared/NumericInput";
 import {
   SCREEN_PRESETS,
@@ -41,7 +41,6 @@ import {
   addElementToPage,
   removeElementFromPage,
   updateElementInPage,
-  moveElementsInPage,
   duplicateElementInPage,
   duplicateElementsInPage,
   clipboardForSelection,
@@ -66,11 +65,8 @@ import {
   paletteDragPlacement,
   pointerToPercent,
   resolveDropParent,
-  roundPlacement,
   presetForOrientation,
   layoutOrientation,
-  masterPlacement,
-  withMasterPlacement,
   resolveHidden,
   withHidden,
   type ValidationIssue,
@@ -78,10 +74,7 @@ import {
 import { isLightColor } from "../components/ui-builder/colorUtils";
 import { showSuccess, showInfo } from "../store/toastStore";
 import { useEditRun } from "./ui-builder/useEditRun";
-
-/** Arrow-key travel, in percent, when snapping is off or bypassed. Small
- *  enough to place a control by eye, large enough to see it move. */
-const FINE_NUDGE = 0.25;
+import { nudgedPages, useBuilderShortcuts } from "./ui-builder/builderShortcuts";
 
 export function UIBuilderView() {
   const project = useProjectStore((s) => s.project);
@@ -290,174 +283,6 @@ export function UIBuilderView() {
     return () => window.removeEventListener("beforeunload", handler);
   }, []);
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // A dialog is up: the canvas is behind a backdrop, so these keys are
-      // meant for the dialog. Before this guard, Escape on a dialog also
-      // deselected the element underneath, and Delete reached the canvas and
-      // removed it.
-      if (isModalOpen()) return;
-      // Ctrl+P toggles preview mode (works in both modes)
-      if ((e.ctrlKey || e.metaKey) && e.key === "p") {
-        e.preventDefault();
-        useUIBuilderStore.getState().setPreviewMode(!previewMode);
-        return;
-      }
-      // Ctrl+E toggles element palette (13.9)
-      if ((e.ctrlKey || e.metaKey) && e.key === "e") {
-        e.preventDefault();
-        setShowPalette((v) => !v);
-        return;
-      }
-      if (previewMode) return;
-      const target = e.target as HTMLElement;
-      const inInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
-
-      // Block Delete/Backspace when typing in inputs, but allow Ctrl shortcuts
-      if (inInput && !(e.ctrlKey || e.metaKey)) return;
-
-      // Escape — deselect element
-      if (e.key === "Escape") {
-        e.preventDefault();
-        selectElement(null);
-        return;
-      }
-
-      // Arrow keys — nudge the selection. One snap increment per press, ten
-      // with shift; holding Alt suspends snapping and nudges by a hair, the
-      // same bypass a drag gets.
-      if (
-        (e.key === "ArrowUp" || e.key === "ArrowDown" ||
-         e.key === "ArrowLeft" || e.key === "ArrowRight") && currentPage
-      ) {
-        const snap = pageSnap(currentPage);
-        const stepX = e.altKey || !snap.enabled ? FINE_NUDGE : snap.x;
-        const stepY = e.altKey || !snap.enabled ? FINE_NUDGE : snap.y;
-        const mult = e.shiftKey ? 10 : 1;
-        const dx =
-          e.key === "ArrowLeft" ? -stepX * mult : e.key === "ArrowRight" ? stepX * mult : 0;
-        const dy =
-          e.key === "ArrowUp" ? -stepY * mult : e.key === "ArrowDown" ? stepY * mult : 0;
-
-        // Nudge master element. The arrangement on screen decides which box
-        // moves, the same rule the canvas drag and the Layout fields follow:
-        // this used to write the landscape box whatever was being authored, so
-        // nudging a master on a portrait arrangement moved it on every OTHER
-        // page and left it where it was on this one.
-        if (selectedMasterElementId && masterElements.length > 0) {
-          if (lockedElementIds.has(selectedMasterElementId)) return;
-          const mel = masterElements.find((m) => m.id === selectedMasterElementId);
-          if (!mel) return;
-          e.preventDefault();
-          const orientation = layoutOrientation(currentPage, activeLayoutId);
-          const current = masterPlacement(mel, orientation);
-          if (!current) return;
-          const moved = withMasterPlacement(mel, orientation, {
-            ...current,
-            x: current.x + dx,
-            y: current.y + dy,
-          });
-          handleMasterElementPropertyChange(selectedMasterElementId, {
-            placements: moved.placements,
-          } as Partial<MasterElement>);
-          return;
-        }
-
-        // Nudge page elements. Nothing clamps: free positioning warns rather
-        // than prevents, and the out-of-bounds badge is what says so.
-        if (selectedElementIds.length > 0) {
-          if (selectedElementIds.some(eid => lockedElementIds.has(eid))) return;
-          e.preventDefault();
-          const movable = selectedElementIds.filter((eid) =>
-            currentPage.elements.some((el) => el.id === eid),
-          );
-          if (movable.length === 0) return;
-
-          applyMutation((pages) => {
-            const target = pages.find((p) => p.id === currentPage.id);
-            if (!target) return pages;
-            const moved: Record<string, Placement> = {};
-            for (const eid of movable) {
-              const box = getPlacement(target, eid, activeLayoutId);
-              moved[eid] = roundPlacement({ ...box, x: box.x + dx, y: box.y + dy });
-            }
-            return moveElementsInPage(pages, currentPage.id, moved, activeLayoutId);
-          }, `Nudge ${e.key.replace("Arrow", "").toLowerCase()}`, true);
-          return;
-        }
-      }
-
-      if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedMasterElementId) {
-          // A locked master is protected from accidental keyboard deletion,
-          // matching the nudge guard and the page-element delete guard below.
-          if (lockedElementIds.has(selectedMasterElementId)) return;
-          e.preventDefault();
-          handleDeleteMasterElement(selectedMasterElementId);
-          return;
-        }
-        if (selectedElementIds.length > 0 && currentPage) {
-          if (selectedElementIds.some(eid => lockedElementIds.has(eid))) return;
-          e.preventDefault();
-          if (selectedElementIds.length === 1) {
-            handleDeleteElement(selectedElementIds[0]);
-          } else {
-            // Batch delete
-            applyMutation((pages) => {
-              let result = pages;
-              for (const eid of selectedElementIds) {
-                result = removeElementFromPage(result, currentPage.id, eid);
-              }
-              return result;
-            }, `Delete ${selectedElementIds.length} elements`);
-            selectElement(null);
-          }
-        }
-      }
-      if ((e.ctrlKey || e.metaKey) && !inInput) {
-        if (e.key === "z" && !e.shiftKey) {
-          e.preventDefault();
-          // A property-edit undo keeps the selection, so nothing else would
-          // end the run before the next edit.
-          run.endRun();
-          undo();
-        }
-        if ((e.key === "z" && e.shiftKey) || e.key === "y") {
-          e.preventDefault();
-          run.endRun();
-          redo();
-        }
-        if (e.key === "s" && !e.shiftKey) {
-          e.preventDefault();
-          const store = useProjectStore.getState();
-          store.flushSave();
-          // flushSave is a no-op when no debounce timer is pending, so kick a
-          // direct save when there are still uncommitted changes.
-          if (store.dirty && !store.saving) save();
-        }
-        if (e.key === "c" && selectedElementIds.length > 0 && currentPage) {
-          e.preventDefault();
-          handleCopyElement(selectedElementIds);
-        }
-        if (e.key === "v" && clipboard && currentPage) {
-          e.preventDefault();
-          handlePasteElement();
-        }
-        if (e.key === "d" && selectedElementIds.length > 0 && currentPage) {
-          e.preventDefault();
-          if (selectedElementIds.length === 1) {
-            handleDuplicateElement(selectedElementIds[0]);
-          } else {
-            handleDuplicateSelection();
-          }
-        }
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  });
-
   // Derived data
   const pages = project?.ui?.pages ?? [];
   const currentPage = pages.find((p) => p.id === selectedPageId) || pages[0] || null;
@@ -517,6 +342,18 @@ export function UIBuilderView() {
     },
     [currentPage, applyMutation, selectElement],
   );
+
+  const handleDeleteSelection = useCallback(() => {
+    if (!currentPage) return;
+    applyMutation((pages) => {
+      let result = pages;
+      for (const eid of selectedElementIds) {
+        result = removeElementFromPage(result, currentPage.id, eid);
+      }
+      return result;
+    }, `Delete ${selectedElementIds.length} elements`);
+    selectElement(null);
+  }, [currentPage, selectedElementIds, applyMutation, selectElement]);
 
   const handleDuplicateElement = useCallback(
     (elementId: string) => {
@@ -1054,6 +891,35 @@ export function UIBuilderView() {
   // A drag in flight when the view unmounts would leave the tracker attached.
   useEffect(() => () => palettePointerCleanup.current?.(), []);
 
+  useBuilderShortcuts({
+    previewMode,
+    page: currentPage,
+    activeLayoutId,
+    masters: masterElements,
+    selectedIds: selectedElementIds,
+    selectedMasterId: selectedMasterElementId,
+    locked: lockedElementIds,
+    hasClipboard: !!clipboard,
+    togglePreview: () => useUIBuilderStore.getState().setPreviewMode(!previewMode),
+    togglePalette: () => setShowPalette((v) => !v),
+    deselect: () => selectElement(null),
+    moveMaster: (id, placements) =>
+      handleMasterElementPropertyChange(id, { placements } as Partial<MasterElement>),
+    nudge: (ids, offset, description) => {
+      if (!currentPage) return;
+      applyMutation((pages) => nudgedPages(pages, currentPage.id, { ids, ...offset }, activeLayoutId), description, true);
+    },
+    deleteMaster: handleDeleteMasterElement,
+    deleteOne: handleDeleteElement,
+    deleteSelection: handleDeleteSelection,
+    undo: () => { run.endRun(); undo(); },
+    redo: () => { run.endRun(); redo(); },
+    copy: () => handleCopyElement(selectedElementIds),
+    paste: handlePasteElement,
+    duplicateOne: handleDuplicateElement,
+    duplicateSelection: handleDuplicateSelection,
+  });
+
   if (!project) {
     return (
       <div
@@ -1439,18 +1305,7 @@ export function UIBuilderView() {
           onClose={() => setContextMenu(null)}
           onDuplicate={handleDuplicateElement}
           onDelete={handleDeleteElement}
-          onDeleteAll={() => {
-            if (currentPage) {
-              applyMutation((pages) => {
-                let result = pages;
-                for (const eid of selectedElementIds) {
-                  result = removeElementFromPage(result, currentPage.id, eid);
-                }
-                return result;
-              }, `Delete ${selectedElementIds.length} elements`);
-              selectElement(null);
-            }
-          }}
+          onDeleteAll={handleDeleteSelection}
           onDuplicateAll={handleDuplicateSelection}
           onCopy={(ids) => handleCopyElement(selectedElementIds.length > 1 ? selectedElementIds : ids)}
           onPaste={handlePasteElement}
