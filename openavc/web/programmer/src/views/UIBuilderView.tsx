@@ -59,7 +59,7 @@ import {
   type ValidationIssue,
 } from "../components/ui-builder/uiBuilderHelpers";
 import { showSuccess, showInfo } from "../store/toastStore";
-import { useEditRun } from "./ui-builder/useEditRun";
+import { projectEdit, useEditRun } from "./ui-builder/useEditRun";
 import { nudgedPages, useBuilderShortcuts } from "./ui-builder/builderShortcuts";
 import { takenIds, topLevelBoxes } from "./ui-builder/paletteDrop";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
@@ -207,11 +207,7 @@ export function UIBuilderView() {
   const applyMutation = useCallback(
     (mutate: (pages: UIPage[]) => UIPage[], description: string, coalesce = false) => {
       if (!project) return;
-      const edit = {
-        before: { pages: project.ui.pages },
-        description,
-        patch: { ui: { ...project.ui, pages: mutate(project.ui.pages) } },
-      };
+      const edit = projectEdit(project, { pages: mutate(project.ui.pages) }, description);
       if (coalesce) run.join(edit);
       else run.commit(edit);
     },
@@ -333,11 +329,7 @@ export function UIBuilderView() {
       currentPage.id,
       elementId,
     );
-    run.commit({
-      before: { pages: project.ui.pages, master_elements: project.ui.master_elements || [] },
-      description: "Promote to master",
-      patch: { ui: { ...project.ui, pages: result.pages, master_elements: result.masterElements } },
-    });
+    run.commit(projectEdit(project, { pages: result.pages, master_elements: result.masterElements }, "Promote to master"));
     selectElement(null);
   }, [project, currentPage, run, selectElement]);
 
@@ -349,11 +341,7 @@ export function UIBuilderView() {
       masterElementId,
       currentPage.id,
     );
-    run.commit({
-      before: { pages: project.ui.pages, master_elements: project.ui.master_elements || [] },
-      description: "Demote from master",
-      patch: { ui: { ...project.ui, pages: result.pages, master_elements: result.masterElements } },
-    });
+    run.commit(projectEdit(project, { pages: result.pages, master_elements: result.masterElements }, "Demote from master"));
     selectMasterElement(null);
   }, [project, currentPage, run, selectMasterElement]);
 
@@ -409,16 +397,8 @@ export function UIBuilderView() {
 
   const handleDeleteMasterElement = useCallback((masterElementId: string) => {
     if (!project) return;
-    run.commit({
-      before: { master_elements: project.ui.master_elements || [] },
-      description: "Delete master element",
-      patch: {
-        ui: {
-          ...project.ui,
-          master_elements: removeMasterElement(project.ui.master_elements || [], masterElementId),
-        },
-      },
-    });
+    const masters = removeMasterElement(project.ui.master_elements || [], masterElementId);
+    run.commit(projectEdit(project, { master_elements: masters }, "Delete master element"));
     selectMasterElement(null);
   }, [project, run, selectMasterElement]);
 
@@ -434,23 +414,9 @@ export function UIBuilderView() {
       // themes. These are per-project overrides that were tuned for the
       // PREVIOUS theme — carrying them forward makes the new theme look
       // wrong (e.g. blue accent on a gold-themed Luxury preset).
-      run.commit({
-        before: { settings },
-        description: "Change theme",
-        patch: {
-          ui: {
-            ...project.ui,
-            settings: {
-              ...settings,
-              theme_id: id,
-              theme: mode,
-              accent_color: "",
-              font_family: "",
-              theme_overrides: {},
-            },
-          },
-        },
-      });
+      run.commit(projectEdit(project, {
+        settings: { ...settings, theme_id: id, theme: mode, accent_color: "", font_family: "", theme_overrides: {} },
+      }, "Change theme"));
     },
     [project, themes, run],
   );
@@ -461,42 +427,25 @@ export function UIBuilderView() {
     (overrides: Record<string, unknown>) => {
       if (!project) return;
       const settings = project.ui.settings;
-      run.join({
-        before: { settings },
-        description: "Edit theme overrides",
-        patch: { ui: { ...project.ui, settings: { ...settings, theme_overrides: overrides } } },
-      });
+      run.join(projectEdit(project, { settings: { ...settings, theme_overrides: overrides } }, "Edit theme overrides"));
     },
     [project, run],
   );
 
   const handlePropertyChange = useCallback(
     (elementId: string, patch: Partial<UIElement>) => {
-      if (!currentPage || !project) return;
-      run.join({
-        before: { pages: project.ui.pages },
-        description: "Edit element",
-        patch: {
-          ui: { ...project.ui, pages: updateElementInPage(project.ui.pages, currentPage.id, elementId, patch) },
-        },
-      });
+      if (!currentPage) return;
+      applyMutation((p) => updateElementInPage(p, currentPage.id, elementId, patch), "Edit element", true);
     },
-    [currentPage, project, run],
+    [currentPage, applyMutation],
   );
 
   const handlePageChange = useCallback(
     (patch: Partial<UIPage>) => {
-      if (!currentPage || !project) return;
-      const newPages = project.ui.pages.map((p) =>
-        p.id === currentPage.id ? { ...p, ...patch } : p,
-      );
-      run.join({
-        before: { pages: project.ui.pages },
-        description: "Edit page properties",
-        patch: { ui: { ...project.ui, pages: newPages } },
-      });
+      if (!currentPage) return;
+      applyMutation((pages) => pages.map((p) => (p.id === currentPage.id ? { ...p, ...patch } : p)), "Edit page properties", true);
     },
-    [currentPage, project, run],
+    [currentPage, applyMutation],
   );
 
   // Moving a control into a container (or back out) is a geometry change as
@@ -518,12 +467,8 @@ export function UIBuilderView() {
   const handleMasterElementPropertyChange = useCallback(
     (elementId: string, patch: Partial<MasterElement>) => {
       if (!project) return;
-      const masters = project.ui.master_elements || [];
-      run.join({
-        before: { master_elements: masters },
-        description: "Edit master element",
-        patch: { ui: { ...project.ui, master_elements: updateMasterElement(masters, elementId, patch) } },
-      });
+      const masters = updateMasterElement(project.ui.master_elements || [], elementId, patch);
+      run.join(projectEdit(project, { master_elements: masters }, "Edit master element"));
     },
     [project, run],
   );
@@ -984,11 +929,7 @@ export function UIBuilderView() {
           panelWidth={preset?.width ?? 1024}
           panelHeight={preset?.height ?? 600}
           onSave={(css) => {
-            run.commit({
-              before: { custom_css: project.ui.custom_css ?? "" },
-              description: "Edit project stylesheet",
-              patch: { ui: { ...project.ui, custom_css: css } },
-            });
+            run.commit(projectEdit(project, { custom_css: css }, "Edit project stylesheet"));
             showSuccess("Project stylesheet saved");
           }}
           onClose={() => setShowStylesheet(false)}
@@ -1005,11 +946,7 @@ export function UIBuilderView() {
             setConfirmResetStyles(false);
             if (!project) return;
             const newPages = withoutThemeStyles(project.ui.pages, theme.defaults);
-            run.commit({
-              before: { pages: project.ui.pages },
-              description: "Reset element styles to theme",
-              patch: { ui: { ...project.ui, pages: newPages } },
-            });
+            run.commit(projectEdit(project, { pages: newPages }, "Reset element styles to theme"));
             showSuccess("Element styles reset to theme defaults");
           }}
         />
@@ -1076,11 +1013,7 @@ export function UIBuilderView() {
         <UISettingsDialog
           settings={project.ui.settings}
           pages={project.ui.pages}
-          onUpdate={(settings) => run.commit({
-            before: { settings: project.ui.settings },
-            description: "Edit project settings",
-            patch: { ui: { ...project.ui, settings } },
-          })}
+          onUpdate={(settings) => run.commit(projectEdit(project, { settings }, "Edit project settings"))}
           onClose={() => setShowSettings(false)}
         />
       )}
