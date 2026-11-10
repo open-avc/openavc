@@ -1,4 +1,13 @@
-"""A driver's child types, checked when it loads: one ``child_entity_types`` entry.
+"""A driver's child types, checked when it loads, and what refers to them.
+
+Two jobs, both read against the same declaration: one ``child_entity_types``
+entry's own checks (``child_type_errors``), and the references a command's
+``child_id`` parameters make into those types (``child_param_reference_errors``,
+asked by both kinds of driver; a Python driver reaches it through
+``python_info``), whose bounds are judged against the type's ``id_format``.
+``undeclared_child_type_reason`` is the one wording of a reference that does
+not resolve, which the runtime's dispatch gate (``core/command_gates.py``)
+shows too.
 
 A child type is checked in this order: its name, that its declaration is a
 mapping, its ``id_format``, its ``state_variables`` (each variable's fields
@@ -13,10 +22,14 @@ fnmatch dispatch that routes a child's state changes.
 
 A roster declares exactly one source (``spec.INSTANCE_SOURCES``) and each has
 one function in ``_SOURCE_CHECKS``, so a new way to say which children exist is
-a function and a row there; ``count_from_state``, the device-reported count a
-roster follows once connected, sits beside any of them. The runtime's twins:
-``child_ids.declared_child_ids`` reads a roster, ``declared_roster.py``
-registers it, and ``child_entities.py`` keeps the registry the name keys.
+a function and a row here, and the message naming the sources follows the
+table; ``count_from_state``, the device-reported count a roster follows once
+connected, sits beside any of them. That is this check only: the roster is
+also read by ``child_ids.declared_child_ids`` (in its own order of sources),
+``declared_roster.py``, which registers it, the poll-length warning in
+``avcdriver_semantic`` and the query entries' ``each_child`` check, and outside
+the contract by the Driver Builder and the simulator, and a new source reaches
+each of them. ``child_entities.py`` keeps the registry a type's name keys.
 
 Purity contract, as for ``avcdriver_semantic``: standard library and the
 sibling contract modules only. The module is vendored with the rest of the

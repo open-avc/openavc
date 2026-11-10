@@ -1125,3 +1125,11 @@ def test_every_reference_case_has_an_expectation() -> None:
 @pytest.mark.parametrize("case", sorted(REASON_EXPECTED))
 def test_why_a_child_type_reference_does_not_resolve(case: str) -> None:
     assert undeclared_child_type_reason(*REASON_CASES[case]) == REASON_EXPECTED[case]
+
+
+def test_every_roster_source_has_its_check() -> None:
+    """A source the contract adds without a check would raise at load."""
+    from openavc.drivers.child_type_checks import _SOURCE_CHECKS
+    from openavc.drivers.spec import INSTANCE_SOURCES
+
+    assert list(_SOURCE_CHECKS) == list(INSTANCE_SOURCES)

@@ -4,7 +4,9 @@ Every cross-field rule that decides whether a driver definition is valid
 is reached through this module: ``validate_driver_definition`` walks the
 definition section by section and asks a check module about each command
 (``command_checks``), response rule (``response_rule_checks``), query entry
-(``query_entry_checks``) and the push block (``push_block_checks``). The
+(``query_entry_checks``), child type and the references into it
+(``child_type_checks``), state variable (``state_variable_checks``) and the
+push block (``push_block_checks``). The
 runtime loader wraps it (adding the discovery-block check, which needs the
 discovery engine's parser), and the community driver catalog runs a copy of
 the same rules in its CI, so a definition that passes catalog review is
