@@ -309,10 +309,16 @@ describe("the other keys", () => {
   it("ignores a key it has no use for, whatever its name", async () => {
     selected(["btn_1"]);
     await renderPage(UIBuilderView);
+    // A throw inside the listener reaches the window, not the test.
+    const thrown: unknown[] = [];
+    const onError = (e: ErrorEvent) => { thrown.push(e.error); e.preventDefault(); };
+    window.addEventListener("error", onError);
     for (const key of ["toString", "constructor", "__proto__", "hasOwnProperty", "Arrow", "q"]) {
       expect(press(key).defaultPrevented, key).toBe(false);
       expect(press(key, { ctrl: true }).defaultPrevented, key).toBe(false);
     }
+    window.removeEventListener("error", onError);
+    expect(thrown).toEqual([]);
     expect(box("main", "btn_1").x).toBe(10);
     expect(undoLog()).toEqual([]);
   });
