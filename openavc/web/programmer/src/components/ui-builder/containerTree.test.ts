@@ -358,6 +358,11 @@ describe("dropTargetFor: which container a dragged control belongs to", () => {
     expect(dropTargetFor(nested(), "fresh", box(90, 90, 5, 5))).toBeNull();
   });
 
+  it("answers with a container whose id is empty, which the project file allows", () => {
+    const p = page([el("", "group"), el("a")], [primary({ "": box(0, 0, 50, 50), a: box(90, 90, 5, 5) })]);
+    expect(dropTargetFor(p, "a", box(10, 10, 5, 5))).toBe("");
+  });
+
   it("measures against the arrangement it is asked about", () => {
     const p = page(
       [el("g", "group"), el("a")],
