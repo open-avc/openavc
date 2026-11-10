@@ -19,6 +19,7 @@ import {
   CSS_VAR_FALLBACKS, type WcagLevel,
 } from "./colorUtils";
 import { parseApiError } from "../../api/errors";
+import { editableCopy, withVariable, withElementDefault, withPageDefaults } from "./themeEdits";
 
 // --- Constants ---
 
@@ -619,6 +620,13 @@ export function ThemeStudio({
     catch { return null; }
   }, [savedJson]);
 
+  // A theme as loaded is both the working copy and what Unsaved compares with.
+  const hold = (theme: ThemeDefinition) => {
+    const copy = editableCopy(theme);
+    setWorking(copy);
+    setSavedJson(JSON.stringify(copy));
+  };
+
   // Load the theme PRISTINE into the working copy. Project-level overrides
   // are a separate layer surfaced by the override banner — merging them in
   // here would make every theme look like it has the override-applied values
@@ -630,14 +638,7 @@ export function ThemeStudio({
     setStatusMsg(null);
     getTheme(currentThemeId)
       .then((t) => {
-        if (cancelled) return;
-        const cloned: ThemeDefinition = {
-          ...t,
-          variables: { ...(t.variables || {}) },
-          element_defaults: JSON.parse(JSON.stringify(t.element_defaults || {})),
-        };
-        setWorking(cloned);
-        setSavedJson(JSON.stringify(cloned));
+        if (!cancelled) hold(t);
       })
       .catch(() => {
         if (!cancelled) setStatusMsg({ kind: "error", text: `Failed to load "${currentThemeId}"` });
@@ -652,76 +653,13 @@ export function ThemeStudio({
   const isCustom = working?._source === "custom";
   const isDirty = working ? JSON.stringify(working) !== savedJson : false;
 
-  // Edit a CSS variable on the working copy
-  const setVar = (key: string, value: unknown) => {
-    setWorking((prev) => {
-      if (!prev) return prev;
-      const newVars = { ...(prev.variables || {}) };
-      if (value === undefined || value === "") {
-        delete newVars[key];
-      } else {
-        newVars[key] = value;
-      }
-      // border_radius exists in both variables and element_defaults — if only
-      // the variable updates, an element_defaults inline radius overrides it and
-      // the change appears to do nothing. Drag along ONLY the elements that were
-      // tracking the old global value; leave intentionally-divergent per-element
-      // radii (e.g. group=12 vs a global 8) untouched.
-      if (key === "border_radius") {
-        const prevGlobal = prev.variables?.border_radius;
-        const defs = JSON.parse(JSON.stringify(prev.element_defaults || {}));
-        for (const elType of Object.keys(defs)) {
-          const cur = defs[elType]?.border_radius;
-          if (cur !== undefined && String(cur) === String(prevGlobal)) {
-            defs[elType].border_radius = value;
-          }
-        }
-        return { ...prev, variables: newVars, element_defaults: defs };
-      }
-      return { ...prev, variables: newVars };
-    });
-  };
-
-  const setElementDefault = (elType: string, key: string, value: unknown) => {
-    setWorking((prev) => {
-      if (!prev) return prev;
-      const defaults = { ...(prev.element_defaults || {}) };
-      const elDefs = { ...(defaults[elType] || {}) };
-      // Clearing a per-element style deletes the key (symmetric with setVar) so
-      // the panel falls back to the theme/CSS default — an empty string would be
-      // persisted into the theme JSON and silently ignored by the renderer.
-      if (value === undefined || value === "") {
-        delete elDefs[key];
-      } else {
-        elDefs[key] = value;
-      }
-      // Drop the element entry entirely once it has no overrides left, keeping
-      // the saved theme clean and the dirty-check honest (no phantom {} diff).
-      if (Object.keys(elDefs).length === 0) {
-        delete defaults[elType];
-      } else {
-        defaults[elType] = elDefs;
-      }
-      return { ...prev, element_defaults: defaults };
-    });
-  };
-
-  // Replace the theme's page_defaults wholesale (the Page Background section
-  // computes the next shape). An empty result drops the key so the saved theme
-  // stays clean and the dirty-check has no phantom {} diff. panel.js
-  // (_themePageDefaultsToBackground) reads background_color /
-  // background_image[_size|_position|_opacity] / background_gradient{from,to,angle}.
-  const setPageDefaults = (next: Record<string, unknown>) => {
-    setWorking((prev) => {
-      if (!prev) return prev;
-      if (!next || Object.keys(next).length === 0) {
-        const cleaned = { ...prev };
-        delete cleaned.page_defaults;
-        return cleaned;
-      }
-      return { ...prev, page_defaults: next };
-    });
-  };
+  // Every edit is one of themeEdits' rules applied to the working copy.
+  const edit = (change: (theme: ThemeDefinition) => ThemeDefinition) =>
+    setWorking((prev) => (prev ? change(prev) : prev));
+  const setVar = (key: string, value: unknown) => edit((t) => withVariable(t, key, value));
+  const setElementDefault = (elType: string, key: string, value: unknown) =>
+    edit((t) => withElementDefault(t, elType, key, value));
+  const setPageDefaults = (next: Record<string, unknown>) => edit((t) => withPageDefaults(t, next));
 
   const applySurfaceStyle = (style: "flat" | "layered" | "outlined") => {
     setWorking((prev) => {
@@ -774,8 +712,8 @@ export function ThemeStudio({
     });
   };
 
-  const setName = (name: string) => setWorking((prev) => (prev ? { ...prev, name } : prev));
-  const setDesc = (description: string) => setWorking((prev) => (prev ? { ...prev, description } : prev));
+  const setName = (name: string) => edit((t) => ({ ...t, name }));
+  const setDesc = (description: string) => edit((t) => ({ ...t, description }));
 
   // Auto-clear info status; keep errors
   useEffect(() => {
@@ -813,14 +751,7 @@ export function ThemeStudio({
 
   const refreshAndReload = async (themeId: string) => {
     onRefreshThemes();
-    const reloaded = await getTheme(themeId);
-    const merged: ThemeDefinition = {
-      ...reloaded,
-      variables: { ...(reloaded.variables || {}) },
-      element_defaults: JSON.parse(JSON.stringify(reloaded.element_defaults || {})),
-    };
-    setWorking(merged);
-    setSavedJson(JSON.stringify(merged));
+    hold(await getTheme(themeId));
   };
 
   // --- Save Changes (custom only) --- returns true on success
