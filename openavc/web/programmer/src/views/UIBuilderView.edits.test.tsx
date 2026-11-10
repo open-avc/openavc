@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { act, screen, fireEvent } from "@testing-library/react";
+import { act, screen, fireEvent, within } from "@testing-library/react";
 
 // The UI Builder page's edits: which undo entry each one leaves (its words and
 // the parts of the project it can put back), when a run of quick edits is one
@@ -669,5 +669,88 @@ describe("the master element edit", () => {
     call(() => props().onMasterElementChange("m_2", { label: "Two" }));
     expect(ui().master_elements!.map((m) => m.label)).toEqual(["m_1", "Two"]);
     expect(undoLog()).toEqual([["Edit master element", "master_elements"]]);
+  });
+});
+
+// Each edit's undo entry holds exactly the parts of the project it replaces,
+// as they were, and the edit leaves every other part as the same object: an
+// entry that named less than its edit wrote would leave that part changed on
+// undo, and one that named more would put back what nobody touched.
+describe("what each edit's undo entry holds", () => {
+  type Part = "pages" | "settings" | "master_elements" | "custom_css" | "page_groups";
+  const UI_PARTS: Part[] = ["pages", "settings", "master_elements", "custom_css", "page_groups"];
+  const resetTheme = () => {
+    themeFetch.byId["dark-default"] = { variables: {}, element_defaults: { label: { bg_color: "#000" } } };
+  };
+  const cases: { name: string; parts: Part[]; setup?: () => void; edit: () => void }[] = [
+    { name: "a control deleted", parts: ["pages"], edit: () => menu().onDelete("btn_1") },
+    { name: "a control promoted", parts: ["pages", "master_elements"], edit: () => menu().onPromoteToMaster("btn_1") },
+    { name: "a master demoted", parts: ["pages", "master_elements"], edit: () => props().onDemoteMaster("m_1") },
+    { name: "a master deleted", parts: ["master_elements"], edit: () => props().onDeleteMaster("m_1") },
+    { name: "a master edited", parts: ["master_elements"], edit: () => props().onMasterElementChange("m_1", { label: "M" }) },
+    { name: "a control edited", parts: ["pages"], edit: () => props().onChange("btn_1", { label: "B" }) },
+    { name: "the page edited", parts: ["pages"], edit: () => props().onPageChange({ name: "Front" }) },
+    { name: "the theme changed", parts: ["settings"], edit: () => props().onThemeChange("paper") },
+    { name: "the theme's overrides cleared", parts: ["settings"], edit: () => seen.ThemeStudio.onClearOverrides() },
+    { name: "the stylesheet saved", parts: ["custom_css"], edit: () => { fireEvent.click(screen.getByTitle("Edit the project stylesheet (custom CSS)")); } },
+    {
+      name: "the styles reset to the theme",
+      parts: ["pages"],
+      setup: resetTheme,
+      edit: () => {
+        seen.ThemeStudio.onResetElementStyles();
+      },
+    },
+    { name: "Panel Settings saved", parts: ["settings"], edit: () => { fireEvent.click(screen.getByTitle("Panel Settings")); } },
+  ];
+
+  it.each(cases)("$name", async ({ parts, setup, edit, name }) => {
+    setup?.();
+    seed(makeProject(), { selectedPageId: "main", selectedElementId: "btn_1", selectedElementIds: ["btn_1"], contextMenu: { x: 1, y: 2, elementId: "btn_1", isMaster: false } });
+    await renderPage(UIBuilderView);
+    const was = project();
+    call(edit);
+    // The two that open a dialog first finish the edit inside it.
+    if (name === "the stylesheet saved") call(() => seen.StylesheetEditor.onSave(".y{}"));
+    if (name === "the styles reset to the theme") call(() => fireEvent.click(screen.getByRole("button", { name: "Reset Styles" })));
+    if (name === "Panel Settings saved") {
+      const d = within(screen.getByRole("dialog", { name: "Panel Settings" }));
+      call(() => fireEvent.change(d.getByPlaceholderText("#2196F3"), { target: { value: "#00ff00" } }));
+      call(() => fireEvent.click(d.getByRole("button", { name: "Save" })));
+    }
+    expect(builder().undoStack).toHaveLength(1);
+    const { snapshot } = builder().undoStack[0];
+    expect(Object.keys(snapshot).sort()).toEqual([...parts].sort());
+    for (const part of UI_PARTS) {
+      if (parts.includes(part)) {
+        expect(snapshot[part], part).toBe(was.ui[part]);
+        expect(ui()[part], part).not.toBe(was.ui[part]);
+      } else {
+        expect(ui()[part], part).toBe(was.ui[part]);
+      }
+    }
+    expect(project().macros).toBe(was.macros);
+    expect(project().variables).toBe(was.variables);
+    expect(Object.keys(ui()).sort()).toEqual(Object.keys(was.ui).sort());
+  });
+
+  it("puts back no masters as an empty list, and no stylesheet as an empty one", async () => {
+    const bare = makeProject();
+    delete (bare.ui as Record<string, unknown>).master_elements;
+    delete (bare.ui as Record<string, unknown>).custom_css;
+    seed(bare, { selectedPageId: "main", contextMenu: { x: 1, y: 2, elementId: "btn_1", isMaster: false } });
+    await renderPage(UIBuilderView);
+    call(() => menu().onPromoteToMaster("btn_1"));
+    expect(builder().undoStack[0].snapshot.master_elements).toEqual([]);
+    expect(ui().master_elements!.map((m) => m.id)).toEqual(["btn_1"]);
+    call(() => fireEvent.click(screen.getByTitle("Edit the project stylesheet (custom CSS)")));
+    call(() => seen.StylesheetEditor.onSave(".y{}"));
+    expect(builder().undoStack[1].snapshot).toEqual({ custom_css: "" });
+    expect(ui().custom_css).toBe(".y{}");
+    call(() => builder().undo());
+    expect(ui().custom_css).toBe("");
+    call(() => builder().undo());
+    expect(ui().master_elements).toEqual([]);
+    expect(pageOf("main").elements.map((e) => e.id)).toContain("btn_1");
   });
 });

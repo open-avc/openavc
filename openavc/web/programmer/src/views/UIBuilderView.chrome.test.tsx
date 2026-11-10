@@ -232,3 +232,168 @@ describe("the edit the toolbar's Settings button makes", () => {
     expect(ui().settings).toMatchObject({ accent_color: "#00ff00", theme_id: "dark-default" });
   });
 });
+
+describe("Validate's report, row by row", () => {
+  it("counts one issue in the singular, marks an error, and goes to a page-wide issue's page", async () => {
+    const clean = { id: "lbl", type: "label", text: "Hi", style: {} } as never;
+    seed(
+      makeProject({
+        pages: [
+          page("main", [clean], { lbl: { x: 10, y: 10, w: 20, h: 10 } }),
+          page("other", [], {}, { grant: { devices: ["gone"] } } as never),
+        ],
+        masters: [],
+      }),
+      { selectedPageId: "main", selectedElementId: "lbl", selectedElementIds: ["lbl"] },
+    );
+    await renderPage(UIBuilderView);
+    await act(async () => { await seen.CanvasToolbar.onValidate(); });
+    expect(screen.getByText("Project Validation (1 issue)")).toBeInTheDocument();
+    const tag = screen.getByText("ERR");
+    const row = tag.parentElement!;
+    expect(tag.style.color).toBe("var(--color-error)");
+    expect(row.style.background).toBe("rgba(244, 67, 54, 0.08)");
+    expect(row.style.border).toBe("1px solid rgba(244, 67, 54, 0.2)");
+    expect(row.style.cursor).toBe("pointer");
+    expect(row.textContent).toBe('ERRGranted device "gone" not found, so the page shown here cannot read or control itOther > page');
+    call(() => fireEvent.click(row));
+    expect(builder().selectedPageId).toBe("other");
+    expect(builder().selectedElementId).toBeNull();
+    expect(screen.queryByText(/Project Validation/)).toBeNull();
+  });
+
+  it("marks a warning in its own colour, and a row with no page as one that goes nowhere", async () => {
+    await renderPage(UIBuilderView);
+    await act(async () => { await seen.CanvasToolbar.onValidate(); });
+    const warn = screen.getAllByText("WARN")[0];
+    expect(warn.style.color).toBe("rgb(255, 152, 0)");
+    expect(warn.parentElement!.style.background).toBe("rgba(255, 152, 0, 0.08)");
+    expect(warn.parentElement!.style.border).toBe("1px solid rgba(255, 152, 0, 0.2)");
+    const masterRow = screen.getAllByText("Master Elements > m_1")[0].parentElement!.parentElement!;
+    expect(masterRow.style.cursor).toBe("default");
+  });
+});
+
+describe("Panel Settings, field by field", () => {
+  const open = () => call(() => fireEvent.click(screen.getByTitle("Panel Settings")));
+  const field = (label: string) => within(dialog()).getByText(label).parentElement!;
+  const selectIn = (label: string) => field(label).querySelector("select")!;
+  const optionsOf = (label: string) => [...selectIn(label).options].map((o) => [o.value, o.text]);
+  const boxIn = (label: string) => field(label).querySelector("input")! as HTMLInputElement;
+  const typeInto = (box: HTMLInputElement, value: string) => {
+    call(() => fireEvent.focus(box));
+    call(() => fireEvent.change(box, { target: { value } }));
+    call(() => fireEvent.blur(box));
+  };
+
+  it("says what each setting is for, in order", async () => {
+    seed(makeProject({ settings: { page_transition: "fade", element_entry: "stagger" } }));
+    await renderPage(UIBuilderView);
+    open();
+    expect(dialog().textContent).toBe(
+      "Panel Settings" +
+      "Accent Color" +
+      "Font FamilyInter (Default)System UIRobotoSegoe UIMonospace" +
+      "Lock Code (PIN)4-6 digit PIN to lock the touch panel. Leave empty to disable." +
+      "Idle Timeout (seconds)Return to idle page after this many seconds of inactivity. 0 = disabled." +
+      "Idle PageMain (main)Other (other)" +
+      "Show a message when a control failsA press that does not reach its device puts the reason across the " +
+      "panel for about five seconds. Turn this off in a space that shows its own status." +
+      "Page TransitionNone (instant)FadeSlide LeftSlide RightSlide UpScale" +
+      "Transition Durationms" +
+      "Element Entry AnimationNone (instant)Fade InFade UpScale InStagger" +
+      "Stagger StyleFadeFade UpScaleHow each element animates in as the stagger sweeps across the page." +
+      "Stagger Delayms per element" +
+      "CancelSave",
+    );
+  });
+
+  it("offers each choice under the value the panel reads", async () => {
+    await renderPage(UIBuilderView);
+    open();
+    expect(optionsOf("Font Family")).toEqual([
+      ["Inter, system-ui, sans-serif", "Inter (Default)"],
+      ["system-ui, sans-serif", "System UI"],
+      ["'Roboto', sans-serif", "Roboto"],
+      ["'Segoe UI', sans-serif", "Segoe UI"],
+      ["monospace", "Monospace"],
+    ]);
+    expect(optionsOf("Idle Page")).toEqual([["main", "Main (main)"], ["other", "Other (other)"]]);
+    expect(optionsOf("Page Transition")).toEqual([
+      ["none", "None (instant)"], ["fade", "Fade"], ["slide-left", "Slide Left"],
+      ["slide-right", "Slide Right"], ["slide-up", "Slide Up"], ["scale", "Scale"],
+    ]);
+    expect(optionsOf("Element Entry Animation")).toEqual([
+      ["none", "None (instant)"], ["fade", "Fade In"], ["fade-up", "Fade Up"], ["scale", "Scale In"], ["stagger", "Stagger"],
+    ]);
+    call(() => fireEvent.change(selectIn("Element Entry Animation"), { target: { value: "stagger" } }));
+    expect(optionsOf("Stagger Style")).toEqual([["fade", "Fade"], ["fade-up", "Fade Up"], ["scale", "Scale"]]);
+  });
+
+  it("shows the panel's own default where the project leaves a setting blank", async () => {
+    seed(makeProject({ settings: { accent_color: "", page_transition: undefined, element_entry: undefined } }));
+    await renderPage(UIBuilderView);
+    open();
+    const accent = field("Accent Color").querySelectorAll("input");
+    expect((accent[0] as HTMLInputElement).value).toBe("#2196f3");
+    expect((accent[1] as HTMLInputElement).value).toBe("");
+    expect(selectIn("Page Transition").value).toBe("none");
+    expect(selectIn("Element Entry Animation").value).toBe("none");
+    expect(within(dialog()).getByLabelText("Show a message when a control fails")).toBeChecked();
+    call(() => fireEvent.change(selectIn("Page Transition"), { target: { value: "slide-up" } }));
+    call(() => fireEvent.change(selectIn("Element Entry Animation"), { target: { value: "stagger" } }));
+    expect(boxIn("Transition Duration").value).toBe("200");
+    expect(selectIn("Stagger Style").value).toBe("fade-up");
+    expect(boxIn("Stagger Delay").value).toBe("30");
+  });
+
+  it("keeps the colour picker and the colour's text in step, and saves the font chosen", async () => {
+    await renderPage(UIBuilderView);
+    open();
+    const [picker, text] = [...field("Accent Color").querySelectorAll("input")] as HTMLInputElement[];
+    expect(picker.value).toBe("#ff0000");
+    call(() => fireEvent.change(picker, { target: { value: "#00ff00" } }));
+    expect(text.value).toBe("#00ff00");
+    call(() => fireEvent.change(selectIn("Font Family"), { target: { value: "system-ui, sans-serif" } }));
+    call(() => fireEvent.click(within(dialog()).getByRole("button", { name: "Save" })));
+    expect(ui().settings).toMatchObject({ accent_color: "#00ff00", font_family: "system-ui, sans-serif" });
+  });
+
+  it("saves the numbers typed into its boxes, held to each box's range", async () => {
+    seed(makeProject({ settings: { page_transition: "fade", element_entry: "stagger" } }));
+    await renderPage(UIBuilderView);
+    open();
+    typeInto(boxIn("Idle Timeout (seconds)"), "-5");
+    expect(boxIn("Idle Timeout (seconds)").value).toBe("0");
+    typeInto(boxIn("Idle Timeout (seconds)"), "45");
+    typeInto(boxIn("Transition Duration"), "5000");
+    expect(boxIn("Transition Duration").value).toBe("1000");
+    typeInto(boxIn("Stagger Delay"), "1");
+    expect(boxIn("Stagger Delay").value).toBe("10");
+    typeInto(boxIn("Stagger Delay"), "500");
+    expect(boxIn("Stagger Delay").value).toBe("200");
+    typeInto(boxIn("Transition Duration"), "5");
+    expect(boxIn("Transition Duration").value).toBe("50");
+    call(() => fireEvent.change(selectIn("Stagger Style"), { target: { value: "scale" } }));
+    call(() => fireEvent.click(within(dialog()).getByRole("button", { name: "Save" })));
+    expect(ui().settings).toMatchObject({
+      idle_timeout_seconds: 45, page_transition_duration: 50, element_stagger_ms: 200, element_stagger_style: "scale",
+    });
+  });
+
+  it("asks before throwing changes away when Escape closes it, and closes at once when nothing changed", async () => {
+    await renderPage(UIBuilderView);
+    open();
+    call(() => fireEvent.keyDown(document, { key: "Escape" }));
+    expect(screen.queryByRole("dialog", { name: "Panel Settings" })).toBeNull();
+    open();
+    call(() => fireEvent.click(within(dialog()).getByLabelText("Show a message when a control fails")));
+    call(() => fireEvent.keyDown(document, { key: "Escape" }));
+    expect(screen.getByText("Discard unsaved settings changes?")).toBeInTheDocument();
+    call(() => fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Cancel" })));
+    expect(screen.queryByText("Discard unsaved settings changes?")).toBeNull();
+    expect(within(dialog()).getByLabelText("Show a message when a control fails")).not.toBeChecked();
+    call(() => fireEvent.click(within(dialog()).getByRole("button", { name: "Save" })));
+    expect(ui().settings.show_error_messages).toBe(false);
+  });
+});
