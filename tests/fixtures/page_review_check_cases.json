@@ -43,6 +43,22 @@
       ]
     },
     {
+      "name": "a matrix_config written as text",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": "abc"
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "matrix_not_configured",
+          "message": "mx (matrix) has no matrix_config, so it draws an empty box. Set sources and destinations -- each is a list of entries, or a generator standing for one, e.g. destinations: {'from': {'count': 8, 'route_key': 'device.<id>.output.*.input'}}.",
+          "key": "matrix_not_configured|mx"
+        }
+      ]
+    },
+    {
       "name": "keys nothing reads, sources colliding by value and digits, three locks on a device key",
       "element": {
         "id": "mx",
