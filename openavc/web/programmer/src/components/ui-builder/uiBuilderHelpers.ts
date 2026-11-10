@@ -3577,7 +3577,7 @@ export function doActionFindings(el: UIElement): ReviewFinding[] {
 export interface MatrixEntry {
   value: unknown;
   /** Absent when the entry names a live `label_key` and nobody typed a name --
-   *  see normaliseMatrixEntry. */
+   *  see withDefaultLabel. */
   label?: string;
   label_key?: string;
   route_key?: string;
@@ -3604,10 +3604,17 @@ const MATRIX_NUMERIC = /^[+-]?\d+(?:\.\d+)?$/;
  *  panel.js -- the copy that decides what a panel actually lights. */
 export function matrixRouteValue(value: unknown): number | string | null {
   if (value === null || value === undefined) return null;
-  if (typeof value === "number") {
-    return Number.isFinite(value) && value !== 0 ? value : null;
-  }
-  const text = String(value).trim();
+  if (typeof value === "number") return routedNumber(value);
+  return routedText(String(value).trim());
+}
+
+/** A number a device reported: 0 and the non-finite ones mean nothing is routed. */
+function routedNumber(value: number): number | null {
+  return Number.isFinite(value) && value !== 0 ? value : null;
+}
+
+/** Text a device reported: a number written out compares as that number. */
+function routedText(text: string): number | string | null {
   if (text === "" || text === "0") return null;
   if (MATRIX_NUMERIC.test(text)) return Number(text);
   return text.toLowerCase();
@@ -3649,52 +3656,71 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+/** The keys a generator writes on each entry from a pattern, in the order an
+ *  entry carries them. The pattern table in `_generate`, matrix_model.py. */
+const GENERATED_KEYS = ["label_key", "route_key", "audio_route_key", "lock_key"] as const;
+
+/** The values a generator stands for: its `values` list, else 1 to `count`. */
+function generatorValues(from: Record<string, unknown>): unknown[] {
+  if (Array.isArray(from.values)) return from.values;
+  const count = Number(from.count ?? 0);
+  const whole = Number.isFinite(count) ? Math.trunc(count) : 0;
+  return whole > 0 ? Array.from({ length: whole }, (_, i) => i + 1) : [];
+}
+
+/** One generated entry before its override: the value, its typed name, each
+ *  pattern filled in with the value, and the shared route list. */
+function generatedEntry(
+  from: Record<string, unknown>,
+  value: unknown,
+  label: unknown,
+): MatrixEntry {
+  const entry: MatrixEntry = { value } as MatrixEntry;
+  if (label) entry.label = String(label);
+  for (const key of GENERATED_KEYS) {
+    const resolved = matrixSubstitute(from[key], value);
+    if (resolved) entry[key] = resolved;
+  }
+  if (Array.isArray(from.route)) entry.route = from.route;
+  return entry;
+}
+
+/**
+ * An entry with no name gets its axis's "In 3" / "Out 2", by its position in
+ * what was written, unless it names a live `label_key`: the device is about to
+ * say what it is called, and "Out 2" would win over "Lobby TV" the moment the
+ * renderer prefers the authored name. Asked last, so an override naming either
+ * one is honoured. A generated entry and an authored one both ask it, as
+ * `_with_default_label` in matrix_model.py.
+ */
+function withDefaultLabel(
+  entry: { label?: unknown; label_key?: unknown },
+  axis: MatrixAxisName,
+  position: number,
+): MatrixEntry {
+  if (!entry.label && !entry.label_key) {
+    entry.label = `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`;
+  }
+  return entry as unknown as MatrixEntry;
+}
+
 /** Expand a generator entry into the list it stands for. */
 function generateMatrixAxis(
   spec: Record<string, unknown>,
   axis: MatrixAxisName,
 ): MatrixEntry[] {
   const from = isPlainObject(spec.from) ? spec.from : {};
-
-  let values: unknown[];
-  if (Array.isArray(from.values)) {
-    values = from.values;
-  } else {
-    const count = Number(from.count ?? 0);
-    const whole = Number.isFinite(count) ? Math.trunc(count) : 0;
-    values = whole > 0 ? Array.from({ length: whole }, (_, i) => i + 1) : [];
-  }
-
   const labels = Array.isArray(from.labels) ? from.labels : [];
   const excluded = new Set((Array.isArray(spec.exclude) ? spec.exclude : []).map(String));
   const overrides = isPlainObject(spec.overrides) ? spec.overrides : {};
 
   const entries: MatrixEntry[] = [];
-  values.forEach((value, position) => {
+  generatorValues(from).forEach((value, position) => {
     if (excluded.has(String(value))) return;
-    const label = labels[position];
-    const entry: MatrixEntry = { value } as MatrixEntry;
-    if (label) entry.label = String(label);
-    const labelKey = matrixSubstitute(from.label_key, value);
-    if (labelKey) entry.label_key = labelKey;
-    const routeKey = matrixSubstitute(from.route_key, value);
-    if (routeKey) entry.route_key = routeKey;
-    const audioKey = matrixSubstitute(from.audio_route_key, value);
-    if (audioKey) entry.audio_route_key = audioKey;
-    const lockKey = matrixSubstitute(from.lock_key, value);
-    if (lockKey) entry.lock_key = lockKey;
-    if (Array.isArray(from.route)) entry.route = from.route;
-    const override = own(overrides as Record<string, unknown>, String(value));
-    const merged = isPlainObject(override)
-      ? ({ ...entry, ...override } as MatrixEntry)
-      : entry;
-    // Last, so an override naming either one is honoured. Same rule as
-    // normaliseMatrixEntry: a generator that names a live label key leaves the
-    // caption to the device rather than stamping "Out 2" over it.
-    if (!merged.label && !merged.label_key) {
-      merged.label = `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`;
-    }
-    entries.push(merged);
+    const entry = generatedEntry(from, value, labels[position]);
+    const override = own(overrides, String(value));
+    const merged = isPlainObject(override) ? { ...entry, ...override } : entry;
+    entries.push(withDefaultLabel(merged, axis, position));
   });
   return entries;
 }
@@ -3710,13 +3736,7 @@ function normaliseMatrixEntry(
   else if (typeof raw === "string" || typeof raw === "number") entry = { value: raw };
   else return null;
   if (!("value" in entry)) return null;
-  // An entry carrying a label_key is left unlabelled on purpose: the device is
-  // about to say what it is called, and "Out 2" would win over "Lobby TV" the
-  // moment the renderer prefers the authored name.
-  if (!entry.label && !entry.label_key) {
-    entry.label = `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`;
-  }
-  return entry as unknown as MatrixEntry;
+  return withDefaultLabel(entry, axis, position);
 }
 
 /** One axis of a matrix, as the list the renderer draws. */

@@ -201,10 +201,6 @@ def _normalise_entry(raw: Any, axis: str, position: int) -> dict[str, Any] | Non
 
     A bare scalar is allowed and means "just this value" -- ``sources: [1, 2, 5]``
     is a real thing somebody will write, and rejecting it would be pedantry.
-
-    An entry carrying a ``label_key`` is left unlabelled on purpose: the device
-    is about to say what it is called, and "Out 2" would win over "Lobby TV" the
-    moment the renderer prefers the authored name. See ``_entry_caption``.
     """
     if isinstance(raw, Mapping):
         entry = dict(raw)
@@ -214,6 +210,19 @@ def _normalise_entry(raw: Any, axis: str, position: int) -> dict[str, Any] | Non
         return None
     if "value" not in entry:
         return None
+    return _with_default_label(entry, axis, position)
+
+
+def _with_default_label(entry: dict[str, Any], axis: str, position: int) -> dict[str, Any]:
+    """An entry with no name gets its axis's "In 3" / "Out 2", by its position.
+
+    The position is where it was written, before anything is excluded. An entry
+    carrying a ``label_key`` is left unlabelled on purpose: the device is about
+    to say what it is called, and "Out 2" would win over "Lobby TV" the moment
+    the renderer prefers the authored name (``_entryLabel`` in panel.js). Asked
+    last, so an override naming either one is honoured. A generated entry and an
+    authored one both ask it, as they ask ``withDefaultLabel`` in the Builder.
+    """
     if not entry.get("label") and not entry.get("label_key"):
         entry["label"] = f"{_DEFAULT_LABEL_PREFIX[axis]} {position + 1}"
     return entry
@@ -262,12 +271,7 @@ def _generate(spec: Mapping[str, Any], axis: str) -> list[dict[str, Any]]:
         override = overrides.get(_entry_key(value))
         if isinstance(override, Mapping):
             entry.update(override)
-        # Last, so an override naming either one is honoured. Same rule as
-        # _normalise_entry: a generator that names a live label key leaves the
-        # caption to the device rather than stamping "Out 2" over it.
-        if not entry.get("label") and not entry.get("label_key"):
-            entry["label"] = f"{_DEFAULT_LABEL_PREFIX[axis]} {position + 1}"
-        entries.append(entry)
+        entries.append(_with_default_label(entry, axis, position))
     return entries
 
 
