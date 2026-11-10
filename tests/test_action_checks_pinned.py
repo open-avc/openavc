@@ -104,6 +104,7 @@ CASES: dict[str, dict[str, Any]] = {
     # --- actions itself -------------------------------------------------
     "actions_a_string": {"actions": "power_on"},
     "actions_a_mapping": {"actions": {"kind": "setup", "id": "x"}},
+    "both_blocks_wrong": {"quick_actions": ["missing", ""], "actions": "go"},
     "actions_a_mapping_of_entries": {"actions": {"a": {"id": "a", "kind": "setup"}}},
     "actions_none": {"actions": None},
     "actions_empty": {"actions": []},
@@ -310,6 +311,9 @@ RAISES: dict[str, dict[str, Any]] = {
 # ``validate_actions`` on its own: the shared rule both surfaces call.
 DIRECT_CASES: dict[str, dict[str, Any]] = {
     "nothing": {},
+    "both_blocks_wrong": {
+        "commands": COMMANDS, "quick_actions": ["missing", 5], "actions": {"id": "go"},
+    },
     "no_commands": {"quick_actions": ["noop"], "actions": [{"id": "noop"}]},
     "commands_none": {"commands": None, "actions": [{"id": "noop"}]},
     "commands_a_string": {"commands": "noop", "quick_actions": ["noop"]},
@@ -338,6 +342,9 @@ DIRECT_CASES: dict[str, dict[str, Any]] = {
 # could not be read.
 PYTHON_CASES: dict[str, dict[str, Any]] = {
     "plain": {"commands": COMMANDS, "actions": [{"id": "upload"}, {"id": "missing"}]},
+    "both_blocks_wrong": {
+        "commands": COMMANDS, "quick_actions": ["upload", "missing"], "actions": {"id": "go"},
+    },
     "commands_partial": {
         "commands": {**COMMANDS, UNEVALUATED_KEY: UNEVALUATED},
         "actions": [{"id": "missing"}, {"id": "upload"}, {"id": "provision", "kind": "setup"}],
@@ -462,6 +469,13 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_good_block': [('commands.upload
                        ('actions',
                         "actions[0]: 'availability' must be one of ['online', 'offline', "
                         "'always']")],
+ 'both_blocks_wrong': [('commands.upload',
+                        "Command 'upload' param 'data': type 'file' requires a Python driver"),
+                       ('commands.fetch',
+                        "Command 'fetch': 'returns_file' requires a Python driver"),
+                       ('actions', "quick_actions[0]: 'missing' is not a declared command"),
+                       ('actions', 'quick_actions[1]: must be a non-empty command id string'),
+                       ('actions', 'actions: must be a list')],
  'confirm_a_list': [('commands.upload',
                      "Command 'upload' param 'data': type 'file' requires a Python driver"),
                     ('commands.fetch', "Command 'fetch': 'returns_file' requires a Python driver"),
@@ -1188,6 +1202,9 @@ RAISES_EXPECTED: dict[str, str] = {'actions_a_float': 'TypeError', 'actions_a_nu
 
 DIRECT_EXPECTED: dict[str, list[str]] = {'a_file_command_that_is_not_a_mapping': [],
  'a_file_param_not_a_mapping': [],
+ 'both_blocks_wrong': ["quick_actions[0]: 'missing' is not a declared command",
+                       'quick_actions[1]: must be a non-empty command id string',
+                       'actions: must be a list'],
  'commands_a_string': [],
  'commands_none': [],
  'no_commands': [],
@@ -1216,6 +1233,11 @@ PYTHON_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_field_computed': (
  'a_setup_with_bad_params': ([], []),
  'actions_computed': (['actions: must be a list'], []),
  'an_entry_computed': (['actions[0]: must be a mapping'], []),
+ 'both_blocks_wrong': (["quick_actions[0]: 'upload' takes or hands back a file, so it cannot be a "
+                        'Quick Action; it runs from Send Command on the device page',
+                        "quick_actions[1]: 'missing' is not a declared command",
+                        'actions: must be a list'],
+                       []),
  'commands_computed': ([],
                        ['commands is computed, so no command params were checked',
                         '2 action/quick_action reference(s) into commands, because commands is '
