@@ -42,6 +42,7 @@ from openavc.ui.page_review import (
     master_box,
     matrix_findings,
     mutually_exclusive,
+    overlap_extent,
     overlap_findings,
     precision_review,
     property_findings,
@@ -157,6 +158,18 @@ def test_do_action_findings(case) -> None:
 def test_overlap_findings(case) -> None:
     pairs = [tuple(pair) for pair in case["pairs"]]
     assert _said(overlap_findings(pairs, case["types"], case["parent_name"])) == case["expected"]
+
+
+@pytest.mark.parametrize("case", _cases("overlap_extent"))
+def test_overlap_extent(case) -> None:
+    reference = case["reference"]
+    found = (
+        overlap_extent(case["a"], case["b"])
+        if reference is None
+        else overlap_extent(case["a"], case["b"], tuple(reference))
+    )
+    expected = case["expected"]
+    assert found == (None if expected is None else (expected["ox_px"], expected["oy_px"], expected["share"]))
 
 
 @pytest.mark.parametrize("case", _cases("touch_finding"))

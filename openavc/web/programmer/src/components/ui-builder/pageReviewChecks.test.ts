@@ -5,6 +5,7 @@ import { doActionFindings } from "./reviewActions";
 import { bindingFindings } from "./reviewBindings";
 import {
   degenerateFinding,
+  overlapExtent,
   overlapFindings,
   starvationFinding,
   styleFinding,
@@ -179,6 +180,18 @@ describe("overlapFindings", () => {
       pairs, toMap(c.types as Record<string, string>), c.parent_name as string,
     );
     expect(said(findings)).toEqual(c.expected);
+  });
+});
+
+describe("overlapExtent", () => {
+  type Extent = { ox_px: number; oy_px: number; share: number } | null;
+  it.each(corpus.overlap_extent.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    const ref = c.reference as [number, number] | null;
+    const found = ref
+      ? overlapExtent(c.a as Placement, c.b as Placement, { width: ref[0], height: ref[1] })
+      : overlapExtent(c.a as Placement, c.b as Placement);
+    const said: Extent = found ? { ox_px: found.oxPx, oy_px: found.oyPx, share: found.share } : null;
+    expect(said).toEqual(c.expected as unknown as Extent);
   });
 });
 

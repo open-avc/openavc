@@ -186,6 +186,13 @@ describe("the arrangement reviewed", () => {
     expect(reviewPage(p, { layoutId: "nope" }).map((f) => f.message)).toEqual([TINY_LED]);
     expect([...reviewWarningsByElement(p, null)]).toEqual([["led", TINY_LED]]);
   });
+
+  it("joins an element's findings for the canvas with a blank line between them", () => {
+    const p = page([{ ...LED, placeholder: "never drawn" } as UIElement], { led: tinyLed });
+    const messages = reviewPage(p).map((f) => f.message);
+    expect(messages).toHaveLength(2);
+    expect([...reviewWarningsByElement(p, null)]).toEqual([["led", messages.join("\n\n")]]);
+  });
 });
 
 describe("the container chain", () => {

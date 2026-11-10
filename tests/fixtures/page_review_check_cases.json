@@ -5636,6 +5636,62 @@
       ]
     },
     {
+      "name": "an image too small both ways",
+      "element": {
+        "id": "img",
+        "type": "image"
+      },
+      "seat": {
+        "box_px": [
+          5,
+          5
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "img",
+          "kind": "too_small_to_draw",
+          "message": "img (image) is 5x5px at the 1280x800 reference, which is not small, it is invisible. An image has no fixed floor -- what limits it is its content -- so nothing else here measures it. Give it w at least 2.5% and h at least 3.33% of grp_strip.",
+          "key": "too_small_to_draw|img"
+        }
+      ]
+    },
+    {
+      "name": "a type the panel does not know, starting with u",
+      "element": {
+        "id": "uw",
+        "type": "unknown_widget"
+      },
+      "seat": {
+        "box_px": [
+          5,
+          5
+        ],
+        "parent_px": [
+          400,
+          300
+        ],
+        "parent_name": "grp_strip",
+        "ancestors": [],
+        "orientation": "landscape"
+      },
+      "expected": [
+        {
+          "element_id": "uw",
+          "kind": "too_small_to_draw",
+          "message": "uw (unknown_widget) is 5x5px at the 1280x800 reference, which is not small, it is invisible. An unknown_widget has no fixed floor -- what limits it is its content -- so nothing else here measures it. Give it w at least 2.5% and h at least 3.33% of grp_strip.",
+          "key": "too_small_to_draw|uw"
+        }
+      ]
+    },
+    {
       "name": "a gauge too narrow",
       "element": {
         "id": "g",
@@ -7490,6 +7546,214 @@
         }
       },
       "expected": []
+    }
+  ],
+  "overlap_extent": [
+    {
+      "name": "apart",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "b": {
+        "x": 20,
+        "y": 20,
+        "w": 10,
+        "h": 10
+      },
+      "reference": null,
+      "expected": null
+    },
+    {
+      "name": "edges touching",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "b": {
+        "x": 10,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "reference": null,
+      "expected": null
+    },
+    {
+      "name": "a pixel on each axis, which the arithmetic puts a hair under",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "b": {
+        "x": 9.921875,
+        "y": 9.875,
+        "w": 10,
+        "h": 10
+      },
+      "reference": null,
+      "expected": null
+    },
+    {
+      "name": "a pixel and a half across, plenty down",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "b": {
+        "x": 9.8828125,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "reference": null,
+      "expected": {
+        "ox_px": 1.5,
+        "oy_px": 80.0,
+        "share": 1.171875
+      }
+    },
+    {
+      "name": "under a pixel across",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "b": {
+        "x": 9.9296875,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "reference": null,
+      "expected": null
+    },
+    {
+      "name": "under a pixel down",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "b": {
+        "x": 0,
+        "y": 9.8875,
+        "w": 10,
+        "h": 10
+      },
+      "reference": null,
+      "expected": null
+    },
+    {
+      "name": "a share of exactly one percent",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "b": {
+        "x": 9,
+        "y": 9,
+        "w": 10,
+        "h": 10
+      },
+      "reference": null,
+      "expected": {
+        "ox_px": 12.8,
+        "oy_px": 8.0,
+        "share": 1.0
+      }
+    },
+    {
+      "name": "a share under one percent",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "b": {
+        "x": 9.05,
+        "y": 9.05,
+        "w": 10,
+        "h": 10
+      },
+      "reference": null,
+      "expected": null
+    },
+    {
+      "name": "one inside the other",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 50,
+        "h": 50
+      },
+      "b": {
+        "x": 10,
+        "y": 10,
+        "w": 5,
+        "h": 5
+      },
+      "reference": null,
+      "expected": {
+        "ox_px": 64.0,
+        "oy_px": 40.0,
+        "share": 100.0
+      }
+    },
+    {
+      "name": "a box with no area",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 50,
+        "h": 50
+      },
+      "b": {
+        "x": 10,
+        "y": 10,
+        "w": 0,
+        "h": 5
+      },
+      "reference": null,
+      "expected": null
+    },
+    {
+      "name": "on a portrait reference",
+      "a": {
+        "x": 0,
+        "y": 0,
+        "w": 10,
+        "h": 10
+      },
+      "b": {
+        "x": 5,
+        "y": 5,
+        "w": 10,
+        "h": 10
+      },
+      "reference": [
+        800,
+        1280
+      ],
+      "expected": {
+        "ox_px": 40.0,
+        "oy_px": 64.0,
+        "share": 25.0
+      }
     }
   ]
 }
