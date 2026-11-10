@@ -366,6 +366,12 @@ describe("the hit boxes", () => {
     load(page);
     expect(view.container.querySelector("[data-canvas-element]")).toBeNull();
   });
+
+  it("are drawn on a page that says custom and names no file, which still draws its controls", () => {
+    const page = { ...makePage([el("a")], { a: A }), render_mode: "custom" } as UIPage;
+    load(page);
+    expect(view.container.querySelector("[data-canvas-element]")).not.toBeNull();
+  });
 });
 
 describe("resizing a page control", () => {
