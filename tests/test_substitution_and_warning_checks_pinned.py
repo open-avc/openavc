@@ -170,6 +170,18 @@ CASES: dict[str, dict[str, Any]] = {
         {"send": 5}, {"send": None, "address": None}, 5, ["{d}"], poll_interval=5,
     ),
     "poll_param_name": {**command(send="L{level}"), **poll("Q{level}", poll_interval=5)},
+    # An entry with both: the send is what goes out.
+    "poll_entry_send_and_address": {
+        **poll({"send": "S{a1}", "address": "/{a2}"}, poll_interval=5),
+        "on_connect": [{"send": "S{b1}", "address": "/{b2}"}],
+    },
+    # A udp: port names a bare config field; one with a format spec, or text
+    # after it, is neither.
+    "cmd_udp_port_with_a_spec": commands(
+        u={"udp": {"payload": "P", "port": "{zone:02d}"}},
+        v={"udp": {"payload": "P", "port": "{zone}"}},
+        w={"udp": {"payload": "P", "port": "{zone}9"}},
+    ),
     "polling_not_mapping": {"polling": ["Q{x}"]},
     "poll_queries_not_list": {"polling": {"queries": "Q{x}"}},
     "on_connect": {"on_connect": ["X{q}", {"send": "Y{r}"}]},
@@ -824,6 +836,14 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
                           "Command 'set': declares send and udp, but a command sends one way. Keep "
                           "one of 'send' (TCP/serial), 'path'/'method' (HTTP), 'address' (OSC), or "
                           "'udp' (a datagram beside the main transport)")],
+ 'cmd_udp_port_with_a_spec': [('error',
+                               'commands.u',
+                               "Command 'u': 'udp.port' '{zone:02d}' is neither a number nor a "
+                               '{config_field} placeholder'),
+                              ('error',
+                               'commands.w',
+                               "Command 'w': 'udp.port' '{zone}9' is neither a number nor a "
+                               '{config_field} placeholder')],
  'commands_in_order': [('error',
                         'commands.b.send',
                         "commands.b.send: '{bb}' resolves to nothing. It names no parameter of "
@@ -1061,6 +1081,16 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
                    'polling.queries[2]',
                    "polling.queries[2]: '{c}' resolves to nothing. It names no config field (only "
                    'config values substitute here), so it would be sent to the device as written')],
+ 'poll_entry_send_and_address': [('error',
+                                  'polling.queries[0]',
+                                  "polling.queries[0]: '{a1}' resolves to nothing. It names no "
+                                  'config field (only config values substitute here), so it would '
+                                  'be sent to the device as written'),
+                                 ('error',
+                                  'on_connect[0]',
+                                  "on_connect[0]: '{b1}' resolves to nothing. It names no config "
+                                  'field (only config values substitute here), so it would be sent '
+                                  'to the device as written')],
  'poll_exactly_fits': [],
  'poll_fits': [],
  'poll_http_delay': [('warning',
@@ -1872,6 +1902,20 @@ def test_a_definition_that_is_not_a_mapping_warns_nothing(value: Any) -> None:
     assert validate_driver_issues(value) == [
         {"severity": "error", "message": "Driver definition must be a mapping", "path": ""}
     ]
+
+
+class _Unformattable:
+    """A key no f-string can show; no YAML or JSON key behaves like this."""
+
+    def __format__(self, spec: str) -> str:
+        raise ValueError("cannot be formatted")
+
+
+def test_a_name_is_written_into_a_tag_only_when_a_warning_names_it() -> None:
+    key = _Unformattable()
+    assert validate_driver_warnings({**BASE, "config_schema": {key: {"type": "string"}}}) == []
+    params = {key: {"type": "integer", "label": "Key"}}
+    assert validate_driver_warnings({**BASE, **commands(c={"send": "C", "params": params})}) == []
 
 
 def test_every_case_has_an_expectation() -> None:
