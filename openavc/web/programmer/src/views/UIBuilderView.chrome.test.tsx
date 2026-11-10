@@ -341,7 +341,7 @@ describe("Panel Settings, field by field", () => {
     expect(optionsOf("Stagger Style")).toEqual([["fade", "Fade"], ["fade-up", "Fade Up"], ["scale", "Scale"]]);
   });
 
-  it("shows the panel's own default where the project leaves a setting blank", async () => {
+  it("shows a value of its own where the project leaves a setting blank", async () => {
     seed(makeProject({ settings: { accent_color: "", page_transition: undefined, page_transition_duration: undefined, element_entry: undefined } }));
     await renderPage(UIBuilderView);
     open();
@@ -358,6 +358,15 @@ describe("Panel Settings, field by field", () => {
     expect(boxIn("Transition Duration").value).toBe("200");
     expect(selectIn("Stagger Style").value).toBe("fade-up");
     expect(boxIn("Stagger Delay").value).toBe("30");
+  });
+
+  it("gives each number box its step, and the boxes with a unit their narrow width", async () => {
+    seed(makeProject({ settings: { page_transition: "fade", element_entry: "stagger" } }));
+    await renderPage(UIBuilderView);
+    open();
+    const boxes = ["Idle Timeout (seconds)", "Transition Duration", "Stagger Delay"].map(boxIn);
+    expect(boxes.map((b) => b.getAttribute("step"))).toEqual([null, "50", "10"]);
+    expect(boxes.map((b) => b.style.width)).toEqual(["100%", "80px", "80px"]);
   });
 
   it("keeps the colour picker and the colour's text in step, and saves the font chosen", async () => {
