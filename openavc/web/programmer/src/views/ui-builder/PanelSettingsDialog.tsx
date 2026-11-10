@@ -6,10 +6,11 @@
  * Escape or the backdrop ask before throwing a changed draft away.
  *
  * Each choice is listed under the value the panel reads (panel.js). Where the
- * project leaves a setting blank the dialog shows what the panel draws then:
- * its stylesheet's accent, and the 200 ms transition and the 30 ms stagger
- * that fades up, which panel.js and the project loader fall back to as well,
- * so a change to one of those defaults is a change in all three.
+ * project leaves a setting blank the dialog shows a value of its own: for the
+ * transition and the stagger, the 200 ms, 30 ms and fade-up that panel.js and
+ * the project loader fall back to as well, so a change to one of those is a
+ * change in all three; for the accent, #2196F3, which the panel draws only
+ * when the theme has no accent of its own.
  */
 import { useState, type CSSProperties, type ReactNode } from "react";
 import type { UIPage, UISettings } from "../../api/types";
@@ -153,7 +154,7 @@ function LookFields({ draft, patch }: DraftProps) {
 }
 
 /** How the panel locks, idles, and answers a press that failed. */
-function UseFields({ draft, patch, pages }: DraftProps & { pages: UIPage[] }) {
+function LockIdleAndErrorFields({ draft, patch, pages }: DraftProps & { pages: UIPage[] }) {
   const pageChoices = pages.map((p): Choice => [p.id, `${p.name} (${p.id})`]);
   return (
     <>
@@ -318,7 +319,7 @@ export function PanelSettingsDialog({
     >
       <h3 style={{ fontSize: "var(--font-size-lg)", marginBottom: "var(--space-lg)" }}>Panel Settings</h3>
       <LookFields draft={draft} patch={patch} />
-      <UseFields draft={draft} patch={patch} pages={pages} />
+      <LockIdleAndErrorFields draft={draft} patch={patch} pages={pages} />
       <MotionFields draft={draft} patch={patch} />
       <DialogButtons dirty={dirty} onCancel={handleCancel} onSave={handleSave} />
       {showDiscardConfirm && (

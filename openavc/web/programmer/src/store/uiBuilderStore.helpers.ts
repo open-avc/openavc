@@ -88,6 +88,10 @@ export interface BuilderSelection {
 // back to. UI scopes overlay onto project.ui; project scopes overlay
 // directly onto the project. Only scopes present in the original snapshot
 // are touched — that's the point of the scoped API.
+//
+// A Builder edit is the same overlay run forward (projectEdit in
+// views/ui-builder/useEditRun.ts): the snapshot is then the new values, and the
+// returned redoSnapshot, what those parts were, is the edit's undo entry.
 export function computeRollbackPatch(
   snapshot: UndoScope,
   project: ProjectConfig,
