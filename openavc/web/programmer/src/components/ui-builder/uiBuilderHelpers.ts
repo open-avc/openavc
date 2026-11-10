@@ -1207,14 +1207,7 @@ function movableIds(page: UIPage, elementIds: Iterable<string>): Set<string> {
 
 /** Everything hanging off an element, however deep. */
 export function descendantIds(page: UIPage, elementId: string): Set<string> {
-  const byParent = new Map<string, string[]>();
-  for (const el of page.elements) {
-    const parent = el.parent;
-    if (!parent || parent === el.id) continue;
-    const list = byParent.get(parent);
-    if (list) list.push(el.id);
-    else byParent.set(parent, [el.id]);
-  }
+  const byParent = namedChildren(page.elements);
   const out = new Set<string>();
   const walk = (id: string) => {
     for (const child of byParent.get(id) ?? []) {
@@ -1225,6 +1218,23 @@ export function descendantIds(page: UIPage, elementId: string): Set<string> {
   };
   walk(elementId);
   return out;
+}
+
+/**
+ * The ids of the controls that name each parent, in page order. Every name a
+ * control gives counts, one the page does not hold included; naming itself
+ * does not.
+ */
+function namedChildren(elements: UIElement[]): Map<string, string[]> {
+  const byParent = new Map<string, string[]>();
+  for (const el of elements) {
+    const parent = el.parent;
+    if (!parent || parent === el.id) continue;
+    const list = byParent.get(parent) ?? [];
+    list.push(el.id);
+    byParent.set(parent, list);
+  }
+  return byParent;
 }
 
 /**
@@ -1267,20 +1277,35 @@ function reparentPlacements(
   for (const layout of source.layouts ?? []) {
     const absolute = absolutePlacements(source, layout.id);
     const base = newParentId ? containerBox(newParentId, absolute) : { ...PAGE_BOX };
-    if (!base) continue;
-    const own = layout.placements ?? {};
-    const rewritten: Record<string, Placement> = {};
-    for (const id of ids) {
-      // A variant only gets a delta if it already had one; inventing entries
-      // there would pin boxes that were happily inheriting.
-      if (layout.id !== primaryId && !(id in own)) continue;
-      const box = absolute[id];
-      if (!box) continue;
-      rewritten[id] = parentSpace(box, base);
-    }
+    const rewritten = base ? againstContainer(absolute, rewrittenIn(layout, ids, primaryId), base) : {};
     if (Object.keys(rewritten).length) next = withPlacements(next, rewritten, layout.id);
   }
   return next;
+}
+
+/**
+ * Which of these controls an arrangement stores a new box for: every one in the
+ * primary, and in a variant only those it already holds a box of its own for.
+ * Inventing entries in a variant would pin boxes that were happily inheriting.
+ */
+function rewrittenIn(layout: Layout, ids: string[], primaryId: string | undefined): string[] {
+  if (layout.id === primaryId) return ids;
+  const own = layout.placements ?? {};
+  return ids.filter((id) => id in own);
+}
+
+/** These controls' page-space boxes as percentages of `container`; a control with no box is left out. */
+function againstContainer(
+  absolute: Record<string, Placement>,
+  ids: string[],
+  container: Placement,
+): Record<string, Placement> {
+  const out: Record<string, Placement> = {};
+  for (const id of ids) {
+    const box = absolute[id];
+    if (box) out[id] = parentSpace(box, container);
+  }
+  return out;
 }
 
 /**
@@ -1498,29 +1523,61 @@ export function dropTargetFor(
   const absolute = absolutePlacements(page, layoutId);
   const banned = descendantIds(page, elementId);
   banned.add(elementId);
+  return innermostHolding(page, pageBox, absolute, banned) ?? stillTouching(element, pageBox, absolute, banned);
+}
 
+/** The smallest container that holds the box whole, the first of two the same size. */
+function innermostHolding(
+  page: UIPage,
+  pageBox: Placement,
+  absolute: Record<string, Placement>,
+  banned: Set<string>,
+): string | null {
   let best: { id: string; area: number } | null = null;
+  for (const [id, c] of containersHolding(page, pageBox, absolute, banned)) {
+    const area = c.w * c.h;
+    if (!best || area < best.area) best = { id, area };
+  }
+  return best ? best.id : null;
+}
+
+/** Every container the box could join, in page order, with its page-space box. */
+function containersHolding(
+  page: UIPage,
+  pageBox: Placement,
+  absolute: Record<string, Placement>,
+  banned: Set<string>,
+): [string, Placement][] {
+  const holding: [string, Placement][] = [];
   for (const el of page.elements) {
     if (el.type !== "group" || banned.has(el.id)) continue;
     const c = absolute[el.id];
-    if (!c) continue;
-    const contains =
-      pageBox.x >= c.x - BOUNDS_EPSILON &&
-      pageBox.y >= c.y - BOUNDS_EPSILON &&
-      pageBox.x + pageBox.w <= c.x + c.w + BOUNDS_EPSILON &&
-      pageBox.y + pageBox.h <= c.y + c.h + BOUNDS_EPSILON;
-    if (!contains) continue;
-    const area = c.w * c.h;
-    if (!best || area < best.area) best = { id: el.id, area };
+    if (c && holdsWhole(c, pageBox)) holding.push([el.id, c]);
   }
-  if (best) return best.id;
+  return holding;
+}
 
+/** Whether `outer` holds `inner` whole, forgiving the rounding floor at each edge. */
+function holdsWhole(outer: Placement, inner: Placement): boolean {
+  return (
+    inner.x >= outer.x - BOUNDS_EPSILON &&
+    inner.y >= outer.y - BOUNDS_EPSILON &&
+    inner.x + inner.w <= outer.x + outer.w + BOUNDS_EPSILON &&
+    inner.y + inner.h <= outer.y + outer.h + BOUNDS_EPSILON
+  );
+}
+
+/** The container the control already lives in, while the box still touches it. */
+function stillTouching(
+  element: UIElement | undefined,
+  pageBox: Placement,
+  absolute: Record<string, Placement>,
+  banned: Set<string>,
+): string | null {
   const current = element?.parent ?? null;
-  if (current && !banned.has(current)) {
-    const box = absolute[current];
-    if (box && boxesOverlap(pageBox, box)) return current;
-  }
-  return null;
+  if (!current || banned.has(current)) return null;
+  const box = absolute[current];
+  return box && boxesOverlap(pageBox, box) ? current : null;
 }
 
 /**
