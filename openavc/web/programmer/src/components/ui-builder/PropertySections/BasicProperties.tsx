@@ -1,3 +1,13 @@
+/**
+ * The Basic section of the UI Builder's Properties panel: what every element
+ * has (its ID, type, tag and, where it is drawn, its label), then the fields its
+ * type has, from one table, then the grant and icon rows the types that have
+ * them share.
+ *
+ * The bigger types' fields live in their own modules (MatrixFields,
+ * ValueFields, ClockFields, ButtonImageFields, PluginElementConfig); the rows
+ * they are built from are FieldRow's and StyleRows'.
+ */
 import { useState, useEffect } from "react";
 import { Plus, X } from "lucide-react";
 import type { UIElement, UIPage, UIElementOption, Placement, ProjectConfig } from "../../../api/types";
@@ -40,8 +50,8 @@ interface BasicPropertiesProps {
   project: ProjectConfig;
   pages: UIPage[];
   macros?: { id: string; name: string }[];
-  /** Where the element sits — geometry lives in the page's layout now, so the
-   *  fader/meter orientation swap has to be handed both halves. */
+  /** Where the element sits: geometry lives in the page's layout, so turning
+   *  a slider on its side is handed both halves to turn its box too. */
   placement?: Placement;
   onChangePlacement?: (placement: Placement) => void;
   onChange: (patch: Partial<UIElement>) => void;
@@ -116,6 +126,10 @@ export function BasicProperties({
           onChange={onChange}
         />
       )}
+      {GRANTED_TYPES.includes(element.type) && (
+        <GrantEditor grant={element.grant} onChange={(grant) => onChange({ grant })} />
+      )}
+      {ICON_TYPES.includes(element.type) && <IconFields element={element} onChange={onChange} />}
     </div>
   );
 }
@@ -154,6 +168,16 @@ const TYPE_FIELDS: Record<string, (props: SectionProps) => React.JSX.Element> = 
   plugin: PluginFields,
   select: SelectFields,
 };
+
+/**
+ * The two element types that run someone else's page, and so take a grant of
+ * what it may touch. Its rows come after the type's own, in one place for both,
+ * so selecting one after the other keeps them.
+ */
+const GRANTED_TYPES = ["custom", "plugin"];
+
+/** The types that draw an icon beside their words; their icon rows close the section, shared the same way. */
+const ICON_TYPES = ["button", "label", "page_nav", "camera_preset"];
 
 /** The row for this type, read as the table's own: `constructor` is not a type. */
 function typeFieldsFor(type: string): ((props: SectionProps) => React.JSX.Element) | null {
@@ -226,7 +250,7 @@ function LabelFields({ element, onChange }: FieldProps) {
   );
 }
 
-/** A button: what it shows, its picture, and its icon. */
+/** A button: what it shows, and its picture. */
 function ButtonFields({ element, onChange }: SectionProps) {
   return (
     <>
@@ -246,12 +270,11 @@ function ButtonFields({ element, onChange }: SectionProps) {
       {(element.display_mode === "image" || element.display_mode === "image_text") && (
         <ButtonImageFields element={element} onChange={onChange} />
       )}
-      <IconFields element={element} onChange={onChange} />
     </>
   );
 }
 
-/** A label's own text, its line breaks and its rounding, and its icon. */
+/** A label's own text, its line breaks and its rounding. */
 function LabelTextFields({ element, onChange }: SectionProps) {
   return (
     <>
@@ -263,12 +286,11 @@ function LabelTextFields({ element, onChange }: SectionProps) {
       <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
         Rounds a bound value when it is a number. Text is shown exactly as the device reports it.
       </div>
-      <IconFields element={element} onChange={onChange} />
     </>
   );
 }
 
-/** A page nav: where it goes, whether it lights up there, and its icon. */
+/** A page nav: where it goes, and whether it lights up there. */
 function PageNavFields({ element, pages, onChange }: SectionProps) {
   return (
     <>
@@ -292,7 +314,6 @@ function PageNavFields({ element, pages, onChange }: SectionProps) {
       >
         Light up while its page is showing
       </CheckboxRow>
-      <IconFields element={element} onChange={onChange} />
     </>
   );
 }
@@ -532,27 +553,24 @@ function TextInputFields({ element, onChange }: SectionProps) {
   );
 }
 
-/** A camera preset's number, and its icon. */
+/** A camera preset's number. */
 function CameraPresetFields({ element, onChange }: SectionProps) {
   return (
-    <>
-      <FieldRow label="Preset #">
-        <input
-          type="number"
-          value={element.preset_number ?? ""}
-          onChange={(e) =>
-            onChange({
-              preset_number: e.target.value
-                ? Number(e.target.value)
-                : undefined,
-            })
-          }
-          min={1}
-          style={{ flex: 1 }}
-        />
-      </FieldRow>
-      <IconFields element={element} onChange={onChange} />
-    </>
+    <FieldRow label="Preset #">
+      <input
+        type="number"
+        value={element.preset_number ?? ""}
+        onChange={(e) =>
+          onChange({
+            preset_number: e.target.value
+              ? Number(e.target.value)
+              : undefined,
+          })
+        }
+        min={1}
+        style={{ flex: 1 }}
+      />
+    </FieldRow>
   );
 }
 
@@ -574,32 +592,26 @@ function GroupFields({ element, onChange }: SectionProps) {
   );
 }
 
-/** A custom control: the page it runs, and what it may touch. */
+/** A custom control: the page in the project's ui/ folder it runs. */
 function CustomFields({ element, onChange }: SectionProps) {
   return (
-    <>
-      <CustomControlConfig
-        file={element.custom_file || ""}
-        config={element.custom_config || {}}
-        onChange={onChange}
-      />
-      <GrantEditor grant={element.grant} onChange={(grant) => onChange({ grant })} />
-    </>
+    <CustomControlConfig
+      file={element.custom_file || ""}
+      config={element.custom_config || {}}
+      onChange={onChange}
+    />
   );
 }
 
-/** A plugin element: its settings, and what it may touch. */
+/** A plugin element: its settings. */
 function PluginFields({ element, onChange }: SectionProps) {
   return (
-    <>
-      <PluginElementConfig
-        pluginId={element.plugin_id || ""}
-        pluginType={element.plugin_type || ""}
-        config={element.plugin_config || {}}
-        onChange={(cfg) => onChange({ plugin_config: cfg })}
-      />
-      <GrantEditor grant={element.grant} onChange={(grant) => onChange({ grant })} />
-    </>
+    <PluginElementConfig
+      pluginId={element.plugin_id || ""}
+      pluginType={element.plugin_type || ""}
+      config={element.plugin_config || {}}
+      onChange={(cfg) => onChange({ plugin_config: cfg })}
+    />
   );
 }
 

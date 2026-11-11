@@ -116,6 +116,160 @@ exports[`the Basic section, every element type > an unknown type (page) 1`] = `
 #3 input value="" :: focus, change "abc", key Escape -> patch {label: "abc"}"
 `;
 
+exports[`the Basic section, every element type > button, a look whose states are not a map (page) 1`] = `
+"div style="display: flex; flex-direction: column; gap: var(--space-sm);"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "ID"
+    input title="Rename element (Enter to commit, Esc to cancel)" style="flex: 1 1 0%; background: var(--bg-primary); cursor: text;" value="el"
+    div data-stub="CopyButton" data-props="{\\"value\\":\\"el\\",\\"title\\":\\"Copy element ID\\"}"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Type"
+    input readonly="" style="flex: 1 1 0%; opacity: 0.6; cursor: default; background: var(--bg-surface);" value="button"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Tag"
+    input placeholder="optional" style="flex: 1 1 0%;" value=""
+  div style="font-size: var(--font-size-xs, 11px); color: var(--text-muted); margin: -4px 0px 4px 0px;"
+    "A macro this control runs reads it as"
+    code
+      "$trigger.tag"
+    ", so a row of buttons can share one macro instead of needing one each."
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Label"
+    input style="flex: 1 1 0%;" value=""
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Multi-line"
+    label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;"
+      input type="checkbox" checked=false
+      "Use Enter for line breaks"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Display"
+    select style="flex: 1 1 0%;" value="image"
+      option value="text"
+        "Text Only"
+      option value="icon_text"
+        "Icon + Text"
+      option value="icon_only"
+        "Icon Only"
+      option value="image"
+        "Image"
+      option value="image_text"
+        "Image + Text"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Image"
+    div data-stub="AssetPicker" data-props="{\\"value\\":\\"logo.png\\"}"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Fit"
+    select style="flex: 1 1 0%;" value="cover"
+      option value="cover"
+        "Cover"
+      option value="contain"
+        "Contain"
+      option value="fill"
+        "Fill"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Frameless"
+    label style="display: flex; align-items: center; gap: 6px; font-size: 11px; cursor: pointer;"
+      input type="checkbox" checked=false
+      "Hide background and border (image-as-button)"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Effect"
+    select title="How the image reacts to the button's background color" style="flex: 1 1 0%;" value="multiply"
+      option value="none"
+        "None"
+      option value="multiply"
+        "Tint (darker)"
+      option value="screen"
+        "Tint (lighter)"
+      option value="mask"
+        "Recolor shape"
+  div style="padding: 0px 0px 6px 90px; display: flex; flex-direction: column; gap: 4px;"
+    div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"
+      span style="font-size: 11px; color: var(--text-muted);"
+        "Tints using:"
+      div style="display: flex; align-items: center; gap: 4px;"
+        div title="#424242" style="width: 16px; height: 16px; background: rgb(66, 66, 66); border: 1px solid var(--border-color); border-radius: 3px;"
+        span style="font-size: 10px; color: var(--text-muted);"
+          "off"
+      div style="display: flex; align-items: center; gap: 4px;"
+        div title="#0f0" style="width: 16px; height: 16px; background: rgb(0, 255, 0); border: 1px solid var(--border-color); border-radius: 3px;"
+        span style="font-size: 10px; color: var(--text-muted);"
+          "on"
+    "0"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Opacity"
+    input type="range" min="0" max="1" step="0.05" style="flex: 1 1 0%;" value="1"
+    span style="font-size: 11px; color: var(--text-muted); min-width: 32px; text-align: right;"
+      "100"
+      "%"
+  div style="display: flex; align-items: center; gap: var(--space-sm);"
+    label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
+      "Icon"
+    div data-stub="IconPicker" data-props="{\\"value\\":\\"\\"}"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: change "abc" -> nothing
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: change "" -> nothing
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: change "{\\"a\\":1}" -> nothing
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: change "abc", change "" -> nothing
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#1 input readonly="" value="button" :: change "abc" -> nothing
+#1 input readonly="" value="button" :: change "" -> nothing
+#1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
+#1 input readonly="" value="button" :: change "abc", change "" -> nothing
+#1 input readonly="" value="button" :: focus, blur -> nothing
+#1 input readonly="" value="button" :: focus, change " new_id ", blur -> nothing
+#1 input readonly="" value="button" :: focus, change "abc", key Enter -> nothing
+#1 input readonly="" value="button" :: focus, change "abc", key Escape -> nothing
+#2 input placeholder="optional" value="" :: change "abc" -> patch {tag: "abc"}
+#2 input placeholder="optional" value="" :: change "" -> nothing
+#2 input placeholder="optional" value="" :: change "{\\"a\\":1}" -> patch {tag: "{\\"a\\":1}"}
+#2 input placeholder="optional" value="" :: change "abc", change "" -> patch {tag: "abc"} ; patch {tag: undefined}
+#2 input placeholder="optional" value="" :: focus, blur -> nothing
+#2 input placeholder="optional" value="" :: focus, change " new_id ", blur -> patch {tag: " new_id "}
+#2 input placeholder="optional" value="" :: focus, change "abc", key Enter -> patch {tag: "abc"}
+#2 input placeholder="optional" value="" :: focus, change "abc", key Escape -> patch {tag: "abc"}
+#3 input value="" :: change "abc" -> patch {label: "abc"}
+#3 input value="" :: change "" -> nothing
+#3 input value="" :: change "{\\"a\\":1}" -> patch {label: "{\\"a\\":1}"}
+#3 input value="" :: change "abc", change "" -> patch {label: "abc"} ; patch {label: ""}
+#3 input value="" :: focus, blur -> nothing
+#3 input value="" :: focus, change " new_id ", blur -> patch {label: " new_id "}
+#3 input value="" :: focus, change "abc", key Enter -> patch {label: "abc"}
+#3 input value="" :: focus, change "abc", key Escape -> patch {label: "abc"}
+#4 input type="checkbox" checked=false :: click -> patch {style: {white_space: "pre-line"}}
+#5 select value="image" :: change "text" -> patch {display_mode: undefined}
+#5 select value="image" :: change "icon_text" -> patch {display_mode: "icon_text"}
+#5 select value="image" :: change "icon_only" -> patch {display_mode: "icon_only"}
+#5 select value="image" :: change "image" -> patch {display_mode: "image"}
+#5 select value="image" :: change "image_text" -> patch {display_mode: "image_text"}
+#6 button data-emit="onChange \\"assets://pic.png\\"" :: click -> patch {button_image: "assets://pic.png"}
+#7 button data-emit="onChange \\"\\"" :: click -> patch {button_image: undefined}
+#8 select value="cover" :: change "cover" -> patch {image_fit: "cover"}
+#8 select value="cover" :: change "contain" -> patch {image_fit: "contain"}
+#8 select value="cover" :: change "fill" -> patch {image_fit: "fill"}
+#9 input type="checkbox" checked=false :: click -> patch {frameless: true}
+#10 select title="How the image reacts to the button's background color" value="multiply" :: change "none" -> patch {image_blend_mode: undefined}
+#10 select title="How the image reacts to the button's background color" value="multiply" :: change "multiply" -> patch {image_blend_mode: "multiply"}
+#10 select title="How the image reacts to the button's background color" value="multiply" :: change "screen" -> patch {image_blend_mode: "screen"}
+#10 select title="How the image reacts to the button's background color" value="multiply" :: change "mask" -> patch {image_blend_mode: "mask"}
+#11 input type="range" min="0" max="1" step="0.05" value="1" :: change "0.5" -> patch {image_opacity: 0.5}
+#11 input type="range" min="0" max="1" step="0.05" value="1" :: change "1" -> nothing
+#12 button data-emit="onChange \\"power\\"" :: click -> patch {icon: "power"}
+#13 button data-emit="onChange \\"\\"" :: click -> patch {icon: undefined}"
+`;
+
 exports[`the Basic section, every element type > button, bare (page) 1`] = `
 "div style="display: flex; flex-direction: column; gap: var(--space-sm);"
   div style="display: flex; align-items: center; gap: var(--space-sm);"

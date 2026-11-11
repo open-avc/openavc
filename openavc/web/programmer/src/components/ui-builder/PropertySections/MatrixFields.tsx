@@ -15,6 +15,7 @@ import { Plus, X } from "lucide-react";
 import type { ProjectConfig, UIElement } from "../../../api/types";
 import { MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen";
 import { pxToRem, remToPx } from "../uiBuilderHelpers";
+import { isPlainObject } from "../authoredValues";
 import { resolveMatrixAxis } from "../matrixModel";
 import { MatrixSetupDialog } from "../MatrixSetupDialog";
 import { FieldHint, FieldRow, SubSection, type FieldProps } from "./FieldRow";
@@ -29,14 +30,12 @@ interface MatrixPreset {
 type MatrixAxis = "sources" | "destinations";
 type MatrixConfig = Record<string, unknown> | undefined;
 
-type MatrixProps = FieldProps;
-
 export function MatrixFields({
   element,
   project,
   macros,
   onChange,
-}: MatrixProps & { project: ProjectConfig; macros: { id: string; name: string }[] }) {
+}: FieldProps & { project: ProjectConfig; macros: { id: string; name: string }[] }) {
   return (
     <>
       <MatrixSetupRow element={element} project={project} onChange={onChange} />
@@ -71,16 +70,16 @@ export function MatrixFields({
  * The way into the device picker, and the one line that says what it did.
  *
  * The fields under it author the GENERATOR, which covers a frame whose ports
- * run 1..N and nothing else. The picker writes the axes out entry by entry
- * (matrix plan D5), which is what a patched frame, string port ids or
- * destinations on two devices need, so once it has run those fields step aside
+ * run 1..N and nothing else. The picker writes the axes out entry by entry,
+ * which is what a patched frame, string port ids or destinations on two
+ * devices need, so once it has run those fields step aside
  * and this row is where the lists are edited from.
  */
 function MatrixSetupRow({
   element,
   project,
   onChange,
-}: MatrixProps & { project: ProjectConfig }) {
+}: FieldProps & { project: ProjectConfig }) {
   const [open, setOpen] = useState(false);
   const written =
     matrixAxisIsList(element.matrix_config, "sources") ||
@@ -127,7 +126,7 @@ function MatrixSetupRow({
 }
 
 /** The sources: how many the generator makes, or that they are written out. */
-function SourceAxisFields({ element, onChange }: MatrixProps) {
+function SourceAxisFields({ element, onChange }: FieldProps) {
   if (matrixAxisIsList(element.matrix_config, "sources")) {
     return (
       <FieldHint>
@@ -140,7 +139,7 @@ function SourceAxisFields({ element, onChange }: MatrixProps) {
 }
 
 /** The destinations: how many, and the keys each one routes through. */
-function DestinationAxisFields({ element, onChange }: MatrixProps) {
+function DestinationAxisFields({ element, onChange }: FieldProps) {
   if (matrixAxisIsList(element.matrix_config, "destinations")) {
     return (
       <>
@@ -176,7 +175,7 @@ function DestinationAxisFields({ element, onChange }: MatrixProps) {
 }
 
 /** The readout's off switch for destinations written out with their own audio keys. */
-function AudioReadoutField({ element, onChange }: MatrixProps) {
+function AudioReadoutField({ element, onChange }: FieldProps) {
   return (
     <>
       <FieldRow label="Audio Readout">
@@ -208,7 +207,7 @@ function GeneratorCountField({
   axis,
   label,
   prefix,
-}: MatrixProps & { axis: MatrixAxis; label: string; prefix: string }) {
+}: FieldProps & { axis: MatrixAxis; label: string; prefix: string }) {
   return (
     <FieldRow label={label}>
       <input
@@ -233,7 +232,7 @@ function GeneratorKeyField({
   field,
   label,
   placeholder,
-}: MatrixProps & { axis: MatrixAxis; field: string; label: string; placeholder: string }) {
+}: FieldProps & { axis: MatrixAxis; field: string; label: string; placeholder: string }) {
   return (
     <FieldRow label={label}>
       <input
@@ -247,7 +246,7 @@ function GeneratorKeyField({
 }
 
 /** Where each axis still a generator reads its live names from. */
-function NameKeyFields({ element, onChange }: MatrixProps) {
+function NameKeyFields({ element, onChange }: FieldProps) {
   const sourcesListed = matrixAxisIsList(element.matrix_config, "sources");
   const destinationsListed = matrixAxisIsList(element.matrix_config, "destinations");
   return (
@@ -279,7 +278,7 @@ function hasDoBinding(element: UIElement, action: string): boolean {
   return !!(element.bindings as { do?: Record<string, unknown> })?.do?.[action];
 }
 
-function AudioFollowFields({ element, onChange }: MatrixProps) {
+function AudioFollowFields({ element, onChange }: FieldProps) {
   return (
     <>
       <FieldRow label="Audio Follow">
@@ -304,7 +303,7 @@ function AudioFollowFields({ element, onChange }: MatrixProps) {
   );
 }
 
-function LockFields({ element, onChange }: MatrixProps) {
+function LockFields({ element, onChange }: FieldProps) {
   const shown = element.matrix_config?.show_lock === true;
   return (
     <>
@@ -338,7 +337,7 @@ function LockFields({ element, onChange }: MatrixProps) {
   );
 }
 
-function MuteFields({ element, onChange }: MatrixProps) {
+function MuteFields({ element, onChange }: FieldProps) {
   return (
     <>
       <FieldRow label="Show Mute">
@@ -383,7 +382,7 @@ function GeneratorLabels({
   onChange,
   axis,
   title,
-}: MatrixProps & { axis: MatrixAxis; title: string }) {
+}: FieldProps & { axis: MatrixAxis; title: string }) {
   if (matrixAxisIsList(element.matrix_config, axis)) return null;
   return (
     <MatrixLabelEditor
@@ -394,7 +393,7 @@ function GeneratorLabels({
   );
 }
 
-function MatrixAppearance({ element, onChange }: MatrixProps) {
+function MatrixAppearance({ element, onChange }: FieldProps) {
   return (
     <>
       <SubSection label="Matrix Appearance" />
@@ -463,16 +462,11 @@ function matrixLockUnbacked(config: MatrixConfig): boolean {
   );
 }
 
-/** A value that is an object and not a list, as the generator's parts must be. */
-function plainObject(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 /** The generator behind one axis, or an empty one to start from. */
 function matrixFrom(config: MatrixConfig, axis: MatrixAxis): Record<string, unknown> {
-  return plainObject(plainObject(config?.[axis])?.from) ?? {};
+  const spec = config?.[axis];
+  const from = isPlainObject(spec) ? spec.from : undefined;
+  return isPlainObject(from) ? from : {};
 }
 
 /** That generator with some fields changed, in a whole new matrix_config. */
@@ -481,7 +475,8 @@ function setMatrixFrom(
   axis: MatrixAxis,
   patch: Record<string, unknown>,
 ): Record<string, unknown> {
-  const outer = plainObject(config?.[axis]) ?? {};
+  const spec = config?.[axis];
+  const outer = isPlainObject(spec) ? spec : {};
   const from: Record<string, unknown> = { ...matrixFrom(config, axis), ...patch };
   for (const [key, value] of Object.entries(patch)) {
     if (value === undefined) delete from[key];

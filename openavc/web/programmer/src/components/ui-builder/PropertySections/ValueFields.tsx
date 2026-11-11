@@ -5,8 +5,8 @@
  * They share their rows: the two ends of the travel (each type's placeholders
  * are the panel's defaults for it), the output range a slider or fader sends
  * across, the readout's rounding, the response curve and how a drag sends.
- * Display only, all of it: the value a device receives is formatted by the
- * driver's command parameter.
+ * The rounding and the curve are the panel's own; the output range and the
+ * sending decide what a device is sent, and its driver formats the value.
  */
 import { Plus, X } from "lucide-react";
 import type { Placement } from "../../../api/types";

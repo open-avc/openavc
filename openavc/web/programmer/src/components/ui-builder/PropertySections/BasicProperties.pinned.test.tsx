@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Placement, ProjectConfig, UIElement } from "../../../api/types";
+import type { Placement, ProjectConfig, UIElement, UIPage } from "../../../api/types";
 import { usePluginStore } from "../../../store/pluginStore";
 import { BasicProperties } from "./BasicProperties";
 
@@ -356,6 +356,13 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
+    name: "button, a look whose states are not a map",
+    element: {
+      type: "button", display_mode: "image", button_image: "logo.png", image_blend_mode: "multiply",
+      ...look({ states: 0, style_active: { bg_color: "#0f0" } }),
+    },
+  },
+  {
     name: "button, tint with no look",
     element: { type: "button", display_mode: "image", button_image: "logo.png", image_blend_mode: "mask", bindings: { show: { value: { key: "var.x" } } } },
   },
@@ -564,4 +571,45 @@ describe("the Basic section, every element type", () => {
       });
     }
   }
+});
+
+/** The control in the row labelled `label`, or the stand-in named `stub`. */
+function rowControl(root: HTMLElement, label: string): Element | null {
+  if (label.startsWith("stub:")) return root.querySelector(`[data-stub="${label.slice(5)}"]`);
+  const caption = Array.from(root.querySelectorAll("label")).find((l) => l.textContent === label);
+  return caption?.parentElement?.querySelector("input, select, textarea, [data-stub]") ?? null;
+}
+
+function Switcher({ first, second }: { first: UIElement; second: UIElement }) {
+  const [element, setElement] = useState(first);
+  return (
+    <>
+      <BasicProperties element={element} project={project} pages={pages} macros={macros} onChange={() => {}} />
+      <button onClick={() => setElement(second)}>Select the other</button>
+    </>
+  );
+}
+
+// Selecting another element of a type that shares rows with this one keeps
+// those rows' controls, as it did when every type's fields were one component.
+describe("selecting an element of another type", () => {
+  it.each([
+    ["a button, then a page nav", "button", "page_nav", ["Label", "Icon", "Icon Size", "Icon Color"]],
+    ["a label, then a camera preset", "label", "camera_preset", ["Icon", "Position"]],
+    ["a custom control, then a plugin element", "custom", "plugin", ["stub:GrantEditor"]],
+    ["a gauge, then a fader", "gauge", "fader", ["Label"]],
+  ])("%s keeps the rows they share", (_name, firstType, secondType, rows) => {
+    const view = render(
+      <Switcher
+        first={{ id: "a", type: firstType, icon: "power" } as unknown as UIElement}
+        second={{ id: "b", type: secondType, icon: "power" } as unknown as UIElement}
+      />,
+    );
+    const before = rows.map((row) => rowControl(view.container, row));
+    before.forEach((node, i) => expect(node, rows[i]).not.toBeNull());
+    fireEvent.click(view.getByText("Select the other"));
+    rows.forEach((row, i) => {
+      expect(rowControl(view.container, row), row).toBe(before[i]);
+    });
+  });
 });

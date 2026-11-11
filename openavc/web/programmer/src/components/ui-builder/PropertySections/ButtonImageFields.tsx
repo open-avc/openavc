@@ -150,11 +150,6 @@ function withStateColors(element: UIElement, fallback: string): Partial<UIElemen
   };
 }
 
-/** Whether the look names states but no state key decides between them. */
-function lookUnwired(look: Look | null): boolean {
-  return !!look?.states && Object.keys(look.states).length > 0 && !look.key;
-}
-
 function TintSourceStrip({ element, onChange }: FieldProps) {
   const look = lookOf(element);
   const fallback = (element.style?.bg_color as string | undefined) || BUTTON_BACKGROUND;
@@ -197,6 +192,15 @@ function TintSourceStrip({ element, onChange }: FieldProps) {
           </button>
         )}
       </div>
+      <TintNotes element={element} look={look} bound={bound} />
+    </div>
+  );
+}
+
+/** What the tint still needs from the author: Frameless for a recolor, state colours, a state key. */
+function TintNotes({ element, look, bound }: { element: UIElement; look: Look | null; bound: boolean }) {
+  return (
+    <>
       {element.image_blend_mode === "mask" && !element.frameless && (
         <div style={{ fontSize: 10, color: "var(--warning, #ff9800)", lineHeight: 1.4 }}>
           Recolor shape reuses the button's background color to fill the image, so the logo blends into the button rectangle. Turn on Frameless to see the shape clearly.
@@ -207,11 +211,12 @@ function TintSourceStrip({ element, onChange }: FieldProps) {
           Image tints with the button's background. Add state colors so the image reacts to a state change.
         </div>
       )}
-      {lookUnwired(look) && (
+      {/* The look names states, but no state key decides between them. */}
+      {bound && look?.states && Object.keys(look.states).length > 0 && !look.key && (
         <div style={{ fontSize: 10, color: "var(--warning, #ff9800)", lineHeight: 1.4 }}>
           Pick a state key in the Bindings panel to wire this up.
         </div>
       )}
-    </div>
+    </>
   );
 }
