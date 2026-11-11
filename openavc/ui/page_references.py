@@ -286,23 +286,55 @@ def plugin_element_finding(
     return None
 
 
-def _page_grant_findings(page: Any, device_ids: set[str]) -> list[Finding]:
-    """A custom page granted a device the project no longer has."""
-    grant = _mapping(getattr(page, "grant", None))
-    if not grant:
-        return []
-    holder = _Holder(str(getattr(page, "id", "?")), "page")
-    findings: list[Finding] = []
-    for granted in grant.get("devices") or []:
-        if isinstance(granted, str) and granted and granted not in device_ids:
-            findings.append(holder.finding(
-                "dangling_reference",
-                f"is granted device '{granted}', which is not in this "
-                f"project, so the page it shows can neither read nor control it. The "
-                f"devices are: {_listed(device_ids)}.",
-                f"grant.devices.{granted}",
-            ))
-    return findings
+def _named(value: Any) -> str | None:
+    """The name ``value`` gives, or None: only a non-empty string names anything."""
+    return value if isinstance(value, str) and value else None
+
+
+def _grant_findings(
+    holder: _Holder, grant: Any, who: str, project: _Project,
+) -> list[Finding]:
+    """Each device a grant names that the project does not have.
+
+    A control or a custom page whose grant names a device that is not here sees
+    nothing from it and cannot command it -- with no error anywhere, because a
+    grant that matches nothing is indistinguishable at runtime from a grant
+    nobody set. ``who`` is what can then neither read nor control it: the
+    control itself, or the page a custom page shows. Variables are not checked,
+    for the same reason bound ``var.`` keys are not: a script can create one.
+    """
+    grant = _mapping(grant)
+    granted = (grant.get("devices") or []) if grant else []
+    return [
+        holder.finding(
+            "dangling_reference",
+            f"is granted device '{device}', which is not in this "
+            f"project, so {who} can neither read nor control it. The "
+            f"devices are: {_listed(project.device_ids)}.",
+            f"grant.devices.{device}",
+        )
+        for device in granted
+        if _named(device) is not None and device not in project.device_ids
+    ]
+
+
+def _navigation_finding(
+    at: _Holder | _Site, target: Any, project: _Project, key: str,
+) -> Finding | None:
+    """A move to a page that does not exist, said the same wherever it is written.
+
+    The panel resolves ``$back`` and ``$dismiss`` itself (``navigateToPage``),
+    so they are never missing; a target that is not a name says nothing.
+    """
+    target = _named(target)
+    if target is None or target in project.page_ids or target in NAVIGATION_SENTINELS:
+        return None
+    return at.finding(
+        "dangling_reference",
+        f"navigates to page '{target}', which does not exist. "
+        f"The pages are: {_listed(project.page_ids)}.",
+        key,
+    )
 
 
 @dataclass(frozen=True)
@@ -473,7 +505,9 @@ def reference_findings(
     # grant nobody set. Not scoped by `touched`: the page is not an element, and
     # a write that never mentions it is still a write onto a page whose author
     # page can no longer reach what it was given.
-    findings.extend(_page_grant_findings(page, device_ids))
+    findings.extend(_grant_findings(
+        _Holder(page_id, "page"), getattr(page, "grant", None), "the page it shows", project,
+    ))
 
     # A page that hands the screen to markup names its file the same way an
     # element does, and is missing it the same way. Not scoped by `touched`,
@@ -656,33 +690,12 @@ def _element_findings(control: _Control, project: _Project) -> list[Finding]:
     findings: list[Finding] = []
     dump = control.dump
 
-    target = dump.get("target_page")
-    if (
-        control.what == "page_nav" and isinstance(target, str) and target
-        and target not in project.page_ids and target not in NAVIGATION_SENTINELS
-    ):
-        findings.append(control.finding(
-            "dangling_reference",
-            f"navigates to page '{target}', which does not exist. "
-            f"The pages are: {_listed(project.page_ids)}.",
-            "target_page",
-        ))
+    if control.what == "page_nav":
+        moved = _navigation_finding(control, dump.get("target_page"), project, "target_page")
+        if moved:
+            findings.append(moved)
 
-    # A grant names devices by id, and a control whose grant names a device that
-    # is not here sees nothing from it and cannot command it -- with no error
-    # anywhere, because a grant that matches nothing is indistinguishable at
-    # runtime from a grant nobody set. Variables are deliberately not checked,
-    # for the same reason bound var. keys are not: a script can create one.
-    grant = _mapping(dump.get("grant"))
-    for granted in (grant.get("devices") or []) if grant else []:
-        if isinstance(granted, str) and granted and granted not in project.device_ids:
-            findings.append(control.finding(
-                "dangling_reference",
-                f"is granted device '{granted}', which is not in this "
-                f"project, so it can neither read nor control it. The devices are: "
-                f"{_listed(project.device_ids)}.",
-                f"grant.devices.{granted}",
-            ))
+    findings.extend(_grant_findings(control, dump.get("grant"), "it", project))
 
     findings.extend(_state_key_findings(control, project))
 
@@ -734,25 +747,15 @@ def _action_findings(
 def _navigate_findings(
     action: Mapping[str, Any], site: _Site, project: _Project,
 ) -> list[Finding]:
-    target = action.get("page")
-    if not (
-        isinstance(target, str) and target
-        and target not in project.page_ids and target not in NAVIGATION_SENTINELS
-    ):
-        return []
-    return [site.finding(
-        "dangling_reference",
-        f"navigates to page '{target}', which does not "
-        f"exist. The pages are: {_listed(project.page_ids)}.",
-        "page",
-    )]
+    moved = _navigation_finding(site, action.get("page"), project, "page")
+    return [moved] if moved else []
 
 
 def _macro_findings(
     action: Mapping[str, Any], site: _Site, project: _Project,
 ) -> list[Finding]:
-    macro = action.get("macro")
-    if not isinstance(macro, str) or not macro or macro in project.macro_ids:
+    macro = _named(action.get("macro"))
+    if macro is None or macro in project.macro_ids:
         return []
     return [site.finding(
         "dangling_reference",
@@ -773,7 +776,7 @@ def _command_findings(
     """
     device = action.get("device")
     command = action.get("command")
-    if isinstance(device, str) and device and device not in project.device_ids:
+    if _named(device) is not None and device not in project.device_ids:
         return [site.finding(
             "dangling_reference",
             f"commands device '{device}', which is not in "
