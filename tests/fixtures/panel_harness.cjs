@@ -161,15 +161,17 @@ function renderProject(app, proj) {
 }
 
 /**
- * One look evaluation on a bare element in edit mode, which is where the panel
- * records the authored slot its words came from. The element starts out
- * reading "Own" in its own grey.
+ * One look evaluation on a bare element, in edit mode unless `live` is set:
+ * edit mode is where the panel records the authored slot its words came from,
+ * and where no device is ever unreachable. The element starts out reading
+ * "Own" in its own grey.
  */
-function runLook(method, type, binding, value, ownStyle) {
+function runLook(method, type, binding, value, { ownStyle, state, live } = {}) {
     const app = mkApp();
-    app.editMode = true;
+    app.editMode = !live;
     app.currentPage = 'main';
     app.state = value === undefined ? {} : { [binding.key]: value };
+    Object.assign(app.state, state || {});
     const element = document.createElement('div');
     element.setAttribute('data-element-id', 'probe');
     element.textContent = 'Own';
@@ -4703,6 +4705,25 @@ const tests = {
     look_picks_the_same_state_on_a_container() { checkLookTable('evaluateGroupLook', 'group'); },
     look_picks_the_same_state_on_a_button() { checkLookTable('evaluateFeedback', 'button'); },
 
+    // A device that cannot be reached claims no state: every look draws the
+    // control's own look, whatever its key says. A page nav with no key has no
+    // state to show and keeps the words it already had.
+    a_look_shows_nothing_for_an_unreachable_device_or_a_missing_key() {
+        const away = { key: 'device.amp.mute', default_state: 'off', states: { on: LOOK_ENTRIES.A, off: LOOK_ENTRIES.B } };
+        const gone = { 'device.amp.connected': false };
+        for (const [method, type] of [['evaluateLabelLook', 'label'], ['evaluateImageLook', 'image'],
+            ['evaluateNavLook', 'page_nav'], ['evaluateGroupLook', 'group'], ['evaluateFeedback', 'button']]) {
+            const r = runLook(method, type, away, 'on', { state: gone, live: true });
+            assert(r.bg === LOOK_OWN_BG, `${type}, device away: its own colour, got ${r.bg}`);
+            const live = runLook(method, type, away, 'on', { state: { 'device.amp.connected': true }, live: true });
+            assert(live.bg === LOOK_BG.A, `${type}, device back: the state's colour, got ${live.bg}`);
+        }
+        const keyless = { default_state: 'off', states: { on: LOOK_ENTRIES.A, off: LOOK_ENTRIES.B } };
+        const r = runLook('evaluateNavLook', 'page_nav', keyless, undefined);
+        assert(r.bg === LOOK_OWN_BG && r.text === 'Own' && r.path === null,
+            `page nav, no key: its own look and words, nothing recorded, got ${JSON.stringify(r)}`);
+    },
+
     // The two-state form's own words: a label or page nav takes label_active /
     // label_inactive whenever one is set, an empty one included; a button takes
     // one only when it has words, and otherwise the state's own label.
@@ -4729,7 +4750,7 @@ const tests = {
         // A button whose own style carries its words, under a state that
         // names none: the words are its own style's.
         const plain = { key: 'var.v', condition: { equals: 'on' }, style_active: { bg_color: '#110000' } };
-        const own = runLook('evaluateFeedback', 'button', plain, 'on', { label: 'Styled' });
+        const own = runLook('evaluateFeedback', 'button', plain, 'on', { ownStyle: { label: 'Styled' } });
         same([own.text, own.path], ['Styled', ['style', 'label']], 'button, words in its own style');
     },
 

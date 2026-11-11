@@ -63,6 +63,7 @@ if (
 import asyncio
 import importlib
 import logging
+import mimetypes
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -576,6 +577,13 @@ app.add_middleware(StartupSplashMiddleware)
 
 # Serve Panel UI static files
 from openavc.system_config import WEB_PANEL_DIR, WEB_PROGRAMMER_DIR
+
+
+# The panel and the Programmer load as module scripts, which a browser refuses
+# under any type but JavaScript, and StaticFiles takes the type from this
+# machine's table: on Windows the registry, where another program can map .js
+# to text/plain after OpenAVC is installed.
+mimetypes.add_type("text/javascript", ".js")
 
 
 def _panel_host_category(scope):

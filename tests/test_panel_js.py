@@ -258,6 +258,7 @@ SCENARIOS = [
     "look_picks_the_same_state_on_a_container",
     "look_picks_the_same_state_on_a_button",
     "two_state_words_on_a_label_page_nav_and_button",
+    "a_look_shows_nothing_for_an_unreachable_device_or_a_missing_key",
     "looks_and_toggles_keep_the_buttons_own_image",
     # Clearing a ui.<id>.* override hands the element back to its look as it
     # stands now.
