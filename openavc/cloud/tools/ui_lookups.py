@@ -4,7 +4,8 @@ The checks themselves (``ui/page_review.py``, ``ui/page_references.py``) import
 nothing from the engine. They are handed functions, and this module is those
 functions, answered from the loaded drivers, the plugin loader and the
 project's ``ui/`` folder for the two callers in ``ui_tools``: a UI write and the
-whole-project review.
+whole-project review. :func:`reference_lookups` is every lookup the reference
+check takes, by its keyword, so a new one is added here once and reaches both.
 
 Every answer is advisory. ``None`` is "no opinion" and never warns, and nothing
 here may raise into a write: each lookup catches what its driver or plugin
@@ -23,6 +24,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from openavc.core.command_params import file_command_check, missing_params_check
 from openavc.drivers.child_ids import coerce_child_local_id, declared_child_ids
 from openavc.utils.logger import get_logger
 
@@ -93,6 +95,11 @@ class BoundKey:
         if not isinstance(type_def, dict):
             return None
         return ChildKey(parts[0], parts[1], ".".join(parts[2:]), type_def)
+
+
+def longest_first(project: Any) -> list[str]:
+    """The project's device ids, the order :func:`bound_key` takes them in."""
+    return sorted((d.id for d in project.devices), key=len, reverse=True)
 
 
 def _is_device_key(key: Any) -> bool:
@@ -296,3 +303,27 @@ def project_ui_files(engine: Any) -> set[str] | None:
     except Exception:  # pragma: no cover - advisory path only
         log.debug("Could not list the project's ui/ folder", exc_info=True)
         return None
+
+
+def reference_lookups(
+    engine: Any, devices: Any, project: Any, device_ids: list[str],
+) -> dict[str, Any]:
+    """Every lookup ``reference_findings`` takes, by its keyword, for this project.
+
+    Built once per write and once per whole-project review, never per page, so
+    the ``ui/`` folder is listed once and a review's pages share one answer.
+    ``device_ids`` is :func:`longest_first` of the project, which the caller's
+    range lookup reads too.
+    """
+    return {
+        "page_ids": {p.id for p in project.ui.pages},
+        "device_ids": set(device_ids),
+        "macro_ids": {m.id for m in project.macros},
+        "device_commands": lambda device_id: declared_commands(devices, device_id),
+        "plugin_elements": lambda plugin_id: declared_panel_elements(engine, plugin_id),
+        "undeclared_property": lambda key: undeclared_state_property(devices, device_ids, key),
+        "unknown_child_id": lambda key: unknown_child_id(devices, device_ids, key),
+        "missing_params": missing_params_check(devices, project),
+        "ui_files": project_ui_files(engine),
+        "file_command": file_command_check(devices, project),
+    }

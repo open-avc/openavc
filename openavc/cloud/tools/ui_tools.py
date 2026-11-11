@@ -9,14 +9,10 @@ from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.cloud.tools.ui_bindings import normalize_bindings, validate_bindings
 from openavc.cloud.tools.ui_lookups import (
-    declared_commands,
-    declared_panel_elements,
     declared_state_variable,
-    project_ui_files,
-    undeclared_state_property,
-    unknown_child_id,
+    longest_first,
+    reference_lookups,
 )
-from openavc.core.command_params import file_command_check, missing_params_check
 from openavc.core.ui_events import resolve_press
 from openavc.ui.matrix_model import matrix_config_problems
 from openavc.ui.page_geometry import (
@@ -660,7 +656,7 @@ class UIToolsMixin:
         an unrelated update, and D2 is that auto-fill happens only where no
         intent was expressed.
         """
-        device_ids = sorted((d.id for d in project.devices), key=len, reverse=True)
+        device_ids = longest_first(project)
         cache: dict[str, dict | None] = {}
 
         def declared_range(key: str) -> dict | None:
@@ -680,22 +676,7 @@ class UIToolsMixin:
         findings.extend(reference_findings(
             page,
             touched=touched,
-            page_ids={p.id for p in project.ui.pages},
-            device_ids=set(device_ids),
-            macro_ids={m.id for m in project.macros},
-            device_commands=lambda device_id: declared_commands(self._devices, device_id),
-            plugin_elements=lambda plugin_id: declared_panel_elements(
-                self._get_engine(), plugin_id,
-            ),
-            undeclared_property=lambda key: undeclared_state_property(
-                self._devices, device_ids, key,
-            ),
-            unknown_child_id=lambda key: unknown_child_id(
-                self._devices, device_ids, key,
-            ),
-            missing_params=missing_params_check(self._devices, project),
-            ui_files=project_ui_files(self._get_engine()),
-            file_command=file_command_check(self._devices, project),
+            **reference_lookups(self._get_engine(), self._devices, project, device_ids),
         ))
         findings.extend(_custom_markup_findings(self._get_engine(), page, touched))
         if findings:
@@ -1545,14 +1526,8 @@ class UIToolsMixin:
                          f"{', '.join(p.id for p in project.ui.pages) or '(none)'}"
             }
 
-        device_ids = sorted((d.id for d in project.devices), key=len, reverse=True)
-        page_ids = {p.id for p in project.ui.pages}
-        macro_ids = {m.id for m in project.macros}
-        # Listed once rather than per page: it is a directory walk, and every
-        # page asks the same question of it.
-        ui_files = project_ui_files(self._get_engine())
-        check_params = missing_params_check(self._devices, project)
-        check_files = file_command_check(self._devices, project)
+        device_ids = longest_first(project)
+        lookups = reference_lookups(engine, self._devices, project, device_ids)
         by_page: dict[str, list[str]] = {}
         total = 0
 
@@ -1569,25 +1544,7 @@ class UIToolsMixin:
                 set_field=lambda *_: None,
                 masters=project.ui.master_elements,
             )
-            findings.extend(reference_findings(
-                page,
-                page_ids=page_ids,
-                device_ids=set(device_ids),
-                macro_ids=macro_ids,
-                device_commands=lambda device_id: declared_commands(self._devices, device_id),
-                plugin_elements=lambda plugin_id: declared_panel_elements(
-                    self._get_engine(), plugin_id,
-                ),
-                undeclared_property=lambda key: undeclared_state_property(
-                    self._devices, device_ids, key,
-                ),
-                unknown_child_id=lambda key: unknown_child_id(
-                    self._devices, device_ids, key,
-                ),
-                missing_params=check_params,
-                ui_files=ui_files,
-                file_command=check_files,
-            ))
+            findings.extend(reference_findings(page, **lookups))
             if findings:
                 by_page[page.id] = [f.message for f in findings]
                 total += len(findings)
