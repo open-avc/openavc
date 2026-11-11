@@ -282,25 +282,33 @@ def _names(snapshot: Snapshot) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
+def _preview_driver(snapshot: Snapshot) -> dict[str, Any] | None:
+    """The driver the dialog names, and what the driver library says of it."""
+    if not snapshot.driver_id:
+        return None
+    identity = snapshot.identity or {}
+    catalog = identity.get("catalog") or {}
+    return {
+        "id": snapshot.driver_id,
+        "name": identity.get("name") or snapshot.driver_id,
+        "version": identity.get("version") or "",
+        "source": identity.get("source"),
+        "modified": identity.get("modified"),
+        "listed": catalog.get("listed"),
+        "checked": catalog.get("checked"),
+        "catalog_version": catalog.get("version") or "",
+        "files": [f.get("name") for f in identity.get("files") or []],
+        "loaded": snapshot.driver_loaded,
+    }
+
+
 def preview(snapshot: Snapshot) -> dict[str, Any]:
     """What the dialog lists under "What's included", from the same sources
     the report reads."""
-    identity = snapshot.identity or {}
     generator = generator_info()
     return {
         "device": {"id": snapshot.device_id, "name": snapshot.name},
-        "driver": {
-            "id": snapshot.driver_id,
-            "name": identity.get("name") or snapshot.driver_id,
-            "version": identity.get("version") or "",
-            "source": identity.get("source"),
-            "modified": identity.get("modified"),
-            "listed": (identity.get("catalog") or {}).get("listed"),
-            "checked": (identity.get("catalog") or {}).get("checked"),
-            "catalog_version": (identity.get("catalog") or {}).get("version") or "",
-            "files": [f.get("name") for f in identity.get("files") or []],
-            "loaded": snapshot.driver_loaded,
-        } if snapshot.driver_id else None,
+        "driver": _preview_driver(snapshot),
         "address": snapshot.address,
         "values": len(snapshot.state),
         "changes": len(snapshot.history),
@@ -481,10 +489,12 @@ def _compared_words(identity: dict[str, Any]) -> str:
     if identity.get("modified"):
         return ", edited"
     catalog = identity.get("catalog") or {}
+    if not catalog.get("checked"):
+        return ""
     listed = catalog.get("version") or ""
-    if catalog.get("checked") and listed and listed != identity.get("version"):
-        return f", the library has {_e(listed)}"
-    return ""
+    if listed in ("", identity.get("version")):
+        return ""
+    return f", the library has {_e(listed)}"
 
 
 def render_summary(report: dict[str, Any]) -> str:
