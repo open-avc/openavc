@@ -1441,15 +1441,10 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             if wire is None:
                 continue
             send_template, params, pattern = wire
-            read = _CommandRead(*self._child_address(params))
-            specs = send_param_specs(send_template, params)
-            if isinstance(cmd_def.get("sets"), dict) or cmd_def.get("query_for"):
-                _read_declared(read, cmd_def, send_template, params, specs)
-            else:
-                _read_from_names(read, cmd_name, params, specs, state_vars)
+            read = _CommandRead(send_template, params, self._child_address(params))
+            read.read(cmd_name, cmd_def, state_vars)
             self._command_handlers.append(read.handler(cmd_name, pattern))
-
-            if not read.state_changes and not read.response_var:
+            if read.does_nothing():
                 logger.debug(
                     "Auto-sim %s: could not infer behavior for command '%s'",
                     self.driver_id, cmd_name,
@@ -1462,20 +1457,9 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         """A command's send template as the wire carries it, its params, and
         the pattern that matches it; None for a command this chain cannot
         match (no send, a raw passthrough, a pattern that will not compile)."""
-        send_template = cmd_def.get("send", "")
-        # A udp: payload is matched like a send string, but unframed:
-        # the side channel never carries the main protocol's prefix.
-        side_send = False
-        udp_def = cmd_def.get("udp")
-        if not send_template and isinstance(udp_def, dict):
-            send_template = udp_def.get("payload") or ""
-            side_send = True
+        send_template = _framed_send(cmd_def, prefix)
         if not send_template:
             return None
-        framed = prefix and not side_send and not cmd_def.get("raw")
-        if framed and not send_template.startswith(prefix):
-            send_template = prefix + send_template
-
         params = cmd_def.get("params", {})
 
         # A raw passthrough ("{command}\r") would match every line, and
@@ -2533,7 +2517,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # replaces the standard push instead of following it, so one change
         # is one frame, as on the device.
         template = self._notification_template(key, value)
-        if self._push_state and not (template is not None and self._sends_notifications()):
+        replaced = template is not None and self._sends_notifications()
+        if self._push_state and not replaced:
             self._push_changed_value(key, value)
         if template is not None:
             self._send_notification(template, key, value)
@@ -2552,11 +2537,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         var_def = self._var_def_for_key(key)
         v_min = _as_number(var_def.get("min"))
         v_max = _as_number(var_def.get("max"))
-        if v_min is not None and value < v_min:
-            value = math.ceil(v_min) if isinstance(value, int) else v_min
-        if v_max is not None and value > v_max:
-            value = math.floor(v_max) if isinstance(value, int) else v_max
-        return value
+        return _lowered_to(_raised_to(value, v_min), v_max)
 
     def _push_changed_value(self, key: str, value: Any) -> None:
         """The standard push (``push_state``): the changed value's reply on
@@ -2565,13 +2546,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         state written while answering a command or a message is the reply,
         not news."""
         if self._is_osc:
-            if (
-                not self._handling_osc
-                and self._last_client_addr
-                and self._udp_transport
-                and key in self._osc_state_to_address
-            ):
-                self._push_osc_state(key, value)
+            if not self._handling_osc and key in self._osc_state_to_address:
+                self._push_osc_change(key, value)
             return
         if self._handling_command or not self._control_link_open():
             return
@@ -2579,12 +2555,19 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         if text is not None:
             self._send_on_control_link((text + self._get_delimiter()).encode())
 
+    def _push_osc_change(self, key: str, value: Any) -> None:
+        if self._peer_heard():
+            self._push_osc_state(key, value)
+
+    def _peer_heard(self) -> bool:
+        """Whether a datagram peer has spoken to the device: the only one a
+        connectionless device can push to."""
+        return bool(self._last_client_addr and self._udp_transport)
+
     def _control_link_open(self) -> bool:
         """Whether anyone is on the control link to push to: a UDP peer that
         spoke to the device, or a connected stream client."""
-        if self._is_udp:
-            return bool(self._last_client_addr and self._udp_transport)
-        return bool(self._clients)
+        return self._peer_heard() if self._is_udp else bool(self._clients)
 
     def _push_osc_state(self, key: str, value: Any) -> None:
         """Send an OSC message to the connected driver for a state change."""
@@ -2900,22 +2883,46 @@ class CommandHandler:
         self.response_is_child = response_is_child
 
 
+def _framed_send(cmd_def: dict, prefix: str) -> Any:
+    """The text a command puts on the wire, framed with the driver's prefix
+    unless it is raw, already starts with it, or is a udp: payload (the side
+    channel never carries the main protocol's prefix); falsy when it sends
+    nothing."""
+    send_template = cmd_def.get("send", "")
+    if not send_template:
+        udp_def = cmd_def.get("udp")
+        return (udp_def.get("payload") or "") if isinstance(udp_def, dict) else send_template
+    if not prefix or cmd_def.get("raw"):
+        return send_template
+    return send_template if send_template.startswith(prefix) else prefix + send_template
+
+
+def _raised_to(value: Any, low: float | None) -> Any:
+    """``value`` raised to a lower bound; an integer to the bound rounded up,
+    so it still respects a fractional bound."""
+    if low is None or not value < low:
+        return value
+    return math.ceil(low) if isinstance(value, int) else low
+
+
+def _lowered_to(value: Any, high: float | None) -> Any:
+    """``value`` lowered to an upper bound; an integer to the bound rounded
+    down."""
+    if high is None or not value > high:
+        return value
+    return math.floor(high) if isinstance(value, int) else high
+
+
 class _CommandRead:
     """What one command does, as it is read: the child it addresses, which
     capture writes which variable and how each capture decodes, and the
     variable its reply reports."""
 
-    def __init__(
-        self,
-        child_param_name: str | None,
-        child_type: str | None,
-        child_wire_map: dict[str, str] | None,
-        child_vars: dict[str, dict],
-    ):
-        self.child_param_name = child_param_name
-        self.child_type = child_type
-        self.child_wire_map = child_wire_map
-        self.child_vars = child_vars
+    def __init__(self, send_template: str, params: Any, address: tuple) -> None:
+        self.send_template = send_template
+        self.params = params
+        self.specs = send_param_specs(send_template, params)
+        self.child_param_name, self.child_type, self.child_wire_map, self.child_vars = address
         self.child_id_group = 0
         self.state_changes: dict[str, Any] = {}
         self.child_state_keys: set[str] = set()
@@ -2924,19 +2931,27 @@ class _CommandRead:
         self.group_bases: dict[int, int] = {}
         self.group_conversions: dict[int, dict] = {}
 
+    def read(self, cmd_name: str, cmd_def: dict, state_vars: set[str]) -> None:
+        """Read the command as it declares itself, or by its names when it
+        declares nothing."""
+        if isinstance(cmd_def.get("sets"), dict) or cmd_def.get("query_for"):
+            self.read_declared(cmd_def)
+        else:
+            self.read_from_names(cmd_name, state_vars)
+
+    def does_nothing(self) -> bool:
+        """True when the command was read as writing nothing and reporting
+        nothing."""
+        return not self.state_changes and not self.response_var
+
     def handler(self, name: str, pattern: re.Pattern) -> CommandHandler:
         """The handler, with no child routing when no capture holds the
         child id: a child-addressed handler needs the id capture to route
         by, so without it the child's own writes are dropped and the rest
         behaves as a plain command."""
         if not self.child_id_group:
-            self.child_type = None
-            self.child_wire_map = None
-            if self.child_state_keys:
-                for var_name in self.child_state_keys:
-                    self.state_changes.pop(var_name, None)
-                self.child_state_keys = set()
-                self.response_is_child = False
+            self._drop_child_routing()
+        routes_child = self.child_state_keys or self.response_is_child
         return CommandHandler(
             name=name,
             pattern=pattern,
@@ -2944,152 +2959,165 @@ class _CommandRead:
             response_var=self.response_var,
             group_bases=self.group_bases,
             group_conversions=self.group_conversions,
-            child_type=(
-                self.child_type if self.child_state_keys or self.response_is_child else None
-            ),
+            child_type=self.child_type if routes_child else None,
             child_id_group=self.child_id_group,
             child_wire_map=self.child_wire_map,
             child_state_keys=self.child_state_keys,
             response_is_child=self.response_is_child,
         )
 
+    def _drop_child_routing(self) -> None:
+        self.child_type = None
+        self.child_wire_map = None
+        if not self.child_state_keys:
+            return
+        for var_name in self.child_state_keys:
+            self.state_changes.pop(var_name, None)
+        self.child_state_keys = set()
+        self.response_is_child = False
 
-def _capture_decoders(
-    read: _CommandRead, params: Any, specs: dict[str, str], group_of: dict[str, int]
-) -> None:
-    """How each param's capture decodes back to the value the driver sent: a
-    non-decimal format spec's base (``{level:02X}`` put hex on the wire) and
-    the param's scale / offset. ``group_of`` names each param's capture."""
-    for param_name, param_def in params.items():
-        group = group_of.get(param_name)
-        ptype = (
-            param_def.get("type", "string") if isinstance(param_def, dict) else "string"
-        )
-        if ptype in ("integer", "child_id"):
-            base = spec_int_base(specs.get(param_name, ""))
-            if base and group is not None:
-                read.group_bases[group] = base
-        conversion = conversion_of(param_def)
-        if conversion and group is not None:
-            read.group_conversions[group] = conversion
-
-
-def _read_declared(
-    read: _CommandRead, cmd_def: dict, send_template: str, params: Any,
-    specs: dict[str, str],
-) -> None:
-    """A command that says what it does: wired exactly as authored, no
-    name-guessing. Group indices come from placeholder order in the template
-    (that's how send_regex numbers its captures)."""
-    declared_sets = cmd_def.get("sets")
-    declared_query_for = cmd_def.get("query_for")
-    param_groups = send_param_groups(send_template, params)
-    if read.child_param_name:
-        read.child_id_group = param_groups.get(read.child_param_name, 0)
-    _capture_decoders(read, params, specs, param_groups)
-    if isinstance(declared_sets, dict):
-        for var_name, set_value in declared_sets.items():
-            # On a child-addressed command the child type's own variables
-            # win the name; flat vars stay reachable for names the child type
-            # doesn't declare.
-            if read.child_type and var_name in read.child_vars:
-                read.child_state_keys.add(var_name)
-            ref = (
-                re.fullmatch(r"\{([^{}]+)\}", set_value)
-                if isinstance(set_value, str)
-                else None
+    def _decode_captures(self, group_of: dict[str, int]) -> None:
+        """How each param's capture decodes back to the value the driver
+        sent: a non-decimal format spec's base (``{level:02X}`` put hex on
+        the wire) and the param's scale / offset. ``group_of`` names each
+        param's capture."""
+        for param_name, param_def in self.params.items():
+            group = group_of.get(param_name)
+            ptype = (
+                param_def.get("type", "string") if isinstance(param_def, dict) else "string"
             )
-            if ref:
-                group = param_groups.get(ref.group(1))
-                if group:
-                    read.state_changes[var_name] = group  # capture group
-                # An unresolvable "{param}" reference declares nothing (the
-                # validator flags it at load).
-            else:
-                # Literal, wrapped so an integer literal can't be mistaken
-                # for a capture-group index.
-                read.state_changes[var_name] = ("literal", set_value)
-    read.response_var = declared_query_for or next(iter(read.state_changes), None)
-    read.response_is_child = bool(
-        read.child_type
-        and read.response_var is not None
-        and (
-            read.response_var in read.child_state_keys
-            or (declared_query_for and read.response_var in read.child_vars)
+            if ptype in ("integer", "child_id"):
+                base = spec_int_base(self.specs.get(param_name, ""))
+                if base and group is not None:
+                    self.group_bases[group] = base
+            conversion = conversion_of(param_def)
+            if conversion and group is not None:
+                self.group_conversions[group] = conversion
+
+    # ── A command that declares what it does ──
+
+    def read_declared(self, cmd_def: dict) -> None:
+        """Wired exactly as authored, no name-guessing. Group indices come
+        from placeholder order in the template (that's how send_regex
+        numbers its captures)."""
+        declared_sets = cmd_def.get("sets")
+        declared_query_for = cmd_def.get("query_for")
+        param_groups = send_param_groups(self.send_template, self.params)
+        if self.child_param_name:
+            self.child_id_group = param_groups.get(self.child_param_name, 0)
+        self._decode_captures(param_groups)
+        if isinstance(declared_sets, dict):
+            for var_name, set_value in declared_sets.items():
+                self._declared_set(var_name, set_value, param_groups)
+        self.response_var = declared_query_for or next(iter(self.state_changes), None)
+        self.response_is_child = bool(
+            self.child_type
+            and self.response_var is not None
+            and self._reports_child_variable(declared_query_for)
         )
-    )
 
+    def _declared_set(self, var_name: str, set_value: Any, param_groups: dict[str, int]) -> None:
+        """One ``sets:`` entry: a ``{param}`` reference writes that param's
+        capture, anything else is a literal."""
+        # On a child-addressed command the child type's own variables win
+        # the name; flat vars stay reachable for names the child type
+        # doesn't declare.
+        if self.child_type and var_name in self.child_vars:
+            self.child_state_keys.add(var_name)
+        ref = re.fullmatch(r"\{([^{}]+)\}", set_value) if isinstance(set_value, str) else None
+        if not ref:
+            # Literal, wrapped so an integer literal can't be mistaken for a
+            # capture-group index.
+            self.state_changes[var_name] = ("literal", set_value)
+            return
+        group = param_groups.get(ref.group(1))
+        if group:
+            self.state_changes[var_name] = group  # capture group
+        # An unresolvable "{param}" reference declares nothing (the
+        # validator flags it at load).
 
-def _read_from_names(
-    read: _CommandRead, cmd_name: str, params: Any, specs: dict[str, str],
-    state_vars: set[str],
-) -> None:
-    """A command that declares nothing, read from its names: a param named
-    after a variable writes it (the addressed child type's variables first,
-    flat second), else the command's own name says the variable and what it
-    sets, else a param-less command is a query for the variable its name
-    says. Captures are numbered in the order the params are declared."""
-    _capture_decoders(
-        read, params, specs, {name: idx for idx, name in enumerate(params, start=1)}
-    )
-    for group_idx, param_name in enumerate(params, start=1):
-        if param_name == read.child_param_name:
-            read.child_id_group = group_idx
-        elif read.child_type and param_name in read.child_vars:
-            read.state_changes[param_name] = group_idx
-            read.child_state_keys.add(param_name)
-            if not read.response_var:
-                read.response_var = param_name
-                read.response_is_child = True
-        elif param_name in state_vars:
-            read.state_changes[param_name] = group_idx  # capture group
-            if not read.response_var:
-                read.response_var = param_name
-    if not read.state_changes:
-        _read_command_name(read, cmd_name, params, state_vars)
-    # A query: a command with no params reports the variable its name says.
-    if not read.response_var and not params:
-        target = infer_state_var(cmd_name, state_vars)
-        if target:
-            read.response_var = target
+    def _reports_child_variable(self, declared_query_for: Any) -> bool:
+        if self.response_var in self.child_state_keys:
+            return True
+        return bool(declared_query_for) and self.response_var in self.child_vars
 
+    # ── A command that declares nothing: read from its names ──
 
-def _read_command_name(
-    read: _CommandRead, cmd_name: str, params: Any, state_vars: set[str]
-) -> None:
-    """What a command's name says it does (against the addressed child
-    type's variables when it targets a child, then the flat ones): the
-    variable it reports, and the value a switching word sets, nothing for a
-    toggle, or the first param that is not the child id."""
-    target = infer_state_var(
-        cmd_name, set(read.child_vars) if read.child_type else state_vars
-    )
-    if not target and read.child_type:
-        target = infer_state_var(cmd_name, state_vars)
-    if not target:
-        return
-    read.response_var = target
-    read.response_is_child = bool(read.child_type and target in read.child_vars)
-    if read.response_is_child:
-        read.child_state_keys.add(target)
-    switches, value = name_switch(cmd_name)
-    if value is not None:
-        read.state_changes[target] = value
-    elif switches:
-        return  # a toggle: report the current value, set nothing
-    elif params:
+    def read_from_names(self, cmd_name: str, state_vars: set[str]) -> None:
+        """A param named after a variable writes it (the addressed child
+        type's variables first, flat second), else the command's own name
+        says the variable and what it sets, else a param-less command is a
+        query for the variable its name says. Captures are numbered in the
+        order the params are declared."""
+        self._decode_captures({name: idx for idx, name in enumerate(self.params, start=1)})
+        for group_idx, param_name in enumerate(self.params, start=1):
+            self._param_by_name(param_name, group_idx, state_vars)
+        if not self.state_changes:
+            self._read_command_name(cmd_name, state_vars)
+        # A query: a command with no params reports the variable its name says.
+        if not self.response_var and not self.params:
+            self.response_var = infer_state_var(cmd_name, state_vars) or self.response_var
+
+    def _param_by_name(self, param_name: str, group: int, state_vars: set[str]) -> None:
+        if param_name == self.child_param_name:
+            self.child_id_group = group
+            return
+        is_child = bool(self.child_type) and param_name in self.child_vars
+        if not is_child and param_name not in state_vars:
+            return
+        self.state_changes[param_name] = group  # capture group
+        if is_child:
+            self.child_state_keys.add(param_name)
+        if not self.response_var:
+            # Only a child variable marks the reply as the child's; a flat
+            # one leaves it as it was (an earlier child variable named ""
+            # left the reply variable falsy and the mark set).
+            self.response_var = param_name
+            if is_child:
+                self.response_is_child = True
+
+    def _read_command_name(self, cmd_name: str, state_vars: set[str]) -> None:
+        """What a command's name says it does: the variable it reports, and
+        the value a switching word sets, nothing for a toggle, or the first
+        param that is not the child id."""
+        target = self._name_target(cmd_name, state_vars)
+        if not target:
+            return
+        self.response_var = target
+        self.response_is_child = bool(self.child_type and target in self.child_vars)
+        if self.response_is_child:
+            self.child_state_keys.add(target)
+        switches, value = name_switch(cmd_name)
+        if value is not None:
+            self.state_changes[target] = value
+        elif not switches and self.params:
+            # set_X with params: the first param that is not the child id
+            self._write_first_value_param(target)
+        # A toggle reports the current value and sets nothing.
+
+    def _name_target(self, cmd_name: str, state_vars: set[str]) -> str | None:
+        """The variable a command's name says, against the addressed child
+        type's variables when it targets a child, then the flat ones."""
+        if not self.child_type:
+            return infer_state_var(cmd_name, state_vars)
+        return (
+            infer_state_var(cmd_name, set(self.child_vars))
+            or infer_state_var(cmd_name, state_vars)
+        )
+
+    def _write_first_value_param(self, target: str) -> None:
         value_group = next(
             (
-                idx for idx, pname in enumerate(params, start=1)
-                if pname != read.child_param_name
+                idx for idx, pname in enumerate(self.params, start=1)
+                if pname != self.child_param_name
             ),
             0,
         )
         if value_group:
-            read.state_changes[target] = value_group
+            self.state_changes[target] = value_group
         else:
-            read.state_changes.pop(target, None)
-            read.child_state_keys.discard(target)
+            self.state_changes.pop(target, None)
+            self.child_state_keys.discard(target)
 
 
 class QueryHandler:
