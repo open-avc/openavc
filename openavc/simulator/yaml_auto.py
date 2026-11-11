@@ -47,7 +47,6 @@ import yaml
 
 from openavc.drivers.compiled_protocol import (
     apply_send_frame,
-    build_json_mappings,
     build_send_frame,
     conversion_of,
     decode_delimiter,
@@ -58,16 +57,11 @@ from openavc.drivers.compiled_protocol import (
     value_to_wire,
 )
 from openavc.drivers.child_ids import coerce_child_local_id
-from openavc.drivers.inline_protocol import (
-    declare_command_params,
-    derive_state_vars_from_responses,
-    normalize_config_commands,
-    normalize_config_responses,
-    normalize_config_state_vars,
-)
 from openavc.simulator.command_handler import CommandHandler
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
+from openavc.simulator.inline_device import json_body, json_fields, json_polls, response_handlers
+from openavc.simulator.inline_device import merge_inline_protocol as _merge_inline_protocol
 from openavc.simulator.osc_addresses import (
     PushTarget,
     address_rules,
@@ -90,7 +84,6 @@ from openavc.simulator.reply_rules import (
     child_replies,
     flat_replies,
     list_answers,
-    mappings_to_set,
     reversed_ids,
 )
 from openavc.simulator.reread_queries import every_query_entry
@@ -166,51 +159,6 @@ def _as_number(value: Any) -> float | None:
         return float(value)
     except (ValueError, TypeError):
         return None
-
-
-def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict, bool]:
-    """Merge a Generic device's inline protocol (config-authored commands /
-    responses / state_variables) into the definition the auto-simulator builds
-    from. Returns ``(merged_def, had_inline)``.
-
-    Responses are translated to the simulator's ``match`` + ``set`` shorthand so
-    the existing auto-sim machinery (state responses, query handlers) drives
-    them. Commands keep their ``send`` templates with NO line ending appended —
-    the simulator matches the incoming command line after the delimiter is
-    stripped.
-    """
-    cfg = config or {}
-    norm_cmds = normalize_config_commands(cfg.get("commands"))  # no line-ending
-    canonical = normalize_config_responses(cfg.get("responses"))
-    norm_vars = normalize_config_state_vars(cfg.get("state_variables"))
-
-    if not (norm_cmds or canonical or norm_vars):
-        return driver_def, False
-
-    # A {value} in a command is a parameter, as the driver declares it, so the
-    # incoming line is matched with the value in it rather than the braces.
-    declare_command_params(norm_cmds, set(cfg))
-
-    merged = dict(driver_def)
-    merged["commands"] = {**(driver_def.get("commands") or {}), **norm_cmds}
-    sim_responses: list[dict] = []
-    for r in canonical:
-        if r.get("json"):
-            # A JSON-field row reads a key out of a reply body, with no line
-            # to match: it is kept in the form a driver file writes it.
-            sim_responses.append(r)
-        elif "match" in r:
-            sim_responses.append(
-                {"match": r["match"], "set": mappings_to_set(r.get("mappings", []))}
-            )
-    merged["responses"] = list(driver_def.get("responses") or []) + sim_responses
-    derived = derive_state_vars_from_responses(canonical)
-    merged["state_variables"] = {
-        **(driver_def.get("state_variables") or {}), **derived, **norm_vars,
-    }
-    if isinstance(cfg.get("delimiter"), str):
-        merged["delimiter"] = cfg["delimiter"]
-    return merged, True
 
 
 #: A template handler's placeholders: a capture group (`{1}`) or another state
@@ -315,20 +263,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # The flat reads (query_handlers.py).
         self._query_handlers = flat_handlers(self._driver_def, self._query_wire_line)
 
-        # Inline (Generic) devices: also match an incoming command against the
-        # response patterns and apply their state changes. Many such devices use
-        # the same string to set and to report a value (e.g. "PWR ON"), so the
-        # string the panel sends is also the device's status string.
-        self._inline_response_handlers: list[tuple[re.Pattern, dict]] = []
-        if self._inline_protocol:
-            self._build_inline_response_handlers()
-
-        # Inline HTTP devices: a command marked Poll is the device's status
-        # request, answered with every JSON-field response's current value.
-        self._inline_json_polls: list[re.Pattern] = []
-        self._inline_json_fields: list[dict] = []
-        if self._inline_protocol and self._is_http:
-            self._build_inline_json_polls()
+        self._build_inline_handlers()
 
         # OSC-specific: build address-based handlers from responses
         self._osc_address_handlers: list[tuple[str, list[dict]]] = []
@@ -1375,26 +1310,22 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             return None
         return (text + self._get_delimiter()).encode()
 
-    def _build_inline_response_handlers(self) -> None:
-        """Compile (pattern, set) handlers from the merged inline responses.
-
-        Used only by Generic (inline-protocol) devices to react to an incoming
-        command that matches one of the device's own response patterns.
-        """
-        for resp in self._driver_def.get("responses", []):
-            match_pattern = resp.get("match", "")
-            set_dict = resp.get("set", {})
-            if not match_pattern or not set_dict:
-                continue
-            try:
-                pattern = re.compile(f"^{match_pattern}$")
-            except re.error:
-                logger.warning(
-                    "%s: skipping bad inline response pattern %r",
-                    self.driver_id, match_pattern,
-                )
-                continue
-            self._inline_response_handlers.append((pattern, set_dict))
+    def _build_inline_handlers(self) -> None:
+        """A Generic device's own response patterns, and an HTTP one's JSON
+        status poll (inline_device.py); all three tables empty for a file
+        driver."""
+        self._inline_response_handlers: list[tuple[re.Pattern, dict]] = []
+        self._inline_json_polls: list[re.Pattern] = []
+        self._inline_json_fields: list[dict] = []
+        if not self._inline_protocol:
+            return
+        self._inline_response_handlers = response_handlers(
+            self._driver_def.get("responses", []), self.driver_id
+        )
+        if self._is_http:
+            self._inline_json_fields = json_fields(self._driver_def)
+            if self._inline_json_fields:
+                self._inline_json_polls = json_polls(self._driver_def)
 
     def _apply_inline_response(
         self, text: str, m: re.Match, set_dict: dict
@@ -1413,44 +1344,9 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             self.set_state(state_key, self._coerce_value(state_key, value))
         return (text + self._get_delimiter()).encode()
 
-    def _build_inline_json_polls(self) -> None:
-        """Match each HTTP command marked Poll, when the device reads any JSON
-        field. Nothing is answered for a device without one: a body none of
-        its responses read would only look like the wrong driver."""
-        state_vars = self._driver_def.get("state_variables") or {}
-        for resp in self._driver_def.get("responses") or []:
-            if isinstance(resp, dict) and resp.get("json"):
-                self._inline_json_fields.extend(
-                    m for m in build_json_mappings(resp, state_vars)
-                    if m.get("state") and m.get("key") and "contains" not in m
-                )
-        if not self._inline_json_fields:
-            return
-        for cmd in (self._driver_def.get("commands") or {}).values():
-            if not isinstance(cmd, dict) or not cmd.get("poll") or "send" in cmd:
-                continue
-            method = str(cmd.get("method") or "GET").upper()
-            pattern = re.escape(f"{method} {cmd.get('path') or '/'}")
-            # A {placeholder} in the path matches whatever the driver filled in.
-            pattern = re.sub(r"\\\{\w+\\\}", r"[^\\s|]+", pattern)
-            self._inline_json_polls.append(re.compile(f"^{pattern}(?:\\|.*)?$"))
-
     def _inline_json_reply(self) -> bytes:
-        """A JSON body holding each JSON field's current value, a dotted key
-        nested the way the driver reads it."""
-        body: dict[str, Any] = {}
-        for mapping in self._inline_json_fields:
-            value = self.get_state(mapping["state"])
-            segments = [s for s in str(mapping["key"]).split(".") if s]
-            if value is None or not segments:
-                continue
-            node = body
-            for seg in segments[:-1]:
-                if not isinstance(node.get(seg), dict):
-                    node[seg] = {}
-                node = node[seg]
-            node[segments[-1]] = value
-        return json.dumps(body).encode()
+        """The JSON status poll's answer (inline_device.json_body)."""
+        return json_body(self._inline_json_fields, self.get_state)
 
     def _build_osc_address_handlers(self) -> None:
         """The address rules a message is matched against (osc_addresses)."""

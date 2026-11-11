@@ -13,8 +13,8 @@ The rules worth knowing before changing anything here:
   the reply rules, then the device's explicit ones. The derived set is taken
   from the file's rules and the device's together, so it replaces a file
   variable a file rule writes, its label and values with it; the
-  simulator's own merge (``_merge_inline_protocol`` in
-  ``simulator/yaml_auto.py``) derives from the device's rules only.
+  simulator's own merge (``merge_inline_protocol`` in
+  ``simulator/inline_device.py``) derives from the device's rules only.
 * **A device whose config holds none of the four shares the class
   definition**, untouched. A driver's shipped ``default_config.ir_codes``
   are layered into every device's config, so each device of such a driver
