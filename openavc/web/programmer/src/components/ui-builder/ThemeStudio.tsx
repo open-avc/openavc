@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import {
-  X, Copy, Trash2, Save, Upload, Download, RotateCcw, AlertTriangle, Check, FilePlus, Minus,
+  X, Copy, Trash2, Save, Upload, Download, RotateCcw, AlertTriangle, FilePlus,
 } from "lucide-react";
 import {
   getTheme, createTheme, updateTheme, deleteTheme, importTheme,
@@ -14,7 +14,8 @@ import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { Modal } from "../shared/Modal";
 import { PanelPreviewFrame } from "./PanelPreviewFrame";
 import { NumericInput } from "../shared/NumericInput";
-import { contrastRatio, wcagLevel, CSS_VAR_FALLBACKS, type WcagLevel } from "./colorUtils";
+import { CSS_VAR_FALLBACKS } from "./colorUtils";
+import { ContrastSection } from "./ContrastSection";
 import { ColorField } from "./ColorField";
 import { ElementSections } from "./ElementSections";
 import { ResetToSaved, StudioSection } from "./StudioParts";
@@ -362,36 +363,6 @@ export function ThemeStudio({
     onClose();
   };
 
-  // Contrast checks on working copy variables
-  const contrastChecks = useMemo(() => {
-    const v = (working?.variables || {}) as Record<string, string>;
-    const checks: { label: string; fg: string; bg: string; ratio: number | null; level: WcagLevel }[] = [];
-    const pairs: [string, string, string][] = [
-      ["Text on Background", "panel_text", "panel_bg"],
-      ["Button Text on Button", "button_text", "button_bg"],
-      ["Accent on Background", "accent", "panel_bg"],
-      ["Button Text on Active", "button_text", "accent"],
-      ["Danger on Background", "danger", "panel_bg"],
-      ["Success on Background", "success", "panel_bg"],
-      ["Warning on Background", "warning", "panel_bg"],
-    ];
-    for (const [label, fgKey, bgKey] of pairs) {
-      // Fall back to the effective CSS value so a cleared token is checked
-      // against what the panel actually renders, not skipped.
-      const fgVal = String(v[fgKey] ?? "") || CSS_VAR_FALLBACKS[fgKey] || "";
-      const bgVal = String(v[bgKey] ?? "") || CSS_VAR_FALLBACKS[bgKey] || "";
-      if (fgVal && bgVal) {
-        const ratio = contrastRatio(fgVal, bgVal);
-        // wcagLevel(null) → "na": a color we can't parse for a ratio (e.g. a
-        // CSS keyword the panel still renders) is reported neutral, not FAIL.
-        checks.push({ label, fg: fgVal, bg: bgVal, ratio, level: wcagLevel(ratio) });
-      }
-    }
-    return checks;
-  }, [working]);
-
-  const failingContrasts = contrastChecks.filter((c) => c.level === "fail");
-
   if (!open) return null;
 
   return (
@@ -530,8 +501,6 @@ export function ThemeStudio({
                 isDirty={isDirty}
                 busy={busy}
                 statusMsg={statusMsg}
-                contrastChecks={contrastChecks}
-                failingContrasts={failingContrasts}
                 onSetName={setName}
                 onSetDesc={setDesc}
                 onSetVar={setVar}
@@ -1022,8 +991,6 @@ interface EditorColumnProps {
   isDirty: boolean;
   busy: boolean;
   statusMsg: { kind: "info" | "error"; text: string } | null;
-  contrastChecks: { label: string; fg: string; bg: string; ratio: number | null; level: WcagLevel }[];
-  failingContrasts: { label: string }[];
   themeOverrides: Record<string, unknown>;
   onSetName: (name: string) => void;
   onSetDesc: (desc: string) => void;
@@ -1049,8 +1016,6 @@ function EditorColumn({
   isDirty,
   busy,
   statusMsg,
-  contrastChecks,
-  failingContrasts,
   themeOverrides,
   onSetName,
   onSetDesc,
@@ -1400,76 +1365,7 @@ function EditorColumn({
           onSetElementDefault={onSetElementDefault}
         />
 
-        <StudioSection
-          title={
-            <>
-              Contrast (WCAG)
-              {failingContrasts.length > 0 && (
-                <span style={{ color: "#ef5350", marginLeft: 6, fontWeight: 600 }}>
-                  {failingContrasts.length} failing
-                </span>
-              )}
-            </>
-          }
-        >
-          <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 4 }}>
-            {contrastChecks.map((c) => (
-              <div
-                key={c.label}
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}
-              >
-                {c.level === "fail" ? (
-                  <AlertTriangle size={12} style={{ color: "#ef5350", flexShrink: 0 }} />
-                ) : c.level === "na" ? (
-                  <Minus size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-                ) : (
-                  <Check size={12} style={{ color: "#66bb6a", flexShrink: 0 }} />
-                )}
-                <span style={{ flex: 1, color: "var(--text-secondary)" }}>{c.label}</span>
-                <div style={{ display: "flex", gap: 2 }}>
-                  <div
-                    style={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: 2,
-                      background: c.fg,
-                      border: "1px solid rgba(128,128,128,0.3)",
-                    }}
-                  />
-                  <div
-                    style={{
-                      width: 12,
-                      height: 12,
-                      borderRadius: 2,
-                      background: c.bg,
-                      border: "1px solid rgba(128,128,128,0.3)",
-                    }}
-                  />
-                </div>
-                <span
-                  style={{
-                    fontFamily: "monospace",
-                    fontSize: 10,
-                    fontWeight: 600,
-                    color:
-                      c.level === "fail" ? "#ef5350"
-                      : c.level === "na" ? "var(--text-muted)"
-                      : c.level === "AAA" ? "#66bb6a"
-                      : "#ffa726",
-                    width: 56,
-                    textAlign: "right",
-                  }}
-                >
-                  {c.ratio ? `${c.ratio.toFixed(1)}:1` : "—"}{" "}
-                  <span style={{ fontSize: 8 }}>{c.level === "na" ? "n/a" : c.level}</span>
-                </span>
-              </div>
-            ))}
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.4 }}>
-              WCAG AA requires 4.5:1 for normal text. AAA requires 7:1.
-            </div>
-          </div>
-        </StudioSection>
+        <ContrastSection variables={vars} />
       </div>
     </div>
   );
