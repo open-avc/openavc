@@ -388,35 +388,31 @@ async def test_a_project_with_no_ui_has_no_elements():
 # --- the element the runtime reaches -----------------------------------------------
 
 
-def _runtime(project: dict | None = None) -> UIEventRuntime:
+async def _reached(element_id: str, event: str, *, project: bool = True) -> list:
+    """What the runtime would dispatch for this event, which says whose bindings it read."""
     engine = MagicMock()
-    engine.project = ProjectConfig.model_validate(project or _project())
-    return UIEventRuntime(engine)
+    engine.project = ProjectConfig.model_validate(_project()) if project else None
+    engine.events.emit = AsyncMock()
+    return await UIEventRuntime(engine).handle(event, element_id, dry_run=True)
 
 
-@pytest.mark.parametrize("element_id, found", [
-    ("shadowed", ("main", "button")),
-    ("m_toggle", ("master", "button")),
-    ("twice", ("main", "button")),
-    ("toggle", ("main", "button")),
+@pytest.mark.asyncio
+@pytest.mark.parametrize("element_id, event, dispatched", [
+    # The page element, not the master with the same id.
+    ("shadowed", "press", [{"action": "ui.navigate", "page": "other", "would_run": True}]),
+    ("m_toggle", "press", [{
+        "action": "device.command", "device": "amp", "command": "power",
+        "params": {}, "sent": False, "would_run": True,
+    }]),
+    # The first page's, which has a release and no change.
+    ("twice", "release", [{"action": "ui.navigate", "page": "main", "would_run": True}]),
+    ("twice", "change", []),
+    ("nowhere", "press", []),
 ])
-def test_the_runtime_finds_pages_first_then_masters(element_id, found):
-    runtime = _runtime()
-    element = runtime._find_element(element_id)
-    project = runtime._engine.project
-    on_page = next((p.id for p in project.ui.pages if element in p.elements), "master")
-    assert (on_page, element.type) == found
-    assert element.id == element_id
+async def test_the_runtime_reaches_pages_first_then_masters(element_id, event, dispatched):
+    assert await _reached(element_id, event) == dispatched
 
 
-def test_the_runtime_finds_nothing_for_an_unknown_id_or_no_project():
-    runtime = _runtime()
-    assert runtime._find_element("nowhere") is None
-    runtime._engine.project = None
-    assert runtime._find_element("bare") is None
-
-
-def test_the_runtime_finds_the_first_page_holding_an_id():
-    runtime = _runtime()
-    element = runtime._find_element("twice")
-    assert element is runtime._engine.project.ui.pages[0].elements[1]
+@pytest.mark.asyncio
+async def test_the_runtime_reaches_nothing_with_no_project():
+    assert await _reached("shadowed", "press", project=False) == []
