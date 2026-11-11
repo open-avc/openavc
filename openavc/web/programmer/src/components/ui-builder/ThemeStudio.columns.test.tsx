@@ -164,6 +164,11 @@ describe("the picker's cards", () => {
     expect(picker().outerHTML).toMatchSnapshot();
   });
 
+  it("are not drawn, and nothing is said about custom themes, while the list is empty", async () => {
+    await loaded({ themes: [] });
+    expect(picker().textContent).toBe("Themes Import .avctheme");
+  });
+
   it("mark the open theme while it has unsaved edits", async () => {
     await loaded();
     edit();
