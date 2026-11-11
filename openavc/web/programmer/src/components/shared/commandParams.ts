@@ -57,8 +57,9 @@ export function seedCommandParams(
 /**
  * The values to send, each as its declared type: a whole number, a number, a
  * flag. An empty field is left out, and so is a number that does not parse
- * (the form's own check has already said so). A value with no declaration is
- * sent as typed.
+ * (the form's own check has already said so). A number is read the way that
+ * check reads it (`validateParam`), so what passed is what is sent: `1e3` is
+ * a thousand, not 1. A value with no declaration is sent as typed.
  */
 export function coerceCommandParams(
   params: CommandParamDefs,
@@ -75,12 +76,9 @@ export function coerceCommandParams(
     // A file goes up on its own (api/commandFileClient.ts); the form holds
     // only its name.
     if (def.type === "file") continue;
-    if (def.type === "integer") {
-      const n = parseInt(val, 10);
-      if (!Number.isNaN(n)) out[name] = n;
-    } else if (def.type === "number" || def.type === "float") {
-      const n = parseFloat(val);
-      if (!Number.isNaN(n)) out[name] = n;
+    if (def.type === "integer" || def.type === "number" || def.type === "float") {
+      const n = val.trim() === "" ? NaN : Number(val);
+      if (Number.isFinite(n)) out[name] = n;
     } else if (def.type === "boolean") {
       out[name] = val === "true";
     } else {

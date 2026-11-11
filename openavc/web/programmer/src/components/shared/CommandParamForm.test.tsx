@@ -52,6 +52,15 @@ describe("what a command form starts with, sends, and refuses", () => {
     expect(coerceCommandParams(PARAMS, { level: "loud" })).toEqual({});
   });
 
+  it("sends a number as the form's own check read it", () => {
+    const defs = { n: { type: "integer" }, x: { type: "number" } } as const;
+    expect(commandParamsBlocked(defs, { n: "1e3", x: "2e2" })).toBe(false);
+    expect(coerceCommandParams(defs, { n: "1e3", x: "2e2" })).toEqual({ n: 1000, x: 200 });
+    expect(coerceCommandParams(defs, { n: "0x10" })).toEqual({ n: 16 });
+    expect(coerceCommandParams(defs, { n: " 7 ", x: " -2.5 " })).toEqual({ n: 7, x: -2.5 });
+    expect(coerceCommandParams(defs, { n: "  ", x: "Infinity" })).toEqual({});
+  });
+
   it("will not send while a value is wrong or a required one is empty", () => {
     const ok = { zone: "2", input: "hdmi1", level: "40" };
     expect(commandParamsBlocked(PARAMS, ok)).toBe(false);
