@@ -22,7 +22,7 @@ from openavc.core.device_manager import (
 )
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
-from openavc.drivers.base import BaseDriver, ConnectEndedError
+from openavc.drivers.base import BaseDriver, ConnectEndedError, ConnectionFaultError
 from openavc.drivers.registry import _DRIVER_REGISTRY
 
 DRIVER = "acme_pause_widget"
@@ -162,6 +162,32 @@ async def test_a_resume_ended_by_a_newer_door_leaves_the_device_to_that_door(dm)
     assert not dm.is_paused("dev")
     assert dm.state.get("device.dev.offline_reason") is None
     assert "dev" not in dm._reconnect_tasks
+
+
+async def test_a_resume_whose_login_is_refused_waits_for_a_person(dm):
+    """The resume was the login's one try, as a first connect and Reconnect
+    treat it: a device that locks out after a few refusals gets no more."""
+    await dm.add_device(_cfg("dev"))
+    await dm.pause_device("dev")
+    _Widget.fail_next = ConnectionFaultError("Bad password", code="auth_failed")
+
+    await dm.resume_device("dev")
+
+    assert dm.state.get("device.dev.offline_reason") == "auth_failed"
+    assert dm.state.get("device.dev.reconnect_failed") is True
+    assert "dev" not in dm._reconnect_tasks
+
+
+async def test_a_resume_that_cannot_reach_the_device_keeps_retrying(dm):
+    await dm.add_device(_cfg("dev"))
+    await dm.pause_device("dev")
+    _Widget.fail_next = ConnectionFaultError("", code="unreachable")
+
+    await dm.resume_device("dev")
+
+    assert dm.state.get("device.dev.offline_reason") == "unreachable"
+    assert "dev" in dm._reconnect_tasks
+    await dm._cancel_reconnect("dev")
 
 
 async def test_a_backstop_whose_resume_fails_is_logged_and_forgotten(dm, caplog):

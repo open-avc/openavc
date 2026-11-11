@@ -56,8 +56,8 @@ class DevicePauseMixin:
     Its state is set up by ``_init_pause``. From its host (DeviceManager) it
     reads ``state`` and ``_intentional_disconnect``, and asks ``_live_driver``,
     ``_connect_driver``, ``_cancel_reconnect``, ``_start_reconnect``,
-    ``_set_offline_reason``, ``_clear_offline_reason``, ``_failure_text`` and
-    ``_apply_pending_settings``.
+    ``_paused_for_refused_login``, ``_set_offline_reason``,
+    ``_clear_offline_reason``, ``_failure_text`` and ``_apply_pending_settings``.
     """
 
     state: StateStore
@@ -209,7 +209,8 @@ class DevicePauseMixin:
         """Resume a paused device — clear the pause flag and reconnect.
 
         Idempotent: resuming a device that isn't paused just runs reconnect.
-        On connect failure the normal auto-reconnect loop takes over.
+        On connect failure the normal auto-reconnect loop takes over, unless
+        the device refused the login: then it waits for a person.
         """
         driver = self._live_driver(device_id)
         self._intentional_disconnect.discard(device_id)
@@ -225,8 +226,11 @@ class DevicePauseMixin:
             pass  # ended by a Reconnect, a pause or a removal meanwhile
         except Exception as e:
             self.state.set(f"device.{device_id}.connected", False, source="device_manager")
-            self._set_offline_reason(device_id, driver, exc=e)
+            code = self._set_offline_reason(device_id, driver, exc=e)
             log.warning(
                 f"resume_device: connect failed for {device_id}: {self._failure_text(device_id, e)}"
             )
-            self._start_reconnect(device_id)
+            # The resume was this login's one try, as a first connect and
+            # Reconnect count theirs: a refused one waits for a person.
+            if not self._paused_for_refused_login(device_id, code):
+                self._start_reconnect(device_id)

@@ -257,7 +257,7 @@ class DeviceReconnectMixin:
 
         The one place that rule lives, for every path that has just
         classified a failure (a first connect, a drop, a reconnect attempt,
-        the Reconnect button): see :meth:`_pause_reconnect_for_auth` for why a
+        the Reconnect button, a resume after a pause): see :meth:`_pause_reconnect_for_auth` for why a
         refused login is never retried on its own. True when it paused.
         """
         if code != AUTH_FAILED:
