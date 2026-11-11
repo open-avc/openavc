@@ -341,3 +341,14 @@ def test_a_list_start_that_is_a_boolean_is_one_and_a_value_two_words_name_keeps_
     answer = sim._child_list_answers[("output", "mute")]
     assert repr(answer.start) == "1"
     assert answer.value_words == {"true": "Y", "false": "N"}
+
+
+def test_a_list_variable_whose_group_names_no_capture_and_a_child_empty_map():
+    lists = _sim([{"match": "L (.*)", "child_list": {
+        "type": "output", "element": "(\\d)", "state": {"input": {"group": "zz"}, "audio": "$1"},
+    }}], child_entity_types=_OUTPUT)
+    assert set(_lists(lists)) == {("output", "audio")}
+    child = _sim([{"match": "Out(\\d+) In(\\d+)", "child_set": [
+        {"type": "output", "id": "$1", "state": {"input": {"group": 2, "map": {}}}},
+    ]}], child_entity_types=_OUTPUT)
+    assert _child(child) == {("output", "input"): ("Out{child_id} In{value}", [], {}, None)}

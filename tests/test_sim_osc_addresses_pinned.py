@@ -314,3 +314,15 @@ def test_a_query_mapping_with_no_type_answers_as_a_float():
     sim = _sim(responses=[{"address": "/u", "mappings": [{"state": "u"}]}])
     sim._state["u"] = 2
     assert _typed(sim.handle_message("/u", [])[0][1]) == [("f", 2, "int")]
+
+
+def test_a_script_handler_typed_argument_of_the_wrong_length_is_refused(caplog):
+    sim = _sim(simulator={"command_handlers": [
+        {"address": "/three", "handler": "respond(address, [('i', 1, 2)])"},
+        {"address": "/one", "handler": "respond(address, [('i',)])"},
+    ]})
+    with caplog.at_level(logging.ERROR, logger="openavc.simulator.yaml_auto"):
+        assert sim.handle_message("/three", []) is None
+        assert sim.handle_message("/one", []) is None
+    errors = [r.exc_info[0].__name__ for r in caplog.records if r.exc_info]
+    assert errors == ["ValueError", "ValueError"]
