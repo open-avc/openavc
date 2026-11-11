@@ -16,6 +16,11 @@ UDP/OSC drivers get a datagram server instead of a TCP stream server. HTTP
 drivers get an aiohttp web server; incoming requests are synthesized to a text
 command line ("METHOD /path?query") and dispatched through the same handler
 machinery as TCP.
+
+How a state value is written back on the wire (the reply tables this module
+fills from the response rules) is state_replies; where the device's
+notifications go (its push: block and the notifications: templates) is
+the PushChannels mixin in push_channels.
 """
 
 from __future__ import annotations
