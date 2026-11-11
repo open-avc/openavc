@@ -107,6 +107,14 @@ def _split_list_value(value: str) -> list[str]:
 _HOSTNAME_LABEL = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$")
 
 
+def _marked_in_use(listing: str) -> str | None:
+    """The SSID of the row ``nmcli -t -f IN-USE,SSID device wifi list`` marks
+    ``*`` (the network the WiFi is on), or None when no named row is marked."""
+    rows = (split_terse_line(line) + ["", ""] for line in listing.splitlines())
+    marked = (ssid for in_use, ssid, *_ in rows if in_use.strip() == "*")
+    return next((ssid for ssid in marked if ssid), None)
+
+
 def validate_hostname(name: str) -> str:
     name = (name or "").strip()
     if not name or len(name) > 253:
@@ -466,13 +474,7 @@ class NmcliBackend(NetworkBackend):
             )
         except OSError:
             return None
-        if rc != 0:
-            return None
-        for line in out.splitlines():
-            parts = split_terse_line(line)
-            if len(parts) >= 2 and parts[0].strip() == "*" and parts[1]:
-                return parts[1]
-        return None
+        return _marked_in_use(out) if rc == 0 else None
 
     async def wifi_connect(self, ssid: str, psk: str | None = None) -> dict:
         # Joining the network the WiFi is already on is done before it starts.
