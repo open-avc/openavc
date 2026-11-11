@@ -297,6 +297,17 @@ async def test_update_page_reviews_only_a_move_or_a_hand_over():
     assert moved["warnings"][0].startswith("tiny (button) is about 26x16px")
 
 
+@pytest.mark.asyncio
+async def test_update_page_a_render_mode_alone_is_reviewed():
+    engine = _engine()
+    result = await _call(engine, "update_ui_page", {"page_id": "other", "render_mode": "custom"})
+    assert result["changed"] == ["render_mode"]
+    assert result["warnings"] == [
+        "other is set to show a page you wrote but names no file, so it still draws its "
+        "controls. Choose a file in the project's ui/ folder, or set the page back to controls."
+    ]
+
+
 # --- add_ui_page ----------------------------------------------------------------
 
 
@@ -632,6 +643,16 @@ async def test_element_reparent_leaves_what_it_cannot_measure():
     await _call(engine, "update_ui_element", {"element_id": "lbl", "parent": "outer"})
     assert _el(engine, "main", "lbl").parent == "outer"
     assert "lbl" not in _boxes(engine, "main", "landscape")
+
+
+@pytest.mark.asyncio
+async def test_element_the_same_parent_again_leaves_an_unrounded_box_as_stored():
+    project = _project()
+    project["ui"]["pages"][0]["layouts"][0]["placements"]["kid"] = {
+        "x": 10.123456, "y": 20, "w": 40, "h": 40}
+    engine = _engine(project)
+    await _call(engine, "update_ui_element", {"element_id": "kid", "parent": "inner"})
+    assert _boxes(engine, "main", "landscape")["kid"]["x"] == 10.123456
 
 
 @pytest.mark.parametrize("parent, error", [
