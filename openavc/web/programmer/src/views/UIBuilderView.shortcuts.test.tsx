@@ -308,11 +308,19 @@ describe("the other keys", () => {
     press("Delete");
     expect(press("z", { ctrl: true }).defaultPrevented).toBe(true);
     expect(ids("main")).toContain("btn_1");
-    expect(press("z", { ctrl: true, shift: true }).defaultPrevented).toBe(true);
+    // A browser reports the letter typed with Shift as its capital.
+    expect(press("Z", { ctrl: true, shift: true }).defaultPrevented).toBe(true);
     expect(ids("main")).not.toContain("btn_1");
     press("z", { meta: true });
     expect(press("y", { ctrl: true }).defaultPrevented).toBe(true);
     expect(ids("main")).not.toContain("btn_1");
+    // Caps Lock: the capital, with no Shift held, is still undo.
+    expect(press("Z", { meta: true }).defaultPrevented).toBe(true);
+    expect(ids("main")).toContain("btn_1");
+    expect(press("Z", { meta: true, shift: true }).defaultPrevented).toBe(true);
+    expect(ids("main")).not.toContain("btn_1");
+    // Shift is redo's alone: Ctrl+Shift+D, C or V is left to the browser.
+    expect(press("D", { ctrl: true, shift: true }).defaultPrevented).toBe(false);
   });
 
   it("saves now on Ctrl+S: the pending save, and a direct one while changes are unsaved", async () => {

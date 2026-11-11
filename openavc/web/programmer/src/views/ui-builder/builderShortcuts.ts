@@ -65,7 +65,7 @@ export function handleBuilderKey(e: KeyboardEvent, k: BuilderKeys): void {
     // editing (Ctrl+Left jumps a word, Cmd+Backspace deletes to the start of
     // the line), never a move or delete of the control being edited; undo,
     // copy, paste and duplicate are the field's own too.
-    if (commandKey(e) && FIELD_CHORDS.has(e.key)) chordKey(e, k);
+    if (commandKey(e) && FIELD_CHORDS.has(chordLetter(e))) chordKey(e, k);
     return;
   }
   if (!selectionKey(e, k) && commandKey(e)) chordKey(e, k);
@@ -207,15 +207,24 @@ function chordKey(e: KeyboardEvent, k: BuilderKeys): void {
   action();
 }
 
+/** The chord's letter in lower case. A browser reports a letter typed with
+ *  Shift (or Caps Lock) as its capital, so Ctrl+Shift+Z arrives as "Z". */
+function chordLetter(e: KeyboardEvent): string {
+  return e.key.toLowerCase();
+}
+
 function chordAction(e: KeyboardEvent, k: BuilderKeys): (() => void) | null {
   const hasSelection = k.selectedIds.length > 0 && !!k.page;
-  switch (e.key) {
+  const key = chordLetter(e);
+  // Shift belongs to redo alone: Ctrl+Shift+S, C, V or D is no chord here.
+  if (e.shiftKey && key !== "z") return null;
+  switch (key) {
     case "z":
       return e.shiftKey ? store().redo : store().undo;
     case "y":
       return store().redo;
     case "s":
-      return e.shiftKey ? null : saveNow;
+      return saveNow;
     case "c":
       return hasSelection ? () => k.edits.copy(k.selectedIds) : null;
     case "v":

@@ -1086,7 +1086,7 @@ Press **Ctrl+/** anywhere in the Programmer IDE to open the keyboard shortcuts r
 | Shortcut | Action |
 |----------|--------|
 | Ctrl+Z | Undo |
-| Ctrl+Y | Redo |
+| Ctrl+Y or Ctrl+Shift+Z | Redo |
 | Ctrl+C / Ctrl+V | Copy / Paste element |
 | Ctrl+D | Duplicate element (a container comes with its contents) |
 | Delete | Remove selected element |
