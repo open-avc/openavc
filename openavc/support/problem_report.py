@@ -287,18 +287,25 @@ def _preview_driver(snapshot: Snapshot) -> dict[str, Any] | None:
     if not snapshot.driver_id:
         return None
     identity = snapshot.identity or {}
-    catalog = identity.get("catalog") or {}
     return {
         "id": snapshot.driver_id,
         "name": identity.get("name") or snapshot.driver_id,
         "version": identity.get("version") or "",
         "source": identity.get("source"),
         "modified": identity.get("modified"),
+        **_library_fields(identity),
+        "files": [f.get("name") for f in identity.get("files") or []],
+        "loaded": snapshot.driver_loaded,
+    }
+
+
+def _library_fields(identity: dict[str, Any]) -> dict[str, Any]:
+    """Whether the driver library lists the driver, was reached, and at what version."""
+    catalog = identity.get("catalog") or {}
+    return {
         "listed": catalog.get("listed"),
         "checked": catalog.get("checked"),
         "catalog_version": catalog.get("version") or "",
-        "files": [f.get("name") for f in identity.get("files") or []],
-        "loaded": snapshot.driver_loaded,
     }
 
 
