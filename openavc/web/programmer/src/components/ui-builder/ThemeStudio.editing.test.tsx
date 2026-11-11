@@ -619,3 +619,33 @@ describe("a built-in theme", () => {
     expect(json(builtinTheme().variables)).not.toBe(json(working().variables));
   });
 });
+
+describe("the colour fields", () => {
+  it("say what each Theme colour inherits once it is cleared", async () => {
+    await loaded();
+    const colours: [string, string][] = [
+      ["Page Background", "#1a1a2e"], ["Text Color", "#ffffff"], ["Surface", "#2a2a4a"], ["Surface Border", "#3a3a5c"],
+      ["Accent", "#2196F3"], ["Danger", "#F44336"], ["Success", "#4CAF50"], ["Warning", "#FF9800"],
+    ];
+    for (const [label, inherits] of colours) {
+      const field = textIn(tokenRow(label));
+      fireEvent.change(field, { target: { value: "" } });
+      expect(field).toHaveAttribute("placeholder", `${inherits} (inherited)`);
+      expect(field).toHaveAttribute("title", `Inherits ${inherits}`);
+    }
+  });
+
+  it("are drawn as they always have been, set and cleared", async () => {
+    await loaded();
+    const rows = () => [
+      tokenRow("Accent"), tokenRow("Warning"), controlRow("Button", "Background"), controlRow("Label", "Text Color"),
+      controlRow("Camera Preset", "Background"), controlRow("Gauge", "Gauge Color"),
+    ].map((r) => r.outerHTML);
+    expect(rows()).toMatchSnapshot();
+    for (const row of [tokenRow("Accent"), controlRow("Button", "Background"), controlRow("Label", "Text Color")]) {
+      fireEvent.change(textIn(row), { target: { value: "" } });
+    }
+    fireEvent.change(textIn(controlRow("Gauge", "Gauge Color")), { target: { value: "transparent" } });
+    expect(rows()).toMatchSnapshot();
+  });
+});

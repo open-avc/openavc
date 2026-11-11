@@ -522,3 +522,110 @@ describe("the picker", () => {
     expect(screen.queryByTitle('Duplicate "Dark" as a custom theme')).toBeNull();
   });
 });
+
+describe("while a file action runs", () => {
+  const fileInput = (c: HTMLElement) => c.querySelector<HTMLInputElement>('input[type="file"]')!;
+  const card = (name: string) => screen.getByText(name, { selector: "div" }).closest("div[style*='position: relative']")!;
+  const upload = async (view: Awaited<ReturnType<typeof loaded>>) =>
+    view.user.upload(fileInput(view.container), new File([JSON.stringify({ id: "studio-sample", name: "Sample" })], "x.avctheme"));
+  /** A line on show before the action: Discard's. */
+  const lineFirst = () => {
+    editAccent();
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(screen.getByText("Reverted to saved values")).toBeInTheDocument();
+  };
+  const held = (fn: typeof createTheme) => {
+    let finish: () => void = () => {};
+    fn.mockReturnValueOnce(new Promise((r) => { finish = () => r({ status: "ok", theme_id: "x", name: "X" }); }));
+    return () => finish();
+  };
+  const collides = () => importTheme.mockRejectedValueOnce(new ThemeExistsError("studio-sample", "Sample"));
+
+  type Case = [string, boolean, (view: Awaited<ReturnType<typeof loaded>>) => Promise<() => void>];
+  const cases: Case[] = [
+    ["Save Changes", false, async () => {
+      const finish = held(updateTheme);
+      lineFirst();
+      editAccent("#000003");
+      fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+      return finish;
+    }],
+    ["Save as Copy", false, async () => {
+      const finish = held(createTheme);
+      lineFirst();
+      fireEvent.click(screen.getByRole("button", { name: "Save as Copy" }));
+      return finish;
+    }],
+    ["Delete", true, async () => {
+      const finish = held(deleteTheme);
+      lineFirst();
+      fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Delete" }));
+      return finish;
+    }],
+    ["Duplicate", false, async () => {
+      const finish = held(createTheme);
+      lineFirst();
+      fireEvent.mouseEnter(card("Dark"));
+      fireEvent.click(screen.getByTitle('Duplicate "Dark" as a custom theme'));
+      await waitFor(() => expect(createTheme).toHaveBeenCalled());
+      return finish;
+    }],
+    ["Import", false, async (view) => {
+      const finish = held(importTheme);
+      lineFirst();
+      await upload(view);
+      return finish;
+    }],
+    ["Overwrite", true, async (view) => {
+      collides();
+      const finish = held(importTheme);
+      await upload(view);
+      const question = await screen.findByRole("alertdialog");
+      lineFirst();
+      fireEvent.click(within(question).getByRole("button", { name: "Overwrite" }));
+      return finish;
+    }],
+    ["Keep both", true, async (view) => {
+      collides();
+      const finish = held(createTheme);
+      await upload(view);
+      const question = await screen.findByRole("alertdialog");
+      lineFirst();
+      fireEvent.click(within(question).getByRole("button", { name: "Keep both" }));
+      await waitFor(() => expect(createTheme).toHaveBeenCalled(), { timeout: 5000 });
+      return finish;
+    }],
+  ];
+
+  it.each(cases)("%s holds the file buttons until it ends, and keeps the line already showing: %s", async (_name, keeps, start) => {
+    const view = await loaded();
+    const finish = await start(view);
+    expect(screen.getByRole("button", { name: "Save as Copy" })).toBeDisabled();
+    expect(screen.queryByText("Reverted to saved values") !== null).toBe(keeps);
+    await act(async () => finish());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save as Copy" })).toBeEnabled());
+  });
+
+  it("an import that collides says nothing and frees the buttons while it asks", async () => {
+    const view = await loaded();
+    lineFirst();
+    collides();
+    await upload(view);
+    await screen.findByRole("alertdialog");
+    expect(screen.queryByText("Reverted to saved values")).toBeNull();
+    expect(screen.queryByText(/failed/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Save as Copy" })).toBeEnabled();
+  });
+
+  it("says what it did only until the theme it chose has loaded, which the Builder does at once", async () => {
+    const view = await loaded();
+    getTheme.mockImplementation(async (id: string) => (id === "dark-copy" ? { ...builtinTheme(), id, _source: "custom" } : themeById(id)));
+    fireEvent.mouseEnter(card("Dark"));
+    fireEvent.click(screen.getByTitle('Duplicate "Dark" as a custom theme'));
+    await screen.findByText('Duplicated as "Dark (Copy)"');
+    view.rerender({ currentThemeId: "dark-copy" });
+    await waitFor(() => expect(working().id).toBe("dark-copy"));
+    expect(screen.queryByText('Duplicated as "Dark (Copy)"')).toBeNull();
+  });
+});
