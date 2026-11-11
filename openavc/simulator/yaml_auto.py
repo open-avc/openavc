@@ -45,6 +45,7 @@ from openavc.drivers.compiled_protocol import (
     value_to_wire,
 )
 from openavc.drivers.child_ids import coerce_child_local_id, page_starts
+from openavc.drivers.spec import placeholder_names
 from openavc.drivers.inline_protocol import (
     declare_command_params,
     derive_state_vars_from_responses,
@@ -63,7 +64,11 @@ from openavc.simulator.reply_templates import (
     emit_template_multi,
     fill_template,
 )
-from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
+from openavc.simulator.reread_queries import (
+    every_query_entry,
+    follow_up_queries,
+    read_back_queries,
+)
 from openavc.simulator.state_replies import (
     ChildListAnswer,
     ChildStateResponse,
@@ -213,10 +218,6 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
         merged["delimiter"] = cfg["delimiter"]
     return merged, True
 
-
-#: The write template's own placeholder -- the one name the runtime always
-#: substitutes with the value being written, with or without a format spec.
-_VALUE_PLACEHOLDER = re.compile(r"\{value(?::[^{}]*)?\}")
 
 #: A template handler's placeholders: a capture group (`{1}`) or another state
 #: value (`{state.key}`). Either brings the device's own number into a
@@ -1550,7 +1551,9 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             if s.strip()
         ]
         wire = next(
-            (s for s in segments if _VALUE_PLACEHOLDER.search(s)), None
+            # `value` is the one name the runtime always substitutes with the
+            # value being written, with or without a format spec.
+            (s for s in segments if "value" in placeholder_names(s)), None
         )
         if wire is None:
             return None
@@ -2131,25 +2134,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
                     conversion_of(self._child_vars(ctype).get(var)),
                 )
 
-    def _list_entries(self) -> list[Any]:
-        """The poll queries, the start-up entries, the response rules'
-        follow-up queries and the commands' read-back queries, in that
-        order."""
-        entries: list[Any] = []
-        polling = self._driver_def.get("polling")
-        if isinstance(polling, dict) and isinstance(polling.get("queries"), list):
-            entries += polling["queries"]
-        if isinstance(self._driver_def.get("on_connect"), list):
-            entries += self._driver_def["on_connect"]
-        entries += follow_up_queries(self._driver_def)
-        entries += read_back_queries(self._driver_def)
-        return entries
-
     def _build_list_query_handlers(self) -> None:
         """Handlers for list reads: a query sent once whose ``query_for`` is
         ``<child type>.<variable>``, and each page of a paged per-child query,
         for every variable a ``child_list`` rule fills."""
-        for q in self._list_entries():
+        for q in every_query_entry(self._driver_def):
             if not isinstance(q, dict):
                 continue
             template = q.get("send")
@@ -2232,7 +2221,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         names its first child the way a per-child query does."""
         self._child_query_handlers = []
         self._build_list_query_handlers()
-        for q in self._list_entries():
+        for q in every_query_entry(self._driver_def):
             if not isinstance(q, dict) or "each_child" not in q:
                 continue
             if "page_size" in q:

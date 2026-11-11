@@ -7,6 +7,8 @@ the validator (``validate``) checks that it has one. ``follow_up_queries`` and
 ``read_back_queries`` list them in the shapes a poll entry takes, leaving out
 what the poll, the start-up or an earlier entry already sends, so each reply
 gets one handler.
+``every_query_entry`` puts the poll and the start-up in front of them, the
+list the simulator's per-child and list reads are answered from.
 
 A rule's ``then_query`` is read through the compile's own reader
 (``rule_follow_ups`` in ``openavc.drivers.compiled_protocol``), and a query
@@ -269,3 +271,15 @@ def read_back_queries(definition: dict[str, Any]) -> list[Any]:
         declared=_dict_or_empty(definition.get("state_variables")),
     )
     return _first_of_each(_driver_read_backs(scope))
+
+
+def every_query_entry(definition: dict[str, Any]) -> list[Any]:
+    """Every entry the driver sends to read values, as authored: its poll,
+    its start-up, the response rules' follow-up queries and the commands'
+    read-back queries, in that order."""
+    return (
+        _poll_and_start_up(definition)
+        + follow_up_queries(definition)
+        + read_back_queries(definition)
+    )
+
