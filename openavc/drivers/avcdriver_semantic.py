@@ -393,16 +393,18 @@ class _DefinitionWalk:
     """``validate_driver_definition``'s walk over one definition: a method per
     part of the definition, asked in the order they report.
 
-    Each part sets the tag its messages carry, refuses its section when the
-    section is not the shape it should be, and asks that part's check module.
-    The tag is set through the local name ``errors``, the form the section-tag
-    scan in ``tests/test_driver_definition_validate.py`` reads, so every
-    method that sets one names the list that way. A section's shape rule is
-    written where the section is checked, and they differ: the rules, the
-    commands and the state variables refuse a null, the device settings and
-    the poll let one pass, the child types let any empty value pass. The
-    sections other parts name into are read once (``declared``) and handed
-    to the checks that follow a name into them.
+    Each part sets the tag its messages carry before it says anything,
+    refuses its section when the section is not the shape it should be, and
+    asks that part's check module. The tag is set through the local name
+    ``errors``, the form the section-tag scan in
+    ``tests/test_driver_definition_validate.py`` reads, so every method that
+    sets one names the list that way. The sections other parts name into are
+    read once (``declared``, which also names those that are there in another
+    shape) and handed to the checks that follow a name into them. Whether a
+    section of the wrong shape is refused is written where the section is
+    checked, and the sections differ: the rules, the commands and the state
+    variables refuse a null, the device settings and the poll let one pass,
+    the child types let any empty value pass.
     """
 
     def __init__(self, driver_def: dict[str, Any]) -> None:
@@ -413,6 +415,7 @@ class _DefinitionWalk:
     def driver_fields(self) -> None:
         """The driver's own fields, tagged with no section."""
         errors, driver_def = self.errors, self.driver_def
+        errors.ctx = ""
         for field in REQUIRED_FIELDS:
             if field not in driver_def:
                 errors.append(f"Missing required field: {field}")
@@ -437,7 +440,7 @@ class _DefinitionWalk:
         the query entries."""
         errors = self.errors
         errors.ctx = "responses"
-        if not isinstance(self.driver_def.get("responses", []), list):
+        if "responses" in self.declared.misshapen:
             errors.append("responses: must be a list")
         rules = self.declared.responses
         # `after_json:` only means something where a json rule can consume the
@@ -457,7 +460,7 @@ class _DefinitionWalk:
         rest of the send side)."""
         errors, driver_def = self.errors, self.driver_def
         errors.ctx = "commands"
-        if not isinstance(driver_def.get("commands", {}), dict):
+        if "commands" in self.declared.misshapen:
             errors.append("commands: must be a mapping")
         section = CommandSection(driver_def, self.declared)
         for cmd_name, cmd_def in self.declared.commands.items():
@@ -506,10 +509,12 @@ class _DefinitionWalk:
         self, discovery_validator: Callable[[dict[str, Any]], list[str]] | None
     ) -> None:
         """The ``discovery:`` block, through the check the caller hands in
-        (the loader's needs the discovery engine's parser). A template
-        (``generic_*``) takes no part in discovery and is not checked. Any mix
-        of strong and soft signals, or none, is allowed here; signal
-        collisions are caught when the SignalIndex is built."""
+        (the loader's needs the discovery engine's parser). The check reads
+        the definition and must not change it: the sections other parts name
+        into were read before it runs. A template (``generic_*``) takes no
+        part in discovery and is not checked. Any mix of strong and soft
+        signals, or none, is allowed here; signal collisions are caught when
+        the SignalIndex is built."""
         errors = self.errors
         errors.ctx = "discovery"
         driver_id = self.driver_def.get("id", "") or ""
@@ -550,7 +555,7 @@ class _DefinitionWalk:
         state_variables."""
         errors = self.errors
         errors.ctx = "state_variables"
-        if not isinstance(self.driver_def.get("state_variables", {}), dict):
+        if "state_variables" in self.declared.misshapen:
             errors.append("state_variables: must be a mapping")
         for var_name, var_def in self.declared.state_variables.items():
             errors.ctx = f"state_variables.{var_name}"
@@ -577,13 +582,12 @@ class _DefinitionWalk:
         variables and instances: roster), checked in child_type_checks."""
         errors = self.errors
         errors.ctx = "child_entity_types"
-        child_types = self.driver_def.get("child_entity_types", {})
-        if child_types and not isinstance(child_types, dict):
-            errors.append("child_entity_types: must be a mapping")
-        if not isinstance(child_types, dict):
+        if "child_entity_types" in self.declared.misshapen:
+            if self.driver_def["child_entity_types"]:
+                errors.append("child_entity_types: must be a mapping")
             return
         roster_names = RosterNames(self.driver_def)
-        for child_type, type_def in child_types.items():
+        for child_type, type_def in self.declared.child_types.items():
             errors.ctx = f"child_entity_types.{child_type}"
             errors.extend(child_type_errors(child_type, type_def, roster_names))
 

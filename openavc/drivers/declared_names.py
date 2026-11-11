@@ -42,30 +42,35 @@ PLATFORM_SUBSTITUTIONS = frozenset(
 
 
 class DeclaredSections:
-    """The sections other parts of a YAML definition name into, read once:
-    the response rules, the commands, the device's own state variables and
-    the child types.
+    """The sections other parts of a definition name into, read once: the
+    response rules, the commands, the device's own state variables and the
+    child types. A YAML definition and a Python driver's ``DRIVER_INFO`` as
+    ``python_info`` reads it are read alike.
 
     Each is the definition's own value when it is the shape it should be (a
     list of rules, a mapping for the rest) and empty when it is anything
     else, so every check that follows a name into one of them reads the same
-    thing. Whether a section that is not that shape is refused, and how, is
-    the walk's decision where it checks that section
-    (``avcdriver_semantic.validate_driver_definition``), not this read's.
-    ``RosterNames`` (``child_type_checks``) reads the state variables as
-    written instead, on purpose.
+    thing. A section that is there in another shape is named in
+    ``misshapen``; whether that is refused, and how, is the walk's decision
+    where it checks the section (``avcdriver_semantic._DefinitionWalk``), not
+    this read's. ``RosterNames`` (``child_type_checks``) reads the state
+    variables as written instead, on purpose.
     """
 
     def __init__(self, driver_def: dict[str, Any]) -> None:
-        responses = driver_def.get("responses")
-        self.responses: list[Any] = responses if isinstance(responses, list) else []
-        self.commands = _mapping(driver_def.get("commands"))
-        self.state_variables = _mapping(driver_def.get("state_variables"))
-        self.child_types = _mapping(driver_def.get("child_entity_types"))
+        self.misshapen: set[str] = set()
+        self.responses: list[Any] = self._read(driver_def, "responses", list)
+        self.commands: dict[Any, Any] = self._read(driver_def, "commands", dict)
+        self.state_variables: dict[Any, Any] = self._read(driver_def, "state_variables", dict)
+        self.child_types: dict[Any, Any] = self._read(driver_def, "child_entity_types", dict)
 
-
-def _mapping(value: Any) -> dict[Any, Any]:
-    return value if isinstance(value, dict) else {}
+    def _read(self, driver_def: dict[str, Any], key: str, shape: type) -> Any:
+        value = driver_def.get(key)
+        if isinstance(value, shape):
+            return value
+        if key in driver_def:
+            self.misshapen.add(key)
+        return shape()
 
 
 def config_field_names(driver_def: dict[str, Any]) -> set[str]:
