@@ -1,7 +1,8 @@
 /**
  * The pieces the Theme Studio's editor sections share: a section's frame with
- * its title, and the button beside a field that puts back the value the theme
- * was saved with (drawn only while the field differs from it).
+ * its title (a section edited as one also marks its title "modified" while it
+ * differs from the saved theme), and the button beside a field that puts back
+ * the value the theme was saved with (drawn only while the field differs from it).
  */
 import type { CSSProperties, ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
@@ -23,11 +24,23 @@ const SECTION_TITLE: CSSProperties = {
   borderBottom: "1px solid var(--border-color)",
 };
 
-/** A section of the editor column: its title, then the body the caller lays out. */
-export function StudioSection({ title, children }: { title: ReactNode; children: ReactNode }) {
+/** A section's title laid out as a row, for the mark beside it. */
+const MARKED_TITLE: CSSProperties = { ...SECTION_TITLE, display: "flex", alignItems: "center" };
+
+const MARK: CSSProperties = { color: "var(--accent)", marginLeft: 6, fontSize: 9 };
+
+/**
+ * A section of the editor column: its title, then the body the caller lays out.
+ * Given `modified`, the section is edited as one: the title is a row, with
+ * "modified" beside it while that is true.
+ */
+export function StudioSection({ title, modified, children }: { title: ReactNode; modified?: boolean; children: ReactNode }) {
   return (
     <div style={SECTION}>
-      <div style={SECTION_TITLE}>{title}</div>
+      <div style={modified === undefined ? SECTION_TITLE : MARKED_TITLE}>
+        {title}
+        {modified && <span style={MARK}>modified</span>}
+      </div>
       {children}
     </div>
   );
