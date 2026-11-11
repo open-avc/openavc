@@ -21,6 +21,7 @@ rule rejects. Flat, child and list replies all render through ``render_first``.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from openavc.drivers.compiled_protocol import value_to_wire
@@ -106,7 +107,28 @@ def _wire_id(child_id: Any, id_map: dict[str, str] | None) -> Any:
     return child_id if id_map is None else id_map.get(str(child_id), str(child_id))
 
 
-class StateResponse:
+class _RuleTemplates:
+    """The templates of every rule that writes one variable: the first is
+    ``template`` (with the rule it came from), the rest are alternates, in
+    the order the rules were read. A table sets the three attributes in its
+    own constructor, in the order it always held them."""
+
+    template: str | None
+    template_rule: ReadBack
+    alternates: list[tuple]
+
+    def _keep(self, template: str, rule: ReadBack, *more: Any) -> bool:
+        """Keep a rule's template, an alternate carrying ``more`` after its
+        rule; True when it is the first."""
+        if self.template is not None:
+            self.alternates.append((template, rule, *more))
+            return False
+        self.template = template
+        self.template_rule = rule
+        return True
+
+
+class StateResponse(_RuleTemplates):
     """How the device writes one flat state variable."""
 
     def __init__(self, state_key: str, conversion: dict | None = None):
@@ -114,21 +136,15 @@ class StateResponse:
         # The variable's scale / offset / unknown: the reply carries the
         # device's own number, not the real value the simulator holds.
         self.conversion = conversion
-        self.template: str | None = None  # e.g., "In{value} All"
+        self.template = None
         self.value_map: dict[str, str] = {}  # e.g., {"true": "Amt1", "false": "Amt0"}
-        # The rule the template came from, and every later rule that writes
-        # this variable as (template, rule).
-        self.template_rule: ReadBack = None
-        self.alternates: list[tuple[str, ReadBack]] = []
+        self.template_rule = None
+        self.alternates = []
 
     def add_template(self, template: str, rule: ReadBack) -> None:
-        """Keep a rule's template: the first becomes ``template``, the rest
-        are alternates, in the order the rules were read."""
-        if self.template is None:
-            self.template = template
-            self.template_rule = rule
-        else:
-            self.alternates.append((template, rule))
+        """Keep a rule's template (e.g. "In{value} All"); alternates are
+        (template, rule)."""
+        self._keep(template, rule)
 
     def format(self, value: Any) -> str:
         """The reply text for ``value``: its value map entry, else its
@@ -144,7 +160,7 @@ class StateResponse:
         return str(value_to_wire(value, self.conversion))
 
 
-class ChildStateResponse:
+class ChildStateResponse(_RuleTemplates):
     """How the device writes one (child type, state variable) pair, from the
     driver's child_set: response rules. The template carries a {child_id}
     slot alongside {value}; value_map entries carry {child_id} inside each
@@ -154,27 +170,21 @@ class ChildStateResponse:
         self.child_type = child_type
         self.var = var
         self.conversion = conversion
-        self.template: str | None = None     # e.g. "Out{child_id} In{value} Vid"
+        self.template = None
         self.value_map: dict[str, str] = {}  # e.g. {"true": "Vmt{child_id}*1"}
         # local id -> wire id, from the child_set rule's id map: reversed —
         # a device that reports 0-based ids must answer with them too.
         self.id_wire_map: dict[str, str] | None = None
-        # The rule the template came from, and every later rule that writes
-        # this variable as (template, rule, id map).
-        self.template_rule: ReadBack = None
-        self.alternates: list[tuple[str, ReadBack, dict[str, str] | None]] = []
+        self.template_rule = None
+        self.alternates = []
 
     def add_template(
         self, template: str, rule: ReadBack, id_wire_map: dict[str, str] | None
     ) -> None:
-        """Keep a rule's template: the first becomes ``template``, the rest
-        are alternates, in the order the rules were read."""
-        if self.template is None:
-            self.template = template
-            self.template_rule = rule
+        """Keep a rule's template (e.g. "Out{child_id} In{value} Vid") with
+        its id map; alternates are (template, rule, id map)."""
+        if self._keep(template, rule, id_wire_map):
             self.id_wire_map = id_wire_map
-        else:
-            self.alternates.append((template, rule, id_wire_map))
 
     def format(self, child_id: str, value: Any) -> str | None:
         """Reply text for this child/value, or None when nothing derivable
@@ -196,36 +206,23 @@ class ChildStateResponse:
         return None
 
 
+@dataclass(eq=False)
 class ChildListAnswer:
     """How the device writes one child variable as a list, read back from a
     ``child_list`` response rule: the reply around the list, one item, the
     text between items, and how an item names its child."""
 
-    def __init__(
-        self,
-        child_type: str,
-        var: str,
-        outer: str,
-        item: str,
-        item_rule: ReadBack,
-        separator: str,
-        by_place: bool,
-        start: int,
-        value_words: dict[str, str] | None,
-        id_wire_map: dict[str, str] | None,
-        conversion: dict | None,
-    ):
-        self.child_type = child_type
-        self.var = var
-        self.outer = outer            # e.g. "Vgp0*Out{start} {list}Vid"
-        self.item = item              # e.g. "{value:02d}" or "{value}>{child_id}"
-        self.item_rule = item_rule    # the element, compiled, and the value's group
-        self.separator = separator
-        self.by_place = by_place      # items named by place, from start
-        self.start = start            # the first place when the reply says nothing
-        self.value_words = value_words  # value -> the device's word, from a map
-        self.id_wire_map = id_wire_map  # local id -> wire id
-        self.conversion = conversion
+    child_type: str
+    var: str
+    outer: str                          # e.g. "Vgp0*Out{start} {list}Vid"
+    item: str                           # e.g. "{value:02d}" or "{value}>{child_id}"
+    item_rule: ReadBack                 # the element, compiled, and the value's group
+    separator: str
+    by_place: bool                      # items named by place, from start
+    start: int                          # the first place when the reply says nothing
+    value_words: dict[str, str] | None  # value -> the device's word, from a map
+    id_wire_map: dict[str, str] | None  # local id -> wire id
+    conversion: dict | None
 
     def render_item(self, child_id: str, value: Any) -> str:
         wire_id = _wire_id(child_id, self.id_wire_map)
