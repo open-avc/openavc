@@ -21,12 +21,10 @@ machinery as TCP.
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import json
 import logging
 import math
 import re
-import socket
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
@@ -58,6 +56,7 @@ from openavc.transport.binary_helpers import encode_escape_sequences
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
 from openavc.simulator.osc_simulator import OSCDispatchMixin
+from openavc.simulator.push_channels import PushChannels
 from openavc.simulator.reply_templates import (
     emit_literal,
     emit_template,
@@ -277,7 +276,7 @@ def _settings_write_template(write: dict) -> str | None:
     return None
 
 
-class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
+class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     """Auto-generated simulator from a .avcdriver definition.
 
     The driver's ``transport:`` field decides which server start() runs, and
@@ -437,70 +436,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             self._inline_protocol and not self._is_http
         )
 
-        # Multicast push emission: when the driver declares
-        # `push: {type: multicast}`, notification templates (the simulator
-        # `notifications:` map) are emitted to the resolved group:port as UDP
-        # multicast — and NOT to connected control clients, matching real
-        # devices whose notice channel is multicast-only. Sender socket is
-        # opened in start() / closed in stop().
-        self._push_multicast = self._resolve_push_multicast(driver_def, config)
-        self._mcast_sock: socket.socket | None = None
-
-        # SSE push emission: when an HTTP driver declares `push: {type: sse}`,
-        # a GET on one of its declared paths with Accept: text/event-stream is
-        # held open and the `notifications:` templates are delivered there as
-        # SSE events (data: <msg>\n\n) — the HTTP analogue of the multicast
-        # channel above. `sse_paths` is the HTTP server's own name for the
-        # paths it holds open, so the resolved list goes straight into it.
-        self.sse_paths = self._resolve_push_sse(driver_def, config)
-        # A session block makes the served stream name a session the way the
-        # device does (header / opening event); the driver's register
-        # commands then address it, and the simulator: section's handlers
-        # answer them like any other request.
-        _push_def = driver_def.get("push")
-        self.sse_session = (
-            dict(_push_def["session"])
-            if isinstance(_push_def, dict)
-            and _push_def.get("type") == "sse"
-            and isinstance(_push_def.get("session"), dict)
-            else None
-        )
-
-        # Dial-out push emission: when the driver declares
-        # `push: {type: tcp_listener}`, the simulator watches for the
-        # driver's register/unregister commands (recognized by their
-        # {listener_port} templates), tracks the registered subscribers, and
-        # on each notification dials out a TCP connection per subscriber and
-        # sends the `notifications:` template wrapped in the declared frame
-        # container — matching real devices that push one framed notification
-        # per outbound connection.
-        self._push_tcp = self._resolve_push_tcp_listener(driver_def)
-        # (host, port) -> consecutive delivery failures. Real devices prune
-        # subscribers they can't reach; the simulator drops one after 3
-        # straight failures so a departed platform doesn't get dialed forever.
-        self._push_tcp_subscribers: dict[tuple[str, int], int] = {}
-        self._push_tcp_tasks: set[asyncio.Task] = set()
-        # HTTP-callback push emission: when the driver declares
-        # `push: {type: http_listener}`, script handlers record the callback
-        # URL the (simulated) controller registers — via register_callback()
-        # in the handler namespace — and the `notifications:` templates are
-        # POSTed to every registered URL, exactly like a real device's
-        # webhook delivery.
-        push = driver_def.get("push")
-        self._push_http = (
-            isinstance(push, dict) and push.get("type") == "http_listener"
-        )
-        self._http_push_callbacks: list[str] = []
-        # Listener push emission: when the driver declares
-        # `push: {type: udp_listener}`, the `notifications:` templates go as
-        # one datagram each to the listener port its config names, on this
-        # computer (where the platform is), from this device's own port
-        # number (BaseSimulator.send_to_listener), and NOT to the control
-        # link: a real device set to send its changes to an address sends
-        # them only there.
-        self._push_udp_listener = self._resolve_push_udp_listener(
-            driver_def, config
-        )
+        # Where the device's notifications go (push_channels.py).
+        self._set_up_push()
 
         logger.info(
             "Auto-gen simulator for %s: %d command handlers, %d query handlers, %d state responses",
@@ -674,291 +611,13 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         cfg = config or {}
         return bool(cfg.get("ssl", defaults.get("ssl", False)))
 
-    @staticmethod
-    def _resolve_push_multicast(
-        driver_def: dict, config: dict | None
-    ) -> tuple[str, int] | None:
-        """Resolve the driver's `push: {type: multicast}` block to a concrete
-        (group, port) emission target, or None. `{config_field}` templates
-        resolve against default_config overlaid with the instance config —
-        the same fields the real driver resolves them from."""
-        push = driver_def.get("push")
-        if not isinstance(push, dict) or push.get("type") != "multicast":
-            return None
-        merged = dict(driver_def.get("default_config") or {})
-        merged.update(config or {})
-
-        def resolve(value: Any) -> Any:
-            if isinstance(value, str) and "{" in value:
-                return safe_substitute(value, merged)
-            return value
-
-        group = str(resolve(push.get("group", "")) or "").strip()
-        try:
-            port = int(str(resolve(push.get("port"))).strip())
-        except (TypeError, ValueError):
-            port = 0
-        try:
-            is_mcast = ipaddress.IPv4Address(group).is_multicast
-        except (ipaddress.AddressValueError, ValueError):
-            is_mcast = False
-        if not is_mcast or not (0 < port < 65536):
-            logger.warning(
-                "push block did not resolve to a multicast group/port "
-                "(group=%r port=%r) — simulator will not emit notifications",
-                group, push.get("port"),
-            )
-            return None
-        return (group, port)
-
-    @staticmethod
-    def _resolve_push_sse(driver_def: dict, config: dict | None) -> list[str]:
-        """Resolve the driver's `push: {type: sse}` block to the list of
-        event-stream paths the simulator should serve. `{config_field}`
-        templates resolve against default_config overlaid with the instance
-        config — the same fields the real driver resolves them from."""
-        push = driver_def.get("push")
-        if not isinstance(push, dict) or push.get("type") != "sse":
-            return []
-        merged = dict(driver_def.get("default_config") or {})
-        merged.update(config or {})
-
-        def resolve(value: Any) -> str:
-            if isinstance(value, str) and "{" in value:
-                return safe_substitute(value, merged)
-            return str(value)
-
-        raw = push.get("path")
-        raw_paths = [raw] if isinstance(raw, str) else list(raw or [])
-        paths = [resolve(p).strip() for p in raw_paths]
-        good = [p for p in paths if p.startswith("/")]
-        if not good:
-            logger.warning(
-                "push block did not resolve to event-stream path(s) "
-                "(path=%r) — simulator will not emit notifications",
-                push.get("path"),
-            )
-        return good
-
-    @staticmethod
-    def _resolve_push_udp_listener(
-        driver_def: dict, config: dict | None
-    ) -> int | None:
-        """Resolve a `push: {type: udp_listener}` block to the port the
-        device sends its packets to, or None. `{config_field}` templates
-        resolve against default_config overlaid with the instance config --
-        the same fields the real driver listens on."""
-        push = driver_def.get("push")
-        if not isinstance(push, dict) or push.get("type") != "udp_listener":
-            return None
-        merged = dict(driver_def.get("default_config") or {})
-        merged.update(config or {})
-        raw = push.get("port")
-        if isinstance(raw, str) and "{" in raw:
-            raw = safe_substitute(raw, merged)
-        try:
-            port = int(str(raw).strip())
-        except (TypeError, ValueError):
-            port = 0
-        if not (0 < port < 65536):
-            logger.warning(
-                "push block did not resolve to a UDP listener port "
-                "(port=%r) — simulator will not send notifications",
-                push.get("port"),
-            )
-            return None
-        return port
-
-    def _resolve_push_tcp_listener(self, driver_def: dict) -> dict | None:
-        """Resolve a `push: {type: tcp_listener}` block for dial-out emission.
-
-        Returns ``{"frame": <frame_parser cfg or None>, "register": <compiled
-        regex or None>, "unregister": ...}``. The register/unregister matchers
-        are built from the named commands' own path/send templates, with the
-        ``{listener_port}`` token becoming a port capture group — so the
-        simulator recognizes the registration exactly as the driver sends it.
-        """
-        push = driver_def.get("push")
-        if not isinstance(push, dict) or push.get("type") != "tcp_listener":
-            return None
-        commands = driver_def.get("commands") or {}
-
-        def build_matcher(cmd_name: Any) -> re.Pattern | None:
-            cmd = commands.get(cmd_name) if isinstance(cmd_name, str) else None
-            if not isinstance(cmd, dict):
-                return None
-            if "path" in cmd or "method" in cmd:
-                template = (
-                    f"{cmd.get('method', 'GET').upper()} {cmd.get('path', '/')}"
-                )
-            else:
-                template = str(cmd.get("send", ""))
-            if not template:
-                return None
-            pattern = re.escape(template)
-            pattern = pattern.replace(
-                re.escape("{listener_port}"), r"(?P<lport>\d+)"
-            )
-            # Other {tokens} in the template match any non-separator run.
-            pattern = re.sub(r"\\\{\w+\\\}", r"[^&\\s|]+", pattern)
-            # Allow a trailing "|body" (HTTP POST synthesis) or whitespace.
-            return re.compile(r"^" + pattern + r"\s*(?:\|.*)?$")
-
-        return {
-            "frame": push.get("frame_parser")
-            if isinstance(push.get("frame_parser"), dict)
-            else None,
-            "register": build_matcher(push.get("register")),
-            "unregister": build_matcher(push.get("unregister")),
-        }
-
-    def _watch_push_registration(self, text: str) -> bool:
-        """Track dial-back subscribers from register/unregister commands.
-
-        Observe-only bookkeeping run before normal dispatch; returns True
-        when ``text`` was a registration command (callers use that to give
-        an empty-success default response if no handler answers it).
-        """
-        if not self._push_tcp:
-            return False
-        for key, add in (("register", True), ("unregister", False)):
-            matcher = self._push_tcp.get(key)
-            m = matcher.match(text) if matcher else None
-            if not m:
-                continue
-            try:
-                port = int(m.group("lport"))
-            except (IndexError, ValueError):
-                # Template carried no {listener_port}; nothing to track.
-                return True
-            target = (self._last_peer_ip or "127.0.0.1", port)
-            if add:
-                self._push_tcp_subscribers.setdefault(target, 0)
-                self._push_tcp_subscribers[target] = 0
-                self.log_protocol(
-                    "in", f"(push subscriber registered: {target[0]}:{port})"
-                )
-            else:
-                self._push_tcp_subscribers.pop(target, None)
-                self.log_protocol(
-                    "in", f"(push subscriber removed: {target[0]}:{port})"
-                )
-            return True
-        return False
-
-    def _wrap_push_tcp_frame(self, payload: bytes) -> bytes:
-        """Wrap a notification payload in the declared frame container.
-
-        Inverse of the platform's StructFrameParser: zeroed reserve regions
-        around a length field that counts ``len(payload) - length_adjust``.
-        Without a struct_frame declaration the payload goes out raw.
-        """
-        frame = (self._push_tcp or {}).get("frame")
-        if not frame or frame.get("type") != "struct_frame":
-            return payload
-        length_size = int(frame.get("length_size", 2))
-        endian = "little" if frame.get("length_endian") == "little" else "big"
-        length_value = len(payload) - int(frame.get("length_adjust", 0))
-        return (
-            bytes(int(frame.get("header_reserve", 0)))
-            + max(0, length_value).to_bytes(length_size, endian)
-            + bytes(int(frame.get("mid_reserve", 0)))
-            + payload
-            + bytes(int(frame.get("trailer_reserve", 0)))
-        )
-
-    def _emit_push_tcp(self, payload: bytes) -> None:
-        """Dial each registered subscriber and push one framed notification."""
-        if self._silenced:
-            return
-        framed = self._wrap_push_tcp_frame(payload)
-        for target in list(self._push_tcp_subscribers):
-            task = asyncio.ensure_future(self._dial_push_tcp(target, framed))
-            self._push_tcp_tasks.add(task)
-            task.add_done_callback(self._push_tcp_tasks.discard)
-
-    async def _dial_push_tcp(self, target: tuple[str, int], framed: bytes) -> None:
-        """One outbound notification connection: connect, send, close.
-
-        Mirrors real dial-back devices, which prune subscribers they cannot
-        reach — three consecutive failed deliveries drop the registration.
-        """
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(target[0], target[1]), timeout=2.0
-            )
-            writer.write(framed)
-            await writer.drain()
-            writer.close()
-            if target in self._push_tcp_subscribers:
-                self._push_tcp_subscribers[target] = 0
-            self.log_protocol("out", framed)
-        except (OSError, asyncio.TimeoutError):
-            failures = self._push_tcp_subscribers.get(target)
-            if failures is None:
-                return
-            if failures + 1 >= 3:
-                del self._push_tcp_subscribers[target]
-                logger.info(
-                    "%s: push subscriber %s:%d unreachable 3 times — removed",
-                    self.name, target[0], target[1],
-                )
-            else:
-                self._push_tcp_subscribers[target] = failures + 1
-    # ── HTTP-callback push (push: {type: http_listener}) ──
-
-    def register_callback(self, url: Any) -> None:
-        """Record a notification callback URL (script-handler namespace).
-
-        A handler matching the device's registration command calls this with
-        the URL the controller supplied; subsequent state-change
-        notifications POST there. Registering an already-known URL is a
-        no-op, matching re-registration on reconnect.
-        """
-        url = str(url or "").strip()
-        if url and url not in self._http_push_callbacks:
-            self._http_push_callbacks.append(url)
-            self.log_protocol("in", f"(callback registered: {url})")
-
-    def unregister_callback(self, url: Any) -> None:
-        """Drop a previously registered callback URL (script-handler
-        namespace — for handlers matching the device's deregistration
-        command)."""
-        url = str(url or "").strip()
-        if url in self._http_push_callbacks:
-            self._http_push_callbacks.remove(url)
-            self.log_protocol("in", f"(callback unregistered: {url})")
-
-    @staticmethod
-    def _callback_content_type(msg: str) -> str:
-        """Content type for a rendered notification, from the payload's shape.
-
-        Purely for protocol-log realism — the platform's dispatch reads only
-        the body.
-        """
-        stripped = msg.lstrip()
-        if stripped.startswith("<"):
-            return "text/xml"
-        if stripped.startswith(("{", "[")):
-            return "application/json"
-        return "text/plain"
-
-    def _open_multicast_sender(self) -> None:
-        """Open the multicast emission socket (TTL 1, loopback enabled so a
-        same-host platform listener receives the frames)."""
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 1)
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
-            sock.setblocking(False)
-            self._mcast_sock = sock
-            logger.info(
-                "%s multicast notifications to %s:%d",
-                self.name, self._push_multicast[0], self._push_multicast[1],
-            )
-        except OSError as e:
-            self._mcast_sock = None
-            logger.warning("Could not open multicast sender: %s", e)
+    def _instance_config(self) -> dict:
+        """The driver's default_config overlaid with this instance's config:
+        the fields the driver fills its templates from. A new dict each call,
+        so a caller may change its copy."""
+        merged = dict(self._driver_def.get("default_config") or {})
+        merged.update(self.config or {})
+        return merged
 
     async def start(self, port: int) -> None:
         """Start the server the driver's transport calls for (TCP, UDP, OSC, HTTP).
@@ -1029,13 +688,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
 
     async def stop(self) -> None:
         """Stop whichever server start() ran."""
-        self._cancel_push_tcp_tasks()
-        if self._mcast_sock is not None:
-            try:
-                self._mcast_sock.close()
-            except OSError:
-                pass
-            self._mcast_sock = None
+        self._close_push_channels()
         if self._side_receiver:
             await self.stop_datagram_server()
         if self._is_http:
@@ -1044,12 +697,6 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             await self.stop_datagram_server()
         else:
             await super().stop()
-
-    def _cancel_push_tcp_tasks(self) -> None:
-        """Abandon in-flight dial-out notification connections."""
-        for task in list(self._push_tcp_tasks):
-            task.cancel()
-        self._push_tcp_tasks.clear()
 
     # ── HTTP transport ──
 
@@ -2051,10 +1698,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         if wire is None:
             return None
         if "{" in wire:
-            merged = dict(self._driver_def.get("default_config") or {})
-            merged.update(self.config or {})
-            merged.pop("value", None)
-            wire = safe_substitute(wire, merged)
+            fields = self._instance_config()
+            fields.pop("value", None)
+            wire = safe_substitute(wire, fields)
         return wire.strip() or None
 
     def _build_settings_handlers(self) -> None:
@@ -2250,9 +1896,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         it arrives as (``"Status_Audio 1"``) — normalize the same way here.
         """
         if "{" in query_text:
-            merged = dict(self._driver_def.get("default_config") or {})
-            merged.update(self.config or {})
-            query_text = safe_substitute(query_text, merged)
+            query_text = safe_substitute(query_text, self._instance_config())
         return decode_delimiter(query_text).strip()
 
     # ── Child-entity modeling ──
@@ -2295,8 +1939,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         instance's config — the sim-side twin of the driver's
         _register_declared_children (count_from_state is skipped: the sim IS
         the device, there is no reported count to read yet)."""
-        merged = dict(self._driver_def.get("default_config") or {})
-        merged.update(self.config or {})
+        merged = self._instance_config()
         for ctype, tdef in self._child_types().items():
             if not isinstance(tdef, dict):
                 continue
@@ -3016,23 +2659,12 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     set_state=handler_def.get("set_state", {}),
                 ))
 
-        # Parse notification templates — maps state changes to unsolicited messages
-        # Format: notifications: { "state_key": { "value": "message template", ... } }
-        # Template variables: {key} = state key name, {value} = new value
-        self._notification_map: dict[str, dict[str, str]] = {}
-        for key, value_map in sim.get("notifications", {}).items():
-            if isinstance(value_map, dict):
-                self._notification_map[key] = {
-                    str(k): str(v) for k, v in value_map.items()
-                }
-            elif isinstance(value_map, str):
-                # Simple template for any value: notifications: { key: "template with {value}" }
-                self._notification_map[key] = {"*": value_map}
+        # The device's own wording for state changes (push_channels.py).
+        self._read_notifications(sim.get("notifications", {}))
 
     # Ensure handler lists exist even without simulator: section
     _explicit_handlers: list[ExplicitHandler] = []
     _script_handlers: list[ScriptHandler] = []
-    _notification_map: dict[str, dict[str, str]] = {}
     # ...and the child tables before __init__ reaches their assignment
     # (set_state can fire during construction).
     _child_roster: dict[str, list[str]] = {}
@@ -3042,22 +2674,9 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     # ── State change notifications ──
 
     def set_state(self, key: str, value: Any) -> None:
-        """Override to broadcast state changes to connected clients (TCP, UDP, and OSC)."""
-        # Clamp numeric values to declared min/max before storing. Bounds are
-        # typed as numbers, but a malformed driver could author a non-numeric
-        # scalar — _as_number returns None for those so we skip clamping rather
-        # than raise on `value < min`. For an integer value, round a fractional
-        # bound inward (ceil a lower bound, floor an upper bound) so the clamped
-        # value still respects the bound instead of truncating past it.
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            var_def = self._var_def_for_key(key)
-            v_min = _as_number(var_def.get("min"))
-            v_max = _as_number(var_def.get("max"))
-            if v_min is not None and value < v_min:
-                value = math.ceil(v_min) if isinstance(value, int) else v_min
-            if v_max is not None and value > v_max:
-                value = math.floor(v_max) if isinstance(value, int) else v_max
-
+        """Store a value within its declared bounds and, when it changed,
+        tell the driver the way the device would."""
+        value = self._within_bounds(key, value)
         old = self._state.get(key)
         super().set_state(key, value)
         if old == value:
@@ -3065,184 +2684,61 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
 
         # A `notifications:` template is the device's own wording for this
         # change. When one covers the new value and can reach the driver, it
-        # replaces the formatted push below instead of following it, so one
-        # change is one frame, as on the device.
+        # replaces the standard push instead of following it, so one change
+        # is one frame, as on the device.
         template = self._notification_template(key, value)
-        overridden = template is not None and self._sends_notifications()
+        if self._push_state and not (template is not None and self._sends_notifications()):
+            self._push_changed_value(key, value)
+        if template is not None:
+            self._send_notification(template, key, value)
 
-        # Push state changes to connected drivers — only when push_state is
-        # enabled (matching real device behavior) and the change came from a
-        # non-protocol source (simulator UI, API, error injection).
-        if not self._push_state or overridden:
-            pass
-        elif (
-            self._is_osc
-            and not self._handling_osc
-            and self._last_client_addr
-            and self._udp_transport
-            and key in self._osc_state_to_address
-        ):
-            self._push_osc_state(key, value)
-        elif (
-            not self._is_udp
-            and not self._is_osc
-            and not self._handling_command
-            and self._clients
-            and (push_text := self._format_state_reply(key, value)) is not None
-        ):
-            delimiter = self._get_delimiter()
-            push_data = (push_text + delimiter).encode()
-            asyncio.ensure_future(self.push(push_data))
-        elif (
-            self._is_udp
-            and not self._is_osc
-            and not self._handling_command
-            and self._last_client_addr
-            and self._udp_transport
-            and (push_text := self._format_state_reply(key, value)) is not None
-        ):
-            delimiter = self._get_delimiter()
-            self.push_datagram((push_text + delimiter).encode())
+    def _within_bounds(self, key: str, value: Any) -> Any:
+        """A number clamped to its variable's declared min/max.
 
-        # Explicit `notifications:` templates (simulator: section), delivered
-        # on whatever channel this device pushes on.
-        if template is None:
+        Bounds are typed as numbers, but a malformed driver could author a
+        non-numeric scalar -- _as_number returns None for those, so clamping is
+        skipped rather than raising on `value < min`. For an integer value a
+        fractional bound is rounded inward (ceil a lower bound, floor an upper
+        bound) so the clamped value still respects the bound instead of
+        truncating past it."""
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return value
+        var_def = self._var_def_for_key(key)
+        v_min = _as_number(var_def.get("min"))
+        v_max = _as_number(var_def.get("max"))
+        if v_min is not None and value < v_min:
+            value = math.ceil(v_min) if isinstance(value, int) else v_min
+        if v_max is not None and value > v_max:
+            value = math.floor(v_max) if isinstance(value, int) else v_max
+        return value
+
+    def _push_changed_value(self, key: str, value: Any) -> None:
+        """The standard push (``push_state``): the changed value's reply on
+        the control link, or as an OSC message. Only for a change from
+        outside the protocol (the Simulator UI, the API, an error injection):
+        state written while answering a command or a message is the reply,
+        not news."""
+        if self._is_osc:
+            if (
+                not self._handling_osc
+                and self._last_client_addr
+                and self._udp_transport
+                and key in self._osc_state_to_address
+            ):
+                self._push_osc_state(key, value)
             return
+        if self._handling_command or not self._control_link_open():
+            return
+        text = self._format_state_reply(key, value)
+        if text is not None:
+            self._send_on_control_link((text + self._get_delimiter()).encode())
 
-        self._deliver_notification(
-            self._render_notification(
-                template, key, self._to_wire(key, value),
-                state={
-                    ref: self._to_wire(ref, self._state[ref])
-                    for ref in _NOTIFICATION_STATE_REF.findall(template)
-                    if ref in self._state
-                },
-            )
-        )
-
-    def _notification_template(self, key: str, value: Any) -> str | None:
-        """The `notifications:` template for ``key`` taking ``value``: the
-        one written for that value, else the key's ``*`` template, else
-        None."""
-        value_map = self._notification_map.get(key) if self._notification_map else None
-        if not value_map:
-            return None
-        return value_map.get(map_key(value)) or value_map.get("*") or None
-
-    def _sends_notifications(self) -> bool:
-        """Whether a ``notifications:`` template can reach the driver: the map
-        has one and the device has a channel for it, the same channels
-        ``_deliver_notification`` picks from. An HTTP device with no push
-        block of its own has none, and neither has an OSC one, which pushes
-        only with ``push_state``, as OSC messages."""
-        if not self._notification_map:
-            return False
-        return bool(
-            self._push_multicast
-            or self.sse_paths
-            or self._push_tcp
-            or self._push_http
-            or self._push_udp_listener
-            or not (self._is_http or self._is_osc)
-        )
-
-    def _deliver_notification(self, msg: str) -> None:
-        """Send one unsolicited message the way this device pushes.
-
-        The one door for every notification a simulator emits: a rendered
-        ``notifications:`` template on a state change, or a script handler's
-        ``notify(text)``. The channel is the driver's declared push shape
-        (multicast group, SSE stream, dial-back subscribers, webhook
-        callbacks, the UDP listener port); a driver with none pushes on the
-        control link — every
-        connected TCP client, or the last UDP peer that spoke to the device
-        (the peer a real UDP server answers, and the only one it knows).
-        """
-        delimiter = self._get_delimiter()
-        data = (msg + delimiter).encode()
-
-        # A driver with a multicast, SSE, or dial-back push channel gets its
-        # notifications on that channel ONLY — real devices with a dedicated
-        # notice feed never send those frames on the control connection.
-        if self._push_multicast:
-            if self._mcast_sock is not None and not self._silenced:
-                try:
-                    self._mcast_sock.sendto(data, self._push_multicast)
-                    self.log_protocol("out", data)
-                except OSError:
-                    logger.debug(
-                        "Multicast notification send failed", exc_info=True
-                    )
-        elif self.sse_paths:
-            # SSE events are self-framed — no delimiter appended.
-            self.push_sse_event(msg)
-        elif self._push_tcp:
-            # One outbound connection per registered subscriber, each
-            # carrying one framed notification (the dial-back pattern).
-            if self._push_tcp_subscribers:
-                self._emit_push_tcp(data)
-        elif self._push_http:
-            # HTTP-callback bodies are self-framed — no delimiter appended.
-            # No registered callback (controller never sent its registration
-            # command) means no delivery, matching a real device.
-            for url in list(self._http_push_callbacks):
-                asyncio.ensure_future(self.post_http_callback(
-                    url, msg,
-                    headers={"Content-Type": self._callback_content_type(msg)},
-                ))
-        elif self._push_udp_listener:
-            # One datagram per notification to the port the device is set to
-            # send to; nobody registers, so it goes whether or not the
-            # platform is listening, as on the device.
-            self.send_to_listener(data, self._push_udp_listener)
-        elif self._is_udp and not self._is_osc:
-            # Connectionless: the device can only push to a peer it has
-            # heard from, so the last sender is the subscriber.
-            self.push_datagram(data)
-        elif self._clients:
-            asyncio.ensure_future(self.push(data))
-
-    @staticmethod
-    def _render_notification(
-        template: str, key: str, value: Any, state: dict[str, Any] | None = None,
-    ) -> str:
-        """Render a notification template. `{value}` / `{key}` substitute as
-        before; an optional format spec (`{value:d}`, `{value:04X}`) formats
-        the value — booleans coerce to int first so `{value:d}` renders a
-        protocol's 0/1 instead of 'True'/'False'. `{state.<key>}` puts in
-        another state value from ``state`` (the device's own numbers), with
-        the same format specs, for a notice that reports several fields at
-        once; a key ``state`` does not hold is left as written."""
-
-        def repl(m: re.Match) -> str:
-            name = m.group(1)
-            if name == "value":
-                val: Any = value
-            elif name == "key":
-                val = key
-            else:
-                ref = name[len("state."):]
-                if state is None or ref not in state:
-                    return m.group(0)
-                val = state[ref]
-            spec = m.group(2)
-            if not spec:
-                return str(val)
-            if isinstance(val, bool):
-                val = int(val)
-            try:
-                return format(val, spec)
-            except (ValueError, TypeError):
-                # A numeric spec on a numeric string: coerce, then format.
-                if isinstance(val, str):
-                    for conv in (int, float):
-                        try:
-                            return format(conv(val), spec)
-                        except (ValueError, TypeError):
-                            continue
-                return str(val)
-
-        return re.sub(r"\{(value|key|state\.[\w.]+)(?::([^{}]*))?\}", repl, template)
+    def _control_link_open(self) -> bool:
+        """Whether anyone is on the control link to push to: a UDP peer that
+        spoke to the device, or a connected stream client."""
+        if self._is_udp:
+            return bool(self._last_client_addr and self._udp_transport)
+        return bool(self._clients)
 
     def _push_osc_state(self, key: str, value: Any) -> None:
         """Send an OSC message to the connected driver for a state change."""
@@ -3648,9 +3144,6 @@ def _ref_number(ref: Any) -> int | None:
         return int(ref[1:]) or None
     return None
 
-
-# The state keys a notification template names as ``{state.<key>}``.
-_NOTIFICATION_STATE_REF = re.compile(r"\{state\.([\w.]+)(?::[^{}]*)?\}")
 
 # ── Utility functions ──
 
