@@ -32,6 +32,7 @@ import logging
 import math
 import re
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any, NamedTuple
 from urllib.parse import unquote
 
@@ -983,6 +984,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             self._handling_command = False
 
     def _dispatch_command(self, data: bytes) -> bytes | None:
+        """Answer one line: the first handler in ``_HANDLER_CHAIN`` order
+        whose pattern matches its front, then whatever that handler left of
+        the line; a registration nothing answers with an empty
+        acknowledgement; else the line read as several commands run
+        together."""
         text = data.decode("utf-8", errors="replace").strip()
         if not text:
             return None
@@ -992,52 +998,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # driver YAML can shape the response with an explicit handler.
         was_registration = self._watch_push_registration(text)
 
-        # Try explicit handlers first (from simulator: command_handlers)
-        for handler in self._explicit_handlers:
-            m = handler.pattern.match(text)
-            if m:
-                return self._with_remainder(text, m, self._execute_explicit_handler(handler, m))
-
-        # Try script handlers (match: + handler: with inline Python)
-        for handler in self._script_handlers:
-            m = handler.pattern.match(text)
-            if m:
-                return self._with_remainder(text, m, self._execute_script_handler(handler, m))
-
-        for pattern in self._inline_json_polls:
-            if pattern.match(text):
-                return self._inline_json_reply()
-
-        # Inline (Generic) devices: match the incoming string against the
-        # response patterns and apply their state changes + echo a confirmation.
-        for pattern, set_dict in self._inline_response_handlers:
-            m = pattern.match(text)
-            if m:
-                return self._with_remainder(text, m, self._apply_inline_response(text, m, set_dict))
-
-        # Child-addressed poll queries answer from the addressed child's own
-        # state. They dispatch ahead of the auto command handlers on purpose:
-        # a protocol whose bare per-output view collides with a single-output
-        # command form (SIS "1Z") resolves by roster — children modeled means
-        # the matrix dialect wins, exactly like the real hardware.
-        for handler in self._child_query_handlers:
-            m = handler.pattern.match(text)
-            if m:
-                return self._with_remainder(
-                    text, m, self._execute_child_query_handler(handler)
-                )
-
-        # Try auto-generated command handlers
-        for handler in self._command_handlers:
-            m = handler.pattern.match(text)
-            if m:
-                return self._with_remainder(text, m, self._execute_command_handler(handler, m))
-
-        # Try query handlers
-        for handler in self._query_handlers:
-            m = handler.pattern.match(text)
-            if m:
-                return self._with_remainder(text, m, self._execute_query_handler(handler))
+        found = self._first_handler(text)
+        if found is not None:
+            family, handler, m = found
+            reply = family.answer(self, handler, text, m)
+            return self._with_remainder(text, m, reply) if family.takes_the_rest else reply
 
         # A registration command with no handler of its own still succeeds —
         # the empty body means "204-style ack" (real dial-back devices answer
@@ -1045,13 +1010,27 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # simulator handlers for the subscribe/unsubscribe pair.
         if was_registration:
             return b""
+        return self._dispatch_run_together(text)
 
-        # Nothing matched the whole line. Unterminated protocols are
-        # self-delimiting, and with no terminator on the wire back-to-back
-        # writes can coalesce into one line ("N?*R4") whose first command's
-        # end-anchored pattern then never matches. If the entire line
-        # decomposes into known commands, dispatch each piece; plain garbage
-        # does not decompose and stays unrecognized.
+    def _first_handler(self, text: str) -> tuple[_HandlerFamily, Any, re.Match] | None:
+        """The first handler whose pattern matches the front of the line,
+        with its family and the match."""
+        for family in _HANDLER_CHAIN:
+            for handler in getattr(self, family.handlers):
+                m = family.pattern(handler).match(text)
+                if m:
+                    return family, handler, m
+        return None
+
+    def _dispatch_run_together(self, text: str) -> bytes | None:
+        """A line nothing matched whole, read as commands run together.
+
+        Unterminated protocols are self-delimiting, and with no terminator on
+        the wire back-to-back writes can coalesce into one line ("N?*R4")
+        whose first command's end-anchored pattern then never matches. If the
+        entire line decomposes into known commands, dispatch each piece;
+        plain garbage does not decompose and stays unrecognized.
+        """
         segments = self._plan_segments(text) if len(text) <= 256 else None
         if segments and len(segments) > 1:
             replies = [self._dispatch_command(s.encode()) for s in segments]
@@ -1102,22 +1081,12 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return None
 
     def _any_handler_fullmatch(self, text: str) -> bool:
-        for handler in self._explicit_handlers:
-            if handler.pattern.fullmatch(text):
-                return True
-        for handler in self._script_handlers:
-            if handler.pattern.fullmatch(text):
-                return True
-        for pattern, _set_dict in self._inline_response_handlers:
-            if pattern.fullmatch(text):
-                return True
-        for handler in self._child_query_handlers:
-            if handler.pattern.fullmatch(text):
-                return True
-        for handler in self._command_handlers:
-            if handler.pattern.fullmatch(text):
-                return True
-        return any(h.pattern.fullmatch(text) for h in self._query_handlers)
+        """Whether a handler the planner counts matches all of ``text``."""
+        return any(
+            family.pattern(handler).fullmatch(text)
+            for family in _HANDLER_CHAIN if family.planned
+            for handler in getattr(self, family.handlers)
+        )
 
     def _execute_command_handler(self, handler: CommandHandler, m: re.Match) -> bytes | None:
         """Run a matched command: the state machines it drives, the child it
@@ -2270,6 +2239,66 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         if controls:
             info["controls"] = controls
         return info
+
+
+# ── The order a line is offered to the handlers ──
+
+
+class _HandlerFamily(NamedTuple):
+    """One family of handlers in the order a line is offered to them.
+
+    ``handlers`` names the simulator attribute holding them, read when the
+    line arrives (a table is rebuilt when project children arrive, and the
+    simulator: section's tables are a class default until it is read).
+    ``answer(sim, handler, text, match)`` is the reply. A family that
+    ``takes_the_rest`` dispatches what its pattern left of the line as the
+    next command; one the coalesced-line planner counts is ``planned``.
+    """
+
+    handlers: str
+    pattern: Callable[[Any], re.Pattern]
+    answer: Callable[[YAMLAutoSimulator, Any, str, re.Match], bytes | None]
+    takes_the_rest: bool = True
+    planned: bool = True
+
+
+def _own_pattern(handler: Any) -> re.Pattern:
+    return handler.pattern
+
+
+def _pair_pattern(pair: tuple[re.Pattern, dict]) -> re.Pattern:
+    return pair[0]
+
+
+def _bare_pattern(pattern: re.Pattern) -> re.Pattern:
+    return pattern
+
+
+#: First match wins. The simulator: section's hand-written handlers come
+#: first, then an inline device's JSON status poll (its whole reply, so the
+#: rest of the line is not read and the planner does not count it) and its
+#: response patterns, then the generated reads and commands. Child-addressed
+#: poll queries come ahead of the generated commands on purpose: a protocol
+#: whose bare per-output view collides with a single-output command form
+#: (SIS "1Z") resolves by roster — children modeled means the matrix dialect
+#: wins, exactly like the real hardware.
+_HANDLER_CHAIN: tuple[_HandlerFamily, ...] = (
+    _HandlerFamily("_explicit_handlers", _own_pattern,
+                   lambda sim, h, text, m: sim._execute_explicit_handler(h, m)),
+    _HandlerFamily("_script_handlers", _own_pattern,
+                   lambda sim, h, text, m: sim._execute_script_handler(h, m)),
+    _HandlerFamily("_inline_json_polls", _bare_pattern,
+                   lambda sim, h, text, m: sim._inline_json_reply(),
+                   takes_the_rest=False, planned=False),
+    _HandlerFamily("_inline_response_handlers", _pair_pattern,
+                   lambda sim, h, text, m: sim._apply_inline_response(text, m, h[1])),
+    _HandlerFamily("_child_query_handlers", _own_pattern,
+                   lambda sim, h, text, m: sim._execute_child_query_handler(h)),
+    _HandlerFamily("_command_handlers", _own_pattern,
+                   lambda sim, h, text, m: sim._execute_command_handler(h, m)),
+    _HandlerFamily("_query_handlers", _own_pattern,
+                   lambda sim, h, text, m: sim._execute_query_handler(h)),
+)
 
 
 # ── Data classes ──
