@@ -49,11 +49,10 @@ class BaseSimulator(ABC):
         self.device_id = device_id
         self.config = config or {}
 
-        info = self.SIMULATOR_INFO
-        self._state: dict[str, Any] = dict(info.get("initial_state", {}))
-        self._error_modes: dict[str, dict] = dict(info.get("error_modes", {}))
+        self._state: dict[str, Any] = {}
+        self._error_modes: dict[str, dict] = {}
         self._active_errors: set[str] = set()
-        self._delays: dict[str, float] = dict(info.get("delays", {}))
+        self._delays: dict[str, float] = {}
         self._state_machines: dict[str, StateMachine] = {}
         self._change_listeners: list[Callable] = []
         self._protocol_log: list[dict] = []
@@ -61,36 +60,55 @@ class BaseSimulator(ABC):
         self._running = False
         self._network_layer = None  # Set by SimulatorManager
         # How much the device can take in (capacity.py); off until switched on.
-        self._capacity = DeviceCapacity(
-            device_id, info.get("capacity"), notify=self._notify_change,
-        )
+        self._capacity = DeviceCapacity(device_id, notify=self._notify_change)
         # Whether the device serves one connection at a time (single_client.py);
         # a declared mode is in force from the start.
-        self._single_client = SingleClient(
-            device_id, info.get("single_client"), notify=self._notify_single_client,
-        )
+        self._single_client = SingleClient(device_id, notify=self._notify_single_client)
         # v0.5.0 child entities from the project, keyed
         # {child_type: {padded_local_id: {label, config}}}. Set by the manager
         # via set_child_entities after construction; Python simulators read
         # self.child_entities to model per-child state and responses.
         self._child_entities: dict[str, dict[str, dict]] = {}
 
-        # Build state machines from SIMULATOR_INFO if present. Skip malformed
-        # entries with a warning instead of letting a missing key raise a
-        # KeyError that aborts construction of the whole simulator.
-        for name, sm_def in info.get("state_machines", {}).items():
+        self._read_device_settings(self.SIMULATOR_INFO)
+
+    def _read_device_settings(self, settings: dict) -> None:
+        """The device's settings, the one reader for both kinds of simulator:
+        a Python simulator's ``SIMULATOR_INFO`` (read here at construction) and
+        a YAML driver's ``simulator:`` section (read over what the definition
+        gave, once its handlers are built). A new setting is read here.
+
+        Its state, error modes and delays are taken key by key over what the
+        device already holds; its capacity and connection mode are declared
+        when given; each state machine is built and its state seeded with its
+        initial value, last, so it wins over a seeded key of the same name. A
+        malformed machine is skipped (``_skip_malformed_machine``) rather than
+        aborting the device's construction.
+        """
+        self._state.update(settings.get("initial_state", {}))
+        self._error_modes.update(settings.get("error_modes", {}))
+        self._delays.update(settings.get("delays", {}))
+        if settings.get("capacity") is not None:
+            self._capacity.declare(settings["capacity"])
+        if settings.get("single_client") is not None:
+            self._single_client.declare(settings["single_client"])
+        for name, sm_def in settings.get("state_machines", {}).items():
             machine = StateMachine.from_definition(
                 name, sm_def, lambda key, val: self.set_state(key, val)
             )
             if machine is None:
-                logger.warning(
-                    "Skipping malformed state_machine '%s' on %s "
-                    "(needs states, initial, transitions)", name, self.device_id,
-                )
+                self._skip_malformed_machine(name)
                 continue
             self._state_machines[name] = machine
-            # Set initial state
             self._state[name] = sm_def["initial"]
+
+    def _skip_malformed_machine(self, name: str) -> None:
+        """Say why a declared state machine was left out (it needs states,
+        initial and transitions)."""
+        logger.warning(
+            "Skipping malformed state_machine '%s' on %s "
+            "(needs states, initial, transitions)", name, self.device_id,
+        )
 
     # ── Properties ──
 

@@ -63,7 +63,6 @@ from openavc.drivers.inline_protocol import (
     normalize_config_state_vars,
 )
 from openavc.transport.binary_helpers import encode_escape_sequences
-from openavc.simulator.base import StateMachine
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
 from openavc.simulator.osc_addresses import (
@@ -1819,50 +1818,25 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     def _merge_simulator_section(self, sim: dict) -> None:
         """Merge explicit simulator: enhancements onto auto-generated behavior:
-        the device's settings, its state machines, its hand-written handlers,
-        then its own wording for state changes."""
-        self._merge_section_settings(sim)
-        self._build_section_state_machines(sim.get("state_machines", {}))
-        self._read_section_handlers(sim.get("command_handlers", []))
-        # The device's own wording for state changes (push_channels.py).
-        self._read_notifications(sim.get("notifications", {}))
-
-    def _merge_section_settings(self, sim: dict) -> None:
-        """The section's state, delays, capacity, connection mode, error
-        modes and controls, each over what the definition gave."""
-        for key, value in sim.get("initial_state", {}).items():
-            self._state[key] = value
-        for key, value in sim.get("delays", {}).items():
-            self._delays[key] = value
-        # How much the device can take in (off until switched on per device).
-        if "capacity" in sim:
-            self._capacity.declare(sim["capacity"])
-        # Whether the device serves one connection at a time (in force at once).
-        if "single_client" in sim:
-            self._single_client.declare(sim["single_client"])
-        for mode, mode_def in sim.get("error_modes", {}).items():
-            self._error_modes[mode] = mode_def
+        the device's settings and state machines (base.py's reader, the one a
+        Python simulator's SIMULATOR_INFO goes through), its controls, its
+        hand-written handlers, then its own wording for state changes."""
+        self._read_device_settings(sim)
         # Declared controls replace the ones read from the state variables.
         controls = sim.get("controls")
         if controls:
             self.SIMULATOR_INFO["controls"] = controls
+        self._read_section_handlers(sim.get("command_handlers", []))
+        # The device's own wording for state changes (push_channels.py).
+        self._read_notifications(sim.get("notifications", {}))
 
-    def _build_section_state_machines(self, machines: dict) -> None:
-        """Each state machine the section declares, its state seeded with its
-        initial value. A malformed one is skipped with a warning rather than
-        aborting the device's construction (the validator flags it up front)."""
-        for name, sm_def in machines.items():
-            machine = StateMachine.from_definition(
-                name, sm_def, lambda key, val: self.set_state(key, val)
-            )
-            if machine is None:
-                logger.warning(
-                    "%s: skipping malformed state_machine '%s' "
-                    "(needs states, initial, transitions)", self.driver_id, name,
-                )
-                continue
-            self._state_machines[name] = machine
-            self._state[name] = sm_def["initial"]
+    def _skip_malformed_machine(self, name: str) -> None:
+        """A section's malformed machine, said in this module's log (which the
+        validator mutes while it builds a simulator) and naming the driver."""
+        logger.warning(
+            "%s: skipping malformed state_machine '%s' "
+            "(needs states, initial, transitions)", self.driver_id, name,
+        )
 
     def _read_section_handlers(self, handler_defs: list) -> None:
         """The section's hand-written command handlers, in their order: an
