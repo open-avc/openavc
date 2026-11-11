@@ -5,7 +5,6 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.cloud.tools.ui_bindings import normalize_bindings, validate_bindings
 from openavc.cloud.tools.ui_layouts import (
@@ -19,12 +18,12 @@ from openavc.cloud.tools.ui_layouts import (
     set_hidden,
 )
 from openavc.cloud.tools.ui_rewrites import scrub_page_references
+from openavc.cloud.tools.ui_simulate import simulate_ui_action
 from openavc.cloud.tools.ui_lookups import (
     declared_state_variable,
     longest_first,
     reference_lookups,
 )
-from openavc.core.ui_events import find_element, resolve_press
 from openavc.ui.matrix_model import matrix_config_problems
 from openavc.ui.page_geometry import (
     resolved_placements,
@@ -34,17 +33,6 @@ from openavc.ui.page_review import review_master_element, review_page
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
-
-# State-change sources a simulated UI action can never itself produce. They're
-# excluded from _simulate_ui_action's captured effects so concurrent event-loop
-# activity (system metrics/heartbeat, other AI tools, cloud pushes, ISC peers,
-# discovery) isn't misattributed to the action. Device polling shares the
-# device.<id> source with real command effects, so it can't be filtered here
-# without also hiding the action's genuine device changes.
-_SIMULATE_IGNORED_SOURCES = frozenset({
-    "heartbeat", "system", "cloud", "ai", "isc", "discovered",
-})
-
 
 # Geometry the model is not allowed to speak any more. 0.8.0 replaced whole-cell
 # grid coordinates with percentages, and a stale prompt talking to a current
@@ -56,33 +44,6 @@ _RETIRED_GEOMETRY = {
     "grid": "layouts[] with placements, plus the authoring-only snap increment",
     "grid_gap": "nothing -- pages no longer have a gap",
 }
-
-
-def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: list) -> dict:
-    """Say why an interaction did nothing, when it did nothing.
-
-    ``{"success": true, "state_changes": []}`` is what a working device command
-    looks like AND what a button with no binding at all looks like, which is how
-    a simulation came back reading like a failure for a control that fired. Now
-    that the dispatched list separates those two, the remaining silence is worth
-    a sentence rather than an empty array to interpret.
-    """
-    if dispatched:
-        return {}
-    # The element the event actually reached.
-    element = find_element(getattr(engine, "project", None), element_id)
-    if element is None:
-        return {
-            "note": f"No element '{element_id}' is on any page or in the master "
-                    f"elements, so nothing ran."
-        }
-    bindings = element.bindings if isinstance(element.bindings, dict) else {}
-    do_map = bindings.get("do") if isinstance(bindings.get("do"), dict) else {}
-    if not do_map.get(action):
-        slots = sorted(slot for slot, actions in do_map.items() if actions)
-        has = f" It has: {', '.join(slots)}." if slots else " It has no do bindings at all."
-        return {"note": f"'{element_id}' has nothing bound to {action}.{has}"}
-    return {"note": f"'{element_id}' has a do.{action} binding, but no action in it ran."}
 
 
 def _page_named(project: Any, page_id: str) -> Any:
@@ -1255,96 +1216,4 @@ class UIToolsMixin:
         engine = self._get_engine()
         if not engine:
             return {"error": "Engine not available"}
-
-        action = input.get("action", "")
-        element_id = input.get("element_id", "")
-        value = input.get("value")
-        page_id = input.get("page_id", "")
-        dry_run = bool(input.get("dry_run"))
-
-        if action == "navigate":
-            if not page_id:
-                return {"error": "page_id is required for navigate action"}
-            if dry_run:
-                return {
-                    "success": True, "action": "navigate", "page_id": page_id,
-                    "dry_run": True, "state_changes": [],
-                    "note": f"Would move every connected panel to '{page_id}'.",
-                }
-            # Mirror the real navigation path (engine.handle_ui_event): emit the
-            # page event AND broadcast ui.navigate — panels switch page only on
-            # the WS broadcast, so the emit alone would report success while no
-            # panel actually moves.
-            await engine.events.emit(f"ui.page.{page_id}")
-            await engine.broadcast_ws({"type": "ui.navigate", "page_id": page_id})
-            return {"success": True, "action": "navigate", "page_id": page_id, "state_changes": []}
-
-        if not element_id:
-            return {"error": "element_id is required for this action"}
-
-        # Capture state changes during action execution. The '*' subscription
-        # sees all event-loop-wide activity during the await, so drop changes
-        # from sources the action can't have caused (system metrics, other
-        # tools, ISC peers, discovery) — otherwise they're misattributed to it.
-        # The answer goes to the cloud, so it keeps to what the state read
-        # tools may send (state_relay: the excluded keys, a URL's password).
-        state_changes = []
-        def on_change(key, old_val, new_val, source):
-            if source in _SIMULATE_IGNORED_SOURCES or is_cloud_excluded_key(key):
-                return
-            state_changes.append({
-                "key": key,
-                "old_value": cloud_state_value(old_val),
-                "new_value": cloud_state_value(new_val),
-            })
-
-        # A real press on a toggle button is resolved BY THE PANEL -- it compares
-        # the bound key against toggle_value in the browser and sends press or
-        # toggle_off. Firing "press" here regardless reported the on-branch
-        # twice in a row for a working toggle, which is indistinguishable from a
-        # toggle that only ever fires one branch.
-        toggle_note: str | None = None
-        effective = action
-        if action == "press":
-            element = find_element(getattr(engine, "project", None), element_id)
-            if element is not None:
-                effective, toggle_note = resolve_press(element, self._agent.state)
-
-        sub_id = self._agent.state.subscribe("*", on_change)
-        try:
-            if action in ("press", "release", "hold"):
-                dispatched = await engine.handle_ui_event(
-                    effective, element_id, dry_run=dry_run,
-                )
-            elif action == "change":
-                dispatched = await engine.handle_ui_event(
-                    "change", element_id, {"value": value}, dry_run=dry_run,
-                )
-            elif action == "submit":
-                dispatched = await engine.handle_ui_event(
-                    "submit", element_id, {"value": value}, dry_run=dry_run,
-                )
-            else:
-                return {"error": f"Unknown action: {action}"}
-        except Exception as e:
-            return {"error": f"Action failed: {e}", "state_changes": state_changes}
-        finally:
-            self._agent.state.unsubscribe(sub_id)
-
-        return {
-            "success": True,
-            "action": action,
-            **({"dispatched_as": effective} if effective != action else {}),
-            **({"toggle": toggle_note} if toggle_note else {}),
-            **({"dry_run": True} if dry_run else {}),
-            "element_id": element_id,
-            # What the interaction actually DID. State changes alone report a
-            # working button as "success, nothing happened": a device.command
-            # writes no state key directly -- it goes out the wire and comes
-            # back on a poll or a push -- so an empty list is the expected
-            # result for a command that fired. That is a verification tool
-            # that cannot verify the commonest binding there is.
-            "dispatched": dispatched or [],
-            "state_changes": state_changes,
-            **_nothing_ran_note(engine, element_id, action, dispatched),
-        }
+        return await simulate_ui_action(engine, self._agent.state, input)
