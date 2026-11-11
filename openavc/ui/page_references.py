@@ -38,13 +38,11 @@ What is deliberately NOT checked
 ``var.`` keys. A script or a macro can create one at any time, so an undeclared
 variable is not evidence of a mistake.
 
-A device key's PROPERTY was on this list too, on the reasoning that child-entity
-keys appear at runtime. That was too broad, and an adversarial pass said so: a
-typo'd property is at least as common as a typo'd device, and the device was
-caught while the property was not. It is checked now, but only where the driver
-declares a set to check against -- and never for the platform's own device
-properties (``online``, ``offline_reason``, ...), which no DRIVER_INFO contains
-and which are the commonest bindings on any panel.
+A device key's PROPERTY is checked, because a typo'd property is at least as
+common as a typo'd device -- but only where the driver declares a set to check
+against, and never for the platform's own device properties (``online``,
+``offline_reason``, ...), which no DRIVER_INFO contains and which are the
+commonest bindings on any panel.
 
 A child ID is checked the same narrow way, and for the same reason the property
 is: a page that repeats one block per output gets the NUMBER wrong far more
@@ -59,12 +57,26 @@ once it answers.
 Everything here WARNS. The write lands and the findings ride back with it, for
 the same reason as the rest of the review: a rejection costs a whole round trip,
 a warning costs nothing.
+
+How the checks are laid out
+---------------------------
+``reference_findings`` builds one ``_Project`` (the project's ids and the
+lookups its caller injects), reports what the page itself names, then runs
+``_ELEMENT_CHECKS`` on each element the write answers for, in that order. An
+action is judged by ``_ACTION_CHECKS`` under its name, at a ``_Site`` (its
+control, its path, the options a value_map answers to). A state key a control
+reads is a ``_Read``, judged by ``_read_finding`` whether it is written under
+``bindings.show`` or in ``matrix_config``. So a new lookup is a ``_Project``
+field and a keyword on ``reference_findings``; a new element check, or a new
+action that names something, is one entry in its table. Which actions are
+walked is ``_do_findings``: each ``do`` slot's own list, and a value_map's
+entries at every depth (``_value_map_findings``).
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -139,6 +151,8 @@ class _Control(_Holder):
 
     dump: Mapping[str, Any] = field(default_factory=dict)
     page_id: str = "?"
+    shows: CustomFileUse | None = None
+    """The ``ui/`` file ``custom_file_references`` found under this id, if any."""
 
 
 @dataclass(frozen=True)
@@ -318,16 +332,20 @@ def _grant_findings(
     ]
 
 
+def _reachable(target: str, page_ids: set[str]) -> bool:
+    """Whether the panel can go to ``target``: a page of this project, or its own ``$back``/``$dismiss``."""
+    return target in page_ids or target in NAVIGATION_SENTINELS
+
+
 def _navigation_finding(
     at: _Holder | _Site, target: Any, project: _Project, key: str,
 ) -> Finding | None:
     """A move to a page that does not exist, said the same wherever it is written.
 
-    The panel resolves ``$back`` and ``$dismiss`` itself (``navigateToPage``),
-    so they are never missing; a target that is not a name says nothing.
+    A target that is not a name says nothing.
     """
     target = _named(target)
-    if target is None or target in project.page_ids or target in NAVIGATION_SENTINELS:
+    if target is None or _reachable(target, project.page_ids):
         return None
     return at.finding(
         "dangling_reference",
@@ -377,8 +395,8 @@ def custom_file_references(page: Any) -> list[CustomFileUse]:
     """
     found: list[CustomFileUse] = []
     if str(getattr(page, "render_mode", "") or "") == "custom":
-        named = getattr(page, "custom_file", None)
-        if isinstance(named, str) and named:
+        named = _named(getattr(page, "custom_file", None))
+        if named:
             found.append(CustomFileUse(
                 "page", str(getattr(page, "id", "?")), named,
                 _granted_ids(getattr(page, "grant", None)),
@@ -387,8 +405,8 @@ def custom_file_references(page: Any) -> list[CustomFileUse]:
         dump = _mapping(element)
         if dump is None or dump.get("type") != "custom":
             continue
-        named = dump.get("custom_file")
-        if isinstance(named, str) and named:
+        named = _named(dump.get("custom_file"))
+        if named:
             found.append(CustomFileUse(
                 "custom control", str(dump.get("id", "?")), named,
                 _granted_ids(dump.get("grant")),
@@ -427,8 +445,8 @@ def custom_file_users(project: Any, file_path: str) -> list[str]:
     return sorted(who)
 
 
-def _custom_file_finding(
-    what: str, holder_id: str, page_id: str, named: Any, ui_files: set[str] | None,
+def _missing_file_finding(
+    use: CustomFileUse, page_id: str, ui_files: set[str] | None,
 ) -> Finding | None:
     """A custom control or page pointed at a file that is not in ``ui/``.
 
@@ -437,18 +455,19 @@ def _custom_file_finding(
     exists: the element keeps drawing, the box comes up empty, and the only
     other thing that says so is the Builder's picker showing ``(missing)`` to
     somebody who is not looking at it.
+
+    Filed under the page's id, with the holder's own id in its sentence and key.
     """
-    if ui_files is None or not isinstance(named, str) or not named:
+    if ui_files is None:
         return None
-    wanted = named.replace("\\", "/").strip("/")
-    if wanted in ui_files:
+    if use.file.replace("\\", "/").strip("/") in ui_files:
         return None
     listed = _listed(sorted(ui_files)) if ui_files else "none yet"
     return Finding(
         page_id, "dangling_reference",
-        f"{holder_id} ({what}) shows '{named}', which is not in the project's ui/ "
+        f"{use.holder_id} ({use.what}) shows '{use.file}', which is not in the project's ui/ "
         f"folder, so it draws an empty box. The files there are: {listed}.",
-        key=("dangling_reference", holder_id, f"custom_file.{named}"),
+        key=("dangling_reference", use.holder_id, f"custom_file.{use.file}"),
     )
 
 
@@ -495,55 +514,54 @@ def reference_findings(
         undeclared_property=undeclared_property, unknown_child_id=unknown_child_id,
         missing_params=missing_params, file_command=file_command, ui_files=ui_files,
     )
-    findings: list[Finding] = []
-    in_scope = (lambda el_id: True) if touched is None else (lambda el_id: el_id in touched)
     page_id = str(getattr(page, "id", "?"))
+    # One walk says what the page and its controls show, so what counts as
+    # naming a file lives in one place -- see custom_file_references.
+    uses = custom_file_references(page)
+    findings = _page_findings(page, page_id, uses, project)
+    for control in _controls(page, page_id, uses, touched):
+        for check in _ELEMENT_CHECKS:
+            findings.extend(check(control, project))
+    return findings
 
-    # A custom page carries the same grant an iframe element does, so it can name
-    # a device that has since left the project in exactly the same way -- and it
-    # is exactly as invisible, because a grant matching nothing looks like a
-    # grant nobody set. Not scoped by `touched`: the page is not an element, and
-    # a write that never mentions it is still a write onto a page whose author
-    # page can no longer reach what it was given.
-    findings.extend(_grant_findings(
+
+def _page_findings(
+    page: Any, page_id: str, uses: list[CustomFileUse], project: _Project,
+) -> list[Finding]:
+    """What the page itself names: the devices a custom page is granted, and its file.
+
+    A custom page carries the same grant an iframe element does, and names its
+    file the same way an element does, so it can lose either in exactly the
+    same way -- and it is exactly as invisible, because a grant matching
+    nothing looks like a grant nobody set. Neither is scoped by ``touched``:
+    the page is not one of its elements, and a write that never mentions it is
+    still a write onto a page that can no longer reach what it was given.
+    """
+    findings = _grant_findings(
         _Holder(page_id, "page"), getattr(page, "grant", None), "the page it shows", project,
-    ))
+    )
+    shown = next((use for use in uses if use.what == "page"), None)
+    missing = _missing_file_finding(shown, page_id, project.ui_files) if shown else None
+    return findings + _found(missing)
 
-    # A page that hands the screen to markup names its file the same way an
-    # element does, and is missing it the same way. Not scoped by `touched`,
-    # like the page grant beside it: the page is not one of its elements.
-    # One walk answers both sites below, so what counts as naming a file lives
-    # in one place -- see custom_file_references.
-    named_files = custom_file_references(page)
-    page_file = next((use.file for use in named_files if use.what == "page"), None)
-    element_files = {
-        use.holder_id: use.file for use in named_files if use.what != "page"
-    }
 
-    if page_file is not None:
-        missing = _custom_file_finding("page", page_id, page_id, page_file, ui_files)
-        if missing:
-            findings.append(missing)
-
+def _controls(
+    page: Any, page_id: str, uses: list[CustomFileUse], touched: set[str] | None,
+) -> Iterator[_Control]:
+    """Each element the write answers for, in the order the page holds them."""
+    shows = {use.holder_id: use for use in uses if use.what != "page"}
     for element in getattr(page, "elements", []) or []:
         dump = _mapping(element)
         if dump is None:
             continue
         el_id = str(dump.get("id", "?"))
-        if not in_scope(el_id):
-            continue
-        control = _Control(el_id, str(dump.get("type", "?")), dump, page_id)
-        plugin_issue = plugin_element_finding(dump, el_id, plugin_elements)
-        if plugin_issue:
-            findings.append(plugin_issue)
-        if el_id in element_files:
-            missing_file = _custom_file_finding(
-                "custom control", el_id, page_id, element_files[el_id], ui_files,
-            )
-            if missing_file:
-                findings.append(missing_file)
-        findings.extend(_element_findings(control, project))
-    return findings
+        if touched is None or el_id in touched:
+            yield _Control(el_id, str(dump.get("type", "?")), dump, page_id, shows.get(el_id))
+
+
+def _found(*findings: Finding | None) -> list[Finding]:
+    """The findings that were made, for a check that asks a single-answer rule."""
+    return [finding for finding in findings if finding]
 
 
 @dataclass(frozen=True)
@@ -686,30 +704,56 @@ def _bindings(dump: Mapping[str, Any], part: str) -> Mapping[str, Any]:
     return _mapping(bindings.get(part)) or {}
 
 
-def _element_findings(control: _Control, project: _Project) -> list[Finding]:
+def _plugin_findings(control: _Control, project: _Project) -> list[Finding]:
+    return _found(plugin_element_finding(control.dump, control.id, project.plugin_elements))
+
+
+def _shown_file_findings(control: _Control, project: _Project) -> list[Finding]:
+    if control.shows is None:
+        return []
+    return _found(_missing_file_finding(control.shows, control.page_id, project.ui_files))
+
+
+def _page_nav_findings(control: _Control, project: _Project) -> list[Finding]:
+    if control.what != "page_nav":
+        return []
+    return _found(_navigation_finding(
+        control, control.dump.get("target_page"), project, "target_page",
+    ))
+
+
+def _control_grant_findings(control: _Control, project: _Project) -> list[Finding]:
+    return _grant_findings(control, control.dump.get("grant"), "it", project)
+
+
+def _do_findings(control: _Control, project: _Project) -> list[Finding]:
+    """Every action under the control's ``do`` slots, in ``ACTION_SLOTS`` order.
+
+    Only the slots' own lists: what nests inside an action (a toggle's
+    ``off_action``, a press-and-hold's ``hold_action``) and a matrix row's own
+    route are not walked here.
+    """
+    do_map = _bindings(control.dump, "do")
+    options = _option_values(control.dump)
     findings: list[Finding] = []
-    dump = control.dump
-
-    if control.what == "page_nav":
-        moved = _navigation_finding(control, dump.get("target_page"), project, "target_page")
-        if moved:
-            findings.append(moved)
-
-    findings.extend(_grant_findings(control, dump.get("grant"), "it", project))
-
-    findings.extend(_state_key_findings(control, project))
-
-    do_map = _bindings(dump, "do")
-    options = _option_values(dump)
     for slot in ACTION_SLOTS:
-        shape = _shape_finding(do_map, slot, control)
-        if shape:
-            findings.append(shape)
+        findings.extend(_found(_shape_finding(do_map, slot, control)))
         for index, action in enumerate(_actions(do_map, slot)):
             findings.extend(_action_findings(
                 action, _Site(control, f"do.{slot}[{index}]", options), project,
             ))
     return findings
+
+
+#: What is checked on each element, in the order it is reported.
+_ELEMENT_CHECKS: tuple[Callable[[_Control, _Project], list[Finding]], ...] = (
+    _plugin_findings,
+    _shown_file_findings,
+    _page_nav_findings,
+    _control_grant_findings,
+    _state_key_findings,
+    _do_findings,
+)
 
 
 def _option_values(dump: Mapping[str, Any]) -> set[str] | None:
