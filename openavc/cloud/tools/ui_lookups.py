@@ -12,7 +12,8 @@ here may raise into a write: each lookup catches what its driver or plugin
 throws and says nothing.
 
 A bound ``device.<id>.…`` key is read once, by :func:`bound_key`: which
-device's driver it names (the longest project id that prefixes it), then, when
+device's driver it names (the longest project id that prefixes it, by
+``page_references``' own two parts), then, when
 the rest is ``<type>.<id>.<property>`` on a child type that driver declares,
 which child. The three questions asked of a key differ only in what they
 answer from there.
@@ -26,6 +27,7 @@ from typing import Any
 
 from openavc.core.command_params import file_command_check, missing_params_check
 from openavc.drivers.child_ids import coerce_child_local_id, declared_child_ids
+from openavc.ui.page_references import first_device_of, ids_longest_first
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -99,7 +101,7 @@ class BoundKey:
 
 def longest_first(project: Any) -> list[str]:
     """The project's device ids, longest first: the order :func:`bound_key` takes them in."""
-    return sorted((d.id for d in project.devices), key=len, reverse=True)
+    return ids_longest_first(d.id for d in project.devices)
 
 
 def _is_device_key(key: Any) -> bool:
@@ -109,19 +111,21 @@ def _is_device_key(key: Any) -> bool:
 def bound_key(devices: Any, device_ids: list[str], key: Any) -> BoundKey | None:
     """Which device's driver ``key`` names, or None.
 
-    The first id in ``device_ids`` that prefixes the key (``device.<id>.``) is
-    the device, never a split on dots, which cannot tell a child key from a
-    nested property. None for a key that is not a ``device.*`` string, one no
-    id prefixes, and a device with no driver loaded.
+    The first id in ``device_ids`` whose ``device.<id>.`` prefixes the key is
+    the device (``page_references.first_device_of``, the reference check's own
+    rule), never a split on dots, which cannot tell a child key from a nested
+    property. None for a key that is not a ``device.*`` string, one no id
+    prefixes, and a device with no driver loaded.
     """
     if devices is None or not _is_device_key(key):
         return None
-    for device_id in device_ids:
-        prefix = f"device.{device_id}."
-        if key.startswith(prefix):
-            driver = devices.get_driver(device_id)
-            return None if driver is None else BoundKey(driver, key[len(prefix):])
-    return None
+    device_id = first_device_of(key, device_ids)
+    if device_id is None:
+        return None
+    driver = devices.get_driver(device_id)
+    if driver is None:
+        return None
+    return BoundKey(driver, key[len(f"device.{device_id}."):])
 
 
 def _not_among(name: str, declared: Any) -> set[str] | None:

@@ -215,14 +215,26 @@ def _shape_finding(do_map: Mapping[str, Any], slot: str, control: _Control) -> F
     )
 
 
-def _device_of(key: str, device_ids: Iterable[str]) -> str | None:
+def device_of(key: str, device_ids: Iterable[str]) -> str | None:
     """The device a state key belongs to, or None if no declared device owns it.
 
-    Resolved by the longest id that prefixes it rather than by splitting on
-    dots: a child-entity key looks exactly like a nested one. The same rule
-    the AI's write door reads keys by (``cloud/tools/ui_lookups.bound_key``).
+    Resolved by the longest id that prefixes it (``device.<id>.``) rather than
+    by splitting on dots: a child-entity key looks exactly like a nested one.
+    The AI's lookups read keys by the same two parts
+    (``cloud/tools/ui_lookups.bound_key``): they sort once, with
+    :func:`ids_longest_first`, and match each key with :func:`first_device_of`.
     """
-    for device_id in sorted(device_ids, key=len, reverse=True):
+    return first_device_of(key, ids_longest_first(device_ids))
+
+
+def ids_longest_first(device_ids: Iterable[str]) -> list[str]:
+    """Device ids in the order a key is matched against them: longest first."""
+    return sorted(device_ids, key=len, reverse=True)
+
+
+def first_device_of(key: str, device_ids: Iterable[str]) -> str | None:
+    """The first id, in the order given, whose ``device.<id>.`` prefixes ``key``."""
+    for device_id in device_ids:
         if key.startswith(f"device.{device_id}."):
             return device_id
     return None
@@ -587,7 +599,7 @@ def _read_finding(control: _Control, read: _Read, project: _Project) -> Finding 
     if not isinstance(key, str) or not key.startswith("device."):
         return None
     said = f"reads {read.where} from '{key}', and"
-    if _device_of(key, project.device_ids) is None:
+    if device_of(key, project.device_ids) is None:
         named = key.split(".")[1] if key.count(".") >= 1 else key
         return control.finding(
             "dangling_reference",
