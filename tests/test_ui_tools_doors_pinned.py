@@ -222,6 +222,12 @@ async def test_update_page_clears_overlay_and_background_with_an_empty_value():
     assert result["changed"] == ["overlay", "background"]
     assert _page(engine, "other").overlay is None
     assert _page(engine, "other").background is None
+    await _call(engine, "update_ui_page", {
+        "page_id": "other", "overlay": {"position": "top"}, "background": {"color": "#1"},
+    })
+    await _call(engine, "update_ui_page", {"page_id": "other", "overlay": {}, "background": None})
+    assert _page(engine, "other").overlay is None
+    assert _page(engine, "other").background is None
 
 
 @pytest.mark.asyncio
