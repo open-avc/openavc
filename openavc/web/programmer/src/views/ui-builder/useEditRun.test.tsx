@@ -74,3 +74,34 @@ describe("the run of quick edits and the Builder's other writers", () => {
     expect(label()).toBe("A");
   });
 });
+
+describe("the toolbar's snap settings", () => {
+  const snapOn = () => pageOf("main").snap?.enabled;
+
+  it("give a snap change after the toolbar's Undo an undo step of its own", () => {
+    showBuilder();
+    act(() => { fireEvent.click(screen.getByRole("button", { name: /^Snap / })); });
+    const box = () => screen.getByRole("checkbox", { name: "Snap while dragging" });
+    const before = snapOn();
+    act(() => { fireEvent.click(box()); });
+    clickTitled("Undo Edit snap");
+    expect(snapOn()).toBe(before);
+    act(() => { fireEvent.click(box()); });
+    expect(undoNames()).toEqual(["Edit snap"]);
+    clickTitled("Undo Edit snap");
+    expect(snapOn()).toBe(before);
+  });
+
+  it("keep a burst of changes as one step, which Undo puts back whole", () => {
+    showBuilder();
+    act(() => { fireEvent.click(screen.getByRole("button", { name: /^Snap / })); });
+    const box = () => screen.getByRole("checkbox", { name: "Snap while dragging" });
+    const before = snapOn();
+    act(() => { fireEvent.click(box()); });
+    act(() => { fireEvent.click(box()); });
+    act(() => { fireEvent.click(box()); });
+    expect(undoNames()).toEqual(["Edit snap"]);
+    clickTitled("Undo Edit snap");
+    expect(snapOn()).toBe(before);
+  });
+});

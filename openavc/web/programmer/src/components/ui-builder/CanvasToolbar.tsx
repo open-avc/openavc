@@ -127,6 +127,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
   const activeLayoutId = useUIBuilderStore((s) => s.activeLayoutId);
   const selectLayout = useUIBuilderStore((s) => s.selectLayout);
   const pushUndo = useUIBuilderStore((s) => s.pushUndo);
+  const joinUndo = useUIBuilderStore((s) => s.joinUndo);
   const touchMutation = useUIBuilderStore((s) => s.touchMutation);
 
   const ui = useProjectStore((s) => s.project?.ui);
@@ -157,13 +158,6 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
   const addMenuRef = useRef<HTMLDivElement>(null);
   const snapMenuRef = useRef<HTMLDivElement>(null);
   const tabMenuRef = useRef<HTMLDivElement>(null);
-  const gridUndoPushed = useRef(false);
-  const gridUndoTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  // Clear the grid-undo batching timer on unmount (it only resets a ref, so
-  // firing late is harmless — but the timer itself must not outlive us).
-  useEffect(() => () => clearTimeout(gridUndoTimer.current), []);
-
   // Close popup menus on click outside
   useEffect(() => {
     if (!showAddMenu && !showSnapMenu && !tabMenu) return;
@@ -399,16 +393,11 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
     const updatedPages = ui.pages.map((p) =>
       p.id === currentPage.id ? { ...p, snap: { ...snap, ...patch } } : p,
     );
-    if (!gridUndoPushed.current) {
-      pushUndo({ pages: ui.pages }, "Edit snap");
-      gridUndoPushed.current = true;
-    }
+    // A burst of snap changes is one undo step: the Builder's run of quick
+    // edits, which an undo, a redo or any other step ends.
+    joinUndo({ pages: ui.pages }, "Edit snap");
     update({ ui: { ...ui, pages: updatedPages } });
     touchMutation();
-    clearTimeout(gridUndoTimer.current);
-    gridUndoTimer.current = setTimeout(() => {
-      gridUndoPushed.current = false;
-    }, 800);
   };
 
   const menuPage = tabMenu ? pages.find((p) => p.id === tabMenu.pageId) ?? null : null;
