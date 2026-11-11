@@ -544,6 +544,31 @@ def _new_master(project: Any, el_data: dict) -> Any:
     return MasterElement(**el_data)
 
 
+#: The fields of a master update its door handles itself: which master the
+#: call names, and the two it checks or merges rather than assigns
+#: (:func:`_master_own_fields`). ``placement`` never reaches an assigner:
+#: :func:`_refuse_bad_master_definition` refuses it first.
+_MASTER_DOOR_FIELDS = {"element_id", "bindings", "placements", "placement"}
+
+
+def _master_own_fields(project: Any, target: Any, input: dict, what: str) -> list[str]:
+    """The fields of a master update checked or merged rather than assigned,
+    in this order; the names it changed.
+
+    Its bindings, refused unless the runtime would dispatch them; then its
+    boxes, merged per orientation, so moving the landscape box does not blank
+    the portrait one.
+    """
+    changed: list[str] = []
+    if "bindings" in input:
+        target.bindings = _updated_bindings(input, project, what)
+        changed.append("bindings")
+    if "placements" in input:
+        merge_master_boxes(target, input["placements"], what)
+        changed.append("placements")
+    return changed
+
+
 def _new_page(project: Any, page_id: str, input: dict) -> Any:
     """A new page built from the call, its controls' boxes in its primary.
 
@@ -959,18 +984,10 @@ class UIToolsMixin:
         notes = WriteNotes()
 
         def mutate(project):
+            what = f"Master element '{element_id}'"
             target = _master_named(project, element_id)
-            _refuse_bad_master_definition(input, f"Master element '{element_id}'")
-
-            if "bindings" in input:
-                target.bindings = _updated_bindings(
-                    input, project, f"Master element '{element_id}'",
-                )
-                changed.append("bindings")
-
-            if "placements" in input:
-                merge_master_boxes(target, input["placements"], f"Master element '{element_id}'")
-                changed.append("placements")
+            _refuse_bad_master_definition(input, what)
+            changed.extend(_master_own_fields(project, target, input, what))
 
             # Everything else is a plain field on the element. Anything the
             # model declares is settable -- the schema is what limits the
@@ -980,8 +997,7 @@ class UIToolsMixin:
             # master can be a custom control too, drawn on every page, so its
             # grant is said back the same way.
             changed.extend(_assign_plain_fields(
-                target, _left_over(input, {"element_id", "bindings", "placements", "placement"}),
-                f"Master element '{element_id}'", notes,
+                target, _left_over(input, _MASTER_DOOR_FIELDS), what, notes,
             ))
 
             if not changed:
