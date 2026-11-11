@@ -11,7 +11,8 @@ So these are mostly tests that it stays quiet.
 
 from __future__ import annotations
 
-from openavc.cloud.tools.ui_tools import _declared_child_roster, _unknown_child_id
+from openavc.cloud.tools.ui_lookups import declared_child_roster as _declared_child_roster
+from openavc.cloud.tools.ui_lookups import unknown_child_id as _unknown_child_id
 
 
 class _Driver:

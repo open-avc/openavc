@@ -8,9 +8,16 @@ from pydantic import ValidationError
 from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
 from openavc.cloud.tools.ui_bindings import normalize_bindings, validate_bindings
+from openavc.cloud.tools.ui_lookups import (
+    declared_commands,
+    declared_panel_elements,
+    declared_state_variable,
+    project_ui_files,
+    undeclared_state_property,
+    unknown_child_id,
+)
 from openavc.core.command_params import file_command_check, missing_params_check
 from openavc.core.ui_events import resolve_press
-from openavc.drivers.child_ids import declared_child_ids
 from openavc.ui.matrix_model import matrix_config_problems
 from openavc.ui.page_geometry import (
     PAGE_BOX,
@@ -94,193 +101,6 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: lis
         has = f" It has: {', '.join(slots)}." if slots else " It has no do bindings at all."
         return {"note": f"'{element_id}' has nothing bound to {action}.{has}"}
     return {"note": f"'{element_id}' has a do.{action} binding, but no action in it ran."}
-
-
-#: Device properties the PLATFORM sets, which no driver declares.
-#:
-#: `device.<id>.online` is the single commonest binding on any panel and it
-#: appears in no DRIVER_INFO anywhere, so a property check that did not know
-#: these would fire on the most correct page in the project. Set by
-#: device_manager and connection_fault, not by the device.
-_PLATFORM_DEVICE_PROPERTIES = frozenset({
-    "connected", "enabled", "host", "name", "offline_detail", "offline_reason",
-    "orphan_reason", "orphaned", "paused", "paused_for", "reconnect_attempt",
-    "reconnect_failed",
-    "restarting", "asleep", "wake_command", "online", "status", "last_seen", "error",
-})
-
-
-def _undeclared_state_property(devices: Any, device_ids: list[str], key: str) -> set[str] | None:
-    """The properties a driver DOES declare, when the bound one is not among them.
-
-    None means no opinion, and that is the answer far more often than a set is:
-    no driver loaded, a driver that declares no state at all, a child type it
-    has never heard of, a child id that will not coerce. Only a driver that says
-    "these are my state variables" can say a name is not one of them.
-
-    The device id itself is checked elsewhere; this is the property after it,
-    which is the half that used to pass silently while a typo'd device, command,
-    macro and page were all caught.
-
-    Never raises. Nothing advisory may cost a UI write.
-    """
-    if devices is None or not isinstance(key, str) or not key.startswith("device."):
-        return None
-    try:
-        for device_id in device_ids:
-            prefix = f"device.{device_id}."
-            if not key.startswith(prefix):
-                continue
-            driver = devices.get_driver(device_id)
-            if driver is None:
-                return None
-            info = getattr(driver, "DRIVER_INFO", None) or {}
-            rest = key[len(prefix):]
-            if rest in _PLATFORM_DEVICE_PROPERTIES:
-                return None
-            declared = info.get("state_variables") or {}
-            parts = rest.split(".")
-            if len(parts) < 3:
-                # A plain property. Only answerable if the driver declares any.
-                if not declared or rest in declared:
-                    return None
-                return set(declared)
-            child_type, raw_id, prop = parts[0], parts[1], ".".join(parts[2:])
-            type_def = (info.get("child_entity_types") or {}).get(child_type)
-            if not isinstance(type_def, dict):
-                # Not a child type it knows. Could still be a plain property
-                # containing dots, so only speak if the flat set rules it out.
-                if not declared or rest in declared:
-                    return None
-                return set(declared)
-            from openavc.drivers.child_ids import coerce_child_local_id
-
-            schema: dict = {}
-            local_id = coerce_child_local_id(type_def, raw_id)
-            if local_id is not None and hasattr(driver, "get_child_schema"):
-                schema = driver.get_child_schema(child_type, local_id) or {}
-            if not schema:
-                schema = type_def.get("state_variables") or {}
-            if not schema or prop in schema:
-                return None
-            return set(schema)
-        return None
-    except Exception:  # pragma: no cover - defensive; advisory path only
-        log.debug("Could not resolve declared properties for '%s'", key, exc_info=True)
-        return None
-
-
-def _declared_child_roster(type_def: dict, config: Any) -> set[str] | None:
-    """The child IDs this type declares, or None when it will not say.
-
-    The rule itself is ``drivers.child_ids.declared_child_ids`` -- the same one
-    the matrix picker builds its destination list from, so a page checked
-    against an eight-output frame and a matrix drawn on one cannot disagree
-    about how many outputs it has. Here they are only ever compared with the id
-    written in a state key, so they arrive as text and lose their order.
-    """
-    ids = declared_child_ids(type_def, config)
-    return {str(v) for v in ids} if ids else None
-
-
-def _unknown_child_id(devices: Any, device_ids: list[str], key: str) -> set[str] | None:
-    """The child IDs a driver declares, when the bound one is not among them.
-
-    ``device.matrix.output.7.signal`` on a four-output frame renders perfectly
-    and binds to nothing: the element draws, the key never resolves, and the
-    control sits there blank forever. The property after it is already checked;
-    this is the number in the middle, which a page repeating one block eight
-    times gets wrong exactly once and silently.
-
-    None means no opinion, which is the answer whenever the roster is dynamic,
-    config-driven with nothing configured, or registered in Python code.
-
-    Never raises. Nothing advisory may cost a UI write.
-    """
-    if devices is None or not isinstance(key, str) or not key.startswith("device."):
-        return None
-    try:
-        for device_id in device_ids:
-            prefix = f"device.{device_id}."
-            if not key.startswith(prefix):
-                continue
-            driver = devices.get_driver(device_id)
-            if driver is None:
-                return None
-            parts = key[len(prefix):].split(".")
-            if len(parts) < 3:
-                return None
-            info = getattr(driver, "DRIVER_INFO", None) or {}
-            type_def = (info.get("child_entity_types") or {}).get(parts[0])
-            if not isinstance(type_def, dict):
-                return None
-            roster = _declared_child_roster(type_def, getattr(driver, "config", None) or {})
-            if not roster or parts[1] in roster:
-                return None
-            return roster
-        return None
-    except Exception:  # pragma: no cover - defensive; advisory path only
-        log.debug("Could not resolve the child roster for '%s'", key, exc_info=True)
-        return None
-
-
-def _declared_panel_elements(engine: Any, plugin_id: str) -> set[str] | None:
-    """The panel-element types a loaded plugin declares, or None for no opinion.
-
-    None means the plugin is not loaded here -- stopped, uninstalled, or simply
-    not commissioned yet. That is a deployment fact, not an authoring mistake,
-    and warning about it would fire on every page written before the plugin is
-    installed.
-
-    Never raises. Nothing advisory may cost a UI write.
-    """
-    if not plugin_id:
-        return None
-    try:
-        loader = getattr(engine, "plugins", None)
-        if loader is None or not hasattr(loader, "get_all_extensions"):
-            return None
-        declared = {
-            str(ext.get("plugin_id")): ext
-            for ext in loader.get_all_extensions().get("panel_elements", [])
-            if isinstance(ext, dict)
-        }
-        if plugin_id not in declared:
-            return None
-        return {
-            str(ext.get("type"))
-            for ext in loader.get_all_extensions().get("panel_elements", [])
-            if isinstance(ext, dict) and str(ext.get("plugin_id")) == plugin_id
-            and ext.get("type")
-        } or None
-    except Exception:  # pragma: no cover - defensive; advisory path only
-        log.debug("Could not resolve panel elements for '%s'", plugin_id, exc_info=True)
-        return None
-
-
-def _declared_commands(devices: Any, device_id: str) -> set[str] | None:
-    """The command names a device's driver declares, or None for no opinion.
-
-    None is the answer far more often than an empty set is, and the difference
-    matters: a device that is disabled, not connected yet, or backed by a driver
-    that enumerates nothing must produce no warning at all. Only a driver that
-    says "these are my commands" can say a name is not one of them.
-
-    Never raises. Nothing advisory may cost a UI write.
-    """
-    if devices is None or not device_id:
-        return None
-    try:
-        driver = devices.get_driver(device_id)
-        if driver is None:
-            return None
-        commands = (getattr(driver, "DRIVER_INFO", None) or {}).get("commands")
-        if not isinstance(commands, dict) or not commands:
-            return None
-        return set(commands)
-    except Exception:  # pragma: no cover - defensive; advisory path only
-        log.debug("Could not resolve declared commands for '%s'", device_id, exc_info=True)
-        return None
 
 
 def _rounded_placement(box: Any) -> Any:
@@ -478,27 +298,6 @@ def _take_placement(el_data: dict, what: str) -> dict | None:
             "error": f"{what}: 'placement' must be an object {{x, y, w, h}}, got {type(place).__name__}"
         })
     return place
-
-
-def _project_ui_files(engine: Any) -> set[str] | None:
-    """Every path in the project's ``ui/`` folder, or None when it cannot say.
-
-    None is "no opinion" and never warns, which is the only safe answer when
-    there is no project path to look under -- a caller that guessed an empty set
-    there would report every custom control in the project as missing its file.
-    """
-    try:
-        from openavc.core.custom_ui import UI_DIR_NAME, iter_files
-        project_path = getattr(engine, "project_path", None)
-        if not project_path:
-            return None
-        ui_dir = Path(project_path).parent / UI_DIR_NAME
-        if not ui_dir.is_dir():
-            return set()
-        return {f.relative_to(ui_dir).as_posix() for f in iter_files(ui_dir)}
-    except Exception:  # pragma: no cover - advisory path only
-        log.debug("Could not list the project's ui/ folder", exc_info=True)
-        return None
 
 
 def _validated_grant(value: Any, what: str) -> Any:
@@ -794,63 +593,6 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
     page.layouts = normalize_primary_layout(page.layouts)
 
 
-def _declared_state_variable(devices: Any, device_ids: list[str], key: str) -> dict | None:
-    """What the driver declares about the state variable behind a bound key.
-
-    The Builder answers this from the device schema it has already fetched, and
-    offers a human a "Match driver range" button. Nothing answered it on this
-    side, which is why a dB fader shipped with no upper bound: the driver states
-    ``max: 0`` and the write path never looked.
-
-    Handles both key shapes -- ``device.<id>.<prop>`` and the child-entity
-    ``device.<id>.<type>.<local_id>.<prop>`` -- and resolves the device by
-    longest matching id rather than by splitting on dots, because a device id
-    may contain them and a child key looks exactly like a nested one.
-
-    Never raises: this is advisory, and no failure to answer it may cost a UI
-    write. An unknown key, a disabled device, a driver with no schema all mean
-    "no opinion".
-    """
-    if devices is None or not isinstance(key, str) or not key.startswith("device."):
-        return None
-    try:
-        for device_id in device_ids:
-            prefix = f"device.{device_id}."
-            if not key.startswith(prefix):
-                continue
-            driver = devices.get_driver(device_id)
-            if driver is None:
-                return None
-            info = getattr(driver, "DRIVER_INFO", None) or {}
-            rest = key[len(prefix):]
-            declared = info.get("state_variables") or {}
-            entry = declared.get(rest)
-            if isinstance(entry, dict):
-                return entry
-            parts = rest.split(".")
-            if len(parts) < 3:
-                return None
-            child_type, raw_id, prop = parts[0], parts[1], ".".join(parts[2:])
-            type_def = (info.get("child_entity_types") or {}).get(child_type)
-            if not isinstance(type_def, dict):
-                return None
-            # A dynamic child type carries its schema per instance, so ask the
-            # driver for that child first and fall back to the type-level one.
-            from openavc.drivers.child_ids import coerce_child_local_id
-
-            schema: dict = {}
-            local_id = coerce_child_local_id(type_def, raw_id)
-            if local_id is not None and hasattr(driver, "get_child_schema"):
-                schema = driver.get_child_schema(child_type, local_id) or {}
-            if prop not in schema:
-                schema = type_def.get("state_variables") or {}
-            entry = schema.get(prop)
-            return entry if isinstance(entry, dict) else None
-    except Exception:  # pragma: no cover - defensive; advisory path only
-        log.debug("Could not resolve a declared range for '%s'", key, exc_info=True)
-    return None
-
-
 def _theme_defaults(project: Any, element_type: str) -> dict | None:
     """The project's own theme overrides for one element type.
 
@@ -923,7 +665,7 @@ class UIToolsMixin:
 
         def declared_range(key: str) -> dict | None:
             if key not in cache:
-                cache[key] = _declared_state_variable(self._devices, device_ids, key)
+                cache[key] = declared_state_variable(self._devices, device_ids, key)
             return cache[key]
 
         findings, adjustments = review_page(
@@ -941,18 +683,18 @@ class UIToolsMixin:
             page_ids={p.id for p in project.ui.pages},
             device_ids=set(device_ids),
             macro_ids={m.id for m in project.macros},
-            device_commands=lambda device_id: _declared_commands(self._devices, device_id),
-            plugin_elements=lambda plugin_id: _declared_panel_elements(
+            device_commands=lambda device_id: declared_commands(self._devices, device_id),
+            plugin_elements=lambda plugin_id: declared_panel_elements(
                 self._get_engine(), plugin_id,
             ),
-            undeclared_property=lambda key: _undeclared_state_property(
+            undeclared_property=lambda key: undeclared_state_property(
                 self._devices, device_ids, key,
             ),
-            unknown_child_id=lambda key: _unknown_child_id(
+            unknown_child_id=lambda key: unknown_child_id(
                 self._devices, device_ids, key,
             ),
             missing_params=missing_params_check(self._devices, project),
-            ui_files=_project_ui_files(self._get_engine()),
+            ui_files=project_ui_files(self._get_engine()),
             file_command=file_command_check(self._devices, project),
         ))
         findings.extend(_custom_markup_findings(self._get_engine(), page, touched))
@@ -1808,7 +1550,7 @@ class UIToolsMixin:
         macro_ids = {m.id for m in project.macros}
         # Listed once rather than per page: it is a directory walk, and every
         # page asks the same question of it.
-        ui_files = _project_ui_files(self._get_engine())
+        ui_files = project_ui_files(self._get_engine())
         check_params = missing_params_check(self._devices, project)
         check_files = file_command_check(self._devices, project)
         by_page: dict[str, list[str]] = {}
@@ -1821,7 +1563,7 @@ class UIToolsMixin:
                 # Ranges are read-only here: review_page only reports a range
                 # mismatch, and the fills it would make are suppressed by
                 # set_field below.
-                declared_range=lambda key: _declared_state_variable(
+                declared_range=lambda key: declared_state_variable(
                     self._devices, device_ids, key,
                 ),
                 set_field=lambda *_: None,
@@ -1832,14 +1574,14 @@ class UIToolsMixin:
                 page_ids=page_ids,
                 device_ids=set(device_ids),
                 macro_ids=macro_ids,
-                device_commands=lambda device_id: _declared_commands(self._devices, device_id),
-                plugin_elements=lambda plugin_id: _declared_panel_elements(
+                device_commands=lambda device_id: declared_commands(self._devices, device_id),
+                plugin_elements=lambda plugin_id: declared_panel_elements(
                     self._get_engine(), plugin_id,
                 ),
-                undeclared_property=lambda key: _undeclared_state_property(
+                undeclared_property=lambda key: undeclared_state_property(
                     self._devices, device_ids, key,
                 ),
-                unknown_child_id=lambda key: _unknown_child_id(
+                unknown_child_id=lambda key: unknown_child_id(
                     self._devices, device_ids, key,
                 ),
                 missing_params=check_params,

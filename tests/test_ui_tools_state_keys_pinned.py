@@ -18,11 +18,11 @@ import json
 
 import pytest
 
-from openavc.cloud.tools.ui_tools import (
-    _declared_state_variable,
-    _undeclared_state_property,
-    _unknown_child_id,
+from openavc.cloud.tools.ui_lookups import declared_state_variable as _declared_state_variable
+from openavc.cloud.tools.ui_lookups import (
+    undeclared_state_property as _undeclared_state_property,
 )
+from openavc.cloud.tools.ui_lookups import unknown_child_id as _unknown_child_id
 
 
 class _Amp:
