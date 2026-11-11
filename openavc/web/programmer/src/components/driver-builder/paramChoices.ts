@@ -83,15 +83,18 @@ export const CHOICE_SOURCES = (Object.keys(SOURCES) as ChoiceSource[]).map((valu
   label: SOURCES[value].label,
 }));
 
+const isSource = (value: string): value is ChoiceSource =>
+  Object.prototype.hasOwnProperty.call(SOURCES, value);
+
 /** The write for a change of source: every other source's field cleared, in
- *  the sources' order, then the chosen one's start. Anything but "fixed" or
- *  "state" is a cascade. */
+ *  the sources' order, then the chosen one's start. A value that names no
+ *  source is a cascade. */
 export function sourceChanged(
   next: string,
   def: DriverParamDef,
   context: ChoiceContext,
 ): Partial<DriverParamDef> {
-  const chosen: ChoiceSource = next === "fixed" || next === "state" ? next : "cascade";
+  const chosen: ChoiceSource = isSource(next) ? next : "cascade";
   const cleared: Partial<DriverParamDef> = {};
   for (const [source, { field }] of Object.entries(SOURCES)) {
     if (field && source !== chosen) cleared[field] = undefined;

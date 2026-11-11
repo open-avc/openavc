@@ -122,10 +122,10 @@ export function retyped(
   return partial;
 }
 
-/** A box in a parameter's value row. */
-export type ValueBox = "help" | "default" | "min" | "max" | "decimals" | "unit";
+/** The boxes a parameter's value row can draw, in order. */
+const VALUE_BOX_ORDER = ["help", "default", "min", "max", "decimals", "unit"] as const;
 
-const VALUE_BOX_ORDER: readonly ValueBox[] = ["help", "default", "min", "max", "decimals", "unit"];
+export type ValueBox = (typeof VALUE_BOX_ORDER)[number];
 
 const isTypeField = (box: ValueBox): box is ValueBox & TypeField => box in TYPE_FIELDS;
 
