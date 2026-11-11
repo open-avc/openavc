@@ -684,6 +684,8 @@ write:
   body: '{"NDIName": "{value}"}'
 ```
 
+A `body` that is valid JSON is sent as JSON; anything else (XML, form text) is sent as written. Either way the device's answer goes through your response rules, so a device that answers a write with the new value shows it on the device page at once.
+
 For TCP/serial drivers, use a `send` string:
 
 ```yaml

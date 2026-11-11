@@ -142,13 +142,10 @@ class SettingWrites:
         headers = self._build_http_headers(write_def.get("headers"), params)
         path = self._safe_substitute(write_def.get("path", "/"), params)
         json_body, content = self._setting_body(write_def.get("body"), params)
-        if content is not None:
-            return await self.transport.request(
-                method, path, content=content, headers=headers,
-            )
-        response = await self.transport.request(
-            method, path, json_body=json_body, headers=headers
-        )
+        # A body that is not JSON goes as raw content; either way the answer
+        # is read below, often the cheapest read of the new value.
+        body = {"content": content} if content is not None else {"json_body": json_body}
+        response = await self.transport.request(method, path, **body, headers=headers)
         if hasattr(response, "text") and response.text:
             await self.on_data_received(response.text.encode("utf-8"))
         self._setting_written(key, value)

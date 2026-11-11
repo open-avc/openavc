@@ -267,18 +267,23 @@ async def test_an_http_method_alone_makes_an_http_write_to_the_root() -> None:
     ]
 
 
-async def test_an_http_body_that_is_not_json_goes_as_content_and_is_not_read() -> None:
-    """Today the raw-content write returns before its answer reaches the reply
-    rules (the JSON write's answer does): pinned as it is."""
+async def test_an_http_body_that_is_not_json_goes_as_content_and_its_answer_is_read(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A body that is not JSON (XML, form text) goes as raw content, and the
+    device's answer reaches the reply rules as a JSON write's does: a device
+    that answers with the new value shows it at once, not at the next poll."""
     settings = {"gain": {"write": {"path": "/gain", "body": "<gain>{value}</gain>"}}}
     transport = FakeHttp(text="LEVEL=7")
     driver = _driver(_definition("http", settings), transport)
-    response = await driver.set_device_setting("gain", 2)
+    with caplog.at_level("DEBUG", logger="openavc.drivers.configurable"):
+        response = await driver.set_device_setting("gain", 2)
     assert transport.requests == [
         (("POST", "/gain"), {"content": b"<gain>20</gain>", "headers": None}),
     ]
     assert response.text == "LEVEL=7"
-    assert driver.get_state("level") is None
+    assert driver.get_state("level") == 7
+    assert "[dev1] Set device setting 'gain' = 2" in caplog.messages
 
 
 async def test_an_http_write_on_another_transport_is_refused() -> None:
