@@ -1,4 +1,5 @@
 import { pausedTitle } from "./pausedText";
+import { firstAway, type AwayFirst } from "./deviceAwayOrder";
 
 interface DeviceStatusDotProps {
   connected: boolean;
@@ -41,31 +42,27 @@ const ATTENTION = "var(--color-warning, #f59e0b)";
 
 const ASLEEP = "var(--text-muted)";
 
-export function DeviceStatusDot({
-  connected, orphaned, paused, pausedFor, restarting, asleep, size = 10,
-}: DeviceStatusDotProps) {
-  const color = orphaned
-    ? ATTENTION
-    : restarting
-      ? ATTENTION
-      : paused
-        ? ATTENTION
-        : asleep
-          ? ASLEEP
-          : connected
-            ? "var(--color-success)"
-            : "var(--color-error)";
-  const title = orphaned
-    ? "Driver not installed"
-    : restarting
-      ? "Restarting"
-      : paused
-        ? pausedTitle(pausedFor)
-        : asleep
-          ? "Asleep"
-          : connected
-            ? "Connected"
-            : "Disconnected";
+/** Each way of being away: its colour and what the tooltip says. Which one
+ *  wins is the device page's order (`firstAway`). */
+const AWAY_LOOK: Record<AwayFirst, { color: string; title: (pausedFor: unknown) => string }> = {
+  orphaned: { color: ATTENTION, title: () => "Driver not installed" },
+  paused: { color: ATTENTION, title: pausedTitle },
+  restarting: { color: ATTENTION, title: () => "Restarting" },
+  asleep: { color: ASLEEP, title: () => "Asleep" },
+};
+
+/** The dot's colour and tooltip. */
+function dotLook(props: DeviceStatusDotProps): { color: string; title: string } {
+  const away = firstAway(props);
+  if (away) return { color: AWAY_LOOK[away].color, title: AWAY_LOOK[away].title(props.pausedFor) };
+  return props.connected
+    ? { color: "var(--color-success)", title: "Connected" }
+    : { color: "var(--color-error)", title: "Disconnected" };
+}
+
+export function DeviceStatusDot(props: DeviceStatusDotProps) {
+  const { orphaned, size = 10 } = props;
+  const { color, title } = dotLook(props);
   const shape = orphaned
     ? {
         width: 0,

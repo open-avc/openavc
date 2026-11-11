@@ -1,6 +1,7 @@
 import { useConnectionStore } from "../../store/connectionStore";
 import { DeviceStatusDot } from "../../components/shared/DeviceStatusDot";
 import { driverLabel } from "../../components/shared/driverLabel";
+import { awayState } from "./deviceAway";
 
 export function DeviceListItem({
   deviceId,
@@ -37,11 +38,25 @@ export function DeviceListItem({
   const asleep = useConnectionStore(
     (s) => s.liveState[`device.${deviceId}.asleep`] === true
   );
-  // Waiting for a login this system does not have: said here too, so after a
-  // restore the devices to open are the ones that say so.
-  const needsLogin = useConnectionStore(
-    (s) => s.liveState[`device.${deviceId}.offline_reason`] === "login_missing"
+  const offlineReason = useConnectionStore(
+    (s) => s.liveState[`device.${deviceId}.offline_reason`]
   );
+  // Waiting for a login this system does not have: said here too, so after a
+  // restore the devices to open are the ones that say so. Marked exactly when
+  // the device's page would ask for it, so a pause, a restart or a sleep wins
+  // here as it does there.
+  const needsLogin = awayState(
+    {
+      connected: connected ?? false,
+      orphaned: orphaned ?? false,
+      paused: paused ?? false,
+      restarting: restarting ?? false,
+      asleep,
+      offlineReason: String(offlineReason ?? ""),
+      offlineDetail: "",
+    },
+    enabled,
+  ) === "needs_login";
 
   return (
     <button
@@ -87,7 +102,7 @@ export function DeviceListItem({
           <span style={{ minWidth: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {driverLabel(driver)}{orphaned ? " (not installed)" : ""}
           </span>
-          {needsLogin && !connected && enabled && !orphaned && (
+          {needsLogin && (
             <span style={{ color: "var(--color-warning, #f59e0b)", whiteSpace: "nowrap" }}>
               Needs login
             </span>

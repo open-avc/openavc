@@ -12,11 +12,13 @@
  * that is enabled. A new way of being away is one more step in `awayBanner`,
  * its banner, and its entry in DeviceBanners.tsx, which the compiler asks for.
  *
- * The status dot (components/shared/DeviceStatusDot.tsx) and the device list's
- * Needs login chip (DeviceListItem.tsx) decide separately, so a change to the
- * order here does not reach them.
+ * The first four, in that order, are `AWAY_FIRST`
+ * (components/shared/deviceAwayOrder.ts), which the status dot reads too; the
+ * device list's Needs login chip asks `awayState`. So the page, the dot and the
+ * list name the same state for a device in two at once.
  */
 import { isSecretConfigField } from "./deviceConfigCoerce";
+import { AWAY_FIRST, firstAway } from "../../components/shared/deviceAwayOrder";
 
 /** What the live state says about a device being away (device.<id>.*). */
 export interface DeviceAway {
@@ -58,33 +60,40 @@ export function readDeviceAway(liveState: Record<string, unknown>, deviceId: str
 }
 
 /** The device waits for a login this system does not have. */
-export function waitsForLogin(away: DeviceAway): boolean {
+export function waitsForLogin(away: Pick<DeviceAway, "offlineReason">): boolean {
   return away.offlineReason === "login_missing";
 }
 
-/** The ways of being away that are said whether or not the device still
- *  reads connected, first match wins. Each is also the name of its banner. */
-const SAID_FIRST = ["orphaned", "paused", "restarting", "asleep"] as const;
+/** Each way of being away is also the name of its banner. */
+export type AwayBanner = (typeof AWAY_FIRST)[number] | "needs_login" | "offline";
 
-export type AwayBanner = (typeof SAID_FIRST)[number] | "needs_login" | "offline";
+/** What deciding which way a device is away reads. */
+export type AwayFacts = Pick<
+  DeviceAway,
+  "connected" | "orphaned" | "paused" | "restarting" | "asleep" | "offlineReason" | "offlineDetail"
+>;
+
+/**
+ * Which way the device is away, before asking which settings wait for a
+ * login: the order the page's banner follows, and what the device list's
+ * Needs login chip asks (the list does not read which settings wait).
+ */
+export function awayState(away: AwayFacts, enabled: boolean): AwayBanner | null {
+  const first = firstAway(away);
+  if (first) return first;
+  if (away.connected || !enabled) return null;
+  if (waitsForLogin(away)) return "needs_login";
+  return away.offlineDetail ? "offline" : null;
+}
 
 /**
  * The one banner that explains the device, or null when none does.
  * `loginFields` counts the settings that wait for a login: with none named
  * there is nothing to ask for, and the Offline banner does not stand in.
  */
-export function awayBanner(away: DeviceAway, enabled: boolean, loginFields: number): AwayBanner | null {
-  const first = SAID_FIRST.find((state) => away[state]);
-  if (first) return first;
-  if (away.connected || !enabled) return null;
-  return offlineBanner(away, loginFields);
-}
-
-/** For a disconnected, enabled device: the login box, or the Offline banner
- *  once the server has a sentence for the fault. */
-function offlineBanner(away: DeviceAway, loginFields: number): AwayBanner | null {
-  if (waitsForLogin(away)) return loginFields > 0 ? "needs_login" : null;
-  return away.offlineDetail ? "offline" : null;
+export function awayBanner(away: AwayFacts, enabled: boolean, loginFields: number): AwayBanner | null {
+  const state = awayState(away, enabled);
+  return state === "needs_login" && loginFields === 0 ? null : state;
 }
 
 // Offline reasons the server stops retrying on, because only a human can

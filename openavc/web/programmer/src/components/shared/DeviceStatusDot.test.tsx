@@ -2,6 +2,7 @@ import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { DeviceStatusDot } from "./DeviceStatusDot";
+import { awayBanner, type DeviceAway } from "../../views/devices/deviceAway";
 
 function titleOf(el: React.ReactElement): string | null {
   const { container } = render(el);
@@ -46,5 +47,30 @@ describe("DeviceStatusDot asleep", () => {
       "Paused for a Device Audit",
     );
     expect(titleOf(<DeviceStatusDot connected={false} asleep restarting />)).toBe("Restarting");
+  });
+});
+
+describe("DeviceStatusDot and the device page", () => {
+  const TITLES: Record<string, string> = {
+    orphaned: "Driver not installed",
+    paused: "Paused for Live Test",
+    restarting: "Restarting",
+    asleep: "Asleep",
+  };
+
+  it("names the same way of being away as the page's banner, for every combination", () => {
+    for (let bits = 0; bits < 32; bits++) {
+      const flags = {
+        orphaned: Boolean(bits & 1), paused: Boolean(bits & 2), restarting: Boolean(bits & 4),
+        asleep: Boolean(bits & 8), connected: Boolean(bits & 16),
+      };
+      const away: DeviceAway = {
+        ...flags, pausedFor: "live_test", offlineReason: "", offlineDetail: "", reconnectFailed: false,
+      };
+      const banner = awayBanner(away, true, 0);
+      const expected = banner ? TITLES[banner] : flags.connected ? "Connected" : "Disconnected";
+      const title = titleOf(<DeviceStatusDot {...flags} pausedFor="live_test" />);
+      expect([bits, title]).toEqual([bits, expected]);
+    }
   });
 });
