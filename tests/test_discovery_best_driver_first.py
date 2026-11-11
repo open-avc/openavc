@@ -23,6 +23,7 @@ from openavc.discovery.tier_matcher import (
     evidence_active_probe,
     evidence_broadcast,
     evidence_hostname,
+    evidence_open_port,
     evidence_oui,
     evidence_snmp_pen,
     evidence_vendor_string,
@@ -541,3 +542,109 @@ def test_cross_vendor_matches_of_every_kind_are_all_demoted_by_a_hint() -> None:
     result = matcher.match([probe, search])
     assert result.driver_id == "acme_search_protocol"
     assert result.alternatives == ["acme_camera_protocol"]
+
+
+def test_a_coincidental_open_port_does_not_outrank_the_anchors_own_oui() -> None:
+    """Only a cross-vendor probe matched. The device's MAC prefix names the
+    probe's own driver, and a port that happens to be open names one other
+    driver: two hints, each naming one driver. The MAC prefix speaks to who
+    made the device; an open port only to a service any maker can run. The
+    probe's driver keeps the identification.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_camera", "custom_acme_camera_tls", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_oui("acme_camera", "00:30:13"))
+    idx.add_rule(SignalRule.for_open_port("widget_streamer", 4455))
+    matcher = TierMatcher(idx)
+
+    probe = evidence_active_probe("custom_acme_camera_tls")
+    oui = evidence_oui("00:30:13:11:22:33")
+    port = evidence_open_port(4455)
+
+    for log in ([probe, oui, port], [port, oui, probe]):
+        result = matcher.match(log)
+        assert result.state == DeviceState.IDENTIFIED
+        assert result.driver_id == "acme_camera"
+        assert result.alternatives == []
+        assert result.source == "probe:custom_acme_camera_tls"
+
+
+def test_a_peers_maker_hint_outranks_a_third_drivers_open_port() -> None:
+    """Only a cross-vendor probe matched, and two hints each name one other
+    driver: the MAC prefix names a vendor-specific driver, a port that
+    happens to be open names a third. The MAC prefix decides, whichever
+    label sorts first: the vendor's driver leads, the port's driver and the
+    probe's follow.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_open_protocol", "custom_acme_open_protocol_tcp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_oui("acme_camera", "00:30:13"))
+    idx.add_rule(SignalRule.for_open_port("widget_streamer", 4455))
+    matcher = TierMatcher(idx)
+
+    probe = evidence_active_probe("custom_acme_open_protocol_tcp")
+    port = evidence_open_port(4455)
+    oui = evidence_oui("00:30:13:11:22:33")
+
+    for log in ([probe, port, oui], [oui, port, probe]):
+        result = matcher.match(log)
+        assert result.state == DeviceState.IDENTIFIED
+        assert result.driver_id == "acme_camera"
+        assert result.alternatives == ["widget_streamer", "acme_open_protocol"]
+        assert result.source == "oui:00:30:13"
+
+
+def test_the_protocols_own_open_port_tied_with_a_peers_oui_keeps_the_anchor() -> None:
+    """The cross-vendor protocol's own declared port is open (it answered
+    there) and the MAC prefix names one vendor-specific driver: each names
+    one driver, and the port names only the protocol's, so the protocol
+    driver keeps the identification.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_open_protocol", "custom_acme_open_protocol_tcp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_open_port("acme_open_protocol", 4352))
+    idx.add_rule(SignalRule.for_oui("acme_projector", "00:30:13"))
+    matcher = TierMatcher(idx)
+
+    result = matcher.match([
+        evidence_active_probe("custom_acme_open_protocol_tcp"),
+        evidence_open_port(4352),
+        evidence_oui("00:30:13:11:22:33"),
+    ])
+
+    assert result.state == DeviceState.IDENTIFIED
+    assert result.driver_id == "acme_open_protocol"
+    assert result.alternatives == []
+    assert result.source == "probe:custom_acme_open_protocol_tcp"
+
+
+def test_equally_narrow_maker_hints_that_disagree_keep_the_anchor() -> None:
+    """Two hints of the same weight, each naming one driver: the MAC prefix
+    names the probe's own driver, a hostname pattern names another. They
+    contradict each other, so neither overrides the probe: its driver keeps
+    the identification, whichever hint's label sorts first.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_camera", "custom_acme_camera_tls", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_oui("acme_camera", "00:30:13"))
+    idx.add_rule(SignalRule.for_hostname("widget_camera", "^CAM-"))
+    matcher = TierMatcher(idx)
+
+    result = matcher.match([
+        evidence_active_probe("custom_acme_camera_tls"),
+        evidence_hostname("CAM-0042", matched_pattern="^CAM-"),
+        evidence_oui("00:30:13:11:22:33"),
+    ])
+
+    assert result.state == DeviceState.IDENTIFIED
+    assert result.driver_id == "acme_camera"
+    assert result.alternatives == []
+    assert result.source == "probe:custom_acme_camera_tls"

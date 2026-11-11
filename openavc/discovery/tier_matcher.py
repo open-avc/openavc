@@ -875,47 +875,36 @@ class TierMatcher:
         """Choose vendor-specific peers to promote ahead of the cross-vendor anchors.
 
         ``anchors`` are the drivers whose cross-vendor rules matched. Walks
-        soft signals in narrowness order (smallest hit count first; source
-        label as the deterministic tiebreak). The narrowest signal decides:
-        if it names a driver that is not an anchor, it is the demotion
-        source — that signal's peers come first, then any peer surfaced by
-        broader signals as alternatives.
+        soft signals in narrowness order (``_demotion_order``: smallest hit
+        count first, then a hint about the maker ahead of an open port, then
+        the source label as the deterministic tiebreak). The narrowest
+        signal decides: if it names a driver that is not an anchor, it is
+        the demotion source — that signal's peers come first, then any peer
+        surfaced by broader signals as alternatives.
 
         Returns ``([], "")`` to signal "no demotion, an anchor wins" in two
         cases:
 
-        - The narrowest signal names only anchors. That signal
-          specifically corroborates them (a hostname pattern declared only
-          by an anchor matched, etc.), so the broader signals' peer overlap
-          is not enough to override it. Without this guard, a device whose
-          hostname pattern narrows uniquely to the cross-vendor anchor but
-          whose OUI / manufacturer alias also overlaps a peer driver (a
-          vendor-specific sibling under the same OUI block) would be
-          misidentified as the peer.
+        - A narrowest signal names only anchors: the narrowest one, or one
+          as narrow as it (the same hit count, whatever its kind). That
+          signal specifically corroborates them (a hostname pattern declared
+          only by an anchor matched, etc.), so the broader signals' peer
+          overlap is not enough to override it, and an equally narrow hint
+          naming a peer contradicts it rather than outweighing it. Without
+          this guard, a device whose hostname pattern narrows uniquely to
+          the cross-vendor anchor but whose OUI / manufacturer alias also
+          overlaps a peer driver (a vendor-specific sibling under the same
+          OUI block) would be misidentified as the peer, and a tie would go
+          to whichever signal sorts first.
         - No soft signal names any driver at all.
         """
-        results = self._collect_soft_signal_results(evidence_log)
-        if not results:
+        results = sorted(self._collect_soft_signal_results(evidence_log), key=_demotion_order)
+        if not results or _corroborates_an_anchor(results, anchors):
             return [], ""
-
-        # Tightest signal first; deterministic tiebreak by source label.
-        results.sort(key=lambda r: (len(r[1]), r[0]))
-        source, hits = results[0]
-        peers = [d for d in hits if d not in anchors]
-        if not peers:
-            return [], ""
-
-        # Build the promotion order: this signal's peers first
-        # (narrowness), then any peer surfaced by broader signals
-        # (deduped, original-order).
-        ordered: list[str] = list(dict.fromkeys(peers))
-        seen = set(ordered)
-        for _src, hits2 in results[1:]:
-            for d in hits2:
-                if d not in anchors and d not in seen:
-                    seen.add(d)
-                    ordered.append(d)
-        return ordered, source
+        # The narrowest signal's peers first, then any peer a broader signal
+        # names, each once, in the order found.
+        peers = [d for _src, hits in results for d in hits if d not in anchors]
+        return list(dict.fromkeys(peers)), results[0][0]
 
     def _gather_soft_candidates(
         self, evidence_log: list[Evidence],
@@ -947,6 +936,25 @@ class TierMatcher:
         first = [d for d in ordered if d in narrow_set]
         rest = [d for d in ordered if d not in narrow_set]
         return first + rest, source
+
+
+def _corroborates_an_anchor(results: list[tuple[str, list[str]]], anchors: set[str]) -> bool:
+    """Whether a narrowest soft signal names only cross-vendor anchors: the
+    first of ``results`` (sorted by ``_demotion_order``) or one naming as few
+    drivers, whatever its kind."""
+    narrowest = len(results[0][1])
+    return any(set(hits) <= anchors for _src, hits in results if len(hits) == narrowest)
+
+
+def _demotion_order(result: tuple[str, list[str]]) -> tuple[int, int, str]:
+    """Where one soft signal's ``(source_label, [driver_ids])`` sorts when a
+    cross-vendor match looks for its vendor: fewest drivers first, then a hint
+    about who made the device (MAC prefix, hostname, SNMP enterprise,
+    manufacturer string) ahead of an open port, which says only that a
+    service runs there and any maker's equipment can run it, then the label.
+    """
+    source, hits = result
+    return len(hits), int(source.startswith(f"{KIND_OPEN_PORT}:")), source
 
 
 def _distinct_records(records: list[Evidence]) -> list[Evidence]:
