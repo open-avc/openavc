@@ -231,6 +231,9 @@ def test_a_number_is_sent_as_its_declared_type(pdef, value, expected) -> None:
         ("number", float("nan"), "number"),
         ("float", float("inf"), "number"),
         ("number", "nan", "number"),
+        ("number", float("-inf"), "number"),
+        ("float", "inf", "number"),
+        ("number", "-inf", "number"),
     ],
 )
 def test_a_number_param_refuses_what_is_not_one(ptype, value, kind) -> None:

@@ -75,6 +75,23 @@ def test_string_regex_and_pattern_alias():
         validate_device_setting_value("name", {"type": "string", "pattern": r"[A-Za-z ]+"}, "rack-1")
 
 
+_NOT_FINITE = ["nan", "inf", "-inf", " NaN ", float("nan"), float("inf"), float("-inf")]
+
+
+@pytest.mark.parametrize("stype", ["number", "float", "integer"])
+@pytest.mark.parametrize("value", _NOT_FINITE, ids=repr)
+@pytest.mark.parametrize("bounds", [{}, {"min": 0, "max": 10}], ids=["unbounded", "ranged"])
+def test_a_number_setting_refuses_nan_and_infinity(stype, value, bounds):
+    """Every comparison with NaN is False, so a range check alone passed it,
+    and infinity passed wherever no max was declared: the device got `nan`
+    formatted into its command. Refused as not a number, as a command
+    parameter is."""
+    kind = "whole number" if stype == "integer" else "number"
+    with pytest.raises(DeviceSettingValueError) as caught:
+        validate_device_setting_value("level", {"type": stype, **bounds}, value)
+    assert str(caught.value) == f"'level' must be a {kind}, got {value!r}"
+
+
 def test_none_value_rejected_and_unknown_schema_passthrough():
     with pytest.raises(DeviceSettingValueError, match="required"):
         validate_device_setting_value("k", {"type": "string"}, None)
@@ -141,6 +158,27 @@ async def test_manager_rejects_out_of_range_setting(core):
     # A valid write is coerced (string → int) and goes through.
     await dm.set_device_setting("dev1", "brightness", "75")
     assert driver.writes == [("brightness", 75)]
+
+
+@pytest.mark.parametrize("value", ["nan", float("inf")], ids=repr)
+async def test_manager_refuses_a_setting_that_is_not_finite(core, monkeypatch, value):
+    state, events = core
+    dm = DeviceManager(state, events)
+    driver = _SettingsDriver("dev3", {}, state, events)
+    monkeypatch.setitem(
+        driver.DRIVER_INFO["device_settings"], "gain",
+        {"type": "number", "label": "Gain", "state_key": "brightness", "setup": False},
+    )
+    await driver.connect()
+    dm._devices["dev3"] = driver
+    dm._device_configs["dev3"] = {}
+
+    with pytest.raises(DeviceSettingValueError, match="must be a number"):
+        await dm.set_device_setting("dev3", "gain", value)
+    with pytest.raises(DeviceSettingValueError, match="must be a number"):
+        await dm.store_pending_settings("dev3", {"gain": value})
+    assert driver.writes == []
+    assert "pending_settings" not in dm._device_configs["dev3"]
 
 
 async def test_pending_settings_validated_at_intake(core):

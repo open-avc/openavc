@@ -221,17 +221,23 @@ def _setting_numeric_value(value: Any, stype: str) -> float | int | None:
 
 def _parsed_setting_number(value: Any) -> float | int | None:
     """A number as given, or parsed from text; None for anything else. A
-    boolean is never a number."""
+    boolean is never a number, and neither are NaN and infinity, for the
+    reason ``_as_number`` gives: the range check cannot stop them, and the
+    device would get ``nan`` formatted into its command."""
     if isinstance(value, bool):
         return None
-    if isinstance(value, (int, float)):
+    if isinstance(value, int):
         return value
-    if not isinstance(value, str):
+    if isinstance(value, float):
+        num = value
+    elif isinstance(value, str):
+        try:
+            num = float(value.strip())
+        except ValueError:
+            return None
+    else:
         return None
-    try:
-        return float(value.strip())
-    except ValueError:
-        return None
+    return num if math.isfinite(num) else None
 
 
 def _setting_text(key: str, sdef: dict[str, Any], value: Any) -> str:
