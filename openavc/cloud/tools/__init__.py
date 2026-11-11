@@ -30,3 +30,15 @@ async def apply_tool_edit(engine, mutate) -> dict | None:
             return {"error": str(e)}
         raise
     return None
+
+
+def merge_forward_compat(existing, model_cls: type, partial: dict):
+    """Apply a partial update to a forward-compat (extra='allow') sub-model.
+
+    Dumps the existing model, overlays the partial input, then re-validates —
+    so omitted fields keep their current values (not the model defaults) and
+    any unknown forward-compat keys a newer platform stored survive the
+    round-trip, instead of being reset by ``model_cls(**partial)``.
+    """
+    merged = {**existing.model_dump(), **partial}
+    return model_cls(**merged)

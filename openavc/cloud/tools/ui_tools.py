@@ -4,25 +4,24 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.cloud.tools import ToolEditError, apply_tool_edit, merge_forward_compat
 from openavc.cloud.tools.ui_bindings import normalize_bindings, validate_bindings
 from openavc.cloud.tools.ui_layouts import (
     apply_layouts,
     container_problem,
+    master_boxes,
+    merge_master_boxes,
     place_in_primary,
     remove_elements,
     reparent_element,
     resolve_layout,
-    rounded_placement,
+    restate_box,
     set_hidden,
 )
 from openavc.cloud.tools.ui_rewrites import scrub_page_references
 from openavc.cloud.tools.ui_simulate import simulate_ui_action
 from openavc.cloud.tools.ui_review import UIReview, WriteNotes, master_findings
 from openavc.ui.matrix_model import matrix_config_problems
-from openavc.ui.page_geometry import (
-    resolved_placements,
-)
 
 
 # Geometry the model is not allowed to speak any more. 0.8.0 replaced whole-cell
@@ -97,24 +96,6 @@ def _refuse_bad_master_definition(data: dict, what: str) -> None:
                      f"e.g. {{\"landscape\": {{\"x\": 2, \"y\": 2, \"w\": 20, \"h\": 8}}}}. "
                      f"A master is not part of any page's layout."
         })
-
-
-def _master_boxes(boxes: dict) -> dict:
-    """A master's boxes by orientation, each object one stored as the Builder stores it."""
-    return {
-        orientation: rounded_placement(box) if isinstance(box, dict) else box
-        for orientation, box in boxes.items()
-    }
-
-
-def _merge_master_boxes(master: Any, boxes: Any, what: str) -> None:
-    """A master update's boxes, merged per orientation: a call that moves the
-    landscape box must not blank a portrait one it said nothing about."""
-    if not isinstance(boxes, dict):
-        raise ToolEditError({
-            "error": f"{what}: 'placements' must be an object keyed by orientation"
-        })
-    master.placements = {**(master.placements or {}), **_master_boxes(boxes)}
 
 
 def _page_element(project: Any, element_id: str) -> tuple[Any, Any]:
@@ -392,7 +373,7 @@ def _set_snap(page: Any, value: Any, what: str) -> None:
     """Partial merge: omitted fields keep their values (the increment is not
     reset to the defaults) and forward-compat keys survive."""
     from openavc.core.project_loader import SnapConfig
-    page.snap = _merge_forward_compat(page.snap, SnapConfig, value)
+    page.snap = merge_forward_compat(page.snap, SnapConfig, value)
 
 
 def _set_overlay(page: Any, value: Any, what: str) -> None:
@@ -467,18 +448,6 @@ def _page_update_touches(input: dict) -> set[str] | None:
     } if "layouts" in input else set()
     hands_over = any(field in input for field in ("render_mode", "custom_file", "grant"))
     return moved if moved or hands_over else None
-
-
-def _merge_forward_compat(existing: Any, model_cls: type, partial: dict) -> Any:
-    """Apply a partial update to a forward-compat (extra='allow') sub-model.
-
-    Dumps the existing model, overlays the partial input, then re-validates —
-    so omitted fields keep their current values (not the model defaults) and
-    any unknown forward-compat keys a newer platform stored survive the
-    round-trip, instead of being reset by ``model_cls(**partial)``.
-    """
-    merged = {**existing.model_dump(), **partial}
-    return model_cls(**merged)
 
 
 class UIToolsMixin:
@@ -735,16 +704,10 @@ class UIToolsMixin:
                 reparent_element(target_page, element_id, new_parent)
                 changed.append("parent")
             if "placement" in input:
-                from openavc.core.project_loader import Placement
-                # Partial merge: keep omitted fields (don't snap x/y back to 0)
-                # and preserve any forward-compat keys. The placement lives on
-                # the page's layout, not the element. Runs after any reparent,
-                # so the stated box overrides the conversion in the resolved
-                # layout and the other arrangements keep the converted one.
-                existing = resolved_placements(target_page, layout.id).get(target_el.id, Placement())
-                layout.placements[target_el.id] = rounded_placement(_merge_forward_compat(
-                    existing, Placement, input["placement"],
-                ))
+                # Runs after any reparent, so the stated box overrides the
+                # conversion in the resolved layout and the other arrangements
+                # keep the converted one.
+                restate_box(target_page, layout, target_el.id, input["placement"])
                 changed.append("placement")
             if "hidden" in input:
                 set_hidden(target_page, layout, element_id, bool(input["hidden"]))
@@ -856,7 +819,7 @@ class UIToolsMixin:
 
             _check_created_bindings(el_data, project, f"Master element '{element_id}'")
             if isinstance(el_data.get("placements"), dict):
-                el_data["placements"] = _master_boxes(el_data["placements"])
+                el_data["placements"] = master_boxes(el_data["placements"])
             new_el = MasterElement(**el_data)
             project.ui.master_elements.append(new_el)
             notes.created(new_el.grant)
@@ -902,7 +865,7 @@ class UIToolsMixin:
                 changed.append("bindings")
 
             if "placements" in input:
-                _merge_master_boxes(target, input["placements"], f"Master element '{element_id}'")
+                merge_master_boxes(target, input["placements"], f"Master element '{element_id}'")
                 changed.append("placements")
 
             # Everything else is a plain field on the element. Anything the

@@ -7,8 +7,9 @@ A child's box is a percentage of its container's. This module is the writing
 half the doors in ``ui_tools`` share: the arrangements a layouts write adds and
 edits, a box stored the way the Builder stores it, the containers a control may
 sit in and the conversion that keeps it in place when it moves between them,
-the hide each arrangement adds, and what a deleted control leaves behind.
-Reading the geometry is ``ui/page_geometry.py``'s.
+the hide each arrangement adds, and what a deleted control leaves behind; and
+a master's boxes, which are the viewport's by orientation rather than any
+page's. Reading the geometry is ``ui/page_geometry.py``'s.
 
 The rules are the Builder's, so an AI edit and the same edit made on the canvas
 store the same project: the rounding is ``GEOMETRY_PRECISION`` in
@@ -20,12 +21,13 @@ refuse it at the door.
 
 from typing import Any
 
-from openavc.cloud.tools import ToolEditError
+from openavc.cloud.tools import ToolEditError, merge_forward_compat
 from openavc.ui.page_geometry import (
     PAGE_BOX,
     absolute_placements,
     layout_chain,
     primary_layout,
+    resolved_placements,
 )
 
 
@@ -306,6 +308,40 @@ def container_problem(holders: dict, parent_id: str, page_id: str) -> str | None
         return (f"'{parent_id}' is a {holder.type}, not a container -- only a group "
                 f"element can hold children")
     return None
+
+
+def restate_box(page: Any, layout: Any, element_id: str, partial: dict) -> None:
+    """A control's box as an update states it, in one arrangement.
+
+    Partial: the fields it names go over the box the control resolves to there
+    (its own, or the one it inherits), so an omitted x or y is not snapped back
+    to 0, and forward-compat keys survive. Stored in that arrangement only.
+    """
+    from openavc.core.project_loader import Placement
+
+    existing = resolved_placements(page, layout.id).get(element_id, Placement())
+    layout.placements[element_id] = rounded_placement(
+        merge_forward_compat(existing, Placement, partial),
+    )
+
+
+def master_boxes(boxes: dict) -> dict:
+    """A master's boxes by orientation (the viewport's, not any page's), each
+    object one stored as the Builder stores it."""
+    return {
+        orientation: rounded_placement(box) if isinstance(box, dict) else box
+        for orientation, box in boxes.items()
+    }
+
+
+def merge_master_boxes(master: Any, boxes: Any, what: str) -> None:
+    """A master update's boxes, merged per orientation: a call that moves the
+    landscape box must not blank a portrait one it said nothing about."""
+    if not isinstance(boxes, dict):
+        raise ToolEditError({
+            "error": f"{what}: 'placements' must be an object keyed by orientation"
+        })
+    master.placements = {**(master.placements or {}), **master_boxes(boxes)}
 
 
 def place_in_primary(page: Any, boxes: dict) -> None:

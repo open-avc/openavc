@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from openavc.cloud.tools import ToolEditError, apply_tool_edit
+from openavc.cloud.tools import ToolEditError, apply_tool_edit, merge_forward_compat
 from openavc.core.monitors import drop_monitors_for_variable
 from openavc.core.value_resolver import embedded_refs
 from openavc.utils.logger import get_logger
@@ -413,7 +413,6 @@ class MacroToolsMixin:
         macro_id = input.get("macro_id", "")
         from openavc.core.macro_validation import validate_macro
         from openavc.core.project_loader import MacroConfig
-        from openavc.cloud.tools.ui_tools import _merge_forward_compat
 
         def mutate(project):
             macro_idx = None
@@ -446,7 +445,7 @@ class MacroToolsMixin:
                 for k in ("name", "steps", "triggers", "stop_on_error", "cancel_group")
                 if k in input
             }
-            updated = _merge_forward_compat(existing, MacroConfig, patch)
+            updated = merge_forward_compat(existing, MacroConfig, patch)
             project.macros[macro_idx] = updated
 
         err = await apply_tool_edit(engine, mutate)
