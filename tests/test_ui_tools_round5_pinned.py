@@ -1,9 +1,9 @@
 """The AI's UI write doors, pinned where a deliberate break found no test.
 
 A batch of new controls says back only the grants it set, a master update
-names an empty box map as changed and refuses one that is not an object, and
-a locked control can still be hidden or shown in an arrangement. Each records
-what a door does today.
+names an empty box map or an empty bindings object as changed and refuses
+either when it is not an object, and a locked control can still be hidden or
+shown in an arrangement. Each records what a door does today.
 """
 
 from __future__ import annotations
@@ -65,3 +65,22 @@ async def test_element_a_locked_control_can_still_be_hidden_in_an_arrangement():
     })
     assert result == {"status": "updated", "element_id": "pin", "changed": ["hidden"]}
     assert "pin" in _layout(engine, "main", "portrait").hidden
+
+
+@pytest.mark.asyncio
+async def test_master_an_empty_bindings_object_is_named_as_changed():
+    engine = _engine()
+    result = await _call(engine, "update_master_element", {
+        "element_id": "m_both", "bindings": {},
+    })
+    assert result == {"status": "updated", "element_id": "m_both", "changed": ["bindings"]}
+
+
+@pytest.mark.asyncio
+async def test_master_bindings_that_are_not_an_object_are_refused():
+    engine = _engine()
+    result = await _call(engine, "update_master_element", {
+        "element_id": "m_both", "bindings": None,
+    })
+    assert result == {"error": "Master element 'm_both': 'bindings' must be an "
+                               "object, got NoneType"}
