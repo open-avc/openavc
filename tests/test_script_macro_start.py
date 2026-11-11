@@ -95,8 +95,10 @@ async def test_a_macro_started_from_every_runs_past_the_handler_limit(room):
     # stopped: the callback returned the moment the macro started.
     assert await _wait_for(lambda: state.get("var.last_step") is True)
     assert errors == []
-    assert not macros.is_macro_running("long_off")
-    assert macros._detached == set()
+    # The last step writes var.last_step before the run's task has finished,
+    # so the engine lets go of the run a moment later.
+    assert await _wait_for(lambda: not macros.is_macro_running("long_off"))
+    assert await _wait_for(lambda: macros._detached == set())
 
 
 async def test_execute_from_every_is_still_cut_off_at_the_handler_limit(room):
