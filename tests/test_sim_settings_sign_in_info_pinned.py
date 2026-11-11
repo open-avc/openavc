@@ -481,3 +481,13 @@ def test_an_empty_unit_leaves_the_slider_without_one():
         "b": {"type": "integer", "min": 0, "max": 1, "unit": None},
     }})
     assert [list(c) for c in info["controls"]] == [["type", "key", "label", "min", "max", "step"]] * 2
+
+
+async def test_a_credential_line_past_the_reader_limit_under_a_newline_ending_raises():
+    sim = _signer(dict(_AUTH), {"username": "a"})
+    reader = asyncio.StreamReader(limit=4)
+    reader.feed_data(b"abcdefgh\r\n")
+    with pytest.raises(ValueError):
+        await _sign_in(sim, reader=reader)
+    sim = _signer({**_AUTH, "line_ending": "\n", "success_pattern": "OK"}, {"username": "a"})
+    assert await _sign_in(sim, b"a\nb", eof=True) == (True, b"login: Passw+: OK\n")

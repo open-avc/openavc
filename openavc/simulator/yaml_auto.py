@@ -23,6 +23,10 @@ notifications go (its push: block and the notifications: templates) is
 the PushChannels mixin in push_channels; which of the driver's reads gets a
 handler, and what a list read covers, is query_handlers. The order a line is
 offered to the handlers is ``_HANDLER_CHAIN``, at the bottom of this module.
+The device's half of the driver's ``auth:`` sign-in is telnet_sign_in; what
+the Simulator UI is told about the device (each variable's control, the
+children section) is ui_info; the ``simulator:`` section's settings are read
+by base.py's ``_read_device_settings``, as a Python simulator's are.
 """
 
 from __future__ import annotations
