@@ -24,7 +24,7 @@ from openavc.cloud.tools.ui_lookups import (
     longest_first,
     reference_lookups,
 )
-from openavc.core.ui_events import resolve_press
+from openavc.core.ui_events import find_element, resolve_press
 from openavc.ui.matrix_model import matrix_config_problems
 from openavc.ui.page_geometry import (
     resolved_placements,
@@ -58,26 +58,6 @@ _RETIRED_GEOMETRY = {
 }
 
 
-def _find_ui_element(engine: Any, element_id: str) -> Any:
-    """The element an interaction would reach, page elements then masters.
-
-    Same order as ``ui_events._find_element``, so what this reports and what
-    that dispatches are always the same element.
-    """
-    project = getattr(engine, "project", None)
-    ui = getattr(project, "ui", None)
-    if ui is None:
-        return None
-    for page in getattr(ui, "pages", None) or []:
-        for candidate in page.elements:
-            if candidate.id == element_id:
-                return candidate
-    for master in getattr(ui, "master_elements", None) or []:
-        if master.id == element_id:
-            return master
-    return None
-
-
 def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: list) -> dict:
     """Say why an interaction did nothing, when it did nothing.
 
@@ -89,9 +69,8 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: lis
     """
     if dispatched:
         return {}
-    # First match wins, the way ui_events._find_element resolves it -- so this
-    # describes the element the event actually reached.
-    element = _find_ui_element(engine, element_id)
+    # The element the event actually reached.
+    element = find_element(getattr(engine, "project", None), element_id)
     if element is None:
         return {
             "note": f"No element '{element_id}' is on any page or in the master "
@@ -1327,7 +1306,7 @@ class UIToolsMixin:
         toggle_note: str | None = None
         effective = action
         if action == "press":
-            element = _find_ui_element(engine, element_id)
+            element = find_element(getattr(engine, "project", None), element_id)
             if element is not None:
                 effective, toggle_note = resolve_press(element, self._agent.state)
 

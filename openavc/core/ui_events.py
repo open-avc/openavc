@@ -14,6 +14,7 @@ the engine because a reload replaces it wholesale.
 from __future__ import annotations
 
 import asyncio
+import itertools
 from typing import TYPE_CHECKING, Any
 
 from openavc.core.device_manager import failed_command
@@ -74,6 +75,28 @@ def _log_task_exception(task: asyncio.Task) -> None:
     exc = task.exception()
     if exc is not None:
         log.error(f"Background task failed: {exc}", exc_info=exc)
+
+
+def find_element(project: Any, element_id: str) -> Any | None:
+    """The element an interaction with this id reaches: the first page holding
+    it, else the master element with it, else None.
+
+    Pages first, matching the panel's own precedence: a page element wins a
+    duplicate id, because that is the one it drew last. The masters count:
+    without them the whole cross-page layer -- nav bars, a home button, a
+    header status LED -- is inert to anything that comes through here. The
+    AI's simulated press resolves a toggle and explains a silence against this
+    same answer, so what it reports and what the runtime dispatches are always
+    the same element.
+    """
+    ui = getattr(project, "ui", None) if project else None
+    if ui is None:
+        return None
+    on_pages = (el for page in getattr(ui, "pages", None) or [] for el in page.elements)
+    masters = getattr(ui, "master_elements", None) or []
+    return next(
+        (el for el in itertools.chain(on_pages, masters) if el.id == element_id), None,
+    )
 
 
 def press_mode(element: Any) -> tuple[str, dict[str, Any]]:
@@ -212,7 +235,7 @@ class UIEventRuntime:
             await engine.events.emit(event_name, {"element_id": element_id, **data})
 
         # Find the element and its bindings
-        element = self._find_element(element_id)
+        element = find_element(engine.project, element_id)
         if not element:
             return dispatched
 
@@ -653,27 +676,3 @@ class UIEventRuntime:
             return int(result)
         return result
 
-    def _find_element(self, element_id: str) -> Any | None:
-        """Find a UI element by ID, across every page and then the masters.
-
-        Masters were missed here for as long as this existed, which made the
-        whole cross-page layer -- nav bars, a home button, a header status LED
-        -- silently inert to anything that went through this path, and
-        untestable through ``simulate_ui_action``. The panel has always drawn
-        and dispatched them; only the server-side lookup did not know they were
-        elements too.
-
-        Pages first, matching the panel's own precedence: a page element wins a
-        duplicate id, because that is the one it drew last.
-        """
-        project = self._engine.project
-        if not project:
-            return None
-        for page in project.ui.pages:
-            for element in page.elements:
-                if element.id == element_id:
-                    return element
-        for master in getattr(project.ui, "master_elements", None) or []:
-            if master.id == element_id:
-                return master
-        return None

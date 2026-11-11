@@ -28,7 +28,7 @@ def engine(tmp_path):
 
 
 def _project_with_element(element):
-    """Wrap a single element in the minimal project shape _find_element walks."""
+    """Wrap a single element in the minimal project shape find_element walks."""
     page = SimpleNamespace(elements=[element])
     ui = SimpleNamespace(pages=[page])
     return SimpleNamespace(ui=ui)
