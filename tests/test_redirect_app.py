@@ -596,7 +596,7 @@ def test_the_https_listener_is_actually_wired_to_it():
     import openavc.main as main_mod
 
     src = inspect.getsource(main_mod)
-    assert "build_http_listener_app(app, build_redirect_app(config.TLS_PORT))" in src
+    assert "build_http_listener_app(_served_app(), build_redirect_app(config.TLS_PORT))" in src
 
 
 # --- what a redirect target is built from, pinned before a restructure ---

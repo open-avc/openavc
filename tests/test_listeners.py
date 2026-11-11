@@ -503,3 +503,64 @@ def test_a_supervisor_listener_is_adopted_for_the_same_plan(started, monkeypatch
     assert started.calls[0] == ("set_current", started.plan)
     assert started.served == [(8080, ["inherited-sock"])]
     assert started.calls[-1] == ("close", ["inherited-sock"])
+
+
+# ===========================================================================
+# Run as `python -m openavc.main`
+# ===========================================================================
+
+# `python -m openavc.main` (systemd, Docker, the appliance) executes main.py
+# twice: as __main__, which runs main(), and as openavc.main, which uvicorn
+# imports for the "openavc.main:app" string. Only the second copy's lifespan
+# runs, so only its app ever starts. This runs the module that way in a child
+# process, with nothing bound or served, and checks the HTTP port's listener
+# is handed the app the HTTPS listener loaded.
+_RUN_AS_MODULE = r"""
+import json, runpy, sys
+import uvicorn
+from openavc import config, listen_sockets, redirects
+
+handed = []
+real_listener = redirects.build_http_listener_app
+def recording_listener(main_app, redirect_app):
+    handed.append(main_app)
+    return real_listener(main_app, redirect_app)
+redirects.build_http_listener_app = recording_listener
+
+loaded = []
+async def serve(self, sockets=None):
+    if isinstance(self.config.app, str):  # the main listener: what its import string loaded
+        app = self.config.loaded_app
+        while not hasattr(app, "router") and hasattr(app, "app"):  # uvicorn's own wrappers
+            app = app.app
+        loaded.append(app)
+uvicorn.Server.serve = serve
+# Who can connect is resolved for real; only binding is stood in for.
+listen_sockets.bind_for_plan = lambda plan, port, retries=1, fallback=True: ([], plan)
+for name, value in (("TLS_ENABLED", True), ("TLS_REDIRECT_HTTP", True), ("PORT80_REDIRECT", False),
+                    ("TLS_PORT", 8443), ("HTTP_PORT", 8080), ("TLS_CLOUD_CERT", False)):
+    setattr(config, name, value)
+
+runpy.run_module("openavc.main", run_name="__main__", alter_sys=True)
+(https_app,) = loaded
+print(json.dumps({
+    "https_app_started": https_app is sys.modules["openavc.main"].app,
+    "http_port_serves_it": [app is https_app for app in handed],
+}))
+"""
+
+
+def test_under_python_m_the_http_port_serves_the_app_that_started(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    env = {**__import__("os").environ, "OPENAVC_DATA_DIR": str(tmp_path)}
+    env.pop("OPENAVC_LISTEN_FD", None)
+    done = subprocess.run(
+        [sys.executable, "-c", _RUN_AS_MODULE], cwd=Path(__file__).resolve().parents[1],
+        env=env, capture_output=True, text=True, timeout=120,
+    )
+    assert done.returncode == 0, done.stderr[-3000:]
+    report = json.loads(done.stdout.strip().splitlines()[-1])
+    assert report == {"https_app_started": True, "http_port_serves_it": [True]}

@@ -61,6 +61,7 @@ if (
         pass
 
 import asyncio
+import importlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -794,10 +795,24 @@ def _secure_https_context(context) -> None:
     context.sni_callback = tls_module.make_sni_callback(tls_module.cloud_cert_holder())
 
 
+def _served_app():
+    """The app the main listener serves: the one its import string names.
+
+    Run as ``python -m openavc.main``, this file executes twice: as
+    ``__main__``, which runs ``main()``, and as ``openavc.main``, which uvicorn
+    imports for ``"openavc.main:app"``. Each copy builds its own ``app``, and
+    only the served copy's lifespan runs, so only it starts the engine, shows
+    the startup splash and carries the plugin routes. A listener handed an
+    app directly takes this one, never the module-level ``app`` of the copy
+    that is running ``main()``.
+    """
+    return importlib.import_module("openavc.main").app
+
+
 async def _run_tls(sockets: list) -> None:
     """Run the HTTPS listener and the listeners beside it concurrently: the
-    HTTP port's (this machine served, the rest redirected) when the redirect
-    is on, and the port-80 redirect.
+    HTTP port's (this machine served the same app as HTTPS, the rest
+    redirected) when the redirect is on, and the port-80 redirect.
 
     ``sockets`` are the HTTPS port's, already bound by ``main()``. The
     auxiliary listeners are best-effort: one that cannot bind logs a warning
@@ -815,7 +830,7 @@ async def _run_tls(sockets: list) -> None:
     if config.TLS_REDIRECT_HTTP:
         _start_aux_listener(
             tasks,
-            build_http_listener_app(app, build_redirect_app(config.TLS_PORT)),
+            build_http_listener_app(_served_app(), build_redirect_app(config.TLS_PORT)),
             config.HTTP_PORT,
             f"HTTP redirect listener could not bind to port {config.HTTP_PORT} (%s); "
             "old http:// links will not auto-redirect.",
