@@ -371,3 +371,25 @@ def test_a_flat_param_after_a_child_variable_with_an_empty_name_keeps_the_child_
     view = _views(sim)[0]
     assert (view["response_var"], view["response_is_child"], view["child_type"],
             view["child_state_keys"]) == ("level", True, "out", {""})
+
+
+def test_a_declared_param_missing_from_the_template_decodes_nothing():
+    view = _one({"set": {
+        "send": "S{a}",
+        "params": {"a": {"type": "integer"}, "b": {"type": "integer", "scale": 2}},
+        "sets": {"level": "{a}", "input": "{b}"},
+    }})
+    assert (view["state_changes"], view["group_bases"], view["group_conversions"]) == (
+        {"level": 1}, {}, {})
+
+
+def test_a_setting_write_takes_the_segment_that_carries_its_value():
+    sim = _sim({}, default_config={"unit": "07"}, device_settings={"bright": {
+        "type": "integer", "state_key": "level",
+        "write": {"send": "UNIT {unit}\\rSET {value}\\rGET?"}}})
+    assert [(v["name"], v["pattern"]) for v in _views(sim)] == [
+        ("setting:bright", r"^SET (-?\d+)$")]
+    sim = _sim({}, default_config={"unit": "07"}, device_settings={"bright": {
+        "type": "integer", "state_key": "level",
+        "write": {"send": "U{unit} {value:02X}"}}})
+    assert [v["pattern"] for v in _views(sim)] == [r"^U07 ([0-9a-fA-F]+)$"]
