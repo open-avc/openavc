@@ -431,7 +431,7 @@ describe("Your own certificate", () => {
     expect(screen.getByText("keep.crt")).toBeTruthy();
   });
 
-  it("keeps an upload's result across a switch to one made here and back", async () => {
+  it("keeps an upload across a switch to one made here and back, ready to save", async () => {
     await renderLoaded(<SystemSettingsView />);
     const [certInput, keyInput] = fileInputs();
     fireEvent.change(certInput, { target: { files: [pem("a.crt")] } });
@@ -441,10 +441,10 @@ describe("Your own certificate", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Auto-generate (recommended)" }));
     fireEvent.click(screen.getByRole("radio", { name: "Use my own certificate" }));
     expect(screen.getByText("Certificate uploaded")).toBeTruthy();
-    // Auto-generate emptied the paths, so Save stays refused, and the
-    // sentence that says why is not drawn while a result is showing.
+    // Coming back puts the upload's files back, so Save points HTTPS at them
+    // without uploading again.
     expect(screen.queryByText("Upload a certificate before saving.")).toBeNull();
-    expect(saveButton()).toBeDisabled();
+    expect(saveButton()).not.toBeDisabled();
   });
 });
 

@@ -131,7 +131,13 @@ function HttpsSettings({ tls, httpPort, tlsStatus, updateTls, hold, tlsPortError
   const tlsCertHeld = hold.by("tls", "auto_generate") ?? hold.by("tls", "cert_file") ?? hold.by("tls", "key_file");
   return (
     <>
-      <CertificateSourceField mode={tlsCertMode} held={tlsCertHeld} hold={hold} updateTls={updateTls} />
+      <CertificateSourceField
+        mode={tlsCertMode}
+        held={tlsCertHeld}
+        hold={hold}
+        updateTls={updateTls}
+        onChooseOwn={upload.restoreUploaded}
+      />
 
       {tlsCertMode === "auto" && <CertificateMadeHere tlsStatus={tlsStatus} view={madeHere} />}
 
@@ -156,12 +162,14 @@ function HttpsSettings({ tls, httpPort, tlsStatus, updateTls, hold, tlsPortError
 }
 
 /** Made here, or your own. Going back to one made here forgets your own
- *  certificate's file paths. */
-function CertificateSourceField({ mode, held, hold, updateTls }: {
+ *  certificate's file paths; choosing your own again puts back the ones a
+ *  certificate uploaded on this page gave (`onChooseOwn`). */
+function CertificateSourceField({ mode, held, hold, updateTls, onChooseOwn }: {
   mode: "auto" | "provided";
   held: string | undefined;
   hold: EnvHold;
   updateTls: UpdateTls;
+  onChooseOwn: () => void;
 }) {
   return (
     <div style={{ ...fieldRow, gridTemplateColumns: "200px 1fr" }}>
@@ -185,7 +193,10 @@ function CertificateSourceField({ mode, held, hold, updateTls }: {
             type="radio"
             name="tls-cert-source"
             checked={mode === "provided"}
-            onChange={() => updateTls("auto_generate", false)}
+            onChange={() => {
+              updateTls("auto_generate", false);
+              onChooseOwn();
+            }}
           />
           <span>Use my own certificate</span>
         </label>

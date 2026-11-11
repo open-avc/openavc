@@ -69,6 +69,15 @@ export function useCertificateUpload(updateTls: UpdateTls) {
     void upload(certFile, keyFile);
   };
 
+  /** Your own certificate chosen again after one made here, which emptied
+   *  the paths: the upload's files are still on the server, so they go back
+   *  and Save points HTTPS at them. Nothing to put back without an upload. */
+  const restoreUploaded = () => {
+    if (!uploadResult) return;
+    updateTls("cert_file", uploadResult.cert_path);
+    updateTls("key_file", uploadResult.key_path);
+  };
+
   /** Back to the pickers, with the uploaded files' paths forgotten. */
   const replace = () => {
     setUploadResult(null);
@@ -81,7 +90,7 @@ export function useCertificateUpload(updateTls: UpdateTls) {
   return {
     pickedCert, setPickedCert, pickedKey, setPickedKey, uploading, uploadResult,
     pasteOpen, setPasteOpen, pasteCert, setPasteCert, pasteKey, setPasteKey,
-    certInputRef, keyInputRef, uploadPicked, uploadPasted, replace,
+    certInputRef, keyInputRef, uploadPicked, uploadPasted, replace, restoreUploaded,
   };
 }
 
