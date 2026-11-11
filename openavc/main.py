@@ -479,9 +479,9 @@ engine.plugin_loader.set_router_hooks(
 )
 
 # Wire discovery engine. A scan leaves alone every port a connected project
-# device's driver holds.
+# device's driver holds on the network (a simulated device holds none).
 discovery_api.set_discovery_engine(discovery_engine)
-discovery_engine.held_connections = engine.devices.live_connections
+discovery_engine.held_connections = engine.devices.network_connections
 
 # Wire the device audit (it pauses project devices and asks discovery).
 from openavc.api.routes import audit as audit_routes

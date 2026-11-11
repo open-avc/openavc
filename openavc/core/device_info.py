@@ -1,8 +1,9 @@
 """What the device manager says about its devices: one device's details
 (``get_device_info``), its settings with their current values
 (``get_device_settings``), the listing (``list_devices``) and where each
-connected device connects (``live_connections``). Read-only: nothing here
-changes a device.
+connected device connects (``live_connections``), less the simulated ones for
+the ports held on the network (``network_connections``). Read-only: nothing
+here changes a device.
 
 Three kinds of device are described: one with a live driver, one waiting for its
 driver to be installed (an orphan, core/device_orphans.py) and one that is
@@ -80,8 +81,9 @@ class DeviceInfoMixin:
     """The device details, its settings, the listing and the live connections.
 
     Holds no state of its own. From its host (DeviceManager) it reads
-    ``state``, ``installed_equipment``, ``real_connection``, ``_devices``,
-    ``_device_configs``, ``_orphaned_devices`` (core/device_orphans.py) and
+    ``state``, ``installed_equipment``, ``real_connection``,
+    ``redirected_to_simulator``, ``_devices``, ``_device_configs``,
+    ``_orphaned_devices`` (core/device_orphans.py) and
     ``_detected_web_ui_urls`` (core/device_web_ui.py), and asks
     ``_live_driver``.
     """
@@ -89,6 +91,7 @@ class DeviceInfoMixin:
     state: StateStore
     installed_equipment: Any
     real_connection: Callable[[str], dict[str, Any] | None] | None
+    redirected_to_simulator: Callable[[str], bool] | None
     _devices: dict[str, BaseDriver]
     _device_configs: dict[str, dict[str, Any]]
     _orphaned_devices: dict[str, dict[str, Any]]
@@ -225,6 +228,19 @@ class DeviceInfoMixin:
                 continue
             out.append(conn)
         return out
+
+    def network_connections(self) -> list[DeviceConnection]:
+        """The ports connected devices hold on the network right now:
+        :meth:`live_connections` less every device connected to the simulator,
+        which holds nothing at its own address. A Discovery scan leaves these
+        ports alone and identifies the device found at one from its driver; a
+        simulated device's address is scanned as if it were not in the project.
+        """
+        simulated = self.redirected_to_simulator
+        return [
+            conn for conn in self.live_connections()
+            if simulated is None or not simulated(conn.device_id)
+        ]
 
     def list_devices(self) -> list[dict[str, Any]]:
         items = self._list_devices()

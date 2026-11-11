@@ -321,6 +321,44 @@ class TestLiveConnections:
             ("Lobby Widget", "10.77.0.5", 4321),
         ]
 
+    def test_a_simulated_device_holds_no_port_on_the_network(self):
+        """While a device is connected to the simulator, its own address's port
+        is held by nobody: a scan may connect to whatever answers there, and
+        nothing there is identified as that device. Test Connection still
+        finds the simulated device's own connection in ``live_connections``.
+        """
+        from openavc.core.device_manager import DeviceManager
+        from openavc.core.event_bus import EventBus
+        from openavc.core.state_store import StateStore
+
+        manager = DeviceManager(StateStore(), EventBus())
+
+        class _Driver:
+            config: dict = {}
+
+            def get_state(self, key: str):
+                return True if key == "connected" else None
+
+        for device_id, name, host in (
+            ("lobby_widget", "Lobby Widget", "10.77.0.5"),
+            ("hall_widget", "Hall Widget", "10.77.0.6"),
+        ):
+            manager._devices[device_id] = _Driver()
+            manager._device_configs[device_id] = {
+                "id": device_id, "name": name, "driver": "acme_widget",
+                "config": {"host": host, "port": 4321},
+            }
+
+        assert [c.name for c in manager.network_connections()] == ["Lobby Widget", "Hall Widget"]
+        manager.redirected_to_simulator = lambda device_id: device_id == "lobby_widget"
+        assert [c.name for c in manager.network_connections()] == ["Hall Widget"]
+        assert [c.name for c in manager.live_connections()] == ["Lobby Widget", "Hall Widget"]
+
+    def test_a_scan_reads_the_ports_held_on_the_network(self):
+        from openavc import main
+
+        assert main.discovery_engine.held_connections == main.engine.devices.network_connections
+
 
 class TestADeviceInTheProjectIsStillIdentified:
     """The probe that would have identified a connected project device never

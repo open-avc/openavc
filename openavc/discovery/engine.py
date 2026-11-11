@@ -330,8 +330,9 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         self.scan_blocker: Callable[[], str | None] | None = None
         # Asked when a scan starts: where each connected project device's
         # driver is connected now, as objects with ``host``, ``port`` and
-        # ``name`` (``DeviceManager.live_connections``). The scan connects to
-        # none of those ports (see port_guard). Unset: nothing is held.
+        # ``name`` (``DeviceManager.network_connections``: a device connected
+        # to the simulator holds nothing at its own address). The scan connects
+        # to none of those ports (see port_guard). Unset: nothing is held.
         self.held_connections: Callable[[], Iterable[Any]] | None = None
         # This scan's port guard: the ports it leaves alone, one connection
         # per port at a time, and what each port received. Replaced on every

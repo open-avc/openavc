@@ -87,7 +87,8 @@ async def held_ports(
 ) -> tuple[dict[tuple[str, int], Any], list[Any]]:
     """The ports connected project devices hold, by address.
 
-    ``connections`` are ``DeviceManager.live_connections()``: objects with
+    ``connections`` are ``DeviceManager.live_connections()`` (a scan's are
+    ``network_connections()``, without the simulated devices): objects with
     ``host``, ``port`` and ``name``. Returns ``(address, port)`` -> the
     connection, with each host name looked up first since what gets dialed is
     an address, and the connections whose host name did not resolve, which
