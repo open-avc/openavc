@@ -176,6 +176,55 @@ def _master_boxes(boxes: dict) -> dict:
     }
 
 
+def _merge_master_boxes(master: Any, boxes: Any, what: str) -> None:
+    """A master update's boxes, merged per orientation: a call that moves the
+    landscape box must not blank a portrait one it said nothing about."""
+    if not isinstance(boxes, dict):
+        raise ToolEditError({
+            "error": f"{what}: 'placements' must be an object keyed by orientation"
+        })
+    master.placements = {**(master.placements or {}), **_master_boxes(boxes)}
+
+
+def _page_element(project: Any, element_id: str) -> tuple[Any, Any]:
+    """The page and element an element update names.
+
+    The first page holding the id, the order the event runtime resolves it in.
+    A master is an element too, and looking only at pages made every cross-page
+    control unreachable from the element door with a "not found", which reads
+    like a typo and invites a retry of the same call; a master's id is pointed
+    at the door that can change it.
+    """
+    for page in project.ui.pages:
+        for el in page.elements:
+            if el.id == element_id:
+                return page, el
+    if any(m.id == element_id for m in project.ui.master_elements):
+        raise ToolEditError({
+            "error": f"'{element_id}' is a master element, not a page element. "
+                     f"Use update_master_element to change it."
+        })
+    raise ToolEditError({"error": f"UI element '{element_id}' not found"})
+
+
+def _master_named(project: Any, element_id: str) -> Any:
+    """The master a master update names; a page element's id is pointed at the
+    element door, the other half of :func:`_page_element`."""
+    target = next((m for m in project.ui.master_elements if m.id == element_id), None)
+    if target is not None:
+        return target
+    on_page = next(
+        (p.id for p in project.ui.pages for el in p.elements if el.id == element_id),
+        None,
+    )
+    if on_page:
+        raise ToolEditError({
+            "error": f"'{element_id}' is an element on page '{on_page}', not a "
+                     f"master. Use update_ui_element to change it."
+        })
+    raise ToolEditError({"error": f"Master element '{element_id}' not found"})
+
+
 def _take_placement(el_data: dict, what: str) -> dict | None:
     """Lift an element's box out of its definition, where the box no longer lives.
 
@@ -869,29 +918,7 @@ class UIToolsMixin:
         )
 
         def mutate(project):
-            # Find the element across all pages
-            target_el = None
-            target_page = None
-            for page in project.ui.pages:
-                for el in page.elements:
-                    if el.id == element_id:
-                        target_el = el
-                        target_page = page
-                        break
-                if target_el:
-                    break
-
-            if target_el is None:
-                # A master is an element too, and looking only at pages made
-                # every cross-page control unreachable from here -- the reply
-                # said "not found", which reads like a typo and invites a retry
-                # of the same call. Name the tool that can.
-                if any(m.id == element_id for m in project.ui.master_elements):
-                    raise ToolEditError({
-                        "error": f"'{element_id}' is a master element, not a page element. "
-                                 f"Use update_master_element to change it."
-                    })
-                raise ToolEditError({"error": f"UI element '{element_id}' not found"})
+            target_page, target_el = _page_element(project, element_id)
             _refuse_bad_definition(input, f"Element '{element_id}'")
             # Geometry and per-layout visibility belong to one arrangement. The
             # primary is where a box lives unless the caller is authoring a
@@ -1090,22 +1117,7 @@ class UIToolsMixin:
         grant_change: dict = {}
 
         def mutate(project):
-            target = next(
-                (m for m in project.ui.master_elements if m.id == element_id), None,
-            )
-            if target is None:
-                on_page = next(
-                    (p.id for p in project.ui.pages
-                     for el in p.elements if el.id == element_id),
-                    None,
-                )
-                if on_page:
-                    raise ToolEditError({
-                        "error": f"'{element_id}' is an element on page '{on_page}', not a "
-                                 f"master. Use update_ui_element to change it."
-                    })
-                raise ToolEditError({"error": f"Master element '{element_id}' not found"})
-
+            target = _master_named(project, element_id)
             _refuse_bad_master_definition(input, f"Master element '{element_id}'")
 
             if "bindings" in input:
@@ -1115,15 +1127,7 @@ class UIToolsMixin:
                 changed.append("bindings")
 
             if "placements" in input:
-                # Merge per orientation: a call that moves the landscape box
-                # must not blank a portrait one it said nothing about.
-                boxes = input["placements"]
-                if not isinstance(boxes, dict):
-                    raise ToolEditError({
-                        "error": f"Master element '{element_id}': 'placements' must be an "
-                                 f"object keyed by orientation"
-                    })
-                target.placements = {**(target.placements or {}), **_master_boxes(boxes)}
+                _merge_master_boxes(target, input["placements"], f"Master element '{element_id}'")
                 changed.append("placements")
 
             # Everything else is a plain field on the element. Anything the
