@@ -1,0 +1,127 @@
+/** A command's (or an action's) parameters in the Driver Builder: what a
+ *  parameter's type decides, and how each box reads what is typed. No React.
+ *
+ *  Some fields belong to some types only (`TYPE_FIELDS`): a type change drops
+ *  the ones the new type has no use for, and the row shows each only on a type
+ *  it belongs to, so the two cannot disagree. A unit and the free-text aids
+ *  are shown by type as well, but also wherever one is already set, and a
+ *  type change keeps them: a value written by hand stays visible and
+ *  editable rather than silently kept. */
+
+import { PARAM_TYPES, type DriverParamDef } from "../../api/types";
+
+const NUMERIC: readonly string[] = ["integer", "number"];
+
+/** The fields that belong to some parameter types only. */
+const TYPE_FIELDS = {
+  min: NUMERIC,
+  max: NUMERIC,
+  scale: NUMERIC,
+  offset: NUMERIC,
+  decimals: ["number"],
+  values: ["enum"],
+  child_type: ["child_id"],
+} as const satisfies Partial<Record<keyof DriverParamDef, readonly string[]>>;
+
+export type TypeField = keyof typeof TYPE_FIELDS;
+
+function belongs(field: TypeField, type: string): boolean {
+  return (TYPE_FIELDS[field] as readonly string[]).includes(type);
+}
+
+/** Whether the parameter's type has `field`. */
+export function typeHas(def: DriverParamDef, field: TypeField): boolean {
+  return belongs(field, def.type);
+}
+
+/** The Type select's word for each type the driver contract lets a parameter
+ *  declare (`PARAM_TYPES`, generated from it), in the contract's order. */
+const PARAM_TYPE_LABELS: Record<(typeof PARAM_TYPES)[number], string> = {
+  string: "String",
+  integer: "Integer",
+  number: "Number",
+  boolean: "Boolean",
+  enum: "Enum",
+  child_id: "Child ID",
+};
+
+export const PARAM_TYPE_OPTIONS = PARAM_TYPES.map((value) => ({
+  value,
+  label: PARAM_TYPE_LABELS[value],
+}));
+
+/** The write for a change to `type`: every field it has no use for cleared,
+ *  and a Child ID started on the child type it already names, else the first
+ *  declared, so it is valid the moment it is switched. */
+export function retyped(
+  def: DriverParamDef,
+  type: string,
+  childTypes: string[],
+): Partial<DriverParamDef> {
+  const partial: Partial<DriverParamDef> = { type };
+  for (const field of Object.keys(TYPE_FIELDS) as TypeField[]) {
+    if (!belongs(field, type)) partial[field] = undefined;
+  }
+  if (belongs("child_type", type)) partial.child_type = def.child_type ?? childTypes[0];
+  return partial;
+}
+
+/** A box in a parameter's value row. */
+export type ValueBox = "help" | "default" | "min" | "max" | "decimals" | "unit";
+
+/** The value row's boxes, in order: help and default always; min, max and
+ *  decimals where the type has them; the unit on a numeric type, where it is
+ *  the usual need, and wherever one is already set. */
+export function valueBoxes(def: DriverParamDef): ValueBox[] {
+  const boxes: ValueBox[] = ["help", "default"];
+  if (typeHas(def, "min")) boxes.push("min", "max");
+  if (typeHas(def, "decimals")) boxes.push("decimals");
+  if (NUMERIC.includes(def.type) || def.unit !== undefined) boxes.push("unit");
+  return boxes;
+}
+
+/** Whether the free-text aids (pattern, trim, masked) show: on a string,
+ *  where the runtime applies them, and on any parameter already carrying one. */
+export function showsTextAids(def: DriverParamDef): boolean {
+  if (def.type === "string") return true;
+  return def.pattern !== undefined || def.trim !== undefined || def.secret !== undefined;
+}
+
+const numberOrText = (n: number, raw: string) => (Number.isFinite(n) ? n : raw);
+
+/** How a typed default reads for each type; the others keep the text. */
+const DEFAULT_READERS = new Map<string, (raw: string) => unknown>([
+  ["integer", (raw) => numberOrText(parseInt(raw, 10), raw)],
+  ["number", (raw) => numberOrText(parseFloat(raw), raw)],
+  ["boolean", (raw) => raw === "true"],
+]);
+
+/** A default as typed: blank removes it; an integer or number reads as one
+ *  where the text starts with one (else it is kept as typed); a boolean is
+ *  true only for "true". */
+export function defaultFromText(def: DriverParamDef, raw: string): unknown {
+  if (!raw) return undefined;
+  const read = DEFAULT_READERS.get(def.type);
+  return read ? read(raw) : raw;
+}
+
+/** A min or max as typed: blank removes it; an integer's drops any fraction. */
+export function boundFromText(def: DriverParamDef, raw: string): number | undefined {
+  if (raw === "") return undefined;
+  return def.type === "integer" ? parseInt(raw, 10) : parseFloat(raw);
+}
+
+/** Decimals as typed: blank removes it. */
+export function decimalsFromText(raw: string): number | undefined {
+  return raw === "" ? undefined : parseInt(raw, 10);
+}
+
+/** What the default box says it takes. */
+const DEFAULT_HINTS = new Map([
+  ["boolean", "true / false"],
+  ["enum", "must be one of values"],
+]);
+
+export function defaultHint(def: DriverParamDef): string {
+  return DEFAULT_HINTS.get(def.type) ?? "";
+}

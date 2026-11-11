@@ -5,7 +5,6 @@ import type {
   DriverDefinition,
   DriverParamDef,
 } from "../../api/types";
-import { EnumValuesEditor } from "../shared/EnumValuesEditor";
 import { readableKey } from "../shared/paramLabel";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import { ValueConversionFields } from "./ValueConversionFields";
@@ -15,7 +14,9 @@ import { OfflineFlag, RestartWindowField, SleepsDeviceField } from "./CommandAwa
 import { CommandConfirmField } from "./CommandConfirmField";
 import { ReadBackField, readBackForm } from "./ReadBackField";
 import { CommandSendFields, UdpToggle } from "./CommandSendFields";
-import { FIELD_HINT, FIELD_LABEL } from "./commandFieldParts";
+import { FIELD_HINT, FIELD_LABEL, PARAM_CAPTION, RowFlag } from "./commandFieldParts";
+import { PARAM_TYPE_OPTIONS, retyped, showsTextAids, typeHas } from "./paramEdits";
+import { AllowedValues, ChildTypeField, TextAids, ValueRow } from "./ParamTypeFields";
 import { CommandSemanticsEditor } from "./CommandSemanticsEditor";
 
 interface CommandBuilderProps {
@@ -464,18 +465,6 @@ function ParamRow({
     }
   };
 
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontSize: "11px",
-    color: "var(--text-muted)",
-    marginBottom: 2,
-  };
-  const isNumeric = def.type === "integer" || def.type === "number";
-  const isEnum = def.type === "enum";
-  const isBool = def.type === "boolean";
-  const isChildId = def.type === "child_id";
-  const showUnit = isNumeric || def.unit !== undefined;
-
   return (
     <div
       style={{
@@ -495,7 +484,7 @@ function ParamRow({
         }}
       >
         <div>
-          <span style={labelStyle}>Name</span>
+          <span style={PARAM_CAPTION}>Name</span>
           <input
             value={draftName}
             onChange={(e) => setDraftName(e.target.value)}
@@ -527,7 +516,7 @@ function ParamRow({
           )}
         </div>
         <div>
-          <span style={labelStyle}>Display Label</span>
+          <span style={PARAM_CAPTION}>Display Label</span>
           <input
             value={def.label ?? ""}
             onChange={(e) =>
@@ -538,64 +527,25 @@ function ParamRow({
           />
         </div>
         <div>
-          <span style={labelStyle}>Type</span>
+          <span style={PARAM_CAPTION}>Type</span>
           <select
             value={def.type}
-            onChange={(e) => {
-              const t = e.target.value;
-              const partial: Partial<DriverParamDef> = { type: t };
-              // Strip type-incompatible fields when switching types so
-              // round-tripped YAML stays clean.
-              if (t !== "integer" && t !== "number") {
-                partial.min = undefined;
-                partial.max = undefined;
-                partial.scale = undefined;
-                partial.offset = undefined;
-              }
-              if (t !== "number") {
-                partial.decimals = undefined;
-              }
-              if (t !== "enum") {
-                partial.values = undefined;
-              }
-              if (t !== "child_id") {
-                partial.child_type = undefined;
-              } else {
-                // Default the child_type to the first declared type so the
-                // param is valid the moment it's switched (if any exist).
-                partial.child_type = def.child_type ?? childTypes[0];
-              }
-              onUpdate(partial);
-            }}
+            onChange={(e) => onUpdate(retyped(def, e.target.value, childTypes))}
             style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
           >
-            <option value="string">String</option>
-            <option value="integer">Integer</option>
-            <option value="number">Number</option>
-            <option value="boolean">Boolean</option>
-            <option value="enum">Enum</option>
-            <option value="child_id">Child ID</option>
+            {PARAM_TYPE_OPTIONS.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
           </select>
         </div>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            fontSize: "var(--font-size-sm)",
-            color: "var(--text-secondary)",
-            paddingBottom: 6,
-          }}
+        <RowFlag
+          checked={!!def.required}
+          onChange={(on) => onUpdate({ required: on || undefined })}
         >
-          <input
-            type="checkbox"
-            checked={!!def.required}
-            onChange={(e) =>
-              onUpdate({ required: e.target.checked || undefined })
-            }
-          />
           Required
-        </label>
+        </RowFlag>
         <button
           onClick={onRemove}
           style={{
@@ -609,145 +559,8 @@ function ParamRow({
         </button>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: [
-            "1fr", // Help Text
-            "1fr", // Default
-            ...(isNumeric ? ["1fr", "1fr"] : []), // Min, Max
-            ...(def.type === "number" ? ["1fr"] : []), // Decimals
-            ...(showUnit ? ["1fr"] : []), // Unit
-          ].join(" "),
-          gap: "var(--space-sm)",
-          marginTop: "var(--space-sm)",
-        }}
-      >
-        <div>
-          <span style={labelStyle}>Help Text</span>
-          <input
-            value={def.help ?? def.description ?? ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              // Always write `help`. If the existing def used `description`
-              // (legacy), drop it so we don't ship two equivalent fields.
-              onUpdate({
-                help: v || undefined,
-                description: undefined,
-              });
-            }}
-            placeholder="Brief description shown in tooltips"
-            style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
-          />
-        </div>
-        <div>
-          <span style={labelStyle}>Default</span>
-          <input
-            value={def.default == null ? "" : String(def.default)}
-            onChange={(e) => {
-              const raw = e.target.value;
-              if (!raw) {
-                onUpdate({ default: undefined });
-                return;
-              }
-              if (def.type === "integer") {
-                const n = parseInt(raw, 10);
-                onUpdate({ default: Number.isFinite(n) ? n : raw });
-              } else if (def.type === "number") {
-                const n = parseFloat(raw);
-                onUpdate({ default: Number.isFinite(n) ? n : raw });
-              } else if (def.type === "boolean") {
-                onUpdate({ default: raw === "true" });
-              } else {
-                onUpdate({ default: raw });
-              }
-            }}
-            placeholder={
-              isBool ? "true / false" : isEnum ? "must be one of values" : ""
-            }
-            style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
-          />
-        </div>
-        {isNumeric && (
-          <>
-            <div>
-              <span style={labelStyle}>Min</span>
-              <input
-                type="number"
-                value={def.min ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  onUpdate({
-                    min:
-                      v === ""
-                        ? undefined
-                        : def.type === "integer"
-                          ? parseInt(v, 10)
-                          : parseFloat(v),
-                  });
-                }}
-                style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
-              />
-            </div>
-            <div>
-              <span style={labelStyle}>Max</span>
-              <input
-                type="number"
-                value={def.max ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  onUpdate({
-                    max:
-                      v === ""
-                        ? undefined
-                        : def.type === "integer"
-                          ? parseInt(v, 10)
-                          : parseFloat(v),
-                  });
-                }}
-                style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
-              />
-            </div>
-            {def.type === "number" && (
-              <div>
-                <span style={labelStyle}>Decimals</span>
-                <input
-                  type="number"
-                  value={def.decimals ?? ""}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    onUpdate({ decimals: v === "" ? undefined : parseInt(v, 10) });
-                  }}
-                  min={0}
-                  max={6}
-                  step={1}
-                  placeholder="Any"
-                  title="Round the value to this many decimal places on the wire (0 = whole number)."
-                  style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
-                />
-              </div>
-            )}
-          </>
-        )}
-        {/* Shown for numeric params, where a unit is the usual need — and for
-            any param that already carries one, so a value set by hand in YAML
-            stays visible and editable instead of silently kept. */}
-        {showUnit && (
-          <div>
-            <span style={labelStyle}>Unit</span>
-            <input
-              value={def.unit ?? ""}
-              onChange={(e) => onUpdate({ unit: e.target.value || undefined })}
-              placeholder="%, ms, dB"
-              title="Shown beside the input when the command is run. Display only. It is never sent to the device."
-              data-testid={`param-unit-${name}`}
-              style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
-            />
-          </div>
-        )}
-      </div>
-
-      {isNumeric && (
+      <ValueRow name={name} def={def} onUpdate={onUpdate} />
+      {typeHas(def, "scale") && (
         <ValueConversionFields
           forParam
           scale={def.scale}
@@ -757,146 +570,10 @@ function ParamRow({
           }
         />
       )}
-
-      {/* Free-text aids. Shown for string params, where the runtime applies
-          them — and for any param that already carries one, so a value set by
-          hand in YAML stays visible and editable instead of silently kept. */}
-      {(def.type === "string" ||
-        def.pattern !== undefined ||
-        def.trim !== undefined ||
-        def.secret !== undefined) && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr auto auto",
-            gap: "var(--space-sm)",
-            marginTop: "var(--space-sm)",
-            alignItems: "end",
-          }}
-        >
-          <div>
-            <span style={labelStyle}>Value Pattern</span>
-            <input
-              value={def.pattern ?? ""}
-              onChange={(e) =>
-                onUpdate({ pattern: e.target.value || undefined })
-              }
-              placeholder="Regex the whole value must match, e.g. \d{1,3}(\.\d{1,3}){3}"
-              title="Shape check for a value that can't be listed: an IP, a hostname, a fixed-length ID. The command is refused when the value doesn't match."
-              data-testid={`param-pattern-${name}`}
-              style={{
-                width: "100%",
-                fontSize: "var(--font-size-sm)",
-                fontFamily: "var(--font-mono)",
-              }}
-            />
-          </div>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              fontSize: "var(--font-size-sm)",
-              color: "var(--text-secondary)",
-              paddingBottom: 6,
-              whiteSpace: "nowrap",
-            }}
-            title="On by default: surrounding spaces are stripped before the value goes on the wire. Turn off for raw payloads where edge whitespace is part of the protocol."
-          >
-            <input
-              type="checkbox"
-              checked={def.trim !== false}
-              onChange={(e) =>
-                onUpdate({ trim: e.target.checked ? undefined : false })
-              }
-              data-testid={`param-trim-${name}`}
-            />
-            Trim spaces
-          </label>
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              fontSize: "var(--font-size-sm)",
-              color: "var(--text-secondary)",
-              paddingBottom: 6,
-              whiteSpace: "nowrap",
-            }}
-            title="Mask the input when the command is run, for a password, PIN or key. Presentation only: the value still goes to the device as typed."
-          >
-            <input
-              type="checkbox"
-              checked={def.secret === true}
-              onChange={(e) =>
-                onUpdate({ secret: e.target.checked ? true : undefined })
-              }
-              data-testid={`param-secret-${name}`}
-            />
-            Masked
-          </label>
-        </div>
-      )}
-
-      {isEnum && (
-        <div style={{ marginTop: "var(--space-sm)" }}>
-          <span style={labelStyle}>Allowed Values</span>
-          <EnumValuesEditor
-            values={def.values}
-            onChange={(values) => onUpdate({ values })}
-          />
-        </div>
-      )}
-
-      {isChildId && (
-        <div style={{ marginTop: "var(--space-sm)" }}>
-          <span style={labelStyle}>Child Type</span>
-          {childTypes.length === 0 ? (
-            <div
-              style={{
-                fontSize: "11px",
-                color: "var(--color-warning, #d97706)",
-                padding: "var(--space-xs) var(--space-sm)",
-                borderRadius: "var(--border-radius)",
-                background: "rgba(255, 152, 0, 0.12)",
-                border: "1px solid rgba(255, 152, 0, 0.35)",
-              }}
-            >
-              No child entity types declared yet. Add one in the Child Entity
-              Types section above, then pick it here.
-            </div>
-          ) : (
-            <select
-              value={def.child_type ?? ""}
-              onChange={(e) =>
-                onUpdate({ child_type: e.target.value || undefined })
-              }
-              style={{
-                width: "100%",
-                fontSize: "var(--font-size-sm)",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              <option value="">(select a child type)</option>
-              {childTypes.map((ct) => (
-                <option key={ct} value={ct}>
-                  {ct}
-                </option>
-              ))}
-            </select>
-          )}
-          <div
-            style={{
-              fontSize: "11px",
-              color: "var(--text-muted)",
-              marginTop: 2,
-            }}
-          >
-            The runtime command picker shows a dropdown of registered{" "}
-            {def.child_type ? <code>{def.child_type}</code> : "children"} for
-            this parameter. The value sent is the integer local ID.
-          </div>
-        </div>
+      {showsTextAids(def) && <TextAids name={name} def={def} onUpdate={onUpdate} />}
+      {typeHas(def, "values") && <AllowedValues def={def} onUpdate={onUpdate} />}
+      {typeHas(def, "child_type") && (
+        <ChildTypeField def={def} childTypes={childTypes} onUpdate={onUpdate} />
       )}
       <ParamOptionsEditor
         name={name}

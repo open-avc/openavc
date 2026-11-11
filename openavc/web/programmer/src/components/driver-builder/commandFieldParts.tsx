@@ -1,6 +1,7 @@
 /** The parts a command's card in the Driver Builder draws its fields from:
  *  the caption, hint and warning styles, and a tick box with a title and a
- *  hint.
+ *  hint; and the smaller caption, hint and warning a parameter's row uses,
+ *  with its tick box beside its title.
  *
  *  A tick box's hint sits inside its `<label>`, so it is part of the box's
  *  accessible name; the browser tests find the boxes by that name. */
@@ -69,6 +70,72 @@ export function FlagField({
         {title}
         <div style={FIELD_HINT}>{children}</div>
       </span>
+    </label>
+  );
+}
+
+/** A box's caption in a parameter's row. */
+export const PARAM_CAPTION: CSSProperties = {
+  display: "block",
+  fontSize: "11px",
+  color: "var(--text-muted)",
+  marginBottom: 2,
+};
+
+/** The line under a box in a parameter's row. */
+export const PARAM_HINT: CSSProperties = {
+  fontSize: "11px",
+  color: "var(--text-muted)",
+  marginTop: 2,
+};
+
+/** What a parameter's box still needs before it can work. */
+export const PARAM_WARNING: CSSProperties = {
+  fontSize: "11px",
+  color: "var(--color-warning, #d97706)",
+  padding: "var(--space-xs) var(--space-sm)",
+  borderRadius: "var(--border-radius)",
+  background: "rgba(255, 152, 0, 0.12)",
+  border: "1px solid rgba(255, 152, 0, 0.35)",
+};
+
+/** A tick box with its title beside it, in a parameter's row. `nowrap` keeps
+ *  the title on one line; `title` is the label's tooltip. */
+export function RowFlag({
+  checked,
+  onChange,
+  title,
+  testId,
+  nowrap,
+  children,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  title?: string;
+  testId?: string;
+  nowrap?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        fontSize: "var(--font-size-sm)",
+        color: "var(--text-secondary)",
+        paddingBottom: 6,
+        ...(nowrap ? { whiteSpace: "nowrap" } : {}),
+      }}
+      title={title}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        data-testid={testId}
+      />
+      {children}
     </label>
   );
 }

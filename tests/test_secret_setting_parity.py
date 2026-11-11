@@ -154,9 +154,10 @@ TS_EXEMPT: dict[tuple[str, str], str] = {
         "coercion keeps a declared password as typed; every caller passes the rule as `secret`",
     ("components/driver-builder/LiveTestPanel.tsx",
      'type={field.secret ? "password" : "text"}'): "reads the flag the rule computed above it",
-    ("components/driver-builder/CommandBuilder.tsx",
-     'def.secret !== undefined) && ('): "the Builder editing the mark",
-    ("components/driver-builder/CommandBuilder.tsx",
+    ("components/driver-builder/paramEdits.ts",
+     "return def.pattern !== undefined || def.trim !== undefined || def.secret !== undefined;"):
+        "the Builder editing the mark",
+    ("components/driver-builder/ParamTypeFields.tsx",
      "checked={def.secret === true}"): "the Builder editing the mark",
     ("components/driver-builder/ConfigSchemaEditor.tsx",
      "{field.secret ? ("): "the Builder editing the mark",
