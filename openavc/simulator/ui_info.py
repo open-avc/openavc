@@ -18,7 +18,7 @@ The rules worth knowing before changing anything here:
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, NamedTuple
 
 #: A slider never gets more stops than this from a step the simulator invents.
 MAX_STOPS = 500
@@ -86,20 +86,21 @@ def slider_step(v_min: float, v_max: float, declared, integral: bool):
     span = float(v_max) - float(v_min)
     if span <= 0:
         return 1 if integral else 0.1
-    ladder = [1, 2, 5]
-    exp = -2 if not integral else 0
-    while exp <= 9:
-        for mult in ladder:
-            step = mult * (10 ** exp)
-            if step < 1 and integral:
-                continue
-            if span / step <= MAX_STOPS:
-                # Keep integer ranges on integer steps, and trim binary
-                # float dust (3 * 0.1 is not 0.3) so the value that reaches
-                # the UI is the one written here.
-                return int(step) if integral or step >= 1 else round(step, 10)
-        exp += 1
+    for step in _ladder(integral):
+        if span / step <= MAX_STOPS:
+            # Keep integer ranges on integer steps, and trim binary float
+            # dust (3 * 0.1 is not 0.3) so the value that reaches the UI is
+            # the one written here.
+            return int(step) if integral or step >= 1 else round(step, 10)
     return int(span) or 1
+
+
+def _ladder(integral: bool):
+    """1, 2 and 5 at each power of ten, finest first: from 0.01, or from 1 for
+    an integer, up to 5 * 10**9."""
+    for exp in range(0 if integral else -2, 10):
+        for mult in (1, 2, 5):
+            yield mult * (10 ** exp)
 
 
 def children_info(
@@ -114,27 +115,40 @@ def children_info(
     for ctype, ids in roster.items():
         tdef = child_types.get(ctype) or {}
         cvars = child_vars(ctype)
-        inst = tdef.get("instances") if isinstance(tdef.get("instances"), dict) else {}
-        label_template = inst.get("label") if isinstance(inst.get("label"), str) else None
-        type_label = tdef.get("label") or ctype.replace("_", " ").title()
-        project_labels = _project_labels(project_children.get(ctype) or {})
-        entries = []
-        for cid in ids:
-            label = project_labels.get(cid)
-            if not label and label_template:
-                label = label_template.replace("{id}", cid)
-            entries.append({"id": cid, "label": label or f"{type_label} {cid}"})
+        names = _ChildNames.of(ctype, tdef, project_children.get(ctype) or {})
         children[ctype] = {
-            "label": type_label,
-            "entries": entries,
+            "label": names.type_label,
+            "entries": [names.entry(cid) for cid in ids],
             "props": list(cvars.keys()),
-            # The declared shape of each property, so the UI can draw a
-            # mute as a switch instead of a box you type "true" into.
-            # `props` stays as it is -- it is the key list the device panel
-            # uses to tell child state from device state.
+            # The declared shape of each property, so the UI can draw a mute
+            # as a switch instead of a box you type "true" into. `props` stays
+            # as it is -- it is the key list the device panel uses to tell
+            # child state from device state.
             "prop_defs": {name: prop_def(cdef) for name, cdef in cvars.items()},
         }
     return children
+
+
+class _ChildNames(NamedTuple):
+    """How one child type's children are named on the card."""
+
+    type_label: str
+    template: str | None
+    project: dict[str, str]
+
+    @classmethod
+    def of(cls, ctype: str, tdef: dict, project_entries: dict) -> _ChildNames:
+        inst = tdef.get("instances") if isinstance(tdef.get("instances"), dict) else {}
+        template = inst.get("label") if isinstance(inst.get("label"), str) else None
+        type_label = tdef.get("label") or ctype.replace("_", " ").title()
+        return cls(type_label, template, _project_labels(project_entries))
+
+    def entry(self, cid: str) -> dict:
+        """The project's label, else the type's template, else type and id."""
+        label = self.project.get(cid)
+        if not label and self.template:
+            label = self.template.replace("{id}", cid)
+        return {"id": cid, "label": label or f"{self.type_label} {cid}"}
 
 
 def _project_labels(entries: dict[str, Any]) -> dict[str, str]:
@@ -151,16 +165,12 @@ def _project_labels(entries: dict[str, Any]) -> dict[str, str]:
     return labels
 
 
+#: The declared fields a child property's shape carries after its type.
+_PROP_FIELDS = ("label", "min", "max", "step", "unit", "values")
+
+
 def prop_def(cdef: dict | None) -> dict:
     """A child property's declared shape, the fields it leaves out omitted."""
-    return {
-        k: v for k, v in {
-            "type": (cdef or {}).get("type", "string"),
-            "label": (cdef or {}).get("label"),
-            "min": (cdef or {}).get("min"),
-            "max": (cdef or {}).get("max"),
-            "step": (cdef or {}).get("step"),
-            "unit": (cdef or {}).get("unit"),
-            "values": (cdef or {}).get("values"),
-        }.items() if v is not None
-    }
+    fields = cdef or {}
+    shape = {"type": fields.get("type", "string"), **{k: fields.get(k) for k in _PROP_FIELDS}}
+    return {k: v for k, v in shape.items() if v is not None}
