@@ -22,6 +22,7 @@ import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { SearchableSelect } from "../../components/shared/SearchableSelect";
 import { fileParamNames, fileParamsBlocked, isFileCommand } from "../../components/shared/commandFiles";
 import {
+  coerceCommandParams,
   commandConfirmMessage,
   commandParamsBlocked,
   commandResultText,
@@ -49,14 +50,16 @@ interface CommandResult {
   params?: Record<string, unknown>;
 }
 
-/** The parameters to send, as typed: a blank field is left out, and so is a
- *  file, which goes up on its own. */
-function filledParams(values: Record<string, string>, fileParams: Set<string>): Record<string, unknown> {
-  const params: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(values)) {
-    if (v === "" || fileParams.has(k)) continue;
-    params[k] = v;
-  }
+/** The parameters to send, each as its declared type, the way Live Test and
+ *  the device audit send them: a blank field is left out, and so is a file,
+ *  which goes up on its own. */
+function filledParams(
+  paramDefs: CommandParamDefs,
+  values: Record<string, string>,
+  fileParams: Set<string>,
+): Record<string, unknown> {
+  const params = coerceCommandParams(paramDefs, values);
+  for (const k of fileParams) delete params[k];
   return params;
 }
 
@@ -112,10 +115,10 @@ async function deliver(
   form: CommandFormState,
   fileRun: ReturnType<typeof useCommandFileRun>,
 ): Promise<CommandResult | null> {
-  const def = commands[form.selected] as { label?: string } | undefined;
+  const def = commands[form.selected] as { label?: string; params?: CommandParamDefs } | undefined;
   const label = def?.label || form.selected;
   const fileParams = new Set(fileParamNames(def));
-  const params = filledParams(form.values, fileParams);
+  const params = filledParams(def?.params ?? {}, form.values, fileParams);
   try {
     if (isFileCommand(def)) {
       await fileRun.start(form.selected, label, params, chosenFiles(form.files, fileParams));

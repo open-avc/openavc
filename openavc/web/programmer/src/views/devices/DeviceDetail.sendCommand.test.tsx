@@ -207,6 +207,27 @@ describe("sending a command", () => {
     expect((await screen.findByRole("status")).textContent).toContain("Set Input sent. The device answered: ok");
   });
 
+  it("sends each parameter as its declared type, the way Live Test and the audit send it", async () => {
+    setInfo({
+      tune: {
+        label: "Tune",
+        params: {
+          zone: { type: "integer", required: true },
+          gain: { type: "number", decimals: 0 },
+          mute: { type: "boolean", default: true },
+        },
+      },
+    });
+    mocks.sendCommand.mockResolvedValue({ result: true });
+    await showPage();
+    await pick("Tune");
+    const [zone, gain] = screen.getAllByRole("spinbutton");
+    fireEvent.change(zone, { target: { value: "050" } });
+    fireEvent.change(gain, { target: { value: "26.4" } });
+    fireEvent.click(sendButton());
+    expect(mocks.sendCommand).toHaveBeenCalledWith("amp", "tune", { zone: 50, gain: 26.4, mute: true });
+  });
+
   it("shows a structured answer below the line", async () => {
     mocks.sendCommand.mockResolvedValue({ result: { preset: 3 } });
     await showPage();
