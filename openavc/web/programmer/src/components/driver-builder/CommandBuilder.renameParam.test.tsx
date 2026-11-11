@@ -5,7 +5,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // strings, so the command keeps sending the value. Another command's
 // same-named token belongs to that command and is left alone.
 
-import { CommandBuilder, renamePlaceholder } from "./CommandBuilder";
+import { CommandBuilder } from "./CommandBuilder";
+import { renamePlaceholder } from "./commandEdits";
 import type { DriverCommandDef, DriverDefinition } from "../../api/types";
 
 const DRAFT = {

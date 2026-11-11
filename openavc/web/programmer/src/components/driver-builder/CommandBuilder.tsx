@@ -13,6 +13,7 @@ import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { ValueConversionFields } from "./ValueConversionFields";
 import { OscArgsEditor } from "./OscArgsEditor";
 import { WireValueMapEditor } from "./WireValueMapEditor";
+import { commandsRenamed, newCommand, renamePlaceholder } from "./commandEdits";
 
 interface CommandBuilderProps {
   draft: DriverDefinition;
@@ -25,35 +26,7 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
   const commandNames = Object.keys(commands);
 
   const addCommand = () => {
-    // Generate unique name that doesn't collide with existing commands
-    let counter = commandNames.length + 1;
-    let name = `command_${counter}`;
-    while (name in commands) {
-      counter++;
-      name = `command_${counter}`;
-    }
-    // Seed the new command's shape from the driver's transport so users
-    // see the right fields immediately.
-    let initial: DriverCommandDef;
-    if (draft.transport === "http") {
-      initial = {
-        label: "New Command",
-        send: "",
-        method: "GET",
-        path: "/",
-        params: {},
-      };
-    } else if (draft.transport === "osc") {
-      initial = {
-        label: "New Command",
-        send: "",
-        address: "/",
-        args: [],
-        params: {},
-      };
-    } else {
-      initial = { label: "New Command", send: "", params: {} };
-    }
+    const [name, initial] = newCommand(commands, draft.transport);
     onUpdate({
       commands: { ...commands, [name]: initial },
     });
@@ -84,29 +57,12 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
   };
 
   const renameCommand = (oldName: string, newName: string): RenameResult => {
-    if (!newName) return { ok: false, reason: "ID can't be empty." };
-    if (newName === oldName) return { ok: true };
-    if (newName in commands) {
-      return { ok: false, reason: `"${newName}" already exists.` };
+    const result = commandsRenamed(commands, oldName, newName);
+    if (result.commands) {
+      onUpdate({ commands: result.commands });
+      if (expanded === oldName) setExpanded(newName);
     }
-    const next: Record<string, DriverCommandDef> = {};
-    for (const [k, v] of Object.entries(commands)) {
-      // A command naming the renamed one as its wake command, or as a
-      // read-back query, follows it.
-      let moved = v.sleeps_device === oldName ? { ...v, sleeps_device: newName } : v;
-      if (moved.read_back === oldName) {
-        moved = { ...moved, read_back: newName };
-      } else if (Array.isArray(moved.read_back) && moved.read_back.includes(oldName)) {
-        moved = {
-          ...moved,
-          read_back: moved.read_back.map((q) => (q === oldName ? newName : q)),
-        };
-      }
-      next[k === oldName ? newName : k] = moved;
-    }
-    onUpdate({ commands: next });
-    if (expanded === oldName) setExpanded(newName);
-    return { ok: true };
+    return { ok: result.ok, reason: result.reason };
   };
 
   const labelStyle: React.CSSProperties = {
@@ -1727,49 +1683,6 @@ export function KeyValueList({
       </button>
     </div>
   );
-}
-
-/** The fields of `cmd` that name `{from}` (with or without a format spec),
- *  rewritten to name `{to}`; fields that do not name it are left out. A
- *  parameter belongs to its command, so only that command's own strings are
- *  touched: what it sends, and what its Sets State rows write. */
-export function renamePlaceholder(
-  cmd: DriverCommandDef,
-  from: string,
-  to: string,
-): Partial<DriverCommandDef> {
-  const token = new RegExp(`\\{${from}(:[^{}]*)?\\}`, "g");
-  const swap = (text: string) => text.replace(token, (_m, spec?: string) => `{${to}${spec ?? ""}}`);
-  const out: Record<string, unknown> = {};
-  for (const field of ["send", "path", "body", "address"] as const) {
-    const text = cmd[field];
-    if (typeof text === "string" && swap(text) !== text) out[field] = swap(text);
-  }
-  const swapValues = <T,>(map: Record<string, T> | undefined) => {
-    if (!map) return undefined;
-    let changed = false;
-    const next: Record<string, T> = {};
-    for (const [k, v] of Object.entries(map)) {
-      const nv = typeof v === "string" ? (swap(v) as T) : v;
-      if (nv !== v) changed = true;
-      next[k] = nv;
-    }
-    return changed ? next : undefined;
-  };
-  const headers = swapValues(cmd.headers);
-  if (headers) out.headers = headers;
-  const query = swapValues(cmd.query_params);
-  if (query) out.query_params = query;
-  const sets = swapValues(cmd.sets);
-  if (sets) out.sets = sets;
-  const udp = swapValues(cmd.udp as Record<string, unknown> | undefined);
-  if (udp) out.udp = udp;
-  if (cmd.args?.some((a) => typeof a.value === "string" && swap(a.value) !== a.value)) {
-    out.args = cmd.args.map((a) =>
-      typeof a.value === "string" ? { ...a, value: swap(a.value) } : a,
-    );
-  }
-  return out as Partial<DriverCommandDef>;
 }
 
 export function ParamEditor({
