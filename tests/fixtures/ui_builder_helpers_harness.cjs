@@ -1381,9 +1381,9 @@ const alignPage = (elements, placements) => ({
     },
   );
   // A band clipping the container's top-left corner only.
-  const grazed = H.elementsIntersectingRect(page, { x: 0, y: 0, w: 15, h: 15 });
+  const grazed = H.elementsIntersectingRect(page, { x: 0, y: 0, w: 15, h: 15 }, null);
   // A band over the child's page-space box (30,30 20x20) but not the far one.
-  const overKid = H.elementsIntersectingRect(page, { x: 28, y: 28, w: 5, h: 5 });
+  const overKid = H.elementsIntersectingRect(page, { x: 28, y: 28, w: 5, h: 5 }, null);
   results.a104_marquee_selects_what_it_touches = {
     pass:
       eq(grazed, ["box"]) &&
@@ -1397,8 +1397,8 @@ const alignPage = (elements, placements) => ({
     [{ id: "a", type: "button" }],
     { a: { x: 40, y: 40, w: 10, h: 10 } },
   );
-  const forward = H.elementsIntersectingRect(page, { x: 30, y: 30, w: 30, h: 30 });
-  const backward = H.elementsIntersectingRect(page, { x: 60, y: 60, w: -30, h: -30 });
+  const forward = H.elementsIntersectingRect(page, { x: 30, y: 30, w: 30, h: 30 }, null);
+  const backward = H.elementsIntersectingRect(page, { x: 60, y: 60, w: -30, h: -30 }, null);
   results.a104_marquee_normalises_direction = {
     pass: eq(forward, ["a"]) && eq(backward, ["a"]),
     detail: { forward, backward },
@@ -1412,7 +1412,7 @@ const alignPage = (elements, placements) => ({
     [{ id: "a", type: "button" }],
     { a: { x: 40, y: 40, w: 10, h: 10 } },
   );
-  const flush = H.elementsIntersectingRect(page, { x: 20, y: 20, w: 20, h: 20 });
+  const flush = H.elementsIntersectingRect(page, { x: 20, y: 20, w: 20, h: 20 }, null);
   results.a104_marquee_excludes_flush_edge = { pass: eq(flush, []), detail: flush };
 }
 

@@ -536,11 +536,15 @@ export interface ElementClipboard {
  * container stayed behind comes back as the box the eye saw, in page space,
  * because the paste ejects it to page level -- and the stored number would
  * otherwise reinterpret half-a-container as half-a-page.
+ *
+ * It reads the page the caller holds, so it takes the page itself rather than
+ * an `OnScreen`, but the arrangement is required just the same (null for the
+ * primary): both kinds of box are measured in it.
  */
 export function clipboardForSelection(
   page: UIPage,
   elementIds: string[],
-  layoutId?: string | null,
+  layoutId: string | null,
 ): ElementClipboard {
   const wanted = new Set<string>();
   for (const id of elementIds) {
@@ -995,11 +999,14 @@ export function matchSizeElements(pages: UIPage[], selection: PageSelection, act
  * integrator expects. Containers are hit like anything else -- and because a
  * marquee sweeping a page picks up a container AND its children, the callers
  * pass the result through topmostSelection before acting on it.
+ *
+ * Measured where the arrangement on screen draws each control; the arrangement
+ * is required, as the copy's is (null for the primary).
  */
 export function elementsIntersectingRect(
   page: UIPage,
   rect: Placement,
-  layoutId?: string | null,
+  layoutId: string | null,
 ): string[] {
   const absolute = absolutePlacements(page, layoutId);
   const left = Math.min(rect.x, rect.x + rect.w);

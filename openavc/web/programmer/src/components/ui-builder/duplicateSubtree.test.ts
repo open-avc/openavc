@@ -197,7 +197,7 @@ describe("duplicating a selection", () => {
 describe("copy and paste", () => {
   it("keeps the internal parenting of a copied container", () => {
     const before = cardPage();
-    const clip = clipboardForSelection(before, ["card"]);
+    const clip = clipboardForSelection(before, ["card"], null);
     expect(clip.elements.map((e) => e.id)).toEqual(["card", "btn", "lbl"]);
 
     const after = pageOf(pasteIntoPage([before], { pageId: "main", layoutId: null }, clip, []));
@@ -213,7 +213,7 @@ describe("copy and paste", () => {
 
   it("ejects a child copied without its container, at the size the eye saw", () => {
     const before = cardPage();
-    const clip = clipboardForSelection(before, ["btn"]);
+    const clip = clipboardForSelection(before, ["btn"], null);
 
     // card is 40x40 at (10,10); btn is 5%,5% 50x20 of that.
     expect(clip.placements.btn).toEqual({ x: 12, y: 12, w: 20, h: 8 });
@@ -228,7 +228,7 @@ describe("copy and paste", () => {
 
   it("widens a selection to what is inside it, and stores each box in its own space", () => {
     const before = cardPage();
-    const clip = clipboardForSelection(before, ["card", "loose"]);
+    const clip = clipboardForSelection(before, ["card", "loose"], null);
 
     expect(clip.elements.map((e) => e.id)).toEqual(["card", "btn", "lbl", "loose"]);
     // Kept its container: stored relative. Page level: stored as drawn.
@@ -240,7 +240,7 @@ describe("copy and paste", () => {
   it("never takes an id a master element already owns", () => {
     const before = cardPage();
     const masters = ["group_1", "button_1", "label_1"];
-    const clip = clipboardForSelection(before, ["card"]);
+    const clip = clipboardForSelection(before, ["card"], null);
     const after = pageOf(pasteIntoPage([before], { pageId: "main", layoutId: null }, clip, masters));
 
     for (const c of added(before, after)) expect(masters).not.toContain(c.id);
@@ -253,7 +253,7 @@ describe("copy and paste", () => {
       bindings: { show: { value: { source: "state", key: "ui.btn.value" } } },
     } as unknown as UIElement;
 
-    const clip = clipboardForSelection(before, ["card"]);
+    const clip = clipboardForSelection(before, ["card"], null);
     const after = pageOf(pasteIntoPage([before], { pageId: "main", layoutId: null }, clip, []));
     const [, button, label] = added(before, after);
 
