@@ -29,6 +29,7 @@ them are passed in (see ``validate_driver_definition``'s
 from __future__ import annotations
 
 import difflib as _difflib
+from functools import partial
 from typing import Any, Callable
 
 from openavc.drivers.action_checks import (
@@ -141,20 +142,6 @@ class _TaggedErrors(list):
             self.tags.extend(sub_tags)
         else:
             self.tags.extend([self.ctx] * len(items))
-
-
-def _extend_each(
-    errors: _TaggedErrors, name: str, entries: Any,
-    check: Callable[..., list[str]], **how: Any,
-) -> None:
-    """Ask ``check`` about each entry of a list, tagging what it says with the
-    entry's place (``name[i]``). A list that is not a list has no entries."""
-    errors.ctx = name
-    if not isinstance(entries, list):
-        return
-    for i, entry in enumerate(entries):
-        errors.ctx = f"{name}[{i}]"
-        errors.extend(check(f"{name}[{i}]", entry, **how))
 
 
 def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
@@ -363,8 +350,8 @@ def validate_driver_definition(
 
     ``discovery_validator`` is the hook for the deep discovery-block check:
     the runtime loader passes the discovery engine's parser through it, and
-    it runs exactly where the check always ran so error order is unchanged.
-    When None, the discovery block is not validated.
+    it is asked after the device settings and before the push block. When
+    None, the discovery block is not validated.
 
     ``strict`` additionally rejects keys the contract doesn't declare (a
     misspelled ``state_varibles`` silently loads a driver with no state
@@ -375,262 +362,323 @@ def validate_driver_definition(
     The returned list is a ``_TaggedErrors`` — still a plain ``list[str]`` to
     every caller, but it also carries the section each message came from, so
     ``validate_driver_issues`` can hand the Driver Builder something to anchor
-    each issue to. The ``errors.ctx = ...`` assignments below are what set it;
-    each one marks the walk entering a new part of the definition.
+    each issue to. ``_DefinitionWalk`` sets the tag as it enters each part of
+    the definition; the parts are asked here in the order they report.
     """
-    errors = _TaggedErrors()
-
-    # A malformed driver file can yaml-parse to a non-mapping, or carry
-    # non-mapping `responses`/`commands`/`state_variables` sections (e.g. a
-    # YAML list where a map was expected). Those used to raise uncaught
-    # AttributeError/TypeError here, aborting the whole driver-loading pass and
-    # taking every other driver down with the one bad file. Validate the shape
-    # of each section before iterating it so a bad file is reported and skipped.
+    # A file can parse to something other than a mapping. It is reported, not
+    # raised on, so one bad file never stops the others loading.
     if not isinstance(driver_def, dict):
-        errors.append("Driver definition must be a mapping")
-        return errors
+        return _TaggedErrors(["Driver definition must be a mapping"])
+    walk = _DefinitionWalk(driver_def)
+    walk.driver_fields()
+    walk.response_rules()
+    walk.commands()
+    walk.config_fields()
+    walk.device_settings()
+    walk.discovery(discovery_validator)
+    walk.connection_blocks()
+    walk.actions()
+    walk.state_variables()
+    walk.framing()
+    walk.child_types()
+    walk.query_entries()
+    walk.routing()
+    walk.placeholders()
+    if strict:
+        walk.undeclared()
+    return walk.errors
 
-    for field in REQUIRED_FIELDS:
-        if field not in driver_def:
-            errors.append(f"Missing required field: {field}")
 
-    transport = driver_def.get("transport", "")
-    # "bridge" is the sentinel transport for a device that emits through a live
-    # bridge instance (an IR device on an emitter port) rather than dialing a
-    # host of its own — it opens no socket and routes commands via the bridge.
-    if transport and transport not in YAML_TRANSPORTS:
-        errors.append(f"Unsupported transport: {transport}")
+class _DefinitionWalk:
+    """``validate_driver_definition``'s walk over one definition: a method per
+    part of the definition, asked in the order they report.
 
-    # The IR code-set opt-in is a boolean flag (like inline_protocol): it turns
-    # on the device-page IR Codes editor. The codes themselves live in the
-    # device config / default_config ir_codes map, not here.
-    ir_codes_flag = driver_def.get("ir_codes")
-    if ir_codes_flag is not None and not isinstance(ir_codes_flag, bool):
-        errors.append(
-            "ir_codes: must be a boolean (the code-set lives in "
-            "default_config.ir_codes / the device config)"
-        )
+    Each part sets the tag its messages carry, refuses its section when the
+    section is not the shape it should be, and asks that part's check module.
+    The tag is set through the local name ``errors``, the form the section-tag
+    scan in ``tests/test_driver_definition_validate.py`` reads, so every
+    method that sets one names the list that way. A section's shape rule is
+    written where the section is checked, and they differ: the rules, the
+    commands and the state variables refuse a null, the device settings and
+    the poll let one pass, the child types let any empty value pass. The
+    sections other parts name into are read once (``declared``) and handed
+    to the checks that follow a name into them.
+    """
 
-    # The sections other parts name into, read once; each part's own check
-    # below decides whether a section of the wrong shape is refused.
-    declared = DeclaredSections(driver_def)
+    def __init__(self, driver_def: dict[str, Any]) -> None:
+        self.driver_def = driver_def
+        self.errors = _TaggedErrors()
+        self.declared = DeclaredSections(driver_def)
 
-    # What one response rule says about itself is checked in
-    # response_rule_checks; its then_query and its child_list's paged reads
-    # are checked with the query entries below. Each rule's messages are
-    # tagged with its place in the list.
-    errors.ctx = "responses"
-    if not isinstance(driver_def.get("responses", []), list):
-        errors.append("responses: must be a list")
-    responses = declared.responses
-    # `after_json:` only means something where a json rule can consume the
-    # frame first, so the whole list decides whether it is inert.
-    any_json_rule = any(
-        isinstance(r, dict) and r.get("json") for r in responses
-    )
-    for i, resp in enumerate(responses):
-        errors.ctx = f"responses[{i}]"
-        errors.extend(
-            response_rule_errors(i, resp, declared.child_types, any_json_rule)
-        )
+    def driver_fields(self) -> None:
+        """The driver's own fields, tagged with no section."""
+        errors, driver_def = self.errors, self.driver_def
+        for field in REQUIRED_FIELDS:
+            if field not in driver_def:
+                errors.append(f"Missing required field: {field}")
+        transport = driver_def.get("transport", "")
+        # "bridge" is the sentinel transport for a device that emits through a
+        # live bridge instance (an IR device on an emitter port) rather than
+        # dialing a host of its own: it opens no socket.
+        if transport and transport not in YAML_TRANSPORTS:
+            errors.append(f"Unsupported transport: {transport}")
+        # The IR code-set opt-in is a flag that turns on the device page's IR
+        # Codes editor; the codes live in the device config / default_config.
+        ir_codes_flag = driver_def.get("ir_codes")
+        if ir_codes_flag is not None and not isinstance(ir_codes_flag, bool):
+            errors.append(
+                "ir_codes: must be a boolean (the code-set lives in "
+                "default_config.ir_codes / the device config)"
+            )
 
-    # What one command says about itself is checked in command_checks; its
-    # parameters' references into child_entity_types are checked after every
-    # command, below. Each command's messages are tagged with its place.
-    errors.ctx = "commands"
-    if not isinstance(driver_def.get("commands", {}), dict):
-        errors.append("commands: must be a mapping")
-    section = CommandSection(driver_def, declared)
-    for cmd_name, cmd_def in declared.commands.items():
-        errors.ctx = f"commands.{cmd_name}"
-        errors.extend(section.command_errors(cmd_name, cmd_def))
+    def response_rules(self) -> None:
+        """What each rule says about itself, checked in response_rule_checks.
+        A rule's then_query and its child_list's paged reads are checked with
+        the query entries."""
+        errors = self.errors
+        errors.ctx = "responses"
+        if not isinstance(self.driver_def.get("responses", []), list):
+            errors.append("responses: must be a list")
+        rules = self.declared.responses
+        # `after_json:` only means something where a json rule can consume the
+        # frame first, so the whole list decides whether it is inert.
+        any_json_rule = any(isinstance(r, dict) and r.get("json") for r in rules)
+        for i, rule in enumerate(rules):
+            errors.ctx = f"responses[{i}]"
+            errors.extend(
+                response_rule_errors(i, rule, self.declared.child_types, any_json_rule)
+            )
 
-    # References out of a command's params into child_entity_types, checked
-    # in child_type_checks; a Python driver reaches the same function through
-    # python_info.
-    errors.ctx = "commands"
-    _child_ref_errors, _ = child_param_reference_errors(driver_def)
-    errors.extend(_child_ref_errors)
+    def commands(self) -> None:
+        """Each command, checked in command_checks; then the references its
+        parameters make into child_entity_types (child_type_checks, which a
+        Python driver reaches through python_info), and the constant text
+        wrapped around every byte-stream command (framing_checks, with the
+        rest of the send side)."""
+        errors, driver_def = self.errors, self.driver_def
+        errors.ctx = "commands"
+        if not isinstance(driver_def.get("commands", {}), dict):
+            errors.append("commands: must be a mapping")
+        section = CommandSection(driver_def, self.declared)
+        for cmd_name, cmd_def in self.declared.commands.items():
+            errors.ctx = f"commands.{cmd_name}"
+            errors.extend(section.command_errors(cmd_name, cmd_def))
+        errors.ctx = "commands"
+        child_ref_errors, _ = child_param_reference_errors(driver_def)
+        errors.extend(child_ref_errors)
+        for frame_key in COMMAND_AFFIXES:
+            errors.ctx = frame_key
+            errors.extend(command_affix_errors(driver_def, frame_key))
 
-    # The constant text wrapped around every byte-stream command, checked in
-    # framing_checks with the rest of the send side.
-    for frame_key in COMMAND_AFFIXES:
-        errors.ctx = frame_key
-        errors.extend(command_affix_errors(driver_def, frame_key))
-
-    # A config field's learned_from and each device setting, checked in
-    # setting_checks against the driver's own state variables.
-    declared_vars = declared.state_variables
-    raw_config_schema = driver_def.get("config_schema")
-    if isinstance(raw_config_schema, dict):
-        for field_name, field_def in raw_config_schema.items():
+    def config_fields(self) -> None:
+        """A config field's learned_from, checked in setting_checks against
+        the driver's own state variables. A config_schema that is not a
+        mapping has no fields to check here."""
+        errors = self.errors
+        schema = self.driver_def.get("config_schema")
+        fields = schema.items() if isinstance(schema, dict) else ()
+        for field_name, field_def in fields:
             if isinstance(field_def, dict) and "learned_from" in field_def:
                 errors.ctx = f"config_schema.{field_name}"
                 errors.extend(
-                    config_learned_from_errors(field_name, field_def, declared_vars)
+                    config_learned_from_errors(
+                        field_name, field_def, self.declared.state_variables
+                    )
                 )
 
-    errors.ctx = "device_settings"
-    device_settings = driver_def.get("device_settings")
-    if device_settings is not None and not isinstance(device_settings, dict):
-        errors.append("device_settings: must be a mapping")
-    elif isinstance(device_settings, dict):
-        for setting_name, setting_def in device_settings.items():
+    def device_settings(self) -> None:
+        """Each device setting, checked in setting_checks against the driver's
+        own state variables."""
+        errors = self.errors
+        errors.ctx = "device_settings"
+        settings = self.driver_def.get("device_settings")
+        if settings is not None and not isinstance(settings, dict):
+            errors.append("device_settings: must be a mapping")
+        if not isinstance(settings, dict):
+            return
+        for setting_name, setting_def in settings.items():
             errors.ctx = f"device_settings.{setting_name}"
-            errors.extend(device_setting_errors(setting_name, setting_def, declared_vars))
+            errors.extend(
+                device_setting_errors(setting_name, setting_def, self.declared.state_variables)
+            )
 
-    # Validate the Phase 6 ``discovery:`` block. Templates (generic_*)
-    # are exempt — they don't participate in discovery. Phase 8 dropped
-    # the strong-signal-required rule: a driver may declare any
-    # combination of strong + soft signals, or none (load-time warning).
-    # Signal collisions are caught later when the SignalIndex is built.
-    errors.ctx = "discovery"
-    driver_id = driver_def.get("id", "") or ""
-    is_template = any(driver_id.startswith(p) for p in GENERIC_ID_PREFIXES)
-    if not is_template and discovery_validator is not None:
-        errors.extend(discovery_validator(driver_def))
+    def discovery(
+        self, discovery_validator: Callable[[dict[str, Any]], list[str]] | None
+    ) -> None:
+        """The ``discovery:`` block, through the check the caller hands in
+        (the loader's needs the discovery engine's parser). A template
+        (``generic_*``) takes no part in discovery and is not checked. Any mix
+        of strong and soft signals, or none, is allowed here; signal
+        collisions are caught when the SignalIndex is built."""
+        errors = self.errors
+        errors.ctx = "discovery"
+        driver_id = self.driver_def.get("id", "") or ""
+        is_template = any(driver_id.startswith(p) for p in GENERIC_ID_PREFIXES)
+        if not is_template and discovery_validator is not None:
+            errors.extend(discovery_validator(self.driver_def))
 
-    # The optional `push:` block (device-initiated notifications): its
-    # checks live in push_block_checks, and every message opens with push:.
-    errors.ctx = "push"
-    errors.extend(push_block_errors(driver_def))
+    def connection_blocks(self) -> None:
+        """The blocks the connection itself reads: ``push:``, the
+        device-initiated notifications (push_block_checks, every message
+        opening with push:); the sign-in the platform types before any other
+        traffic (sign_in_checks); the watchdog's probe while the link is up
+        (liveness_checks)."""
+        errors, driver_def = self.errors, self.driver_def
+        errors.ctx = "push"
+        errors.extend(push_block_errors(driver_def))
+        errors.ctx = "auth"
+        errors.extend(auth_errors(driver_def))
+        errors.ctx = "liveness"
+        errors.extend(liveness_errors(driver_def))
 
-    # The sign-in the platform types before any other traffic, checked in
-    # sign_in_checks.
-    errors.ctx = "auth"
-    errors.extend(auth_errors(driver_def))
+    def actions(self) -> None:
+        """The Quick Action blocks, checked in action_checks: the rule a
+        Python driver's DRIVER_INFO shares, every message tagged actions, then
+        a YAML definition's own, entry by entry."""
+        errors = self.errors
+        errors.ctx = "actions"
+        errors.extend(validate_actions(self.driver_def))
+        for i, entry in enumerate(self.driver_def.get("actions") or []):
+            errors.ctx = f"actions[{i}]"
+            errors.extend(yaml_action_errors(f"actions[{i}]", entry))
 
-    # The watchdog's probe while the link is up, checked in liveness_checks.
-    errors.ctx = "liveness"
-    errors.extend(liveness_errors(driver_def))
+    def state_variables(self) -> None:
+        """The driver's own state variables, each one's fields checked in
+        state_variable_checks (which a child type's variables ask too); then
+        where a value conversion may be declared, checked in conversion_checks
+        (python_info asks it with python=True), every message tagged
+        state_variables."""
+        errors = self.errors
+        errors.ctx = "state_variables"
+        if not isinstance(self.driver_def.get("state_variables", {}), dict):
+            errors.append("state_variables: must be a mapping")
+        for var_name, var_def in self.declared.state_variables.items():
+            errors.ctx = f"state_variables.{var_name}"
+            if isinstance(var_def, dict):
+                errors.extend(
+                    state_variable_errors(f"State variable '{var_name}'", var_def, DEVICE_VARIABLE)
+                )
+            else:
+                errors.append(f"State variable '{var_name}': must be a dict")
+        errors.ctx = "state_variables"
+        errors.extend(value_conversion_errors(self.driver_def))
 
-    # The Quick Action blocks, checked in action_checks: the rule a Python
-    # driver's DRIVER_INFO shares, every message tagged actions, then a YAML
-    # definition's own, entry by entry.
-    errors.ctx = "actions"
-    errors.extend(validate_actions(driver_def))
-    for i, entry in enumerate(driver_def.get("actions") or []):
-        errors.ctx = f"actions[{i}]"
-        errors.extend(yaml_action_errors(f"actions[{i}]", entry))
+    def framing(self) -> None:
+        """The framing each way, checked in framing_checks: how frames are cut
+        from the stream, and the header each one sent is wrapped in."""
+        errors, driver_def = self.errors, self.driver_def
+        errors.ctx = "frame_parser"
+        errors.extend(frame_parser_errors(driver_def))
+        errors.ctx = "send_frame"
+        errors.extend(send_frame_errors(driver_def))
 
-    # The driver's own state variables: each one's fields are checked in
-    # state_variable_checks, which a child type's variables ask too.
-    errors.ctx = "state_variables"
-    state_variables = driver_def.get("state_variables", {})
-    if not isinstance(state_variables, dict):
-        errors.append("state_variables: must be a mapping")
-        state_variables = {}
-    for var_name, var_def in state_variables.items():
-        errors.ctx = f"state_variables.{var_name}"
-        if not isinstance(var_def, dict):
-            errors.append(f"State variable '{var_name}': must be a dict")
-            continue
-        errors.extend(
-            state_variable_errors(f"State variable '{var_name}'", var_def, DEVICE_VARIABLE)
-        )
-
-    # scale / offset / unknown on state variables, child state variables and
-    # command and action params, checked in conversion_checks (python_info asks
-    # it with python=True). Every message is tagged state_variables.
-    errors.ctx = "state_variables"
-    errors.extend(value_conversion_errors(driver_def))
-
-    # The framing each way, checked in framing_checks: how frames are cut
-    # from the stream, and the header each one sent is wrapped in.
-    errors.ctx = "frame_parser"
-    errors.extend(frame_parser_errors(driver_def))
-    errors.ctx = "send_frame"
-    errors.extend(send_frame_errors(driver_def))
-
-    # What one child type says about itself (its name, id_format, state
-    # variables and instances: roster) is checked in child_type_checks. Each
-    # type's messages are tagged with its place.
-    errors.ctx = "child_entity_types"
-    child_types = driver_def.get("child_entity_types", {})
-    if child_types and not isinstance(child_types, dict):
-        errors.append("child_entity_types: must be a mapping")
-    elif isinstance(child_types, dict):
-        roster_names = RosterNames(driver_def)
+    def child_types(self) -> None:
+        """What each child type says about itself (its name, id_format, state
+        variables and instances: roster), checked in child_type_checks."""
+        errors = self.errors
+        errors.ctx = "child_entity_types"
+        child_types = self.driver_def.get("child_entity_types", {})
+        if child_types and not isinstance(child_types, dict):
+            errors.append("child_entity_types: must be a mapping")
+        if not isinstance(child_types, dict):
+            return
+        roster_names = RosterNames(self.driver_def)
         for child_type, type_def in child_types.items():
             errors.ctx = f"child_entity_types.{child_type}"
             errors.extend(child_type_errors(child_type, type_def, roster_names))
 
-    # The query entries: the poll's, the start-up's and each text rule's
-    # then_query, checked in query_entry_checks against what the definition
-    # declares, read once here.
-    queries = QueryEntries(driver_def, declared)
-    errors.ctx = "polling"
-    polling_def = driver_def.get("polling")
-    if polling_def is not None and not isinstance(polling_def, dict):
-        errors.append("polling: must be a mapping")
-    elif isinstance(polling_def, dict):
+    def query_entries(self) -> None:
+        """The poll's entries, the start-up's and each text rule's then_query,
+        checked in query_entry_checks against what the definition declares,
+        read once for all three."""
+        queries = QueryEntries(self.driver_def, self.declared)
+        self._poll(queries)
+        self._each(
+            "on_connect", self.driver_def.get("on_connect"),
+            partial(queries.entry_errors, osc_form=True),
+        )
+        for i, rule in enumerate(self.declared.responses):
+            self._follow_ups(i, rule, queries)
+
+    def _poll(self, queries: QueryEntries) -> None:
+        errors = self.errors
+        errors.ctx = "polling"
+        polling = self.driver_def.get("polling")
+        if polling is not None and not isinstance(polling, dict):
+            errors.append("polling: must be a mapping")
+        if not isinstance(polling, dict):
+            return
         # The runtime sources poll cadence from default_config.poll_interval
         # only; an interval here would silently do nothing.
-        if "interval" in polling_def:
+        if "interval" in polling:
             errors.append(
                 "polling.interval is not read by the runtime. Remove the "
                 "interval: key and set default_config.poll_interval instead"
             )
-        _extend_each(
-            errors, "polling.queries", polling_def.get("queries"), queries.entry_errors
-        )
-        if "when_state" in polling_def:
+        self._each("polling.queries", polling.get("queries"), queries.entry_errors)
+        if "when_state" in polling:
             errors.ctx = "polling"
-            errors.extend(
-                queries.when_state_errors("polling", polling_def.get("when_state"))
-            )
-    _extend_each(
-        errors, "on_connect", driver_def.get("on_connect"), queries.entry_errors,
-        osc_form=True,
-    )
+            errors.extend(queries.when_state_errors("polling", polling.get("when_state")))
 
-    # A text rule's `then_query:` takes the entries a poll takes, plus
-    # {child_id} in an entry sent once, naming the child the rule writes. Each
-    # entry is checked against the rule first, then as any entry is.
-    for i, resp in enumerate(responses):
-        if not isinstance(resp, dict) or "then_query" not in resp:
-            continue
-        errors.ctx = f"responses[{i}]"
-        refused = then_query_errors(i, resp)
+    def _follow_ups(self, index: int, rule: Any, queries: QueryEntries) -> None:
+        """A text rule's ``then_query:`` takes the entries a poll takes, plus
+        {child_id} in an entry sent once, naming the child the rule writes. A
+        list the rule may not carry is refused whole; otherwise each entry is
+        checked against the rule first, then as any entry is."""
+        if not isinstance(rule, dict) or "then_query" not in rule:
+            return
+        errors = self.errors
+        errors.ctx = f"responses[{index}]"
+        refused = then_query_errors(index, rule)
         errors.extend(refused)
         if refused:
-            continue
-        follow = FollowUp(resp)
-        listed = f"responses[{i}].then_query"
-        _extend_each(errors, listed, resp["then_query"], follow.reread_errors)
-        _extend_each(
-            errors, listed, resp["then_query"], queries.entry_errors, follow_up=follow
-        )
+            return
+        follow = FollowUp(rule)
+        listed = f"responses[{index}].then_query"
+        self._each(listed, rule["then_query"], follow.reread_errors)
+        self._each(listed, rule["then_query"], partial(queries.entry_errors, follow_up=follow))
 
-    # The optional `routing:` block (where this driver's routing lives, so a
-    # Matrix can be set up from the device), checked in routing_checks: every
-    # rule there is a cross-reference into what the driver declares.
-    errors.ctx = "routing"
-    errors.extend(routing_block_errors(driver_def))
+    def routing(self) -> None:
+        """The ``routing:`` block (where this driver's routing lives, so a
+        Matrix can be set up from the device), checked in routing_checks:
+        every rule there is a cross-reference into what the driver declares."""
+        errors = self.errors
+        errors.ctx = "routing"
+        errors.extend(routing_block_errors(self.driver_def))
 
-    # Every {name} the driver writes into a wire template has to resolve.
-    # Sits with the other cross-reference rules in spirit: it is the same
-    # question — does this name point at something the driver declares — asked
-    # of the substitution surface rather than of commands and child types.
-    #
-    # These messages already open with their own location, and they land in
-    # several sections at once (a command, a response, the polling list), so
-    # each is tagged from its own prefix rather than sharing one section tag —
-    # otherwise the Builder would anchor a polling issue to a command.
-    for message in validate_substitutions(driver_def):
-        substitution_loc = message.split(":", 1)[0]
-        errors.ctx = substitution_loc
-        errors.append(message)
+    def placeholders(self) -> None:
+        """Every {name} the driver writes into a wire template has to resolve
+        (substitution_checks). Each message opens with its own place, and they
+        land in several sections at once (a command, a response, the polling
+        list), so each is tagged from its own opening rather than one section
+        tag; otherwise the Builder would anchor a polling issue to a command."""
+        errors = self.errors
+        for message in validate_substitutions(self.driver_def):
+            substitution_loc = message.split(":", 1)[0]
+            errors.ctx = substitution_loc
+            errors.append(message)
 
-    # Strict mode: reject keys the contract doesn't declare. Appended last so
-    # every existing error keeps its position. Only the authoring gates ask for
-    # this — see unknown_key_errors for why loading stays lenient.
-    if strict:
-        errors.extend(unknown_key_errors(driver_def))
+    def undeclared(self) -> None:
+        """Strict mode's two checks, after every other error so each keeps its
+        position: keys the contract does not declare (``unknown_key_errors``
+        says why loading stays lenient), then the platform release the
+        driver's fields need."""
+        errors = self.errors
+        errors.extend(unknown_key_errors(self.driver_def))
         errors.ctx = "min_platform_version"
-        errors.extend(platform_version_errors(driver_def))
+        errors.extend(platform_version_errors(self.driver_def))
 
-    return errors
+    def _each(self, name: str, entries: Any, check: Callable[[str, Any], list[str]]) -> None:
+        """Ask ``check`` about each entry of a list, tagging what it says with
+        the entry's place (``name[i]``). A list that is not a list has no
+        entries."""
+        errors = self.errors
+        errors.ctx = name
+        if not isinstance(entries, list):
+            return
+        for i, entry in enumerate(entries):
+            errors.ctx = f"{name}[{i}]"
+            errors.extend(check(f"{name}[{i}]", entry))
 
 
 def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:
