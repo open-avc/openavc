@@ -11,6 +11,11 @@
  * share. The frame draws what the rule says and holds no state of its own: what
  * fills each part, and the state that has to outlive a part taken away (Ctrl+E's
  * and the left panel's tab), are the page's.
+ *
+ * Each column carries an id and its place (`order`): the panel library lists
+ * the columns in the order they mounted unless told their places, so a side
+ * panel coming back after Ctrl+E or preview was listed after the canvas, and
+ * each handle then resized the wrong two columns.
  */
 import type { ReactNode } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -58,17 +63,17 @@ export function BuilderFrame({ parts, toolbar, left, canvas, right }: BuilderFra
       <PanelGroup direction="horizontal" style={{ flex: 1 }}>
         {parts.left && (
           <>
-            <Panel defaultSize={15} minSize={10} maxSize={25}>
+            <Panel id="builder-left" order={1} defaultSize={15} minSize={10} maxSize={25}>
               {left}
             </Panel>
             <PanelResizeHandle style={HANDLE_STYLE} />
           </>
         )}
-        <Panel defaultSize={parts.canvasSize}>{canvas}</Panel>
+        <Panel id="builder-canvas" order={2} defaultSize={parts.canvasSize}>{canvas}</Panel>
         {parts.right && (
           <>
             <PanelResizeHandle style={HANDLE_STYLE} />
-            <Panel defaultSize={25} minSize={15} maxSize={40}>
+            <Panel id="builder-right" order={3} defaultSize={25} minSize={15} maxSize={40}>
               {right}
             </Panel>
           </>
