@@ -72,7 +72,7 @@ function destinationRouteEntries(el: UIElement): ActionEntry[] {
  * place an action lives is added here. Mirrors `_element_actions` in
  * page_review.py.
  */
-function elementActions(el: UIElement): ActionEntry[] {
+export function elementActions(el: UIElement): ActionEntry[] {
   const do_ = ((el.bindings ?? {}) as Record<string, unknown>).do;
   const entries = isPlainObject(do_) ? actionEntries(do_) : [];
   return [...entries, ...destinationRouteEntries(el)];

@@ -1,0 +1,139 @@
+{
+  "_about": "Deleting page 'gone' from this project, and what is left. Every place a control, a master or a macro can name the page holds a move to it: each do slot, a toggle's off action, a long press action, a value_map option, a matrix row's own route, a page nav's target, a master's page list, a macro step and its branches, a trigger condition on the current page, a page group. The AI's page delete (scrub_page_references in openavc/cloud/tools/ui_rewrites.py, tests/test_ui_tools_doors_pinned.py) and the UI Builder's (removePageAndScrubRefs in projectRewrites.ts, projectRewrites.test.ts) each leave 'after'. The idle page is reset by each door's own caller and is not here.",
+  "page_id": "gone",
+  "before": {
+    "pages": [
+      {
+        "id": "p1", "name": "P1",
+        "elements": [
+          {
+            "id": "b", "type": "button",
+            "bindings": {"do": {
+              "press": [
+                {
+                  "action": "macro", "macro": "keep", "mode": "toggle",
+                  "off_action": {"action": "ui.navigate", "page": "gone"},
+                  "hold_action": {"action": "macro", "macro": "keep", "off_action": {"action": "ui.navigate", "page": "gone"}}
+                },
+                {"action": "ui.navigate", "page": "gone"}
+              ],
+              "change": [{"action": "value_map", "map": {
+                "a": {"action": "ui.navigate", "page": "gone"},
+                "b": {"action": "macro", "macro": "keep", "hold_action": {"action": "ui.navigate", "page": "gone"}}
+              }}],
+              "anything": {"action": "ui.navigate", "page": "gone"},
+              "release": [{"action": "ui.navigate", "page": "p1"}]
+            }}
+          },
+          {"id": "nav", "type": "page_nav", "target_page": "gone"},
+          {
+            "id": "mx", "type": "matrix",
+            "matrix_config": {
+              "sources": [{"value": 1}],
+              "destinations": [
+                {"value": 1, "route": [{"action": "ui.navigate", "page": "gone"}, {"action": "macro", "macro": "keep"}]},
+                {"value": 2, "route": [{"action": "ui.navigate", "page": "gone"}]},
+                {"value": 3}
+              ]
+            },
+            "bindings": {"do": {"route": [{"action": "ui.navigate", "page": "gone"}, {"action": "macro", "macro": "keep"}]}}
+          }
+        ]
+      },
+      {"id": "gone", "name": "Gone", "elements": []}
+    ],
+    "master_elements": [
+      {
+        "id": "mb", "type": "button", "pages": ["p1", "gone"],
+        "bindings": {"do": {"press": [{"action": "ui.navigate", "page": "gone"}, {"action": "macro", "macro": "keep"}]}}
+      },
+      {"id": "mn", "type": "page_nav", "target_page": "gone", "pages": ["gone"]}
+    ],
+    "macros": [
+      {
+        "id": "keep", "name": "Keep",
+        "steps": [
+          {"action": "ui.navigate", "page": "gone"},
+          {
+            "action": "conditional",
+            "condition": {"key": "var.x", "operator": "eq", "value": 1},
+            "then_steps": [{"action": "ui.navigate", "page": "gone"}, {"action": "delay", "seconds": 1}],
+            "else_steps": [{"action": "ui.navigate", "page": "p1"}]
+          },
+          {"action": "delay", "seconds": 1}
+        ],
+        "triggers": [{
+          "id": "t1", "type": "startup",
+          "conditions": [
+            {"key": "system.current_page", "operator": "eq", "value": "gone"},
+            {"key": "var.x", "operator": "eq", "value": 1}
+          ]
+        }]
+      }
+    ],
+    "page_groups": [{"name": "A", "pages": ["p1", "gone"]}, {"name": "B", "pages": ["p1"]}]
+  },
+  "after": {
+    "pages": [
+      {
+        "id": "p1", "name": "P1",
+        "elements": [
+          {
+            "id": "b", "type": "button",
+            "bindings": {"do": {
+              "press": [
+                {
+                  "action": "macro", "macro": "keep", "mode": "toggle",
+                  "hold_action": {"action": "macro", "macro": "keep"}
+                }
+              ],
+              "change": [{"action": "value_map", "map": {
+                "b": {"action": "macro", "macro": "keep"}
+              }}],
+              "release": [{"action": "ui.navigate", "page": "p1"}]
+            }}
+          },
+          {"id": "nav", "type": "page_nav", "target_page": ""},
+          {
+            "id": "mx", "type": "matrix",
+            "matrix_config": {
+              "sources": [{"value": 1}],
+              "destinations": [
+                {"value": 1, "route": [{"action": "macro", "macro": "keep"}]},
+                {"value": 2, "route": []},
+                {"value": 3}
+              ]
+            },
+            "bindings": {"do": {"route": [{"action": "macro", "macro": "keep"}]}}
+          }
+        ]
+      }
+    ],
+    "master_elements": [
+      {
+        "id": "mb", "type": "button", "pages": ["p1"],
+        "bindings": {"do": {"press": [{"action": "macro", "macro": "keep"}]}}
+      },
+      {"id": "mn", "type": "page_nav", "target_page": "", "pages": "*"}
+    ],
+    "macros": [
+      {
+        "id": "keep", "name": "Keep",
+        "steps": [
+          {
+            "action": "conditional",
+            "condition": {"key": "var.x", "operator": "eq", "value": 1},
+            "then_steps": [{"action": "delay", "seconds": 1}],
+            "else_steps": [{"action": "ui.navigate", "page": "p1"}]
+          },
+          {"action": "delay", "seconds": 1}
+        ],
+        "triggers": [{
+          "id": "t1", "type": "startup",
+          "conditions": [{"key": "var.x", "operator": "eq", "value": 1}]
+        }]
+      }
+    ],
+    "page_groups": [{"name": "A", "pages": ["p1"]}, {"name": "B", "pages": ["p1"]}]
+  }
+}

@@ -36,11 +36,12 @@ import {
   RectangleVertical,
   Code2,
 } from "lucide-react";
-import type { UIPage, PageGroup, SnapConfig } from "../../api/types";
+import type { MacroConfig, UIConfig, UIPage, PageGroup, SnapConfig } from "../../api/types";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { useProjectStore } from "../../store/projectStore";
 import { saveFailure, saveNow } from "../../store/saveState";
 import { isCustomPage } from "./customPage";
+import { removePageFromGroups } from "./projectRewrites";
 import { canvasScreen, useChosenScreen } from "./canvasScreen";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { PromptDialog } from "../shared/PromptDialog";
@@ -111,6 +112,44 @@ const divider: React.CSSProperties = {
   background: "var(--border-color)",
   flexShrink: 0,
 };
+
+/**
+ * A page delete as one undo entry: the parts of the project it changes, as
+ * they were (`snapshot`), and what it leaves (`patch`). The scrubs hand back
+ * each part they did not change as the same object, so the snapshot keeps
+ * only what changed; their inputs are taken once for that reason, since a
+ * fresh `|| []` per comparison would never match what a scrub returned.
+ */
+function pageDeleteEdit(ui: UIConfig, macros: MacroConfig[], pageId: string) {
+  const before = { master_elements: ui.master_elements || [], macros, page_groups: ui.page_groups || [] };
+  const result = removePageAndScrubRefs(ui.pages, pageId, before.master_elements, macros);
+  const after = {
+    master_elements: result.masterElements,
+    macros: result.macros,
+    page_groups: removePageFromGroups(before.page_groups, pageId),
+  };
+  const settings = settingsWithoutPage(ui, pageId, result.pages);
+  const snapshot: Record<string, unknown> = { pages: ui.pages };
+  if (settings !== ui.settings) snapshot.settings = ui.settings;
+  for (const part of ["master_elements", "macros", "page_groups"] as const) {
+    if (after[part] !== before[part]) snapshot[part] = before[part];
+  }
+  const groups = after.page_groups !== before.page_groups ? { page_groups: after.page_groups } : {};
+  return {
+    snapshot,
+    patch: {
+      ui: { ...ui, pages: result.pages, master_elements: after.master_elements, settings, ...groups },
+      macros: after.macros,
+    },
+  };
+}
+
+/** The panel settings once the page is gone: an idle page that was the deleted
+ *  one falls to the first page left, or to none. The same settings otherwise. */
+function settingsWithoutPage(ui: UIConfig, pageId: string, pagesLeft: UIPage[]): UIConfig["settings"] {
+  if (ui.settings?.idle_page !== pageId) return ui.settings;
+  return { ...ui.settings, idle_page: pagesLeft[0]?.id || "" };
+}
 
 export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: CanvasToolbarProps) {
   const selectPage = useUIBuilderStore((s) => s.selectPage);
@@ -272,32 +311,9 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
     const pageId = pendingDeletePageId;
     const pageName = pages.find(p => p.id === pageId)?.name || pageId;
     const nextPageId = pages.find((p) => p.id !== pageId)?.id;
-    const idleClobbered = ui.settings?.idle_page === pageId;
-
-    // Single references for the scrub inputs — the changed-only snapshot
-    // below relies on identity, and a fresh `|| []` per comparison would
-    // never match what the scrub returned.
-    const masterElements = ui.master_elements || [];
-    const projectMacros = useProjectStore.getState().project?.macros || [];
-    const result = removePageAndScrubRefs(
-      ui.pages,
-      pageId,
-      masterElements,
-      projectMacros,
-    );
-    const snapshot: Record<string, unknown> = { pages: ui.pages };
-    if (idleClobbered) snapshot.settings = ui.settings;
-    if (result.masterElements !== masterElements) snapshot.master_elements = masterElements;
-    if (result.macros !== projectMacros) snapshot.macros = projectMacros;
-    pushUndo(snapshot, `Delete page "${pageName}"`);
-
-    const settings = idleClobbered
-      ? { ...ui.settings, idle_page: result.pages[0]?.id || "" }
-      : ui.settings;
-    update({
-      ui: { ...ui, pages: result.pages, master_elements: result.masterElements, settings },
-      macros: result.macros,
-    });
+    const edit = pageDeleteEdit(ui, useProjectStore.getState().project?.macros || [], pageId);
+    pushUndo(edit.snapshot, `Delete page "${pageName}"`);
+    update(edit.patch);
     touchMutation();
     if (selectedPageId === pageId && nextPageId) {
       selectPage(nextPageId);

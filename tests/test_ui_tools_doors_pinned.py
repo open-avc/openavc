@@ -11,6 +11,8 @@ door); those are pinned as they are, not corrected here.
 from __future__ import annotations
 
 import copy
+import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,6 +20,7 @@ from pydantic import ValidationError
 
 from openavc.cloud.ai_tool_handler import AIToolHandler
 from openavc.core.project_loader import ProjectConfig
+from openavc.ui.page_review import do_action_dicts
 
 from tests.test_ui_tools_lookups_pinned import _Devices, _Plugins
 
@@ -1005,3 +1008,46 @@ async def test_delete_page_leaves_an_unrelated_binding_shape_alone():
     snapshot = copy.deepcopy(go["bindings"])
     await _call(engine, "delete_ui_page", {"page_id": "other"})
     assert _el(engine, "main", "go").bindings == snapshot
+
+
+@pytest.mark.asyncio
+async def test_delete_page_leaves_what_the_builder_delete_leaves():
+    """Every place a page can be named, cleaned the way the UI Builder's page
+    delete cleans it (projectRewrites.test.ts reads the same fixture), so no
+    action the page review walks still moves to the page."""
+    case = json.loads(
+        (Path(__file__).parent / "fixtures" / "page_delete_cases.json").read_text(encoding="utf-8")
+    )
+    before, after, gone = case["before"], case["after"], case["page_id"]
+    engine = _engine({
+        "project": {"id": "acme_room", "name": "Acme Room"},
+        "macros": before["macros"],
+        "ui": {"settings": {}, "page_groups": before["page_groups"],
+               "master_elements": before["master_elements"], "pages": before["pages"]},
+    })
+    result = await _call(engine, "delete_ui_page", {"page_id": gone})
+    assert result["status"] == "deleted"
+    ui = engine.project.ui
+
+    def subset(model, expected: dict) -> dict:
+        dump = model.model_dump()
+        return {k: dump.get(k) for k in expected}
+
+    assert [p.id for p in ui.pages] == [p["id"] for p in after["pages"]]
+    for page, expected in zip(ui.pages, after["pages"]):
+        assert [subset(el, exp) for el, exp in zip(page.elements, expected["elements"])] \
+            == expected["elements"]
+    assert [subset(m, exp) for m, exp in zip(ui.master_elements, after["master_elements"])] \
+        == after["master_elements"]
+    macro, expected_macro = engine.project.macros[0], after["macros"][0]
+    assert [s.model_dump(exclude_unset=True) for s in macro.steps] == expected_macro["steps"]
+    assert [c.model_dump(exclude_unset=True) for c in macro.triggers[0].conditions] \
+        == expected_macro["triggers"][0]["conditions"]
+    assert [{"name": g.name, "pages": g.pages} for g in ui.page_groups] == after["page_groups"]
+
+    controls = [el for page in ui.pages for el in page.elements] + list(ui.master_elements)
+    left = [
+        action for el in controls for action in do_action_dicts(el.model_dump())
+        if action.get("action") == "ui.navigate" and action.get("page") == gone
+    ]
+    assert left == []

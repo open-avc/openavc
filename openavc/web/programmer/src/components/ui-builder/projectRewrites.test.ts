@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { removePage, removePageAndScrubRefs, renameElement, validateElementId } from "./uiBuilderHelpers";
-import type { MacroConfig, MasterElement, ScriptConfig, UIElement, UIPage, VariableConfig } from "../../api/types";
+import { removePageFromGroups } from "./projectRewrites";
+import { elementActions } from "./reviewActions";
+import type { MacroConfig, MasterElement, PageGroup, ScriptConfig, UIElement, UIPage, VariableConfig } from "../../api/types";
 
 // Renaming a control and deleting a page each rewrite what the rest of the
 // project says about them. What they rewrite, what they leave, and which
@@ -132,12 +136,43 @@ describe("renameElement", () => {
     const after = r.macros[0];
     expect(after.triggers?.[0]).toEqual({ ...t1, state_key: "ui.go.value", conditions: [untouchedCondition, { key: "ui.go.on", operator: "truthy" }] });
     expect(after.triggers?.[0].conditions?.[0]).toBe(untouchedCondition);
-    expect(after.triggers?.[1]).toBe(t2);
+    expect(after.triggers?.[1]).toEqual({ ...t2, event_pattern: "ui.press.go" });
     // The steps of a macro whose trigger alone moved come back as an equal
     // new array.
     expect(after.steps).toEqual(steps);
     expect(after.steps).not.toBe(steps);
     expect(after.steps[0]).toBe(steps[0]);
+  });
+
+  it("follows the control's panel events in an event pattern, and no other pattern", () => {
+    const patterns = ["ui.press.btn", "ui.*.btn", "ui.toggle_off.btn", "ui.press.btn2", "ui.press.btn.x", "ui.btn.value", "ui..btn", "custom.press.btn", "ui.press.*"];
+    const triggers = patterns.map((event_pattern, i) => ({ id: `t${i}`, type: "event", enabled: true, event_pattern }));
+    const { r } = rename({ macros: [macro("m", { triggers })] });
+    expect(r.macros[0].triggers?.map((t) => t.event_pattern)).toEqual([
+      "ui.press.go", "ui.*.go", "ui.toggle_off.go", "ui.press.btn2", "ui.press.btn.x", "ui.btn.value", "ui..btn", "custom.press.btn", "ui.press.*",
+    ]);
+    expect(r.macros[0].triggers?.[3]).toBe(triggers[3]);
+  });
+
+  it("follows a $ui.<id>. value reference in an action, a step's value and its params", () => {
+    const action = { action: "state.set", key: "var.a", value: "$ui.btn.value" };
+    const untouched = { action: "state.set", key: "var.b", value: "$ui.btn2.value" };
+    const plain = { action: "state.set", key: "var.c", value: "ui.btn.value" };
+    const b = el("b", { bindings: { do: { press: [action, untouched, plain] } } });
+    const step = { action: "state.set", key: "var.d", value: "$ui.btn.level" };
+    const command = { action: "device.command", device: "amp", command: "set", params: { level: "$ui.btn.value" } };
+    const { r } = rename({ pages: [page("p1", [el("btn"), b])], macros: [macro("m", { steps: [step, command] })] });
+    const press = (r.pages[0].elements[1].bindings as unknown as { do: { press: unknown[] } }).do.press;
+    expect(press).toEqual([{ ...action, value: "$ui.go.value" }, untouched, plain]);
+    expect(press[1]).toBe(untouched);
+    expect(r.macros[0].steps).toEqual([{ ...step, value: "$ui.go.level" }, { ...command, params: { level: "$ui.go.value" } }]);
+  });
+
+  it("a control named constructor moves only the layouts that hold it", () => {
+    const box = { x: 1, y: 2, w: 3, h: 4 };
+    const without = { id: "landscape", placements: { a: box }, hidden: [] };
+    const { r } = rename({ pages: [page("p1", [el("constructor")], { layouts: [without] })] }, "constructor", "go");
+    expect(r.pages[0].layouts?.[0]).toBe(without);
   });
 
   it("a trigger with neither field, or empty ones, is left as it was", () => {
@@ -179,7 +214,7 @@ describe("renameElement", () => {
     expect(b.id).toBe("go");
     expect(b.bindings).toEqual({
       show: { value: { key: "ui.go.level" }, visible_when: { key: "ui.go.on", operator: "truthy" } },
-      do: { press: [{ action: "state.set", key: "ui.go.pressed", value: "$ui.btn.level" }] },
+      do: { press: [{ action: "state.set", key: "ui.go.pressed", value: "$ui.go.level" }] },
     });
     expect(k.parent).toBe("go");
     expect((k.bindings as Record<string, unknown>).show).toEqual({ text: { key: "ui.go.label" } });
@@ -308,7 +343,8 @@ describe("removePage", () => {
         change: nav("other"),
         route: [keep],
         submit: [],
-        custom_slot: [nav("gone")],
+        custom_slot: [nav("gone"), keep],
+        only_gone: [nav("gone")],
       },
       show: { text: { key: "var.x" } },
     };
@@ -319,20 +355,42 @@ describe("removePage", () => {
       change: nav("other"),
       route: [keep],
       submit: [],
-      custom_slot: [nav("gone")],
+      custom_slot: [keep],
     });
     expect(Object.keys(d)).toEqual(["press", "change", "route", "submit", "custom_slot"]);
     expect(d.route).toBe(bindings.do.route);
     expect((after.bindings as unknown as { show: unknown }).show).toBe(bindings.show);
   });
 
-  it("does not look inside a value_map or an off or hold action", () => {
-    const vm = { action: "value_map", map: { a: nav("gone") } };
-    const toggle = { action: "state.set", key: "var.x", off_action: nav("gone") };
-    const bindings = { do: { change: [vm], press: [toggle] } };
+  it("removes a value_map option, an off action and a long press action that move to the page", () => {
+    const keep = { action: "macro", macro: "m" };
+    const vm = { action: "value_map", map: { b: keep, a: nav("gone"), c: { ...keep, off_action: nav("gone") } } };
+    const toggle = { action: "state.set", key: "var.x", mode: "toggle", off_action: nav("gone"), hold_action: { ...keep, off_action: nav("other") } };
+    const quiet = { action: "value_map", map: { a: keep } };
+    const bindings = { do: { change: [vm, quiet], press: [toggle] } };
     const pages = [page("p1", [el("b", { bindings })]), page("gone", [])];
     const after = removePage(pages, "gone")[0].elements[0];
-    expect(after).toBe(pages[0].elements[0]);
+    const d = (after.bindings as unknown as { do: Record<string, unknown[]> }).do;
+    expect(d.change).toEqual([{ action: "value_map", map: { b: keep, c: keep } }, quiet]);
+    expect(Object.keys((d.change[0] as { map: object }).map)).toEqual(["b", "c"]);
+    expect(d.change[1]).toBe(quiet);
+    expect(d.press).toEqual([{ action: "state.set", key: "var.x", mode: "toggle", hold_action: toggle.hold_action }]);
+    expect((d.press[0] as Record<string, unknown>).hold_action).toBe(toggle.hold_action);
+  });
+
+  it("removes a matrix row's own moves to the page, a route left empty kept empty", () => {
+    const keep = { action: "macro", macro: "m" };
+    const kept = { value: 1, route: [keep] };
+    const config = {
+      sources: [{ value: 1 }],
+      destinations: [kept, { value: 2, route: [nav("gone"), keep] }, { value: 3, route: [nav("gone")] }, { value: 4 }],
+    };
+    const mx = el("mx", { type: "matrix", matrix_config: config });
+    const after = removePage([page("p1", [mx])], "gone")[0].elements[0] as unknown as { matrix_config: typeof config };
+    expect(after.matrix_config.destinations).toEqual([kept, { value: 2, route: [keep] }, { value: 3, route: [] }, { value: 4 }]);
+    expect(after.matrix_config.destinations[0]).toBe(kept);
+    const generated = el("g", { type: "matrix", matrix_config: { sources: { from: 1, count: 2 }, destinations: { from: 1, count: 2 } } });
+    expect(removePage([page("p1", [generated])], "gone")[0].elements[0]).toBe(generated);
   });
 
   it("hands back new pages and element arrays, and each element nothing pointed at as it was", () => {
@@ -368,7 +426,7 @@ describe("removePageAndScrubRefs", () => {
     const only = masterOn("d", ["p2"]);
     const navigates = { id: "n", type: "button", pages: "*", bindings: { do: { press: [{ action: "ui.navigate", page: "p2" }] } } } as unknown as MasterElement;
     const r = removePageAndScrubRefs([page("p2", [])], "p2", [all, odd, other, some, only, navigates], []);
-    expect(r.masterElements[5]).toBe(navigates);
+    expect(r.masterElements[5]).toEqual({ ...navigates, bindings: { do: {} } });
     expect(r.masterElements[0]).toBe(all);
     expect(r.masterElements[1]).toBe(odd);
     expect(r.masterElements[2]).toBe(other);
@@ -420,5 +478,64 @@ describe("removePageAndScrubRefs", () => {
     const r = removePageAndScrubRefs(pages, "p2", [], []);
     expect(r.pages).toEqual(removePage(pages, "p2"));
     expect(Object.keys(r)).toEqual(["pages", "masterElements", "macros"]);
+  });
+
+  it("drops a macro step that moves to the page, in its branches too, and keeps the rest", () => {
+    const keep = { action: "delay", seconds: 1 };
+    const back = { action: "ui.navigate", page: "p1" };
+    const branchy = { action: "conditional", then_steps: [{ action: "ui.navigate", page: "p2" }, keep], else_steps: [back] };
+    const m = macro("m", { steps: [{ action: "ui.navigate", page: "p2" }, branchy, keep] });
+    const quiet = macro("q", { steps: [back, keep] });
+    const r = removePageAndScrubRefs([], "p2", [], [m, quiet]);
+    expect(r.macros[0].steps).toEqual([{ ...branchy, then_steps: [keep] }, keep]);
+    expect(r.macros[0].steps[0].else_steps).toBe(branchy.else_steps);
+    expect(r.macros[1]).toBe(quiet);
+  });
+
+  it("takes the page out of each page group, and hands back the groups untouched when none held it", () => {
+    const holds = { name: "A", pages: ["p1", "p2", "p3"] } as unknown as PageGroup;
+    const not = { name: "B", pages: ["p1"] } as unknown as PageGroup;
+    const after = removePageFromGroups([holds, not], "p2");
+    expect(after).toEqual([{ name: "A", pages: ["p1", "p3"] }, not]);
+    expect(after[1]).toBe(not);
+    const groups = [not];
+    expect(removePageFromGroups(groups, "p2")).toBe(groups);
+  });
+
+  it("leaves what the AI's page delete leaves", () => {
+    // tests/test_ui_tools_doors_pinned.py runs the AI's delete_ui_page on the same project.
+    type Side = { pages: UIPage[]; master_elements: MasterElement[]; macros: MacroConfig[]; page_groups: PageGroup[] };
+    const fixture = JSON.parse(
+      readFileSync(resolve(process.cwd(), "../../../tests/fixtures/page_delete_cases.json"), "utf-8"),
+    ) as { page_id: string; before: Side; after: Side };
+    const { before, after, page_id } = fixture;
+    const r = removePageAndScrubRefs(before.pages, page_id, before.master_elements, before.macros);
+    expect(r.pages).toEqual(after.pages);
+    expect(r.masterElements).toEqual(after.master_elements);
+    expect(r.macros).toEqual(after.macros);
+    expect(removePageFromGroups(before.page_groups, page_id)).toEqual(after.page_groups);
+  });
+
+  it("leaves no move to the page in any place the page review walks, on a page or a master", () => {
+    // elementActions is the list of places an action lives; a place added
+    // there and not to page delete fails this.
+    const go = { action: "ui.navigate", page: "gone" };
+    const keep = { action: "macro", macro: "m" };
+    const bindings = { do: {
+      press: [{ ...keep, off_action: go, hold_action: { ...keep, off_action: go } }, go],
+      change: [{ action: "value_map", map: { a: go, b: { ...keep, hold_action: go } } }],
+      anything: go,
+      route: [go, keep],
+    } };
+    const matrix_config = { sources: [{ value: 1 }], destinations: [{ value: 1, route: [go, { ...keep, off_action: go }] }] };
+    const controls = [el("b", { bindings }), el("mx", { type: "matrix", bindings, matrix_config })];
+    const masters = controls.map((c) => ({ ...c, id: `m_${c.id}`, pages: "*" }) as unknown as MasterElement);
+    const before = [...controls, ...masters].flatMap((c) => elementActions(c as UIElement)).filter(([, a]) => a.page === "gone");
+    expect(before.length).toBeGreaterThan(10);
+    const r = removePageAndScrubRefs([page("p1", controls), page("gone", [])], "gone", masters, []);
+    const left = [...r.pages[0].elements, ...r.masterElements]
+      .flatMap((c) => elementActions(c as UIElement))
+      .filter(([, a]) => a.action === "ui.navigate" && a.page === "gone");
+    expect(left).toEqual([]);
   });
 });

@@ -19,6 +19,7 @@
  */
 import type { UIElement } from "../../api/types";
 import type { PluginExtension } from "../../api/pluginClient";
+import { own } from "./authoredValues";
 
 /**
  * The first spelling nobody has taken, counting up from `from`, and the count
@@ -121,7 +122,7 @@ export function defaultElementSize(
   panelElements: PluginExtension[] = [],
 ): { w: number; h: number } {
   const plugin = pluginElementType(type);
-  if (!plugin) return DEFAULT_ELEMENT_SIZES[type] ?? FALLBACK_ELEMENT_SIZE;
+  if (!plugin) return own(DEFAULT_ELEMENT_SIZES, type) ?? FALLBACK_ELEMENT_SIZE;
   const declared = panelElements.find(
     (e) => e.plugin_id === plugin.pluginId && e.type === plugin.pluginType,
   )?.default_size;
@@ -135,7 +136,7 @@ export function defaultElementSize(
 export function defaultAspectLock(type: string): number | null {
   const plugin = pluginElementType(type);
   if (plugin) return VIDEO_PLUGIN_TYPES.has(plugin.pluginType) ? VIDEO_ASPECT_LOCK : null;
-  return DEFAULT_ASPECT_LOCKS[type] ?? null;
+  return own(DEFAULT_ASPECT_LOCKS, type) ?? null;
 }
 
 /**

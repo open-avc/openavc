@@ -17,12 +17,12 @@ Toggle the palette with **Ctrl+E**.
 **Center panel: Canvas.** Visual representation of the panel page:
 - Drag elements anywhere, drag the handles to resize
 - Grid overlay shows the snap increment. The grid button only shows or hides this ruler; whether dragging actually snaps is the checkbox in the Snap popover next to it, where the column and row counts also live
-- Page tabs across the top row (with page type icons). Hovering a tab shows rename, duplicate and delete buttons; right-click any tab for the full page menu (rename, duplicate, set as home, move, group, delete)
+- Page tabs across the top row (with page type icons). Hovering a tab shows rename, duplicate and delete buttons; right-click any tab for the full page menu (rename, duplicate, set as home, move, group, delete). Deleting a page also clears what pointed at it: a page nav button aimed at it is left with no target, and every action that opens it is removed, including Off Actions, Long Press Actions, the action a dropdown choice runs, a matrix destination's own route and the actions on master elements, along with the macro steps that open it and its place in page groups
 - The tools row below them: arrangement switcher (Landscape / Portrait), screen preset selector (7" Tablet, 10" Tablet, iPad, 1080p), grid and snap controls, the alignment tools, undo/redo, save, and preview
 - Preview mode toggle (**Ctrl+P**) to test interactions with live state
 
 **Right panel: Properties.** Configure the selected element:
-- Basic properties (ID, type, label)
+- Basic properties (ID, type, label). Changing a control's ID updates the rest of the project with it: the `ui.<id>.` keys bindings, macros and variables read, a `$ui.<id>.` value, and a macro trigger on the control's panel events (`ui.press.<id>`). Scripts are not changed, so update any that use the old ID yourself
 - Layout (position and size in percent, container, aspect lock)
 - Style (colors, font size, border radius)
 - Bindings (the critical programming section, where logic meets the UI)

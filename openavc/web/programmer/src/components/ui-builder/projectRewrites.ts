@@ -6,15 +6,24 @@
  * each arrangement's placements and hidden list; its `ui.<id>.` state keys by
  * `key`, `state_key` and `source_key` fields in bindings and a step's params,
  * by a macro step's own key and conditions (its branches included), by a
- * trigger's state key and conditions, and by a variable's source key. Each
- * holder's list is one function here (`renamedElement`, `renamedStep`,
- * `renamedTrigger`, `renamedVariable`, `renamedInLayout`), so a new place a key
- * can sit is one line in its holder's function.
+ * trigger's state key and conditions, and by a variable's source key; a
+ * `$ui.<id>.` value reference by any other text field in bindings and a step's
+ * params, and by a step's value; and its panel events (`ui.<event>.<id>`) by a
+ * trigger's event pattern. Each holder's list is one function here
+ * (`renamedElement`, `renamedStep`, `renamedTrigger`, `renamedVariable`,
+ * `renamedInLayout`), so a new place a key can sit is one line in its holder's
+ * function.
  *
  * Deleting a page empties a page nav's target on it, drops the moves to it
- * from each action slot of a page's controls, takes it out of each master's
- * page list, and drops the trigger conditions that matched on it being the
- * current page (`removePageAndScrubRefs`).
+ * from every place a control or a master keeps actions (each `do` slot, the
+ * off and long press actions an action carries, a value_map's options, a
+ * matrix row's own route: the places the page review walks), takes it out of
+ * each master's page list, drops the macro steps that move to it, and drops
+ * the trigger conditions that matched on it being the current page
+ * (`removePageAndScrubRefs`); `removePageFromGroups` takes it out of each page
+ * group. The AI's page delete is
+ * `scrub_page_references` in openavc/cloud/tools/ui_rewrites.py, and leaves
+ * the same project.
  *
  * Every array and object nothing in it changed comes back as it was
  * (`mapPreserve`, `filterPreserve`, `withField`): the IDE's undo history
@@ -25,6 +34,7 @@ import type {
   MacroConfig,
   MacroStep,
   MasterElement,
+  PageGroup,
   Placement,
   ScriptConfig,
   StepCondition,
@@ -34,7 +44,8 @@ import type {
   UIPage,
   VariableConfig,
 } from "../../api/types";
-import { ACTION_SLOTS } from "./bindingActions";
+import { isPlainObject, own } from "./authoredValues";
+import { NESTED_ACTION_FIELDS } from "./bindingActions";
 
 /** The same array back when `fn` handed back every item as it was; otherwise
  *  the new one. */
@@ -102,7 +113,15 @@ function renamedRefsDeep(value: unknown, rename: IdRename): unknown {
 
 function renamedField(field: string, value: unknown, rename: IdRename): unknown {
   if (typeof value !== "string") return renamedRefsDeep(value, rename);
-  return STATE_KEY_FIELDS.has(field) ? renamedStateKey(value, rename) : value;
+  return STATE_KEY_FIELDS.has(field) ? renamedStateKey(value, rename) : renamedValueRef(value, rename);
+}
+
+/** `$ui.<oldId>.<rest>`, a value read from that state key when the action or
+ *  step runs, as `$ui.<newId>.<rest>`; anything else as it was. */
+function renamedValueRef<V>(value: V, rename: IdRename): V {
+  if (typeof value !== "string" || !value.startsWith("$")) return value;
+  const renamed = renamedStateKey(value.slice(1), rename);
+  return (renamed === value.slice(1) ? value : `$${renamed}`) as V;
 }
 
 /** An element under a new id, as a rename reads it: how a copied or
@@ -130,6 +149,7 @@ function renamedStep(step: MacroStep, rename: IdRename): MacroStep {
   const guard = (c: StepCondition) => withField(c, "key", key);
   const branch = (steps: MacroStep[]) => mapPreserve(steps, (s) => renamedStep(s, rename));
   let next = withField(step, "key", key);
+  next = withField(next, "value", (v) => renamedValueRef(v, rename));
   next = withField(next, "params", (p) => renamedRefsDeep(p, rename) as Record<string, unknown>);
   next = withField(next, "condition", guard);
   next = withField(next, "skip_if", guard);
@@ -137,11 +157,20 @@ function renamedStep(step: MacroStep, rename: IdRename): MacroStep {
   return withField(next, "else_steps", branch);
 }
 
-/** A trigger with its state key and its conditions' keys renamed. */
+/** A trigger with its state key, its conditions' keys and its event pattern
+ *  renamed. */
 function renamedTrigger(trigger: TriggerConfig, rename: IdRename): TriggerConfig {
   const key = (k: string) => renamedStateKey(k, rename);
-  const next = withField(trigger, "state_key", key);
+  let next = withField(trigger, "state_key", key);
+  next = withField(next, "event_pattern", (p) => renamedEventPattern(p, rename));
   return withField(next, "conditions", (cs) => mapPreserve(cs, (c) => withField(c, "key", key)));
+}
+
+/** `ui.<event>.<oldId>`, the event the panel sends when that control is
+ *  touched, as `ui.<event>.<newId>`; any other pattern as it was. */
+function renamedEventPattern(pattern: string, { oldId, newId }: IdRename): string {
+  const event = /^ui\.([^.]+)\.([^.]+)$/.exec(pattern);
+  return event?.[2] === oldId ? `ui.${event[1]}.${newId}` : pattern;
 }
 
 /** A macro with its steps and triggers renamed. A macro that changes carries
@@ -164,7 +193,7 @@ function renamedVariable(v: VariableConfig, rename: IdRename): VariableConfig {
 function renamedInLayout(layout: Layout, rename: IdRename): Layout {
   const { oldId, newId } = rename;
   let next = layout;
-  if (!!layout.placements && oldId in layout.placements) {
+  if (!!layout.placements && own(layout.placements, oldId) !== undefined) {
     next = { ...next, placements: placementsRenamed(layout.placements, rename) };
   }
   if (layout.hidden?.includes(oldId)) {
@@ -259,26 +288,70 @@ function isMoveTo(action: unknown, pageId: string): boolean {
   return a.action === "ui.navigate" && a.page === pageId;
 }
 
+/** A list of actions without its moves to the deleted page, and what each one
+ *  left carries cleaned the same way: the same list when nothing changed.
+ *  Whatever is not an action is kept. */
+function actionsWithoutMoves(actions: unknown[], pageId: string): unknown[] {
+  const kept = filterPreserve(actions, (a) => !isMoveTo(a, pageId));
+  return mapPreserve(kept, (a) => actionWithoutMoves(a, pageId));
+}
+
+/** An action that is not itself a move to the deleted page, with the moves
+ *  dropped from what it carries: its off and long press actions (each removed
+ *  when it was one) and a value_map's options (an option that was one is
+ *  removed). The same action when it carried none. */
+function actionWithoutMoves(action: unknown, pageId: string): unknown {
+  if (!isPlainObject(action)) return action;
+  let next = action;
+  for (const field of NESTED_ACTION_FIELDS) {
+    const carried = own(next, field);
+    if (carried === undefined) continue;
+    if (isMoveTo(carried, pageId)) {
+      next = { ...next };
+      delete next[field];
+    } else {
+      next = withField(next, field, (c) => actionWithoutMoves(c, pageId));
+    }
+  }
+  if (next.action === "value_map" && isPlainObject(next.map)) {
+    next = withField(next, "map", (m) => mapWithoutMoves(m as Record<string, unknown>, pageId));
+  }
+  return next;
+}
+
+/** A value_map's options without those that move to the deleted page. */
+function mapWithoutMoves(map: Record<string, unknown>, pageId: string): Record<string, unknown> {
+  let changed = false;
+  const next: Record<string, unknown> = {};
+  for (const [option, action] of Object.entries(map)) {
+    if (isMoveTo(action, pageId)) { changed = true; continue; }
+    const kept = actionWithoutMoves(action, pageId);
+    if (kept !== action) changed = true;
+    next[option] = kept;
+  }
+  return changed ? next : map;
+}
+
 /** One action slot without its moves to the deleted page: the same value when
  *  it held none, undefined when it held nothing else. A slot holds a list or,
  *  in an older project, one action; a list keeps whatever else it holds. */
 function slotWithoutMoves(raw: unknown, pageId: string): unknown {
-  if (!Array.isArray(raw)) return isMoveTo(raw, pageId) ? undefined : raw;
-  const kept = filterPreserve(raw, (a) => !isMoveTo(a, pageId));
+  if (!Array.isArray(raw)) return isMoveTo(raw, pageId) ? undefined : actionWithoutMoves(raw, pageId);
+  const kept = actionsWithoutMoves(raw, pageId);
   if (kept === raw) return raw;
   return kept.length > 0 ? kept : undefined;
 }
 
-/** An element's `do` slots without their moves to the deleted page, a slot
- *  left empty removed. Only the slots' own actions: a value_map's options and
- *  an off or hold action are not looked into. */
-function withoutMovesTo(el: UIElement, pageId: string): UIElement {
+/** An element's `do` slots without their moves to the deleted page, every
+ *  slot the map holds (the panel runs whichever interaction it is sent), a
+ *  slot left empty removed. */
+function withoutMovesTo<T extends UIElement | MasterElement>(el: T, pageId: string): T {
   const bindings = el.bindings as Record<string, unknown> | undefined;
   const doMap = bindings?.do as Record<string, unknown> | undefined;
-  if (!doMap) return el;
+  if (!doMap || typeof doMap !== "object") return el;
   const nextDo: Record<string, unknown> = { ...doMap };
   let changed = false;
-  for (const slot of ACTION_SLOTS) {
+  for (const slot of Object.keys(doMap)) {
     const kept = slotWithoutMoves(nextDo[slot], pageId);
     if (Object.is(kept, nextDo[slot])) continue;
     changed = true;
@@ -290,12 +363,30 @@ function withoutMovesTo(el: UIElement, pageId: string): UIElement {
     : el;
 }
 
-/** A page's control with what pointed at the deleted page cleared. */
-function controlWithoutPage(el: UIElement, pageId: string): UIElement {
+/** A matrix's rows without their own route's moves to the deleted page. A row
+ *  whose route held nothing else keeps an empty one, which the panel reads as
+ *  a row made to do nothing; taking the route away would hand the row to the
+ *  matrix's own route instead. Only a list of rows is written; a generated
+ *  axis has no route of its own. */
+function rowsWithoutMoves<T extends UIElement | MasterElement>(el: T, pageId: string): T {
+  if (el.type !== "matrix") return el;
+  const record = el as unknown as Record<string, unknown>;
+  return withField(record, "matrix_config", (config) => {
+    if (!isPlainObject(config) || !Array.isArray(config.destinations)) return config;
+    return withField(config, "destinations", (rows) => mapPreserve(rows as unknown[], (row) => (
+      isPlainObject(row) && Array.isArray(row.route)
+        ? withField(row, "route", (route) => actionsWithoutMoves(route as unknown[], pageId))
+        : row
+    )));
+  }) as unknown as T;
+}
+
+/** A control with what pointed at the deleted page cleared. */
+function controlWithoutPage<T extends UIElement | MasterElement>(el: T, pageId: string): T {
   const untargeted = el.type === "page_nav" && el.target_page === pageId
     ? { ...el, target_page: "" }
     : el;
-  return withoutMovesTo(untargeted, pageId);
+  return rowsWithoutMoves(withoutMovesTo(untargeted, pageId), pageId);
 }
 
 /** The pages without the deleted one, each control's links to it cleared.
@@ -309,13 +400,16 @@ export function removePage(pages: UIPage[], pageId: string): UIPage[] {
     }));
 }
 
-/** A master without the deleted page in its page list; one left with no page
- *  shows on every page ("*"). */
+/** A master without the deleted page in its page list (one left with no page
+ *  shows on every page, "*"), and its links to the page cleared as a
+ *  control's are. */
 function masterWithoutPage(m: MasterElement, pageId: string): MasterElement {
-  if (!Array.isArray(m.pages)) return m;
-  const kept = filterPreserve(m.pages, (pid) => pid !== pageId);
-  if (kept === m.pages) return m;
-  return { ...m, pages: kept.length > 0 ? kept : "*" };
+  let next = m;
+  if (Array.isArray(m.pages)) {
+    const kept = filterPreserve(m.pages, (pid) => pid !== pageId);
+    if (kept !== m.pages) next = { ...m, pages: kept.length > 0 ? kept : "*" };
+  }
+  return controlWithoutPage(next, pageId);
 }
 
 /** A trigger's conditions without those that matched on the deleted page
@@ -324,11 +418,26 @@ function conditionsWithoutPage(conditions: TriggerCondition[], pageId: string): 
   return filterPreserve(conditions, (c) => !(c.key === "system.current_page" && c.value === pageId));
 }
 
+/** Macro steps without those that move to the deleted page, their branches
+ *  included. */
+function stepsWithoutPage(steps: MacroStep[], pageId: string): MacroStep[] {
+  const kept = filterPreserve(steps, (step) => !isMoveTo(step, pageId));
+  const branch = (s: MacroStep[]) => stepsWithoutPage(s, pageId);
+  return mapPreserve(kept, (step) => withField(withField(step, "then_steps", branch), "else_steps", branch));
+}
+
 function macroWithoutPage(macro: MacroConfig, pageId: string): MacroConfig {
-  return withField(macro, "triggers", (triggers) => mapPreserve(
+  const next = withField(macro, "steps", (steps) => stepsWithoutPage(steps, pageId));
+  return withField(next, "triggers", (triggers) => mapPreserve(
     triggers,
     (t) => withField(t, "conditions", (cs) => conditionsWithoutPage(cs, pageId)),
   ));
+}
+
+/** The page groups without the deleted page: the same array back when no
+ *  group held it. */
+export function removePageFromGroups(groups: PageGroup[], pageId: string): PageGroup[] {
+  return mapPreserve(groups, (group) => withField(group, "pages", (pages) => filterPreserve(pages, (pid) => pid !== pageId)));
 }
 
 export function removePageAndScrubRefs(
