@@ -296,6 +296,46 @@ def _take_placement(el_data: dict, what: str) -> dict | None:
     return place
 
 
+def _checked_bindings(bindings: dict, project: Any, what: str) -> dict:
+    """Bindings in the form the runtime dispatches, or refused in the door's words.
+
+    Every door that takes bindings runs this before anything lands. One action
+    written as an object becomes a list of one -- in the caller's own dict too,
+    since the normalisation is in place -- and anything the runtime would not
+    dispatch is refused, prefixed with whose bindings they were.
+    """
+    bindings = normalize_bindings(bindings)
+    err = validate_bindings(bindings, project)
+    if err:
+        raise ToolEditError({"error": f"{what}: {err}"})
+    return bindings
+
+
+def _check_created_bindings(el_data: dict, project: Any, what: str) -> None:
+    """A create door's bindings, checked in place in the definition it builds from.
+
+    Bindings that are not an object are left to the model, which refuses them
+    with the rest of the definition in its own words.
+    """
+    if isinstance(el_data.get("bindings"), dict):
+        el_data["bindings"] = _checked_bindings(el_data["bindings"], project, what)
+
+
+def _updated_bindings(input: dict, project: Any, what: str) -> dict:
+    """An update's bindings, refused here unless they are an object.
+
+    An update assigns fields to a model that does not validate on assignment
+    (``UIElement`` has no validate_assignment), so a non-object would persist
+    a structurally invalid element rather than be refused by it.
+    """
+    bindings = input["bindings"]
+    if not isinstance(bindings, dict):
+        raise ToolEditError({
+            "error": f"{what}: 'bindings' must be an object, got {type(bindings).__name__}"
+        })
+    return _checked_bindings(bindings, project, what)
+
+
 def _validated_grant(value: Any, what: str) -> Any:
     """Coerce a grant, or say what is wrong with it.
 
@@ -733,11 +773,7 @@ class UIToolsMixin:
                     place = _take_placement(el_data, f"Element '{el_id}'")
                     if place is not None:
                         boxes[el_id] = place
-                    if isinstance(el_data.get("bindings"), dict):
-                        el_data["bindings"] = normalize_bindings(el_data["bindings"])
-                        err = validate_bindings(el_data["bindings"], project)
-                        if err:
-                            raise ToolEditError({"error": f"Element '{el_id}': {err}"})
+                    _check_created_bindings(el_data, project, f"Element '{el_id}'")
                 except (ToolEditError, ValueError) as exc:
                     problems.append(_problem(exc, el_id))
             if problems:
@@ -1009,11 +1045,7 @@ class UIToolsMixin:
                 seen.add(el_id)
                 try:
                     place = _take_placement(el_data, f"Element '{el_id}'")
-                    if "bindings" in el_data and isinstance(el_data["bindings"], dict):
-                        el_data["bindings"] = normalize_bindings(el_data["bindings"])
-                        err = validate_bindings(el_data["bindings"], project)
-                        if err:
-                            raise ToolEditError({"error": f"Element '{el_id}': {err}"})
+                    _check_created_bindings(el_data, project, f"Element '{el_id}'")
                     element = UIElement(**el_data)
                     if element.parent is not None:
                         holder = holders.get(element.parent)
@@ -1123,21 +1155,10 @@ class UIToolsMixin:
             # variant and says so.
             layout = _resolve_layout(target_page, input.get("layout_id"))
 
-            # Validate bindings BEFORE mutating any fields (avoid partial updates).
-            # A non-dict bindings value would bypass the validator AND Pydantic
-            # (UIElement has no validate_assignment), persisting a structurally
-            # invalid element — reject it instead of assigning it raw.
+            # Bindings are checked before any field moves, so a refused update
+            # changes nothing.
             if "bindings" in input:
-                bindings = input["bindings"]
-                if not isinstance(bindings, dict):
-                    raise ToolEditError({
-                        "error": f"Element '{element_id}': 'bindings' must be an object, "
-                                 f"got {type(bindings).__name__}"
-                    })
-                bindings = normalize_bindings(bindings)
-                err = validate_bindings(bindings, project)
-                if err:
-                    raise ToolEditError({"error": f"Element '{element_id}': {err}"})
+                bindings = _updated_bindings(input, project, f"Element '{element_id}'")
 
             _refuse_if_locked(target_el, input, f"Element '{element_id}'")
 
@@ -1336,11 +1357,7 @@ class UIToolsMixin:
             if any(el.id == element_id for el in project.ui.master_elements):
                 raise ToolEditError({"error": f"Master element '{element_id}' already exists"})
 
-            if "bindings" in el_data and isinstance(el_data["bindings"], dict):
-                el_data["bindings"] = normalize_bindings(el_data["bindings"])
-                err = validate_bindings(el_data["bindings"], project)
-                if err:
-                    raise ToolEditError({"error": f"Master element '{element_id}': {err}"})
+            _check_created_bindings(el_data, project, f"Master element '{element_id}'")
             if isinstance(el_data.get("placements"), dict):
                 el_data["placements"] = {
                     key: _rounded_placement(box) if isinstance(box, dict) else box
@@ -1414,17 +1431,9 @@ class UIToolsMixin:
                 })
 
             if "bindings" in input:
-                bindings = input["bindings"]
-                if not isinstance(bindings, dict):
-                    raise ToolEditError({
-                        "error": f"Master element '{element_id}': 'bindings' must be an "
-                                 f"object, got {type(bindings).__name__}"
-                    })
-                bindings = normalize_bindings(bindings)
-                err = validate_bindings(bindings, project)
-                if err:
-                    raise ToolEditError({"error": f"Master element '{element_id}': {err}"})
-                target.bindings = bindings
+                target.bindings = _updated_bindings(
+                    input, project, f"Master element '{element_id}'",
+                )
                 changed.append("bindings")
 
             if "placements" in input:
