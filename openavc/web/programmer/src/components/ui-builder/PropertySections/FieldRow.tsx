@@ -2,6 +2,13 @@
  * The pieces a properties section is built from: a labelled row, the note
  * under one, and the heading over a group of them.
  */
+import type { UIElement } from "../../../api/types";
+
+/** What a row needs: the element, and where its edits go. */
+export interface FieldProps {
+  element: UIElement;
+  onChange: (patch: Partial<UIElement>) => void;
+}
 
 /**
  * One labelled row in the properties panel.
@@ -85,5 +92,31 @@ export function SubSection({ label }: { label: string }) {
     >
       {label}
     </div>
+  );
+}
+
+/** A row whose field is one checkbox, with words saying what ticking it does. */
+export function CheckboxRow({
+  label,
+  checked,
+  onToggle,
+  children,
+}: {
+  label: string;
+  checked: boolean;
+  onToggle: (checked: boolean) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <FieldRow label={label}>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onToggle(e.target.checked)}
+        />
+        {children}
+      </label>
+    </FieldRow>
   );
 }

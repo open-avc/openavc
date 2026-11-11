@@ -17,7 +17,7 @@ import { MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen"
 import { pxToRem, remToPx } from "../uiBuilderHelpers";
 import { resolveMatrixAxis } from "../matrixModel";
 import { MatrixSetupDialog } from "../MatrixSetupDialog";
-import { FieldHint, FieldRow, SubSection } from "./FieldRow";
+import { FieldHint, FieldRow, SubSection, type FieldProps } from "./FieldRow";
 import { StyleColorRow } from "./StyleRows";
 import { useRowKeys } from "./rowKeys";
 
@@ -29,10 +29,7 @@ interface MatrixPreset {
 type MatrixAxis = "sources" | "destinations";
 type MatrixConfig = Record<string, unknown> | undefined;
 
-interface MatrixProps {
-  element: UIElement;
-  onChange: (patch: Partial<UIElement>) => void;
-}
+type MatrixProps = FieldProps;
 
 export function MatrixFields({
   element,
