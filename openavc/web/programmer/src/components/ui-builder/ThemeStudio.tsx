@@ -24,7 +24,6 @@ import { withSurfaceStyle, DEFAULT_FONT, type SurfaceStyle } from "./quickAdjust
 import { QuickAdjustSection } from "./QuickAdjustSection";
 import { themeFile, savedFile, previewColors, customCopy, duplicateOf, keptBeside } from "./themeFiles";
 
-
 interface ThemeTokenDef {
   key: string;
   label: string;
@@ -34,7 +33,7 @@ interface ThemeTokenDef {
 
 // Foundational theme tokens — CSS variables consumed across many elements.
 // Each token is the single canonical edit location for its concept; nothing
-// in ELEMENT_CONTROLS duplicates these.
+// in ELEMENT_SECTIONS (elementControls.ts) duplicates these.
 const THEME_TOKENS: ThemeTokenDef[] = [
   { key: "panel_bg", label: "Page Background", type: "color", hint: "Behind every page" },
   { key: "panel_text", label: "Text Color", type: "color", hint: "Default text on labels, sliders, gauges, lists, inputs" },

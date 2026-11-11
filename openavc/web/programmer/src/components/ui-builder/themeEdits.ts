@@ -7,8 +7,9 @@
  * page defaults left empty, lose their entry, so a theme edited back to where
  * it was compares equal again. (The Page Background section works out its own
  * next page defaults, with its own rule for a cleared field, before handing
- * them to `withPageDefaults`.) A key set again after it was deleted lands at the end of
- * its object, and that does read as unsaved: the comparison is of text.
+ * them to `withPageDefaults`.) A key set again after it was deleted lands at
+ * the end of its object, and that does read as unsaved: the comparison is of
+ * text.
  */
 import type { ThemeDefinition } from "../../api/restClient";
 

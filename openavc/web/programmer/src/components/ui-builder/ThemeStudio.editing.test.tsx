@@ -125,6 +125,7 @@ describe("a theme sent without variables or element defaults", () => {
     expect(screen.queryByText("Unsaved")).toBeNull();
     expect((tokenRow("Border Radius (px)").querySelector("input") as HTMLInputElement).value).toBe("0");
     expect(within(sectionBody("Quick Adjust")).getByRole("radio", { name: "Standard" })).toBeChecked();
+    expect((tokenRow("Font Family").querySelector("select") as HTMLSelectElement).value).toBe("Inter, system-ui, sans-serif");
     fireEvent.change(textIn(controlRow("Label", "Text Color")), { target: { value: "#0f0f0f" } });
     fireEvent.change(textIn(tokenRow("Accent")), { target: { value: "#f0f0f0" } });
     expect(json(working())).toBe(json({
