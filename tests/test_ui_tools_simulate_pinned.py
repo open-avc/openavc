@@ -351,6 +351,7 @@ async def test_only_a_press_is_resolved_as_a_toggle(action):
     ("bare", "press", "'bare' has nothing bound to press. It has no do bindings at all."),
     ("twice", "change", "'twice' has nothing bound to change. It has: release."),
     ("twice", "release", "'twice' has a do.release binding, but no action in it ran."),
+    ("twice", "hold", "'twice' has nothing bound to hold. It has: release."),
     ("m_plain", "hold", "'m_plain' has nothing bound to hold. It has no do bindings at all."),
 ])
 @pytest.mark.parametrize("returned", [None, []])

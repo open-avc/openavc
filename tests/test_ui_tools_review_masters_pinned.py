@@ -47,10 +47,15 @@ def _project(*, masters=None, pages=None, theme=True) -> dict:
                     {"id": "btn", "type": "button", "label": "Go"},
                     {"id": "gone", "type": "button", "label": "Gone",
                      "bindings": {"do": {"press": [{"action": "macro", "macro": "nope"}]}}},
+                    {"id": "fill_me", "type": "slider",
+                     "bindings": {"show": {"value": {"key": "device.amp.level"}}}},
+                    {"id": "cover", "type": "button", "label": "Cover"},
                 ], "layouts": [{"id": "landscape", "primary": True, "placements": {
                     "lvl": {"x": 10, "y": 30, "w": 60, "h": 20},
                     "btn": {"x": 10, "y": 60, "w": 20, "h": 15},
                     "gone": {"x": 40, "y": 60, "w": 20, "h": 15},
+                    "fill_me": {"x": 10, "y": 80, "w": 60, "h": 15},
+                    "cover": {"x": 45, "y": 0, "w": 30, "h": 15},
                 }}]},
                 {"id": "clean", "name": "Clean", "elements": [
                     {"id": "ok", "type": "button", "label": "OK"},
@@ -139,6 +144,8 @@ async def test_the_whole_project_reply_in_full_and_in_order(payload):
     main = result["pages"]["main"]
     assert any("'nope'" in m for m in main), main
     assert any(m.startswith("lvl: max 100 is above the 6 the driver declares") for m in main), main
+    assert any(m.startswith("cover (button) is drawn over the master element m_fine") for m in main), main
+    assert any(m.startswith("lvl") and BIG_THUMB in m for m in main), main
     masters = result["master_elements"]
     assert [m.split(" ")[0] for m in masters] == ["m_slide", "m_slide", "m_tiny", "m_tiny"]
     assert BIG_THUMB in masters[0]
@@ -184,6 +191,8 @@ async def test_masters_alone_can_make_a_project_dirty():
     ]
     assert result["pages_checked"] == []
     assert result["finding_count"] == 4
+    assert result["status"] == "findings"
+    assert result["note"].startswith("The write landed -- these are warnings")
 
 
 @pytest.mark.asyncio
