@@ -324,3 +324,36 @@ def test_settings_handlers_follow_the_commands():
     assert _views(sim)[1] == _h("setting:bright", r"^BRT ([0-9a-fA-F]+)$",
                                 state_changes={"level": 1}, response_var="level",
                                 group_bases={1: 16})
+
+
+# ── what the round's deliberate breaks found unwatched ──
+
+
+def test_a_declared_hex_param_decodes_at_its_own_capture():
+    view = _one({"set": {
+        "send": "S{a:03d}{b:02X}",
+        "params": {"b": {"type": "integer"}, "a": {"type": "integer", "scale": 2}},
+        "sets": {"level": "{a}", "input": "{b}"},
+    }})
+    assert view["state_changes"] == {"level": 1, "input": 2}
+    assert view["group_bases"] == {2: 16}
+    assert view["group_conversions"] == {1: {"scale": 2}}
+
+
+def test_a_child_command_whose_only_param_is_the_child_id_writes_nothing():
+    sim = _sim({"set_gain": {
+        "send": "G{out}",
+        "params": {"out": {"type": "child_id", "child_type": "output"}},
+    }}, child_entity_types={"output": {"state_variables": {"gain": {"type": "integer"}}}})
+    view = _views(sim)[0]
+    assert (view["state_changes"], view["response_var"], view["child_type"],
+            view["child_state_keys"], view["response_is_child"], view["child_id_group"]) == (
+        {}, "gain", "output", set(), True, 1)
+
+
+def test_a_declared_query_for_wins_the_reply_over_what_the_command_sets():
+    view = _one({"set_level": {
+        "send": "L{v}", "params": {"v": {"type": "integer"}},
+        "sets": {"level": "{v}"}, "query_for": "power",
+    }})
+    assert (view["state_changes"], view["response_var"]) == ({"level": 1}, "power")

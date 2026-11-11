@@ -305,3 +305,51 @@ def test_a_list_by_place_renders_each_value_in_the_device_numbers():
     sim._state["output.3.level"] = 7.5
     assert sim.handle_command(b"LVLS") == b"Vgp0*Out1 4 0 15Vid\r"
     assert answer.render(5, ["a", "b"]) == "Vgp0*Out5 a bVid"
+
+
+# ── what the round's deliberate breaks found unwatched ──
+
+
+def test_a_child_template_from_a_rule_with_an_id_map_answers_with_the_device_id():
+    sim = _matrix(responses=[{
+        "match": r"Out(\d) In(\d+)",
+        "child_set": [{"type": "output", "id": {"group": 1, "map": {"0": "1", "1": "2"}},
+                       "state": {"input": "$2"}}],
+    }])
+    sr = sim._child_state_responses[("output", "input")]
+    assert sr.template == "Out{child_id} In{value}"
+    assert sr.id_wire_map == {"1": "0", "2": "1"}
+    assert sr.format("2", 7) == "Out1 In7"
+    assert sr.format("3", 7) == "Out3 In7"
+
+
+def test_a_value_two_rules_map_keeps_the_first_reply_and_a_literal_rule_the_last():
+    sim = _sim(
+        state_variables={"input": {"type": "enum", "values": ["hdmi", "vga"]}},
+        responses=[
+            {"match": r"IN (\d+)", "mappings": [
+                {"state": "input", "group": 1, "map": {"1": "hdmi", "01": "hdmi"}}]},
+            {"match": r"SRC (\w+)", "mappings": [{"state": "input", "group": 1, "map": {"H": "hdmi"}}]},
+            {"match": "VGA", "set": {"input": "vga"}},
+            {"match": "ANALOG", "set": {"input": "vga"}},
+        ],
+    )
+    assert sim._state_responses["input"].value_map == {"hdmi": "IN 1", "vga": "ANALOG"}
+    sim = _sim(
+        state_variables={"input": {"type": "enum", "values": ["hdmi"]}},
+        responses=[
+            {"match": "HDMI", "set": {"input": "hdmi"}},
+            {"match": r"IN (\d+)", "mappings": [{"state": "input", "group": 1, "map": {"1": "hdmi"}}]},
+        ],
+    )
+    assert sim._state_responses["input"].value_map == {"hdmi": "HDMI"}
+
+
+def test_a_capture_reference_on_a_pattern_with_no_group_is_a_literal_reply():
+    sim = _sim(
+        state_variables={"level": {"type": "integer"}},
+        responses=[{"match": "PING", "set": {"level": "$1"}}],
+    )
+    sr = sim._state_responses["level"]
+    assert sr.value_map == {"$1": "PING"}
+    assert sr.template is None

@@ -595,3 +595,24 @@ async def test_an_osc_device_pushes_a_changed_value_as_an_osc_message():
         ("dgram", osc_encode_message("/ch/01/fader", [("f", 0.25)])),
         ("dgram", osc_encode_message("/ch/01/mute", [("i", 1)])),
     ]
+
+
+# ── what the round's deliberate breaks found unwatched ──
+
+
+@pytest.mark.parametrize("template, value, expected", [
+    ("{value:>3}", True, "  1"),
+    ("{value:s}", True, "1"),
+    ("{value:>3}", False, "  0"),
+])
+def test_render_notification_reads_a_boolean_as_its_number(template, value, expected):
+    assert YAMLAutoSimulator._render_notification(template, "power", value) == expected
+
+
+def test_a_registration_command_with_only_a_method_matches_the_root_path():
+    sim = _sim(
+        commands={"hello": {"method": "post"}, "bye": {"path": "/bye/{listener_port}"}},
+        push={"type": "tcp_listener", "register": "hello", "unregister": "bye"},
+    )
+    assert sim._push_tcp["register"].pattern == r"^POST\ /\s*(?:\|.*)?$"
+    assert sim._push_tcp["unregister"].pattern == r"^GET\ /bye/(?P<lport>\d+)\s*(?:\|.*)?$"
