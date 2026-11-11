@@ -4030,6 +4030,63 @@ const tests = {
         assert(routes() === 1, `a gesture the redraw ended still routed (${routes()} routes)`);
     },
 
+    // A tile wall follows the arrangement being drawn: on a portrait page its
+    // eight tiles are two across and four down, on a landscape one four across.
+    matrix_a_tile_wall_takes_the_shape_of_the_page_it_is_drawn_on() {
+        const app = mkApp();
+        const proj = project({
+            elements: [{
+                id: 'mx', type: 'matrix', matrix_style: 'tiles',
+                matrix_config: {
+                    sources: [{ value: 1, label: 'Laptop' }],
+                    destinations: Array.from({ length: 8 }, (_, i) => ({ value: i + 1, label: `D${i + 1}` })),
+                },
+            }],
+            placements: { mx: { x: 0, y: 0, w: 100, h: 100 } },
+            extraLayouts: [{
+                id: 'portrait', orientation: 'portrait', inherits: 'landscape',
+                placements: { mx: { x: 0, y: 0, w: 100, h: 100 } }, hidden: [],
+            }],
+        });
+        const shape = () => {
+            const wall = app.root.querySelector('.matrix-tiles');
+            return [wall.style.gridTemplateColumns.split(',')[0], wall.style.gridTemplateRows.split(',')[0]];
+        };
+        try {
+            setViewport(1280, 800);
+            renderProject(app, proj);
+            assert(JSON.stringify(shape()) === '["repeat(4","repeat(2"]', `landscape wall drew ${shape()}`);
+            setViewport(800, 1280);
+            app.renderCurrentPage();
+            assert(JSON.stringify(shape()) === '["repeat(2","repeat(4"]', `portrait wall drew ${shape()}`);
+        } finally {
+            setViewport(1280, 800);
+        }
+    },
+
+    // A tile's source chooser lives on document.body, outside the element, so
+    // a page redraw has to take it down: it would otherwise route a tile that
+    // is no longer on the page.
+    matrix_a_redraw_takes_down_an_open_chooser() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        renderProject(app, project({
+            elements: [{
+                id: 'mx', type: 'matrix', matrix_style: 'tiles',
+                matrix_config: {
+                    sources: [{ value: 1, label: 'Laptop' }],
+                    destinations: [{ value: 1, label: 'Left', route_key: 'device.sw.route_1' }],
+                },
+            }],
+            placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
+        }));
+        app.root.querySelector('.matrix-tile')
+            .dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+        assert(document.querySelectorAll('.matrix-chooser').length === 1, 'the tile opened its chooser');
+        app.renderCurrentPage();
+        assert(document.querySelectorAll('.matrix-chooser').length === 0, 'a redraw left the chooser open');
+    },
+
     // A lock is watched by its own key, so a lock variable that changes on
     // its own -- another panel pressed it -- redraws the lock here.
     matrix_a_lock_variable_alone_redraws_the_lock() {

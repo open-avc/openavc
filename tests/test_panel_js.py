@@ -212,6 +212,8 @@ SCENARIOS = [
     "q139_a_matrix_preset_and_lock_name_the_control_they_came_from",
     "matrix_a_redraw_ends_a_crosspoint_gesture_without_routing",
     "matrix_a_lock_variable_alone_redraws_the_lock",
+    "matrix_a_tile_wall_takes_the_shape_of_the_page_it_is_drawn_on",
+    "matrix_a_redraw_takes_down_an_open_chooser",
     # The Programmer's session reaches the embedded panel's requests and socket.
     "bridge_sends_the_programmer_session_as_a_bearer_token",
     "bridge_attaches_nothing_without_a_session",
