@@ -18,6 +18,7 @@ from openavc.cloud.tools.ui_layouts import (
     rounded_placement,
     set_hidden,
 )
+from openavc.cloud.tools.ui_rewrites import scrub_page_references
 from openavc.cloud.tools.ui_lookups import (
     declared_state_variable,
     longest_first,
@@ -111,38 +112,6 @@ def _page_named(project: Any, page_id: str) -> Any:
     if page is None:
         raise ToolEditError({"error": f"UI page '{page_id}' not found"})
     return page
-
-
-def _scrub_navigate_actions(el: Any, page_id: str) -> None:
-    """Drop navigate actions targeting a deleted page from every do-slot.
-
-    Mirrors the Builder's scrub on page delete: every interaction slot, array
-    or legacy single-object shape alike. One spelling to check -- the binding
-    action is `ui.navigate`, same as the macro step and the WS frame.
-    """
-    bindings = el.bindings if isinstance(el.bindings, dict) else None
-    do_map = bindings.get("do") if bindings else None
-    if not isinstance(do_map, dict):
-        return
-
-    def dead(action: Any) -> bool:
-        return (
-            isinstance(action, dict)
-            and action.get("action") == "ui.navigate"
-            and action.get("page") == page_id
-        )
-
-    for slot in list(do_map.keys()):
-        raw = do_map[slot]
-        if isinstance(raw, list):
-            kept = [a for a in raw if not dead(a)]
-            if len(kept) != len(raw):
-                if kept:
-                    do_map[slot] = kept
-                else:
-                    del do_map[slot]
-        elif dead(raw):
-            del do_map[slot]
 
 
 def _reject_retired_geometry(data: dict, what: str) -> None:
@@ -777,47 +746,9 @@ class UIToolsMixin:
 
         def mutate(project):
             nonlocal element_count
-            # Count elements being removed
-            for pg in project.ui.pages:
-                if pg.id == page_id:
-                    element_count = len(pg.elements)
-                    break
-
-            original_count = len(project.ui.pages)
+            element_count = len(_page_named(project, page_id).elements)
             project.ui.pages = [p for p in project.ui.pages if p.id != page_id]
-            if len(project.ui.pages) == original_count:
-                raise ToolEditError({"error": f"UI page '{page_id}' not found"})
-
-            # Scrub everything that pointed at the page -- the same set the
-            # Builder's page delete scrubs, so a page deleted by the AI does
-            # not leave masters pinned to a ghost and nav buttons that go
-            # nowhere.
-            for master in project.ui.master_elements:
-                if isinstance(master.pages, list) and page_id in master.pages:
-                    remaining = [pid for pid in master.pages if pid != page_id]
-                    # A master shown nowhere is invisible with no way to see
-                    # why; every-page is the least surprising repair.
-                    master.pages = remaining if remaining else "*"
-            for pg in project.ui.pages:
-                for el in pg.elements:
-                    if el.type == "page_nav" and el.target_page == page_id:
-                        el.target_page = ""
-                    _scrub_navigate_actions(el, page_id)
-            for macro in project.macros:
-                for trigger in macro.triggers or []:
-                    if trigger.conditions:
-                        trigger.conditions = [
-                            c for c in trigger.conditions
-                            if not (getattr(c, "key", None) == "system.current_page"
-                                    and getattr(c, "value", None) == page_id)
-                        ]
-            if project.ui.settings.idle_page == page_id:
-                project.ui.settings.idle_page = (
-                    project.ui.pages[0].id if project.ui.pages else ""
-                )
-            for group in project.ui.page_groups:
-                if page_id in group.pages:
-                    group.pages = [pid for pid in group.pages if pid != page_id]
+            scrub_page_references(project, page_id)
 
         err = await apply_tool_edit(engine, mutate)
         if err:
