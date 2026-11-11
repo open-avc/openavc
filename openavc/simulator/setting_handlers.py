@@ -157,10 +157,10 @@ def _filled(value: Any) -> str | None:
 def wire_line(template: str, instance_config: Callable[[], dict]) -> str | None:
     """The one segment of a write that holds ``{value}`` (the one name the
     runtime always fills with the value being written, with or without a
-    format spec), its config placeholders filled the way the driver fills
-    them (yaml_auto's ``_query_wire_line`` does the same for a raw poll
-    query), stripped; None when no segment holds it. ``{value}`` is never a
-    config key: it is left for ``send_regex`` to turn into the capture."""
+    format spec), its config placeholders filled from the instance's config
+    as the driver fills them, stripped; None when no segment holds it.
+    ``{value}`` is never a config key: it is left for ``send_regex`` to turn
+    into the capture."""
     segments = [
         s for s in decode_delimiter(template).replace("\r", "\n").split("\n")
         if s.strip()

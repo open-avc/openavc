@@ -172,7 +172,7 @@ def _as_number(value: Any) -> float | None:
 _HANDLER_PLACEHOLDER = re.compile(r"\{(?:\d+|state\.[^{}]+)\}")
 _HANDLER_STATE_REF = re.compile(r"\{state\.([^{}]+)\}")
 
-def _udp_side_commands(driver_def: dict) -> dict[str, dict]:
+def _side_send_blocks(driver_def: dict) -> dict[str, dict]:
     """Each command's udp: block, by command name."""
     return {
         name: cmd["udp"]
@@ -262,7 +262,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         self._is_udp = transport == "udp"
         self._is_osc = transport == "osc"
         self._is_http = transport == "http"
-        self._udp_side_commands: dict[str, dict] = _udp_side_commands(driver_def)
+        self._udp_side_commands: dict[str, dict] = _side_send_blocks(driver_def)
         self._side_receiver = bool(self._udp_side_commands) and not (
             self._is_udp or self._is_osc
         )
@@ -285,12 +285,14 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         self._build_settings_handlers()
         self._query_handlers = flat_handlers(self._driver_def, self._query_wire_line)
         self._build_inline_handlers()
-        self._build_osc_handlers()
+        self._build_osc_handlers_and_echo_guards()
 
-    def _build_osc_handlers(self) -> None:
+    def _build_osc_handlers_and_echo_guards(self) -> None:
         """An OSC device's address rules and where each variable's change is
-        pushed (the client is the datagram server's _last_client_addr), with
-        the flags that keep a reply from echoing as a push."""
+        pushed (the client is the datagram server's _last_client_addr), and
+        the two flags that keep state written while answering from echoing
+        as a push: ``_handling_command`` for a line on any transport,
+        ``_handling_osc`` for an OSC message."""
         self._osc_address_handlers: list[tuple[str, list[dict]]] = []
         self._osc_script_handlers: list[OSCScriptHandler] = []
         self._handling_command = False
@@ -1759,7 +1761,7 @@ _HANDLER_CHAIN: tuple[_HandlerFamily, ...] = (
 )
 
 
-# ── Data classes ──
+# ── Reading a command, and the simulator: section's handler classes ──
 
 def _framed_send(cmd_def: dict, prefix: str) -> Any:
     """The text a command puts on the wire, framed with the driver's prefix
