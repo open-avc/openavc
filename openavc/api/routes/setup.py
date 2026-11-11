@@ -693,7 +693,10 @@ _PAGE = """<!DOCTYPE html>
           // The interface list re-renders after an apply, so the result
           // goes to the shared status line that survives the refresh.
           var shared = document.getElementById('netcfg-msg');
-          if (b.ok && b.reboot) {
+          // Every host network call answers `success` (with `error` beside
+          // it when the host said no); `ok` is the backends' own word and
+          // never reaches this screen.
+          if (b.success && b.reboot) {
             // Saved to the boot configuration; the device is restarting.
             // Skip the refresh — the server is going down with it, and
             // this screen recovers on its own after the boot.
@@ -701,7 +704,7 @@ _PAGE = """<!DOCTYPE html>
             shared.textContent = iface.device + ': saved. The device is restarting to apply the new settings.';
             return;
           }
-          if (b.ok) {
+          if (b.success) {
             shared.className = 'net-msg ok';
             shared.textContent = iface.device + ': applied.';
           } else if (b.rolled_back) {
@@ -789,7 +792,7 @@ _PAGE = """<!DOCTYPE html>
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
       .then(function (resp) {
         btn.disabled = false;
-        if (resp.ok && resp.body.ok) {
+        if (resp.ok && resp.body.success) {
           msgEl.className = 'net-msg ok';
           msgEl.textContent = 'Connected to ' + wifiPick.ssid + '.';
           document.getElementById('wifi-join').hidden = true;
@@ -828,7 +831,7 @@ _PAGE = """<!DOCTYPE html>
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('http')); })
       .then(function (d) {
         box.disabled = false;
-        if (d && d.ok === false) {
+        if (d && d.success === false) {
           box.checked = !enabled;
           show('wifi-controls', !enabled);
           msgEl.className = 'net-msg err';
