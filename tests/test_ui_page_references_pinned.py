@@ -406,6 +406,26 @@ def test_a_file_is_found_however_its_slashes_are_written() -> None:
     assert _answer(page, ui_files={"room/index.html"}) == []
 
 
+def test_two_elements_with_one_id_share_the_last_ones_file() -> None:
+    """Element ids are not unique to the loader, and the file is found by id."""
+    page = _raw_page([
+        {"id": "dup", "type": "custom", "custom_file": "first.html"},
+        {"id": "dup", "type": "plugin"},
+        {"id": "dup", "type": "custom", "custom_file": "last.html"},
+    ])
+    assert _answer(page, ui_files=set()) == EXPECTED_SHARED_ID
+
+
+def test_two_stray_keys_are_said_as_two() -> None:
+    page = _raw_page([{
+        "id": "sel", "type": "select", "options": [{"value": "a"}],
+        "bindings": {"do": {"change": [{"action": "value_map", "map": {
+            "y": None, "x": None, "a": None,
+        }}]}},
+    }])
+    assert _answer(page) == EXPECTED_TWO_STRAYS
+
+
 # --- Expected answers, recorded from the module as it was (openavc ad49ef6a) ---
 
 EXPECTED_EVERYTHING = [('main',
@@ -699,3 +719,31 @@ EXPECTED_NO_TYPE = [('x',
   'dangling_reference',
   "x (?) do.press[0] runs macro 'nope', which does not exist. The macros are: system_on.",
   ('dangling_reference', 'x', 'do.press[0]', 'macro'))]
+
+EXPECTED_SHARED_ID = [('main',
+  'dangling_reference',
+  "dup (custom control) shows 'last.html', which is not in the project's ui/ folder, so it "
+  'draws an empty box. The files there are: none yet.',
+  ('dangling_reference', 'dup', 'custom_file.last.html')),
+ ('dup',
+  'plugin_element_unconfigured',
+  'dup (plugin) has no plugin_id and no plugin_type, so the panel draws its unconfigured '
+  'placeholder instead of anything. A plugin element needs both, read off the installed '
+  'plugin.',
+  ('plugin_element_unconfigured', 'dup', 'missing')),
+ ('main',
+  'dangling_reference',
+  "dup (custom control) shows 'last.html', which is not in the project's ui/ folder, so it "
+  'draws an empty box. The files there are: none yet.',
+  ('dangling_reference', 'dup', 'custom_file.last.html')),
+ ('main',
+  'dangling_reference',
+  "dup (custom control) shows 'last.html', which is not in the project's ui/ folder, so it "
+  'draws an empty box. The files there are: none yet.',
+  ('dangling_reference', 'dup', 'custom_file.last.html'))]
+
+EXPECTED_TWO_STRAYS = [('sel',
+  'dangling_reference',
+  "sel (select) do.change[0] maps 'x', 'y', which are not among its options (a), so nothing "
+  'the user can pick reaches them.',
+  ('dangling_reference', 'sel', 'do.change[0]', 'value_map'))]
