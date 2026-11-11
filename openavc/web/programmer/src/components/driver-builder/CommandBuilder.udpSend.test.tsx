@@ -8,7 +8,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // the MAC picker offers every field a MAC can live in with state first, which
 // is the order the runtime reads them in.
 
-import { CommandBuilder, macFieldOptions } from "./CommandBuilder";
+import { CommandBuilder } from "./CommandBuilder";
+import { macFieldOptions } from "./UdpSendFields";
 import type { DriverDefinition } from "../../api/types";
 
 function draftWith(commands: DriverDefinition["commands"]): DriverDefinition {

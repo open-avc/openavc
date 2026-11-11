@@ -83,7 +83,7 @@ describe("switching the transport", () => {
 // them: a roster sized by "host", or a Wake-on-LAN MAC read from it.
 describe("pickers over a driver's config fields", () => {
   it("leave the connection fields out of the Wake-on-LAN MAC choices", async () => {
-    const { macFieldOptions } = await import("./CommandBuilder");
+    const { macFieldOptions } = await import("./UdpSendFields");
     const options = macFieldOptions({
       state_variables: {},
       config_schema: { ...connectionFieldsFor("tcp"), mac_address: { type: "string", label: "MAC" } },

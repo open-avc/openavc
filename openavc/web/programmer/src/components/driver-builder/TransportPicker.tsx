@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { DriverDefinition } from "../../api/types";
 import { INTERCHANGEABLE_TRANSPORTS } from "../../api/types";
 import { scrubForTransport } from "./validateDriver";
-import { KeyValueList } from "./CommandBuilder";
+import { KeyValueList } from "./KeyValueList";
 import {
   displayDelimiter,
   normalizeDelimiter,
