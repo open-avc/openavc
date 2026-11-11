@@ -98,7 +98,9 @@ interface UIBuilderStore {
   pushUndo: (snapshot: UndoScope, description: string) => void;
   /** A quick edit: one undo entry for the whole run. The run's first edit
    *  pushes the entry; a later one joins it when it comes within RUN_IDLE_MS
-   *  of the last. */
+   *  of the last and names only parts of the project that entry holds. An
+   *  edit of another part (a theme override after a control's label) starts
+   *  an entry of its own: joined, its undo would put back only the first. */
   joinUndo: (snapshot: UndoScope, description: string) => void;
   /** End the run in progress, so the next quick edit starts an entry of its own. */
   endEditRun: () => void;
@@ -219,7 +221,7 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   joinUndo: (snapshot, description) => {
     const parts = Object.keys(snapshot);
     let run = get().editRun;
-    if (!run) {
+    if (!run || !parts.every((part) => run!.parts.includes(part))) {
       get().pushUndo(snapshot, description);
       run = { parts };
       set({ editRun: run });

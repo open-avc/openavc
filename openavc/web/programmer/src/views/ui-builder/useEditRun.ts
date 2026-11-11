@@ -6,8 +6,10 @@
  * theme change, a dialog's Save) is an undo entry of its own (`commit`). A
  * run edit (typing in the Properties panel, a held arrow key, dragging a
  * colour) joins the run in progress (`join`): the run's first edit pushes the
- * entry, holding the project from before it, and the run ends 0.8 s after its
- * last edit, and when the selection changes.
+ * entry, holding the part of the project it changes from before it, and the
+ * run ends 0.8 s after its last edit, when the selection changes, and on an
+ * edit of another part (the pages, the masters, the settings), which starts
+ * an entry of its own.
  *
  * The run itself is the Builder store's (`joinUndo`), so every other writer
  * ends it without knowing it is there: any entry pushed (a structural edit

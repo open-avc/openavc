@@ -85,26 +85,37 @@ describe("a run of quick edits is one undo entry", () => {
     expect(saves.debouncedSave).toHaveBeenCalledTimes(3);
   });
 
-  it("shares one run across the page, a master, the theme and a control", async () => {
+  it("shares one run between the page and a control, which are both the pages", async () => {
     await drawn();
     call(() => props().onPageChange({ name: "Lobby" }));
     call(() => props().onChange("btn_1", { label: "A" }));
-    call(() => props().onMasterElementChange("m_1", { label: "M" }));
-    call(() => seen.ThemeStudio.onClearOverrides());
     expect(undoLog()).toEqual([["Edit page properties", "pages"]]);
-    expect(pageOf("main").name).toBe("Lobby");
-    expect(ui().master_elements![0].label).toBe("M");
-    expect(ui().settings.theme_overrides).toEqual({});
+    call(() => builder().undo());
+    expect(pageOf("main").name).toBe("Main");
+    expect(elOf("main", "btn_1").label).toBe("btn_1");
   });
 
-  it("starts with whichever edit came first: a master, then the theme", async () => {
+  it("ends a run on an edit of another part of the project, each entry undoing its own part", async () => {
     await drawn();
+    call(() => props().onChange("btn_1", { label: "A" }));
     call(() => props().onMasterElementChange("m_1", { label: "M" }));
     call(() => seen.ThemeStudio.onClearOverrides());
-    expect(undoLog()).toEqual([["Edit master element", "master_elements"]]);
-    call(() => vi.advanceTimersByTime(800));
-    call(() => seen.ThemeStudio.onClearOverrides());
-    expect(undoLog()).toEqual([["Edit master element", "master_elements"], ["Edit theme overrides", "settings"]]);
+    call(() => props().onChange("btn_1", { label: "AB" }));
+    expect(undoLog()).toEqual([
+      ["Edit element", "pages"],
+      ["Edit master element", "master_elements"],
+      ["Edit theme overrides", "settings"],
+      ["Edit element", "pages"],
+    ]);
+    call(() => builder().undo());
+    expect(elOf("main", "btn_1").label).toBe("A");
+    expect(ui().settings.theme_overrides).toEqual({});
+    call(() => builder().undo());
+    expect(ui().settings.theme_overrides).toEqual({ accent: "#123456" });
+    expect(ui().master_elements![0].label).toBe("M");
+    call(() => builder().undo());
+    expect(ui().master_elements![0].label).not.toBe("M");
+    expect(elOf("main", "btn_1").label).toBe("A");
   });
 
   it("ends a run on any structural edit, so the next property edit is its own entry", async () => {
