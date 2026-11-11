@@ -344,14 +344,19 @@ const UNNAMED_STEP: Record<BrokenReference["kind"], string> = {
   page: "ui.navigate",
 };
 
+/** The device group a group command names that is not in the project. */
+function missingGroup(step: MacroStep, refs: ProjectRefs): string | null {
+  if (step.action !== "group.command" || !step.group) return null;
+  return refs.groupIds.has(step.group) ? null : step.group;
+}
+
 /** The device, macro or page a step names that is not in the project: the
  *  field an action names, read as a control's action is (`brokenReference`), in
  *  the same words; and a group command's device group, which no control action
  *  names. `at` places a finding, given what to call a step with no description. */
 function stepReferenceIssues(step: MacroStep, at: (unnamed: string) => string, refs: ProjectRefs): ValidationIssue[] {
-  if (step.action === "group.command" && step.group && !refs.groupIds.has(step.group)) {
-    return [{ severity: "error", message: `Device group "${step.group}" not found`, location: at("group.command") }];
-  }
+  const group = missingGroup(step, refs);
+  if (group) return [{ severity: "error", message: `Device group "${group}" not found`, location: at("group.command") }];
   const broken = brokenReference(step as unknown as Record<string, unknown>, refs);
   if (!broken) return [];
   return [{ severity: "error", message: validateSays(broken), location: at(UNNAMED_STEP[broken.kind]) }];

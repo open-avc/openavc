@@ -27,6 +27,7 @@ and it is invisible precisely because nobody reopens a macro that saved.
 from __future__ import annotations
 
 from collections.abc import Callable, Collection, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from openavc.core.condition_eval import _OPERATOR_ALIASES as _COND_ALIASES
@@ -449,60 +450,110 @@ def validate_macro(
         )
     ]
     warnings: list[str] = []
-
-    # Soft reference checks
     if project and not errors:
-        # Imported here: openavc.ui's reviews import this module.
-        from openavc.ui.page_references import NAVIGATION_SENTINELS
-
-        macro_ids = {m.id for m in project.macros} if hasattr(project, "macros") else set()
-        device_ids = {d.id for d in project.devices} if hasattr(project, "devices") else set()
-        group_ids = {g.id for g in project.device_groups} if hasattr(project, "device_groups") else set()
-        ui = getattr(project, "ui", None)
-        page_ids = {p.id for p in ui.pages} if ui is not None and hasattr(ui, "pages") else set()
-        # A group's MEMBERS are ids too, and nothing anywhere checked them: the
-        # project save is shape-only, so a group listing a device that does not
-        # exist saves silently and the fan-out then reports the ghost as an
-        # offline device. Same soft-warning treatment as the ids beside it —
-        # a group may legitimately be built before its devices are added.
-        group_members = (
-            {g.id: list(g.device_ids or []) for g in project.device_groups}
-            if hasattr(project, "device_groups") else {}
-        )
-
-        def _check_step_refs(step: dict, path: str) -> None:
-            action = step.get("action", "")
-            if action == "device.command" and step.get("device"):
-                if step["device"] not in device_ids:
-                    warnings.append(f"{path}: device '{step['device']}' not found in project")
-            if action == "group.command" and step.get("group"):
-                if step["group"] not in group_ids:
-                    warnings.append(f"{path}: device group '{step['group']}' not found in project")
-                else:
-                    for member in group_members.get(step["group"], []):
-                        if member not in device_ids:
-                            warnings.append(
-                                f"{path}: device group '{step['group']}' lists device "
-                                f"'{member}', which is not in the project"
-                            )
-            if action == "macro" and step.get("macro"):
-                if step["macro"] not in macro_ids:
-                    warnings.append(f"{path}: macro '{step['macro']}' not found in project")
-            page = step.get("page")
-            if action == "ui.navigate" and page and page not in page_ids and page not in NAVIGATION_SENTINELS:
-                warnings.append(f"{path}: page '{page}' not found in project")
-            for branch in ("then_steps", "else_steps"):
-                for i, sub in enumerate(step.get(branch) or []):
-                    if isinstance(sub, dict):
-                        _check_step_refs(sub, f"{path}.{branch}[{i}]")
-
-        if isinstance(steps, list):
-            for i, step in enumerate(steps):
-                if isinstance(step, dict):
-                    _check_step_refs(step, f"steps[{i}]")
+        refs = _ProjectRefs.of(project)
+        for i, step in enumerate(steps if isinstance(steps, list) else []):
+            if isinstance(step, dict):
+                warnings += _reference_warnings(step, f"steps[{i}]", refs)
 
     if errors:
         return "Macro validation failed: " + "; ".join(errors)
     if warnings:
         log.warning("Macro reference warnings: %s", "; ".join(warnings))
     return None
+
+
+# --- Soft reference checks ----------------------------------------------------
+#
+# What ``validate_macro`` logs, never refuses: an id a step names that this
+# project does not have. A macro may legitimately be authored before the
+# device, group or page it names exists.
+
+
+@dataclass(frozen=True)
+class _ProjectRefs:
+    """The ids a macro step may name, read once from the project."""
+
+    devices: frozenset[str]
+    macros: frozenset[str]
+    #: Each group's MEMBERS too, which nothing else checks: the project save
+    #: is shape-only, so a group listing a device that does not exist saves
+    #: silently and the fan-out then reports the ghost as an offline device.
+    groups: Mapping[str, list[str]]
+    #: The pages a page move can land on: the project's, and the panel's own
+    #: ``$back`` and ``$dismiss``.
+    page_targets: frozenset[str]
+
+    @classmethod
+    def of(cls, project: Any) -> _ProjectRefs:
+        # Imported here: openavc.ui's reviews import this module.
+        from openavc.ui.page_references import NAVIGATION_SENTINELS
+
+        return cls(
+            devices=_ids(project, "devices"),
+            macros=_ids(project, "macros"),
+            groups={g.id: list(g.device_ids or []) for g in _listed(project, "device_groups")},
+            page_targets=_ids(getattr(project, "ui", None), "pages") | NAVIGATION_SENTINELS,
+        )
+
+
+def _listed(holder: Any, name: str) -> list:
+    """``holder.<name>``, or an empty list when it has none."""
+    return getattr(holder, name, None) or []
+
+
+def _ids(holder: Any, name: str) -> frozenset[str]:
+    return frozenset(item.id for item in _listed(holder, name))
+
+
+def _device_reference(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
+    device = step.get("device")
+    if not device or device in refs.devices:
+        return []
+    return [f"{path}: device '{device}' not found in project"]
+
+
+def _group_reference(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
+    group = step.get("group")
+    if not group:
+        return []
+    if group not in refs.groups:
+        return [f"{path}: device group '{group}' not found in project"]
+    return [
+        f"{path}: device group '{group}' lists device '{member}', which is not in the project"
+        for member in refs.groups[group] if member not in refs.devices
+    ]
+
+
+def _macro_reference(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
+    macro = step.get("macro")
+    if not macro or macro in refs.macros:
+        return []
+    return [f"{path}: macro '{macro}' not found in project"]
+
+
+def _page_reference(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
+    page = step.get("page")
+    if not page or page in refs.page_targets:
+        return []
+    return [f"{path}: page '{page}' not found in project"]
+
+
+#: The one id each action names, checked by its kind.
+_REFERENCE_CHECKS: dict[str, Callable[[dict, str, _ProjectRefs], list[str]]] = {
+    "device.command": _device_reference,
+    "group.command": _group_reference,
+    "macro": _macro_reference,
+    "ui.navigate": _page_reference,
+}
+
+
+def _reference_warnings(step: dict, path: str, refs: _ProjectRefs) -> list[str]:
+    """What ``step`` names that the project does not have, then its branches'."""
+    check = _REFERENCE_CHECKS.get(step.get("action", ""))
+    found = check(step, path, refs) if check else []
+    for branch in ("then_steps", "else_steps"):
+        for i, sub in enumerate(step.get(branch) or []):
+            if isinstance(sub, dict):
+                found += _reference_warnings(sub, f"{path}.{branch}[{i}]", refs)
+    return found
