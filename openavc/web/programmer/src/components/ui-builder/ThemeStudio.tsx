@@ -15,7 +15,7 @@ import { Modal } from "../shared/Modal";
 import { PanelPreviewFrame } from "./PanelPreviewFrame";
 import { NumericInput } from "../shared/NumericInput";
 import { contrastRatio, wcagLevel, CSS_VAR_FALLBACKS, type WcagLevel } from "./colorUtils";
-import { ColorPickerCell } from "./ColorPickerCell";
+import { ColorField } from "./ColorField";
 import { ElementSections } from "./ElementSections";
 import { ResetToSaved, StudioSection } from "./StudioParts";
 import { editableCopy, withVariable, withElementDefault, withPageDefaults, differsFromSaved } from "./themeEdits";
@@ -1577,11 +1577,6 @@ function EditorColumn({
               const val = vars[tok.key];
               const saved = savedVars[tok.key];
               const isModified = differsFromSaved(val, saved);
-              // When a color token is cleared the panel renders the CSS :root
-              // fallback — show that effective value (swatch + placeholder) rather
-              // than a misleading blank/black field.
-              const fallback = CSS_VAR_FALLBACKS[tok.key];
-              const isInherited = (val == null || val === "") && !!fallback;
               return (
                 <div key={tok.key}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -1597,21 +1592,13 @@ function EditorColumn({
                       {tok.label}
                     </label>
                     {tok.type === "color" ? (
-                      <>
-                        <ColorPickerCell
-                          value={String(val ?? "")}
-                          fallback={fallback}
-                          onChange={(next) => onSetVar(tok.key, next)}
-                        />
-                        <input
-                          type="text"
-                          value={String(val ?? "")}
-                          placeholder={isInherited ? `${fallback} (inherited)` : ""}
-                          title={isInherited ? `Inherits ${fallback}` : undefined}
-                          onChange={(e) => onSetVar(tok.key, e.target.value)}
-                          style={{ flex: 1, fontSize: 11, fontFamily: "monospace" }}
-                        />
-                      </>
+                      // A cleared colour token draws the panel's own default for it.
+                      <ColorField
+                        value={val}
+                        inherits={CSS_VAR_FALLBACKS[tok.key]}
+                        fontSize={11}
+                        onChange={(next) => onSetVar(tok.key, next)}
+                      />
                     ) : tok.type === "number" ? (
                       <NumericInput
                         owner={`${working?.id ?? ""}/${tok.key}`}

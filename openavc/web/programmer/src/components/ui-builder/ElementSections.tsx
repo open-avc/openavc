@@ -10,7 +10,7 @@
  * opens nothing.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ColorPickerCell } from "./ColorPickerCell";
+import { ColorField } from "./ColorField";
 import { CSS_VAR_FALLBACKS } from "./colorUtils";
 import { ELEMENT_ORDER, ELEMENT_SECTIONS, hasElementSection, type ElementControl } from "./elementControls";
 import { ResetToSaved, StudioSection } from "./StudioParts";
@@ -229,28 +229,13 @@ function controlField(control: ElementControl, value: unknown, onChange: (next: 
 }
 
 /**
- * A colour: the swatch and the text box. A cleared colour that lives in a
- * variable inherits the panel's own default for it, which is shown; one that
- * lives in the element defaults inherits from the theme, with no one value to
- * show, so it only says so.
+ * A colour. A cleared colour that lives in a variable inherits the panel's own
+ * default for it; one that lives in the element defaults inherits from the
+ * theme, with no one value to name.
  */
 function colorField(control: ElementControl, value: unknown, onChange: (next: unknown) => void) {
-  const fallback = control.source.kind === "var" ? CSS_VAR_FALLBACKS[control.source.key] : undefined;
-  const inherited = value == null || value === "";
-  const text = String(value ?? "");
-  return (
-    <>
-      <ColorPickerCell value={text} fallback={fallback} onChange={(next) => onChange(next)} />
-      <input
-        type="text"
-        value={text}
-        placeholder={inherited ? (fallback ? `${fallback} (inherited)` : "inherited") : ""}
-        title={inherited ? (fallback ? `Inherits ${fallback}` : "Inherits the theme default") : undefined}
-        onChange={(e) => onChange(e.target.value)}
-        style={{ flex: 1, fontSize: 10, fontFamily: "monospace" }}
-      />
-    </>
-  );
+  const inherits = control.source.kind === "var" ? CSS_VAR_FALLBACKS[control.source.key] : undefined;
+  return <ColorField value={value} inherits={inherits} fontSize={10} onChange={onChange} />;
 }
 
 /** A length typed in pixels and stored in rem; emptied, it is cleared. */
