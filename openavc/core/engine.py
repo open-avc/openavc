@@ -186,7 +186,9 @@ class Engine(
         # The device bring-up worker's slot and its "another round" flag.
         self._init_reconcile()
 
-        # Tracking
+        # Tracking. The start is read from time.monotonic(), never the wall
+        # clock: a computer with no battery-backed clock is set by network
+        # time after boot, sometimes days away, and uptime would jump with it.
         self._start_time: float = 0
         self._running = False
 
@@ -655,7 +657,7 @@ class Engine(
         disclose LAN reconnaissance details; authenticated callers (the IDE,
         which needs them to build panel access URLs) get the full set.
         """
-        uptime = time.time() - self._start_time if self._start_time else 0
+        uptime = time.monotonic() - self._start_time if self._start_time else 0
 
         status = {
             "status": "running" if self._running else "stopped",

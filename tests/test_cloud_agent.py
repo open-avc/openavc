@@ -993,7 +993,7 @@ class TestHeartbeat:
             def list_devices(self):
                 return []
 
-        booted = time.time() - 7440  # 2h 4m ago, the observed case
+        booted = time.monotonic() - 7440  # 2h 4m ago, the observed case
         collector = HeartbeatCollector(StateStore(), FakeDevices(), start_time=booted)
 
         metrics = await collector.collect()

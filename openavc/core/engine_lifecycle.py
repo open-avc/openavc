@@ -238,7 +238,7 @@ class EngineLifecycleMixin:
         this sequence too, and vice versa.
         """
         log.info("Engine starting...")
-        self._start_time = time.time()
+        self._start_time = time.monotonic()
         self._push_state_to_clients()
         sys_config = prepare_host(self.project_path.parent)
         self._publish_system_keys(sys_config)

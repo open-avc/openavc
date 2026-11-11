@@ -53,7 +53,8 @@ class HeartbeatCollector:
             devices: The DeviceManager for device counts.
             ws_client_count_fn: Optional callable returning the number of
                                 active WebSocket clients.
-            start_time: When the SYSTEM came up, as ``time.time()``. The engine
+            start_time: When the SYSTEM came up, as ``time.monotonic()`` (the
+                wall clock can be set days away after boot). The engine
                 passes its own, because this collector is built when the cloud
                 subsystem starts and that is not when the box did.
         """
@@ -68,7 +69,7 @@ class HeartbeatCollector:
         # portal, minutes after pairing, which is exactly when a new customer
         # is looking at it -- and the cloud number reset on any agent restart
         # while the room had not gone anywhere.
-        self._start_time = start_time or time.time()
+        self._start_time = start_time or time.monotonic()
 
         # Resolve data directory for disk usage reporting
         from openavc.system_config import get_data_dir
@@ -92,7 +93,7 @@ class HeartbeatCollector:
             Dict matching the heartbeat payload schema.
         """
         return build_heartbeat_payload(
-            uptime_seconds=int(time.time() - self._start_time),
+            uptime_seconds=int(time.monotonic() - self._start_time),
             cpu_percent=self._get_cpu_percent(),
             memory_percent=self._get_memory_percent(),
             disk_percent=self._get_disk_percent(),
