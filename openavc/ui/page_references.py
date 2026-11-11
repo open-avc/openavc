@@ -65,7 +65,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from openavc.ui.page_review import Finding
@@ -96,6 +96,72 @@ def _mapping(value: Any) -> Mapping[str, Any] | None:
     return dump() if callable(dump) else None
 
 
+@dataclass(frozen=True)
+class _Project:
+    """What the project holds, and what its drivers, plugins and ``ui/`` folder say.
+
+    ``reference_findings`` builds one per call from its keyword arguments and
+    every check below reads it, so a new question for the platform is a field
+    here and a keyword there, not an argument passed down every function in
+    the file. Each lookup answers None for "no opinion", which never warns;
+    what an EMPTY answer means is each check's own call (an empty command list
+    warns, an empty roster does not).
+    """
+
+    page_ids: set[str]
+    device_ids: set[str]
+    macro_ids: set[str]
+    device_commands: Callable[[str], set[str] | None] | None = None
+    plugin_elements: Callable[[str], set[str] | None] | None = None
+    undeclared_property: Callable[[str], set[str] | None] | None = None
+    unknown_child_id: Callable[[str], set[str] | None] | None = None
+    missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None
+    file_command: Callable[[Mapping[str, Any]], str | None] | None = None
+    ui_files: set[str] | None = None
+
+
+@dataclass(frozen=True)
+class _Holder:
+    """What holds a reference -- a control, or the page itself -- and how a finding about it reads."""
+
+    id: str
+    what: str
+    """The word in brackets after the id: the control's type, or ``page``."""
+
+    def finding(self, kind: str, said: str, *key: str) -> Finding:
+        """``<id> (<what>) <said>``, keyed by the kind, this id, then ``key``."""
+        return Finding(self.id, kind, f"{self.id} ({self.what}) {said}", key=(kind, self.id, *key))
+
+
+@dataclass(frozen=True)
+class _Control(_Holder):
+    """One element of the page being checked, as the page walk found it."""
+
+    dump: Mapping[str, Any] = field(default_factory=dict)
+    page_id: str = "?"
+
+
+@dataclass(frozen=True)
+class _Site:
+    """Where one action sits: its control, its path, and the options a value_map answers to."""
+
+    control: _Control
+    where: str
+    options: set[str] | None
+
+    def finding(self, kind: str, said: str, *key: str) -> Finding:
+        """A finding about the action here: its path is in the sentence and the key."""
+        return self.control.finding(kind, f"{self.where} {said}", self.where, *key)
+
+    def entry(self, value: Any) -> _Site:
+        """A value_map entry, run as an action of its own.
+
+        It answers to no options: the select's options choose WHICH entry runs,
+        and the entry itself is not picked from them.
+        """
+        return _Site(self.control, f"{self.where}['{value}']", None)
+
+
 def _actions(do_map: Mapping[str, Any], slot: str) -> list[Mapping[str, Any]]:
     """The action list under one slot, whichever shape it was written in.
 
@@ -110,9 +176,7 @@ def _actions(do_map: Mapping[str, Any], slot: str) -> list[Mapping[str, Any]]:
     return [item for item in items if isinstance(item, Mapping)]
 
 
-def _shape_finding(
-    do_map: Mapping[str, Any], slot: str, el_id: str, el_type: str,
-) -> Finding | None:
+def _shape_finding(do_map: Mapping[str, Any], slot: str, control: _Control) -> Finding | None:
     """An action list written as a single object rather than an array.
 
     It RUNS -- ``ui_events.py`` wraps a non-list before executing it, and the
@@ -124,16 +188,15 @@ def _shape_finding(
     action, so a second can never be added without rewriting it, and the Builder
     stores the array form on the next edit either way.
     """
-    raw = do_map.get(slot)
-    if raw is None or isinstance(raw, list) or not isinstance(raw, Mapping):
+    if not isinstance(do_map.get(slot), Mapping):
         return None
-    return Finding(
-        el_id, "object_action_list",
-        f"{el_id} ({el_type}) writes do.{slot} as an object, not an array. The panel does run "
+    return control.finding(
+        "object_action_list",
+        f"writes do.{slot} as an object, not an array. The panel does run "
         f"it -- a single action is wrapped before it executes -- but an object holds exactly "
         f"one, so a second cannot be added without rewriting it, and the Builder stores the "
         f"array form on the next edit anyway. Write do.{slot} as [{{...}}].",
-        key=("object_action_list", el_id, slot),
+        slot,
     )
 
 
@@ -228,16 +291,16 @@ def _page_grant_findings(page: Any, device_ids: set[str]) -> list[Finding]:
     grant = _mapping(getattr(page, "grant", None))
     if not grant:
         return []
-    page_id = str(getattr(page, "id", "?"))
+    holder = _Holder(str(getattr(page, "id", "?")), "page")
     findings: list[Finding] = []
     for granted in grant.get("devices") or []:
         if isinstance(granted, str) and granted and granted not in device_ids:
-            findings.append(Finding(
-                page_id, "dangling_reference",
-                f"{page_id} (page) is granted device '{granted}', which is not in this "
+            findings.append(holder.finding(
+                "dangling_reference",
+                f"is granted device '{granted}', which is not in this "
                 f"project, so the page it shows can neither read nor control it. The "
                 f"devices are: {_listed(device_ids)}.",
-                key=("dangling_reference", page_id, f"grant.devices.{granted}"),
+                f"grant.devices.{granted}",
             ))
     return findings
 
@@ -258,8 +321,8 @@ class CustomFileUse:
 def _granted_ids(grant: Any) -> tuple[str, ...]:
     dump = _mapping(grant) or {}
     ids: list[str] = []
-    for field in ("devices", "variables"):
-        value = dump.get(field)
+    for part in ("devices", "variables"):
+        value = dump.get(part)
         if isinstance(value, (list, tuple)):
             ids.extend(str(v) for v in value if isinstance(v, str))
     return tuple(ids)
@@ -394,8 +457,15 @@ def reference_findings(
     run: a command that takes or hands back a file, which runs only from the
     device page. See ``core/command_params``.
     """
+    project = _Project(
+        page_ids=page_ids, device_ids=device_ids, macro_ids=macro_ids,
+        device_commands=device_commands, plugin_elements=plugin_elements,
+        undeclared_property=undeclared_property, unknown_child_id=unknown_child_id,
+        missing_params=missing_params, file_command=file_command, ui_files=ui_files,
+    )
     findings: list[Finding] = []
     in_scope = (lambda el_id: True) if touched is None else (lambda el_id: el_id in touched)
+    page_id = str(getattr(page, "id", "?"))
 
     # A custom page carries the same grant an iframe element does, so it can name
     # a device that has since left the project in exactly the same way -- and it
@@ -417,10 +487,7 @@ def reference_findings(
     }
 
     if page_file is not None:
-        page_id_str = str(getattr(page, "id", "?"))
-        missing = _custom_file_finding(
-            "page", page_id_str, page_id_str, page_file, ui_files,
-        )
+        missing = _custom_file_finding("page", page_id, page_id, page_file, ui_files)
         if missing:
             findings.append(missing)
 
@@ -431,20 +498,17 @@ def reference_findings(
         el_id = str(dump.get("id", "?"))
         if not in_scope(el_id):
             continue
+        control = _Control(el_id, str(dump.get("type", "?")), dump, page_id)
         plugin_issue = plugin_element_finding(dump, el_id, plugin_elements)
         if plugin_issue:
             findings.append(plugin_issue)
         if el_id in element_files:
             missing_file = _custom_file_finding(
-                "custom control", el_id, str(getattr(page, "id", "?")),
-                element_files[el_id], ui_files,
+                "custom control", el_id, page_id, element_files[el_id], ui_files,
             )
             if missing_file:
                 findings.append(missing_file)
-        findings.extend(_element_findings(
-            dump, el_id, page_ids, device_ids, macro_ids, device_commands,
-            undeclared_property, unknown_child_id, missing_params, file_command,
-        ))
+        findings.extend(_element_findings(control, project))
     return findings
 
 
@@ -468,13 +532,7 @@ MATRIX_KEY_PATTERNS = (
 _PROBE_INDEX = "1"
 
 
-def _matrix_pattern_findings(
-    dump: Mapping[str, Any],
-    el_id: str,
-    el_type: str,
-    device_ids: set[str],
-    undeclared_property: Callable[[str], set[str] | None] | None,
-) -> list[Finding]:
+def _matrix_pattern_findings(control: _Control, project: _Project) -> list[Finding]:
     """State-key globs inside `matrix_config`, checked like any other binding.
 
     A matrix is the one control that reads state from somewhere other than
@@ -490,9 +548,9 @@ def _matrix_pattern_findings(
     it will be read for every row, and saying "this is not a glob" is a
     different complaint than this function makes.
     """
-    if el_type != "matrix":
+    if control.what != "matrix":
         return []
-    config = _mapping(dump.get("matrix_config"))
+    config = _mapping(control.dump.get("matrix_config"))
     if not config:
         return []
 
@@ -501,53 +559,43 @@ def _matrix_pattern_findings(
         pattern = config.get(name)
         if not isinstance(pattern, str) or not pattern.startswith("device."):
             continue
-        if _device_of(pattern, device_ids) is None:
+        if _device_of(pattern, project.device_ids) is None:
             named = pattern.split(".")[1] if pattern.count(".") >= 1 else pattern
-            findings.append(Finding(
-                el_id, "dangling_reference",
-                f"{el_id} ({el_type}) reads matrix_config.{name} from '{pattern}', and no "
-                f"device '{named}' is in this project. The devices are: {_listed(device_ids)}.",
-                key=("dangling_reference", el_id, f"matrix_config.{name}"),
+            findings.append(control.finding(
+                "dangling_reference",
+                f"reads matrix_config.{name} from '{pattern}', and no "
+                f"device '{named}' is in this project. The devices are: "
+                f"{_listed(project.device_ids)}.",
+                f"matrix_config.{name}",
             ))
             continue
-        if undeclared_property is None or "*" not in pattern:
+        if project.undeclared_property is None or "*" not in pattern:
             continue
-        declared = undeclared_property(pattern.replace("*", _PROBE_INDEX, 1))
+        declared = project.undeclared_property(pattern.replace("*", _PROBE_INDEX, 1))
         if declared:
-            findings.append(Finding(
-                el_id, "dangling_reference",
-                f"{el_id} ({el_type}) reads matrix_config.{name} from '{pattern}', and its "
+            findings.append(control.finding(
+                "dangling_reference",
+                f"reads matrix_config.{name} from '{pattern}', and its "
                 f"driver does not declare that. It declares: {_listed(declared)}.",
-                key=("dangling_reference", el_id, f"matrix_config.{name}.property"),
+                f"matrix_config.{name}.property",
             ))
     return findings
 
 
-def _element_findings(
-    dump: Mapping[str, Any],
-    el_id: str,
-    page_ids: set[str],
-    device_ids: set[str],
-    macro_ids: set[str],
-    device_commands: Callable[[str], set[str] | None] | None,
-    undeclared_property: Callable[[str], set[str] | None] | None = None,
-    unknown_child_id: Callable[[str], set[str] | None] | None = None,
-    missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None,
-    file_command: Callable[[Mapping[str, Any]], str | None] | None = None,
-) -> list[Finding]:
+def _element_findings(control: _Control, project: _Project) -> list[Finding]:
     findings: list[Finding] = []
-    el_type = str(dump.get("type", "?"))
+    dump = control.dump
 
     target = dump.get("target_page")
     if (
-        el_type == "page_nav" and isinstance(target, str) and target
-        and target not in page_ids and target not in NAVIGATION_SENTINELS
+        control.what == "page_nav" and isinstance(target, str) and target
+        and target not in project.page_ids and target not in NAVIGATION_SENTINELS
     ):
-        findings.append(Finding(
-            el_id, "dangling_reference",
-            f"{el_id} ({el_type}) navigates to page '{target}', which does not exist. "
-            f"The pages are: {_listed(page_ids)}.",
-            key=("dangling_reference", el_id, "target_page"),
+        findings.append(control.finding(
+            "dangling_reference",
+            f"navigates to page '{target}', which does not exist. "
+            f"The pages are: {_listed(project.page_ids)}.",
+            "target_page",
         ))
 
     # A grant names devices by id, and a control whose grant names a device that
@@ -557,18 +605,16 @@ def _element_findings(
     # for the same reason bound var. keys are not: a script can create one.
     grant = _mapping(dump.get("grant"))
     for granted in (grant.get("devices") or []) if grant else []:
-        if isinstance(granted, str) and granted and granted not in device_ids:
-            findings.append(Finding(
-                el_id, "dangling_reference",
-                f"{el_id} ({el_type}) is granted device '{granted}', which is not in this "
+        if isinstance(granted, str) and granted and granted not in project.device_ids:
+            findings.append(control.finding(
+                "dangling_reference",
+                f"is granted device '{granted}', which is not in this "
                 f"project, so it can neither read nor control it. The devices are: "
-                f"{_listed(device_ids)}.",
-                key=("dangling_reference", el_id, f"grant.devices.{granted}"),
+                f"{_listed(project.device_ids)}.",
+                f"grant.devices.{granted}",
             ))
 
-    findings.extend(_matrix_pattern_findings(
-        dump, el_id, el_type, device_ids, undeclared_property,
-    ))
+    findings.extend(_matrix_pattern_findings(control, project))
 
     bindings = _mapping(dump.get("bindings")) or {}
     show = _mapping(bindings.get("show")) or {}
@@ -577,13 +623,14 @@ def _element_findings(
         key = binding.get("key") if binding else None
         if not isinstance(key, str) or not key.startswith("device."):
             continue
-        if _device_of(key, device_ids) is None:
+        if _device_of(key, project.device_ids) is None:
             named = key.split(".")[1] if key.count(".") >= 1 else key
-            findings.append(Finding(
-                el_id, "dangling_reference",
-                f"{el_id} ({el_type}) reads show.{slot} from '{key}', and no device "
-                f"'{named}' is in this project. The devices are: {_listed(device_ids)}.",
-                key=("dangling_reference", el_id, f"show.{slot}"),
+            findings.append(control.finding(
+                "dangling_reference",
+                f"reads show.{slot} from '{key}', and no device "
+                f"'{named}' is in this project. The devices are: "
+                f"{_listed(project.device_ids)}.",
+                f"show.{slot}",
             ))
             continue
         # The child id before the property, because a page repeating one block
@@ -591,41 +638,39 @@ def _element_findings(
         # it names the actual mistake instead of a property that is spelled
         # right on a child that does not exist. Reported instead of, not as well
         # as, the property complaint: one binding, one thing to fix.
-        if unknown_child_id is not None:
-            roster = unknown_child_id(key)
+        if project.unknown_child_id is not None:
+            roster = project.unknown_child_id(key)
             if roster:
-                findings.append(Finding(
-                    el_id, "dangling_reference",
-                    f"{el_id} ({el_type}) reads show.{slot} from '{key}', and its driver "
+                findings.append(control.finding(
+                    "dangling_reference",
+                    f"reads show.{slot} from '{key}', and its driver "
                     f"declares no such child. It declares: {_listed(roster)}.",
-                    key=("dangling_reference", el_id, f"show.{slot}.child"),
+                    f"show.{slot}.child",
                 ))
                 continue
         # The device resolved; the property after it is the half that used to
         # pass silently while a typo'd device, command, macro and page were all
         # caught. A typo'd property is at least as common as a typo'd device.
-        if undeclared_property is None:
+        if project.undeclared_property is None:
             continue
-        declared = undeclared_property(key)
+        declared = project.undeclared_property(key)
         if declared:
-            findings.append(Finding(
-                el_id, "dangling_reference",
-                f"{el_id} ({el_type}) reads show.{slot} from '{key}', and its driver does "
+            findings.append(control.finding(
+                "dangling_reference",
+                f"reads show.{slot} from '{key}', and its driver does "
                 f"not declare that. It declares: {_listed(declared)}.",
-                key=("dangling_reference", el_id, f"show.{slot}.property"),
+                f"show.{slot}.property",
             ))
 
     do_map = _mapping(bindings.get("do")) or {}
     options = _option_values(dump)
     for slot in ACTION_SLOTS:
-        shape = _shape_finding(do_map, slot, el_id, el_type)
+        shape = _shape_finding(do_map, slot, control)
         if shape:
             findings.append(shape)
         for index, action in enumerate(_actions(do_map, slot)):
             findings.extend(_action_findings(
-                action, el_id, el_type, f"do.{slot}[{index}]",
-                page_ids, device_ids, macro_ids, device_commands, options,
-                missing_params, file_command,
+                action, _Site(control, f"do.{slot}[{index}]", options), project,
             ))
     return findings
 
@@ -648,17 +693,7 @@ def _option_values(dump: Mapping[str, Any]) -> set[str] | None:
 
 
 def _action_findings(
-    action: Mapping[str, Any],
-    el_id: str,
-    el_type: str,
-    where: str,
-    page_ids: set[str],
-    device_ids: set[str],
-    macro_ids: set[str],
-    device_commands: Callable[[str], set[str] | None] | None,
-    options: set[str] | None,
-    missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None,
-    file_command: Callable[[Mapping[str, Any]], str | None] | None = None,
+    action: Mapping[str, Any], site: _Site, project: _Project,
 ) -> list[Finding]:
     findings: list[Finding] = []
     name = action.get("action")
@@ -667,43 +702,43 @@ def _action_findings(
         target = action.get("page")
         if (
             isinstance(target, str) and target
-            and target not in page_ids and target not in NAVIGATION_SENTINELS
+            and target not in project.page_ids and target not in NAVIGATION_SENTINELS
         ):
-            findings.append(Finding(
-                el_id, "dangling_reference",
-                f"{el_id} ({el_type}) {where} navigates to page '{target}', which does not "
-                f"exist. The pages are: {_listed(page_ids)}.",
-                key=("dangling_reference", el_id, where, "page"),
+            findings.append(site.finding(
+                "dangling_reference",
+                f"navigates to page '{target}', which does not "
+                f"exist. The pages are: {_listed(project.page_ids)}.",
+                "page",
             ))
 
     elif name == "macro":
         macro = action.get("macro")
-        if isinstance(macro, str) and macro and macro not in macro_ids:
-            findings.append(Finding(
-                el_id, "dangling_reference",
-                f"{el_id} ({el_type}) {where} runs macro '{macro}', which does not exist. "
-                f"The macros are: {_listed(macro_ids)}.",
-                key=("dangling_reference", el_id, where, "macro"),
+        if isinstance(macro, str) and macro and macro not in project.macro_ids:
+            findings.append(site.finding(
+                "dangling_reference",
+                f"runs macro '{macro}', which does not exist. "
+                f"The macros are: {_listed(project.macro_ids)}.",
+                "macro",
             ))
 
     elif name == "device.command":
         device = action.get("device")
         command = action.get("command")
-        if isinstance(device, str) and device and device not in device_ids:
-            findings.append(Finding(
-                el_id, "dangling_reference",
-                f"{el_id} ({el_type}) {where} commands device '{device}', which is not in "
-                f"this project. The devices are: {_listed(device_ids)}.",
-                key=("dangling_reference", el_id, where, "device"),
+        if isinstance(device, str) and device and device not in project.device_ids:
+            findings.append(site.finding(
+                "dangling_reference",
+                f"commands device '{device}', which is not in "
+                f"this project. The devices are: {_listed(project.device_ids)}.",
+                "device",
             ))
         elif isinstance(device, str) and isinstance(command, str):
-            declared = device_commands(device) if device_commands else None
+            declared = project.device_commands(device) if project.device_commands else None
             if declared is not None and command not in declared:
-                findings.append(Finding(
-                    el_id, "dangling_reference",
-                    f"{el_id} ({el_type}) {where} sends '{command}' to '{device}', which its "
+                findings.append(site.finding(
+                    "dangling_reference",
+                    f"sends '{command}' to '{device}', which its "
                     f"driver does not have. Its commands are: {_listed(declared)}.",
-                    key=("dangling_reference", el_id, where, "command"),
+                    "command",
                 ))
             else:
                 # The command is one the driver has, and it can still be
@@ -711,32 +746,32 @@ def _action_findings(
                 # filled in. Nothing else on the page says so, and the control
                 # draws and takes a press exactly like a working one. Or no press
                 # can run it at all: it takes or hands back a file.
-                refused = file_command(action) if file_command else None
-                unsupplied = missing_params(action) if missing_params and not refused else None
+                refused = project.file_command(action) if project.file_command else None
+                unsupplied = (
+                    project.missing_params(action)
+                    if project.missing_params and not refused else None
+                )
                 if refused:
-                    findings.append(Finding(
-                        el_id, "unrunnable_command",
-                        f"{el_id} ({el_type}) {where} sends '{command}' to '{device}', "
+                    findings.append(site.finding(
+                        "unrunnable_command",
+                        f"sends '{command}' to '{device}', "
                         f"and every press is refused with \"{refused}\"",
-                        key=("unrunnable_command", el_id, where),
                     ))
                 elif unsupplied:
-                    findings.append(_unrunnable_finding(
-                        el_id, el_type, where, device, command, unsupplied,
-                    ))
+                    findings.append(_unrunnable_finding(site, device, command, unsupplied))
 
     elif name == "value_map":
         mapped = _mapping(action.get("map")) or {}
-        if options is not None:
-            stray = sorted(str(k) for k in mapped if str(k) not in options)
+        if site.options is not None:
+            stray = sorted(str(k) for k in mapped if str(k) not in site.options)
             if stray:
-                findings.append(Finding(
-                    el_id, "dangling_reference",
-                    f"{el_id} ({el_type}) {where} maps "
+                findings.append(site.finding(
+                    "dangling_reference",
+                    f"maps "
                     f"{', '.join(repr(s) for s in stray)}, which {'is' if len(stray) == 1 else 'are'} "
-                    f"not among its options ({_listed(options)}), so nothing the user can pick "
+                    f"not among its options ({_listed(site.options)}), so nothing the user can pick "
                     f"reaches {'it' if len(stray) == 1 else 'them'}.",
-                    key=("dangling_reference", el_id, where, "value_map"),
+                    "value_map",
                 ))
         # The engine executes each mapped entry as an action of its own, so the
         # same checks apply one level down. This is where the AI's unreachable
@@ -745,22 +780,13 @@ def _action_findings(
             nested = _mapping(inner)
             if nested is None:
                 continue
-            findings.extend(_action_findings(
-                nested, el_id, el_type, f"{where}['{value}']",
-                page_ids, device_ids, macro_ids, device_commands, None,
-                missing_params, file_command,
-            ))
+            findings.extend(_action_findings(nested, site.entry(value), project))
 
     return findings
 
 
 def _unrunnable_finding(
-    el_id: str,
-    el_type: str,
-    where: str,
-    device: str,
-    command: str,
-    unsupplied: list[str],
+    site: _Site, device: str, command: str, unsupplied: list[str],
 ) -> Finding:
     """A command the driver has, that the driver will still refuse.
 
@@ -772,12 +798,11 @@ def _unrunnable_finding(
     """
     named = " and ".join(f"'{name}'" for name in unsupplied)
     them = "it" if len(unsupplied) == 1 else "them"
-    return Finding(
-        el_id, "unrunnable_command",
-        f"{el_id} ({el_type}) {where} sends '{command}' to '{device}' without {named}. "
+    return site.finding(
+        "unrunnable_command",
+        f"sends '{command}' to '{device}' without {named}. "
         f"Its driver requires {them}, so the device refuses every press with "
         f"\"'{command}': '{unsupplied[0]}' is required\".",
-        key=("unrunnable_command", el_id, where),
     )
 
 
