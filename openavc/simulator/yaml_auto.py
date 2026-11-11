@@ -31,7 +31,7 @@ import logging
 import math
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import unquote
 
 import yaml
@@ -632,8 +632,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         listens for datagrams on the same port number (UDP and TCP ports are
         separate namespaces, so nothing collides).
         """
-        if self._push_multicast:
-            self._open_multicast_sender()
+        self._open_push_channels()
         if self._is_udp or self._is_osc:
             await self.start_datagram_server(port)
             return
@@ -1448,8 +1447,9 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             send_template, params, pattern = wire
             read = _CommandRead(send_template, params, self._child_address(params))
             read.read(cmd_name, cmd_def, state_vars)
-            self._command_handlers.append(read.handler(cmd_name, pattern))
-            if read.does_nothing():
+            handler = read.handler(cmd_name, pattern)
+            self._command_handlers.append(handler)
+            if _infers_nothing(handler):
                 logger.debug(
                     "Auto-sim %s: could not infer behavior for command '%s'",
                     self.driver_id, cmd_name,
@@ -1486,7 +1486,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     def _child_address(
         self, params: Any
-    ) -> tuple[str | None, str | None, dict[str, str] | None, dict[str, dict]]:
+    ) -> _ChildAddress:
         """Which child a command addresses: its one child_id param's name and
         child type, the param map's wire -> local id table, and the type's
         variables. A command carrying exactly one child_id param is addressed
@@ -1501,7 +1501,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             and pdef.get("child_type") in self._child_types()
         ]
         if len(child_id_params) != 1:
-            return None, None, None, {}
+            return _ChildAddress(None, None, None, {})
         param_name, cpdef = child_id_params[0]
         ctype = cpdef.get("child_type")
         child_vars = self._child_vars(ctype)
@@ -1513,7 +1513,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             if isinstance(raw_map, dict) and raw_map
             else None
         )
-        return param_name, ctype, wire_map, child_vars
+        return _ChildAddress(param_name, ctype, wire_map, child_vars)
 
     def _settings_wire_line(self, template: str) -> str | None:
         """The one line of a settings write that actually carries the value.
@@ -2551,8 +2551,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         state written while answering a command or a message is the reply,
         not news."""
         if self._is_osc:
-            if not self._handling_osc and key in self._osc_state_to_address:
-                self._push_osc_change(key, value)
+            if self._osc_push_wanted(key):
+                self._push_osc_state(key, value)
             return
         if self._handling_command or not self._control_link_open():
             return
@@ -2560,19 +2560,12 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         if text is not None:
             self._send_on_control_link((text + self._get_delimiter()).encode())
 
-    def _push_osc_change(self, key: str, value: Any) -> None:
-        if self._peer_heard():
-            self._push_osc_state(key, value)
-
-    def _peer_heard(self) -> bool:
-        """Whether a datagram peer has spoken to the device: the only one a
-        connectionless device can push to."""
-        return bool(self._last_client_addr and self._udp_transport)
-
-    def _control_link_open(self) -> bool:
-        """Whether anyone is on the control link to push to: a UDP peer that
-        spoke to the device, or a connected stream client."""
-        return self._peer_heard() if self._is_udp else bool(self._clients)
+    def _osc_push_wanted(self, key: str) -> bool:
+        """An OSC change goes out when no message is being answered, the key
+        has an address to push on, and a peer has spoken to the device."""
+        if self._handling_osc or key not in self._osc_state_to_address:
+            return False
+        return self._peer_heard()
 
     def _push_osc_state(self, key: str, value: Any) -> None:
         """Send an OSC message to the connected driver for a state change."""
@@ -2918,16 +2911,34 @@ def _lowered_to(value: Any, high: float | None) -> Any:
     return math.floor(high) if isinstance(value, int) else high
 
 
+class _ChildAddress(NamedTuple):
+    """The child a command addresses: its one child_id param, that param's
+    child type, the wire -> local id map, and the type's variables."""
+
+    param_name: str | None
+    child_type: str | None
+    wire_map: dict[str, str] | None
+    child_vars: dict[str, dict]
+
+
+def _infers_nothing(handler: CommandHandler) -> bool:
+    """A handler read as writing nothing and reporting nothing."""
+    return not handler.state_changes and not handler.response_var
+
+
 class _CommandRead:
     """What one command does, as it is read: the child it addresses, which
     capture writes which variable and how each capture decodes, and the
     variable its reply reports."""
 
-    def __init__(self, send_template: str, params: Any, address: tuple) -> None:
+    def __init__(self, send_template: str, params: Any, address: _ChildAddress) -> None:
         self.send_template = send_template
         self.params = params
         self.specs = send_param_specs(send_template, params)
-        self.child_param_name, self.child_type, self.child_wire_map, self.child_vars = address
+        self.child_param_name = address.param_name
+        self.child_type = address.child_type
+        self.child_wire_map = address.wire_map
+        self.child_vars = address.child_vars
         self.child_id_group = 0
         self.state_changes: dict[str, Any] = {}
         self.child_state_keys: set[str] = set()
@@ -2943,11 +2954,6 @@ class _CommandRead:
             self.read_declared(cmd_def)
         else:
             self.read_from_names(cmd_name, state_vars)
-
-    def does_nothing(self) -> bool:
-        """True when the command was read as writing nothing and reporting
-        nothing."""
-        return not self.state_changes and not self.response_var
 
     def handler(self, name: str, pattern: re.Pattern) -> CommandHandler:
         """The handler, with no child routing when no capture holds the
@@ -3051,17 +3057,15 @@ class _CommandRead:
     def read_from_names(self, cmd_name: str, state_vars: set[str]) -> None:
         """A param named after a variable writes it (the addressed child
         type's variables first, flat second), else the command's own name
-        says the variable and what it sets, else a param-less command is a
-        query for the variable its name says. Captures are numbered in the
-        order the params are declared."""
+        says the variable it reports and what it sets. Captures are numbered
+        in the order the params are declared."""
         self._decode_captures({name: idx for idx, name in enumerate(self.params, start=1)})
         for group_idx, param_name in enumerate(self.params, start=1):
             self._param_by_name(param_name, group_idx, state_vars)
         if not self.state_changes:
+            # Also how a command with no params is read as a query for the
+            # variable its name says.
             self._read_command_name(cmd_name, state_vars)
-        # A query: a command with no params reports the variable its name says.
-        if not self.response_var and not self.params:
-            self.response_var = infer_state_var(cmd_name, state_vars) or self.response_var
 
     def _param_by_name(self, param_name: str, group: int, state_vars: set[str]) -> None:
         if param_name == self.child_param_name:

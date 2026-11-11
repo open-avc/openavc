@@ -10,7 +10,8 @@ one whose block resolves to nothing, pushes on the control link: every
 connected TCP client, or the last UDP peer that spoke to the device.
 
 The channel is chosen in one place, ``_push_channel``: the first declared
-channel that resolved to a target, in the order ``_PUSH_CHANNELS`` lists them.
+channel that resolved to a target, in the order ``_PUSH_CHANNELS`` lists them,
+each row naming the attribute that holds its target and the method that sends.
 ``_sends_notifications`` (whether the device counts as pushing) and
 ``_deliver_notification`` (where a notification goes) both ask it, so the two
 cannot disagree. The targets are read when a notification goes out, never
@@ -40,14 +41,15 @@ logger = logging.getLogger("openavc.simulator.yaml_auto")
 # The state keys a notification template names as ``{state.<key>}``.
 _NOTIFICATION_STATE_REF = re.compile(r"\{state\.([\w.]+)(?::[^{}]*)?\}")
 
-#: Each declared channel and the attribute holding its resolved target, in
-#: the order a notification picks them; the first that holds one carries it.
+#: Each declared channel: the attribute holding its resolved target and the
+#: method that sends on it, in the order a notification picks them; the first
+#: whose target is set carries it.
 _PUSH_CHANNELS: tuple[tuple[str, str], ...] = (
-    ("multicast", "_push_multicast"),
-    ("sse", "sse_paths"),
-    ("tcp_listener", "_push_tcp"),
-    ("http_listener", "_push_http"),
-    ("udp_listener", "_push_udp_listener"),
+    ("_push_multicast", "_send_multicast"),          # multicast
+    ("sse_paths", "_send_sse"),                       # sse
+    ("_push_tcp", "_send_dial_back"),                 # tcp_listener
+    ("_push_http", "_send_callbacks"),                # http_listener
+    ("_push_udp_listener", "_send_to_listener_port"),  # udp_listener
 )
 
 
@@ -69,7 +71,11 @@ def _push_block(driver_def: dict, kind: str) -> dict | None:
 class PushChannels:
     """The push targets a driver declares and the notifications sent on them."""
 
-    # Host attributes (YAMLAutoSimulator and its server bases).
+    # Host attributes (YAMLAutoSimulator and its server bases). Also asked of
+    # the host: _instance_config, _get_delimiter and _to_wire
+    # (YAMLAutoSimulator); _silenced, log_protocol and send_to_listener
+    # (BaseSimulator); push (TCPSimulator); push_datagram (the datagram
+    # server); push_sse_event and post_http_callback (HTTPServerMixin).
     _driver_def: dict
     name: str
     _is_udp: bool
@@ -77,6 +83,8 @@ class PushChannels:
     _is_http: bool
     _clients: dict
     _last_peer_ip: str
+    _last_client_addr: tuple[str, int] | None
+    _udp_transport: Any
     _state: dict
 
     # Before __init__ reaches its assignment (set_state can fire during
@@ -362,6 +370,12 @@ class PushChannels:
             self._mcast_sock = None
             logger.warning("Could not open multicast sender: %s", e)
 
+    def _open_push_channels(self) -> None:
+        """Open what a channel holds while the device runs: the multicast
+        sender."""
+        if self._push_multicast:
+            self._open_multicast_sender()
+
     def _close_push_channels(self) -> None:
         """Abandon in-flight dial-out notifications and close the multicast
         socket."""
@@ -400,11 +414,12 @@ class PushChannels:
         return value_map.get(map_key(value)) or value_map.get("*") or None
 
     def _push_channel(self) -> str | None:
-        """The declared channel a notification goes out on: the first in
-        ``_PUSH_CHANNELS`` holding a target, else None (the control link)."""
-        for channel, target in _PUSH_CHANNELS:
+        """The sender of the declared channel a notification goes out on: the
+        first in ``_PUSH_CHANNELS`` holding a target, else None (the control
+        link)."""
+        for target, sender in _PUSH_CHANNELS:
             if getattr(self, target):
-                return channel
+                return sender
         return None
 
     def _sends_notifications(self) -> bool:
@@ -440,11 +455,21 @@ class PushChannels:
         notice feed never send those frames on the control connection.
         """
         data = (msg + self._get_delimiter()).encode()
-        channel = self._push_channel()
-        if channel is None:
+        sender = self._push_channel()
+        if sender is None:
             self._send_on_control_link(data)
         else:
-            getattr(self, _CHANNEL_SENDERS[channel])(msg, data)
+            getattr(self, sender)(msg, data)
+
+    def _peer_heard(self) -> bool:
+        """Whether a datagram peer has spoken to the device: the only one a
+        connectionless device can push to."""
+        return bool(self._last_client_addr and self._udp_transport)
+
+    def _control_link_open(self) -> bool:
+        """Whether anyone is on the control link to push to: a UDP peer that
+        spoke to the device, or a connected stream client."""
+        return self._peer_heard() if self._is_udp else bool(self._clients)
 
     def _send_on_control_link(self, data: bytes) -> None:
         """Send on the control link: the last UDP peer that spoke to the
@@ -515,16 +540,6 @@ class PushChannels:
             return _formatted(val, m.group(2))
 
         return re.sub(r"\{(value|key|state\.[\w.]+)(?::([^{}]*))?\}", repl, template)
-
-
-#: The method that sends on each declared channel.
-_CHANNEL_SENDERS: dict[str, str] = {
-    "multicast": "_send_multicast",
-    "sse": "_send_sse",
-    "tcp_listener": "_send_dial_back",
-    "http_listener": "_send_callbacks",
-    "udp_listener": "_send_to_listener_port",
-}
 
 
 def _formatted(val: Any, spec: str | None) -> str:
