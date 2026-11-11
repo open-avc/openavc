@@ -34,6 +34,7 @@ import logging
 import math
 import re
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.parse import unquote
@@ -62,7 +63,6 @@ from openavc.drivers.inline_protocol import (
     normalize_config_responses,
     normalize_config_state_vars,
 )
-from openavc.transport.binary_helpers import encode_escape_sequences
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
 from openavc.simulator.osc_addresses import (
@@ -104,6 +104,14 @@ from openavc.simulator.send_templates import (
     spec_int_base,
 )
 from openavc.simulator.tcp_simulator import TCPSimulator
+from openavc.simulator.telnet_sign_in import (
+    SIGN_IN_REQUIRED_DEFINITION,
+    SIGN_IN_REQUIRED_MODE,
+    TelnetSignIn,
+    driver_skips,
+    offers_sign_in_required,
+    telnet_login,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -112,13 +120,6 @@ _NUMERIC_TYPES = ("integer", "number", "float")
 
 # How many numbers start(0) tries before a side receiver's refusal stands.
 _SIDE_PORT_ATTEMPTS = 5
-
-#: The error mode a device offers when its driver skips the sign-in for a
-#: blank credential (``skip_if_empty``): switched on, the device prompts for a
-#: sign-in whatever its settings say, the way a unit with a password set does,
-#: so what the driver does with one it cannot answer can be tried.
-SIGN_IN_REQUIRED_MODE = "sign_in_required"
-
 
 # Names exposed to inline `handler:` scripts (both TCP and OSC). This is the
 # documented contract (writing-simulators.md "Script Handlers"): the same set
@@ -163,19 +164,6 @@ def _as_number(value: Any) -> float | None:
         return float(value)
     except (ValueError, TypeError):
         return None
-
-
-def _encode_line_ending(value: str | bytes) -> bytes:
-    """Encode an auth line_ending the way the driver does.
-
-    A YAML double-quoted "\\r\\n" arrives as the real control characters,
-    but a single-quoted '\\r\\n' arrives as literal backslash text — the
-    driver runs it through encode_escape_sequences, so use the same
-    decoder for byte-exact parity.
-    """
-    if isinstance(value, bytes):
-        return value
-    return encode_escape_sequences(value)
 
 
 def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict, bool]:
@@ -410,12 +398,10 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         if sim_section:
             self._merge_simulator_section(sim_section)
 
-        if self._skips_blank_sign_in():
-            self._error_modes.setdefault(SIGN_IN_REQUIRED_MODE, {
-                "behavior": SIGN_IN_REQUIRED_MODE,
-                "description": "Device asks for a sign-in (even with none set)",
-                "builtin": True,
-            })
+        if offers_sign_in_required(driver_def):
+            self._error_modes.setdefault(
+                SIGN_IN_REQUIRED_MODE, dict(SIGN_IN_REQUIRED_DEFINITION)
+            )
 
         # v0.5.0 child entities: per-child state lives in the flat state dict
         # under dotted keys "<type>.<id>.<prop>" (the sim-side mirror of the
@@ -475,137 +461,31 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         writer: asyncio.StreamWriter,
         client_id: str,
     ) -> bool:
-        """Mirror the driver-side login handshake declared in `auth:`.
-
-        For round-trip testing: send the prompts in order, read the
-        credential lines, then send the success_pattern (if defined) and
-        admit the client. Credentials aren't validated against a store —
-        with one exception: a username or password of ``"invalid"`` is the
-        designated bad credential, and makes the simulator play out the
-        failure path (emit ``failure_pattern`` when declared, otherwise
-        re-prompt for the username the way a real telnet daemon does) so
-        drivers' auth-rejection handling can be exercised end-to-end.
-
-        The handshake is also skipped when the *driver* would skip it:
-        with ``skip_if_empty`` (default true) and a blank/absent username
-        in this device's config, the driver signs in to nothing and only
-        listens for a prompt it cannot answer. The ``sign_in_required``
-        error mode prompts anyway, which is that unit with a password set.
+        """Play the device's half of the driver's ``auth:`` sign-in
+        (telnet_sign_in.py). The client is admitted at once when the driver
+        signs in to nothing, unless the ``sign_in_required`` error mode is on.
         """
-        auth_def = self._driver_def.get("auth")
-        if not isinstance(auth_def, dict):
+        auth_def = telnet_login(self._driver_def)
+        if auth_def is None:
             return True
-        if auth_def.get("type", "telnet_login") != "telnet_login":
-            return True
-
-        username_field = auth_def.get("username_field", "username")
-        configured_user = str(self.config.get(username_field, "") or "")
-        if (
-            auth_def.get("skip_if_empty", True)
-            and not configured_user
-            and not self.has_error_behavior(SIGN_IN_REQUIRED_MODE)
+        if driver_skips(auth_def, self.config) and not self.has_error_behavior(
+            SIGN_IN_REQUIRED_MODE
         ):
             return True
+        sign_in = TelnetSignIn(auth_def)
+        return await sign_in.run(
+            reader, partial(self._emit_sign_in, writer, client_id), self.name, client_id
+        )
 
-        username_prompt = auth_def.get("username_prompt", "")
-        password_prompt = auth_def.get("password_prompt", "")
-        success_pattern = auth_def.get("success_pattern")
-        failure_pattern = auth_def.get("failure_pattern")
-        line_ending = auth_def.get("line_ending", "\r\n")
-        timeout = float(auth_def.get("timeout_seconds", 10))
-
-        # Strip regex anchors / escapes for emission — what the driver
-        # sees on the wire is the literal string the device would print.
-        # The driver matches it with regex so we just send a sensible
-        # rendering. For typical prompts ("login: ", "Password: ") the
-        # YAML carries the literal text and no regex metachars.
-        prompt_user = self._render_prompt_literal(username_prompt)
-        prompt_pass = self._render_prompt_literal(password_prompt)
-        success_text = self._render_prompt_literal(success_pattern) if success_pattern else None
-        failure_text = self._render_prompt_literal(failure_pattern) if failure_pattern else None
-
-        ending = _encode_line_ending(line_ending)
-
-        async def read_credential() -> str:
-            # The driver terminates each credential with the declared
-            # line_ending. readline() only returns on "\n", so for an
-            # ending like "\r" it would hang until the timeout — read
-            # up to the actual terminator instead.
-            if ending.endswith(b"\n"):
-                raw = await asyncio.wait_for(reader.readline(), timeout=timeout)
-            else:
-                try:
-                    raw = await asyncio.wait_for(
-                        reader.readuntil(ending), timeout=timeout
-                    )
-                except asyncio.IncompleteReadError as e:
-                    raw = e.partial
-                except asyncio.LimitOverrunError:
-                    raw = b""
-            return raw.decode("utf-8", errors="replace").strip("\r\n")
-
-        async def emit(data: bytes) -> None:
-            if self._client_silenced(client_id):
-                return
-            writer.write(data)
-            await writer.drain()
-            self.log_protocol("out", data, client_id)
-
-        try:
-            # Send username prompt, read the username line.
-            await emit(prompt_user.encode("utf-8"))
-            username = await read_credential()
-
-            # Send password prompt, read the password line.
-            await emit(prompt_pass.encode("utf-8"))
-            password = await read_credential()
-
-            if username == "invalid" or password == "invalid":
-                if failure_text:
-                    await emit(failure_text.encode("utf-8") + ending)
-                else:
-                    # No declared failure banner: re-prompt for the
-                    # username like a real telnet daemon. The driver
-                    # treats a missing success banner / post-password
-                    # re-prompt as a rejected login.
-                    await emit(ending + prompt_user.encode("utf-8"))
-                logger.info(
-                    "%s: client %s sent the designated bad credential — "
-                    "rejecting login",
-                    self.name,
-                    client_id,
-                )
-                return False
-
-            # Send success indicator if declared.
-            if success_text:
-                await emit(success_text.encode("utf-8") + ending)
-
-            return True
-        except asyncio.TimeoutError:
-            logger.warning("%s: client %s auth timed out", self.name, client_id)
-            return False
-        except (ConnectionError, OSError):
-            return False
-
-    @staticmethod
-    def _render_prompt_literal(pattern: str) -> str:
-        """Best-effort regex→literal: strip common regex metacharacters.
-
-        For YAML auth prompts we expect literal text in 95% of cases
-        ("login: ", "Password: "). If a driver author writes a fancy
-        regex, the simulator will still emit something readable; the
-        exact wire format isn't important since we accept any input.
-        """
-        if pattern is None:
-            return ""
-        # Strip regex anchors and escapes.
-        out = pattern
-        out = re.sub(r"\\[brnt]", " ", out)
-        out = re.sub(r"^\^", "", out)
-        out = re.sub(r"\$$", "", out)
-        out = out.replace("\\", "")
-        return out
+    async def _emit_sign_in(
+        self, writer: asyncio.StreamWriter, client_id: str, data: bytes,
+    ) -> None:
+        """One piece of the sign-in, unless the client is silenced."""
+        if self._client_silenced(client_id):
+            return
+        writer.write(data)
+        await writer.drain()
+        self.log_protocol("out", data, client_id)
 
     # ── Transport resolution ──
 
@@ -1802,19 +1682,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         )
 
     # ── Merge explicit simulator: section ──
-
-    def _skips_blank_sign_in(self) -> bool:
-        """True when the driver skips its telnet sign-in for a blank
-        credential, the case the sign_in_required mode plays out."""
-        auth_def = self._driver_def.get("auth")
-        return (
-            isinstance(auth_def, dict)
-            and auth_def.get("type", "telnet_login") == "telnet_login"
-            and self._driver_def.get("transport", "tcp") == "tcp"
-            and bool(auth_def.get("username_prompt"))
-            and bool(auth_def.get("password_prompt"))
-            and bool(auth_def.get("skip_if_empty", True))
-        )
 
     def _merge_simulator_section(self, sim: dict) -> None:
         """Merge explicit simulator: enhancements onto auto-generated behavior:
