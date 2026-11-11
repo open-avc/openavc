@@ -235,6 +235,15 @@ describe("the page background's title", () => {
     expect(title()).toHaveTextContent(/^Page Background$/);
   });
 
+  it("is the only section title laid out as a row", async () => {
+    await loadedWith();
+    for (const name of ["Theme Info", "Quick Adjust", "Theme", "Elements"]) {
+      expect(sectionBody(name).previousElementSibling).toHaveAttribute("style", expect.not.stringContaining("display"));
+    }
+    const contrast = screen.getByText(/^Contrast \(WCAG\)/).closest("div") as HTMLElement;
+    expect(contrast.getAttribute("style")).not.toContain("display");
+  });
+
   it("marks the same values in another order as changed", async () => {
     await loadedWith({ background_color: "#222222", background_image: "a" });
     fireEvent.change(colorMode(), { target: { value: "inherit" } });

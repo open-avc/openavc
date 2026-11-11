@@ -628,6 +628,55 @@ describe("while a file action runs", () => {
     expect(screen.getByRole("button", { name: "Save as Copy" })).toBeEnabled();
   });
 
+  it("draws no line at all for an import that collides", async () => {
+    const view = await loaded();
+    collides();
+    await upload(view);
+    await screen.findByRole("alertdialog");
+    expect(document.querySelector('div[style*="padding: 6px 12px"]')).toBeNull();
+  });
+
+  it("says an import refused with no reason failed, and asks nothing", async () => {
+    importTheme.mockRejectedValueOnce("");
+    const view = await loaded();
+    await upload(view);
+    expect(await screen.findByText("Import failed:")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("keeps an error line however long it shows", async () => {
+    updateTheme.mockRejectedValue(new Error("disk full"));
+    await loaded();
+    editAccent();
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+        for (let i = 0; i < 20; i++) await Promise.resolve();
+      });
+      expect(screen.getByText("disk full")).toHaveStyle({ color: "#ef5350" });
+      act(() => vi.advanceTimersByTime(10000));
+      expect(screen.getByText("disk full")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("says a blank name as an error, which stays", async () => {
+    await loaded({ currentThemeId: "dark" });
+    fireEvent.change(sectionBody("Theme Info").querySelector("input")!, { target: { value: " " } });
+    fireEvent.click(screen.getByTitle("Close (Esc)"));
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Save as Custom" }));
+      expect(screen.getByText("Enter a theme name")).toHaveStyle({ color: "#ef5350" });
+      act(() => vi.advanceTimersByTime(10000));
+      expect(screen.getByText("Enter a theme name")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("says what it did only until the theme it chose has loaded, which the Builder does at once", async () => {
     const view = await loaded();
     getTheme.mockImplementation(async (id: string) => (id === "dark-copy" ? { ...builtinTheme(), id, _source: "custom" } : themeById(id)));
