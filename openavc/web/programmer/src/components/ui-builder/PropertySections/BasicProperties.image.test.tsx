@@ -123,6 +123,13 @@ describe("image source and intrinsic aspect", () => {
     expect(saved()).toEqual({ id: "other", type: "image" });
   });
 
+  it("keeps the ratio to four decimal places", () => {
+    render(<Editor />);
+    selectUrl("https://example.test/wide.png");
+    latestProbe().finish(1000, 300);
+    expect(saved().aspect_lock).toBe(3.3333);
+  });
+
   it.each([0, 1.5])("leaves an existing aspect setting of %s alone", (aspect) => {
     render(<Editor aspect={aspect} />);
     selectUrl("https://example.test/first.png");
