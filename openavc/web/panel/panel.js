@@ -5,6 +5,8 @@
  * from JSON definitions, and sends user interactions back to the server.
  */
 
+import { pickLook, withTwoStateWords } from './modules/looks.js';
+
 // --- Programmer session bridge ---------------------------------------------
 // When the panel is embedded as an iframe inside the Programmer IDE (the UI
 // Builder's canvas and its Preview), the IDE holds its session token in
@@ -7174,40 +7176,13 @@ class PanelApp {
             return;
         }
 
-        let appearance;
-        // Which authored slot the words below come from. Resolved alongside the
-        // appearance because only this branch knows which state matched.
-        let labelPath = null;
-        if (binding.states) {
-            const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
-            appearance = binding.states[stateKey]
-                || binding.states[binding.default_state || '']
-                || {};
-            const matched = binding.states[stateKey] !== undefined
-                ? stateKey
-                : (binding.default_state || '');
-            labelPath = ['bindings', 'show', 'look', 'states', matched, 'label'];
-        } else {
-            // Legacy binary look, same shape the button honors.
-            const condition = binding.condition || {};
-            const isActive = stateValue !== undefined &&
-                String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
-            appearance = (isActive ? binding.style_active : binding.style_inactive) || {};
-            labelPath = ['bindings', 'show', 'look',
-                isActive ? 'style_active' : 'style_inactive', 'label'];
-            const legacyText = isActive ? binding.label_active : binding.label_inactive;
-            if (legacyText !== undefined && legacyText !== null) {
-                appearance = { ...appearance, label: legacyText };
-                labelPath = ['bindings', 'show', 'look',
-                    isActive ? 'label_active' : 'label_inactive'];
-            }
-        }
+        const { appearance, wordsPath } = withTwoStateWords(binding, pickLook(binding, stateValue));
 
         this._clearStateColours(element, this.getThemedStyle(elementDef.type, baseStyle));
         this.applyStyle(element, this.getThemedStyle(elementDef.type, { ...baseStyle, ...appearance }));
 
         if (appearance.label !== undefined) {
-            this._setLabelText(element, String(appearance.label), labelPath);
+            this._setLabelText(element, String(appearance.label), wordsPath);
         }
         // No `else`: when a state names no label the text is left exactly as it
         // was, and so is the record of where it came from. That is precisely
@@ -7235,22 +7210,7 @@ class PanelApp {
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
 
-        let appearance = {};
-        if (!offline) {
-            const stateValue = this.state[binding.key];
-            if (binding.states) {
-                const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
-                appearance = binding.states[stateKey]
-                    || binding.states[binding.default_state || '']
-                    || {};
-            } else {
-                // The binary form, compared the way the button compares it.
-                const condition = binding.condition || {};
-                const isActive = stateValue !== undefined &&
-                    String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
-                appearance = (isActive ? binding.style_active : binding.style_inactive) || {};
-            }
-        }
+        const appearance = offline ? {} : pickLook(binding, this.state[binding.key]).appearance;
 
         this._clearStateColours(element, rest);
         this.applyStyle(element, { ...rest, ...appearance });
@@ -7274,34 +7234,9 @@ class PanelApp {
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
 
-        let appearance = {};
-        let labelPath = ['label'];
-        if (binding.key && !offline) {
-            const stateValue = this.state[binding.key];
-            if (binding.states) {
-                const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
-                appearance = binding.states[stateKey]
-                    || binding.states[binding.default_state || '']
-                    || {};
-                const matched = binding.states[stateKey] !== undefined
-                    ? stateKey
-                    : (binding.default_state || '');
-                labelPath = ['bindings', 'show', 'look', 'states', matched, 'label'];
-            } else {
-                const condition = binding.condition || {};
-                const isActive = stateValue !== undefined &&
-                    String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
-                appearance = (isActive ? binding.style_active : binding.style_inactive) || {};
-                labelPath = ['bindings', 'show', 'look',
-                    isActive ? 'style_active' : 'style_inactive', 'label'];
-                const legacyText = isActive ? binding.label_active : binding.label_inactive;
-                if (legacyText !== undefined && legacyText !== null) {
-                    appearance = { ...appearance, label: legacyText };
-                    labelPath = ['bindings', 'show', 'look',
-                        isActive ? 'label_active' : 'label_inactive'];
-                }
-            }
-        }
+        const { appearance, wordsPath } = binding.key && !offline
+            ? withTwoStateWords(binding, pickLook(binding, this.state[binding.key]))
+            : { appearance: {}, wordsPath: ['label'] };
 
         const lit = this._navShowsItsPage(elementDef);
         this._clearStateColours(element, rest);
@@ -7319,7 +7254,7 @@ class PanelApp {
         const named = appearance.label !== undefined;
         this._setLabelText(element,
             named ? String(appearance.label) : (elementDef.label || elementDef.target_page || ''),
-            named ? labelPath : ['label']);
+            named ? wordsPath : ['label']);
         const icon = appearance.icon || elementDef.icon || elementDef.style?.icon;
         if (icon) {
             this.renderElementContent(element, {
@@ -7345,21 +7280,9 @@ class PanelApp {
         const { element, elementDef, binding } = b;
         const rest = this.getThemedStyle(elementDef.type, elementDef.style || {});
 
-        let appearance = {};
-        if (!this._bindingOffline(b)) {
-            const stateValue = this.state[binding.key];
-            if (binding.states) {
-                const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
-                appearance = binding.states[stateKey]
-                    || binding.states[binding.default_state || '']
-                    || {};
-            } else {
-                const condition = binding.condition || {};
-                const isActive = stateValue !== undefined &&
-                    String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
-                appearance = (isActive ? binding.style_active : binding.style_inactive) || {};
-            }
-        }
+        const appearance = this._bindingOffline(b)
+            ? {}
+            : pickLook(binding, this.state[binding.key]).appearance;
 
         const style = { ...rest, ...appearance };
         if (appearance.button_image) style.background_image = appearance.button_image;
@@ -7418,13 +7341,10 @@ class PanelApp {
             return;
         }
 
+        const { appearance, wordsPath, isActive } = pickLook(binding, stateValue);
+
         // Multi-state feedback (new)
         if (binding.states) {
-            const stateKey = stateValue != null ? String(stateValue) : (binding.default_state || '');
-            const appearance = binding.states[stateKey] || binding.states[binding.default_state || ''] || {};
-            const matched = binding.states[stateKey] !== undefined
-                ? stateKey
-                : (binding.default_state || '');
             const rest = this.getThemedStyle(elementDef.type, baseStyle);
             const style = { ...rest, ...appearance };
             this._clearStateColours(element, rest);
@@ -7439,8 +7359,7 @@ class PanelApp {
                 this._removeTextNodes(element);
                 this._recordTextSource(element, null);
             } else if (appearance.label !== undefined) {
-                this._setLabelText(element, String(appearance.label),
-                    ['bindings', 'show', 'look', 'states', matched, 'label']);
+                this._setLabelText(element, String(appearance.label), wordsPath);
             } else if (elementDef.label) {
                 this._setLabelText(element, elementDef.label, ['label']);
             }
@@ -7459,26 +7378,17 @@ class PanelApp {
             return;
         }
 
-        // Legacy binary feedback (backwards compatible)
-        const condition = binding.condition || {};
-        const isActive = stateValue !== undefined &&
-            String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
-
-        const activeStyle = binding.style_active || {};
-        const inactiveStyle = binding.style_inactive || {};
-
+        // Legacy binary feedback (backwards compatible): `appearance` is the
+        // half the value picked.
         const rest = this.getThemedStyle(elementDef.type, baseStyle);
-        const style = isActive
-            ? { ...rest, ...activeStyle }
-            : { ...rest, ...inactiveStyle };
+        const style = { ...rest, ...appearance };
 
         this._clearStateColours(element, rest);
         this.applyStyle(element, style);
         if (elementDef.frameless) this.applyFrameless(element);
 
         // Per-state image override (legacy feedback), else the button's own
-        const stateImage = (isActive ? activeStyle.button_image : inactiveStyle.button_image);
-        this._reapplyButtonImage(element, elementDef, stateImage, style.bg_color);
+        this._reapplyButtonImage(element, elementDef, appearance.button_image, style.bg_color);
 
         // Conditional labels — must run BEFORE renderElementContent so
         // the icon+text layout rebuild captures the updated text.
@@ -7496,23 +7406,19 @@ class PanelApp {
         } else if (style.label !== undefined) {
             // A label living in the STYLE dict, which is a real read path here.
             // Whichever half supplied it is the half an edit has to write.
-            const half = isActive ? activeStyle : inactiveStyle;
             this._setLabelText(element, style.label,
-                half.label !== undefined
-                    ? ['bindings', 'show', 'look', isActive ? 'style_active' : 'style_inactive', 'label']
-                    : ['style', 'label']);
+                appearance.label !== undefined ? wordsPath : ['style', 'label']);
         } else if (elementDef.label) {
             this._setLabelText(element, elementDef.label, ['label']);
         }
 
         // Rebuild icon+text layout if element has any icon (from feedback or base element)
-        const appliedStyle = isActive ? activeStyle : inactiveStyle;
-        const resolvedIcon = appliedStyle.icon || elementDef.icon || elementDef.style?.icon;
+        const resolvedIcon = appearance.icon || elementDef.icon || elementDef.style?.icon;
         if (resolvedIcon) {
             const iconDef = {
                 ...elementDef,
-                icon: appliedStyle.icon || elementDef.icon,
-                icon_color: appliedStyle.icon_color || elementDef.icon_color,
+                icon: appearance.icon || elementDef.icon,
+                icon_color: appearance.icon_color || elementDef.icon_color,
             };
             this.renderElementContent(element, iconDef);
         }
