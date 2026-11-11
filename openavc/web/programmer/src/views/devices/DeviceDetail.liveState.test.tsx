@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 /**
  * The device page's Live State table and the filter above it: which of the
@@ -63,6 +63,7 @@ vi.mock("../../components/plugins/PluginExtensions", () => ({
 }));
 
 import { useProjectStore } from "../../store/projectStore";
+import { ApiError } from "../../api/errors";
 import { DeviceDetail } from "./DeviceDetail";
 
 function setLive(next: Record<string, unknown>) {
@@ -173,12 +174,45 @@ describe("the device page's Live State", () => {
     const many: Record<string, unknown> = {};
     for (let i = 0; i < 1000; i++) many[`device.amp.channel.${i}.level`] = i;
     setLive(many);
-    // Until the driver's child types arrive every key is a row, and a role
-    // query over a thousand rows is slow: wait on the sentence instead. Even
-    // so, drawing a thousand rows takes seconds on a busy machine.
+    // The page lists no rows until the driver's child types arrive, so the
+    // thousand keys are never drawn as rows: wait on the sentence.
     render(<DeviceDetail deviceId="amp" onEdit={() => {}} onDeleted={() => {}} onDuplicate={() => {}} />);
     expect(await screen.findByText(/1,000 child-entity state keys are shown/)).toBeTruthy();
   }, 30000);
+
+  it("lists no rows while the device's details are on their way, then keeps its child keys apart", async () => {
+    let answer!: (info: unknown) => void;
+    mocks.getDevice.mockReturnValue(new Promise((r) => { answer = r; }));
+    setLive({
+      "device.amp.channel.01.level": 3,
+      "device.amp.channel.02.level": 4,
+      "device.amp.power": "on",
+    });
+    render(<DeviceDetail deviceId="amp" onEdit={() => {}} onDeleted={() => {}} onDuplicate={() => {}} />);
+    expect(rows()).toEqual([]);
+    expect(screen.getByText("Live State")).toBeTruthy();
+    expect(screen.queryByText("No state values yet")).toBeNull();
+    await act(async () => answer({
+      id: "amp", name: "Rack Amp", driver: "acme_amp", connected: false, enabled: true,
+      commands: {}, driver_info: { child_entity_types: { channel: {} } },
+    }));
+    expect(rows().map(([k]) => k)).toEqual(["enabled", "power"]);
+    expect(screen.getByText(/2 child-entity state keys are shown in the/)).toBeTruthy();
+  });
+
+  it("lists every key once the running system says it has no such device", async () => {
+    mocks.getDevice.mockRejectedValue(new ApiError(404, "Device 'amp' not found"));
+    setLive({ "device.amp.channel.01.level": 3, "device.amp.power": "on" });
+    render(<DeviceDetail deviceId="amp" onEdit={() => {}} onDeleted={() => {}} onDuplicate={() => {}} />);
+    await waitFor(() => expect(rows().map(([k]) => k)).toEqual(["enabled", "channel.01.level", "power"]));
+  });
+
+  it("lists every key when the device's details cannot be read at all", async () => {
+    mocks.getDevice.mockRejectedValue(new Error("network down"));
+    setLive({ "device.amp.power": "on" });
+    render(<DeviceDetail deviceId="amp" onEdit={() => {}} onDeleted={() => {}} onDuplicate={() => {}} />);
+    await waitFor(() => expect(rows().map(([k]) => k)).toEqual(["enabled", "power"]));
+  });
 
   it("says nothing about child keys when there are none", async () => {
     setLive({ "device.amp.power": "on" });

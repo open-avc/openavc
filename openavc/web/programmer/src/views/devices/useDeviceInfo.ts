@@ -15,6 +15,10 @@
  * A 404 means the running system has no such device: its driver failed while
  * loading (the device log says why). The device is still in the project, so
  * the page can still edit, duplicate or delete it (`notRunning`).
+ *
+ * `answered` turns true once the first read settles, whatever it came to:
+ * until then the page does not know the device's child types, so it lists no
+ * live keys rather than drawing every child key as a row.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as api from "../../api/restClient";
@@ -32,6 +36,7 @@ export interface DeviceInfoTriggers {
 export function useDeviceInfo(deviceId: string, triggers: DeviceInfoTriggers) {
   const [deviceInfo, setDeviceInfo] = useState<DeviceInfo | null>(null);
   const [notRunning, setNotRunning] = useState(false);
+  const [answered, setAnswered] = useState(false);
 
   // The id the page is showing, as of the last render. An answer that
   // arrives after the page has moved to another device would otherwise draw
@@ -46,11 +51,15 @@ export function useDeviceInfo(deviceId: string, triggers: DeviceInfoTriggers) {
         if (shownDeviceId.current !== forDevice) return;
         setDeviceInfo(info);
         setNotRunning(false);
+        setAnswered(true);
       })
       .catch((e) => {
-        if (shownDeviceId.current === forDevice && isMissingDevice(e)) {
-          setDeviceInfo(null);
-          setNotRunning(true);
+        if (shownDeviceId.current === forDevice) {
+          if (isMissingDevice(e)) {
+            setDeviceInfo(null);
+            setNotRunning(true);
+          }
+          setAnswered(true);
         }
         console.error(e);
       });
@@ -67,7 +76,7 @@ export function useDeviceInfo(deviceId: string, triggers: DeviceInfoTriggers) {
     api.getDevice(deviceId).then(setDeviceInfo).catch(console.error);
   }, [deviceId]);
 
-  return { deviceInfo, notRunning, refetch, takeActivated };
+  return { deviceInfo, notRunning, answered, refetch, takeActivated };
 }
 
 function isMissingDevice(e: unknown): boolean {

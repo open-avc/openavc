@@ -33,7 +33,9 @@ export function LiveStateSection({
   onMonitorsChange,
 }: {
   deviceId: string;
-  rows: LiveStateRow[];
+  /** The rows to list, or null while the device's details are on their way:
+   *  then the section lists nothing and says nothing. */
+  rows: LiveStateRow[] | null;
   /** The child keys left to the Child Entities panel above. */
   childKeyCount: number;
   /** The filter box's words, as typed. */
@@ -55,7 +57,7 @@ export function LiveStateSection({
     <div style={sectionStyle}>
       <h3 style={sectionTitleStyle}>Live State</h3>
       {childKeyCount > 0 && <ChildKeysNote count={childKeyCount} />}
-      <div style={{ ...surfaceStyle, overflow: "hidden" }}>
+      {rows !== null && <div style={{ ...surfaceStyle, overflow: "hidden" }}>
         {rows.length === 0 ? (
           <div
             style={{
@@ -89,7 +91,7 @@ export function LiveStateSection({
             </tbody>
           </table>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

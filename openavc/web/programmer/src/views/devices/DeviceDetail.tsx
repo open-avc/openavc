@@ -17,7 +17,13 @@ import { DeviceHeader } from "./DeviceHeader";
 import { AuditRefusalLine, ConnectionTestLine } from "./DeviceCheckResults";
 import { DeviceFilter } from "./DeviceFilter";
 import { LiveStateSection } from "./LiveStateSection";
-import { childTypeNames, deviceStateRows, type StateVariables } from "./liveStateRows";
+import {
+  childTypeNames,
+  deviceStateRows,
+  type LiveStateRow,
+  type RowRules,
+  type StateVariables,
+} from "./liveStateRows";
 import { ProblemReportDialog } from "./ProblemReportDialog";
 import type { ProblemReportContext } from "../../api/problemReportClient";
 import { readDeviceAway, waitsForLogin } from "./deviceAway";
@@ -25,6 +31,19 @@ import { DeviceBanners } from "./DeviceBanners";
 import { DeviceSettingsSection } from "./DeviceSettingsSection";
 import { DeviceLog } from "./DeviceLog";
 import { SendCommandSection } from "./SendCommandSection";
+
+/** What Live State lists once the device's details have arrived, and until
+ *  then nothing at all (`rows: null`): which keys are a child's comes with
+ *  those details, so listing earlier would draw every child key as a row. */
+function listedStateRows(
+  detailsArrived: boolean,
+  liveState: Record<string, unknown>,
+  deviceId: string,
+  rules: RowRules,
+): { rows: LiveStateRow[] | null; childKeyCount: number } {
+  if (!detailsArrived) return { rows: null, childKeyCount: 0 };
+  return deviceStateRows(liveState, deviceId, rules);
+}
 
 export function DeviceDetail({
   deviceId,
@@ -58,7 +77,7 @@ export function DeviceDetail({
   const connected = away.connected;
   const checks = useDeviceChecks(deviceId, connected);
   const runtimeEnabled = liveState[`device.${deviceId}.enabled`] === true;
-  const { deviceInfo, notRunning, refetch: refetchDeviceInfo, takeActivated } = useDeviceInfo(deviceId, {
+  const { deviceInfo, notRunning, answered, refetch: refetchDeviceInfo, takeActivated } = useDeviceInfo(deviceId, {
     connected,
     webUiUrl: liveState[`device.${deviceId}.web_ui_url`],
     runtimeEnabled,
@@ -79,7 +98,7 @@ export function DeviceDetail({
   // tagging lamp hours is one click rather than a form: the projector's
   // driver already said it is a number called "Lamp Hours" measured in hours.
   const stateVariables = (deviceInfo?.driver_info?.state_variables ?? {}) as StateVariables;
-  const { rows: stateRows, childKeyCount } = deviceStateRows(liveState, deviceId, {
+  const { rows: stateRows, childKeyCount } = listedStateRows(answered, liveState, deviceId, {
     childTypes,
     declared: stateVariables,
     filter: searchTerm.trim().toLowerCase(),
