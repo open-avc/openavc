@@ -187,10 +187,10 @@ async def test_async_on_data_task_held_until_done(udp_receiver):
     # _deliver_message is the producer the real socket calls — exercise it directly.
     transport._deliver_message(b"hello", ("127.0.0.1", 5005))
     await asyncio.wait_for(started.wait(), timeout=1.0)
-    assert len(transport._bg_tasks) == 1  # strong ref held while awaiting
+    assert len(transport._handler_runs.tasks) == 1  # strong ref held while awaiting
     release.set()
     await asyncio.sleep(0.05)
-    assert transport._bg_tasks == set()  # cleared by the done-callback
+    assert transport._handler_runs.tasks == set()  # cleared by the done-callback
     await transport.close()
 
 

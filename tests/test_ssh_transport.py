@@ -315,11 +315,11 @@ async def test_async_on_data_exception_is_logged(caplog):
     )
     with caplog.at_level(logging.ERROR, logger="openavc.transport.ssh"):
         t._deliver(b"payload")
-        assert t._bg_tasks, "async handler task must be strongly referenced"
+        assert t._handler_runs.tasks, "async handler task must be strongly referenced"
         for _ in range(10):
             await asyncio.sleep(0)
     assert any("on_data task" in r.message for r in caplog.records)
-    assert not t._bg_tasks  # self-pruned once settled
+    assert not t._handler_runs.tasks  # self-pruned once settled
 
 
 # --- device config -> transport plumbing -------------------------------------

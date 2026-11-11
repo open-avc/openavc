@@ -134,6 +134,7 @@ hiddenimports = [
     'openavc.transport.binary_helpers',
     'openavc.transport.wire_log',
     'openavc.transport.write_drain',
+    'openavc.transport.handler_runs',
     'openavc.transport.endpoint',
     'openavc.transport.pacing',
     'openavc.transport.ir_codec',

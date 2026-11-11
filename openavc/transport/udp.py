@@ -22,6 +22,7 @@ from typing import Callable
 
 from openavc.core.device_traffic import RX, TX, record_traffic
 from openavc.transport.wire_log import format_wire_data, wire_held
+from openavc.transport.handler_runs import HandlerRuns
 from openavc.utils.logger import get_logger
 from openavc.transport.pacing import SendLock, sleep_at_least
 from .types import Callback
@@ -158,9 +159,9 @@ class UDPTransport:
         self._response_queue: asyncio.Queue[bytes | object] = asyncio.Queue(maxsize=100)
         self._waiting_for_response = False
 
-        # Strong refs to fire-and-forget async on_data tasks so they aren't
-        # garbage-collected mid-flight; cleared by their own done-callback.
-        self._bg_tasks: set[asyncio.Task] = set()
+        # The receive handler's runs: one message at a time, in arrival order,
+        # each held until it ends (handler_runs).
+        self._handler_runs = HandlerRuns(_log_task_exception)
 
     async def open(
         self,
@@ -604,14 +605,8 @@ class UDPTransport:
         # Always call the data callback if set
         if self._on_data is not None:
             try:
-                result = self._on_data(data)
-                if asyncio.iscoroutine(result):
-                    # Hold a strong ref (GC-safety) and log any failure that an
-                    # async handler would otherwise swallow.
-                    task = asyncio.create_task(result)
-                    self._bg_tasks.add(task)
-                    task.add_done_callback(self._bg_tasks.discard)
-                    task.add_done_callback(_log_task_exception)
+                # A coroutine runs once the one before it has ended (handler_runs).
+                self._handler_runs.run(self._on_data(data))
             except Exception:
                 log.exception(
                     "Error in UDP on_data callback — "

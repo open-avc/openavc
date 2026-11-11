@@ -74,6 +74,7 @@ from openavc.core.connection_fault import (
 from openavc.core.device_traffic import RX, TX, record_traffic
 from openavc.transport.pacing import sleep_at_least
 from openavc.transport.write_drain import drain_or_stalled
+from openavc.transport.handler_runs import HandlerRuns
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
 
@@ -249,9 +250,9 @@ class SSHTransport:
         # set when the failure already knows its own code (a stalled write).
         # Cleared on every connect so a healed link can't report it.
         self._last_fault: ConnectionFault | None = None
-        # Strong refs for async on_data callback tasks (asyncio only weakly
-        # references tasks) — same supervision pattern as the other transports.
-        self._bg_tasks: set[asyncio.Task] = set()
+        # The receive handler's runs: one message at a time, in arrival order,
+        # each held until it ends (handler_runs).
+        self._handler_runs = HandlerRuns(_log_task_exception)
 
     # --- Factory ---------------------------------------------------------
 
@@ -545,14 +546,8 @@ class SSHTransport:
     def _deliver(self, data: bytes) -> None:
         record_traffic(self._traffic_name, RX, data, channel="ssh")
         try:
-            result = self._on_data(data)
-            if asyncio.iscoroutine(result):
-                # Hold a strong ref (GC-safety) and log any failure that an
-                # async handler would otherwise swallow.
-                task = asyncio.create_task(result)
-                self._bg_tasks.add(task)
-                task.add_done_callback(self._bg_tasks.discard)
-                task.add_done_callback(_log_task_exception)
+            # A coroutine runs once the one before it has ended (handler_runs).
+            self._handler_runs.run(self._on_data(data))
         except Exception:
             log.exception(
                 f"[{self._name}] Error in SSH on_data callback — continuing"

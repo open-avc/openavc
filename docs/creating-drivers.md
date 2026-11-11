@@ -2739,7 +2739,7 @@ class MySwitcherDriver(BaseDriver):
 - `connect()` and `disconnect()` are **not defined**. The base class handles them automatically using `DRIVER_INFO["transport"]` and the device config.
 - The default delimiter (`\r`) is used for message framing.
 - Polling is started automatically if `poll_interval > 0` in the device config.
-- `on_data_received()` is called with complete, delimiter-stripped messages.
+- `on_data_received()` is called with complete, delimiter-stripped messages, one at a time and in the order they arrived: the next message waits until the call before it returns, even when that call awaits a send (an acknowledgement, a telnet option refusal). So never await, inside `on_data_received`, something that only a later message would bring, such as a reply your own receive path resolves; that later message waits behind the call and never arrives. Await replies in your command code instead (see "What `send_and_wait` actually gives you" below).
 - `set_state("input", 3)` writes to `device.<device_id>.input` in the state store.
 - **All sent and received data is automatically logged** in the device log. No logging code needed. See "Device Log" below.
 
