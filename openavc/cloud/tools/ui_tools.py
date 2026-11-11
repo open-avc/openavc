@@ -402,16 +402,141 @@ class _NewElements:
         if self.problems:
             raise _batch_error(self.problems, "added")
 
+    def checked_boxes(self, elements: list) -> dict[str, dict]:
+        """A new page's controls checked, and their boxes by id.
 
-def _id_taken(el_id: Any, existing_ids: set, seen: set, page_id: str) -> str | None:
-    """Why a new control cannot have this id on this page, or None when it can."""
-    if el_id in existing_ids:
-        return f"Element '{el_id}' already exists on page '{page_id}'"
-    if el_id in seen:
-        # Two elements with one id: the second silently replaced the first at
-        # render time, and nothing said so.
-        return f"Element '{el_id}' appears twice in this batch"
+        The page's model builds the controls, so one that is not an object is
+        left to it, refused with the rest of the page.
+        """
+        boxes: dict[str, dict] = {}
+        for el_data in elements:
+            made = self.prepare(el_data) if isinstance(el_data, dict) else None
+            if made and made[0] is not None:
+                boxes[el_data.get("id", "?")] = made[0]
+        self.check()
+        return boxes
+
+
+class _NewControls(_NewElements):
+    """New controls for a page that already exists, built here and landed together.
+
+    An id must be free on the page and used once in the call. A container must
+    be a group on the page or one accepted earlier in the same call: a
+    container and its children can arrive together, so each control accepted
+    becomes a candidate parent for the next (``holders`` grows as they are).
+    """
+
+    def __init__(self, project: Any, page: Any) -> None:
+        super().__init__(project)
+        self.page = page
+        self.holders = {el.id: el for el in page.elements}
+        self.existing = set(self.holders)
+        self.seen: set = set()
+        self.accepted: list[tuple[Any, dict | None]] = []
+
+    def accept(self, elements: list) -> None:
+        """Every definition taken in order, then the batch refused if any was."""
+        for el_data in elements:
+            self._take(el_data)
+        self.check()
+
+    def _take(self, el_data: dict) -> None:
+        el_id = el_data.get("id", "?")
+        taken = self._taken(el_id)
+        if taken:
+            self.refuse(taken)
+            return
+        self.seen.add(el_id)
+        made = self.prepare(el_data, self._build)
+        if made is not None:
+            place, element = made
+            self.accepted.append((element, place))
+            self.holders[element.id] = element
+
+    def _taken(self, el_id: Any) -> str | None:
+        """Why a new control cannot have this id on this page, or None when it can."""
+        if el_id in self.existing:
+            return f"Element '{el_id}' already exists on page '{self.page.id}'"
+        if el_id in self.seen:
+            # Two elements with one id: the second silently replaced the first at
+            # render time, and nothing said so.
+            return f"Element '{el_id}' appears twice in this batch"
+        return None
+
+    def _build(self, el_data: dict) -> Any:
+        from openavc.core.project_loader import UIElement
+
+        element = UIElement(**el_data)
+        problem = element.parent is not None and container_problem(
+            self.holders, element.parent, self.page.id,
+        )
+        if problem:
+            raise ToolEditError({"error": f"Element '{el_data.get('id', '?')}': {problem}"})
+        return element
+
+    def land(self, notes: WriteNotes) -> None:
+        """The accepted controls onto the page, in the order they came, each
+        with what it may reach named, their boxes in the primary."""
+        for element, _ in self.accepted:
+            self.page.elements.append(element)
+            # A grant arriving on a create is no more visible afterwards for
+            # having arrived early.
+            notes.created_on(element.id, element.grant)
+        place_in_primary(self.page, {
+            element.id: place for element, place in self.accepted if place is not None
+        })
+
+
+def _master_id_taken(project: Any, element_id: str) -> str | None:
+    """Why a new master cannot have this id, or None when it can.
+
+    A master draws on every page it names, so its id may be no page's element
+    (the first page holding it is named) and no other master's.
+    """
+    for page in project.ui.pages:
+        if any(el.id == element_id for el in page.elements):
+            return f"Element '{element_id}' already exists on page '{page.id}'"
+    if any(el.id == element_id for el in project.ui.master_elements):
+        return f"Master element '{element_id}' already exists"
     return None
+
+
+def _new_master(project: Any, el_data: dict) -> Any:
+    """A master built from its definition, refused in this order: what its
+    definition may not say, an id already taken, its bindings."""
+    from openavc.core.project_loader import MasterElement
+
+    what = f"Master element '{el_data['id']}'"
+    _refuse_bad_master_definition(el_data, what)
+    taken = _master_id_taken(project, el_data["id"])
+    if taken:
+        raise ToolEditError({"error": taken})
+    _check_created_bindings(el_data, project, what)
+    if isinstance(el_data.get("placements"), dict):
+        el_data["placements"] = master_boxes(el_data["placements"])
+    return MasterElement(**el_data)
+
+
+def _new_page(page_id: str, elements: list, given: dict) -> Any:
+    """A page built through the model from the fields the AI may set.
+
+    Through the model rather than field by field, so a page can be created as
+    one that draws its own markup instead of having to be created and then
+    converted. Pydantic answers for the Literal and the grant shape here; the
+    update door checks them by hand because assignment does not.
+    """
+    from openavc.core.project_loader import UIPage
+
+    try:
+        return UIPage(
+            id=page_id,
+            elements=elements,
+            **{"name": page_id, "snap": {}, "layouts": [], **given},
+        )
+    except ValidationError as exc:
+        raise ToolEditError({
+            "error": f"Page '{page_id}' is not shaped right: {exc}"
+        }) from exc
 
 
 def _set_layouts(page: Any, value: Any, what: str) -> None:
@@ -539,7 +664,6 @@ class UIToolsMixin:
         if not page_id:
             return {"error": "Page ID is required"}
 
-        from openavc.core.project_loader import UIPage
         elements = input.get("elements", [])
         notes = WriteNotes()
 
@@ -551,31 +675,10 @@ class UIToolsMixin:
             # Each inline element goes through what add_ui_elements puts each
             # through -- otherwise a page created with its elements in one call
             # keeps bindings nothing validated (buttons silently do nothing).
-            # One that is not an object is left to the model, with the page.
-            batch = _NewElements(project)
-            boxes: dict[str, dict] = {}
-            for el_data in elements:
-                made = batch.prepare(el_data) if isinstance(el_data, dict) else None
-                if made and made[0] is not None:
-                    boxes[el_data.get("id", "?")] = made[0]
-            batch.check()
-
-            # Built through the model rather than field by field, so a page can
-            # be created as one that draws its own markup instead of having to
-            # be created and then converted. Pydantic answers for the Literal
-            # and the grant shape here; the update door checks them by hand
-            # because assignment does not.
-            given = {field: input[field] for field in _PAGE_FIELDS if field in input}
-            try:
-                new_page = UIPage(
-                    id=page_id,
-                    elements=elements,
-                    **{"name": page_id, "snap": {}, "layouts": [], **given},
-                )
-            except ValidationError as exc:
-                raise ToolEditError({
-                    "error": f"Page '{page_id}' is not shaped right: {exc}"
-                }) from exc
+            boxes = _NewElements(project).checked_boxes(elements)
+            new_page = _new_page(page_id, elements, {
+                field: input[field] for field in _PAGE_FIELDS if field in input
+            })
             place_in_primary(new_page, boxes)
             # A UI-only change just swaps the project and pushes the new
             # ui.definition to connected panels.
@@ -654,57 +757,14 @@ class UIToolsMixin:
         if not elements:
             return {"error": "No elements provided"}
 
-        from openavc.core.project_loader import UIElement
         notes = WriteNotes()
 
         def mutate(project):
-            page = _page_named(project, page_id)
-
-            batch = _NewElements(project)
-            holders = {el.id: el for el in page.elements}
-            existing_ids = set(holders)
-            seen: set[str] = set()
-            prepared: list[tuple[Any, dict | None]] = []
-
-            def build(el_data: dict) -> Any:
-                element = UIElement(**el_data)
-                problem = element.parent is not None and container_problem(
-                    holders, element.parent, page_id,
-                )
-                if problem:
-                    raise ToolEditError({"error": f"Element '{el_data.get('id', '?')}': {problem}"})
-                return element
-
-            for el_data in elements:
-                el_id = el_data.get("id", "?")
-                taken = _id_taken(el_id, existing_ids, seen, page_id)
-                if taken:
-                    batch.refuse(taken)
-                    continue
-                seen.add(el_id)
-                made = batch.prepare(el_data, build)
-                if made is not None:
-                    place, element = made
-                    prepared.append((element, place))
-                    # A container and its children can arrive in one call, so
-                    # an element accepted here is a candidate parent for a
-                    # later one -- as when each was appended before the next
-                    # was checked.
-                    holders[element.id] = element
-            batch.check()
-
-            for element, place in prepared:
-                page.elements.append(element)
-                # What each new control may reach, named rather than assumed:
-                # a grant arriving on a create is no more visible afterwards
-                # for having arrived early.
-                notes.created_on(element.id, element.grant)
-            place_in_primary(page, {
-                element.id: place for element, place in prepared if place is not None
-            })
-
+            batch = _NewControls(project, _page_named(project, page_id))
+            batch.accept(elements)
+            batch.land(notes)
             notes.add(*UIReview(engine, self._devices, project).write(
-                page, {el.get("id", "") for el in elements},
+                batch.page, {el.get("id", "") for el in elements},
             ))
 
         err = await apply_tool_edit(engine, mutate)
@@ -825,24 +885,12 @@ class UIToolsMixin:
         if not element_id:
             return {"error": "Element ID is required"}
 
-        from openavc.core.project_loader import MasterElement
         el_data = {k: v for k, v in input.items() if k != "id"}
         el_data["id"] = element_id
         notes = WriteNotes()
 
         def mutate(project):
-            _refuse_bad_master_definition(el_data, f"Master element '{element_id}'")
-            # Check for ID collision with page elements and existing master elements
-            for page in project.ui.pages:
-                if any(el.id == element_id for el in page.elements):
-                    raise ToolEditError({"error": f"Element '{element_id}' already exists on page '{page.id}'"})
-            if any(el.id == element_id for el in project.ui.master_elements):
-                raise ToolEditError({"error": f"Master element '{element_id}' already exists"})
-
-            _check_created_bindings(el_data, project, f"Master element '{element_id}'")
-            if isinstance(el_data.get("placements"), dict):
-                el_data["placements"] = master_boxes(el_data["placements"])
-            new_el = MasterElement(**el_data)
+            new_el = _new_master(project, el_data)
             project.ui.master_elements.append(new_el)
             notes.created(new_el.grant)
             notes.add(master_findings(project, new_el))
