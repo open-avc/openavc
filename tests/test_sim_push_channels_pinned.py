@@ -616,3 +616,19 @@ def test_a_registration_command_with_only_a_method_matches_the_root_path():
     )
     assert sim._push_tcp["register"].pattern == r"^POST\ /\s*(?:\|.*)?$"
     assert sim._push_tcp["unregister"].pattern == r"^GET\ /bye/(?P<lport>\d+)\s*(?:\|.*)?$"
+
+
+@pytest.mark.parametrize("var, value, expected", [
+    ({"type": "integer", "min": 5, "max": 3}, 1, 3),
+    ({"type": "integer", "min": 5, "max": 3}, 10, 3),
+    ({"type": "integer", "min": 2.2, "max": 2.8}, 1, 2),
+    ({"type": "integer", "min": 2.2, "max": 2.8}, 9, 2),
+    ({"type": "number", "min": 2.2, "max": 2.8}, 1.0, 2.2),
+    ({"type": "number", "min": 5, "max": 3}, 1.0, 3.0),
+    ({"type": "string", "min": "x", "max": 3}, 9, 3),
+    ({"type": "integer", "min": 0, "max": 10}, True, True),
+])
+def test_a_value_is_raised_to_its_minimum_before_it_is_lowered_to_its_maximum(var, value, expected):
+    sim = _sim(state_variables={"v": var})
+    sim.set_state("v", value)
+    assert sim._state["v"] == expected and type(sim._state["v"]) is type(expected)

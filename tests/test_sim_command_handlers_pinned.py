@@ -357,3 +357,17 @@ def test_a_declared_query_for_wins_the_reply_over_what_the_command_sets():
         "sets": {"level": "{v}"}, "query_for": "power",
     }})
     assert (view["state_changes"], view["response_var"]) == ({"level": 1}, "power")
+
+
+def test_a_flat_param_after_a_child_variable_with_an_empty_name_keeps_the_child_reply():
+    # A child variable named "" is the one name that leaves the reply
+    # variable falsy once set: the flat param after it takes the reply
+    # variable, and the reply stays the child's.
+    sim = _sim({"set_x": {
+        "send": "X {o} {} {level}",
+        "params": {"o": {"type": "child_id", "child_type": "out"},
+                   "": {"type": "integer"}, "level": {"type": "integer"}},
+    }}, child_entity_types={"out": {"state_variables": {"": {"type": "integer"}}}})
+    view = _views(sim)[0]
+    assert (view["response_var"], view["response_is_child"], view["child_type"],
+            view["child_state_keys"]) == ("level", True, "out", {""})
