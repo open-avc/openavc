@@ -1646,3 +1646,319 @@ def test_an_unbacked_lock_is_still_a_button_and_still_local(panel_page) -> None:
     panel_page.locator(".matrix-lock-btn").click()
     assert _sent(panel_page) == []
     assert "locked" in (panel_page.locator(".matrix-lock-btn").get_attribute("class"))
+
+
+# ---------------------------------------------------------------------------
+# What each style does with its own copy of mute, lock and the chooser
+# ---------------------------------------------------------------------------
+
+def _muting(style, *, follow=False, audio_binding=False, **config):
+    """One destination, two sources, a mute column wired to a mute action."""
+    element = _resolved(
+        sources=[{"value": 1, "label": "Apple TV"}, {"value": 2, "label": "Room PC"}],
+        destinations=[{"value": 7, "label": "Main LCD",
+                       "route_key": "device.mx.output.1.input"}],
+        show_mute=True,
+        **({"audio_follow_video": True} if follow else {}),
+        **config,
+    )
+    element["matrix_style"] = style
+    element["bindings"]["do"]["mute_route"] = [{"action": "device.command"}]
+    if audio_binding:
+        element["bindings"]["do"]["audio_mute_route"] = [{"action": "device.command"}]
+    return element
+
+
+def _raw(style, sources, destinations, **config):
+    """A matrix config handed to the panel as written, with no resolver between.
+
+    For what the panel itself falls back to when an entry has no name, which
+    the resolver would otherwise have filled in first.
+    """
+    return {
+        "id": "mx1", "type": "matrix", "label": "Routing", "matrix_style": style,
+        "matrix_config": {"sources": sources, "destinations": destinations, **config},
+        "bindings": {"do": {"video_route": [{"action": "device.command"}]}},
+    }
+
+
+def _classes(locator) -> list[str]:
+    return (locator.get_attribute("class") or "").split()
+
+
+@pytest.mark.parametrize("style", ["crosspoint", "list", "tiles"])
+def test_mute_sends_a_mute_and_the_next_press_an_unmute(panel_page, style) -> None:
+    """The panel remembers which destinations it muted, per matrix."""
+    _mount(panel_page, _muting(style), 700, 400)
+    button = panel_page.locator(".matrix-mute-btn")
+    button.click()
+    assert "muted" in _classes(button)
+    button.click()
+    assert "muted" not in _classes(button)
+    assert json.dumps(_sent(panel_page)) == json.dumps([
+        {"type": "ui.route", "element_id": "mx1", "output": 7, "mute": True},
+        {"type": "ui.route", "element_id": "mx1", "output": 7, "mute": False},
+    ])
+    # A tile's mute sits on the tile, and the tile opens the chooser.
+    assert panel_page.locator(".matrix-chooser").count() == 0
+
+
+def test_mute_with_audio_follow_mutes_the_audio_too(panel_page) -> None:
+    _mount(panel_page, _muting("crosspoint", follow=True, audio_binding=True), 700, 400)
+    panel_page.locator(".matrix-mute-btn").click()
+    assert json.dumps(_sent(panel_page)) == json.dumps([
+        {"type": "ui.route", "element_id": "mx1", "output": 7, "mute": True},
+        {"type": "ui.route", "element_id": "mx1", "output": 7, "mute": True, "audio": True},
+    ])
+
+
+def test_audio_follow_sends_no_audio_without_an_audio_action(panel_page) -> None:
+    """With nothing bound to run, the audio half of a route or a mute is not sent."""
+    _mount(panel_page, _muting("crosspoint", follow=True), 700, 400)
+    panel_page.locator(".matrix-mute-btn").click()
+    _crosspoint(panel_page, 2, 7).click()
+    assert json.dumps(_sent(panel_page)) == json.dumps([
+        {"type": "ui.route", "element_id": "mx1", "output": 7, "mute": True},
+        {"type": "ui.route", "element_id": "mx1", "input": 2, "output": 7},
+    ])
+
+
+def test_mute_is_not_drawn_without_a_mute_action(panel_page) -> None:
+    element = _muting("crosspoint")
+    del element["bindings"]["do"]["mute_route"]
+    _mount(panel_page, element, 700, 400)
+    assert panel_page.locator(".matrix-mute-btn").count() == 0
+
+
+def test_a_muted_list_row_keeps_its_dropdown_disabled_through_a_lock(panel_page) -> None:
+    """A lock released must not re-enable a dropdown a mute disabled."""
+    _mount(panel_page, _muting("list", show_lock=True), 700, 300)
+    select = panel_page.locator(".matrix-list-select")
+    lock = panel_page.locator(".matrix-lock-btn")
+    panel_page.locator(".matrix-mute-btn").click()
+    assert select.is_disabled()
+    lock.click()
+    lock.click()
+    assert select.is_disabled(), "unlocking re-enabled a muted dropdown"
+    panel_page.locator(".matrix-mute-btn").click()
+    assert not select.is_disabled()
+
+
+@pytest.mark.parametrize("style", ["crosspoint", "list", "tiles"])
+def test_an_unbacked_lock_unlocks_on_the_second_press(panel_page, style) -> None:
+    _mount(panel_page, _locked(style, backed=False), 700, 400)
+    lock = panel_page.locator(".matrix-lock-btn")
+    lock.click()
+    assert (lock.text_content(), lock.get_attribute("title")) == ("\U0001F512", "Unlock output")
+    lock.click()
+    assert (lock.text_content(), lock.get_attribute("title")) == ("\U0001F513", "Lock output")
+    assert "locked" not in _classes(lock)
+    assert _sent(panel_page) == []
+
+
+@pytest.mark.parametrize(("value", "engaged"), [
+    (True, True), ("true", True), (" On ", True), ("LOCKED", True), ("yes", True),
+    ("1", True), (1, True),
+    (False, False), ("off", False), ("0", False), (0, False), ("no", False),
+    (None, False), ("", False),
+])
+def test_a_lock_variable_reads_as_locked_in_the_words_it_might_hold(
+    panel_page, value, engaged,
+) -> None:
+    _mount(panel_page, _locked("tiles"), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {"var.mx_lock_1": value})
+    lock = panel_page.locator(".matrix-lock-btn")
+    tile = panel_page.locator('.matrix-tile[data-dest-idx="0"]')
+    assert ("locked" in _classes(lock)) is engaged
+    assert ("locked" in _classes(tile)) is engaged
+    assert lock.get_attribute("title") == ("Unlock output" if engaged else "Lock output")
+
+
+def test_a_locked_list_row_sends_nothing_when_its_dropdown_changes(panel_page) -> None:
+    _mount(panel_page, _locked("list"), 600, 300)
+    panel_page.evaluate("(s) => window.__setState(s)", {"var.mx_lock_1": True})
+    panel_page.evaluate("""() => {
+        const s = document.querySelector('.matrix-list-select');
+        s.selectedIndex = 2;
+        s.dispatchEvent(new Event('change'));
+    }""")
+    assert _sent(panel_page) == []
+
+
+@pytest.mark.parametrize("key", ["Enter", "Space"])
+def test_a_tile_opens_its_chooser_from_the_keyboard(panel_page, key) -> None:
+    _mount(panel_page, _wall(destinations=2, sources=2), 700, 400)
+    panel_page.locator('.matrix-tile[data-dest-idx="1"]').focus()
+    panel_page.keyboard.press(key)
+    assert panel_page.locator(".matrix-chooser").count() == 1
+    assert panel_page.locator(".matrix-chooser-title").text_content() == "Dest 2"
+    panel_page.locator(".matrix-chooser-cancel").click()
+
+
+def test_a_chooser_closes_on_a_tap_beside_its_sheet_but_not_on_it(panel_page) -> None:
+    _mount(panel_page, _wall(destinations=2, sources=2), 700, 400)
+    panel_page.locator('.matrix-tile[data-dest-idx="0"]').click()
+    panel_page.locator(".matrix-chooser-title").click()
+    assert panel_page.locator(".matrix-chooser").count() == 1
+    panel_page.locator(".matrix-chooser").click(position={"x": 3, "y": 3})
+    assert panel_page.locator(".matrix-chooser").count() == 0
+    assert _sent(panel_page) == []
+
+
+def test_the_chooser_marks_the_source_already_routed(panel_page) -> None:
+    _mount(panel_page, _wall(destinations=2, sources=3), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {"device.mx.output.1.input": 2})
+    panel_page.locator('.matrix-tile[data-dest-idx="0"]').click()
+    marks = panel_page.evaluate("""() => Array.from(
+        document.querySelectorAll('.matrix-chooser-source')).map(b => [
+            b.classList.contains('active'), b.style.color, b.style.borderColor])""")
+    assert marks == [
+        [False, "", ""],
+        [True, "rgb(76, 175, 80)", "rgb(76, 175, 80)"],
+        [False, "", ""],
+    ]
+    panel_page.locator(".matrix-chooser-cancel").click()
+
+
+@pytest.mark.parametrize("reported", ["0", " 0 ", ""])
+def test_a_zero_or_blank_report_reads_as_nothing_routed(panel_page, reported) -> None:
+    _mount(panel_page, _wall(destinations=1, sources=2), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {"device.mx.output.1.input": reported})
+    routed = panel_page.locator(".matrix-tile-source")
+    assert routed.text_content() == "—"
+    assert "idle" in _classes(routed) and "unlisted" not in _classes(routed)
+
+
+def test_a_report_matches_a_source_named_in_another_case(panel_page) -> None:
+    _mount(panel_page, _tiles(
+        sources=[{"value": "HDMI", "label": "Laptop"}, {"value": "SDI", "label": "Camera"}],
+        destinations=[{"value": 1, "label": "Main", "route_key": "device.mx.output.1.input"}],
+    ), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {"device.mx.output.1.input": "hdmi"})
+    routed = panel_page.locator(".matrix-tile-source")
+    assert routed.text_content() == "Laptop"
+    assert "idle" not in _classes(routed) and "unlisted" not in _classes(routed)
+
+
+def test_a_preset_with_no_name_is_called_preset(panel_page) -> None:
+    element = _matrix()
+    element["matrix_config"]["presets"] = [{"macro": "m1"}, {"name": "Show", "macro": "m2"}]
+    _mount(panel_page, element)
+    buttons = panel_page.locator(".matrix-preset-btn")
+    assert buttons.all_text_contents() == ["Preset", "Show"]
+    buttons.first.click()
+    assert _sent(panel_page) == [{"type": "macro.execute", "macro_id": "m1"}]
+
+
+def test_an_audio_route_on_an_unreachable_device_is_not_named(panel_page) -> None:
+    _mount(panel_page, _resolved(
+        sources=[{"value": 1, "label": "Apple TV"}, {"value": 2, "label": "Room PC"}],
+        destinations=[{"value": 1, "label": "Main LCD",
+                       "route_key": "device.mx.output.1.input",
+                       "audio_route_key": "device.aud.output.1.audio_input"}],
+    ), 700, 400)
+    audio = panel_page.locator(".matrix-audio-source")
+    routes = {"device.mx.output.1.input": 1, "device.aud.output.1.audio_input": 2}
+    panel_page.evaluate("(s) => window.__setState(s)", routes)
+    assert audio.is_visible() and audio.text_content() == "Audio: Room PC"
+    panel_page.evaluate("(s) => window.__setState(s)", {**routes, "device.aud.connected": False})
+    assert audio.is_hidden()
+
+
+def test_an_audio_route_to_an_unlisted_source_is_named_by_its_value(panel_page) -> None:
+    _mount(panel_page, _resolved(
+        sources=[{"value": 1, "label": "Apple TV"}, {"value": 2, "label": "Room PC"}],
+        destinations=[{"value": 1, "label": "Main LCD",
+                       "route_key": "device.mx.output.1.input",
+                       "audio_route_key": "device.mx.output.1.audio_input"}],
+    ), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {
+        "device.mx.output.1.input": 1, "device.mx.output.1.audio_input": 9})
+    audio = panel_page.locator(".matrix-audio-source")
+    assert audio.text_content() == "Audio: 9"
+    assert audio.get_attribute("title") == "Audio is on 9"
+
+
+def test_a_short_slide_off_a_crosspoint_is_still_a_tap(panel_page) -> None:
+    """Under the drag threshold the gesture routes the cell it started on, even
+    when the finger comes up over the row below."""
+    _mount(panel_page, _matrix(), 600, 400)
+    cell = panel_page.locator(".matrix-cell", has=_crosspoint(panel_page, 1, 1))
+    box = cell.bounding_box()
+    x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] - 2
+    panel_page.mouse.move(x, y)
+    panel_page.mouse.down()
+    panel_page.mouse.move(x, y + 6, steps=3)
+    panel_page.mouse.up()
+    sent = _sent(panel_page)
+    assert [(m["input"], m["output"]) for m in sent] == [(1, 1)]
+
+
+def test_a_drag_onto_a_locked_destination_routes_nothing(panel_page) -> None:
+    _mount(panel_page, _resolved(
+        sources=[{"value": 1, "label": "Apple TV"}, {"value": 2, "label": "Room PC"}],
+        destinations=[
+            {"value": 1, "label": "Left", "route_key": "device.mx.output.1.input"},
+            {"value": 2, "label": "Right", "route_key": "device.mx.output.2.input",
+             "lock_key": "var.right_lock"},
+        ],
+        show_lock=True,
+    ), 600, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {"var.right_lock": True})
+    start = _crosspoint(panel_page, 1, 1).bounding_box()
+    end = _crosspoint(panel_page, 1, 2).bounding_box()
+    panel_page.mouse.move(start["x"] + start["width"] / 2, start["y"] + start["height"] / 2)
+    panel_page.mouse.down()
+    panel_page.mouse.move(end["x"] + end["width"] / 2, end["y"] + end["height"] / 2, steps=10)
+    panel_page.mouse.up()
+    assert _sent(panel_page) == []
+
+
+def test_the_lock_and_mute_columns_are_a_finger_wide(panel_page) -> None:
+    _mount(panel_page, _muting("crosspoint", show_lock=True), 700, 400)
+    grid = panel_page.evaluate("""() => {
+        const g = document.querySelector('.matrix-grid');
+        return [g.style.gridTemplateColumns, g.style.gridTemplateRows, g.style.maxWidth];
+    }""")
+    assert grid == [
+        "minmax(80px, max-content) repeat(2, minmax(44px, 1fr)) 44px 44px",
+        "auto repeat(1, minmax(44px, 72px))",
+        "316px",
+    ]
+
+
+def test_a_crosspoint_names_its_route_for_a_screen_reader(panel_page) -> None:
+    _mount(panel_page, _raw(
+        "crosspoint",
+        [{"value": 1, "label": "Apple TV"}, {"value": 2}],
+        [{"value": 5, "label": "Main LCD"}, {"value": 6}],
+    ), 700, 400)
+    labels = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-cell:not(.matrix-toggle)')).map(c => c.getAttribute('aria-label'))""")
+    assert labels == [
+        "Route Apple TV to Main LCD", "Route input 2 to Main LCD",
+        "Route Apple TV to output 2", "Route input 2 to output 2",
+    ]
+
+
+@pytest.mark.parametrize("style", ["list", "tiles"])
+def test_a_matrix_with_no_keys_draws_the_names_it_was_given(panel_page, style) -> None:
+    """Nothing to watch means nothing redraws the names after the first draw."""
+    _mount(panel_page, _raw(
+        style,
+        [{"value": 1, "label": "Apple TV"}],
+        [{"value": 5, "label": "Main LCD"}, {"value": 6}],
+    ), 700, 400)
+    names = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+        '.matrix-list-label, .matrix-tile-dest')).map(n => n.textContent)""")
+    assert names == ["Main LCD", "Out 2"]
+
+
+@pytest.mark.parametrize("held", [True, "on"])
+def test_pressing_an_engaged_backed_lock_writes_false(panel_page, held) -> None:
+    _mount(panel_page, _locked("crosspoint"), 700, 400)
+    panel_page.evaluate("(s) => window.__setState(s)", {"var.mx_lock_1": held})
+    panel_page.locator(".matrix-lock-btn").click()
+    assert _sent(panel_page) == [
+        {"type": "state.set", "key": "var.mx_lock_1", "value": False},
+    ]

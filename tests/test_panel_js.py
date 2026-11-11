@@ -210,6 +210,8 @@ SCENARIOS = [
     "list_key_pattern_is_literal_apart_from_the_star",
     "rich_text_escapes_markup_before_adding_its_own",
     "q139_a_matrix_preset_and_lock_name_the_control_they_came_from",
+    "matrix_a_redraw_ends_a_crosspoint_gesture_without_routing",
+    "matrix_a_lock_variable_alone_redraws_the_lock",
     # The Programmer's session reaches the embedded panel's requests and socket.
     "bridge_sends_the_programmer_session_as_a_bearer_token",
     "bridge_attaches_nothing_without_a_session",

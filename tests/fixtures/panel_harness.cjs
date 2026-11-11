@@ -4001,6 +4001,63 @@ const tests = {
             `the lock names the matrix, got "${app._lastTouchedElementId}"`);
     },
 
+    // A crosspoint gesture listens on the document, outside the element, so
+    // a page redraw has to end it: a finger lifted after the redraw must not
+    // route a cell that is no longer on the page.
+    matrix_a_redraw_ends_a_crosspoint_gesture_without_routing() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        renderProject(app, project({
+            elements: [{
+                id: 'mx', type: 'matrix',
+                matrix_config: {
+                    sources: [{ value: 1, label: 'Laptop' }],
+                    destinations: [{ value: 1, label: 'Left', route_key: 'device.sw.route_1' }],
+                },
+            }],
+            placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
+        }));
+        const press = (type) => new window.MouseEvent(type, { bubbles: true, clientX: 5, clientY: 5 });
+        const routes = () => app.ws.sent.filter(m => m.type === 'ui.route').length;
+
+        app.root.querySelector('.matrix-cell').dispatchEvent(press('pointerdown'));
+        document.dispatchEvent(press('pointerup'));
+        assert(routes() === 1, `a tap routes once, got ${routes()}`);
+
+        app.root.querySelector('.matrix-cell').dispatchEvent(press('pointerdown'));
+        app.renderCurrentPage();
+        document.dispatchEvent(press('pointerup'));
+        assert(routes() === 1, `a gesture the redraw ended still routed (${routes()} routes)`);
+    },
+
+    // A lock is watched by its own key, so a lock variable that changes on
+    // its own -- another panel pressed it -- redraws the lock here.
+    matrix_a_lock_variable_alone_redraws_the_lock() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        app.state = { 'device.sw.route_1': 1 };
+        renderProject(app, project({
+            elements: [{
+                id: 'mx', type: 'matrix', matrix_style: 'list',
+                matrix_config: {
+                    show_lock: true,
+                    sources: [{ value: 1, label: 'Laptop' }],
+                    destinations: [{
+                        value: 1, label: 'Left', route_key: 'device.sw.route_1',
+                        lock_key: 'var.left_lock',
+                    }],
+                },
+            }],
+            placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
+        }));
+        const lock = app.root.querySelector('.matrix-lock-btn');
+        assert(!lock.classList.contains('locked'), 'the lock starts open');
+        app.state['var.left_lock'] = true;
+        app.evaluateAllBindings(['var.left_lock']);
+        assert(lock.classList.contains('locked'), 'the lock did not follow its variable');
+        assert(app.root.querySelector('.matrix-list-select').disabled, 'a locked row keeps its dropdown');
+    },
+
     // The Programmer session bridge: the token the IDE keeps in sessionStorage
     // rides on every /api call as a Bearer header and on the socket as the
     // auth.bearer subprotocol, the two channels the IDE itself uses. This is
