@@ -206,7 +206,8 @@ def _validated_grant(value: Any, what: str) -> Any:
     intact -- and the panel asks ``grant.devices.includes(id)``, which a
     **string** answers too, matching every device id that is a substring of it.
 
-    Shared by the element door and the page door, which take the same grant.
+    Shared by the field assigners of the element, master and page doors,
+    which take the same grant.
     """
     if value is None:
         return None
@@ -220,7 +221,7 @@ def _validated_grant(value: Any, what: str) -> Any:
         }) from exc
 
 
-def _assign_plain_fields(target: Any, input: dict, skip: set[str], what: str) -> list[str]:
+def _assign_plain_fields(target: Any, fields: dict, what: str, notes: WriteNotes) -> list[str]:
     """Assign every field the caller named that the model declares; the names
     assigned come back, in the caller's order.
 
@@ -234,38 +235,38 @@ def _assign_plain_fields(target: Any, input: dict, skip: set[str], what: str) ->
     reason ("limiting it twice is what left a master image with no way to be
     given a src"); this is that rule, shared, so the two cannot drift again.
 
-    ``skip`` names the fields whose caller handles them itself, because they
-    do not live on the element: a box and a hide belong to a layout, a parent
-    needs the percentage conversion, bindings need validating first.
+    ``fields`` is the call less what its door handles itself (:func:`_left_over`),
+    because those do not live on the element: a box and a hide belong to a
+    layout, a parent needs the percentage conversion, bindings need validating
+    first.
 
-    One field is checked rather than assigned raw. ``grant`` is the whole reach
-    model for a custom control -- the panel enforces it and nothing else can
-    (a WS frame carries no element identity) -- and the model does not validate
-    on assignment, so a string where a list belongs would land intact. The
-    panel then asks ``grant.devices.includes(id)``, and a **string** answers
-    that too: a grant of ``"projector1"`` matches every device id that is a
-    substring of it. Coerce it, and say what was wrong.
+    One field is checked rather than assigned raw, the grant
+    (:func:`_validated_grant` says why), and said back before and after.
     """
     assigned: list[str] = []
-    for field, value in input.items():
-        if field in skip:
-            continue
-        if field == "grant":
-            value = _validated_grant(value, what)
-        if field == "id":
-            raise ToolEditError({
-                "error": f"{what}: an id cannot be changed here -- delete it and add "
-                         f"it again under the new id."
-            })
-        if not hasattr(target, field) and field not in type(target).model_fields:
-            # extra='allow' means an unknown field would be stored and never
-            # read. Say so rather than accept it silently.
-            raise ToolEditError({
-                "error": f"{what}: '{field}' is not a field on a UI element."
-            })
-        setattr(target, field, value)
-        assigned.append(field)
+    with notes.assigning(target, fields):
+        for field, value in fields.items():
+            if field == "grant":
+                value = _validated_grant(value, what)
+            if field == "id":
+                raise ToolEditError({
+                    "error": f"{what}: an id cannot be changed here -- delete it and add "
+                             f"it again under the new id."
+                })
+            if not hasattr(target, field) and field not in type(target).model_fields:
+                # extra='allow' means an unknown field would be stored and never
+                # read. Say so rather than accept it silently.
+                raise ToolEditError({
+                    "error": f"{what}: '{field}' is not a field on a UI element."
+                })
+            setattr(target, field, value)
+            assigned.append(field)
     return assigned
+
+
+def _left_over(input: dict, handled: set[str]) -> dict:
+    """The fields of a call its door does not handle itself, in the caller's order."""
+    return {field: value for field, value in input.items() if field not in handled}
 
 
 def _refuse_if_locked(target: Any, input: dict, what: str) -> None:
@@ -431,6 +432,19 @@ _PAGE_FIELDS = {
 }
 
 
+def _assign_page_fields(page: Any, input: dict, what: str, notes: WriteNotes) -> list[str]:
+    """Assign every page field the caller named, the way the table says; the
+    names assigned come back in the table's order, and a grant is said back
+    before and after."""
+    assigned: list[str] = []
+    with notes.assigning(page, input):
+        for field, assign in _PAGE_FIELDS.items():
+            if field in input:
+                assign(page, input[field], what)
+                assigned.append(field)
+    return assigned
+
+
 def _page_update_touches(input: dict) -> set[str] | None:
     """The elements a page update answers for, or None when it has nothing to review.
 
@@ -540,15 +554,9 @@ class UIToolsMixin:
             page = _page_named(project, page_id)
             what = f"Page '{page_id}'"
             _reject_retired_geometry(input, what)
-            grant_before = page.grant
-            for field, assign in _PAGE_FIELDS.items():
-                if field in input:
-                    assign(page, input[field], what)
-                    changed.append(field)
+            changed.extend(_assign_page_fields(page, input, what, notes))
             if not changed:
                 raise ToolEditError({"error": "No fields to update"})
-            if "grant" in input:
-                notes.changed(grant_before, page.grant)
 
             # Nothing here expresses a range, so no auto-fill.
             touched = _page_update_touches(input)
@@ -720,14 +728,13 @@ class UIToolsMixin:
             # are handled by hand because they do not live on it: a box and a
             # hide belong to a layout, a parent needs the percentage
             # conversion, and bindings were validated before anything moved.
-            grant_before = target_el.grant
             changed.extend(_assign_plain_fields(
-                target_el, input,
-                skip={"element_id", "layout_id", "parent", "placement", "hidden", "bindings"},
-                what=f"Element '{element_id}'",
+                target_el,
+                _left_over(input, {
+                    "element_id", "layout_id", "parent", "placement", "hidden", "bindings",
+                }),
+                f"Element '{element_id}'", notes,
             ))
-            if "grant" in input:
-                notes.changed(grant_before, target_el.grant)
 
             notes.add(*UIReview(engine, self._devices, project).write(
                 target_page, {element_id}, ranges=touches_range,
@@ -872,16 +879,13 @@ class UIToolsMixin:
             # model declares is settable -- the schema is what limits the
             # caller, and limiting it twice is what left a master image with no
             # way to be given a src. Shared with update_ui_element, which had
-            # exactly that defect until the rule moved into one place.
-            grant_before = target.grant
+            # exactly that defect until the rule moved into one place. A
+            # master can be a custom control too, drawn on every page, so its
+            # grant is said back the same way.
             changed.extend(_assign_plain_fields(
-                target, input,
-                skip={"element_id", "bindings", "placements", "placement"},
-                what=f"Master element '{element_id}'",
+                target, _left_over(input, {"element_id", "bindings", "placements", "placement"}),
+                f"Master element '{element_id}'", notes,
             ))
-            if "grant" in input:
-                # A master can be a custom control too, drawn on every page.
-                notes.changed(grant_before, target.grant)
 
             if not changed:
                 raise ToolEditError({"error": "No fields to update"})

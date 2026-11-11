@@ -20,6 +20,7 @@ touched, and leaves the markup review to the write that set a grant (and to
 bounds it filled in, and a grant change said out loud.
 """
 
+from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,20 @@ class WriteNotes:
     def changed(self, before: Any, after: Any) -> None:
         """A grant this write changed: what it was and what it is now."""
         self.grant.update(grant_echo(before, after))
+
+    @contextmanager
+    def assigning(self, target: Any, input: dict):
+        """An update's fields assigned to ``target``, and its grant said back
+        before and after when the call named one.
+
+        The code that assigns an update's fields runs inside this, so no door
+        has to remember the grant it started with. A refusal raised inside
+        says nothing: only a write that landed hands its notes back.
+        """
+        before = target.grant
+        yield
+        if "grant" in input:
+            self.changed(before, target.grant)
 
     def reply(self, result: dict) -> dict:
         """The write's reply, with what it has to say added after its status."""
