@@ -1,6 +1,5 @@
 """Mixin for AI tool handlers that manage UI pages and elements."""
 
-from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
@@ -19,20 +18,12 @@ from openavc.cloud.tools.ui_layouts import (
 )
 from openavc.cloud.tools.ui_rewrites import scrub_page_references
 from openavc.cloud.tools.ui_simulate import simulate_ui_action
-from openavc.cloud.tools.ui_lookups import (
-    declared_state_variable,
-    longest_first,
-    reference_lookups,
-)
+from openavc.cloud.tools.ui_review import UIReview, master_findings, with_findings
 from openavc.ui.matrix_model import matrix_config_problems
 from openavc.ui.page_geometry import (
     resolved_placements,
 )
-from openavc.ui.page_references import reference_findings
-from openavc.ui.page_review import review_master_element, review_page
-from openavc.utils.logger import get_logger
 
-log = get_logger(__name__)
 
 # Geometry the model is not allowed to speak any more. 0.8.0 replaced whole-cell
 # grid coordinates with percentages, and a stale prompt talking to a current
@@ -269,59 +260,6 @@ def _grant_echo(before: Any, after: Any) -> dict:
     return {"before": shown(before), "after": shown(after)}
 
 
-def _custom_markup_findings(engine: Any, page: Any, touched: set[str]) -> list:
-    """What the markup behind a custom control on this page will get wrong.
-
-    The other half of a UI write that touches a ``custom`` element: the element
-    can be perfectly placed and perfectly granted while the page it points at
-    loads a script off the internet, never listens for ``openavc:init``, or was
-    granted a device it never names. That last one is the reason this runs at
-    the element door at all rather than only at the file door -- an over-grant
-    is created by the write that sets the grant, and the file it is about was
-    written some other time.
-
-    Advisory to the last: a folder that cannot be read says nothing rather than
-    turning a working write into a warning about the disk.
-    """
-    try:
-        from openavc.core.custom_ui import UI_DIR_NAME
-        from openavc.core.custom_ui_review import review_control, tree_sources
-        from openavc.ui.page_references import custom_file_references
-
-        uses = [
-            use for use in custom_file_references(page)
-            # The page's own markup is not one of its elements, so it is not
-            # scoped by `touched` -- the same rule the dangling-file check next
-            # to it follows.
-            if use.what == "page" or use.holder_id in touched
-        ]
-        if not uses:
-            return []
-        project_path = getattr(engine, "project_path", None)
-        if not project_path:
-            return []
-        ui_dir = Path(project_path).parent / UI_DIR_NAME
-        if not ui_dir.is_dir():
-            return []
-        sources = tree_sources(ui_dir)
-        findings: list = []
-        for use in uses:
-            if use.file not in sources:
-                # A file that is not there is already answered, once, by the
-                # dangling-reference check. Saying "it has no bridge" about a
-                # file nobody wrote would be three warnings for one mistake.
-                continue
-            findings.extend(review_control(
-                use.file, sources,
-                holder=f"{use.what} '{use.holder_id}'",
-                granted=use.granted,
-            ))
-        return findings
-    except Exception:  # pragma: no cover - advisory path only
-        log.debug("Could not review the markup behind a custom control", exc_info=True)
-        return []
-
-
 def _assign_plain_fields(
     target: Any, input: dict, skip: set[str], what: str, changed: list[str],
 ) -> None:
@@ -502,43 +440,6 @@ def _page_update_touches(input: dict) -> set[str] | None:
     return moved if moved or hands_over else None
 
 
-def _theme_defaults(project: Any, element_type: str) -> dict | None:
-    """The project's own theme overrides for one element type.
-
-    Only one control minimum moves with the theme (a slider's thumb), and only
-    ``thumb_size`` in ``element_defaults`` moves it. A custom theme FILE that
-    changed it would not be seen here -- reading it would mean disk access on a
-    write path -- but every built-in theme ships the 44px default, so the
-    override in the project is the case that can actually differ.
-    """
-    try:
-        overrides = project.ui.settings.theme_overrides or {}
-        defaults = (overrides.get("element_defaults") or {}).get(element_type)
-        return defaults if isinstance(defaults, dict) else None
-    except Exception:  # pragma: no cover - defensive
-        return None
-
-
-#: What the warnings are for, said once per reply that carries any. It lives
-#: here rather than in the standing prompt because a rule is only worth its
-#: tokens at the moment it is broken.
-_WARNING_NOTE = (
-    "The write landed -- these are warnings, not failures. Each one names the element, "
-    "what will draw wrong, and the number to change. Fix them before reporting this "
-    "page finished."
-)
-
-
-def _with_findings(result: dict, findings: list, adjustments: list) -> dict:
-    """Hand the caller its own mistakes back, in the reply it is already reading."""
-    if adjustments:
-        result["auto_filled"] = [a.message for a in adjustments]
-    if findings:
-        result["warnings"] = [f.message for f in findings]
-        result["warning_note"] = _WARNING_NOTE
-    return result
-
-
 def _merge_forward_compat(existing: Any, model_cls: type, partial: dict) -> Any:
     """Apply a partial update to a forward-compat (extra='allow') sub-model.
 
@@ -553,51 +454,6 @@ def _merge_forward_compat(existing: Any, model_cls: type, partial: dict) -> Any:
 
 class UIToolsMixin:
     """UI page CRUD, element management, master elements, and action simulation."""
-
-    def _review_write(
-        self, project: Any, page: Any, touched: set[str], *, ranges: bool = True,
-    ) -> tuple[list, list]:
-        """Measure what a write just did to a page, and fix what is unambiguous.
-
-        Runs inside the mutate, so the fills land in the project being written
-        and the findings describe what actually got stored rather than what was
-        asked for. Scoped to ``touched``: a call answers for the elements it
-        wrote, not for everything already on the page.
-
-        ``ranges=False`` for an edit that says nothing about a control's range
-        -- filling in a bound the caller did not mention would be a surprise on
-        an unrelated update, and D2 is that auto-fill happens only where no
-        intent was expressed.
-        """
-        device_ids = longest_first(project)
-        cache: dict[str, dict | None] = {}
-
-        def declared_range(key: str) -> dict | None:
-            if key not in cache:
-                cache[key] = declared_state_variable(self._devices, device_ids, key)
-            return cache[key]
-
-        findings, adjustments = review_page(
-            page,
-            touched=touched,
-            theme=_theme_defaults(project, "slider"),
-            declared_range=declared_range if ranges else None,
-            # The masters draw under this page, and the page does not know they
-            # exist -- without them a control laid over the nav bar is silence.
-            masters=project.ui.master_elements,
-        )
-        findings.extend(reference_findings(
-            page,
-            touched=touched,
-            **reference_lookups(self._get_engine(), self._devices, project, device_ids),
-        ))
-        findings.extend(_custom_markup_findings(self._get_engine(), page, touched))
-        if findings:
-            log.info(
-                "AI UI write on page '%s': %d element(s) reviewed, %d warning(s), %d filled in",
-                getattr(page, "id", "?"), len(touched), len(findings), len(adjustments),
-            )
-        return findings, adjustments
 
     async def _get_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -674,8 +530,8 @@ class UIToolsMixin:
             project.ui.pages.append(new_page)
             if new_page.grant is not None:
                 created_grant.update(_grant_echo(None, new_page.grant))
-            found, filled = self._review_write(
-                project, new_page, {el.id for el in new_page.elements},
+            found, filled = UIReview(engine, self._devices, project).write(
+                new_page, {el.id for el in new_page.elements},
             )
             findings.extend(found)
             adjustments.extend(filled)
@@ -687,7 +543,7 @@ class UIToolsMixin:
         result: dict = {"status": "created", "id": page_id}
         if created_grant:
             result["grant"] = created_grant
-        return _with_findings(result, findings, adjustments)
+        return with_findings(result, findings, adjustments)
 
     async def _update_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -718,7 +574,9 @@ class UIToolsMixin:
             # Nothing here expresses a range, so no auto-fill.
             touched = _page_update_touches(input)
             if touched is not None:
-                found, filled = self._review_write(project, page, touched, ranges=False)
+                found, filled = UIReview(engine, self._devices, project).write(
+                    page, touched, ranges=False,
+                )
                 findings.extend(found)
                 adjustments.extend(filled)
 
@@ -729,7 +587,7 @@ class UIToolsMixin:
         result: dict = {"status": "updated", "page_id": page_id, "changed": changed}
         if grant_change:
             result["grant"] = grant_change
-        return _with_findings(result, findings, adjustments)
+        return with_findings(result, findings, adjustments)
 
     async def _delete_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -822,8 +680,8 @@ class UIToolsMixin:
                 element.id: place for element, place in prepared if place is not None
             })
 
-            found, filled = self._review_write(
-                project, page, {el.get("id", "") for el in elements},
+            found, filled = UIReview(engine, self._devices, project).write(
+                page, {el.get("id", "") for el in elements},
             )
             findings.extend(found)
             adjustments.extend(filled)
@@ -841,7 +699,7 @@ class UIToolsMixin:
         # visible afterwards for having arrived early: see _grant_echo.
         if granted_on_create:
             result["grants"] = granted_on_create
-        return _with_findings(result, findings, adjustments)
+        return with_findings(result, findings, adjustments)
 
     async def _update_ui_element(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -924,8 +782,9 @@ class UIToolsMixin:
                 # Echoed rather than folded into "updated": see _grant_echo.
                 grant_change.update(_grant_echo(grant_before, target_el.grant))
 
-            found, filled = self._review_write(
-                project, target_page, {element_id}, ranges=touches_range,
+            found, filled = UIReview(engine, self._devices, project).write(
+                target_page, {element_id},
+                ranges=touches_range,
             )
             findings.extend(found)
             adjustments.extend(filled)
@@ -939,7 +798,7 @@ class UIToolsMixin:
         }
         if grant_change:
             result["grant"] = grant_change
-        return _with_findings(result, findings, adjustments)
+        return with_findings(result, findings, adjustments)
 
     async def _delete_ui_elements(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -1025,9 +884,7 @@ class UIToolsMixin:
             project.ui.master_elements.append(new_el)
             if new_el.grant is not None:
                 created_grant.update(_grant_echo(None, new_el.grant))
-            findings.extend(review_master_element(
-                new_el, _theme_defaults(project, "slider"),
-            ))
+            findings.extend(master_findings(project, new_el))
 
         err = await apply_tool_edit(engine, mutate)
         if err:
@@ -1036,7 +893,7 @@ class UIToolsMixin:
         result: dict = {"status": "created", "id": element_id}
         if created_grant:
             result["grant"] = created_grant
-        return _with_findings(result, findings, [])
+        return with_findings(result, findings, [])
 
     async def _update_master_element(self, input: dict) -> Any:
         """Change a master element in place.
@@ -1095,9 +952,7 @@ class UIToolsMixin:
 
             if not changed:
                 raise ToolEditError({"error": "No fields to update"})
-            findings.extend(review_master_element(
-                target, _theme_defaults(project, "slider"),
-            ))
+            findings.extend(master_findings(project, target))
 
         err = await apply_tool_edit(engine, mutate)
         if err:
@@ -1108,7 +963,7 @@ class UIToolsMixin:
         }
         if grant_change:
             result["grant"] = grant_change
-        return _with_findings(result, findings, [])
+        return with_findings(result, findings, [])
 
     async def _delete_master_element(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -1132,85 +987,11 @@ class UIToolsMixin:
         return {"status": "deleted", "element_id": element_id}
 
     async def _review_ui(self, input: dict) -> Any:
-        """Re-run every UI check across the whole project, on demand.
-
-        The checks all existed; there was no way to ASK. Findings rode back only
-        on the write that caused them, so a panel built over sixty calls left
-        its warnings scattered through a transcript, and a compacted or resumed
-        session lost them outright. There was no way to end a build with "and
-        now it is clean" -- only to remember, or not.
-
-        Unscoped on purpose: no ``touched`` filter, every page, every master,
-        every arrangement. Read-only, so it fills nothing in -- an auto-fill
-        needs a write to belong to, and answering a question should not change
-        the project.
-        """
+        """Re-run every UI check across the whole project, or one page, on demand."""
         engine = self._get_engine()
         if not engine or not engine.project:
             return {"error": "No project loaded"}
-        project = engine.project
-
-        only = input.get("page_id")
-        pages = [p for p in project.ui.pages if not only or p.id == only]
-        if only and not pages:
-            return {
-                "error": f"UI page '{only}' not found. The pages are: "
-                         f"{', '.join(p.id for p in project.ui.pages) or '(none)'}"
-            }
-
-        device_ids = longest_first(project)
-        lookups = reference_lookups(engine, self._devices, project, device_ids)
-        by_page: dict[str, list[str]] = {}
-        total = 0
-
-        for page in pages:
-            findings, _ = review_page(
-                page,
-                theme=_theme_defaults(project, "slider"),
-                # Ranges are read-only here: review_page only reports a range
-                # mismatch, and the fills it would make are suppressed by
-                # set_field below.
-                declared_range=lambda key: declared_state_variable(
-                    self._devices, device_ids, key,
-                ),
-                set_field=lambda *_: None,
-                masters=project.ui.master_elements,
-            )
-            findings.extend(reference_findings(page, **lookups))
-            if findings:
-                by_page[page.id] = [f.message for f in findings]
-                total += len(findings)
-
-        master_findings: list[str] = []
-        if not only:
-            for master in project.ui.master_elements:
-                master_findings.extend(
-                    f.message
-                    for f in review_master_element(
-                        master, _theme_defaults(project, "slider"),
-                    )
-                )
-            total += len(master_findings)
-
-        result: dict = {
-            "pages_checked": [p.id for p in pages],
-            "masters_checked": 0 if only else len(project.ui.master_elements),
-            "finding_count": total,
-        }
-        if by_page:
-            result["pages"] = by_page
-        if master_findings:
-            result["master_elements"] = master_findings
-        if not total:
-            result["status"] = "clean"
-            result["note"] = (
-                "Nothing to report: every control has a box it fits in, no two collide, "
-                "and every binding points at something that exists."
-            )
-        else:
-            result["status"] = "findings"
-            result["note"] = _WARNING_NOTE
-        return result
+        return UIReview(engine, self._devices, engine.project).whole(input.get("page_id"))
 
     async def _simulate_ui_action(self, input: dict) -> Any:
         engine = self._get_engine()

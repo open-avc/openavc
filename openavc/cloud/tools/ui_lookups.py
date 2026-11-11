@@ -3,9 +3,10 @@
 The checks themselves (``ui/page_review.py``, ``ui/page_references.py``) import
 nothing from the engine. They are handed functions, and this module is those
 functions, answered from the loaded drivers, the plugin loader and the
-project's ``ui/`` folder for the two callers in ``ui_tools``: a UI write and the
+project's ``ui/`` folder for the two callers in ``ui_review``: a UI write and the
 whole-project review. :func:`reference_lookups` is every lookup the reference
-check takes, by its keyword, so a new one is added here once and reaches both.
+check takes, by its keyword, and :func:`range_lookup` the one the page review
+takes, so a new one is added here once and reaches both.
 
 Every answer is advisory. ``None`` is "no opinion" and never warns, and nothing
 here may raise into a write: each lookup catches what its driver or plugin
@@ -309,6 +310,20 @@ def project_ui_files(engine: Any) -> set[str] | None:
         return None
 
 
+def range_lookup(devices: Any, device_ids: list[str]) -> Any:
+    """:func:`declared_state_variable` as the page review asks it, for one write
+    or one review: each bound key's driver asked once, however many controls
+    bind it."""
+    cache: dict[str, dict | None] = {}
+
+    def declared_range(key: str) -> dict | None:
+        if key not in cache:
+            cache[key] = declared_state_variable(devices, device_ids, key)
+        return cache[key]
+
+    return declared_range
+
+
 def reference_lookups(
     engine: Any, devices: Any, project: Any, device_ids: list[str],
 ) -> dict[str, Any]:
@@ -316,8 +331,8 @@ def reference_lookups(
 
     Built once per write and once per whole-project review, never per page, so
     the ``ui/`` folder is listed once and a review's pages share one answer.
-    ``device_ids`` is :func:`longest_first` of the project, which the caller's
-    range lookup reads too.
+    ``device_ids`` is :func:`longest_first` of the project, which
+    :func:`range_lookup` reads too.
     """
     return {
         "page_ids": {p.id for p in project.ui.pages},
