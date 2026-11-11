@@ -37,7 +37,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from openavc.drivers.declared_names import config_field_names, declared_enum_values
+from openavc.drivers.declared_names import (
+    DeclaredSections,
+    config_field_names,
+    declared_enum_values,
+)
 
 # A {child_id} / {child_id:spec} token in a query template.
 _CHILD_ID_TOKEN = re.compile(r"\{child_id(?::[^{}]*)?\}")
@@ -163,19 +167,15 @@ class ListReads:
 
 
 class QueryEntries:
-    """The checks of one query entry, against what the definition declares.
+    """The checks of one query entry, against what the definition declares:
+    its config fields, and the rules, the device's state variables and the
+    child types as ``declared`` read them."""
 
-    ``responses`` is the rule list as the walk read it (empty when it is not
-    a list); the declared maps that are not mappings read as empty.
-    """
-
-    def __init__(self, driver_def: dict[str, Any], responses: list[Any]) -> None:
+    def __init__(self, driver_def: dict[str, Any], declared: DeclaredSections) -> None:
         self._config_fields = config_field_names(driver_def)
-        raw_vars = driver_def.get("state_variables")
-        self._device_vars: dict[Any, Any] = raw_vars if isinstance(raw_vars, dict) else {}
-        raw_types = driver_def.get("child_entity_types")
-        self._child_types: dict[Any, Any] = raw_types if isinstance(raw_types, dict) else {}
-        self._lists = ListReads(responses)
+        self._device_vars = declared.state_variables
+        self._child_types = declared.child_types
+        self._lists = ListReads(declared.responses)
 
     # --- what the definition declares ---------------------------------------
 

@@ -45,7 +45,10 @@ from openavc.drivers.command_checks import CommandSection
 from openavc.drivers.conversion_checks import (
     value_conversion_errors as value_conversion_errors,
 )
-from openavc.drivers.declared_names import UNEVALUATED_KEY as UNEVALUATED_KEY
+from openavc.drivers.declared_names import (
+    UNEVALUATED_KEY as UNEVALUATED_KEY,
+    DeclaredSections,
+)
 from openavc.drivers.driver_warnings import (
     masked_default_warnings,
     poll_length_warnings,
@@ -408,21 +411,18 @@ def validate_driver_definition(
             "default_config.ir_codes / the device config)"
         )
 
-    # Raw maps used by child_set / instances / each_child validation below.
-    _raw_child_types = driver_def.get("child_entity_types")
-    child_types_map: dict[str, Any] = (
-        _raw_child_types if isinstance(_raw_child_types, dict) else {}
-    )
+    # The sections other parts name into, read once; each part's own check
+    # below decides whether a section of the wrong shape is refused.
+    declared = DeclaredSections(driver_def)
 
     # What one response rule says about itself is checked in
     # response_rule_checks; its then_query and its child_list's paged reads
     # are checked with the query entries below. Each rule's messages are
     # tagged with its place in the list.
     errors.ctx = "responses"
-    responses = driver_def.get("responses", [])
-    if not isinstance(responses, list):
+    if not isinstance(driver_def.get("responses", []), list):
         errors.append("responses: must be a list")
-        responses = []
+    responses = declared.responses
     # `after_json:` only means something where a json rule can consume the
     # frame first, so the whole list decides whether it is inert.
     any_json_rule = any(
@@ -431,21 +431,17 @@ def validate_driver_definition(
     for i, resp in enumerate(responses):
         errors.ctx = f"responses[{i}]"
         errors.extend(
-            response_rule_errors(i, resp, child_types_map, any_json_rule)
+            response_rule_errors(i, resp, declared.child_types, any_json_rule)
         )
 
     # What one command says about itself is checked in command_checks; its
     # parameters' references into child_entity_types are checked after every
     # command, below. Each command's messages are tagged with its place.
     errors.ctx = "commands"
-    commands = driver_def.get("commands", {})
-    if not isinstance(commands, dict):
+    if not isinstance(driver_def.get("commands", {}), dict):
         errors.append("commands: must be a mapping")
-        commands = {}
-    declared_vars = driver_def.get("state_variables")
-    declared_vars = declared_vars if isinstance(declared_vars, dict) else {}
-    section = CommandSection(driver_def, commands, declared_vars, child_types_map)
-    for cmd_name, cmd_def in commands.items():
+    section = CommandSection(driver_def, declared)
+    for cmd_name, cmd_def in declared.commands.items():
         errors.ctx = f"commands.{cmd_name}"
         errors.extend(section.command_errors(cmd_name, cmd_def))
 
@@ -463,8 +459,8 @@ def validate_driver_definition(
         errors.extend(command_affix_errors(driver_def, frame_key))
 
     # A config field's learned_from and each device setting, checked in
-    # setting_checks against the driver's own state variables (`declared_vars`
-    # is read above the command loop).
+    # setting_checks against the driver's own state variables.
+    declared_vars = declared.state_variables
     raw_config_schema = driver_def.get("config_schema")
     if isinstance(raw_config_schema, dict):
         for field_name, field_def in raw_config_schema.items():
@@ -562,7 +558,7 @@ def validate_driver_definition(
     # The query entries: the poll's, the start-up's and each text rule's
     # then_query, checked in query_entry_checks against what the definition
     # declares, read once here.
-    queries = QueryEntries(driver_def, responses)
+    queries = QueryEntries(driver_def, declared)
     errors.ctx = "polling"
     polling_def = driver_def.get("polling")
     if polling_def is not None and not isinstance(polling_def, dict):

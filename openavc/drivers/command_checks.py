@@ -40,6 +40,7 @@ from typing import Any, Callable
 
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY,
+    DeclaredSections,
     child_writable_props,
     did_you_mean,
     substitution_names,
@@ -86,21 +87,15 @@ def _side_form(cmd_def: dict[str, Any]) -> str | None:
 class CommandSection:
     """A YAML driver's commands, and what each command's checks read from the
     rest of the definition: the commands themselves, the device's state
-    variables, its child types, its transport and the names a template may
-    substitute."""
+    variables and its child types (each as ``declared`` read it), its
+    transport and the names a template may substitute."""
 
-    def __init__(
-        self,
-        driver_def: dict[str, Any],
-        commands: dict[str, Any],
-        declared_vars: dict[str, Any],
-        child_types: dict[str, Any],
-    ) -> None:
-        self.declared_vars = declared_vars
-        self.child_types = child_types
+    def __init__(self, driver_def: dict[str, Any], declared: DeclaredSections) -> None:
+        self.declared_vars = declared.state_variables
+        self.child_types = declared.child_types
         self.config_names = substitution_names(driver_def)
         self.shared = SharedCommandChecks(
-            commands, driver_def.get("transport"), python=False
+            declared.commands, driver_def.get("transport"), python=False
         )
 
     def command_errors(self, cmd_name: Any, cmd_def: Any) -> list[str]:

@@ -4,7 +4,9 @@ Many of the contract's checks are cross-references: a ``{config_field}``
 template in a push block, a ``when:`` gate on a query or a registration, an
 ``instances:`` roster sized from a setting, a child property a response rule
 writes. Each asks the same question of the definition (is this name declared?),
-so the answer is read here once and every check gets the same one. A name that
+so the answer is read here once and every check gets the same one, and the
+sections those names point into are read once too (``DeclaredSections``,
+which the walk hands to the command and query-entry checks). A name that
 is not declared gets the nearest one that is (``did_you_mean``), and a mapping
 whose keys a Python driver builds at runtime is marked (``UNEVALUATED_KEY``),
 so a check does not report a name it could not see.
@@ -37,6 +39,33 @@ UNEVALUATED_KEY = "<unevaluated>"
 PLATFORM_SUBSTITUTIONS = frozenset(
     {"child_id", "push_callback_url", "listener_port", "push_session"}
 )
+
+
+class DeclaredSections:
+    """The sections other parts of a YAML definition name into, read once:
+    the response rules, the commands, the device's own state variables and
+    the child types.
+
+    Each is the definition's own value when it is the shape it should be (a
+    list of rules, a mapping for the rest) and empty when it is anything
+    else, so every check that follows a name into one of them reads the same
+    thing. Whether a section that is not that shape is refused, and how, is
+    the walk's decision where it checks that section
+    (``avcdriver_semantic.validate_driver_definition``), not this read's.
+    ``RosterNames`` (``child_type_checks``) reads the state variables as
+    written instead, on purpose.
+    """
+
+    def __init__(self, driver_def: dict[str, Any]) -> None:
+        responses = driver_def.get("responses")
+        self.responses: list[Any] = responses if isinstance(responses, list) else []
+        self.commands = _mapping(driver_def.get("commands"))
+        self.state_variables = _mapping(driver_def.get("state_variables"))
+        self.child_types = _mapping(driver_def.get("child_entity_types"))
+
+
+def _mapping(value: Any) -> dict[Any, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def config_field_names(driver_def: dict[str, Any]) -> set[str]:
