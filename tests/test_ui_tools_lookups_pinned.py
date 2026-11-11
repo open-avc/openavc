@@ -299,3 +299,21 @@ async def test_macros_and_every_page_are_known_to_both_doors(project_path):
     assert review["pages"] == {"main": expected}
     assert review["pages_checked"] == ["main"]
 
+
+@pytest.mark.asyncio
+async def test_a_device_with_no_driver_loaded_has_no_opinion_on_its_commands(project_path):
+    """A project device whose driver is not loaded here (not installed yet,
+    disabled) is the commonest no-opinion answer: nothing is said about the
+    command a control sends it, from either door."""
+    from openavc.core.project_loader import DeviceConfig
+
+    engine = _make_engine(project_path)
+    engine.project.devices.append(DeviceConfig(id="spare", driver="acme_amp", name="Spare"))
+    result = await _call(engine, "add_ui_elements", {"page_id": "main", "elements": _placed([
+        _button("b_spare", {"action": "device.command", "device": "spare", "command": "power_onn"}),
+        _label("l_spare", "device.spare.levl"),
+    ])})
+    assert "warnings" not in result
+    review = await _call(engine, "review_ui", {})
+    assert review["status"] == "clean"
+

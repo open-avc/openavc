@@ -269,3 +269,49 @@ async def test_a_master_update_on_a_page_element_or_nothing_names_the_other_door
     assert _error(await _send(engine, "update_master_element", {
         "element_id": "zz", "bindings": BAD,
     })) == "Master element 'zz' not found"
+
+
+# --- what a definition is refused for, in order -------------------------------
+
+MATRIX = {"destinations": [{"label": "a"}]}
+RETIRED = "'grid_area' was removed in project format 0.8.0. Use placement {x, y, w, h}"
+NO_VALUE = "matrix_config.destinations[0] has no 'value', so it is dropped"
+
+
+@pytest.mark.asyncio
+async def test_retired_geometry_is_refused_before_a_matrix_at_every_element_door():
+    engine = await _engine()
+    assert _error(await _send(engine, "update_ui_element", {
+        "element_id": "x1", "grid_area": "1 / 1", "matrix_config": MATRIX,
+    })).startswith(f"Element 'x1': {RETIRED}")
+    # The matrix before the layout the box would land in.
+    assert _error(await _send(engine, "update_ui_element", {
+        "element_id": "x1", "matrix_config": MATRIX, "layout_id": "nope",
+    })).startswith(f"Element 'x1': {NO_VALUE}")
+    result = (await _send(engine, "add_ui_elements", {"page_id": "main", "elements": [
+        {"id": "a", "type": "button", "grid_area": "x", "matrix_config": MATRIX, "placement": "bad"},
+        {"id": "b", "type": "button", "matrix_config": MATRIX, "placement": "bad"},
+    ]}))["result"]
+    assert result["errors"][0].startswith(f"Element 'a': {RETIRED}")
+    assert result["errors"][1].startswith(f"Element 'b': {NO_VALUE}")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("tool", "id_field", "element_id"), [
+    ("add_master_element", "id", "m2"),
+    ("update_master_element", "element_id", "m1"),
+])
+async def test_a_masters_definition_is_refused_before_its_page_style_box(tool, id_field, element_id):
+    engine = await _engine()
+    base = {id_field: element_id, "placement": {"x": 1}}
+    if tool == "add_master_element":
+        base["type"] = "button"
+    assert _error(await _send(engine, tool, {
+        **base, "grid_area": "x", "matrix_config": MATRIX,
+    })).startswith(f"Master element '{element_id}': {RETIRED}")
+    assert _error(await _send(engine, tool, {
+        **base, "matrix_config": MATRIX,
+    })).startswith(f"Master element '{element_id}': {NO_VALUE}")
+    assert _error(await _send(engine, tool, dict(base))).startswith(
+        f"Master element '{element_id}': use 'placements' keyed by orientation")
+
