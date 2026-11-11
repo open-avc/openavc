@@ -66,25 +66,8 @@ export function BasicProperties({
   onChange,
   onRename,
 }: BasicPropertiesProps) {
-  // Probe the committed source, using this render's patch callback. A callback
-  // retained by the picker would still hold the element from before selection.
-  // Cancel it when another edit, selection or unmount makes that render stale.
-  useEffect(() => {
-    if (element.type !== "image" || !element.src || element.aspect_lock != null) return;
-    const probe = new Image();
-    let cancelled = false;
-    probe.onload = () => {
-      if (cancelled || !probe.naturalWidth || !probe.naturalHeight) return;
-      onChange({
-        aspect_lock: Math.round((probe.naturalWidth / probe.naturalHeight) * 10000) / 10000,
-      });
-    };
-    probe.src = element.src.startsWith("assets://")
-      ? getAssetUrl(element.src.slice("assets://".length))
-      : element.src;
-    return () => { cancelled = true; };
-  }, [element, onChange]);
-
+  useIntrinsicAspect(element, onChange);
+  const TypeFields = typeFieldsFor(element.type);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
       {/* ID — inline rename, with reference rewriting in onRename handler */}
@@ -129,74 +112,135 @@ export function BasicProperties({
         of buttons can share one macro instead of needing one each.
       </div>
 
-      {/* Label -- for the types whose renderer draws one.
-          Not "everything except a label": a clock, a custom control and a
-          plugin element never draw it either, and offering the field there is
-          how a project ends up carrying a caption nobody can see. The page
-          review already warns about the result ("sets 'label', which a custom
-          does not render"), so the Builder was creating the very thing it then
-          complained about. */}
-      {drawsLabel(element.type) && (
-          <>
-            <FieldRow label="Label">
-              {element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap" ? (
-                <textarea
-                  value={element.label || ""}
-                  onChange={(e) => onChange({ label: e.target.value })}
-                  rows={3}
-                  style={{ flex: 1, resize: "vertical", fontSize: "var(--font-size-sm)" }}
-                />
-              ) : (
-                <input
-                  value={element.label || ""}
-                  onChange={(e) => onChange({ label: e.target.value })}
-                  style={{ flex: 1 }}
-                />
-              )}
-            </FieldRow>
-            {["button", "page_nav", "camera_preset"].includes(element.type) && (
-              <FieldRow label="Multi-line">
-                <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap"}
-                    onChange={(e) => {
-                      const updated = { ...(element.style || {}) };
-                      if (e.target.checked) {
-                        updated.white_space = "pre-line";
-                      } else {
-                        delete updated.white_space;
-                      }
-                      onChange({ style: updated });
-                    }}
-                  />
-                  Use Enter for line breaks
-                </label>
-              </FieldRow>
-            )}
-          </>
-        )}
+      {drawsLabel(element.type) && <LabelFields element={element} onChange={onChange} />}
+      {TypeFields && (
+        <TypeFields
+          element={element}
+          project={project}
+          pages={pages}
+          macros={macros}
+          placement={placement}
+          onChangePlacement={onChangePlacement}
+          onChange={onChange}
+        />
+      )}
+    </div>
+  );
+}
 
-      {/* Display mode (for buttons) */}
-      {element.type === "button" && (
-        <FieldRow label="Display">
-          <select
-            value={element.display_mode || "text"}
-            onChange={(e) => onChange({ display_mode: e.target.value === "text" ? undefined : e.target.value })}
+/** What a row needs: the element, and where its edits go. */
+interface FieldProps {
+  element: UIElement;
+  onChange: (patch: Partial<UIElement>) => void;
+}
+
+/** What a type's fields may read beyond the element itself. */
+interface SectionProps extends FieldProps {
+  project: ProjectConfig;
+  pages: UIPage[];
+  macros: { id: string; name: string }[];
+  placement?: Placement;
+  onChangePlacement?: (placement: Placement) => void;
+}
+
+/**
+ * The fields each element type has beyond the ones every element has, in the
+ * order they are drawn. A type with no row here (a plugin type the Builder has
+ * never seen) gets only those.
+ */
+const TYPE_FIELDS: Record<string, (props: SectionProps) => React.JSX.Element> = {
+  button: ButtonFields,
+  label: LabelTextFields,
+  page_nav: PageNavFields,
+  slider: SliderFields,
+  text_input: TextInputFields,
+  image: ImageFields,
+  camera_preset: CameraPresetFields,
+  gauge: GaugeFields,
+  level_meter: LevelMeterFields,
+  fader: FaderFields,
+  group: GroupFields,
+  clock: ClockFields,
+  list: ListFields,
+  matrix: MatrixFields,
+  keypad: KeypadFields,
+  custom: CustomFields,
+  plugin: PluginFields,
+  select: SelectFields,
+};
+
+/** The row for this type, read as the table's own: `constructor` is not a type. */
+function typeFieldsFor(type: string): ((props: SectionProps) => React.JSX.Element) | null {
+  return Object.prototype.hasOwnProperty.call(TYPE_FIELDS, type) ? TYPE_FIELDS[type] : null;
+}
+
+
+/**
+ * The label and its line breaks, for the types whose renderer draws one. Only
+ * those: a field on a type that never draws it is how a project ends up
+ * carrying a caption nobody can see, which the page review then warns about.
+ */
+function LabelFields({ element, onChange }: FieldProps) {
+  return (
+    <>
+      <FieldRow label="Label">
+        {element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap" ? (
+          <textarea
+            value={element.label || ""}
+            onChange={(e) => onChange({ label: e.target.value })}
+            rows={3}
+            style={{ flex: 1, resize: "vertical", fontSize: "var(--font-size-sm)" }}
+          />
+        ) : (
+          <input
+            value={element.label || ""}
+            onChange={(e) => onChange({ label: e.target.value })}
             style={{ flex: 1 }}
-          >
-            <option value="text">Text Only</option>
-            <option value="icon_text">Icon + Text</option>
-            <option value="icon_only">Icon Only</option>
-            <option value="image">Image</option>
-            <option value="image_text">Image + Text</option>
-          </select>
+          />
+        )}
+      </FieldRow>
+      {["button", "page_nav", "camera_preset"].includes(element.type) && (
+        <FieldRow label="Multi-line">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap"}
+              onChange={(e) => {
+                const updated = { ...(element.style || {}) };
+                if (e.target.checked) {
+                  updated.white_space = "pre-line";
+                } else {
+                  delete updated.white_space;
+                }
+                onChange({ style: updated });
+              }}
+            />
+            Use Enter for line breaks
+          </label>
         </FieldRow>
       )}
+    </>
+  );
+}
 
-      {/* Image button properties */}
-      {element.type === "button" &&
-        (element.display_mode === "image" || element.display_mode === "image_text") && (
+/** A button: what it shows, its picture, and its icon. */
+function ButtonFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Display">
+        <select
+          value={element.display_mode || "text"}
+          onChange={(e) => onChange({ display_mode: e.target.value === "text" ? undefined : e.target.value })}
+          style={{ flex: 1 }}
+        >
+          <option value="text">Text Only</option>
+          <option value="icon_text">Icon + Text</option>
+          <option value="icon_only">Icon Only</option>
+          <option value="image">Image</option>
+          <option value="image_text">Image + Text</option>
+        </select>
+      </FieldRow>
+      {(element.display_mode === "image" || element.display_mode === "image_text") && (
         <>
           <FieldRow label="Image">
             <AssetPicker
@@ -264,1045 +308,1084 @@ export function BasicProperties({
           )}
         </>
       )}
-
-      {/* Text (for label elements) */}
-      {element.type === "label" && (
-        <>
-          <FieldRow label="Text">
-            {element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap" ? (
-              <textarea
-                value={element.text || ""}
-                onChange={(e) => onChange({ text: e.target.value })}
-                rows={3}
-                style={{ flex: 1, resize: "vertical", fontSize: "var(--font-size-sm)" }}
-              />
-            ) : (
-              <input
-                value={element.text || ""}
-                onChange={(e) => onChange({ text: e.target.value })}
-                style={{ flex: 1 }}
-              />
-            )}
-          </FieldRow>
-          <FieldRow label="Multi-line">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap"}
-                onChange={(e) => {
-                  const updated = { ...(element.style || {}) };
-                  if (e.target.checked) {
-                    updated.white_space = "pre-line";
-                  } else {
-                    delete updated.white_space;
-                  }
-                  onChange({ style: updated });
-                }}
-              />
-              Use Enter for line breaks
-            </label>
-          </FieldRow>
-          <ShownDecimalsRow element={element} onChange={onChange} placeholder="As reported" />
-          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
-            Rounds a bound value when it is a number. Text is shown exactly as the device reports it.
-          </div>
-        </>
-      )}
-
-      {/* Target page (for page_nav) */}
-      {element.type === "page_nav" && (
-        <FieldRow label="Target Page">
-          <SearchableSelect
-            value={element.target_page || ""}
-            onChange={(target_page) => onChange({ target_page })}
-            groups={[
-              { options: [{ value: "$back", label: "$back (dismiss overlay)", hint: "$back" }] },
-              ...pageGroups(pages),
-            ]}
-            placeholder="Select page..."
-            searchPlaceholder="Search pages..."
-            style={{ flex: 1 }}
-          />
-        </FieldRow>
-      )}
-      {element.type === "page_nav" && (
-        <FieldRow label="Current page">
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={!!element.highlight_current}
-              onChange={(e) => onChange({ highlight_current: e.target.checked || undefined })}
-            />
-            Light up while its page is showing
-          </label>
-        </FieldRow>
-      )}
-
-      {/* Slider min/max/step/orientation/thumb/show value */}
-      {element.type === "slider" && (
-        <>
-          <FieldRow label="Min">
-            <input
-              type="number"
-              value={element.min ?? ""}
-              onChange={(e) => onChange({ min: numOrUndefined(e.target.value) })}
-              placeholder="0"
-              style={{ flex: 1 }}
-            />
-          </FieldRow>
-          <FieldRow label="Max">
-            <input
-              type="number"
-              value={element.max ?? ""}
-              onChange={(e) => onChange({ max: numOrUndefined(e.target.value) })}
-              placeholder="100"
-              style={{ flex: 1 }}
-            />
-          </FieldRow>
-          <FieldRow label="Step">
-            <input
-              type="number"
-              value={element.step ?? ""}
-              onChange={(e) => onChange({ step: numOrUndefined(e.target.value) })}
-              placeholder="1"
-              style={{ flex: 1 }}
-              min={0.01}
-              step={0.1}
-            />
-          </FieldRow>
-          <MatchDriverRangeRow element={element} onElementPatch={onChange} />
-          <FieldRow label="Orientation">
-            <select
-              value={element.orientation || "horizontal"}
-              onChange={(e) => {
-                const newOrientation = e.target.value;
-                const oldOrientation = element.orientation || "horizontal";
-                const patch: Partial<typeof element> = { orientation: newOrientation };
-                onChange(patch);
-                // A fader turned on its side wants its box turned with it.
-                if (newOrientation !== oldOrientation && placement && onChangePlacement) {
-                  const swapped = { ...placement, w: placement.h, h: placement.w };
-                  onChangePlacement(swapped);
-                  showInfo(
-                    `Swapped the box to ${swapped.w.toFixed(1)}% x ${swapped.h.toFixed(1)}% for ${newOrientation} layout`,
-                  );
-                }
-              }}
-              style={{ flex: 1 }}
-            >
-              <option value="horizontal">Horizontal</option>
-              <option value="vertical">Vertical</option>
-            </select>
-          </FieldRow>
-          <FieldRow label="Thumb Size">
-            <input
-              type="number"
-              value={remToPx(element.thumb_size) ?? ""}
-              onChange={(e) => onChange({ thumb_size: pxToRem(numOrUndefined(e.target.value)) ?? undefined })}
-              placeholder="44"
-              style={{ flex: 1 }}
-              min={16}
-              max={80}
-              step={2}
-            />
-          </FieldRow>
-          <FieldRow label="Show Value">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={(element.style?.show_value as boolean) ?? false}
-                onChange={(e) => onChange({ style: { ...element.style, show_value: e.target.checked } })}
-              />
-              Display current value
-            </label>
-          </FieldRow>
-          <FieldRow label="Output Min">
-            <input
-              type="number"
-              value={element.output_min ?? ""}
-              onChange={(e) => onChange({ output_min: e.target.value === "" ? undefined : Number(e.target.value) })}
-              placeholder="Same as Min"
-              style={{ flex: 1 }}
-            />
-          </FieldRow>
-          <FieldRow label="Output Max">
-            <input
-              type="number"
-              value={element.output_max ?? ""}
-              onChange={(e) => onChange({ output_max: e.target.value === "" ? undefined : Number(e.target.value) })}
-              placeholder="Same as Max"
-              style={{ flex: 1 }}
-            />
-          </FieldRow>
-          <FieldRow label="Scale to Full Range">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={element.scale_to_full !== false}
-                onChange={(e) => onChange({ scale_to_full: e.target.checked })}
-              />
-              Hide output limit from end user
-            </label>
-          </FieldRow>
-          <ResponseCurveFields element={element} onChange={onChange} />
-          <ValueBehaviorFields element={element} onChange={onChange} includeUnit />
-        </>
-      )}
-
-      {/* Placeholder (for text_input) */}
-      {element.type === "text_input" && (
-        <FieldRow label="Placeholder">
-          <input
-            value={element.placeholder || ""}
-            onChange={(e) => onChange({ placeholder: e.target.value })}
-            placeholder="Placeholder text..."
-            style={{ flex: 1 }}
-          />
-        </FieldRow>
-      )}
-
-      {/* Image source */}
-      {element.type === "image" && (
-        <>
-          <FieldRow label="Image">
-            <AssetPicker
-              value={element.src || ""}
-              onChange={(v) => onChange({ src: v || undefined })}
-            />
-          </FieldRow>
-          <FieldRow label="URL">
-            <input
-              value={element.src?.startsWith("assets://") ? "" : (element.src || "")}
-              onChange={(e) => onChange({ src: e.target.value || undefined })}
-              placeholder="Or enter external URL..."
-              style={{ flex: 1, fontSize: 11 }}
-            />
-          </FieldRow>
-          <FieldRow label="Alt Text">
-            <input
-              value={element.label || ""}
-              onChange={(e) => onChange({ label: e.target.value || undefined })}
-              placeholder="Describe the image"
-              style={{ flex: 1, fontSize: 11 }}
-            />
-          </FieldRow>
-          <FieldRow label="Fit">
-            <select
-              value={element.object_fit || "contain"}
-              onChange={(e) => onChange({ object_fit: e.target.value })}
-              style={{ flex: 1 }}
-            >
-              <option value="contain">Contain (fit, may letterbox)</option>
-              <option value="cover">Cover (fill, may crop)</option>
-              <option value="fill">Fill (stretch to fit)</option>
-            </select>
-          </FieldRow>
-        </>
-      )}
-
-      {/* Camera preset number */}
-      {element.type === "camera_preset" && (
-        <FieldRow label="Preset #">
-          <input
-            type="number"
-            value={element.preset_number ?? ""}
-            onChange={(e) =>
-              onChange({
-                preset_number: e.target.value
-                  ? Number(e.target.value)
-                  : undefined,
-              })
-            }
-            min={1}
-            style={{ flex: 1 }}
-          />
-        </FieldRow>
-      )}
-
-      {/* Gauge properties */}
-      {element.type === "gauge" && (
-        <>
-          <FieldRow label="Min">
-            <input type="number" value={element.min ?? ""} onChange={(e) => onChange({ min: numOrUndefined(e.target.value) })} placeholder="0" style={{ flex: 1 }} />
-          </FieldRow>
-          <FieldRow label="Max">
-            <input type="number" value={element.max ?? ""} onChange={(e) => onChange({ max: numOrUndefined(e.target.value) })} placeholder="100" style={{ flex: 1 }} />
-          </FieldRow>
-          <FieldRow label="Unit">
-            <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="%, dB, etc." style={{ flex: 1 }} />
-          </FieldRow>
-          <ShownDecimalsRow element={element} onChange={onChange} placeholder="1" />
-          <MatchDriverRangeRow element={element} onElementPatch={onChange} />
-          <FieldRow label="Arc Angle">
-            <input type="number" value={element.arc_angle ?? ""} onChange={(e) => onChange({ arc_angle: numOrUndefined(e.target.value) })} placeholder="240" min={90} max={360} style={{ flex: 1 }} />
-          </FieldRow>
-
-          <SubSection label="Gauge Appearance" />
-          <FieldRow label="Gauge Color">
-            <InlineColorPicker size="md" clearable
-              value={String(element.style?.gauge_color || "")}
-              onChange={(v) => onChange({ style: { ...element.style, gauge_color: v || undefined } })}
-            />
-          </FieldRow>
-          <FieldRow label="Background Arc">
-            <InlineColorPicker size="md" clearable
-              value={String(element.style?.gauge_bg_color || "")}
-              onChange={(v) => onChange({ style: { ...element.style, gauge_bg_color: v || undefined } })}
-            />
-          </FieldRow>
-          <FieldRow label="Arc Width">
-            <input
-              type="number"
-              value={(element.style?.gauge_width as number) ?? 8}
-              onChange={(e) => onChange({ style: { ...element.style, gauge_width: e.target.value ? Number(e.target.value) : undefined } })}
-              min={2} max={20} style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
-          </FieldRow>
-          <FieldRow label="Show Value">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={(element.style?.show_value as boolean) ?? true}
-                onChange={(e) => onChange({ style: { ...element.style, show_value: e.target.checked } })}
-              />
-              Display numeric value
-            </label>
-          </FieldRow>
-          <FieldRow label="Show Ticks">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={(element.style?.show_ticks as boolean) ?? true}
-                onChange={(e) => onChange({ style: { ...element.style, show_ticks: e.target.checked } })}
-              />
-              Show tick marks around the arc
-            </label>
-          </FieldRow>
-          {(element.style?.show_ticks as boolean) !== false && (
-            <FieldRow label="Tick Count">
-              <input
-                type="number"
-                value={(element.style?.tick_count as number) ?? 5}
-                onChange={(e) => onChange({ style: { ...element.style, tick_count: e.target.value ? Number(e.target.value) : undefined } })}
-                min={2} max={20} style={{ flex: 1 }}
-              />
-            </FieldRow>
-          )}
-
-          <GaugeZonesEditor
-            zones={element.zones ?? []}
-            onChange={(zones) => onChange({ zones: zones.length > 0 ? zones : undefined })}
-            elementMin={element.min ?? 0}
-            elementMax={element.max ?? 100}
-          />
-        </>
-      )}
-
-      {/* Level Meter properties */}
-      {element.type === "level_meter" && (
-        <>
-          <FieldRow label="Min">
-            <input type="number" value={element.min ?? ""} onChange={(e) => onChange({ min: numOrUndefined(e.target.value) })} placeholder="-60" style={{ flex: 1 }} />
-          </FieldRow>
-          <FieldRow label="Max">
-            <input type="number" value={element.max ?? ""} onChange={(e) => onChange({ max: numOrUndefined(e.target.value) })} placeholder="0" style={{ flex: 1 }} />
-          </FieldRow>
-          <MatchDriverRangeRow element={element} onElementPatch={onChange} />
-          <FieldRow label="Orientation">
-            <select value={element.orientation || "vertical"} onChange={(e) => onChange({ orientation: e.target.value })} style={{ flex: 1 }}>
-              <option value="vertical">Vertical</option>
-              <option value="horizontal">Horizontal</option>
-            </select>
-          </FieldRow>
-
-          <SubSection label="Meter Appearance" />
-          <FieldRow label="Segments">
-            <input
-              type="number"
-              value={(element.style?.meter_segments as number) ?? 20}
-              onChange={(e) => onChange({ style: { ...element.style, meter_segments: e.target.value ? Number(e.target.value) : undefined } })}
-              min={5} max={40} style={{ flex: 1 }}
-            />
-          </FieldRow>
-          <FieldRow label="Show Peak">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={(element.style?.show_peak as boolean) ?? true}
-                onChange={(e) => onChange({ style: { ...element.style, show_peak: e.target.checked } })}
-              />
-              Hold peak level indicator
-            </label>
-          </FieldRow>
-          {(element.style?.show_peak as boolean) !== false && (
-            <FieldRow label="Peak Hold">
-              <input
-                type="number"
-                value={(element.style?.peak_hold_ms as number) ?? 1500}
-                onChange={(e) => onChange({ style: { ...element.style, peak_hold_ms: e.target.value ? Number(e.target.value) : undefined } })}
-                min={500} max={5000} step={100} style={{ flex: 1 }}
-              />
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
-            </FieldRow>
-          )}
-          <FieldRow label="Green to">
-            <input
-              type="number"
-              value={(element.style?.green_to as number) ?? ""}
-              onChange={(e) => onChange({ style: { ...element.style, green_to: numOrUndefined(e.target.value) } })}
-              placeholder="-12"
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>dB</span>
-          </FieldRow>
-          <FieldRow label="Yellow to">
-            <input
-              type="number"
-              value={(element.style?.yellow_to as number) ?? ""}
-              onChange={(e) => onChange({ style: { ...element.style, yellow_to: numOrUndefined(e.target.value) } })}
-              placeholder="-3"
-              style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>dB</span>
-          </FieldRow>
-        </>
-      )}
-
-      {/* Fader properties */}
-      {element.type === "fader" && (
-        <>
-          <FieldRow label="Min">
-            <input type="number" value={element.min ?? ""} onChange={(e) => onChange({ min: numOrUndefined(e.target.value) })} placeholder="0" style={{ flex: 1 }} />
-          </FieldRow>
-          <FieldRow label="Max">
-            <input type="number" value={element.max ?? ""} onChange={(e) => onChange({ max: numOrUndefined(e.target.value) })} placeholder="100" style={{ flex: 1 }} />
-          </FieldRow>
-          <FieldRow label="Step">
-            <input type="number" value={element.step ?? ""} onChange={(e) => onChange({ step: numOrUndefined(e.target.value) })} placeholder="1" min={0.01} step={0.1} style={{ flex: 1 }} />
-          </FieldRow>
-          <FieldRow label="Unit">
-            <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="e.g. dB, %" style={{ flex: 1 }} />
-          </FieldRow>
-          <MatchDriverRangeRow element={element} onElementPatch={onChange} />
-          <FieldRow label="Orientation">
-            <select value={element.orientation || "vertical"} onChange={(e) => onChange({ orientation: e.target.value })} style={{ flex: 1 }}>
-              <option value="vertical">Vertical</option>
-              <option value="horizontal">Horizontal</option>
-            </select>
-          </FieldRow>
-
-          <SubSection label="Display Options" />
-          <FieldRow label="Show Value">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={(element.style?.show_value as boolean) ?? true}
-                onChange={(e) => onChange({ style: { ...element.style, show_value: e.target.checked } })}
-              />
-              Display current value
-            </label>
-          </FieldRow>
-          <FieldRow label="Show Scale">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={(element.style?.show_scale as boolean) ?? true}
-                onChange={(e) => onChange({ style: { ...element.style, show_scale: e.target.checked } })}
-              />
-              Show scale markings
-            </label>
-          </FieldRow>
-
-          <SubSection label="Output Range" />
-          <FieldRow label="Output Min">
-            <input
-              type="number"
-              value={element.output_min ?? ""}
-              onChange={(e) => onChange({ output_min: e.target.value === "" ? undefined : Number(e.target.value) })}
-              placeholder="Same as Min"
-              style={{ flex: 1 }}
-              step="any"
-            />
-          </FieldRow>
-          <FieldRow label="Output Max">
-            <input
-              type="number"
-              value={element.output_max ?? ""}
-              onChange={(e) => onChange({ output_max: e.target.value === "" ? undefined : Number(e.target.value) })}
-              placeholder="Same as Max"
-              style={{ flex: 1 }}
-              step="any"
-            />
-          </FieldRow>
-          <FieldRow label="Scale to Full Range">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={element.scale_to_full !== false}
-                onChange={(e) => onChange({ scale_to_full: e.target.checked })}
-              />
-              Hide output limit from end user
-            </label>
-          </FieldRow>
-          <ResponseCurveFields element={element} onChange={onChange} />
-          <ValueBehaviorFields element={element} onChange={onChange} />
-        </>
-      )}
-
-      {/* Group properties */}
-      {element.type === "group" && (
-        <>
-          <FieldRow label="Label Pos">
-            <select value={element.label_position || "top-left"} onChange={(e) => onChange({ label_position: e.target.value })} style={{ flex: 1 }}>
-              <option value="top-left">Top Left</option>
-              <option value="top-center">Top Center</option>
-              <option value="top-right">Top Right</option>
-              <option value="bottom-left">Bottom Left</option>
-              <option value="bottom-center">Bottom Center</option>
-              <option value="bottom-right">Bottom Right</option>
-            </select>
-          </FieldRow>
-        </>
-      )}
-
-      {/* Clock properties */}
-      {element.type === "clock" && (
-        <>
-          <FieldRow label="Mode">
-            <select value={element.clock_mode || "time"} onChange={(e) => onChange({ clock_mode: e.target.value, format: "" })} style={{ flex: 1 }}>
-              <option value="time">Time</option>
-              <option value="date">Date</option>
-              <option value="datetime">Date + Time</option>
-              <option value="countdown">Countdown</option>
-              <option value="elapsed">Elapsed</option>
-              <option value="meeting">Meeting Timer</option>
-            </select>
-          </FieldRow>
-          <FieldRow label="Format">
-            <input value={element.format || ""} onChange={(e) => onChange({ format: e.target.value })} placeholder={{ time: "h:mm A", date: "MMM D, YYYY", datetime: "MMM D, YYYY h:mm A", countdown: "HH:mm:ss", elapsed: "HH:mm:ss", meeting: "mm:ss" }[element.clock_mode || "time"] || "h:mm A"} style={{ flex: 1 }} />
-          </FieldRow>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5, padding: "0 4px", marginTop: -4 }}>
-            <strong>Tokens:</strong>{" "}
-            h/hh (12hr) &middot; H/HH (24hr) &middot; mm (min) &middot; ss (sec) &middot; A/a (AM/pm)
-            &middot; D/DD (day) &middot; M/MM (month #) &middot; MMM (Jan) &middot; MMMM (January)
-            &middot; YYYY (year) &middot; ddd (Mon) &middot; dddd (Monday)
-          </div>
-          {element.clock_mode === "countdown" && (
-            <>
-              <FieldRow label="Target Time">
-                <input
-                  type="datetime-local"
-                  value={element.target_time || ""}
-                  onChange={(e) => onChange({ target_time: e.target.value || undefined })}
-                  style={{ flex: 1, fontSize: 11 }}
-                />
-              </FieldRow>
-              <FieldRow label="State Key">
-                <VariableKeyPicker
-                  value={((element.bindings as { show?: { value?: { key?: string } } })?.show?.value?.key)
-                    || (element.start_key || "")}
-                  onChange={(key) => {
-                    const bindings = (element.bindings || {}) as Record<string, unknown>;
-                    const show = (bindings.show || {}) as Record<string, unknown>;
-                    if (key) {
-                      onChange({ bindings: { ...bindings, show: { ...show, value: { source: "state", key } } }, target_time: undefined });
-                    } else {
-                      const { value: _v, ...restShow } = show;
-                      const nextBindings: Record<string, unknown> = { ...bindings };
-                      if (Object.keys(restShow).length > 0) nextBindings.show = restShow;
-                      else delete nextBindings.show;
-                      onChange({ bindings: nextBindings, start_key: undefined });
-                    }
-                  }}
-                  showDeviceState
-                  placeholder="Select a state key (ISO datetime)..."
-                  style={{ flex: 1 }}
-                />
-              </FieldRow>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                Set a fixed target time, or bind to a state key containing an ISO datetime. State key takes priority.
-              </div>
-            </>
-          )}
-          {element.clock_mode === "elapsed" && (
-            <>
-              <FieldRow label="Start Key">
-                <VariableKeyPicker
-                  value={element.start_key || ""}
-                  onChange={(key) => onChange({ start_key: key || undefined })}
-                  showDeviceState
-                  placeholder="Select a state key (ISO datetime)..."
-                  style={{ flex: 1 }}
-                />
-              </FieldRow>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                State key containing the start time (ISO datetime). Timer shows time elapsed since that value.
-              </div>
-            </>
-          )}
-          {element.clock_mode === "meeting" && (
-            <FieldRow label="Duration">
-              <input type="number" value={element.duration_minutes ?? ""} onChange={(e) => onChange({ duration_minutes: numOrUndefined(e.target.value) })} placeholder="60" min={1} style={{ flex: 1 }} />
-              <span style={{ fontSize: 10, color: "var(--text-muted)" }}>min</span>
-            </FieldRow>
-          )}
-          <FieldRow label="Timezone">
-            <input
-              value={element.timezone || ""}
-              onChange={(e) => onChange({ timezone: e.target.value || undefined })}
-              placeholder="America/New_York"
-              style={{ flex: 1, fontSize: 11 }}
-            />
-          </FieldRow>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-            Leave blank for local time. Uses IANA timezone names.
-          </div>
-        </>
-      )}
-
-      {/* List properties */}
-      {element.type === "list" && (
-        <>
-          <FieldRow label="Style">
-            <select value={element.list_style || "selectable"} onChange={(e) => onChange({ list_style: e.target.value })} style={{ flex: 1 }}>
-              <option value="static">Static (read-only)</option>
-              <option value="selectable">Selectable</option>
-              <option value="multi_select">Multi-Select</option>
-              <option value="action">Action</option>
-            </select>
-          </FieldRow>
-          <FieldRow label="Item Height">
-            <input type="number" value={remToPx(element.item_height) ?? ""} onChange={(e) => onChange({ item_height: pxToRem(numOrUndefined(e.target.value)) ?? undefined })} placeholder="44" min={24} max={120} style={{ flex: 1 }} />
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
-          </FieldRow>
-          <ListItemsEditor
-            items={element.items ?? []}
-            onChange={(items) => onChange({ items })}
-          />
-          <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
-            For dynamic items, use the Items binding to populate from state keys.
-          </div>
-        </>
-      )}
-
-      {/* Matrix properties */}
-      {element.type === "matrix" && (
-        <>
-          <MatrixSetupRow element={element} project={project} onChange={onChange} />
-          <FieldRow label="Style">
-            <select value={element.matrix_style || "crosspoint"} onChange={(e) => onChange({ matrix_style: e.target.value })} style={{ flex: 1 }}>
-              <option value="crosspoint">Crosspoint Grid</option>
-              <option value="list">List (Dropdowns)</option>
-              <option value="tiles">Tiles (One Card Per Destination)</option>
-            </select>
-          </FieldRow>
-          {matrixAxisIsList(element.matrix_config, "sources") ? (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-              Sources are set as a list of {matrixList(element.matrix_config, "sources").length} entries,
-              each with its own value. The count and key fields do not apply.
-            </div>
-          ) : (
-            <FieldRow label="Sources">
-              <input
-                type="number"
-                value={Number(matrixFrom(element.matrix_config, "sources").count ?? 4)}
-                onChange={(e) => {
-                  const count = Math.max(1, Math.min(32, Number(e.target.value)));
-                  const from = matrixFrom(element.matrix_config, "sources");
-                  const labels = (Array.isArray(from.labels) ? [...from.labels] : []) as string[];
-                  while (labels.length < count) labels.push(`Input ${labels.length + 1}`);
-                  onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", {
-                    count, labels: labels.slice(0, count),
-                  }) });
-                }}
-                min={1}
-                max={32}
-                style={{ flex: 1 }}
-              />
-            </FieldRow>
-          )}
-          {matrixAxisIsList(element.matrix_config, "destinations") ? (
-            <>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                Destinations are set as a list of {matrixList(element.matrix_config, "destinations").length} entries,
-                each with its own value and route key. The count and key fields do not apply.
-              </div>
-              {matrixListHasAudio(element.matrix_config) && (
-                <>
-                  <FieldRow label="Audio Readout">
-                    <input
-                      type="checkbox"
-                      checked
-                      onChange={() => onChange({
-                        matrix_config: matrixDropListAudio(element.matrix_config),
-                      })}
-                    />
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                      Name the audio source when it differs from the video
-                    </span>
-                  </FieldRow>
-                  <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                    Read from the device, per destination. Turn it off when the device
-                    keeps audio with the video: what it reports then is left over from
-                    the last time audio was switched separately, and naming it on the
-                    panel is wrong. Matrix Setup puts it back.
-                  </div>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <FieldRow label="Destinations">
-                <input
-                  type="number"
-                  value={Number(matrixFrom(element.matrix_config, "destinations").count ?? 4)}
-                  onChange={(e) => {
-                    const count = Math.max(1, Math.min(32, Number(e.target.value)));
-                    const from = matrixFrom(element.matrix_config, "destinations");
-                  const labels = (Array.isArray(from.labels) ? [...from.labels] : []) as string[];
-                    while (labels.length < count) labels.push(`Output ${labels.length + 1}`);
-                    onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", {
-                      count, labels: labels.slice(0, count),
-                    }) });
-                  }}
-                  min={1}
-                  max={32}
-                  style={{ flex: 1 }}
-                />
-              </FieldRow>
-              <FieldRow label="Route Key">
-                <input
-                  value={String(matrixFrom(element.matrix_config, "destinations").route_key || "")}
-                  onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { route_key: e.target.value || undefined }) })}
-                  placeholder="device.sw.output_*_source"
-                  style={{ flex: 1, fontSize: 11 }}
-                />
-              </FieldRow>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                Use * for the destination number (1-based)
-              </div>
-              <FieldRow label="Audio Route Key">
-                <input
-                  value={String(matrixFrom(element.matrix_config, "destinations").audio_route_key || "")}
-                  onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { audio_route_key: e.target.value || undefined }) })}
-                  placeholder="device.sw.output_*_audio_source"
-                  style={{ flex: 1, fontSize: 11 }}
-                />
-              </FieldRow>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                Optional. When set, a destination whose audio is on a different
-                source names it on the panel. Leave it empty when the device keeps
-                audio with the video.
-              </div>
-            </>
-          )}
-          {!matrixAxisIsList(element.matrix_config, "sources") && (
-            <FieldRow label="Source Name Key">
-              <input
-                value={String(matrixFrom(element.matrix_config, "sources").label_key || "")}
-                onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", { label_key: e.target.value || undefined }) })}
-                placeholder="device.sw.input_*_name"
-                style={{ flex: 1, fontSize: 11 }}
-              />
-            </FieldRow>
-          )}
-          {!matrixAxisIsList(element.matrix_config, "destinations") && (
-            <FieldRow label="Destination Name Key">
-              <input
-                value={String(matrixFrom(element.matrix_config, "destinations").label_key || "")}
-                onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { label_key: e.target.value || undefined }) })}
-                placeholder="device.sw.output_*_name"
-                style={{ flex: 1, fontSize: 11 }}
-              />
-            </FieldRow>
-          )}
-          {/* Only when there is a name-key field above it to explain. Both axes
-              written out as lists leaves this caption with nothing to caption. */}
-          {(!matrixAxisIsList(element.matrix_config, "sources") ||
-            !matrixAxisIsList(element.matrix_config, "destinations")) && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-              Live names from state. * = the entry's number
-            </div>
-          )}
-          <FieldRow label="Audio Follow">
-            <input
-              type="checkbox"
-              checked={element.matrix_config?.audio_follow_video ?? false}
-              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, audio_follow_video: e.target.checked } })}
-            />
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Route audio with video</span>
-          </FieldRow>
-          {element.matrix_config?.audio_follow_video && !((element.bindings as { do?: Record<string, unknown> })?.do?.audio_route) && (
-            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
-              Add an Audio Route binding in the Bindings tab to send the audio route command.
-            </div>
-          )}
-          {element.matrix_config?.audio_follow_video && (
-            <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px", fontStyle: "italic" }}>
-              Only enable this if your matrix needs a separate audio route command. Many switchers route audio together with video automatically, so leave this off for those.
-            </div>
-          )}
-          <FieldRow label="Show Lock">
-            <input
-              type="checkbox"
-              checked={element.matrix_config?.show_lock === true}
-              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_lock: e.target.checked || undefined } })}
-            />
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Lock buttons per destination</span>
-          </FieldRow>
-          {element.matrix_config?.show_lock === true &&
-            !matrixAxisIsList(element.matrix_config, "destinations") && (
-            <>
-              <FieldRow label="Lock Key">
-                <input
-                  value={String(matrixFrom(element.matrix_config, "destinations").lock_key || "")}
-                  onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { lock_key: e.target.value || undefined }) })}
-                  placeholder="var.lock_*"
-                  style={{ flex: 1, fontSize: 11 }}
-                />
-              </FieldRow>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                A variable per destination, holding whether it is locked. Use * for
-                the destination number.
-              </div>
-            </>
-          )}
-          {element.matrix_config?.show_lock === true &&
-            matrixLockUnbacked(element.matrix_config) && (
-            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
-              Without a variable, a lock is only remembered by the panel that set
-              it: it is forgotten when the page redraws, and no other panel sees it.
-            </div>
-          )}
-          <FieldRow label="Show Mute">
-            <input
-              type="checkbox"
-              checked={element.matrix_config?.show_mute !== false}
-              onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_mute: e.target.checked } })}
-            />
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Mute buttons per output</span>
-          </FieldRow>
-          {/* Only once somebody asked for mute. The box reads ticked when the key
-              is absent (which is what the panel does too), so warning on that
-              state put an orange line about a Bindings tab on every matrix the
-              moment it was dropped, for a button the panel does not draw until
-              the binding exists. */}
-          {element.matrix_config?.show_mute === true && !((element.bindings as { do?: Record<string, unknown> })?.do?.mute_route) && (
-            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
-              Add a Mute Route binding in the Bindings tab to wire the mute buttons to a command.
-            </div>
-          )}
-          {element.matrix_config?.show_mute !== false && element.matrix_config?.audio_follow_video && !((element.bindings as { do?: Record<string, unknown> })?.do?.audio_mute_route) && (
-            <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
-              Add an Audio Mute Route binding in the Bindings tab so the mute button also mutes audio.
-            </div>
-          )}
-          {!matrixAxisIsList(element.matrix_config, "sources") && (
-            <MatrixLabelEditor
-              title="Source Labels"
-              labels={(matrixFrom(element.matrix_config, "sources").labels as string[] | undefined) || []}
-              onChange={(labels) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", { labels }) })}
-            />
-          )}
-          {!matrixAxisIsList(element.matrix_config, "destinations") && (
-            <MatrixLabelEditor
-              title="Destination Labels"
-              labels={(matrixFrom(element.matrix_config, "destinations").labels as string[] | undefined) || []}
-              onChange={(labels) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { labels }) })}
-            />
-          )}
-
-          <MatrixPresetsEditor
-            presets={element.matrix_config?.presets as MatrixPreset[] || []}
-            macros={macros}
-            onChange={(presets) => onChange({ matrix_config: { ...element.matrix_config, presets: presets.length > 0 ? presets : undefined } })}
-          />
-
-          <SubSection label="Matrix Appearance" />
-          <FieldRow label="Active Color">
-            <InlineColorPicker size="md" clearable
-              value={String(element.style?.crosspoint_active_color || "")}
-              onChange={(v) => onChange({ style: { ...element.style, crosspoint_active_color: v || undefined } })}
-            />
-          </FieldRow>
-          <FieldRow label="Inactive Color">
-            <InlineColorPicker size="md" clearable
-              value={String(element.style?.crosspoint_inactive_color || "")}
-              onChange={(v) => onChange({ style: { ...element.style, crosspoint_inactive_color: v || undefined } })}
-            />
-          </FieldRow>
-          <FieldRow label="Cell Size">
-            <input
-              type="number"
-              value={remToPx(element.style?.cell_size as number) ?? ""}
-              placeholder="Auto"
-              onChange={(e) => onChange({ style: { ...element.style, cell_size: e.target.value ? pxToRem(Number(e.target.value)) : undefined } })}
-              min={24} max={80} style={{ flex: 1 }}
-            />
-            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
-          </FieldRow>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-            Blank sizes the crosspoints to the element, between 44 and 72px. A number pins them.
-          </div>
-        </>
-      )}
-
-      {/* Keypad properties */}
-      {element.type === "keypad" && (
-        <>
-          <FieldRow label="Digits">
-            <input type="number" value={element.digits ?? ""} onChange={(e) => onChange({ digits: numOrUndefined(e.target.value) })} placeholder={String(KEYPAD_DIGITS_DEFAULT)} min={1} max={10} style={{ flex: 1 }} />
-          </FieldRow>
-          <FieldRow label="Style">
-            <select value={element.keypad_style || "numeric"} onChange={(e) => onChange({ keypad_style: e.target.value })} style={{ flex: 1 }}>
-              <option value="numeric">Numeric (0-9)</option>
-              <option value="phone">Phone (* #)</option>
-            </select>
-          </FieldRow>
-          <FieldRow label="Auto Send">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input type="checkbox" checked={element.auto_send ?? false} onChange={(e) => onChange({ auto_send: e.target.checked })} />
-              Send without Enter
-            </label>
-          </FieldRow>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-            {(element.keypad_style || "numeric") === "phone"
-              ? "The phone layout has no Enter key, so it sends only this way: as soon as Digits keys are pressed, or after the Send Delay with no key press."
-              : "Sends as soon as Digits keys are pressed, or after the Send Delay with no key press. With this off, Enter sends."}
-          </div>
-          {(element.auto_send ?? false) && (
-            <>
-              <FieldRow label="Send Delay">
-                <input
-                  type="number"
-                  value={element.auto_send_delay_ms ?? KEYPAD_SEND_DELAY_DEFAULT_MS}
-                  onChange={(e) => onChange({ auto_send_delay_ms: e.target.value ? Number(e.target.value) : undefined })}
-                  min={0} max={5000} step={100} style={{ flex: 1 }}
-                />
-                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
-              </FieldRow>
-              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
-                How long after the last key press a shorter entry is sent. Under {KEYPAD_SEND_DELAY_DEFAULT_MS} ms, a code can be sent before it is finished.
-              </div>
-            </>
-          )}
-          <FieldRow label="Show Display">
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={element.show_display ?? true}
-                onChange={(e) => onChange({ show_display: e.target.checked })}
-              />
-              Show digit display above keys
-            </label>
-          </FieldRow>
-          {(element.show_display ?? true) && (
-            <FieldRow label="Mask Display">
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
-                <input
-                  type="checkbox"
-                  checked={element.mask_display ?? false}
-                  onChange={(e) => onChange({ mask_display: e.target.checked })}
-                />
-                Show a dot for each digit typed
-              </label>
-            </FieldRow>
-          )}
-        </>
-      )}
-
-      {/* Custom control: which page in the project's ui/ folder it runs */}
-      {element.type === "custom" && (
-        <CustomControlConfig
-          file={element.custom_file || ""}
-          config={element.custom_config || {}}
-          onChange={onChange}
-        />
-      )}
-
-      {/* Plugin element config */}
-      {element.type === "plugin" && (
-        <PluginElementConfig
-          pluginId={element.plugin_id || ""}
-          pluginType={element.plugin_type || ""}
-          config={element.plugin_config || {}}
-          onChange={(cfg) => onChange({ plugin_config: cfg })}
-        />
-      )}
-
-      {/* The two element types that run someone else's page: what it may touch */}
-      {(element.type === "custom" || element.type === "plugin") && (
-        <GrantEditor grant={element.grant} onChange={(grant) => onChange({ grant })} />
-      )}
-
-      {/* Icon properties (for elements that display text) */}
-      {["button", "label", "page_nav", "camera_preset"].includes(element.type) && (
-        <>
-          <FieldRow label="Icon">
-            <IconPicker
-              value={element.icon || ""}
-              onChange={(v) => onChange({ icon: v || undefined })}
-            />
-          </FieldRow>
-          {element.icon && (
-            <>
-              <FieldRow label="Position">
-                <select
-                  value={element.icon_position || "left"}
-                  onChange={(e) => onChange({ icon_position: e.target.value })}
-                  style={{ flex: 1 }}
-                >
-                  <option value="left">Left</option>
-                  <option value="right">Right</option>
-                  <option value="top">Top</option>
-                  <option value="bottom">Bottom</option>
-                  <option value="center">Icon Only</option>
-                </select>
-              </FieldRow>
-              <FieldRow label="Icon Size">
-                <input
-                  type="number"
-                  value={remToPx(element.icon_size) ?? 24}
-                  onChange={(e) =>
-                    onChange({
-                      icon_size: e.target.value ? pxToRem(Number(e.target.value)) ?? undefined : undefined,
-                    })
-                  }
-                  min={12}
-                  max={64}
-                  style={{ width: 64 }}
-                />
-                <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
-              </FieldRow>
-              <FieldRow label="Icon Color">
-                <InlineColorPicker size="md" clearable
-                  value={element.icon_color || ""}
-                  onChange={(v) => onChange({ icon_color: v || undefined })}
-                />
-              </FieldRow>
-            </>
-          )}
-        </>
-      )}
-
-      {/* Select options editor */}
-      {element.type === "select" && (
-        <OptionsEditor
-          options={element.options ?? []}
-          onChange={(options) => onChange({ options })}
-        />
-      )}
-    </div>
+      <IconFields element={element} onChange={onChange} />
+    </>
   );
 }
 
-/** Stable React keys for editable rows that have no natural id. With
- *  key={i}, deleting a middle row rebinds every row below it — the input at
- *  that index keeps focus but now edits a different row. Appended rows get
- *  fresh ids; removeAt keeps the survivors' ids with their rows. Lists are
- *  only ever appended to or deleted from (no reorder), so length-sync plus
- *  removeAt covers every mutation. */
+/** A label's own text, its line breaks and its rounding, and its icon. */
+function LabelTextFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <>
+        <FieldRow label="Text">
+          {element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap" ? (
+            <textarea
+              value={element.text || ""}
+              onChange={(e) => onChange({ text: e.target.value })}
+              rows={3}
+              style={{ flex: 1, resize: "vertical", fontSize: "var(--font-size-sm)" }}
+            />
+          ) : (
+            <input
+              value={element.text || ""}
+              onChange={(e) => onChange({ text: e.target.value })}
+              style={{ flex: 1 }}
+            />
+          )}
+        </FieldRow>
+        <FieldRow label="Multi-line">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={element.style?.white_space === "pre-line" || element.style?.white_space === "pre-wrap"}
+              onChange={(e) => {
+                const updated = { ...(element.style || {}) };
+                if (e.target.checked) {
+                  updated.white_space = "pre-line";
+                } else {
+                  delete updated.white_space;
+                }
+                onChange({ style: updated });
+              }}
+            />
+            Use Enter for line breaks
+          </label>
+        </FieldRow>
+        <ShownDecimalsRow element={element} onChange={onChange} placeholder="As reported" />
+        <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: -2, marginBottom: 4 }}>
+          Rounds a bound value when it is a number. Text is shown exactly as the device reports it.
+        </div>
+      </>
+      <IconFields element={element} onChange={onChange} />
+    </>
+  );
+}
+
+/** A page nav: where it goes, whether it lights up there, and its icon. */
+function PageNavFields({ element, pages, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Target Page">
+        <SearchableSelect
+          value={element.target_page || ""}
+          onChange={(target_page) => onChange({ target_page })}
+          groups={[
+            { options: [{ value: "$back", label: "$back (dismiss overlay)", hint: "$back" }] },
+            ...pageGroups(pages),
+          ]}
+          placeholder="Select page..."
+          searchPlaceholder="Search pages..."
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <FieldRow label="Current page">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={!!element.highlight_current}
+            onChange={(e) => onChange({ highlight_current: e.target.checked || undefined })}
+          />
+          Light up while its page is showing
+        </label>
+      </FieldRow>
+      <IconFields element={element} onChange={onChange} />
+    </>
+  );
+}
+
+/** A slider's travel, look, output range and sending. */
+function SliderFields({ element, placement, onChangePlacement, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Min">
+        <input
+          type="number"
+          value={element.min ?? ""}
+          onChange={(e) => onChange({ min: numOrUndefined(e.target.value) })}
+          placeholder="0"
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <FieldRow label="Max">
+        <input
+          type="number"
+          value={element.max ?? ""}
+          onChange={(e) => onChange({ max: numOrUndefined(e.target.value) })}
+          placeholder="100"
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <FieldRow label="Step">
+        <input
+          type="number"
+          value={element.step ?? ""}
+          onChange={(e) => onChange({ step: numOrUndefined(e.target.value) })}
+          placeholder="1"
+          style={{ flex: 1 }}
+          min={0.01}
+          step={0.1}
+        />
+      </FieldRow>
+      <MatchDriverRangeRow element={element} onElementPatch={onChange} />
+      <FieldRow label="Orientation">
+        <select
+          value={element.orientation || "horizontal"}
+          onChange={(e) => {
+            const newOrientation = e.target.value;
+            const oldOrientation = element.orientation || "horizontal";
+            const patch: Partial<typeof element> = { orientation: newOrientation };
+            onChange(patch);
+            // A fader turned on its side wants its box turned with it.
+            if (newOrientation !== oldOrientation && placement && onChangePlacement) {
+              const swapped = { ...placement, w: placement.h, h: placement.w };
+              onChangePlacement(swapped);
+              showInfo(
+                `Swapped the box to ${swapped.w.toFixed(1)}% x ${swapped.h.toFixed(1)}% for ${newOrientation} layout`,
+              );
+            }
+          }}
+          style={{ flex: 1 }}
+        >
+          <option value="horizontal">Horizontal</option>
+          <option value="vertical">Vertical</option>
+        </select>
+      </FieldRow>
+      <FieldRow label="Thumb Size">
+        <input
+          type="number"
+          value={remToPx(element.thumb_size) ?? ""}
+          onChange={(e) => onChange({ thumb_size: pxToRem(numOrUndefined(e.target.value)) ?? undefined })}
+          placeholder="44"
+          style={{ flex: 1 }}
+          min={16}
+          max={80}
+          step={2}
+        />
+      </FieldRow>
+      <FieldRow label="Show Value">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={(element.style?.show_value as boolean) ?? false}
+            onChange={(e) => onChange({ style: { ...element.style, show_value: e.target.checked } })}
+          />
+          Display current value
+        </label>
+      </FieldRow>
+      <FieldRow label="Output Min">
+        <input
+          type="number"
+          value={element.output_min ?? ""}
+          onChange={(e) => onChange({ output_min: e.target.value === "" ? undefined : Number(e.target.value) })}
+          placeholder="Same as Min"
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <FieldRow label="Output Max">
+        <input
+          type="number"
+          value={element.output_max ?? ""}
+          onChange={(e) => onChange({ output_max: e.target.value === "" ? undefined : Number(e.target.value) })}
+          placeholder="Same as Max"
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <FieldRow label="Scale to Full Range">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={element.scale_to_full !== false}
+            onChange={(e) => onChange({ scale_to_full: e.target.checked })}
+          />
+          Hide output limit from end user
+        </label>
+      </FieldRow>
+      <ResponseCurveFields element={element} onChange={onChange} />
+      <ValueBehaviorFields element={element} onChange={onChange} includeUnit />
+    </>
+  );
+}
+
+/** A text input's placeholder. */
+function TextInputFields({ element, onChange }: SectionProps) {
+  return (
+    <FieldRow label="Placeholder">
+      <input
+        value={element.placeholder || ""}
+        onChange={(e) => onChange({ placeholder: e.target.value })}
+        placeholder="Placeholder text..."
+        style={{ flex: 1 }}
+      />
+    </FieldRow>
+  );
+}
+
+/** An image's picture, its address, its description and how it fits. */
+function ImageFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Image">
+        <AssetPicker
+          value={element.src || ""}
+          onChange={(v) => onChange({ src: v || undefined })}
+        />
+      </FieldRow>
+      <FieldRow label="URL">
+        <input
+          value={element.src?.startsWith("assets://") ? "" : (element.src || "")}
+          onChange={(e) => onChange({ src: e.target.value || undefined })}
+          placeholder="Or enter external URL..."
+          style={{ flex: 1, fontSize: 11 }}
+        />
+      </FieldRow>
+      <FieldRow label="Alt Text">
+        <input
+          value={element.label || ""}
+          onChange={(e) => onChange({ label: e.target.value || undefined })}
+          placeholder="Describe the image"
+          style={{ flex: 1, fontSize: 11 }}
+        />
+      </FieldRow>
+      <FieldRow label="Fit">
+        <select
+          value={element.object_fit || "contain"}
+          onChange={(e) => onChange({ object_fit: e.target.value })}
+          style={{ flex: 1 }}
+        >
+          <option value="contain">Contain (fit, may letterbox)</option>
+          <option value="cover">Cover (fill, may crop)</option>
+          <option value="fill">Fill (stretch to fit)</option>
+        </select>
+      </FieldRow>
+    </>
+  );
+}
+
+/** A camera preset's number, and its icon. */
+function CameraPresetFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Preset #">
+        <input
+          type="number"
+          value={element.preset_number ?? ""}
+          onChange={(e) =>
+            onChange({
+              preset_number: e.target.value
+                ? Number(e.target.value)
+                : undefined,
+            })
+          }
+          min={1}
+          style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <IconFields element={element} onChange={onChange} />
+    </>
+  );
+}
+
+/** A gauge's range, readout, arc and colour zones. */
+function GaugeFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Min">
+        <input type="number" value={element.min ?? ""} onChange={(e) => onChange({ min: numOrUndefined(e.target.value) })} placeholder="0" style={{ flex: 1 }} />
+      </FieldRow>
+      <FieldRow label="Max">
+        <input type="number" value={element.max ?? ""} onChange={(e) => onChange({ max: numOrUndefined(e.target.value) })} placeholder="100" style={{ flex: 1 }} />
+      </FieldRow>
+      <FieldRow label="Unit">
+        <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="%, dB, etc." style={{ flex: 1 }} />
+      </FieldRow>
+      <ShownDecimalsRow element={element} onChange={onChange} placeholder="1" />
+      <MatchDriverRangeRow element={element} onElementPatch={onChange} />
+      <FieldRow label="Arc Angle">
+        <input type="number" value={element.arc_angle ?? ""} onChange={(e) => onChange({ arc_angle: numOrUndefined(e.target.value) })} placeholder="240" min={90} max={360} style={{ flex: 1 }} />
+      </FieldRow>
+
+      <SubSection label="Gauge Appearance" />
+      <FieldRow label="Gauge Color">
+        <InlineColorPicker size="md" clearable
+          value={String(element.style?.gauge_color || "")}
+          onChange={(v) => onChange({ style: { ...element.style, gauge_color: v || undefined } })}
+        />
+      </FieldRow>
+      <FieldRow label="Background Arc">
+        <InlineColorPicker size="md" clearable
+          value={String(element.style?.gauge_bg_color || "")}
+          onChange={(v) => onChange({ style: { ...element.style, gauge_bg_color: v || undefined } })}
+        />
+      </FieldRow>
+      <FieldRow label="Arc Width">
+        <input
+          type="number"
+          value={(element.style?.gauge_width as number) ?? 8}
+          onChange={(e) => onChange({ style: { ...element.style, gauge_width: e.target.value ? Number(e.target.value) : undefined } })}
+          min={2} max={20} style={{ flex: 1 }}
+        />
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
+      </FieldRow>
+      <FieldRow label="Show Value">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={(element.style?.show_value as boolean) ?? true}
+            onChange={(e) => onChange({ style: { ...element.style, show_value: e.target.checked } })}
+          />
+          Display numeric value
+        </label>
+      </FieldRow>
+      <FieldRow label="Show Ticks">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={(element.style?.show_ticks as boolean) ?? true}
+            onChange={(e) => onChange({ style: { ...element.style, show_ticks: e.target.checked } })}
+          />
+          Show tick marks around the arc
+        </label>
+      </FieldRow>
+      {(element.style?.show_ticks as boolean) !== false && (
+        <FieldRow label="Tick Count">
+          <input
+            type="number"
+            value={(element.style?.tick_count as number) ?? 5}
+            onChange={(e) => onChange({ style: { ...element.style, tick_count: e.target.value ? Number(e.target.value) : undefined } })}
+            min={2} max={20} style={{ flex: 1 }}
+          />
+        </FieldRow>
+      )}
+
+      <GaugeZonesEditor
+        zones={element.zones ?? []}
+        onChange={(zones) => onChange({ zones: zones.length > 0 ? zones : undefined })}
+        elementMin={element.min ?? 0}
+        elementMax={element.max ?? 100}
+      />
+    </>
+  );
+}
+
+/** A level meter's range, direction and segments. */
+function LevelMeterFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Min">
+        <input type="number" value={element.min ?? ""} onChange={(e) => onChange({ min: numOrUndefined(e.target.value) })} placeholder="-60" style={{ flex: 1 }} />
+      </FieldRow>
+      <FieldRow label="Max">
+        <input type="number" value={element.max ?? ""} onChange={(e) => onChange({ max: numOrUndefined(e.target.value) })} placeholder="0" style={{ flex: 1 }} />
+      </FieldRow>
+      <MatchDriverRangeRow element={element} onElementPatch={onChange} />
+      <FieldRow label="Orientation">
+        <select value={element.orientation || "vertical"} onChange={(e) => onChange({ orientation: e.target.value })} style={{ flex: 1 }}>
+          <option value="vertical">Vertical</option>
+          <option value="horizontal">Horizontal</option>
+        </select>
+      </FieldRow>
+
+      <SubSection label="Meter Appearance" />
+      <FieldRow label="Segments">
+        <input
+          type="number"
+          value={(element.style?.meter_segments as number) ?? 20}
+          onChange={(e) => onChange({ style: { ...element.style, meter_segments: e.target.value ? Number(e.target.value) : undefined } })}
+          min={5} max={40} style={{ flex: 1 }}
+        />
+      </FieldRow>
+      <FieldRow label="Show Peak">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={(element.style?.show_peak as boolean) ?? true}
+            onChange={(e) => onChange({ style: { ...element.style, show_peak: e.target.checked } })}
+          />
+          Hold peak level indicator
+        </label>
+      </FieldRow>
+      {(element.style?.show_peak as boolean) !== false && (
+        <FieldRow label="Peak Hold">
+          <input
+            type="number"
+            value={(element.style?.peak_hold_ms as number) ?? 1500}
+            onChange={(e) => onChange({ style: { ...element.style, peak_hold_ms: e.target.value ? Number(e.target.value) : undefined } })}
+            min={500} max={5000} step={100} style={{ flex: 1 }}
+          />
+          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
+        </FieldRow>
+      )}
+      <FieldRow label="Green to">
+        <input
+          type="number"
+          value={(element.style?.green_to as number) ?? ""}
+          onChange={(e) => onChange({ style: { ...element.style, green_to: numOrUndefined(e.target.value) } })}
+          placeholder="-12"
+          style={{ flex: 1 }}
+        />
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>dB</span>
+      </FieldRow>
+      <FieldRow label="Yellow to">
+        <input
+          type="number"
+          value={(element.style?.yellow_to as number) ?? ""}
+          onChange={(e) => onChange({ style: { ...element.style, yellow_to: numOrUndefined(e.target.value) } })}
+          placeholder="-3"
+          style={{ flex: 1 }}
+        />
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>dB</span>
+      </FieldRow>
+    </>
+  );
+}
+
+/** A fader's travel, readout, output range and sending. */
+function FaderFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Min">
+        <input type="number" value={element.min ?? ""} onChange={(e) => onChange({ min: numOrUndefined(e.target.value) })} placeholder="0" style={{ flex: 1 }} />
+      </FieldRow>
+      <FieldRow label="Max">
+        <input type="number" value={element.max ?? ""} onChange={(e) => onChange({ max: numOrUndefined(e.target.value) })} placeholder="100" style={{ flex: 1 }} />
+      </FieldRow>
+      <FieldRow label="Step">
+        <input type="number" value={element.step ?? ""} onChange={(e) => onChange({ step: numOrUndefined(e.target.value) })} placeholder="1" min={0.01} step={0.1} style={{ flex: 1 }} />
+      </FieldRow>
+      <FieldRow label="Unit">
+        <input value={element.unit || ""} onChange={(e) => onChange({ unit: e.target.value })} placeholder="e.g. dB, %" style={{ flex: 1 }} />
+      </FieldRow>
+      <MatchDriverRangeRow element={element} onElementPatch={onChange} />
+      <FieldRow label="Orientation">
+        <select value={element.orientation || "vertical"} onChange={(e) => onChange({ orientation: e.target.value })} style={{ flex: 1 }}>
+          <option value="vertical">Vertical</option>
+          <option value="horizontal">Horizontal</option>
+        </select>
+      </FieldRow>
+
+      <SubSection label="Display Options" />
+      <FieldRow label="Show Value">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={(element.style?.show_value as boolean) ?? true}
+            onChange={(e) => onChange({ style: { ...element.style, show_value: e.target.checked } })}
+          />
+          Display current value
+        </label>
+      </FieldRow>
+      <FieldRow label="Show Scale">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={(element.style?.show_scale as boolean) ?? true}
+            onChange={(e) => onChange({ style: { ...element.style, show_scale: e.target.checked } })}
+          />
+          Show scale markings
+        </label>
+      </FieldRow>
+
+      <SubSection label="Output Range" />
+      <FieldRow label="Output Min">
+        <input
+          type="number"
+          value={element.output_min ?? ""}
+          onChange={(e) => onChange({ output_min: e.target.value === "" ? undefined : Number(e.target.value) })}
+          placeholder="Same as Min"
+          style={{ flex: 1 }}
+          step="any"
+        />
+      </FieldRow>
+      <FieldRow label="Output Max">
+        <input
+          type="number"
+          value={element.output_max ?? ""}
+          onChange={(e) => onChange({ output_max: e.target.value === "" ? undefined : Number(e.target.value) })}
+          placeholder="Same as Max"
+          style={{ flex: 1 }}
+          step="any"
+        />
+      </FieldRow>
+      <FieldRow label="Scale to Full Range">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={element.scale_to_full !== false}
+            onChange={(e) => onChange({ scale_to_full: e.target.checked })}
+          />
+          Hide output limit from end user
+        </label>
+      </FieldRow>
+      <ResponseCurveFields element={element} onChange={onChange} />
+      <ValueBehaviorFields element={element} onChange={onChange} />
+    </>
+  );
+}
+
+/** Where a group draws its label. */
+function GroupFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Label Pos">
+        <select value={element.label_position || "top-left"} onChange={(e) => onChange({ label_position: e.target.value })} style={{ flex: 1 }}>
+          <option value="top-left">Top Left</option>
+          <option value="top-center">Top Center</option>
+          <option value="top-right">Top Right</option>
+          <option value="bottom-left">Bottom Left</option>
+          <option value="bottom-center">Bottom Center</option>
+          <option value="bottom-right">Bottom Right</option>
+        </select>
+      </FieldRow>
+    </>
+  );
+}
+
+/** A clock's mode, format, what it counts from, and its time zone. */
+function ClockFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Mode">
+        <select value={element.clock_mode || "time"} onChange={(e) => onChange({ clock_mode: e.target.value, format: "" })} style={{ flex: 1 }}>
+          <option value="time">Time</option>
+          <option value="date">Date</option>
+          <option value="datetime">Date + Time</option>
+          <option value="countdown">Countdown</option>
+          <option value="elapsed">Elapsed</option>
+          <option value="meeting">Meeting Timer</option>
+        </select>
+      </FieldRow>
+      <FieldRow label="Format">
+        <input value={element.format || ""} onChange={(e) => onChange({ format: e.target.value })} placeholder={{ time: "h:mm A", date: "MMM D, YYYY", datetime: "MMM D, YYYY h:mm A", countdown: "HH:mm:ss", elapsed: "HH:mm:ss", meeting: "mm:ss" }[element.clock_mode || "time"] || "h:mm A"} style={{ flex: 1 }} />
+      </FieldRow>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5, padding: "0 4px", marginTop: -4 }}>
+        <strong>Tokens:</strong>{" "}
+        h/hh (12hr) &middot; H/HH (24hr) &middot; mm (min) &middot; ss (sec) &middot; A/a (AM/pm)
+        &middot; D/DD (day) &middot; M/MM (month #) &middot; MMM (Jan) &middot; MMMM (January)
+        &middot; YYYY (year) &middot; ddd (Mon) &middot; dddd (Monday)
+      </div>
+      {element.clock_mode === "countdown" && (
+        <>
+          <FieldRow label="Target Time">
+            <input
+              type="datetime-local"
+              value={element.target_time || ""}
+              onChange={(e) => onChange({ target_time: e.target.value || undefined })}
+              style={{ flex: 1, fontSize: 11 }}
+            />
+          </FieldRow>
+          <FieldRow label="State Key">
+            <VariableKeyPicker
+              value={((element.bindings as { show?: { value?: { key?: string } } })?.show?.value?.key)
+                || (element.start_key || "")}
+              onChange={(key) => {
+                const bindings = (element.bindings || {}) as Record<string, unknown>;
+                const show = (bindings.show || {}) as Record<string, unknown>;
+                if (key) {
+                  onChange({ bindings: { ...bindings, show: { ...show, value: { source: "state", key } } }, target_time: undefined });
+                } else {
+                  const { value: _v, ...restShow } = show;
+                  const nextBindings: Record<string, unknown> = { ...bindings };
+                  if (Object.keys(restShow).length > 0) nextBindings.show = restShow;
+                  else delete nextBindings.show;
+                  onChange({ bindings: nextBindings, start_key: undefined });
+                }
+              }}
+              showDeviceState
+              placeholder="Select a state key (ISO datetime)..."
+              style={{ flex: 1 }}
+            />
+          </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            Set a fixed target time, or bind to a state key containing an ISO datetime. State key takes priority.
+          </div>
+        </>
+      )}
+      {element.clock_mode === "elapsed" && (
+        <>
+          <FieldRow label="Start Key">
+            <VariableKeyPicker
+              value={element.start_key || ""}
+              onChange={(key) => onChange({ start_key: key || undefined })}
+              showDeviceState
+              placeholder="Select a state key (ISO datetime)..."
+              style={{ flex: 1 }}
+            />
+          </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            State key containing the start time (ISO datetime). Timer shows time elapsed since that value.
+          </div>
+        </>
+      )}
+      {element.clock_mode === "meeting" && (
+        <FieldRow label="Duration">
+          <input type="number" value={element.duration_minutes ?? ""} onChange={(e) => onChange({ duration_minutes: numOrUndefined(e.target.value) })} placeholder="60" min={1} style={{ flex: 1 }} />
+          <span style={{ fontSize: 10, color: "var(--text-muted)" }}>min</span>
+        </FieldRow>
+      )}
+      <FieldRow label="Timezone">
+        <input
+          value={element.timezone || ""}
+          onChange={(e) => onChange({ timezone: e.target.value || undefined })}
+          placeholder="America/New_York"
+          style={{ flex: 1, fontSize: 11 }}
+        />
+      </FieldRow>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+        Leave blank for local time. Uses IANA timezone names.
+      </div>
+    </>
+  );
+}
+
+/** A list's style, row height and items. */
+function ListFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Style">
+        <select value={element.list_style || "selectable"} onChange={(e) => onChange({ list_style: e.target.value })} style={{ flex: 1 }}>
+          <option value="static">Static (read-only)</option>
+          <option value="selectable">Selectable</option>
+          <option value="multi_select">Multi-Select</option>
+          <option value="action">Action</option>
+        </select>
+      </FieldRow>
+      <FieldRow label="Item Height">
+        <input type="number" value={remToPx(element.item_height) ?? ""} onChange={(e) => onChange({ item_height: pxToRem(numOrUndefined(e.target.value)) ?? undefined })} placeholder="44" min={24} max={120} style={{ flex: 1 }} />
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
+      </FieldRow>
+      <ListItemsEditor
+        items={element.items ?? []}
+        onChange={(items) => onChange({ items })}
+      />
+      <div style={{ fontSize: 10, color: "var(--text-muted)", fontStyle: "italic" }}>
+        For dynamic items, use the Items binding to populate from state keys.
+      </div>
+    </>
+  );
+}
+
+/** A matrix's sources, destinations, locks, mutes, presets and look. */
+function MatrixFields({ element, project, macros, onChange }: SectionProps) {
+  return (
+    <>
+      <MatrixSetupRow element={element} project={project} onChange={onChange} />
+      <FieldRow label="Style">
+        <select value={element.matrix_style || "crosspoint"} onChange={(e) => onChange({ matrix_style: e.target.value })} style={{ flex: 1 }}>
+          <option value="crosspoint">Crosspoint Grid</option>
+          <option value="list">List (Dropdowns)</option>
+          <option value="tiles">Tiles (One Card Per Destination)</option>
+        </select>
+      </FieldRow>
+      {matrixAxisIsList(element.matrix_config, "sources") ? (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+          Sources are set as a list of {matrixList(element.matrix_config, "sources").length} entries,
+          each with its own value. The count and key fields do not apply.
+        </div>
+      ) : (
+        <FieldRow label="Sources">
+          <input
+            type="number"
+            value={Number(matrixFrom(element.matrix_config, "sources").count ?? 4)}
+            onChange={(e) => {
+              const count = Math.max(1, Math.min(32, Number(e.target.value)));
+              const from = matrixFrom(element.matrix_config, "sources");
+              const labels = (Array.isArray(from.labels) ? [...from.labels] : []) as string[];
+              while (labels.length < count) labels.push(`Input ${labels.length + 1}`);
+              onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", {
+                count, labels: labels.slice(0, count),
+              }) });
+            }}
+            min={1}
+            max={32}
+            style={{ flex: 1 }}
+          />
+        </FieldRow>
+      )}
+      {matrixAxisIsList(element.matrix_config, "destinations") ? (
+        <>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            Destinations are set as a list of {matrixList(element.matrix_config, "destinations").length} entries,
+            each with its own value and route key. The count and key fields do not apply.
+          </div>
+          {matrixListHasAudio(element.matrix_config) && (
+            <>
+              <FieldRow label="Audio Readout">
+                <input
+                  type="checkbox"
+                  checked
+                  onChange={() => onChange({
+                    matrix_config: matrixDropListAudio(element.matrix_config),
+                  })}
+                />
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  Name the audio source when it differs from the video
+                </span>
+              </FieldRow>
+              <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+                Read from the device, per destination. Turn it off when the device
+                keeps audio with the video: what it reports then is left over from
+                the last time audio was switched separately, and naming it on the
+                panel is wrong. Matrix Setup puts it back.
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          <FieldRow label="Destinations">
+            <input
+              type="number"
+              value={Number(matrixFrom(element.matrix_config, "destinations").count ?? 4)}
+              onChange={(e) => {
+                const count = Math.max(1, Math.min(32, Number(e.target.value)));
+                const from = matrixFrom(element.matrix_config, "destinations");
+              const labels = (Array.isArray(from.labels) ? [...from.labels] : []) as string[];
+                while (labels.length < count) labels.push(`Output ${labels.length + 1}`);
+                onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", {
+                  count, labels: labels.slice(0, count),
+                }) });
+              }}
+              min={1}
+              max={32}
+              style={{ flex: 1 }}
+            />
+          </FieldRow>
+          <FieldRow label="Route Key">
+            <input
+              value={String(matrixFrom(element.matrix_config, "destinations").route_key || "")}
+              onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { route_key: e.target.value || undefined }) })}
+              placeholder="device.sw.output_*_source"
+              style={{ flex: 1, fontSize: 11 }}
+            />
+          </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            Use * for the destination number (1-based)
+          </div>
+          <FieldRow label="Audio Route Key">
+            <input
+              value={String(matrixFrom(element.matrix_config, "destinations").audio_route_key || "")}
+              onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { audio_route_key: e.target.value || undefined }) })}
+              placeholder="device.sw.output_*_audio_source"
+              style={{ flex: 1, fontSize: 11 }}
+            />
+          </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            Optional. When set, a destination whose audio is on a different
+            source names it on the panel. Leave it empty when the device keeps
+            audio with the video.
+          </div>
+        </>
+      )}
+      {!matrixAxisIsList(element.matrix_config, "sources") && (
+        <FieldRow label="Source Name Key">
+          <input
+            value={String(matrixFrom(element.matrix_config, "sources").label_key || "")}
+            onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", { label_key: e.target.value || undefined }) })}
+            placeholder="device.sw.input_*_name"
+            style={{ flex: 1, fontSize: 11 }}
+          />
+        </FieldRow>
+      )}
+      {!matrixAxisIsList(element.matrix_config, "destinations") && (
+        <FieldRow label="Destination Name Key">
+          <input
+            value={String(matrixFrom(element.matrix_config, "destinations").label_key || "")}
+            onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { label_key: e.target.value || undefined }) })}
+            placeholder="device.sw.output_*_name"
+            style={{ flex: 1, fontSize: 11 }}
+          />
+        </FieldRow>
+      )}
+      {/* Only when there is a name-key field above it to explain. Both axes
+          written out as lists leaves this caption with nothing to caption. */}
+      {(!matrixAxisIsList(element.matrix_config, "sources") ||
+        !matrixAxisIsList(element.matrix_config, "destinations")) && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+          Live names from state. * = the entry's number
+        </div>
+      )}
+      <FieldRow label="Audio Follow">
+        <input
+          type="checkbox"
+          checked={element.matrix_config?.audio_follow_video ?? false}
+          onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, audio_follow_video: e.target.checked } })}
+        />
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Route audio with video</span>
+      </FieldRow>
+      {element.matrix_config?.audio_follow_video && !((element.bindings as { do?: Record<string, unknown> })?.do?.audio_route) && (
+        <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+          Add an Audio Route binding in the Bindings tab to send the audio route command.
+        </div>
+      )}
+      {element.matrix_config?.audio_follow_video && (
+        <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+          Only enable this if your matrix needs a separate audio route command. Many switchers route audio together with video automatically, so leave this off for those.
+        </div>
+      )}
+      <FieldRow label="Show Lock">
+        <input
+          type="checkbox"
+          checked={element.matrix_config?.show_lock === true}
+          onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_lock: e.target.checked || undefined } })}
+        />
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Lock buttons per destination</span>
+      </FieldRow>
+      {element.matrix_config?.show_lock === true &&
+        !matrixAxisIsList(element.matrix_config, "destinations") && (
+        <>
+          <FieldRow label="Lock Key">
+            <input
+              value={String(matrixFrom(element.matrix_config, "destinations").lock_key || "")}
+              onChange={(e) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { lock_key: e.target.value || undefined }) })}
+              placeholder="var.lock_*"
+              style={{ flex: 1, fontSize: 11 }}
+            />
+          </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            A variable per destination, holding whether it is locked. Use * for
+            the destination number.
+          </div>
+        </>
+      )}
+      {element.matrix_config?.show_lock === true &&
+        matrixLockUnbacked(element.matrix_config) && (
+        <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+          Without a variable, a lock is only remembered by the panel that set
+          it: it is forgotten when the page redraws, and no other panel sees it.
+        </div>
+      )}
+      <FieldRow label="Show Mute">
+        <input
+          type="checkbox"
+          checked={element.matrix_config?.show_mute !== false}
+          onChange={(e) => onChange({ matrix_config: { ...element.matrix_config, show_mute: e.target.checked } })}
+        />
+        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Mute buttons per output</span>
+      </FieldRow>
+      {/* Only once somebody asked for mute. The box reads ticked when the key
+          is absent (which is what the panel does too), so warning on that
+          state put an orange line about a Bindings tab on every matrix the
+          moment it was dropped, for a button the panel does not draw until
+          the binding exists. */}
+      {element.matrix_config?.show_mute === true && !((element.bindings as { do?: Record<string, unknown> })?.do?.mute_route) && (
+        <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+          Add a Mute Route binding in the Bindings tab to wire the mute buttons to a command.
+        </div>
+      )}
+      {element.matrix_config?.show_mute !== false && element.matrix_config?.audio_follow_video && !((element.bindings as { do?: Record<string, unknown> })?.do?.audio_mute_route) && (
+        <div style={{ fontSize: 10, color: "var(--color-warning)", padding: "0 0 0 76px", fontStyle: "italic" }}>
+          Add an Audio Mute Route binding in the Bindings tab so the mute button also mutes audio.
+        </div>
+      )}
+      {!matrixAxisIsList(element.matrix_config, "sources") && (
+        <MatrixLabelEditor
+          title="Source Labels"
+          labels={(matrixFrom(element.matrix_config, "sources").labels as string[] | undefined) || []}
+          onChange={(labels) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "sources", { labels }) })}
+        />
+      )}
+      {!matrixAxisIsList(element.matrix_config, "destinations") && (
+        <MatrixLabelEditor
+          title="Destination Labels"
+          labels={(matrixFrom(element.matrix_config, "destinations").labels as string[] | undefined) || []}
+          onChange={(labels) => onChange({ matrix_config: setMatrixFrom(element.matrix_config, "destinations", { labels }) })}
+        />
+      )}
+
+      <MatrixPresetsEditor
+        presets={element.matrix_config?.presets as MatrixPreset[] || []}
+        macros={macros}
+        onChange={(presets) => onChange({ matrix_config: { ...element.matrix_config, presets: presets.length > 0 ? presets : undefined } })}
+      />
+
+      <SubSection label="Matrix Appearance" />
+      <FieldRow label="Active Color">
+        <InlineColorPicker size="md" clearable
+          value={String(element.style?.crosspoint_active_color || "")}
+          onChange={(v) => onChange({ style: { ...element.style, crosspoint_active_color: v || undefined } })}
+        />
+      </FieldRow>
+      <FieldRow label="Inactive Color">
+        <InlineColorPicker size="md" clearable
+          value={String(element.style?.crosspoint_inactive_color || "")}
+          onChange={(v) => onChange({ style: { ...element.style, crosspoint_inactive_color: v || undefined } })}
+        />
+      </FieldRow>
+      <FieldRow label="Cell Size">
+        <input
+          type="number"
+          value={remToPx(element.style?.cell_size as number) ?? ""}
+          placeholder="Auto"
+          onChange={(e) => onChange({ style: { ...element.style, cell_size: e.target.value ? pxToRem(Number(e.target.value)) : undefined } })}
+          min={24} max={80} style={{ flex: 1 }}
+        />
+        <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
+      </FieldRow>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+        Blank sizes the crosspoints to the element, between 44 and 72px. A number pins them.
+      </div>
+    </>
+  );
+}
+
+/** A keypad's digits, layout, sending and display. */
+function KeypadFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <FieldRow label="Digits">
+        <input type="number" value={element.digits ?? ""} onChange={(e) => onChange({ digits: numOrUndefined(e.target.value) })} placeholder={String(KEYPAD_DIGITS_DEFAULT)} min={1} max={10} style={{ flex: 1 }} />
+      </FieldRow>
+      <FieldRow label="Style">
+        <select value={element.keypad_style || "numeric"} onChange={(e) => onChange({ keypad_style: e.target.value })} style={{ flex: 1 }}>
+          <option value="numeric">Numeric (0-9)</option>
+          <option value="phone">Phone (* #)</option>
+        </select>
+      </FieldRow>
+      <FieldRow label="Auto Send">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input type="checkbox" checked={element.auto_send ?? false} onChange={(e) => onChange({ auto_send: e.target.checked })} />
+          Send without Enter
+        </label>
+      </FieldRow>
+      <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+        {(element.keypad_style || "numeric") === "phone"
+          ? "The phone layout has no Enter key, so it sends only this way: as soon as Digits keys are pressed, or after the Send Delay with no key press."
+          : "Sends as soon as Digits keys are pressed, or after the Send Delay with no key press. With this off, Enter sends."}
+      </div>
+      {(element.auto_send ?? false) && (
+        <>
+          <FieldRow label="Send Delay">
+            <input
+              type="number"
+              value={element.auto_send_delay_ms ?? KEYPAD_SEND_DELAY_DEFAULT_MS}
+              onChange={(e) => onChange({ auto_send_delay_ms: e.target.value ? Number(e.target.value) : undefined })}
+              min={0} max={5000} step={100} style={{ flex: 1 }}
+            />
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>ms</span>
+          </FieldRow>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "0 0 0 76px" }}>
+            How long after the last key press a shorter entry is sent. Under {KEYPAD_SEND_DELAY_DEFAULT_MS} ms, a code can be sent before it is finished.
+          </div>
+        </>
+      )}
+      <FieldRow label="Show Display">
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={element.show_display ?? true}
+            onChange={(e) => onChange({ show_display: e.target.checked })}
+          />
+          Show digit display above keys
+        </label>
+      </FieldRow>
+      {(element.show_display ?? true) && (
+        <FieldRow label="Mask Display">
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={element.mask_display ?? false}
+              onChange={(e) => onChange({ mask_display: e.target.checked })}
+            />
+            Show a dot for each digit typed
+          </label>
+        </FieldRow>
+      )}
+    </>
+  );
+}
+
+/** A custom control: the page it runs, and what it may touch. */
+function CustomFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <CustomControlConfig
+        file={element.custom_file || ""}
+        config={element.custom_config || {}}
+        onChange={onChange}
+      />
+      <GrantEditor grant={element.grant} onChange={(grant) => onChange({ grant })} />
+    </>
+  );
+}
+
+/** A plugin element: its settings, and what it may touch. */
+function PluginFields({ element, onChange }: SectionProps) {
+  return (
+    <>
+      <PluginElementConfig
+        pluginId={element.plugin_id || ""}
+        pluginType={element.plugin_type || ""}
+        config={element.plugin_config || {}}
+        onChange={(cfg) => onChange({ plugin_config: cfg })}
+      />
+      <GrantEditor grant={element.grant} onChange={(grant) => onChange({ grant })} />
+    </>
+  );
+}
+
+/** The icon a text-drawing control shows beside its words. */
+function IconFields({ element, onChange }: FieldProps) {
+  return (
+    <>
+      <FieldRow label="Icon">
+        <IconPicker
+          value={element.icon || ""}
+          onChange={(v) => onChange({ icon: v || undefined })}
+        />
+      </FieldRow>
+      {element.icon && (
+        <>
+          <FieldRow label="Position">
+            <select
+              value={element.icon_position || "left"}
+              onChange={(e) => onChange({ icon_position: e.target.value })}
+              style={{ flex: 1 }}
+            >
+              <option value="left">Left</option>
+              <option value="right">Right</option>
+              <option value="top">Top</option>
+              <option value="bottom">Bottom</option>
+              <option value="center">Icon Only</option>
+            </select>
+          </FieldRow>
+          <FieldRow label="Icon Size">
+            <input
+              type="number"
+              value={remToPx(element.icon_size) ?? 24}
+              onChange={(e) =>
+                onChange({
+                  icon_size: e.target.value ? pxToRem(Number(e.target.value)) ?? undefined : undefined,
+                })
+              }
+              min={12}
+              max={64}
+              style={{ width: 64 }}
+            />
+            <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>
+          </FieldRow>
+          <FieldRow label="Icon Color">
+            <InlineColorPicker size="md" clearable
+              value={element.icon_color || ""}
+              onChange={(v) => onChange({ icon_color: v || undefined })}
+            />
+          </FieldRow>
+        </>
+      )}
+    </>
+  );
+}
+
+/** A select's options. */
+function SelectFields({ element, onChange }: SectionProps) {
+  return (
+    <OptionsEditor
+      options={element.options ?? []}
+      onChange={(options) => onChange({ options })}
+    />
+  );
+}
+
 /**
  * Give a picture element the shape of the picture in it.
  *
@@ -1311,7 +1394,40 @@ export function BasicProperties({
  * is written the moment a source is chosen, and only if the author has not
  * already set a lock of their own. The renderer invents nothing on its own, so
  * if the authoring surface doesn't do this, nothing does.
+ *
+ * It probes the committed source with this render's patch callback: a callback
+ * retained by the picker would still hold the element from before selection.
+ * Another edit, a new selection or an unmount makes that render stale, and
+ * cancels the probe.
  */
+function useIntrinsicAspect(element: UIElement, onChange: (patch: Partial<UIElement>) => void) {
+  useEffect(() => {
+    const src = pictureToMeasure(element);
+    if (!src) return;
+    const probe = new Image();
+    let cancelled = false;
+    probe.onload = () => {
+      if (cancelled) return;
+      const ratio = aspectOf(probe);
+      if (ratio !== null) onChange({ aspect_lock: ratio });
+    };
+    probe.src = src.startsWith("assets://") ? getAssetUrl(src.slice("assets://".length)) : src;
+    return () => { cancelled = true; };
+  }, [element, onChange]);
+}
+
+/** The picture whose shape this element still needs, if it needs one. */
+function pictureToMeasure(element: UIElement): string | null {
+  if (element.type !== "image" || element.aspect_lock != null) return null;
+  return element.src || null;
+}
+
+/** A loaded picture's width over its height, to four places; none for a zero side. */
+function aspectOf(picture: HTMLImageElement): number | null {
+  if (!picture.naturalWidth || !picture.naturalHeight) return null;
+  return Math.round((picture.naturalWidth / picture.naturalHeight) * 10000) / 10000;
+}
+
 type MatrixAxis = "sources" | "destinations";
 type MatrixConfig = Record<string, unknown> | undefined;
 
@@ -1463,6 +1579,12 @@ function setMatrixFrom(
   return { ...config, [axis]: { ...outer, from } };
 }
 
+/** Stable React keys for editable rows that have no natural id. With
+ *  key={i}, deleting a middle row rebinds every row below it — the input at
+ *  that index keeps focus but now edits a different row. Appended rows get
+ *  fresh ids; removeAt keeps the survivors' ids with their rows. Lists are
+ *  only ever appended to or deleted from (no reorder), so length-sync plus
+ *  removeAt covers every mutation. */
 function useRowKeys(length: number) {
   const next = useRef(0);
   const keysRef = useRef<number[]>([]);
