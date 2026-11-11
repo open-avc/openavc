@@ -1,0 +1,51 @@
+{
+  "_about": "Actions that sit somewhere other than a do slot's own list: a toggle's off action and a long press's action (both hang off the first press action), and a matrix row's own route, which the panel runs instead of do.route for that row. Each runs a macro the project does not have. tests/test_ui_page_references.py checks the AI write door's reference check against page_references, and validateProject.test.ts checks the UI Builder's Validate against validate; each side words the place its own way, and each place is reported on both.",
+  "macros": ["all_on"],
+  "elements": [
+    {
+      "id": "t1", "type": "button", "label": "Room",
+      "bindings": {"do": {"press": [
+        {
+          "action": "macro", "macro": "gone_on", "mode": "toggle",
+          "off_action": {"action": "macro", "macro": "gone_off"}
+        },
+        {"action": "macro", "macro": "all_on"}
+      ]}}
+    },
+    {
+      "id": "h1", "type": "button", "label": "Hold",
+      "bindings": {"do": {"press": [
+        {
+          "action": "macro", "macro": "all_on", "mode": "tap_hold",
+          "hold_action": {"action": "macro", "macro": "gone_hold"}
+        }
+      ]}}
+    },
+    {
+      "id": "mx", "type": "matrix",
+      "matrix_config": {
+        "sources": [{"value": 1, "label": "Laptop"}],
+        "destinations": [
+          {"value": 1, "label": "Display"},
+          {"value": 9, "label": "Stream", "route": [
+            {"action": "macro", "macro": "all_on"},
+            {"action": "macro", "macro": "gone_stream"}
+          ]}
+        ]
+      },
+      "bindings": {"do": {"route": [{"action": "macro", "macro": "all_on"}]}}
+    }
+  ],
+  "page_references": [
+    ["t1", "do.press[0]", "runs macro 'gone_on', which does not exist. The macros are: all_on."],
+    ["t1", "do.press[0].off_action", "runs macro 'gone_off', which does not exist. The macros are: all_on."],
+    ["h1", "do.press[0].hold_action", "runs macro 'gone_hold', which does not exist. The macros are: all_on."],
+    ["mx", "matrix_config.destinations['Stream'].route[1]", "runs macro 'gone_stream', which does not exist. The macros are: all_on."]
+  ],
+  "validate": [
+    ["t1", " > press", "Macro \"gone_on\" not found"],
+    ["t1", " > press > Off Action", "Macro \"gone_off\" not found"],
+    ["h1", " > press > Long Press Action", "Macro \"gone_hold\" not found"],
+    ["mx", " > route for \"Stream\"", "Macro \"gone_stream\" not found"]
+  ]
+}

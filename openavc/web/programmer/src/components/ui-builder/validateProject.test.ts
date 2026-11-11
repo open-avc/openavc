@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { validateProject } from "./validateProject";
 import type { ProjectConfig } from "../../api/types";
 
@@ -116,6 +118,27 @@ describe("validateProject: what a control's actions name", () => {
       { severity: "error", message: 'Navigate to deleted page "ghost"', ...at("b1", " > press") },
       { severity: "error", message: 'Device "ghost_amp" not found', ...at("b1", " > press") },
       { severity: "error", message: 'Macro "ghost_macro" not found', ...at("b1", " > press") },
+    ]);
+  });
+
+  it("reaches a toggle's off action, a long press's action and a matrix row's own route", () => {
+    // The same elements are the AI reference check's in tests/test_ui_page_references.py.
+    const cases = JSON.parse(
+      readFileSync(resolve(process.cwd(), "../../../tests/fixtures/action_reference_cases.json"), "utf-8"),
+    ) as { macros: string[]; elements: El[]; validate: [string, string, string][] };
+    const p = project({ elements: cases.elements });
+    p.macros = cases.macros.map((id) => ({ id, name: id, steps: [] })) as unknown as ProjectConfig["macros"];
+    expect(checked(p)).toEqual(
+      cases.validate.map(([id, where, message]) => ({ severity: "error", message, ...at(id, where) })),
+    );
+  });
+
+  it("says what the platform said about a command in a toggle's off action", () => {
+    const off = { action: "device.command", device: "amp", command: "set_level" };
+    const el = button({ press: [{ action: "macro", macro: "all_on", off_action: off }] });
+    const answers = new Map([[off as Record<string, unknown>, ["'set_level': 'level' is required"]]]);
+    expect(checked(project({ elements: [el] }), answers)).toEqual([
+      { severity: "error", message: "'set_level': 'level' is required", ...at("b1", " > press > Off Action") },
     ]);
   });
 

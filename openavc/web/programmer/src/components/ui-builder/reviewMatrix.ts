@@ -39,7 +39,7 @@ function matrixNamed(labels: string[]): string {
  * the device: a review has no state to read. The AI side's twin is
  * `_entry_name` in page_review.py.
  */
-function matrixEntryName(entry: MatrixEntry): string {
+export function matrixEntryName(entry: MatrixEntry): string {
   return String(entry.label ?? entry.value);
 }
 

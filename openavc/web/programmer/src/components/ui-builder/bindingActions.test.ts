@@ -181,6 +181,24 @@ describe("elementCommandActions and projectCommandActions: what the platform is 
     found.forEach((f, i) => expect(f).toBe([a, b, c, d, e][i]));
   });
 
+  it("takes a toggle's off action, a long press's action and a matrix row's own route", () => {
+    const a = cmd("a"), off = cmd("off"), hold = cmd("hold"), route = cmd("route"), row = cmd("row");
+    const toggle = {
+      id: "t1", type: "button",
+      bindings: { do: { press: [{ ...a, off_action: off, hold_action: hold }] } },
+    } as unknown as UIElement;
+    const found = elementCommandActions(toggle);
+    expect(found).toEqual([{ ...a, off_action: off, hold_action: hold }, off, hold]);
+    expect(found[1]).toBe(off);
+    const matrix = {
+      id: "mx", type: "matrix",
+      matrix_config: { sources: [{ value: 1 }], destinations: [{ value: 1 }, { value: 2, route: [row, "x"] }] },
+      bindings: { do: { route: [route] } },
+    } as unknown as UIElement;
+    expect(elementCommandActions(matrix)).toEqual([route, row]);
+    expect(elementCommandActions(matrix)[1]).toBe(row);
+  });
+
   it("leaves out a control's command with no device chosen yet, unlike a macro step's", () => {
     const el = { id: "b1", type: "button", bindings: { do: { press: [{ action: "device.command", command: "on" }] } } } as unknown as UIElement;
     expect(elementCommandActions(el)).toEqual([]);

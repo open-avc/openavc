@@ -7,13 +7,16 @@
  * commands the platform is asked about, on controls and in macro steps. The
  * binding card's badges, the Builder's Validate, page delete and the command
  * check all read these, so a new action, or a new spelling of one, is a row
- * here.
+ * here. So is a new place an action can sit (`NESTED_ACTION_FIELDS`, and a
+ * matrix row's own route, `rowRoutes`), which the page review walks too.
  *
  * Nothing here knows about geometry, the page review or the canvas: it reads
- * the project's types and the panel's navigation sentinels only.
+ * the project's types, the matrix model and the panel's navigation sentinels
+ * only.
  */
 import type { MacroStep, ProjectConfig, UIElement } from "../../api/types";
 import { NAVIGATION_SENTINELS } from "../../api/uiBindingReach.gen";
+import { resolveMatrixAxis, type MatrixEntry } from "./matrixModel";
 
 /** The `do.<interaction>` keys that hold action lists. Authored as arrays of
  *  action objects; legacy projects may carry a single object. Matrix sends one
@@ -23,6 +26,35 @@ export const ACTION_SLOTS = [
   "press", "release", "hold", "change", "submit", "select",
   "route", "audio_route", "mute_route", "audio_mute_route",
 ] as const;
+
+/** The fields inside an action that hold another action: a toggle's off
+ *  action and a long press's action, both carried by the first press action.
+ *  The panel runs each in its turn, so every reader of a control's actions
+ *  looks inside them. Mirrors `_NESTED_ACTION_FIELDS` in page_review.py. */
+export const NESTED_ACTION_FIELDS = ["off_action", "hold_action"] as const;
+
+/** The actions this action carries under `NESTED_ACTION_FIELDS`, in that order. */
+export function nestedActions(a: Record<string, unknown>): [(typeof NESTED_ACTION_FIELDS)[number], Record<string, unknown>][] {
+  return NESTED_ACTION_FIELDS.flatMap((field) => {
+    const nested = a[field];
+    return nested && typeof nested === "object" && !Array.isArray(nested)
+      ? [[field, nested as Record<string, unknown>] as [(typeof NESTED_ACTION_FIELDS)[number], Record<string, unknown>]]
+      : [];
+  });
+}
+
+/** Each matrix row that carries its own route, with that route's actions. The
+ *  panel runs a row's route instead of the element's `do.route` for that row. */
+export function rowRoutes(el: UIElement): [MatrixEntry, Record<string, unknown>[]][] {
+  if (el.type !== "matrix") return [];
+  const config = (el as unknown as Record<string, unknown>).matrix_config;
+  return resolveMatrixAxis(config, "destinations").flatMap((row) => {
+    const route = row.route;
+    if (!Array.isArray(route)) return [];
+    const actions = route.filter((a) => a && typeof a === "object" && !Array.isArray(a)) as Record<string, unknown>[];
+    return [[row, actions] as [MatrixEntry, Record<string, unknown>[]]];
+  });
+}
 
 /**
  * Normalize one `do.<interaction>` entry to an array of action objects.
@@ -197,12 +229,15 @@ export function elementCommandActions(el: UIElement): Record<string, unknown>[] 
   const collect = (a: Record<string, unknown>) => {
     if (a.action === "device.command" && a.device && a.command) found.push(a);
     // The engine runs each mapped entry as an action of its own, so a select's
-    // per-option commands are as real as any other.
+    // per-option commands are as real as any other; so are a toggle's off
+    // action and a long press's action.
     valueMapActions(a).forEach(collect);
+    for (const [, nested] of nestedActions(a)) collect(nested);
   };
   for (const slot of ACTION_SLOTS) {
     for (const a of slotActions(doMap, slot)) collect(a);
   }
+  for (const [, route] of rowRoutes(el)) route.forEach(collect);
   return found;
 }
 

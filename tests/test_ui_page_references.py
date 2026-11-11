@@ -11,10 +11,14 @@ capability, not a driver.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from openavc.core.project_loader import ProjectConfig
 from openavc.ui.page_references import reference_findings
+from openavc.ui.page_review import do_action_dicts
 
 PAGES = {"main", "audio"}
 DEVICES = {"acme_amp", "acme_switcher"}
@@ -602,3 +606,59 @@ def test_a_page_that_draws_its_own_controls_is_not_asked_about_a_file():
         page_ids=PAGES, device_ids=DEVICES, macro_ids=MACROS,
         ui_files={"room_map/index.html"},
     ) == []
+
+
+_CASES = json.loads(
+    (Path(__file__).parent / "fixtures" / "action_reference_cases.json").read_text(encoding="utf-8")
+)
+
+
+def test_an_action_off_a_slot_list_is_checked_like_one_on_it() -> None:
+    """A toggle's off action, a long press's action and a matrix row's own route.
+
+    The panel runs each of them as surely as the slot's own list, so a deleted
+    macro there is as silent at the wall. The same elements are Validate's in
+    validateProject.test.ts, each side in its own words.
+    """
+    types = {el["id"]: el["type"] for el in _CASES["elements"]}
+    findings = reference_findings(
+        _page(_CASES["elements"]),
+        page_ids=PAGES, device_ids=DEVICES, macro_ids=set(_CASES["macros"]),
+    )
+    assert [f.message for f in findings] == [
+        f"{el_id} ({types[el_id]}) {where} {said}"
+        for el_id, where, said in _CASES["page_references"]
+    ]
+
+
+def test_every_action_the_page_review_walks_is_asked_about_its_references() -> None:
+    """The page review's walk is the list of places an action lives
+    (``do_action_dicts``); the reference check reaches every one of them.
+
+    Each macro action here names a macro that is not there, so the check owes
+    one finding per macro action the walk hands out. A place added to the walk
+    and not to the check fails this count.
+    """
+    gone = {"action": "macro", "macro": "gone"}
+    elements = [
+        {"id": "t1", "type": "button", "bindings": {"do": {
+            "press": [{**gone, "off_action": dict(gone), "hold_action": dict(gone)}],
+            "release": [dict(gone)],
+        }}},
+        {"id": "s1", "type": "select", "options": [{"label": "A", "value": "a"}],
+         "bindings": {"do": {"change": [{"action": "value_map", "map": {
+             "a": {**gone, "off_action": dict(gone)},
+         }}]}}},
+        {"id": "mx", "type": "matrix", "matrix_config": {
+            "sources": [{"value": 1}],
+            "destinations": [{"value": 1, "route": [dict(gone), dict(gone)]}],
+        }, "bindings": {"do": {"route": [dict(gone)]}}},
+    ]
+    page = _page(elements)
+    walked = [
+        action for el in page.elements for action in do_action_dicts(el.model_dump())
+        if action.get("action") == "macro"
+    ]
+    findings = reference_findings(page, page_ids=PAGES, device_ids=DEVICES, macro_ids=MACROS)
+    assert len(walked) == 9
+    assert [f.kind for f in findings] == ["dangling_reference"] * len(walked)

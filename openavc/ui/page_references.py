@@ -70,8 +70,11 @@ reads is a ``_Read``, judged by ``_read_finding`` whether it is written under
 field, its keyword on ``reference_findings`` and the line there that passes it
 in; a new element check, or a new
 action that names something, is one entry in its table. Which actions are
-walked is ``_do_findings``: each ``do`` slot's own list, and a value_map's
-entries at every depth (``_value_map_findings``).
+walked is ``_do_findings``: each ``do`` slot's own list and each matrix row's
+own route, then, under every action, the off action and long-press action it
+carries and a value_map's entries, at every depth (``_action_findings``). The
+places are the page review's (``do_action_dicts``), and a test holds the two to
+one list.
 """
 
 from __future__ import annotations
@@ -81,7 +84,8 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from openavc.ui.page_review import Finding
+from openavc.ui.matrix_model import resolve_axis
+from openavc.ui.page_review import _NESTED_ACTION_FIELDS, Finding, _entry_name
 
 #: Navigation targets that are not page ids and never will be.
 #:
@@ -175,6 +179,12 @@ class _Site:
         and the entry itself is not picked from them.
         """
         return _Site(self.control, f"{self.where}['{value}']", None)
+
+    def nested(self, field: str) -> _Site:
+        """The action an action carries under ``field`` (a toggle's off action,
+        a long press's action), run in its own place, so it answers to no
+        options either."""
+        return _Site(self.control, f"{self.where}.{field}", None)
 
 
 def _actions(do_map: Mapping[str, Any], slot: str) -> list[Mapping[str, Any]]:
@@ -734,12 +744,9 @@ def _control_grant_findings(control: _Control, project: _Project) -> list[Findin
 
 
 def _do_findings(control: _Control, project: _Project) -> list[Finding]:
-    """Every action under the control's ``do`` slots, in ``ACTION_SLOTS`` order.
-
-    Only the slots' own lists: what nests inside an action (a toggle's
-    ``off_action``, a press-and-hold's ``hold_action``) and a matrix row's own
-    route are not walked here.
-    """
+    """Every action under the control's ``do`` slots, in ``ACTION_SLOTS`` order,
+    then each matrix row's own route; what nests inside each one is
+    ``_action_findings``'s."""
     do_map = _bindings(control.dump, "do")
     options = _option_values(control.dump)
     findings: list[Finding] = []
@@ -749,7 +756,30 @@ def _do_findings(control: _Control, project: _Project) -> list[Finding]:
             findings.extend(_action_findings(
                 action, _Site(control, f"do.{slot}[{index}]", options), project,
             ))
-    return findings
+    return findings + _row_route_findings(control, project)
+
+
+def _row_route_findings(control: _Control, project: _Project) -> list[Finding]:
+    """A matrix row's own route, which the panel runs instead of ``do.route``
+    for that row. The row is called what the page review calls it."""
+    rows = control.what == "matrix" and resolve_axis(
+        _mapping(control.dump.get("matrix_config")), "destinations",
+    )
+    return [
+        finding
+        for row in rows or []
+        for index, action in enumerate(_list_of(row.get("route")))
+        for finding in _action_findings(action, _Site(
+            control, f"matrix_config.destinations['{_entry_name(row)}'].route[{index}]", None,
+        ), project)
+    ]
+
+
+def _list_of(actions: Any) -> list[Mapping[str, Any]]:
+    """Each action in a list, the whole list's positions kept; anything else, none."""
+    if not isinstance(actions, list):
+        return []
+    return [_mapping(a) or {} for a in actions]
 
 
 #: What is checked on each element, in the order it is reported.
@@ -783,7 +813,9 @@ def _option_values(dump: Mapping[str, Any]) -> set[str] | None:
 def _action_findings(
     action: Mapping[str, Any], site: _Site, project: _Project,
 ) -> list[Finding]:
-    """What one action names that is not there, asked of the check for its kind.
+    """What one action names that is not there, asked of the check for its kind,
+    then the same of each action it carries (a toggle's off action, a long
+    press's action), which the panel runs in its turn.
 
     Only a string is looked up. A nested action object written where the name
     goes (``{"action": {"action": ...}}``) is a shape that does arrive, and it
@@ -792,7 +824,12 @@ def _action_findings(
     """
     name = action.get("action")
     check = _ACTION_CHECKS.get(name) if isinstance(name, str) else None
-    return check(action, site, project) if check else []
+    findings = check(action, site, project) if check else []
+    for field in _NESTED_ACTION_FIELDS:
+        nested = _mapping(action.get(field))
+        if nested is not None:
+            findings.extend(_action_findings(nested, site.nested(field), project))
+    return findings
 
 
 def _navigate_findings(

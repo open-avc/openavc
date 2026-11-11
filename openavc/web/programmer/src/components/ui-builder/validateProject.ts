@@ -12,7 +12,9 @@
  *
  * The AI door's counterpart is openavc/ui/page_references.py, which asks most
  * of the same questions of a page in its own sentences, and one this cannot (a
- * value_map against a select's options); the two are not pinned to each other.
+ * value_map against a select's options); the two are not pinned to each other,
+ * except that both reach every place an action sits
+ * (tests/fixtures/action_reference_cases.json).
  */
 import type {
   Layout,
@@ -28,7 +30,9 @@ import {
   REFERENCE_NOUNS,
   actionsCommandDevice,
   brokenReference,
+  nestedActions,
   pageExists,
+  rowRoutes,
   slotActions,
   stepAndBranches,
   type BindingRefIds,
@@ -44,6 +48,7 @@ import {
   type ReviewOptions,
 } from "./pageReview";
 import { showOf } from "./reviewFinding";
+import { matrixEntryName } from "./reviewMatrix";
 
 export interface ValidationIssue {
   severity: "error" | "warning";
@@ -113,8 +118,15 @@ function grantIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
   return issues;
 }
 
+/** What Validate calls the place an action carries another one under. */
+const NESTED_SAID: Record<ReturnType<typeof nestedActions>[number][0], string> = {
+  off_action: "Off Action",
+  hold_action: "Long Press Action",
+};
+
 /**
- * One action and the value_map options under it: what it names that is not
+ * One action, the value_map options under it and the actions it carries (a
+ * toggle's off action, a long press's action): what it names that is not
  * there, then what the platform said about it. Reads one action per option, as
  * the runtime runs it; the binding card's checks read a list option as well
  * (`valueMapActions` in bindingActions.ts).
@@ -127,21 +139,33 @@ function actionIssuesAt(a: Record<string, unknown>, where: string, refs: Project
   // The sentence is the platform's, so this warning and the refusal on the
   // wall are the same words.
   for (const message of refs.commandIssues?.get(a) ?? []) issues.push({ severity: "error", message, where });
-  if (a.action === "value_map" && isPlainObject(a.map)) {
-    for (const [option, mapped] of Object.entries(a.map)) {
-      if (isPlainObject(mapped)) issues.push(...actionIssuesAt(mapped, `${where} > "${option}"`, refs));
-    }
-  }
-  return issues;
+  return [...issues, ...carriedIssues(a, where, refs)];
+}
+
+/** What the actions an action runs in its turn name: a value_map's options,
+ *  then its Off Action and Long Press Action. */
+function carriedIssues(a: Record<string, unknown>, where: string, refs: ProjectRefs): ControlIssue[] {
+  const options = a.action === "value_map" && isPlainObject(a.map) ? Object.entries(a.map) : [];
+  return [
+    ...options.flatMap(([option, mapped]) => (
+      isPlainObject(mapped) ? actionIssuesAt(mapped, `${where} > "${option}"`, refs) : []
+    )),
+    ...nestedActions(a).flatMap(([field, nested]) => actionIssuesAt(nested, `${where} > ${NESTED_SAID[field]}`, refs)),
+  ];
 }
 
 /** Every action in every interaction, the slots in their own order (an
- *  interaction written as one object rather than a list is read the same). */
+ *  interaction written as one object rather than a list is read the same),
+ *  then each matrix row's own route. */
 function actionIssues(el: UIElement, refs: ProjectRefs): ControlIssue[] {
   const doMap = doMapOf(el);
-  return ACTION_SLOTS.flatMap((slot) =>
+  const slots = ACTION_SLOTS.flatMap((slot) =>
     slotActions(doMap, slot).flatMap((a) => actionIssuesAt(a, ` > ${slot}`, refs)),
   );
+  const rows = rowRoutes(el).flatMap(([row, route]) =>
+    route.flatMap((a) => actionIssuesAt(a, ` > route for "${matrixEntryName(row)}"`, refs)),
+  );
+  return [...slots, ...rows];
 }
 
 /** The value and the appearance read a device that is not in the project. */

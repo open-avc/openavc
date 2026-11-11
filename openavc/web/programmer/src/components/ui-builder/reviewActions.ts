@@ -7,6 +7,7 @@
 import type { UIElement } from "../../api/types";
 import { DISPATCHED_ACTIONS, MACRO_ONLY_ACTIONS } from "../../api/uiBindingReach.gen";
 import { isPlainObject } from "./authoredValues";
+import { NESTED_ACTION_FIELDS } from "./bindingActions";
 import { resolveMatrixAxis } from "./matrixModel";
 import type { ReviewFinding } from "./reviewFinding";
 
@@ -15,8 +16,6 @@ import type { ReviewFinding } from "./reviewFinding";
 // READS a show slot, this answers whether the runtime DISPATCHES a do action.
 // Both closed sets are generated from the modules that own them, so a new
 // action name or a new macro step arrives here without anyone typing it.
-
-const NESTED_ACTION_FIELDS = ["off_action", "hold_action"] as const;
 
 type ActionEntry = [string, Record<string, unknown>];
 
