@@ -176,11 +176,8 @@ const FIELD_WEIGHTS = {
   description: 10,
 } as const;
 
-/** Relevance of one card to one already-lowercased query. 0 = no match, which
- *  is also what filters the card out, so what MATCHES and what RANKS can never
- *  drift apart into two lists of fields.
- */
-export function scoreCard(card: DisplayCard, q: string): number {
+/** How well one card's best field matched one lowercased piece of text. */
+function bestFieldScore(card: DisplayCard, q: string): number {
   const d = card.driver;
   return Math.max(
     FIELD_WEIGHTS.brand * matchQuality(card.brand, q),
@@ -190,6 +187,28 @@ export function scoreCard(card: DisplayCard, q: string): number {
     ...card.brandModels.map((m) => FIELD_WEIGHTS.model * matchQuality(m, q)),
     ...(d.tags ?? []).map((t) => FIELD_WEIGHTS.tag * matchQuality(t, q)),
   );
+}
+
+/** Relevance of one card to one already-lowercased query. 0 = no match, which
+ *  is also what filters the card out, so what MATCHES and what RANKS can never
+ *  drift apart into two lists of fields.
+ *
+ *  A query of several words matches a card that has every word somewhere
+ *  ("brindle switch" finds "Brindle Network Switch"), scored as the sum of each
+ *  word's best field, plus the whole query's own score, so the words written
+ *  together outrank the same words apart. One word scores as it always has.
+ */
+export function scoreCard(card: DisplayCard, q: string): number {
+  const words = q.split(/\s+/).filter(Boolean);
+  const phrase = bestFieldScore(card, words.join(" "));
+  if (words.length <= 1) return phrase;
+  let total = phrase;
+  for (const word of words) {
+    const score = bestFieldScore(card, word);
+    if (score === 0) return 0;
+    total += score;
+  }
+  return total;
 }
 
 /** Apply the category filter and the search box to the expanded card list.

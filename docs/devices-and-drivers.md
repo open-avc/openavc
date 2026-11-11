@@ -310,7 +310,7 @@ See [Creating Drivers](creating-drivers.md) for the complete driver development 
 Search and install drivers from the [community driver library](https://github.com/open-avc/openavc-drivers):
 
 1. Click the **Browse Community** tab
-2. Search by manufacturer, model, or category
+2. Search by manufacturer, model, or category. Several words narrow it down: a driver is listed when it has every word, in any order
 3. Click a driver card to see full details (description, protocols, ports, transport)
 4. Click **Install** for one-click download and installation
 5. The driver is immediately available in the Installed tab and the Add Device dropdown

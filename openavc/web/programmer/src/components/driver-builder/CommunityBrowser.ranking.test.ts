@@ -181,3 +181,52 @@ describe("Browse Community search ranking", () => {
     expect(search([...CORPUS, lighting], "", "Lighting")).toEqual(["Orbital"]);
   });
 });
+
+describe("a search of more than one word", () => {
+  const NETWORK_SWITCH = driver({
+    id: "acme_brindle",
+    name: "Acme Brindle Network Switch",
+    manufacturer: "Acme",
+  });
+  const DECODER = driver({
+    id: "acme_brindle_decoder",
+    name: "Acme Brindle Decoder",
+    manufacturer: "Acme",
+  });
+  const OTHER_SWITCH = driver({
+    id: "orb_switch",
+    name: "Orb Network Switch",
+    manufacturer: "Orb",
+  });
+  const drivers = [DECODER, NETWORK_SWITCH, OTHER_SWITCH];
+
+  it("finds a card that has every word, wherever each one is", () => {
+    expect(search(drivers, "brindle switch").length).toBe(1);
+    expect(rankCards(drivers.flatMap(expandDriverToCards), "brindle switch", "All")[0].driver.id)
+      .toBe("acme_brindle");
+  });
+
+  it("leaves out a card missing any of the words", () => {
+    expect(search(drivers, "brindle tuner")).toEqual([]);
+  });
+
+  it("matches words split across fields", () => {
+    const ids = rankCards(drivers.flatMap(expandDriverToCards), "  acme   switch ", "All")
+      .map((c) => c.driver.id);
+    expect(ids).toEqual(["acme_brindle"]);
+    expect(search(drivers, "orb switch")).toEqual(["Orb"]);
+  });
+
+  it("ranks the words written together above the same words apart", () => {
+    const together = driver({ id: "a_together", name: "Network Switch", manufacturer: "Acme" });
+    const apart = driver({ id: "b_apart", name: "Switch for a Network", manufacturer: "Acme" });
+    const ids = rankCards([apart, together].flatMap(expandDriverToCards), "network switch", "All")
+      .map((c) => c.driver.id);
+    expect(ids).toEqual(["a_together", "b_apart"]);
+  });
+
+  it("scores a single word exactly as before", () => {
+    const [card] = expandDriverToCards(BRAND_PREFIX);
+    expect(scoreCard(card, "orb")).toBe(80);
+  });
+});

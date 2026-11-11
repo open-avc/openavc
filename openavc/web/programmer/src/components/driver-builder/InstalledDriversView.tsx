@@ -27,6 +27,18 @@ import { booleanWord, valueText } from "../shared/booleanWords";
 
 const GENERIC_IDS = new Set(["generic_tcp", "generic_serial", "generic_http"]);
 
+/** Whether the list shows a driver for what is in the search box: every word
+ *  typed appears in its name, manufacturer or category, wherever each one is,
+ *  so "brindle switch" finds "Brindle Network Switch". Nothing typed lists all. */
+export function driverMatchesSearch(
+  driver: { name: string; manufacturer: string; category: string },
+  query: string,
+): boolean {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const fields = [driver.name, driver.manufacturer, driver.category].map((f) => f.toLowerCase());
+  return words.every((word) => fields.some((f) => f.includes(word)));
+}
+
 const headerBtnStyle: React.CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -116,16 +128,9 @@ export function InstalledDriversView({
       .map((d) => [d.id, updates.get(d.id)!]),
   );
 
-  const filteredDrivers = registeredDrivers.filter((d) => {
-    if (GENERIC_IDS.has(d.id)) return false;
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      d.name.toLowerCase().includes(q) ||
-      d.manufacturer.toLowerCase().includes(q) ||
-      d.category.toLowerCase().includes(q)
-    );
-  });
+  const filteredDrivers = registeredDrivers.filter(
+    (d) => !GENERIC_IDS.has(d.id) && driverMatchesSearch(d, searchQuery),
+  );
 
   const selectedDriver = registeredDrivers.find((d) => d.id === selectedId) || null;
   const canUninstall = selectedId ? installedIdSet.has(selectedId) : false;
