@@ -308,3 +308,9 @@ def test_a_changed_value_is_pushed_only_to_a_heard_peer_outside_a_message(monkey
     sim._handling_osc = False
     assert sent == [("/ch/01/fader", [("f", pytest.approx(0.2))])]
     assert sim._state["fader"] == 0.3
+
+
+def test_a_query_mapping_with_no_type_answers_as_a_float():
+    sim = _sim(responses=[{"address": "/u", "mappings": [{"state": "u"}]}])
+    sim._state["u"] = 2
+    assert _typed(sim.handle_message("/u", [])[0][1]) == [("f", 2, "int")]

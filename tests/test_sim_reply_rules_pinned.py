@@ -272,7 +272,7 @@ def test_a_list_start_is_a_number_or_a_capture_of_the_reply(start, outer, first)
         "type": "output", "element": "(\\d+)", "start": start, "state": {"input": "$1"},
     }}], child_entity_types=_OUTPUT)
     got = _lists(sim).get(("output", "input"))
-    assert (got[0], got[4]) == (outer, first) if outer else got is None
+    assert (got[0], repr(got[4])) == (outer, repr(first)) if outer else got is None
 
 
 def test_a_start_capture_is_not_a_slot_when_items_name_their_child():
@@ -320,3 +320,24 @@ def test_the_first_list_rule_for_a_variable_wins():
     assert {k: v[0] for k, v in _lists(sim).items()} == {
         ("output", "input"): "A {list}", ("output", "audio"): "B {list}",
     }
+
+
+def test_a_mapping_with_a_value_is_not_reversed_and_one_with_no_group_reads_the_first():
+    sim = _sim([{"match": "M(\\d)", "mappings": [
+        {"group": 1, "state": "fixed", "value": "on", "map": {"1": "other"}},
+        {"state": "nogroup", "map": {"1": "one"}},
+    ]}])
+    assert _flat(sim) == {
+        "fixed": (None, [], {}),
+        "nogroup": ("M{value}", [], {"one": "M1"}),
+    }
+
+
+def test_a_list_start_that_is_a_boolean_is_one_and_a_value_two_words_name_keeps_the_first():
+    sim = _sim([{"match": "L (.*)", "child_list": {
+        "type": "output", "element": "(\\w)", "start": True,
+        "state": {"mute": {"group": 1, "map": {"Y": True, "1": True, "N": False}}},
+    }}], child_entity_types=_OUTPUT)
+    answer = sim._child_list_answers[("output", "mute")]
+    assert repr(answer.start) == "1"
+    assert answer.value_words == {"true": "Y", "false": "N"}

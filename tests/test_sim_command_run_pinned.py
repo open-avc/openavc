@@ -226,3 +226,41 @@ def test_a_line_runs_the_command_end_to_end():
     assert sim.handle_command(b"R7 2\r") == b"Out7 In2\r"
     assert sim._state["output.7.input"] == 2
     assert sim.handle_command(b"R8 2\r") is None
+
+
+def test_a_child_id_captured_with_spaces_is_read_trimmed():
+    sim = _sim()
+    h = _h("O( *\\d+) I(\\d+)", state_changes={"input": 2}, response_var=None,
+           child_type="output", child_id_group=1, child_state_keys={"input"})
+    _run(sim, h, "O  2 I6")
+    assert sim._state["output.2.input"] == 6
+
+
+def test_a_conversion_rounds_an_integer_variable_its_own_way():
+    sim = _sim()
+    h = _h("G(\\S+)", state_changes={"level": 1}, response_var=None,
+           group_conversions={1: {"scale": 0.5}})
+    _run(sim, h, "G7")
+    assert repr(sim._state["level"]) == "4"
+
+
+def test_a_child_reply_without_an_addressed_child_is_the_flat_one():
+    sim = _sim()
+    h = _h("L(\\d+)", state_changes={"level": 1}, response_var="level", response_is_child=True)
+    assert _run(sim, h, "L9") == b"LVL9\r"
+
+
+def test_a_reply_variable_named_nothing_answers_nothing():
+    sim = _sim(responses=[{"match": "E(\\d+)", "set": {"": "$1"}}])
+    assert "" in sim._state_responses
+    assert _run(sim, _h("E", state_changes={}, response_var=""), "E") is None
+
+
+def test_a_child_query_whose_value_nothing_represents_answers_nothing():
+    from openavc.simulator.state_replies import ChildStateResponse
+
+    sim = _sim()
+    sim._child_state_responses[("output", "mute")] = ChildStateResponse("output", "mute")
+    q = ChildQueryHandler(pattern=re.compile("Q"), child_type="output",
+                          child_id="1", response_var="mute")
+    assert sim._execute_child_query_handler(q) is None
