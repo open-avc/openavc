@@ -346,6 +346,75 @@ describe("moving a page control", () => {
   });
 });
 
+describe("a page control in an arrangement other than the primary", () => {
+  const PORT_A = { x: 50, y: 50, w: 20, h: 20 };
+
+  it("moves from its box in the arrangement on screen, writes that one and leaves the primary", () => {
+    load(makePage([el("a")], { a: A }, { portrait: { a: PORT_A } }), { layout: "portrait" });
+    press(node("a"));
+    drag(103, 0);
+    release();
+    expect(stored("a", "portrait")).toEqual({ x: 60.3, y: 50, w: 20, h: 20 });
+    expect(stored("a")).toEqual(A);
+    expect(undoLabels()).toEqual(["Move element"]);
+  });
+
+  it("lands in a container where the arrangement on screen draws it, not where the primary does", () => {
+    // In portrait the group is at the top left, where the control is dragged
+    // to; in the primary it is at the bottom right.
+    load(
+      makePage([el("a"), el("g", { type: "group" })], { a: { x: 60, y: 60, w: 10, h: 10 }, g: { x: 50, y: 50, w: 50, h: 50 } }, {
+        portrait: { a: { x: 60, y: 60, w: 10, h: 10 }, g: { x: 0, y: 0, w: 50, h: 50 } },
+      }),
+      { layout: "portrait" },
+    );
+    press(node("a"));
+    drag(-500, -250);
+    release();
+    expect(storedEl("a")!.parent).toBe("g");
+    expect(stored("a", "portrait")).toEqual({ x: 20, y: 20, w: 20, h: 20 });
+  });
+
+  it("resizes its box in the arrangement on screen and leaves the primary", () => {
+    load(makePage([el("a")], { a: A }, { portrait: { a: PORT_A } }), { layout: "portrait", selected: ["a"] });
+    press(handle(node("a"), "e"));
+    drag(100, 0);
+    release();
+    expect(stored("a", "portrait")).toEqual({ x: 50, y: 50, w: 30, h: 20 });
+    expect(stored("a")).toEqual(A);
+    expect(undoLabels()).toEqual(["Resize element"]);
+  });
+});
+
+describe("the marquee", () => {
+  /** A band from the canvas's centre, `dx` and `dy` pixels across. */
+  function sweep(dx: number, dy: number) {
+    const overlay = view.container.querySelector("[data-canvas-grid]")!;
+    press(overlay);
+    drag(dx, dy);
+    release();
+  }
+
+  // a sits top left in the primary and at the centre in portrait; the band
+  // runs from the centre, 50%, to 65% across and down.
+  const twoArrangements = () =>
+    makePage([el("a"), el("b")], { a: A, b: { x: 80, y: 0, w: 10, h: 10 } }, {
+      portrait: { a: { x: 60, y: 60, w: 10, h: 10 } },
+    });
+
+  it("takes what it touches where the arrangement on screen draws it", () => {
+    load(twoArrangements(), { layout: "portrait" });
+    sweep(150, 75);
+    expect(useUIBuilderStore.getState().selectedElementIds).toEqual(["a"]);
+  });
+
+  it("in the primary, the same band touches nothing and clears the selection", () => {
+    load(twoArrangements(), { selected: ["b"] });
+    sweep(150, 75);
+    expect(useUIBuilderStore.getState().selectedElementIds).toEqual([]);
+  });
+});
+
 describe("the hit boxes", () => {
   it("nest inside their container, and a control naming itself or nothing sits at page level", () => {
     load(

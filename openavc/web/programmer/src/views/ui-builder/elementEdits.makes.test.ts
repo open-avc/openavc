@@ -1,10 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 
 // A duplicate and a paste as the Builder's edits make them: on the page on
 // screen, measured in the arrangement being authored, and clear of every
-// master's id (the shared ui.<id> namespace).
+// master's id (the shared ui.<id> namespace); and a copy, measured the same way.
 
-import { duplicateControls, pasteControls, type EditPages } from "./elementEdits";
+import { copyControls, duplicateControls, pasteControls, type EditPages } from "./elementEdits";
+import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { el, page } from "../../test/uiBuilderHarness";
 import type { UIPage } from "../../api/types";
 
@@ -67,5 +68,34 @@ describe("a paste", () => {
     pasteControls(on, clipboard);
     expect(added(state.pages).map((e) => e.id)).toEqual(["button_1"]);
     expect(primaryBox(state.pages, "button_1")).toEqual({ x: 0, y: 0, w: 20, h: 10 });
+  });
+});
+
+describe("a copy", () => {
+  // The group sits at the top left in portrait; in the primary it is at the
+  // bottom right. A control copied without its container comes back in page space.
+  function copyPage(): UIPage {
+    const p = page("main", [el("grp_1", "group"), el("in_1", "button", { parent: "grp_1" } as never)], {
+      grp_1: { x: 50, y: 50, w: 40, h: 40 },
+      in_1: { x: 10, y: 10, w: 50, h: 50 },
+    });
+    return { ...p, layouts: [p.layouts![0], { ...p.layouts![1], placements: { grp_1: { x: 0, y: 0, w: 40, h: 40 } } }] } as UIPage;
+  }
+
+  beforeEach(() => useUIBuilderStore.setState({ clipboard: null }));
+
+  it("measures the boxes in the arrangement on screen", () => {
+    copyControls({ page: copyPage(), layoutId: "main_port" }, ["in_1"]);
+    expect(useUIBuilderStore.getState().clipboard!.placements).toEqual({ in_1: { x: 4, y: 4, w: 20, h: 20 } });
+  });
+
+  it("in the primary, the primary's boxes", () => {
+    copyControls({ page: copyPage(), layoutId: null }, ["in_1"]);
+    expect(useUIBuilderStore.getState().clipboard!.placements).toEqual({ in_1: { x: 54, y: 54, w: 20, h: 20 } });
+  });
+
+  it("leaves the clipboard alone when nothing named is on the page", () => {
+    copyControls({ page: copyPage(), layoutId: "main_port" }, ["gone"]);
+    expect(useUIBuilderStore.getState().clipboard).toBeNull();
   });
 });
