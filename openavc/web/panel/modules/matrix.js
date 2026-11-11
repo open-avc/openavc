@@ -287,8 +287,10 @@ function crosspointRow(header) {
  * element's themed style, so crosspoint colours come from the theme too.
  */
 export function createMatrix(element, style, host) {
-    const Style = STYLES.get(element.matrix_style || 'crosspoint') || CrosspointMatrix;
-    return new Style(element, style, host);
+    const name = element.matrix_style || 'crosspoint';
+    if (name === 'list') return new ListMatrix(element, style, host);
+    if (name === 'tiles') return new TileMatrix(element, style, host);
+    return new CrosspointMatrix(element, style, host);
 }
 
 function div(className) {
@@ -1266,5 +1268,3 @@ function crosspointAt(target) {
     return target.closest('.matrix-crosspoint')
         || target.closest('.matrix-cell')?.querySelector('.matrix-crosspoint');
 }
-
-const STYLES = new Map([['list', ListMatrix], ['tiles', TileMatrix]]);
