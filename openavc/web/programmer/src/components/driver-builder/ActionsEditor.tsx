@@ -11,7 +11,7 @@ import {
   ACTION_KINDS_YAML,
   VISIBLE_WHEN_OPERATORS,
 } from "../../api/types";
-import { ParamEditor } from "./CommandBuilder";
+import { ParamEditor } from "./ParamEditor";
 import {
   convertQuickActionsToActions,
   extraKeys,

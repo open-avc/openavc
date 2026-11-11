@@ -7,7 +7,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // is committed on blur: typing "lvl" beside a hint still reading "Param1" says
 // the label will be the old name.
 
-import { ParamEditor } from "./CommandBuilder";
+import { ParamEditor } from "./ParamEditor";
 import type { DriverParamDef } from "../../api/types";
 
 function Harness() {

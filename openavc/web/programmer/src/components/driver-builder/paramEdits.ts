@@ -1,5 +1,6 @@
-/** A command's (or an action's) parameters in the Driver Builder: what a
- *  parameter's type decides, and how each box reads what is typed. No React.
+/** A command's (or an action's) parameters in the Driver Builder: the list's
+ *  edits, what a parameter's type decides, and how each box reads what is
+ *  typed. No React.
  *
  *  Some fields belong to some types only (`TYPE_FIELDS`): a type change drops
  *  the ones the new type has no use for, and the row shows each only on a type
@@ -9,6 +10,58 @@
  *  editable rather than silently kept. */
 
 import { PARAM_TYPES, type DriverParamDef } from "../../api/types";
+
+export type Params = Record<string, DriverParamDef>;
+
+/** The first free paramN, counting on from the number there are. */
+export function newParamName(params: Params): string {
+  let counter = Object.keys(params).length + 1;
+  let name = `param${counter}`;
+  while (name in params) {
+    counter++;
+    name = `param${counter}`;
+  }
+  return name;
+}
+
+/** A rename's answer. A refusal says why; an accepted rename with something
+ *  to write carries the new name and the list renamed in place, and a blank
+ *  name or the same one carries neither. */
+export interface ParamRename {
+  ok: boolean;
+  reason?: string;
+  name?: string;
+  params?: Params;
+}
+
+export function paramsRenamed(params: Params, oldName: string, newName: string): ParamRename {
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === oldName) return { ok: true };
+  if (trimmed in params) {
+    return { ok: false, reason: `A parameter named "${trimmed}" already exists.` };
+  }
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
+    return {
+      ok: false,
+      reason: "Use letters, digits, and underscores only. Must start with a letter or underscore.",
+    };
+  }
+  const next: Params = {};
+  for (const [k, v] of Object.entries(params)) {
+    next[k === oldName ? trimmed : k] = v;
+  }
+  return { ok: true, name: trimmed, params: next };
+}
+
+/** The parameter with `partial` written over it; a field written as
+ *  undefined is removed, so nothing is saved as null. */
+export function paramMerged(def: DriverParamDef, partial: Partial<DriverParamDef>): DriverParamDef {
+  const merged = { ...def, ...partial } as Record<string, unknown>;
+  for (const k of Object.keys(merged)) {
+    if (merged[k] === undefined) delete merged[k];
+  }
+  return merged as unknown as DriverParamDef;
+}
 
 const NUMERIC: readonly string[] = ["integer", "number"];
 

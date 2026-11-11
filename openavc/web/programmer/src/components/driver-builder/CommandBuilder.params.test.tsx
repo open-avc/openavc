@@ -9,7 +9,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // rename and a unit list mid-entry are seen across the re-render a write
 // causes.
 
-import { CommandBuilder, ParamEditor } from "./CommandBuilder";
+import { CommandBuilder } from "./CommandBuilder";
+import { ParamEditor } from "./ParamEditor";
 import type { DriverCommandDef, DriverDefinition, DriverParamDef } from "../../api/types";
 
 type Params = Record<string, Partial<DriverParamDef>>;
