@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import type { DriverCommandDef, DriverDefinition } from "../../api/types";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
-import { commandsRenamed, newCommand, renamePlaceholder, type CommandUpdate } from "./commandEdits";
+import { draftCommandRenamed, newCommand, renamePlaceholder, type CommandUpdate } from "./commandEdits";
 import { OfflineFlag, RestartWindowField, SleepsDeviceField } from "./CommandAwayFields";
 import { CommandConfirmField } from "./CommandConfirmField";
 import { ReadBackField, readBackForm } from "./ReadBackField";
@@ -227,9 +227,9 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
   };
 
   const renameCommand = (oldName: string, newName: string): RenameResult => {
-    const result = commandsRenamed(commands, oldName, newName);
-    if (result.commands) {
-      onUpdate({ commands: result.commands });
+    const result = draftCommandRenamed(draft, oldName, newName);
+    if (result.update) {
+      onUpdate(result.update);
       if (expanded === oldName) setExpanded(newName);
     }
     return { ok: result.ok, reason: result.reason };

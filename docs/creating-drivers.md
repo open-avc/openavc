@@ -145,6 +145,8 @@ Order matters here. Build them in the order they appear:
 - **HTTP**: method, path, body, headers, query params. Every field supports `{placeholders}`.
 - **OSC**: address + a typed argument list (`f`/`i`/`s`/`h`/`d`/`T`/`F`/`N`).
 
+Renaming a command's ID carries every place the driver names it: another command's wake command and read-back queries, actions and quick actions, start-up and poll lines, a response's follow-up queries, the routing command, and push registration.
+
 **Parameters** for each command let users fill in what to send. Each parameter has a type, optional required flag, label, help, default, and (numeric) min/max bounds and scale/offset, (enum) allowed values, or (free text) a `pattern` regex the value must match. Renaming a parameter also renames its `{placeholder}` in that command's send string, path, body, headers, OSC address and arguments, and Sets State rows.
 
 **A parameter's label** is its name on every form that sends the command: the device page, a macro step, a button's action, Quick Actions and a device audit. With no label, the key is shown made readable: `input_id` reads "Input ID", and a last word that is a unit goes in brackets, so `timeout_ms` reads "Timeout (ms)" and `gain_db` "Gain (dB)". Give a parameter a label whenever that still reads poorly: a key like `value`, `src` or `ch` says little on a form. The Driver Builder lists each parameter with no label as a warning on the Behavior tab; a warning never stops the driver from saving or loading.

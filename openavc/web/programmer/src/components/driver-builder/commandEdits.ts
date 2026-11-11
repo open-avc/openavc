@@ -2,13 +2,16 @@
  *  new command starts as, what a rename carries with it, and how a renamed
  *  parameter's placeholder follows it through its command's own strings.
  *
- *  No React. The command list and the parameter editor ask these. A command
- *  that names another one by id (the command that wakes the device, a
- *  read-back query) keeps pointing at it through a rename because the field
- *  is listed in `NAMES_A_COMMAND`; a new field that names a command is one
- *  entry there. */
+ *  No React. The command list and the parameter editor ask these. Everything
+ *  that names a command by id keeps pointing at it through a rename: a field
+ *  of another command (the command that wakes the device, a read-back query)
+ *  because it is listed in `NAMES_A_COMMAND`, and the rest of the draft (a
+ *  button, a start-up or poll line, a follow-up query, the routing command, a
+ *  push registration) because its section is listed in
+ *  `SECTIONS_NAMING_A_COMMAND`. A new field that names a command is one entry
+ *  in one of the two. */
 
-import type { DriverCommandDef } from "../../api/types";
+import type { DriverActionDef, DriverCommandDef, DriverDefinition } from "../../api/types";
 import type { RenameResult } from "./IdRenameInput";
 
 type Commands = Record<string, DriverCommandDef>;
@@ -91,6 +94,96 @@ export function commandsRenamed(
     next[k === from ? to : k] = followRename(v, { from, to });
   }
   return { ok: true, commands: next };
+}
+
+/** `list` with `each` applied to every item; the same list when none changed. */
+function eachRenamed<T>(list: T[] | undefined, each: (item: T) => T): T[] | undefined {
+  if (!Array.isArray(list)) return list;
+  const next = list.map(each);
+  return next.some((item, i) => item !== list[i]) ? next : list;
+}
+
+/** `obj` with the fields of `next` that differ from its own; the same object
+ *  when none do. */
+function withChanged<T extends object>(obj: T, next: Partial<T>): T {
+  const own = obj as Record<string, unknown>;
+  const changed = Object.entries(next).filter(([k, v]) => v !== own[k]);
+  return changed.length ? { ...obj, ...Object.fromEntries(changed) } : obj;
+}
+
+/** A mapping entry's `send` line; undefined for a bare line. */
+function sendOf(entry: unknown): unknown {
+  return entry instanceof Object ? (entry as { send?: unknown }).send : undefined;
+}
+
+/** A start-up, poll or follow-up entry: a bare line, or a mapping whose
+ *  `send` is the line. The runtime sends a line that names a declared
+ *  command as that command, so the entry follows the rename. */
+function queryEntryRenamed<T>(entry: T, { from, to }: Rename): T {
+  if (entry === from) return to as T;
+  return sendOf(entry) === from ? ({ ...(entry as object), send: to } as T) : entry;
+}
+
+/** An action that sends a command: its `command`, or its own id when it
+ *  names none (the command the runtime sends then), pointed at the new id. */
+function actionRenamed(action: DriverActionDef, { from, to }: Rename): DriverActionDef {
+  if ((action.kind ?? "command") !== "command") return action;
+  return (action.command || action.id) === from ? { ...action, command: to } : action;
+}
+
+type Sections = Required<
+  Pick<DriverDefinition, "quick_actions" | "actions" | "on_connect" | "polling" | "responses" | "routing" | "push">
+>;
+
+/** The draft's sections outside the commands table that name a command, each
+ *  rewritten for a rename: the same value when it names no such command. */
+const SECTIONS_NAMING_A_COMMAND: { [K in keyof Sections]: (value: Sections[K], r: Rename) => Sections[K] } = {
+  quick_actions: (ids, r) => eachRenamed(ids, (id) => (id === r.from ? r.to : id)) ?? ids,
+  actions: (actions, r) => eachRenamed(actions, (a) => actionRenamed(a, r)) ?? actions,
+  on_connect: (entries, r) => eachRenamed(entries, (e) => queryEntryRenamed(e, r)) ?? entries,
+  polling: (polling, r) =>
+    withChanged(polling, { queries: eachRenamed(polling.queries, (e) => queryEntryRenamed(e, r)) }),
+  responses: (rules, r) =>
+    eachRenamed(rules, (rule) =>
+      withChanged(rule, { then_query: eachRenamed(rule.then_query, (e) => queryEntryRenamed(e, r)) }),
+    ) ?? rules,
+  routing: (routing, r) =>
+    withChanged(routing, {
+      command: routing.command === r.from ? r.to : routing.command,
+      planes: eachRenamed(routing.planes, (plane) =>
+        plane.command === r.from ? { ...plane, command: r.to } : plane,
+      ),
+    }),
+  push: (push, r) => {
+    const named = <T>(name: T): T => (name === r.from ? (r.to as T) : name);
+    const register = Array.isArray(push.register)
+      ? eachRenamed(push.register, (e) =>
+          typeof e === "string" ? named(e) : e.command === r.from ? { ...e, command: r.to } : e,
+        )
+      : named(push.register);
+    return withChanged(push, { register, unregister: named(push.unregister) });
+  },
+};
+
+/** Command `from` renamed `to` across the whole draft: the commands table
+ *  (`commandsRenamed`) and every section that names a command. `update` holds
+ *  only what changed; a refusal carries its reason, and a rename to the same
+ *  id is accepted with nothing to write. */
+export function draftCommandRenamed(
+  draft: DriverDefinition,
+  from: string,
+  to: string,
+): RenameResult & { update?: Partial<DriverDefinition> } {
+  const result = commandsRenamed(draft.commands, from, to);
+  if (!result.commands) return { ok: result.ok, reason: result.reason };
+  const update: Record<string, unknown> = { commands: result.commands };
+  for (const [section, rewrite] of Object.entries(SECTIONS_NAMING_A_COMMAND)) {
+    const value = draft[section as keyof Sections];
+    if (value == null) continue;
+    const next = (rewrite as (v: unknown, r: Rename) => unknown)(value, { from, to });
+    if (next !== value) update[section] = next;
+  }
+  return { ok: true, update: update as Partial<DriverDefinition> };
 }
 
 /** A command's whole-string fields a parameter's placeholder can sit in. */
