@@ -372,6 +372,40 @@ def test_an_object_shaped_slot_is_said_once_and_still_checked() -> None:
     assert _answer(page) == EXPECTED_OBJECT_SHAPE
 
 
+# --- One element's own findings, in order, and what is not asked of it ---
+
+
+def test_a_plugin_element_reports_before_the_rest_of_it() -> None:
+    page = _raw_page([{
+        "id": "plg", "type": "plugin", "grant": {"devices": ["ghost"]},
+        "bindings": {"do": {"press": [{"action": "macro", "macro": "nope"}]}},
+    }])
+    assert _answer(page, plugin_elements=lambda plugin: {"meter"}) == EXPECTED_PLUGIN_FIRST
+
+
+def test_an_element_with_no_type_is_named_with_a_question_mark() -> None:
+    page = _raw_page([{"id": "x", "bindings": {"do": {"press": [
+        {"action": "macro", "macro": "nope"},
+    ]}}}])
+    assert _answer(page) == EXPECTED_NO_TYPE
+
+
+def test_only_a_matrix_has_its_key_patterns_read() -> None:
+    page = _raw_page([{
+        "id": "btn", "type": "button",
+        "matrix_config": {"route_key_pattern": "device.ghost.output.*.route"},
+    }])
+    assert _answer(page, undeclared_property=lambda key: {"level"}) == []
+
+
+def test_a_file_is_found_however_its_slashes_are_written() -> None:
+    page = _raw_page([
+        {"id": "a", "type": "custom", "custom_file": "room\\index.html"},
+        {"id": "b", "type": "custom", "custom_file": "/room/index.html/"},
+    ], render_mode="custom", custom_file="\\room\\index.html")
+    assert _answer(page, ui_files={"room/index.html"}) == []
+
+
 # --- Expected answers, recorded from the module as it was (openavc ad49ef6a) ---
 
 EXPECTED_EVERYTHING = [('main',
@@ -643,3 +677,25 @@ EXPECTED_OBJECT_SHAPE = [('t',
   'be added without rewriting it, and the Builder stores the array form on the next edit '
   'anyway. Write do.hold as [{...}].',
   ('object_action_list', 't', 'hold'))]
+
+EXPECTED_PLUGIN_FIRST = [('plg',
+  'plugin_element_unconfigured',
+  'plg (plugin) has no plugin_id and no plugin_type, so the panel draws its unconfigured '
+  'placeholder instead of anything. A plugin element needs both, read off the installed '
+  'plugin.',
+  ('plugin_element_unconfigured', 'plg', 'missing')),
+ ('plg',
+  'dangling_reference',
+  "plg (plugin) is granted device 'ghost', which is not in this project, so it can neither "
+  'read nor control it. The devices are: acme, acme.sw, acme_amp.',
+  ('dangling_reference', 'plg', 'grant.devices.ghost')),
+ ('plg',
+  'dangling_reference',
+  "plg (plugin) do.press[0] runs macro 'nope', which does not exist. The macros are: "
+  'system_on.',
+  ('dangling_reference', 'plg', 'do.press[0]', 'macro'))]
+
+EXPECTED_NO_TYPE = [('x',
+  'dangling_reference',
+  "x (?) do.press[0] runs macro 'nope', which does not exist. The macros are: system_on.",
+  ('dangling_reference', 'x', 'do.press[0]', 'macro'))]
