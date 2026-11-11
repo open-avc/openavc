@@ -255,3 +255,47 @@ async def test_a_write_answers_only_for_what_it_wrote(project_path):
         "l_more (label) reads show.value from 'device.amp.channel.9.gain', and its "
         "driver declares no such child. It declares: 1, 2, 3, 4.",
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_project_folder_with_no_ui_folder_holds_no_files_from_either_door(tmp_path):
+    """No ``ui/`` folder is an empty one, not "no opinion": a custom control
+    pointing into it is told so."""
+    engine = _make_engine(tmp_path / "project.avc")
+    missing = (
+        "c_any (custom control) shows 'panel/ok.html', which is not in the project's "
+        "ui/ folder, so it draws an empty box. The files there are: none yet."
+    )
+    result = await _call(engine, "add_ui_elements", {"page_id": "main", "elements": _placed([
+        {"id": "c_any", "type": "custom", "custom_file": "panel/ok.html"},
+    ])})
+    assert result["warnings"] == [missing]
+    review = await _call(engine, "review_ui", {})
+    assert review["pages"] == {"main": [missing]}
+
+
+@pytest.mark.asyncio
+async def test_macros_and_every_page_are_known_to_both_doors(project_path):
+    """The macros the write door checks against are the project's, and a
+    review of one page still knows every page a control can move to."""
+    from openavc.core.project_loader import MacroConfig
+
+    engine = _make_engine(project_path)
+    engine.project.macros.append(MacroConfig(id="shutdown", name="Shutdown"))
+    expected = [
+        "b_macro (button) do.press[0] runs macro 'shutdwn', which does not exist. "
+        "The macros are: shutdown.",
+        "b_nav_bad (button) do.press[0] navigates to page 'nowhere', which does not "
+        "exist. The pages are: main, other.",
+    ]
+    result = await _call(engine, "add_ui_elements", {"page_id": "main", "elements": _placed([
+        _button("b_macro", {"action": "macro", "macro": "shutdwn"}),
+        _button("b_macro_ok", {"action": "macro", "macro": "shutdown"}),
+        _button("b_nav", {"action": "ui.navigate", "page": "other"}),
+        _button("b_nav_bad", {"action": "ui.navigate", "page": "nowhere"}),
+    ])})
+    assert result["warnings"] == expected
+    review = await _call(engine, "review_ui", {"page_id": "main"})
+    assert review["pages"] == {"main": expected}
+    assert review["pages_checked"] == ["main"]
+

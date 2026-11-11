@@ -93,7 +93,7 @@ class _Devices:
 
 
 # What the engine passes: every project device id, longest first.
-IDS = ["amp.rack", "plain", "gone", "amp", "hot"]
+IDS = ["amp.spare", "amp.rack", "plain", "gone", "amp", "hot"]
 
 FLAT = {"level", "preset.recall.last", "label"}
 LEVEL = {"type": "float", "min": -60.0, "max": 6.0}
@@ -123,7 +123,12 @@ CASES = [
     ("device.amp.zone.1.vol", None, None, None, ["amp"]),
     ("device.amp.bus.1.x", FLAT, None, None, ["amp"]),
     ("device.amp.", FLAT, None, None, ["amp"]),
+    # Two parts after the id is a flat name, even when the first is a child type.
+    ("device.amp.channel.1", FLAT, None, None, ["amp"]),
+    ("device.amp.foo.bar", FLAT, None, None, ["amp"]),
     ("device.amp.rack.level", None, None, None, ["amp.rack"]),
+    # A longer id with no driver is the answer; the shorter id is never tried.
+    ("device.amp.spare.level", None, None, None, ["amp.spare"]),
     ("device.plain.out.1.sig", None, None, {}, ["plain"]),
     ("device.plain.out.3.sig", None, {"1", "2"}, {}, ["plain"]),
     ("device.plain.out.1.nope", {"sig"}, None, None, ["plain"]),
