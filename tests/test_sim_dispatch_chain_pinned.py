@@ -271,3 +271,52 @@ def test_a_python_simulator_skips_a_malformed_machine_in_its_own_words(caplog):
         ("openavc.simulator.base", "WARNING",
          "Skipping malformed state_machine 'bad' on p1 (needs states, initial, transitions)"),
     ]
+
+
+def _only(sim: YAMLAutoSimulator, **tables) -> YAMLAutoSimulator:
+    for family in FAMILIES:
+        setattr(sim, family, tables.get(family, []))
+    return sim
+
+
+def _cmd(pattern: str, level: int | None = None) -> CommandHandler:
+    return CommandHandler(
+        name=pattern, pattern=re.compile(pattern),
+        state_changes={} if level is None else {"level": ("literal", level)},
+        response_var=None if level is None else "level",
+    )
+
+
+def test_a_front_match_that_answers_nothing_lets_the_rest_answer():
+    sim = _only(_sim(), _command_handlers=[_cmd("^A")],
+                _query_handlers=[QueryHandler(re.compile("^B$"), "level")])
+    sim._state["level"] = 6
+    assert sim.handle_command(b"AB") == b"LVL6\r"
+    assert sim.handle_command(b"A") is None
+
+
+def test_a_match_of_nothing_at_the_front_answers_alone():
+    sim = _only(_sim(), _command_handlers=[_cmd("^", 3)])
+    assert sim.handle_command(b"XYZ") == b"LVL3\r"
+
+
+def test_the_planner_splits_three_pieces_and_a_line_up_to_256():
+    sim = _only(_sim(), _command_handlers=[_cmd("^P$", 1), _cmd("^Q$", 2), _cmd("^X+$", 4),
+                                           _cmd("^Y+$", 5)])
+    assert sim.handle_command(b"PQP") == b"LVL1\rLVL2\rLVL1\r"
+    assert sim.handle_command(b"X" * 200 + b"Y" * 56) == b"LVL4\rLVL5\r"
+    assert sim.handle_command(b"X" * 200 + b"Y" * 57) is None
+
+
+def test_the_planner_asks_for_the_whole_piece_not_a_line_end():
+    sim = _only(_sim(), _command_handlers=[_cmd("^A$", 1), _cmd("^B$", 2)])
+    assert sim._any_handler_fullmatch("A\n") is False
+    assert sim.handle_command(b"A\nB") is None
+
+
+def test_receive_wins_over_match_and_no_controls_keep_the_generated_ones():
+    sim = _sim({"command_handlers": [{"receive": "R", "match": "M", "respond": "r"}]})
+    assert [h.pattern.pattern for h in sim._explicit_handlers] == ["^R$"]
+    generated = _sim().SIMULATOR_INFO["controls"]
+    assert _sim({"push_state": False}).SIMULATOR_INFO["controls"] == generated
+    assert _sim({"controls": []}).SIMULATOR_INFO["controls"] == generated

@@ -355,3 +355,17 @@ def test_project_children_rebuild_the_child_handlers_lists_first(caplog):
         ("ChildQueryHandler", "^Q4\\?$"),
         ("ChildQueryHandler", "^Qx\\?$"),
     ]
+
+
+def test_only_a_parameterless_command_names_a_query_and_the_first_one_wins():
+    d = _base()
+    d["commands"] = {
+        "get_volume": {"send": "VOL?", "params": {"x": {"type": "integer"}}},
+        "power_query": {"send": "PQ?", "query_for": "power"},
+        "status_query": {"send": "PQ?", "query_for": "status"},
+    }
+    d["polling"] = {"queries": ["VOL?", "PQ?"]}
+    sim = YAMLAutoSimulator("m1", {}, driver_def=d)
+    assert [(h.pattern.pattern, h.response_var) for h in sim._query_handlers] == [
+        ("^PQ\\?$", "power"),
+    ]
