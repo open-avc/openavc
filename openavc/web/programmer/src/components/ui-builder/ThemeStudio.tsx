@@ -9,46 +9,18 @@ import {
   type ThemeDefinition, type ThemeSummary,
 } from "../../api/restClient";
 import type { ProjectConfig } from "../../api/types";
-import { displayStyleValue, storeStyleValue } from "./uiBuilderHelpers";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { Modal } from "../shared/Modal";
 import { PanelPreviewFrame } from "./PanelPreviewFrame";
-import { NumericInput } from "../shared/NumericInput";
-import { CSS_VAR_FALLBACKS } from "./colorUtils";
 import { ContrastSection } from "./ContrastSection";
-import { ColorField } from "./ColorField";
 import { ElementSections } from "./ElementSections";
-import { ResetToSaved, StudioSection } from "./StudioParts";
-import { editableCopy, withVariable, differsFromSaved, variablesOf, type ThemeDraft } from "./themeEdits";
-import { DEFAULT_FONT } from "./quickAdjust";
+import { editableCopy, variablesOf, type ThemeDraft } from "./themeEdits";
 import { QuickAdjustSection } from "./QuickAdjustSection";
+import { ThemeInfoSection, ThemeTokensSection } from "./ThemeSections";
 import { PageBackgroundSection } from "./PageBackgroundSection";
 import { themeFile, savedFile, previewColors, customCopy, duplicateOf, keptBeside } from "./themeFiles";
 import { useStatusLine, orStepFailed, importFailed } from "./statusLine";
 import { galleryPage, GALLERY_PAGE_ID, GALLERY_DEMO_STATE } from "./themeGallery";
-
-interface ThemeTokenDef {
-  key: string;
-  label: string;
-  type: "color" | "number" | "font";
-  hint?: string;
-}
-
-// Foundational theme tokens — CSS variables consumed across many elements.
-// Each token is the single canonical edit location for its concept; nothing
-// in ELEMENT_SECTIONS (elementControls.ts) duplicates these.
-const THEME_TOKENS: ThemeTokenDef[] = [
-  { key: "panel_bg", label: "Page Background", type: "color", hint: "Behind every page" },
-  { key: "panel_text", label: "Text Color", type: "color", hint: "Default text on labels, sliders, gauges, lists, inputs" },
-  { key: "surface", label: "Surface", type: "color", hint: "Slider tracks, dropdowns, text inputs, list rows, fader track, keypad display" },
-  { key: "surface_border", label: "Surface Border", type: "color", hint: "Thin border around surfaces above" },
-  { key: "accent", label: "Accent", type: "color", hint: "Slider fill, fader handle, focus, active button, page nav text" },
-  { key: "danger", label: "Danger", type: "color", hint: "Red zone of level meters, mute indicators, error states" },
-  { key: "success", label: "Success", type: "color", hint: "Green zone of level meters, OK states" },
-  { key: "warning", label: "Warning", type: "color", hint: "Yellow zone of level meters, lock indicators, caution states" },
-  { key: "border_radius", label: "Border Radius (px)", type: "number", hint: "Roundness of every element. 0 sharp, 16+ very round" },
-  { key: "font_family", label: "Font Family", type: "font", hint: "Typeface across the entire panel" },
-];
 
 // --- Main component ---
 
@@ -1015,9 +987,6 @@ function EditorColumn({
   }
 
   const working = draft.theme;
-  const vars = variablesOf(working);
-  const savedVars = variablesOf(draft.saved);
-  const setVar = (key: string, value: unknown) => draft.edit((t) => withVariable(t, key, value));
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -1216,102 +1185,17 @@ function EditorColumn({
       )}
 
       <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
-        <StudioSection title="Theme Info">
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-              <label style={{ width: 70, fontSize: 11, color: "var(--text-secondary)" }}>Name</label>
-              <input
-                value={working.name}
-                onChange={(e) => draft.edit((t) => ({ ...t, name: e.target.value }))}
-                style={{ flex: 1, fontSize: 12 }}
-              />
-            </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-              <label style={{ width: 70, fontSize: 11, color: "var(--text-secondary)", paddingTop: 4 }}>
-                Description
-              </label>
-              <input
-                value={working.description || ""}
-                onChange={(e) => draft.edit((t) => ({ ...t, description: e.target.value }))}
-                style={{ flex: 1, fontSize: 12 }}
-              />
-            </div>
-          </div>
-        </StudioSection>
+        <ThemeInfoSection draft={draft} />
 
-        {/* Quick Adjust — composed controls for the most common tweaks */}
         <QuickAdjustSection draft={draft} />
 
-        {/* Theme tokens — foundational values used across many elements */}
-        <StudioSection title="Theme">
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 10 }}>
-            {THEME_TOKENS.map((tok) => {
-              const val = vars[tok.key];
-              const saved = savedVars[tok.key];
-              const isModified = differsFromSaved(val, saved);
-              return (
-                <div key={tok.key}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <label
-                      style={{
-                        width: 130,
-                        fontSize: 11,
-                        color: isModified ? "var(--accent)" : "var(--text-secondary)",
-                        fontWeight: isModified ? 600 : 400,
-                      }}
-                      title={tok.hint}
-                    >
-                      {tok.label}
-                    </label>
-                    {tok.type === "color" ? (
-                      // A cleared colour token draws the panel's own default for it.
-                      <ColorField
-                        value={val}
-                        inherits={CSS_VAR_FALLBACKS[tok.key]}
-                        fontSize={11}
-                        onChange={(next) => setVar(tok.key, next)}
-                      />
-                    ) : tok.type === "number" ? (
-                      <NumericInput
-                        owner={`${working?.id ?? ""}/${tok.key}`}
-                        // A numeric theme variable is a measurement, and the
-                        // panel reads stored measurements as rem. Show px.
-                        value={(displayStyleValue(tok.key, Number(val || 0)) as number) ?? 0}
-                        onCommit={(v) => {
-                          if (v !== undefined) setVar(tok.key, storeStyleValue(tok.key, v));
-                        }}
-                        min={0}
-                        max={64}
-                        style={{ flex: 1, fontSize: 11 }}
-                      />
-                    ) : (
-                      <select
-                        value={String(val ?? DEFAULT_FONT)}
-                        onChange={(e) => setVar(tok.key, e.target.value)}
-                        style={{ flex: 1, fontSize: 11 }}
-                      >
-                        <option value="Inter, system-ui, sans-serif">Inter</option>
-                        <option value="system-ui, sans-serif">System UI</option>
-                        <option value="'Roboto', sans-serif">Roboto</option>
-                        <option value="'Segoe UI', sans-serif">Segoe UI</option>
-                        <option value="Georgia, 'Times New Roman', serif">Serif</option>
-                        <option value="monospace">Monospace</option>
-                      </select>
-                    )}
-                    {isModified && <ResetToSaved saved={saved} size={11} onReset={() => setVar(tok.key, saved)} />}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </StudioSection>
+        <ThemeTokensSection draft={draft} />
 
-        {/* Page background — theme-level page_defaults */}
         <PageBackgroundSection draft={draft} />
 
         <ElementSections draft={draft} />
 
-        <ContrastSection variables={vars} />
+        <ContrastSection variables={variablesOf(working)} />
       </div>
     </div>
   );
