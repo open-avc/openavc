@@ -374,7 +374,7 @@ async def test_a_read_back_that_cannot_be_built_is_not_sent(caplog) -> None:
     with caplog.at_level(logging.WARNING, logger="openavc.drivers.configurable"):
         assert await drv.send_command("hello") is True
     assert drv._read_back_tasks == set()
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
     assert "read_back after 'hello' not sent; the next poll reads the value:" in caplog.text
     assert cap.sent == [b"HD\x06HELLO\r"]
 
@@ -383,7 +383,7 @@ def test_a_read_back_with_no_running_loop_queues_nothing() -> None:
     drv = _driver(LINE_UNIT, Capture())
     drv._read_back("set_level", drv._definition["commands"]["set_level"], {"level": 1}, {"level": "A"})
     assert drv._read_back_tasks == set()
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
 
 
 async def test_a_command_with_no_read_back_schedules_none() -> None:
@@ -397,12 +397,12 @@ async def test_a_read_back_already_waiting_is_not_queued_again() -> None:
     drv = _driver(LINE_UNIT, cap)
     cmd_def = drv._definition["commands"]["set_level"]
     drv._read_back("set_level", cmd_def, {"level": 1}, {"level": "A"})
-    assert drv._read_back_waiting == {"raw GL\r"}
+    assert set(drv._read_back_waiting) == {"raw GL\r"}
     drv._read_back("set_level", cmd_def, {"level": 2}, {"level": 2})
     assert len(drv._read_back_tasks) == 1
     await _settle(drv)
     assert cap.sent == [b"GL\r"]
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
 
 
 async def test_a_failed_read_back_query_ends_the_round_with_a_warning(caplog) -> None:
@@ -414,7 +414,7 @@ async def test_a_failed_read_back_query_ends_the_round_with_a_warning(caplog) ->
         drv._read_back("set_level", drv._definition["commands"]["set_level"], {"level": 1}, {"level": "A"})
         await _settle(drv)
     assert cap.sent == []
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
     assert "read_back after 'set_level' failed; the next poll reads the value: write failed" in caplog.text
 
 
@@ -426,7 +426,7 @@ async def test_a_read_back_held_by_the_poll_gate_says_so(caplog) -> None:
         drv._read_back("set_level", drv._definition["commands"]["set_level"], {"level": 1}, {"level": "A"})
         await _settle(drv)
     assert cap.sent == []
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
     assert "read_back after 'set_level' not sent: polling.when_state holds the poll" in caplog.text
 
 
@@ -437,7 +437,7 @@ async def test_a_read_back_after_the_link_drops_sends_nothing() -> None:
     drv._read_back("set_level", drv._definition["commands"]["set_level"], {"level": 1}, {"level": "A"})
     await _settle(drv)
     assert cap.sent == []
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
 
 
 async def test_the_first_read_back_keeps_a_line_gap_from_the_command(monkeypatch) -> None:
@@ -512,7 +512,95 @@ async def test_dropping_the_read_backs_cancels_them_and_forgets_the_waiting() ->
     await asyncio.gather(task, return_exceptions=True)
     assert task.cancelled()
     assert drv._read_back_tasks == set()
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
+
+
+async def test_a_dropped_follow_up_leaves_the_next_connections_hold_alone() -> None:
+    """The drop forgets every hold at once, but a cancelled round ends a loop
+    turn later: if the next connection's notice holds the same rule by then,
+    the old round's end must not lift that hold (a follow-up sent twice)."""
+    drv = _driver(LINE_UNIT, Capture())
+    gate = asyncio.Event()
+
+    async def stall() -> None:
+        await gate.wait()
+
+    drv._pace_line = stall
+    rule = object()
+    drv._follow_up(rule, ["GA\r"], "", [])
+    (old,) = drv._follow_up_tasks
+    await asyncio.sleep(0)
+    drv._drop_follow_ups()
+    drv._follow_up(rule, ["GA\r"], "", [])  # the next connection's notice
+    (new,) = drv._follow_up_tasks
+    await asyncio.gather(old, return_exceptions=True)
+    assert drv._follow_up_until[(id(rule), "")] == float("inf")
+    drv._follow_up(rule, ["GA\r"], "", [])  # a second notice is not read again
+    assert drv._follow_up_tasks == {new}
+    new.cancel()
+    await asyncio.gather(new, return_exceptions=True)
+    assert drv._follow_up_until == {}
+
+
+async def test_a_dropped_read_back_leaves_the_next_connections_waiting_alone() -> None:
+    drv = _driver(LINE_UNIT, Capture())
+    gate = asyncio.Event()
+
+    async def stall() -> None:
+        await gate.wait()
+
+    drv._pace_line = stall
+    cmd_def = drv._definition["commands"]["set_level"]
+    drv._read_back("set_level", cmd_def, {"level": 1}, {"level": "A"})
+    (old,) = drv._read_back_tasks
+    await asyncio.sleep(0)
+    drv._drop_read_backs()
+    drv._read_back("set_level", cmd_def, {"level": 2}, {"level": 2})  # a press on the next connection
+    (new,) = drv._read_back_tasks
+    await asyncio.gather(old, return_exceptions=True)
+    assert set(drv._read_back_waiting) == {"raw GL\r"}
+    drv._read_back("set_level", cmd_def, {"level": 3}, {"level": 3})  # not queued twice
+    assert drv._read_back_tasks == {new}
+    new.cancel()
+    await asyncio.gather(new, return_exceptions=True)
+
+
+async def test_a_read_back_sent_meanwhile_does_not_end_the_next_ones_wait() -> None:
+    """A round stops holding its query just before sending it, so a press
+    meanwhile queues its own; the first round's end must leave that one
+    waiting, or a third press queues the same query a second time."""
+    cap = Capture()
+    drv = _driver(LINE_UNIT, cap)
+    cmd_def = drv._definition["commands"]["set_level"]
+    sending = asyncio.Event()
+    release = asyncio.Event()
+    gate = asyncio.Event()
+    send = cap.send
+
+    async def slow_send(data: bytes) -> None:
+        sending.set()
+        await release.wait()
+        await send(data)
+
+    cap.send = slow_send
+    drv._read_back("set_level", cmd_def, {"level": 1}, {"level": "A"})
+    (first,) = drv._read_back_tasks
+    await asyncio.wait_for(sending.wait(), 1.0)
+
+    async def stall() -> None:
+        await gate.wait()
+
+    drv._pace_line = stall  # the second round waits for its slot
+    drv._read_back("set_level", cmd_def, {"level": 2}, {"level": 2})
+    second = next(t for t in drv._read_back_tasks if t is not first)
+    release.set()
+    await asyncio.gather(first)
+    assert set(drv._read_back_waiting) == {"raw GL\r"}
+    drv._read_back("set_level", cmd_def, {"level": 3}, {"level": 3})
+    assert drv._read_back_tasks == {second}
+    second.cancel()
+    await asyncio.gather(second, return_exceptions=True)
+    assert cap.sent == [b"GL\r"]
 
 
 async def test_closing_the_session_drops_both_kinds_of_round() -> None:
@@ -824,7 +912,7 @@ async def test_a_poll_gate_that_shuts_mid_read_back_ends_it_even_if_it_opens_aga
     drv._read_back("set_level", drv._definition["commands"]["set_level"], {"level": 1}, {"level": "A"})
     await _settle(drv)
     assert cap.sent == []
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
 
 
 async def test_a_press_while_its_read_back_is_going_out_queues_another() -> None:
@@ -855,7 +943,7 @@ async def test_dropping_the_read_backs_forgets_the_waiting_at_once() -> None:
     drv._read_back("set_level", drv._definition["commands"]["set_level"], {"level": 1}, {"level": "A"})
     (task,) = drv._read_back_tasks
     drv._drop_read_backs()
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
     await asyncio.gather(task, return_exceptions=True)
 
 

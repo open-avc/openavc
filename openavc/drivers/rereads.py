@@ -14,6 +14,12 @@ The rules worth knowing before changing anything here:
   going out, and for ``FOLLOW_UP_SETTLE_S`` after its last line, a match
   applies its writes and sends nothing; the replies to the round arrive
   inside that window. A cancelled round leaves no hold behind.
+* **A round ends only what it still holds.** The drop forgets every hold
+  and waiting query at once, but a cancelled task runs its ``finally`` a
+  loop turn later, by when a round on the next connection may hold the same
+  rule or query; and a read-back stops holding its query just before it
+  sends, so a press meanwhile queues its own. Each hold names the round that
+  owns it, and a round's end touches only its own.
 * **A read-back is built when its command is sent**, while the command's
   parameters are at hand, and sent once the command's write is done. A query
   already waiting to go out is not queued again, so a slider dragged through
@@ -119,10 +125,14 @@ class Rereads:
         # (infinity while one is going out).
         self._follow_up_tasks: set[asyncio.Task[None]] = set()
         self._follow_up_until: dict[tuple[int, str], float] = {}
+        # ... and the round going out under each held key, the only one
+        # whose end may settle or lift that hold.
+        self._follow_up_rounds: dict[tuple[int, str], asyncio.Task[None]] = {}
         # Commands' read_back rounds (_read_back): the tasks sending them,
-        # and the queries waiting to go out, so one is not queued twice.
+        # and the queries waiting to go out, each with the round that will
+        # send it, so one is not queued twice.
         self._read_back_tasks: set[asyncio.Task[None]] = set()
-        self._read_back_waiting: set[str] = set()
+        self._read_back_waiting: dict[str, asyncio.Task[None]] = {}
 
     # --- a reply rule's then_query ---
 
@@ -159,7 +169,9 @@ class Rereads:
             return
         child_ids = _distinct_child_ids(children)
         self._follow_up_until[key] = float("inf")
-        _track(self._follow_up_tasks, loop.create_task(self._send_follow_ups(key, entries, child_ids)))
+        task = loop.create_task(self._send_follow_ups(key, entries, child_ids))
+        self._follow_up_rounds[key] = task
+        _track(self._follow_up_tasks, task)
 
     def _follow_up_lines(self, entry: Any, child_ids: list[Any]) -> list[str]:
         """One ``then_query`` entry as the lines it sends: expanded as a poll
@@ -198,12 +210,20 @@ class Rereads:
                 f"the values: {exc}"
             )
         finally:
-            if cancelled:
-                # Dropped with its connection (_drop_follow_ups): no hold is
-                # left for the next one.
-                self._follow_up_until.pop(key, None)
-            else:
-                self._follow_up_until[key] = time.monotonic() + FOLLOW_UP_SETTLE_S
+            self._end_follow_up(key, cancelled)
+
+    def _end_follow_up(self, key: tuple[int, str], cancelled: bool) -> None:
+        """Settle this round's hold for FOLLOW_UP_SETTLE_S, or lift it when
+        the round was cancelled, so no hold is left for the next connection.
+        A hold this round no longer owns is left alone: the drop forgot it,
+        and another round may hold the key by now."""
+        if self._follow_up_rounds.get(key) is not asyncio.current_task():
+            return
+        del self._follow_up_rounds[key]
+        if cancelled:
+            self._follow_up_until.pop(key, None)
+        else:
+            self._follow_up_until[key] = time.monotonic() + FOLLOW_UP_SETTLE_S
 
     async def _follow_up_round(self, entries: list[Any], child_ids: list[Any]) -> None:
         """The round's lines, in order, until one ends it."""
@@ -234,6 +254,7 @@ class Rereads:
         the first notice on the next connection is read at once."""
         _cancel_all(self._follow_up_tasks)
         self._follow_up_until.clear()
+        self._follow_up_rounds.clear()
 
     # --- a command's read_back ---
 
@@ -273,9 +294,10 @@ class Rereads:
         loop = _running_loop()
         if loop is None:
             return
+        task = loop.create_task(self._send_read_backs(command, fresh))
         for key, _what in fresh:
-            self._read_back_waiting.add(key)
-        _track(self._read_back_tasks, loop.create_task(self._send_read_backs(command, fresh)))
+            self._read_back_waiting[key] = task
+        _track(self._read_back_tasks, task)
 
     def _read_back_sends(
         self,
@@ -354,7 +376,14 @@ class Rereads:
             )
         finally:
             for key, _what in sends:
-                self._read_back_waiting.discard(key)
+                self._stop_waiting(key)
+
+    def _stop_waiting(self, key: str) -> None:
+        """The running round's query ``key`` is no longer waiting, unless
+        another round holds it by now (a press since, or the next
+        connection's after a drop)."""
+        if self._read_back_waiting.get(key) is asyncio.current_task():
+            del self._read_back_waiting[key]
 
     async def _read_back_round(self, command: str, sends: list[ReadBack]) -> None:
         """The round's queries, in order.
@@ -382,7 +411,7 @@ class Rereads:
                 return
             # From here a second press queues its own query: this one may
             # already be on its way ahead of that press's write.
-            self._read_back_waiting.discard(key)
+            self._stop_waiting(key)
             await self._send_read_back(kind, what)
 
     async def _send_read_back(self, kind: str, what: Any) -> None:

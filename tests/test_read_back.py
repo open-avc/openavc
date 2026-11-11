@@ -363,7 +363,7 @@ async def test_a_disconnect_cancels_a_read_back_waiting(display) -> None:
     assert drv._read_back_tasks
     await drv.disconnect()
     assert drv._read_back_tasks == set()
-    assert drv._read_back_waiting == set()
+    assert drv._read_back_waiting == {}
     await asyncio.sleep(0.3)
     assert dev["lines"] == ["SV009"]
 
