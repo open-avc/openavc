@@ -9,8 +9,10 @@ import {
   commitGesturePlacements,
   elementsIntersectingRect,
   moveElementsInPage,
+  resolveDropParent,
 } from "./uiBuilderHelpers";
 import { nudgedPages } from "../../views/ui-builder/elementEdits";
+import { dropLanding } from "../../views/ui-builder/paletteDrop";
 import type { UIElement, UIPage } from "../../api/types";
 
 const LAND = {
@@ -163,5 +165,30 @@ describe("the controls a marquee touches", () => {
     expect(elementsIntersectingRect(page, { x: 1, y: 1, w: 2, h: 2 }, "port")).toEqual(["g"]);
     expect(elementsIntersectingRect(page, { x: 1, y: 1, w: 2, h: 2 }, null)).toEqual(["a"]);
     expect(elementsIntersectingRect(page, { x: 1, y: 81, w: 2, h: 2 }, null)).toEqual([]);
+  });
+});
+
+describe("where a drop lands", () => {
+  // In portrait the group is at the top left; in the primary it is at the bottom right.
+  it("is the container the arrangement on screen draws under the box, in that container's terms", () => {
+    expect(resolveDropParent(onePage(), { x: 10, y: 10, w: 10, h: 10 }, "port")).toEqual({
+      parentId: "g",
+      relative: { x: 25, y: 25, w: 25, h: 25 },
+    });
+    expect(resolveDropParent(onePage(), { x: 10, y: 10, w: 10, h: 10 }, null)).toEqual({
+      parentId: null,
+      relative: { x: 10, y: 10, w: 10, h: 10 },
+    });
+  });
+
+  it("from the palette, in the arrangement on screen", () => {
+    expect(dropLanding(onePage(), { x: 70, y: 70, w: 10, h: 10 }, "port")).toEqual({
+      parentId: null,
+      placement: { x: 70, y: 70, w: 10, h: 10 },
+    });
+    expect(dropLanding(onePage(), { x: 70, y: 70, w: 10, h: 10 }, null)).toEqual({
+      parentId: "g",
+      placement: { x: 25, y: 25, w: 25, h: 25 },
+    });
   });
 });

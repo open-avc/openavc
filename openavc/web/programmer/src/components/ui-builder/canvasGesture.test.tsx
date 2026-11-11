@@ -375,6 +375,19 @@ describe("a page control in an arrangement other than the primary", () => {
     expect(stored("a", "portrait")).toEqual({ x: 20, y: 20, w: 20, h: 20 });
   });
 
+  it("lights up the container it would land in where the arrangement on screen draws it", () => {
+    load(
+      makePage([el("a"), el("g", { type: "group" })], { a: { x: 60, y: 60, w: 10, h: 10 }, g: { x: 50, y: 50, w: 50, h: 50 } }, {
+        portrait: { a: { x: 60, y: 60, w: 10, h: 10 }, g: { x: 0, y: 0, w: 50, h: 50 } },
+      }),
+      { layout: "portrait" },
+    );
+    press(node("a"));
+    drag(-500, -250);
+    expect((node("g") as HTMLElement).style.outline).toBe("2px dashed var(--accent)");
+    release();
+  });
+
   it("resizes its box in the arrangement on screen and leaves the primary", () => {
     load(makePage([el("a")], { a: A }, { portrait: { a: PORT_A } }), { layout: "portrait", selected: ["a"] });
     press(handle(node("a"), "e"));
