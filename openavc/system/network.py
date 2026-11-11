@@ -457,7 +457,32 @@ class NmcliBackend(NetworkBackend):
                 existing["in_use"] = True
         return sorted(by_ssid.values(), key=lambda n: -n["signal"])
 
+    async def _ssid_in_use(self) -> str | None:
+        """The network the WiFi is on now, read from what NetworkManager
+        already knows (no rescan); None when it is on none or the read fails."""
+        try:
+            rc, out, _ = await self._run(
+                "-t", "-f", "IN-USE,SSID", "device", "wifi", "list", "--rescan", "no",
+            )
+        except OSError:
+            return None
+        if rc != 0:
+            return None
+        for line in out.splitlines():
+            parts = split_terse_line(line)
+            if len(parts) >= 2 and parts[0].strip() == "*" and parts[1]:
+                return parts[1]
+        return None
+
     async def wifi_connect(self, ssid: str, psk: str | None = None) -> dict:
+        # Joining the network the WiFi is already on is done before it starts.
+        # `device wifi connect` for a network with a saved profile rewrites
+        # that profile, and NetworkManager refuses the rewrite
+        # ("802-11-wireless-security.key-mgmt: property is missing") while the
+        # host stays joined, so a second press of Connect would read as a
+        # failure. A failed read falls through to the join.
+        if await self._ssid_in_use() == ssid:
+            return {"ok": True, "already_connected": True}
         args = ["device", "wifi", "connect", ssid]
         if psk:
             args += ["password", psk]

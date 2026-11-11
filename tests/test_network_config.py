@@ -259,6 +259,41 @@ async def test_wifi_connect_surfaces_error(backend):
     assert result["error"] == "Error: Secrets were required, but not provided."
 
 
+# NetworkManager refuses `device wifi connect` against a network whose saved
+# profile it would have to rewrite, while the host stays joined to it.
+_PROFILE_REWRITE_REFUSED = (10, "", "Error: 802-11-wireless-security.key-mgmt: property is missing.")
+
+
+def _joins(backend) -> list[tuple[str, ...]]:
+    return [c for c in backend._fake.calls if "connect" in c and "wifi" in c]
+
+
+async def test_joining_the_network_already_in_use_leaves_it_alone(backend):
+    backend._fake.responses["device wifi list"] = (0, ":Cafe\\:Guest\n*:ShopNet\n:ShopNet\n", "")
+    backend._fake.responses["device wifi connect"] = _PROFILE_REWRITE_REFUSED
+    result = await backend.wifi_connect("ShopNet", "the-psk")
+    assert result == {"ok": True, "already_connected": True}
+    assert _joins(backend) == []
+    # Read from what NetworkManager already knows: a rescan takes seconds.
+    (read,) = [c for c in backend._fake.calls if "list" in c]
+    assert read[-2:] == ("--rescan", "no")
+
+
+async def test_joining_another_network_still_joins_it(backend):
+    backend._fake.responses["device wifi list"] = (0, "*:ShopNet\n:Cafe\\:Guest\n", "")
+    result = await backend.wifi_connect("Cafe:Guest", "the-psk")
+    assert result == {"ok": True}
+    assert len(_joins(backend)) == 1
+
+
+async def test_a_join_goes_ahead_when_the_network_in_use_cannot_be_read(backend):
+    backend._fake.responses["device wifi list"] = (8, "", "Error: NetworkManager is not running.")
+    backend._fake.responses["device wifi connect"] = _PROFILE_REWRITE_REFUSED
+    result = await backend.wifi_connect("ShopNet", "the-psk")
+    assert result == {"ok": False, "error": _PROFILE_REWRITE_REFUSED[2]}
+    assert len(_joins(backend)) == 1
+
+
 async def test_get_status_reports_wifi_radio_state(backend):
     backend._fake.responses["device status"] = (0, DEVICE_STATUS, "")
     backend._fake.responses["device show"] = (0, DEVICE_SHOW, "")

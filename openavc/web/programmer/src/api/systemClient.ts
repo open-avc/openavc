@@ -782,7 +782,7 @@ export async function scanHostWifi(): Promise<{ networks: WifiNetwork[] }> {
 export async function connectHostWifi(
   ssid: string,
   psk: string | null
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; already_connected?: boolean; error?: string }> {
   return request("/system/network/wifi/connect", {
     method: "POST",
     body: JSON.stringify({ ssid, psk }),
