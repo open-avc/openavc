@@ -353,7 +353,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
     layouts: [LANDSCAPE({ box: { x: 20, y: 20, w: 40, h: 40 } })],
   };
   // Fully inside -> adopted, and re-expressed relative to the container.
-  const inside = H.resolveDropParent(page, { x: 30, y: 30, w: 10, h: 10 });
+  const inside = H.resolveDropParent(page, { x: 30, y: 30, w: 10, h: 10 }, null);
   results.l051_drop_adopts_when_contained = {
     pass: inside.parentId === "box" && eq(inside.relative, { x: 25, y: 25, w: 25, h: 25 }),
     detail: inside,
@@ -366,7 +366,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
     layouts: [LANDSCAPE({ box: { x: 20, y: 20, w: 40, h: 40 } })],
   };
   // Half in, half out -> stays a page-level peer. Conservative on purpose.
-  const partial = H.resolveDropParent(page, { x: 55, y: 30, w: 20, h: 10 });
+  const partial = H.resolveDropParent(page, { x: 55, y: 30, w: 20, h: 10 }, null);
   results.l051_drop_partial_overlap_not_adopted = {
     pass: partial.parentId === null && eq(partial.relative, { x: 55, y: 30, w: 20, h: 10 }),
     detail: partial,
@@ -382,7 +382,7 @@ const near = (a, b, tol = 1e-4) => Math.abs(a - b) < tol;
     })],
   };
   // Nested containers -> the innermost (smallest) wins.
-  const r = H.resolveDropParent(page, { x: 20, y: 20, w: 10, h: 10 });
+  const r = H.resolveDropParent(page, { x: 20, y: 20, w: 10, h: 10 }, null);
   results.l051_drop_innermost_container_wins = { pass: r.parentId === "inner", detail: r };
 }
 
@@ -1898,7 +1898,7 @@ const alignPage = (elements, placements) => ({
       inner: { x: 50, y: 50, w: 50, h: 50 },
     },
   );
-  const drop = H.resolveDropParent(page, { x: 30, y: 30, w: 10, h: 10 });
+  const drop = H.resolveDropParent(page, { x: 30, y: 30, w: 10, h: 10 }, null);
   results.c111_nested_container_adopts_in_page_space = {
     pass:
       drop.parentId === "inner" &&
@@ -1930,14 +1930,14 @@ const dragPage = () => alignPage(
   const page = dragPage();
   // Dropped fully inside the container: 20,20 5x5 of the page sits well within
   // the box at 10,10 40x40.
-  const target = H.dropTargetFor(page, "loose", { x: 20, y: 20, w: 5, h: 5 });
+  const target = H.dropTargetFor(page, "loose", { x: 20, y: 20, w: 5, h: 5 }, null);
   results.c112_drag_into_a_container_adopts = { pass: target === "box", detail: target };
 }
 {
   const page = dragPage();
   // Only clipping the corner is not "inside", so it stays where it was --
   // the same conservative rule the palette drop and the migration use.
-  const target = H.dropTargetFor(page, "loose", { x: 45, y: 45, w: 10, h: 10 });
+  const target = H.dropTargetFor(page, "loose", { x: 45, y: 45, w: 10, h: 10 }, null);
   results.c112_partial_overlap_does_not_adopt = { pass: target === null, detail: target };
 }
 {
@@ -1945,8 +1945,8 @@ const dragPage = () => alignPage(
   // Containers do not clip, so a child deliberately bled over its frame's edge
   // has to stay a child. Ejecting it the moment it crossed the line would make
   // that impossible to author.
-  const stillTouching = H.dropTargetFor(page, "kid", { x: 45, y: 20, w: 10, h: 10 });
-  const clearAway = H.dropTargetFor(page, "kid", { x: 80, y: 80, w: 10, h: 10 });
+  const stillTouching = H.dropTargetFor(page, "kid", { x: 45, y: 20, w: 10, h: 10 }, null);
+  const clearAway = H.dropTargetFor(page, "kid", { x: 80, y: 80, w: 10, h: 10 }, null);
   results.c112_bleeding_over_the_edge_stays_inside = {
     pass: stillTouching === "box" && clearAway === null,
     detail: { stillTouching, clearAway },
@@ -1955,7 +1955,7 @@ const dragPage = () => alignPage(
 {
   const page = dragPage();
   // Straight from one container into another.
-  const target = H.dropTargetFor(page, "kid", { x: 65, y: 15, w: 10, h: 10 });
+  const target = H.dropTargetFor(page, "kid", { x: 65, y: 15, w: 10, h: 10 }, null);
   results.c112_drag_between_containers = { pass: target === "other", detail: target };
 }
 {
@@ -1973,13 +1973,13 @@ const dragPage = () => alignPage(
     },
   );
   // inner is 30,30 30x30 of the page. A box inside both wins the innermost.
-  const target = H.dropTargetFor(page, "loose", { x: 35, y: 35, w: 5, h: 5 });
+  const target = H.dropTargetFor(page, "loose", { x: 35, y: 35, w: 5, h: 5 }, null);
   results.c112_innermost_container_wins = { pass: target === "inner", detail: target };
 }
 {
   const page = dragPage();
   // A container cannot swallow itself, or anything already inside it.
-  const self = H.dropTargetFor(page, "box", { x: 12, y: 12, w: 5, h: 5 });
+  const self = H.dropTargetFor(page, "box", { x: 12, y: 12, w: 5, h: 5 }, null);
   results.c112_container_never_adopts_into_its_own = { pass: self === null, detail: self };
 }
 {
@@ -2045,7 +2045,7 @@ const dragPage = () => alignPage(
   // The palette's drop asks the same question, so a brand-new id -- one the
   // page has never heard of -- has to be answerable.
   const page = dragPage();
-  const drop = H.resolveDropParent(page, { x: 20, y: 20, w: 5, h: 5 });
+  const drop = H.resolveDropParent(page, { x: 20, y: 20, w: 5, h: 5 }, null);
   results.c112_palette_drop_shares_the_rule = {
     pass: drop.parentId === "box" && near(drop.relative.x, 25) && near(drop.relative.w, 12.5),
     detail: drop,

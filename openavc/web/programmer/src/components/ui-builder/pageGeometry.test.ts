@@ -192,12 +192,12 @@ describe("reparentElement: the numbers change, the pixels do not", () => {
 describe("resolveDropParent: a palette drop, as a box in its container", () => {
   it("measures each axis against the container's own side", () => {
     const p = page([el("g", "group")], [primary({ g: box(20, 10, 50, 20) })]);
-    expect(resolveDropParent(p, box(30, 15, 10, 5))).toEqual({ parentId: "g", relative: box(20, 25, 20, 25) });
+    expect(resolveDropParent(p, box(30, 15, 10, 5), null)).toEqual({ parentId: "g", relative: box(20, 25, 20, 25) });
   });
 
   it("lands at page level when the container it falls in has no width", () => {
     const p = page([el("g", "group")], [primary({ g: box(30, 10, 0, 50) })]);
-    expect(resolveDropParent(p, box(30, 20, 0, 10))).toEqual({ parentId: null, relative: box(30, 20, 0, 10) });
+    expect(resolveDropParent(p, box(30, 20, 0, 10), null)).toEqual({ parentId: null, relative: box(30, 20, 0, 10) });
   });
 });
 

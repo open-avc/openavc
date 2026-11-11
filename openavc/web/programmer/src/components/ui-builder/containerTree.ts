@@ -237,7 +237,7 @@ export function dropTargetFor(
   page: UIPage,
   elementId: string,
   pageBox: Placement,
-  layoutId?: string | null,
+  layoutId: string | null,
 ): string | null {
   // An id the page has never heard of is a brand-new element being dropped in
   // from the palette: nothing inside it, and nowhere it is already living.
@@ -377,11 +377,15 @@ export function topmostSelection(page: UIPage, elementIds: string[]): string[] {
  * Which container a box dropped at page coordinates belongs to, and what its
  * coordinates are once it is in there. The palette's half of `dropTargetFor`:
  * same rule, answered as a box.
+ *
+ * Both read the page their caller holds, so each takes the page itself, with
+ * the arrangement the box was measured in required (null for the primary), as
+ * the copy's and the marquee's reads take it.
  */
 export function resolveDropParent(
   page: UIPage,
   box: Placement,
-  layoutId?: string | null,
+  layoutId: string | null,
   elementId = "",
 ): { parentId: string | null; relative: Placement } {
   const parentId = dropTargetFor(page, elementId, box, layoutId);

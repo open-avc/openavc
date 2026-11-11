@@ -312,13 +312,13 @@ describe("dropTargetFor: which container a dragged control belongs to", () => {
     );
 
   it("joins the innermost container that holds it whole", () => {
-    expect(dropTargetFor(nested(), "a", box(35, 35, 5, 5))).toBe("inner");
-    expect(dropTargetFor(nested(), "a", box(5, 5, 5, 5))).toBe("outer");
+    expect(dropTargetFor(nested(), "a", box(35, 35, 5, 5), null)).toBe("inner");
+    expect(dropTargetFor(nested(), "a", box(5, 5, 5, 5), null)).toBe("outer");
   });
 
   it("forgives a box that reaches the container's edge by the rounding floor, and no more", () => {
-    expect(dropTargetFor(nested(), "a", box(-0.0001, 0, 10, 10))).toBe("outer");
-    expect(dropTargetFor(nested(), "a", box(-0.0002, 0, 10, 10))).toBeNull();
+    expect(dropTargetFor(nested(), "a", box(-0.0001, 0, 10, 10), null)).toBe("outer");
+    expect(dropTargetFor(nested(), "a", box(-0.0002, 0, 10, 10), null)).toBeNull();
   });
 
   it("keeps the first of two containers with the same area", () => {
@@ -326,7 +326,7 @@ describe("dropTargetFor: which container a dragged control belongs to", () => {
       [el("g1", "group"), el("g2", "group"), el("a")],
       [primary({ g1: box(0, 0, 50, 50), g2: box(0, 0, 50, 50), a: box(90, 90, 5, 5) })],
     );
-    expect(dropTargetFor(p, "a", box(10, 10, 5, 5))).toBe("g1");
+    expect(dropTargetFor(p, "a", box(10, 10, 5, 5), null)).toBe("g1");
   });
 
   it("never puts a control inside something that is not a container, however tightly it holds the box", () => {
@@ -334,7 +334,7 @@ describe("dropTargetFor: which container a dragged control belongs to", () => {
       [el("g", "group"), el("card", "image"), el("a")],
       [primary({ g: box(0, 0, 50, 50), card: box(5, 5, 10, 10), a: box(90, 90, 5, 5) })],
     );
-    expect(dropTargetFor(p, "a", box(6, 6, 2, 2))).toBe("g");
+    expect(dropTargetFor(p, "a", box(6, 6, 2, 2), null)).toBe("g");
   });
 
   it("passes over a container with no box in this arrangement, and anything that is not a container", () => {
@@ -342,40 +342,40 @@ describe("dropTargetFor: which container a dragged control belongs to", () => {
       [el("nobox", "group"), el("btn"), el("g", "group"), el("a")],
       [primary({ btn: box(0, 0, 100, 100), g: box(0, 0, 50, 50), a: box(90, 90, 5, 5) })],
     );
-    expect(dropTargetFor(p, "a", box(10, 10, 5, 5))).toBe("g");
+    expect(dropTargetFor(p, "a", box(10, 10, 5, 5), null)).toBe("g");
   });
 
   it("keeps a control in the container it is in while it still touches it, and lets it out once it does not", () => {
-    expect(dropTargetFor(nested(), "k", box(55, 55, 10, 10))).toBe("outer");
-    expect(dropTargetFor(nested(), "k", box(70, 0, 10, 10))).toBeNull();
+    expect(dropTargetFor(nested(), "k", box(55, 55, 10, 10), null)).toBe("outer");
+    expect(dropTargetFor(nested(), "k", box(70, 0, 10, 10), null)).toBeNull();
   });
 
   it("moves a control on into a smaller container inside the one it lives in", () => {
-    expect(dropTargetFor(nested(), "k", box(35, 35, 5, 5))).toBe("inner");
+    expect(dropTargetFor(nested(), "k", box(35, 35, 5, 5), null)).toBe("inner");
   });
 
   it("does not count a box that hangs out of a container's bottom edge as held", () => {
-    expect(dropTargetFor(nested(), "a", box(35, 35, 5, 40))).toBeNull();
+    expect(dropTargetFor(nested(), "a", box(35, 35, 5, 40), null)).toBeNull();
   });
 
   it("never keeps a control that names itself as its own container", () => {
     const p = page([el("s", "button", "s")], [primary({ s: box(10, 10, 10, 10) })]);
-    expect(dropTargetFor(p, "s", box(12, 12, 10, 10))).toBeNull();
+    expect(dropTargetFor(p, "s", box(12, 12, 10, 10), null)).toBeNull();
   });
 
   it("never puts a container inside itself or inside its own contents", () => {
-    expect(dropTargetFor(nested(), "outer", box(55, 55, 5, 5))).toBeNull();
-    expect(dropTargetFor(nested(), "inner", box(10, 10, 5, 5))).toBe("outer");
+    expect(dropTargetFor(nested(), "outer", box(55, 55, 5, 5), null)).toBeNull();
+    expect(dropTargetFor(nested(), "inner", box(10, 10, 5, 5), null)).toBe("outer");
   });
 
   it("reads a brand-new id as a palette drop: nothing inside it, nowhere it lives yet", () => {
-    expect(dropTargetFor(nested(), "", box(35, 35, 5, 5))).toBe("inner");
-    expect(dropTargetFor(nested(), "fresh", box(90, 90, 5, 5))).toBeNull();
+    expect(dropTargetFor(nested(), "", box(35, 35, 5, 5), null)).toBe("inner");
+    expect(dropTargetFor(nested(), "fresh", box(90, 90, 5, 5), null)).toBeNull();
   });
 
   it("answers with a container whose id is empty, which the project file allows", () => {
     const p = page([el("", "group"), el("a")], [primary({ "": box(0, 0, 50, 50), a: box(90, 90, 5, 5) })]);
-    expect(dropTargetFor(p, "a", box(10, 10, 5, 5))).toBe("");
+    expect(dropTargetFor(p, "a", box(10, 10, 5, 5), null)).toBe("");
   });
 
   it("measures against the arrangement it is asked about", () => {
@@ -383,7 +383,7 @@ describe("dropTargetFor: which container a dragged control belongs to", () => {
       [el("g", "group"), el("a")],
       [primary({ g: box(0, 0, 20, 20), a: box(90, 90, 5, 5) }), portrait({ g: box(50, 50, 50, 50) })],
     );
-    expect(dropTargetFor(p, "a", box(60, 60, 5, 5))).toBeNull();
+    expect(dropTargetFor(p, "a", box(60, 60, 5, 5), null)).toBeNull();
     expect(dropTargetFor(p, "a", box(60, 60, 5, 5), "portrait")).toBe("g");
   });
 });
