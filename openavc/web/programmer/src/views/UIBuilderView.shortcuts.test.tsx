@@ -425,14 +425,13 @@ describe("the page's own listeners", () => {
     raf.mockRestore();
   });
 
-  it("lands on the first page instead when no page was selected yet (as it does today)", async () => {
+  it("opens on the page a control pointed at names when no page was selected yet", async () => {
     useNavigationStore.setState({ pendingFocus: { type: "element", id: "btn_9", detail: "page:other" } } as never);
     const frames: FrameRequestCallback[] = [];
     const raf = vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => { frames.push(cb); return 0; });
     await renderPage(UIBuilderView);
     call(() => frames.splice(0).forEach((f) => f(0)));
-    // The first-page rule runs after the focus with the page it saw at mount.
-    expect(builder().selectedPageId).toBe("main");
+    expect(builder().selectedPageId).toBe("other");
     expect(builder().selectedElementId).toBe("btn_9");
     raf.mockRestore();
   });

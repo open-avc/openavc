@@ -9,9 +9,9 @@
  * pointed at (the navigation store's pending focus, read once as the page
  * opens, the control selected a frame later so its page is drawn first) and, in
  * preview, the server's own page change. The pending focus is read before the
- * first page is chosen, and that choice goes by the selection as the page first
- * drew it, so a control pointed at on another page, before any page was
- * selected, still lands on the first page.
+ * first page is chosen, and that choice reads the store's selection as it is
+ * then, so a control pointed at on another page lands on its own page even
+ * when no page was selected before.
  */
 import { useEffect } from "react";
 import type { MasterElement, ProjectConfig, UIPage } from "../../api/types";
@@ -80,7 +80,9 @@ export function useShownPage(project: ProjectConfig | null): ShownPage {
 
   useEffect(goToPointedAt, []);
   useEffect(() => {
-    const first = selectedPageId ? null : pageOnScreen(project?.ui?.pages ?? [], null);
+    // The store's selection as it is now: the pending focus above may have
+    // just chosen a page this render never saw.
+    const first = store().selectedPageId ? null : pageOnScreen(project?.ui?.pages ?? [], null);
     if (first) store().selectPage(first.id);
   }, [selectedPageId, project]);
   useEffect(() => (previewMode ? followServerPage() : undefined), [previewMode]);
