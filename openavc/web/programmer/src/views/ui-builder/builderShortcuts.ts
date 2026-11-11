@@ -5,8 +5,8 @@
  * `handleBuilderKey` asks, in this order, and the first answer wins: a dialog
  * is open (the key is the dialog's); Ctrl+P and Ctrl+E (preview and the
  * palette, in preview too); preview (nothing else); a key typed in a field
- * with no Ctrl or Cmd (the field's); Escape; the arrow keys; Delete and
- * Backspace; then the Ctrl chords, which a field keeps for itself.
+ * (the field's, Ctrl+S apart); Escape; the arrow keys; Delete and Backspace;
+ * then the Ctrl chords.
  *
  * The page hands the keyboard the Builder as it was last drawn, with the edits
  * a key can make (`BuilderKeys`); which edit each key makes, which box an
@@ -60,9 +60,12 @@ export function handleBuilderKey(e: KeyboardEvent, k: BuilderKeys): void {
   if (isModalOpen()) return;
   if (toggleKey(e, k) || k.previewMode) return;
   if (typingInField(e)) {
-    // A plain key (Delete, an arrow) is the field's. A Ctrl chord on the
-    // selection is still the page's; undo, copy and the rest are the field's.
-    if (commandKey(e)) selectionKey(e, k);
+    // Every key typed in a field is the field's, Ctrl+S apart. With Ctrl or
+    // Cmd held, an arrow, Delete, Backspace or Escape is the field's own
+    // editing (Ctrl+Left jumps a word, Cmd+Backspace deletes to the start of
+    // the line), never a move or delete of the control being edited; undo,
+    // copy, paste and duplicate are the field's own too.
+    if (commandKey(e) && FIELD_CHORDS.has(e.key)) chordKey(e, k);
     return;
   }
   if (!selectionKey(e, k) && commandKey(e)) chordKey(e, k);
@@ -98,6 +101,10 @@ const DIRECTIONS = new Map<string, [number, number]>([
 function commandKey(e: KeyboardEvent): boolean {
   return e.ctrlKey || e.metaKey;
 }
+
+/** The Ctrl chords the Builder answers in a field: saving, which a field
+ *  has no use for. */
+const FIELD_CHORDS = new Set(["s"]);
 
 function typingInField(e: KeyboardEvent): boolean {
   const tag = (e.target as HTMLElement).tagName;

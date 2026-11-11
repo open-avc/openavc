@@ -241,17 +241,28 @@ describe("deleting with Delete or Backspace", () => {
     expect(builder().selectedElementIds).toEqual(["btn_1"]);
   });
 
-  it("still nudges, deselects and deletes on a Ctrl chord typed in a field", async () => {
+  it("leaves a Ctrl or Cmd chord on an arrow, Delete, Backspace or Escape to the field", async () => {
     selected(["btn_1"]);
     await renderPage(UIBuilderView);
     const input = document.body.appendChild(document.createElement("input"));
-    expect(press("ArrowRight", { ctrl: true }, input).defaultPrevented).toBe(true);
-    expect(box("main", "btn_1").x).toBe(15);
-    expect(press("Delete", { meta: true }, input).defaultPrevented).toBe(true);
-    expect(ids("main")).not.toContain("btn_1");
-    selected(["lbl_1"]);
-    expect(press("Escape", { ctrl: true }, input).defaultPrevented).toBe(true);
-    expect(builder().selectedElementIds).toEqual([]);
+    // Ctrl+Left jumps a word, Cmd+Backspace deletes to the start of the line.
+    for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Delete", "Backspace", "Escape"]) {
+      expect(press(key, { ctrl: true }, input).defaultPrevented, key).toBe(false);
+      expect(press(key, { meta: true }, input).defaultPrevented, key).toBe(false);
+    }
+    expect(box("main", "btn_1").x).toBe(10);
+    expect(ids("main")).toContain("btn_1");
+    expect(builder().selectedElementIds).toEqual(["btn_1"]);
+    expect(undoLog()).toEqual([]);
+  });
+
+  it("saves on Ctrl+S or Cmd+S typed in a field", async () => {
+    await renderPage(UIBuilderView);
+    const input = document.body.appendChild(document.createElement("input"));
+    expect(press("s", { ctrl: true }, input).defaultPrevented).toBe(true);
+    expect(press("s", { meta: true }, input).defaultPrevented).toBe(true);
+    expect(saves.flushSave).toHaveBeenCalledTimes(2);
+    expect(press("s", { ctrl: true, shift: true }, input).defaultPrevented).toBe(false);
   });
 });
 
