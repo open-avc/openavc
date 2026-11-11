@@ -218,9 +218,50 @@ async def test_a_cancelled_scan_still_reports_and_emits_then_raises():
     probes.assert_not_awaited()
     finalize.assert_not_awaited()
     assert engine.scan_status.devices_found == 1
+    assert engine.scan_status.status == "cancelled"
     event = _complete(events)
-    assert event["status"] == "complete"
+    assert event["status"] == "cancelled"
     assert event["total_devices"] == 1
+
+
+async def _stopped_while(engine: DiscoveryEngine, started: asyncio.Event) -> None:
+    """Start the scan as start_scan does, wait for ``started``, press Stop."""
+    engine._scan_task = asyncio.create_task(engine._run_scan(["192.0.2.0/24"], timeout=10.0))
+    await asyncio.wait_for(started.wait(), 5.0)
+    await engine.stop_scan()
+
+
+async def test_a_stopped_scan_tells_every_client_it_was_cancelled():
+    engine, events = _engine_with_events()
+    started = asyncio.Event()
+
+    async def scanning(subnets):
+        started.set()
+        await asyncio.Event().wait()
+
+    with patch.object(engine, "_scan_pipeline", side_effect=scanning), \
+         patch.object(engine, "_finalize_scan", new_callable=AsyncMock) as finalize:
+        await _stopped_while(engine, started)
+
+    finalize.assert_not_awaited()
+    assert engine.scan_status.status == "cancelled"
+    assert _complete(events)["status"] == "cancelled"
+
+
+async def test_a_scan_stopped_while_matching_still_tells_every_client():
+    engine, events = _engine_with_events()
+    started = asyncio.Event()
+
+    async def matching():
+        started.set()
+        await asyncio.Event().wait()
+
+    with patch.object(engine, "_scan_pipeline", new_callable=AsyncMock), \
+         patch.object(engine, "_finalize_scan", side_effect=matching):
+        await _stopped_while(engine, started)
+
+    assert engine.scan_status.status == "cancelled"
+    assert _complete(events)["status"] == "cancelled"
 
 
 async def test_a_narrowed_scan_that_finished_reports_partial():

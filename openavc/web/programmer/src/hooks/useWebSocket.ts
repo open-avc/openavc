@@ -7,7 +7,7 @@ import type { LogEntry, StepPathSegment, TriggerRun } from "../store/logStore";
 import { useProjectStore } from "../store/projectStore";
 import { useUIBuilderStore } from "../store/uiBuilderStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
-import { useDiscoveryStore } from "../store/discoveryStore";
+import { finishedScanStatus, useDiscoveryStore } from "../store/discoveryStore";
 import { usePluginStore } from "../store/pluginStore";
 import { usePanelDevicesStore } from "../store/panelDevicesStore";
 import { useDriverBuilderStore } from "../store/driverBuilderStore";
@@ -457,11 +457,9 @@ export function useWebSocket() {
       }
 
       if (msg.type === "discovery.complete") {
-        // The scan reports "partial" when it ran out of time or errored —
-        // the results are real but the sweep didn't finish.
-        useDiscoveryStore.getState().setStatus(
-          msg.status === "partial" ? "partial" : "complete",
-        );
+        // "partial" when it ran out of time or errored (the results are real
+        // but the sweep didn't finish); "cancelled" when someone pressed Stop.
+        useDiscoveryStore.getState().setStatus(finishedScanStatus(msg.status));
         if (Array.isArray(msg.warnings)) {
           useDiscoveryStore.getState().setWarnings(msg.warnings as string[]);
         }

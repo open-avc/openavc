@@ -23,7 +23,7 @@ import { CopyButton } from "../components/shared/CopyButton";
 import { DeviceSettingsSetupDialog, hasDriverSetupSettings } from "../components/shared/DeviceSettingsSetupDialog";
 import { ConfigFieldInputs } from "./devices/DeviceDialogs";
 import { buildConfigFromForm, missingRequiredKeys } from "./devices/deviceConfigCoerce";
-import { useDiscoveryStore } from "../store/discoveryStore";
+import { scanHasEnded, useDiscoveryStore } from "../store/discoveryStore";
 import { useProjectStore } from "../store/projectStore";
 import { useConnectionStore } from "../store/connectionStore";
 import { useNavigationStore } from "../store/navigationStore";
@@ -526,11 +526,12 @@ export function DiscoveryPanel() {
   const [scanCompletedAt, setScanCompletedAt] = useState<Date | null>(null);
   const prevStatusRef = useRef(status);
   useEffect(() => {
-    if (prevStatusRef.current === "running" && isFinished) {
+    // A stopped scan keeps what it found too, from the moment it stopped.
+    if (prevStatusRef.current === "running" && scanHasEnded(status)) {
       setScanCompletedAt(new Date());
     }
     prevStatusRef.current = status;
-  }, [status, isFinished]);
+  }, [status]);
 
   // Smooth progress bar interpolation
   const [displayProgress, setDisplayProgress] = useState(0);

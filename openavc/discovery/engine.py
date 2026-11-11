@@ -706,21 +706,23 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
         sum stays inside this one. Reaching here means the per-phase model
         under-estimated the network badly enough that even the reserve ran
         out.
+
+        A cancel (Stop) ends the scan where it is, the matcher included, and
+        the scan settles as ``cancelled``. Every way out settles the status and
+        tells every client, so a Programmer that did not press Stop sees the
+        scan end too.
         """
         truncated = False
         cancelled = False
         try:
             truncated = not await self._run_phases(subnets, timeout)
+            await self._match_what_was_observed(truncated)
         except asyncio.CancelledError:
             cancelled = True
             log.info("Scan cancelled")
             raise
         finally:
-            # Skipped only on an explicit cancel, where the user asked for no
-            # further work.
-            if not cancelled:
-                await self._match_what_was_observed(truncated)
-            self._settle_status(truncated)
+            self._settle_status(truncated, cancelled)
             await self._emit_complete()
 
     async def _run_phases(self, subnets: list[str], timeout: float) -> bool:
@@ -782,16 +784,16 @@ class DiscoveryEngine(DriverProbes, PassiveCollection, PortScan, ArpHarvest, Hos
                 "be identified. See the server log for details."
             )
 
-    def _settle_status(self, truncated: bool) -> None:
+    def _settle_status(self, truncated: bool, cancelled: bool = False) -> None:
         """The scan's final status, duration and device count.
 
         A narrowed scan is partial too: the budget dropped work before running
         it, so the results cover less of the network than was asked for.
         Reporting that as "complete" is the silent-cap failure the warnings
-        exist to prevent.
+        exist to prevent. A cancelled scan says so, whatever it got through.
         """
         self.scan_status.status = (
-            "cancelled" if self.scan_status.status == "cancelled"
+            "cancelled" if cancelled or self.scan_status.status == "cancelled"
             else "partial" if (truncated or self._narrowed)
             else "complete"
         )

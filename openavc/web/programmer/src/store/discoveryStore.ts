@@ -4,6 +4,18 @@
 import { create } from "zustand";
 import type { DiscoveredDevice } from "../api/restClient";
 
+/** How a scan ended, from a ``discovery.complete`` event's ``status``: a scan
+ *  someone stopped (in this Programmer or another) reads ``cancelled``, one
+ *  that covered less than was asked ``partial``, anything else ``complete``. */
+export function finishedScanStatus(status: unknown): "complete" | "partial" | "cancelled" {
+  return status === "partial" || status === "cancelled" ? status : "complete";
+}
+
+/** Whether a scan with this status has ended, finished or stopped. */
+export function scanHasEnded(status: string): boolean {
+  return status === "complete" || status === "partial" || status === "cancelled";
+}
+
 interface DiscoveryState {
   /** Discovered devices keyed by IP */
   devices: Record<string, DiscoveredDevice>;
