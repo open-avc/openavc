@@ -13,6 +13,9 @@ import type { RenameResult } from "./IdRenameInput";
 
 type Commands = Record<string, DriverCommandDef>;
 
+/** How a command's fields write it: a partial, a field set to undefined removed. */
+export type CommandUpdate = (partial: Partial<DriverCommandDef>) => void;
+
 /** What a command starts as on the driver's transport, so its card opens on
  *  the fields that transport sends with. */
 function seed(transport: string | undefined): DriverCommandDef {

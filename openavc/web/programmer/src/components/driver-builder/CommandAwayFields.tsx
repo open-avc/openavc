@@ -42,7 +42,7 @@ export function OfflineFlag({
 
 /** What the restart window box holds as seconds: whole, at most 600; empty,
  *  not a number or not positive removes it. */
-export function restartSeconds(raw: string): number | undefined {
+function restartSeconds(raw: string): number | undefined {
   const text = raw.trim();
   if (text === "") return undefined;
   const n = Number(text);

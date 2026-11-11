@@ -6,10 +6,9 @@
  *  carries an empty map. */
 
 import type { DriverCommandDef } from "../../api/types";
+import { type CommandUpdate } from "./commandEdits";
 import { FIELD_HINT, FIELD_LABEL } from "./commandFieldParts";
 import { KeyValueList } from "./KeyValueList";
-
-type Update = (partial: Partial<DriverCommandDef>) => void;
 
 const HTTP_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
 
@@ -26,7 +25,7 @@ function RequestMapField({
   caption: string;
   field: "headers" | "query_params";
   cmd: DriverCommandDef;
-  onUpdate: Update;
+  onUpdate: CommandUpdate;
   keyPlaceholder: string;
   valuePlaceholder: string;
   children: React.ReactNode;
@@ -47,7 +46,7 @@ function RequestMapField({
 }
 
 /** The request line: the method, and the path under the device's base URL. */
-function RequestLine({ cmd, onUpdate }: { cmd: DriverCommandDef; onUpdate: Update }) {
+function RequestLine({ cmd, onUpdate }: { cmd: DriverCommandDef; onUpdate: CommandUpdate }) {
   return (
     <div
       style={{
@@ -85,7 +84,7 @@ function RequestLine({ cmd, onUpdate }: { cmd: DriverCommandDef; onUpdate: Updat
 }
 
 /** The fields of an HTTP command's request. */
-export function HttpCommandFields({ cmd, onUpdate }: { cmd: DriverCommandDef; onUpdate: Update }) {
+export function HttpCommandFields({ cmd, onUpdate }: { cmd: DriverCommandDef; onUpdate: CommandUpdate }) {
   return (
     <div style={{ marginBottom: "var(--space-md)" }}>
       <RequestLine cmd={cmd} onUpdate={onUpdate} />

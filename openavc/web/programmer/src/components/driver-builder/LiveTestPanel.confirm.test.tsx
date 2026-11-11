@@ -108,19 +108,19 @@ describe("the Driver Builder's Ask before sending field", () => {
   it("writes true, then the sentence, and removes it when unticked", () => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <CommandConfirmField confirm={undefined} labelStyle={{}} onChange={onChange} />,
+      <CommandConfirmField confirm={undefined} onChange={onChange} />,
     );
     fireEvent.click(screen.getByRole("checkbox", { name: /Ask before sending/ }));
     expect(onChange).toHaveBeenLastCalledWith(true);
 
-    rerender(<CommandConfirmField confirm={true} labelStyle={{}} onChange={onChange} />);
+    rerender(<CommandConfirmField confirm={true} onChange={onChange} />);
     fireEvent.change(screen.getByPlaceholderText("Leave blank for the generic prompt"), {
       target: { value: "Erases every preset." },
     });
     expect(onChange).toHaveBeenLastCalledWith("Erases every preset.");
 
     rerender(
-      <CommandConfirmField confirm="Erases every preset." labelStyle={{}} onChange={onChange} />,
+      <CommandConfirmField confirm="Erases every preset." onChange={onChange} />,
     );
     expect(screen.getByRole("checkbox", { name: /Ask before sending/ })).toBeChecked();
     fireEvent.click(screen.getByRole("checkbox", { name: /Ask before sending/ }));

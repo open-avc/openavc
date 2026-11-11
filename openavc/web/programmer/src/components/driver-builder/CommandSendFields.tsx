@@ -9,15 +9,14 @@
  *  udp block before it looks at the other shapes. */
 
 import type { DriverCommandDef, DriverDefinition } from "../../api/types";
+import { type CommandUpdate } from "./commandEdits";
 import { FIELD_HINT, FIELD_LABEL, FlagField } from "./commandFieldParts";
 import { HttpCommandFields } from "./HttpCommandFields";
 import { OscArgsEditor } from "./OscArgsEditor";
 import { UdpSendFields } from "./UdpSendFields";
 
-type Update = (partial: Partial<DriverCommandDef>) => void;
-
 /** An OSC command: its address and typed arguments. */
-function OscSendFields({ cmd, onUpdate }: { cmd: DriverCommandDef; onUpdate: Update }) {
+function OscSendFields({ cmd, onUpdate }: { cmd: DriverCommandDef; onUpdate: CommandUpdate }) {
   return (
     <div style={{ marginBottom: "var(--space-md)" }}>
       <label style={FIELD_LABEL}>OSC Address</label>
@@ -47,7 +46,7 @@ function LineSendFields({
 }: {
   cmd: DriverCommandDef;
   framed: boolean;
-  onUpdate: Update;
+  onUpdate: CommandUpdate;
 }) {
   return (
     <div style={{ marginBottom: "var(--space-md)" }}>
@@ -94,7 +93,7 @@ export function CommandSendFields({
 }: {
   cmd: DriverCommandDef;
   draft: DriverDefinition;
-  onUpdate: Update;
+  onUpdate: CommandUpdate;
 }) {
   if (cmd.udp) {
     return <UdpSendFields udp={cmd.udp} draft={draft} onChange={(udp) => onUpdate({ udp })} />;
@@ -112,7 +111,7 @@ export function CommandSendFields({
 
 /** What ticking Send over UDP writes: a udp block in place of every other way
  *  of sending, the command's params kept; unticking puts a send string back. */
-export function sendOverUdp(on: boolean): Partial<DriverCommandDef> {
+function sendOverUdp(on: boolean): Partial<DriverCommandDef> {
   if (!on) return { udp: undefined, send: "" };
   return {
     udp: { payload: "" },
@@ -126,7 +125,7 @@ export function sendOverUdp(on: boolean): Partial<DriverCommandDef> {
 }
 
 /** The Send over UDP box. */
-export function UdpToggle({ on, onUpdate }: { on: boolean; onUpdate: Update }) {
+export function UdpToggle({ on, onUpdate }: { on: boolean; onUpdate: CommandUpdate }) {
   return (
     <FlagField
       checked={on}

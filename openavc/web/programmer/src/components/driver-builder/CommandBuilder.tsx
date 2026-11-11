@@ -10,7 +10,7 @@ import { readableKey } from "../shared/paramLabel";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
 import { ValueConversionFields } from "./ValueConversionFields";
 import { WireValueMapEditor } from "./WireValueMapEditor";
-import { commandsRenamed, newCommand, renamePlaceholder } from "./commandEdits";
+import { commandsRenamed, newCommand, renamePlaceholder, type CommandUpdate } from "./commandEdits";
 import { OfflineFlag, RestartWindowField, SleepsDeviceField } from "./CommandAwayFields";
 import { CommandConfirmField } from "./CommandConfirmField";
 import { ReadBackField, readBackForm } from "./ReadBackField";
@@ -21,8 +21,6 @@ interface CommandBuilderProps {
   draft: DriverDefinition;
   onUpdate: (partial: Partial<DriverDefinition>) => void;
 }
-
-type CommandUpdate = (partial: Partial<DriverCommandDef>) => void;
 
 /** A command's row in the list: its id and label, opening or closing its
  *  card, and removing it (without opening it). */

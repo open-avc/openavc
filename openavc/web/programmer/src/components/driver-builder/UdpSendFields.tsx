@@ -12,7 +12,7 @@ import type { DriverDefinition, DriverUdpSend } from "../../api/types";
 import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { FIELD_HINT } from "./commandFieldParts";
 
-type Update = (partial: Partial<DriverUdpSend>) => void;
+type UdpUpdate = (partial: Partial<DriverUdpSend>) => void;
 
 /** The block's captions, smaller than the card's own. */
 const UDP_LABEL: CSSProperties = {
@@ -46,7 +46,7 @@ export function macFieldOptions(
 
 /** The port box's text as the block carries it: digits are a number, anything
  *  else (a `{config_field}`) is kept as text, empty removes it. */
-export function udpPort(text: string): number | string | undefined {
+function udpPort(text: string): number | string | undefined {
   const raw = text.trim();
   if (raw === "") return undefined;
   const n = Number(raw);
@@ -64,7 +64,7 @@ function UdpFormChoice({
 }: {
   udp: DriverUdpSend;
   macOptions: MacOption[];
-  update: Update;
+  update: UdpUpdate;
 }) {
   const isMagic = udp.magic_packet !== undefined;
   return (
@@ -116,7 +116,7 @@ function MacField({
 }: {
   magicPacket: string;
   macOptions: MacOption[];
-  update: Update;
+  update: UdpUpdate;
 }) {
   return (
     <div style={{ marginBottom: "var(--space-sm)" }}>
@@ -148,7 +148,7 @@ function MacField({
 }
 
 /** The message a datagram carries. */
-function MessageField({ payload, update }: { payload: string | undefined; update: Update }) {
+function MessageField({ payload, update }: { payload: string | undefined; update: UdpUpdate }) {
   return (
     <div style={{ marginBottom: "var(--space-sm)" }}>
       <label style={UDP_LABEL}>Message</label>
@@ -176,7 +176,7 @@ function UdpTargetFields({
 }: {
   udp: DriverUdpSend;
   isMagic: boolean;
-  update: Update;
+  update: UdpUpdate;
 }) {
   return (
     <div
@@ -231,7 +231,7 @@ export function UdpSendFields({
 }) {
   const isMagic = udp.magic_packet !== undefined;
   const macOptions = macFieldOptions(draft);
-  const update: Update = (partial) => {
+  const update: UdpUpdate = (partial) => {
     const next: Record<string, unknown> = { ...udp, ...partial };
     for (const k of Object.keys(next)) {
       if (next[k] === undefined) delete next[k];

@@ -171,7 +171,9 @@ describe("renaming a command", () => {
     expect(next.sleep.sleeps_device).toBe("wake_up");
     expect(next.sleep.read_back).toBe("wake_up");
     expect(next.both.read_back).toEqual(["first", "wake_up", "QRY\r"]);
-    expect(next.other).toBe(h.seen.mock.calls[0][0].commands.other);
+    // A command that names nothing renamed is the same object, with no keys added.
+    expect(next.other).toBe(commands.other);
+    expect(next.first).toBe(commands.first);
     expect((fieldUnder("Command ID") as HTMLInputElement).value).toBe("wake_up");
   });
 
@@ -510,6 +512,17 @@ describe("Reads its value back, held across a re-render", () => {
     rerender(<CommandBuilder draft={draftWith({ a: { label: "A", send: "SV\r", read_back: ["Q1", "Q2"] } })} onUpdate={vi.fn()} />);
     expect((screen.getByLabelText("Read-back query 2") as HTMLInputElement).value).toBe("Q2");
     rerender(<CommandBuilder draft={draftWith({ a: { label: "A", send: "SV\r" } })} onUpdate={vi.fn()} />);
+    expect((screen.getByLabelText("Read-back query 1") as HTMLInputElement).value).toBe("");
+  });
+
+  it("stays ticked once a value arrives from outside, when the value later goes away", () => {
+    const d = (rb?: string) => draftWith({ a: { label: "A", send: "SV\r", ...(rb ? { read_back: rb } : {}) } });
+    const { rerender } = render(<CommandBuilder draft={d()} onUpdate={vi.fn()} />);
+    open("a");
+    expect(screen.getByLabelText(/Reads its value back/)).toHaveProperty("checked", false);
+    rerender(<CommandBuilder draft={d("GV")} onUpdate={vi.fn()} />);
+    rerender(<CommandBuilder draft={d()} onUpdate={vi.fn()} />);
+    expect(screen.getByLabelText(/Reads its value back/)).toHaveProperty("checked", true);
     expect((screen.getByLabelText("Read-back query 1") as HTMLInputElement).value).toBe("");
   });
 
