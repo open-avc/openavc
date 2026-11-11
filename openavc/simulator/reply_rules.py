@@ -369,7 +369,7 @@ def _list_start(spec: dict) -> tuple[int | None, int]:
 
 
 def _list_id(cid: Any) -> tuple[int | None, dict[str, str] | None]:
-    """The item capture naming each child (, or {group, map}) and
+    """The item capture naming each child (``$N``, or ``{group, map}``) and
     the local-id -> wire-id map; (None, None) when the items are children by
     their place."""
     if isinstance(cid, dict):
