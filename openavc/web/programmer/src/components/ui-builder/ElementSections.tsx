@@ -12,9 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ColorPickerCell } from "./ColorPickerCell";
 import { CSS_VAR_FALLBACKS } from "./colorUtils";
-import {
-  ELEMENT_CONTROLS, ELEMENT_ORDER, ELEMENT_TYPE_LABELS, hasElementSection, type ElementControl,
-} from "./elementControls";
+import { ELEMENT_ORDER, ELEMENT_SECTIONS, hasElementSection, type ElementControl } from "./elementControls";
 import { ResetToSaved, StudioSection } from "./StudioParts";
 import { differsFromSaved } from "./themeEdits";
 import { displayStyleValue, storeStyleValue } from "./uiBuilderHelpers";
@@ -48,15 +46,15 @@ export function ElementSections({ vars, defaults, savedVars, savedDefaults, onSe
   return (
     <StudioSection title="Elements">
       <div ref={bodyRef} style={{ padding: 10 }}>
-        {ELEMENT_ORDER.filter((type) => ELEMENT_CONTROLS[type]).map((type) => (
+        {ELEMENT_SECTIONS.map(({ type, label, controls }) => (
           <details key={type} ref={(el) => { refs.current[type] = el; }} style={{ marginBottom: 6 }}>
             <summary
               style={{ cursor: "pointer", fontSize: 12, fontWeight: 600, color: "var(--text-primary)", padding: "4px 0" }}
             >
-              {ELEMENT_TYPE_LABELS[type] || type}
+              {label}
             </summary>
             <div style={{ paddingLeft: 12, paddingTop: 4, display: "flex", flexDirection: "column", gap: 4 }}>
-              {ELEMENT_CONTROLS[type].map((control) => (
+              {controls.map((control) => (
                 <ControlRow
                   key={`${control.source.kind}:${control.source.key}`}
                   control={control}

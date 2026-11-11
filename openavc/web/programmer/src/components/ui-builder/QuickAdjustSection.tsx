@@ -10,6 +10,7 @@ import {
   ROUNDNESS, SURFACE_STYLES, TYPOGRAPHY, DEFAULT_FONT, radiusPx, roundnessOf, roundnessRadius,
   surfaceStyleOf, typographyOf, typographyFont, type Preset, type SurfaceStyle,
 } from "./quickAdjust";
+import { StudioSection } from "./StudioParts";
 import { differsFromSaved } from "./themeEdits";
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
@@ -128,20 +129,7 @@ export function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, o
   const changed = (key: string) => differsFromSaved(vars[key], savedVars[key]);
 
   return (
-    <div style={{ background: "var(--bg-surface)", borderRadius: 6, border: "1px solid var(--border-color)", marginBottom: 10 }}>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 700,
-          textTransform: "uppercase",
-          letterSpacing: "0.5px",
-          color: "var(--text-secondary)",
-          padding: "8px 10px",
-          borderBottom: "1px solid var(--border-color)",
-        }}
-      >
-        Quick Adjust
-      </div>
+    <StudioSection title="Quick Adjust">
       <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 14 }}>
         <Adjustment
           label="Brand Accent"
@@ -194,6 +182,6 @@ export function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, o
           {typography === null && <div style={noteStyle}>Custom: {fontFamily}</div>}
         </Adjustment>
       </div>
-    </div>
+    </StudioSection>
   );
 }

@@ -1,11 +1,13 @@
 /**
  * The edits the Theme Studio makes to the theme it holds, each a pure function
  * from one theme to the next. The Studio's Unsaved mark, Discard and the saved
- * file all read the theme as JSON text, so two rules hold throughout: a cleared
- * value deletes its key rather than storing "" (the panel ignores "", and the
- * file would keep it), and an element type left with no defaults, or page
- * defaults left empty, lose their entry, so a theme edited back to where it was
- * compares equal again. A key set again after it was deleted lands at the end of
+ * file all read the theme as JSON text, so two rules hold in these edits: a
+ * cleared value deletes its key rather than storing "" (the panel ignores "",
+ * and the file would keep it), and an element type left with no defaults, or
+ * page defaults left empty, lose their entry, so a theme edited back to where
+ * it was compares equal again. (The Page Background section works out its own
+ * next page defaults, with its own rule for a cleared field, before handing
+ * them to `withPageDefaults`.) A key set again after it was deleted lands at the end of
  * its object, and that does read as unsaved: the comparison is of text.
  */
 import type { ThemeDefinition } from "../../api/restClient";

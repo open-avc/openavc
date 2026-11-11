@@ -14,9 +14,7 @@ const CHECKER_BG =
   "linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%), " +
   "linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%)";
 
-const BOX: CSSProperties = {
-  width: 28,
-  height: 22,
+const FRAME: CSSProperties = {
   border: "1px solid var(--border-color)",
   borderRadius: 3,
   cursor: "pointer",
@@ -56,7 +54,7 @@ function nativePicker(hex: string, onChange: (next: string) => void) {
       type="color"
       value={hex}
       onChange={(e) => onChange(e.target.value)}
-      style={{ ...BOX, padding: 0 }}
+      style={{ width: 28, height: 22, padding: 0, ...FRAME }}
     />
   );
 }
@@ -74,7 +72,7 @@ function clearSwatch(raw: string, parsed: Rgba | null, fallback: Rgba | null, on
     ? { background: CHECKER_BG, backgroundSize: "8px 8px", backgroundPosition: "0 0, 4px 4px" }
     : { background: raw, backgroundSize: undefined, backgroundPosition: undefined };
   return (
-    <label title={swatchTitle(raw)} style={{ position: "relative", ...BOX, display: "block", ...checks }}>
+    <label title={swatchTitle(raw)} style={{ position: "relative", width: 28, height: 22, ...FRAME, display: "block", ...checks }}>
       <input
         type="color"
         aria-label="Pick a color"

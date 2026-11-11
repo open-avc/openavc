@@ -20,11 +20,9 @@ import { ElementSections } from "./ElementSections";
 import { ResetToSaved, StudioSection } from "./StudioParts";
 import { parseApiError } from "../../api/errors";
 import { editableCopy, withVariable, withElementDefault, withPageDefaults, differsFromSaved } from "./themeEdits";
-import { withSurfaceStyle, type SurfaceStyle } from "./quickAdjust";
+import { withSurfaceStyle, DEFAULT_FONT, type SurfaceStyle } from "./quickAdjust";
 import { QuickAdjustSection } from "./QuickAdjustSection";
 import { themeFile, savedFile, previewColors, customCopy, duplicateOf, keptBeside } from "./themeFiles";
-
-// --- Constants ---
 
 
 interface ThemeTokenDef {
@@ -1892,7 +1890,7 @@ function EditorColumn({
                       />
                     ) : (
                       <select
-                        value={String(val ?? "Inter, system-ui, sans-serif")}
+                        value={String(val ?? DEFAULT_FONT)}
                         onChange={(e) => onSetVar(tok.key, e.target.value)}
                         style={{ flex: 1, fontSize: 11 }}
                       >
