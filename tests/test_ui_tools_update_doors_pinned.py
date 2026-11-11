@@ -166,3 +166,47 @@ async def test_delete_master_with_no_project():
     engine.project = None
     result = await _call(engine, "delete_master_element", {"element_id": "m_other"})
     assert result == {"error": "No project loaded"}
+
+
+# --- what a write reviews, and the create doors' order ----------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("payload", [{"name": "Other"}, {"custom_config": {"a": 1}}])
+async def test_page_a_rename_or_a_config_alone_is_not_reviewed(payload):
+    engine = _engine()
+    await _call(engine, "update_ui_page", {"page_id": "other", "render_mode": "custom"})
+    result = await _call(engine, "update_ui_page", {"page_id": "other", **payload})
+    assert result == {"status": "updated", "page_id": "other", "changed": list(payload)}
+
+
+@pytest.mark.asyncio
+async def test_add_page_a_control_naming_the_page_being_made_finds_it():
+    engine = _engine()
+    result = await _call(engine, "add_ui_page", {"id": "fresh", "elements": [
+        {"id": "home", "type": "page_nav", "target_page": "fresh", "placement": dict(BOX)},
+        {"id": "gone", "type": "page_nav", "target_page": "nowhere", "placement": dict(BOX)},
+    ]})
+    assert result["status"] == "created"
+    assert [w for w in result["warnings"] if "fresh" in w and "home" in w] == []
+    assert [w for w in result["warnings"] if "nowhere" in w]
+
+
+@pytest.mark.asyncio
+async def test_add_page_a_taken_id_is_refused_before_retired_geometry():
+    engine = _engine()
+    result = await _call(engine, "add_ui_page", {"id": "main", "grid": {"columns": 4}})
+    assert result == {"error": "UI page 'main' already exists"}
+
+
+@pytest.mark.asyncio
+async def test_add_elements_an_empty_box_is_stored_as_the_default_one():
+    engine = _engine()
+    result = await _call(engine, "add_ui_elements", {"page_id": "other", "elements": [
+        {"id": "plain", "type": "button", "placement": {}},
+        {"id": "boxless", "type": "button"},
+    ]})
+    assert result["element_ids"] == ["plain", "boxless"]
+    stored = _boxes(engine, "other", "landscape")
+    assert "boxless" not in stored
+    assert stored["plain"] == {"x": 0.0, "y": 0.0, "w": 100.0, "h": 100.0}
