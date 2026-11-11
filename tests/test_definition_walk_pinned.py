@@ -214,6 +214,22 @@ CASES: dict[str, dict[str, Any]] = {
     "then_query_three_rules": {
         "responses": [THEN_QUERY_READ, 5, THEN_QUERY_REFUSED_JSON, {**TEXT_RULE}, THEN_QUERY_READ]
     },
+    # A refused list's entries are never read: these would each say
+    # something, and the rule's mappings would raise, were they read.
+    "then_query_refused_entries_are_not_read": {
+        "responses": [{
+            "json": True, "set": {"power": "power"}, "mappings": 5,
+            "then_query": [{"send": "P?\r", "query_for": "power"}, {"send": "L?\r", "when": "nope"}],
+        }]
+    },
+    "then_query_refused_empty_entries_are_not_read": {
+        "responses": [{**TEXT_RULE, "mappings": 5, "then_query": []}],
+    },
+    # --- an entry list that is not a list has no entries ---------------------
+    "on_connect_a_number": {"on_connect": 5},
+    "on_connect_true": {"on_connect": True},
+    "polling_queries_a_number": {"polling": {"queries": 5}},
+    "polling_queries_true": {"polling": {"queries": True}},
     # --- the connection's blocks and the framing -----------------------------
     "push_bad": {"push": {"type": "nope"}},
     "auth_bad": {"auth": {"type": "nope"}},
@@ -269,6 +285,10 @@ RAISING_CASES: dict[str, dict[str, Any]] = {
     "id_a_list": {"id": ["acme"]},
     "actions_a_number": {"actions": 5},
     "actions_true": {"actions": True},
+    # A then_query the rule may carry, on a rule whose mappings is a number.
+    "then_query_on_a_rule_whose_mappings_is_a_number": {
+        "responses": [{**TEXT_RULE, "mappings": 5, "then_query": ["P?\r"]}],
+    },
 }
 
 
@@ -676,6 +696,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
                    'liveness',
                    "liveness: missing required 'send' (the probe payload: a raw protocol string, "
                    'or an OSC address on osc)')],
+ 'on_connect_a_number': [],
  'on_connect_entries': [('error',
                          'on_connect[3]',
                          "on_connect[3]: 'when' field 'nope' is not a declared config field "
@@ -683,6 +704,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
  'on_connect_mapping': [],
  'on_connect_none': [],
  'on_connect_text': [],
+ 'on_connect_true': [],
  'placeholder_in_a_command_named_with_a_colon': [('error',
                                                   'commands.a',
                                                   "commands.a:b.send: '{levl}' resolves to nothing "
@@ -744,6 +766,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
                        'set default_config.poll_interval instead')],
  'polling_list': [('error', 'polling', 'polling: must be a mapping')],
  'polling_none': [],
+ 'polling_queries_a_number': [],
  'polling_queries_entries': [('error',
                               'polling.queries[1]',
                               "polling.queries[1]: 'when' field 'nope' is not a declared config "
@@ -757,6 +780,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
                               "polling.queries[3]: missing 'send' template")],
  'polling_queries_mapping': [],
  'polling_queries_text': [],
+ 'polling_queries_true': [],
  'polling_text': [('error', 'polling', 'polling: must be a mapping')],
  'polling_text_interval': [('error', 'polling', 'polling: must be a mapping')],
  'polling_when_state_bad': [('error',
@@ -873,6 +897,31 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
                       'its default config, and there is no liveness block, so the device reads '
                       'connected for as long as the connection stays open. Add a liveness block '
                       'that asks something the device answers in every state.')],
+ 'then_query_refused_empty_entries_are_not_read': [('error',
+                                                    'responses[0]',
+                                                    'Response 0: then_query must list at least one '
+                                                    'query'),
+                                                   ('warning',
+                                                    'liveness',
+                                                    'Nothing notices if the device stops answering '
+                                                    'over tcp: it sends no poll at its default '
+                                                    'config, and there is no liveness block, so '
+                                                    'the device reads connected for as long as the '
+                                                    'connection stays open. Add a liveness block '
+                                                    'that asks something the device answers in '
+                                                    'every state.')],
+ 'then_query_refused_entries_are_not_read': [('error',
+                                              'responses[0]',
+                                              'Response 0: then_query works on text rules (match:) '
+                                              'only'),
+                                             ('warning',
+                                              'liveness',
+                                              'Nothing notices if the device stops answering over '
+                                              'tcp: it sends no poll at its default config, and '
+                                              'there is no liveness block, so the device reads '
+                                              'connected for as long as the connection stays open. '
+                                              'Add a liveness block that asks something the device '
+                                              'answers in every state.')],
  'then_query_text': [('error',
                       'responses[0]',
                       'Response 0: then_query must list at least one query'),
@@ -1330,6 +1379,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
                    'liveness',
                    "liveness: missing required 'send' (the probe payload: a raw protocol string, "
                    'or an OSC address on osc)')],
+ 'on_connect_a_number': [],
  'on_connect_entries': [('error',
                          'on_connect[3]',
                          "on_connect[3]: 'when' field 'nope' is not a declared config field "
@@ -1337,6 +1387,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
  'on_connect_mapping': [],
  'on_connect_none': [],
  'on_connect_text': [],
+ 'on_connect_true': [],
  'placeholder_in_a_command_named_with_a_colon': [('error',
                                                   'commands.a',
                                                   "commands.a:b.send: '{levl}' resolves to nothing "
@@ -1400,6 +1451,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
                       ('error', 'polling', "polling: unknown key 'interval'")],
  'polling_list': [('error', 'polling', 'polling: must be a mapping')],
  'polling_none': [],
+ 'polling_queries_a_number': [],
  'polling_queries_entries': [('error',
                               'polling.queries[1]',
                               "polling.queries[1]: 'when' field 'nope' is not a declared config "
@@ -1413,6 +1465,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
                               "polling.queries[3]: missing 'send' template")],
  'polling_queries_mapping': [],
  'polling_queries_text': [],
+ 'polling_queries_true': [],
  'polling_text': [('error', 'polling', 'polling: must be a mapping')],
  'polling_text_interval': [('error', 'polling', 'polling: must be a mapping')],
  'polling_when_state_bad': [('error',
@@ -1529,6 +1582,31 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
                       'its default config, and there is no liveness block, so the device reads '
                       'connected for as long as the connection stays open. Add a liveness block '
                       'that asks something the device answers in every state.')],
+ 'then_query_refused_empty_entries_are_not_read': [('error',
+                                                    'responses[0]',
+                                                    'Response 0: then_query must list at least one '
+                                                    'query'),
+                                                   ('warning',
+                                                    'liveness',
+                                                    'Nothing notices if the device stops answering '
+                                                    'over tcp: it sends no poll at its default '
+                                                    'config, and there is no liveness block, so '
+                                                    'the device reads connected for as long as the '
+                                                    'connection stays open. Add a liveness block '
+                                                    'that asks something the device answers in '
+                                                    'every state.')],
+ 'then_query_refused_entries_are_not_read': [('error',
+                                              'responses[0]',
+                                              'Response 0: then_query works on text rules (match:) '
+                                              'only'),
+                                             ('warning',
+                                              'liveness',
+                                              'Nothing notices if the device stops answering over '
+                                              'tcp: it sends no poll at its default config, and '
+                                              'there is no liveness block, so the device reads '
+                                              'connected for as long as the connection stays open. '
+                                              'Add a liveness block that asks something the device '
+                                              'answers in every state.')],
  'then_query_text': [('error',
                       'responses[0]',
                       'Response 0: then_query must list at least one query'),
@@ -1579,6 +1657,7 @@ RAISES: dict[str, type[BaseException]] = {
     'actions_true': TypeError,
     'id_a_list': AttributeError,
     'id_a_number': AttributeError,
+    'then_query_on_a_rule_whose_mappings_is_a_number': TypeError,
 }
 
 
