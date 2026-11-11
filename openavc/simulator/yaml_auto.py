@@ -50,7 +50,7 @@ from openavc.drivers.compiled_protocol import (
     state_var_default,
     value_to_wire,
 )
-from openavc.drivers.child_ids import coerce_child_local_id, page_starts
+from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.spec import placeholder_names
 from openavc.drivers.inline_protocol import (
     declare_command_params,
@@ -73,6 +73,13 @@ from openavc.simulator.osc_addresses import (
 )
 from openavc.simulator.osc_simulator import OSCDispatchMixin
 from openavc.simulator.push_channels import PushChannels
+from openavc.simulator.query_handlers import (
+    ChildQueryHandler,
+    ListQueryHandler,
+    QueryHandler,
+    child_handlers,
+    flat_handlers,
+)
 from openavc.simulator.reply_rules import (
     child_replies,
     flat_replies,
@@ -80,11 +87,7 @@ from openavc.simulator.reply_rules import (
     mappings_to_set,
     reversed_ids,
 )
-from openavc.simulator.reread_queries import (
-    every_query_entry,
-    follow_up_queries,
-    read_back_queries,
-)
+from openavc.simulator.reread_queries import every_query_entry
 from openavc.simulator.state_replies import (
     ChildListAnswer,
     ChildStateResponse,
@@ -368,7 +371,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # After the commands, so a command and a setting whose wire forms
         # collide resolve to the command -- the thing the driver named.
         self._build_settings_handlers()
-        self._build_query_handlers()
+        # The flat reads (query_handlers.py).
+        self._query_handlers = flat_handlers(self._driver_def, self._query_wire_line)
 
         # Inline (Generic) devices: also match an incoming command against the
         # response patterns and apply their state changes. Many such devices use
@@ -1518,87 +1522,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
                 self.driver_id, built,
             )
 
-    def _build_query_handlers(self) -> None:
-        """Build query handlers from polling.queries, the response rules'
-        then_query and the commands' read_back (+ declared on_connect).
-
-        A mapping entry's declared ``query_for`` names the state variable
-        the reply reports and wins outright. Otherwise the query text is
-        matched to a command with the same send template and the variable
-        comes from that command's declared ``query_for`` or, failing that,
-        its name (the shared inference fallback).
-        """
-        polling = self._driver_def.get("polling", {})
-        queries = list(polling.get("queries", []))
-        queries += follow_up_queries(self._driver_def)
-        queries += read_back_queries(self._driver_def)
-        state_vars = set(self._driver_def.get("state_variables", {}).keys())
-
-        # Also check commands for query-like commands without params
-        commands = self._driver_def.get("commands", {})
-
-        for query in queries:
-            declared = None
-            if isinstance(query, dict):
-                if "each_child" in query:
-                    # Per-child queries build per-child handlers instead
-                    # (_build_child_query_handlers) — a flat handler from a
-                    # {child_id} template could never match a real wire.
-                    continue
-                query_text = query.get("send", "")
-                qf = query.get("query_for")
-                if isinstance(qf, str) and "." in qf:
-                    # A list read (<child type>.<variable>) is answered
-                    # from every child: _build_list_query_handlers.
-                    continue
-                if isinstance(qf, str) and qf:
-                    declared = qf
-            else:
-                query_text = str(query)
-
-            if not query_text:
-                continue
-
-            response_var = declared
-            if not response_var:
-                # Look for a command with this exact send template
-                for cmd_name, cmd_def in commands.items():
-                    if cmd_def.get("send") == query_text and not cmd_def.get("params"):
-                        cmd_qf = cmd_def.get("query_for")
-                        target = (
-                            cmd_qf
-                            if isinstance(cmd_qf, str) and cmd_qf
-                            else infer_state_var(cmd_name, state_vars)
-                        )
-                        if target:
-                            response_var = target
-                            break
-
-            if response_var:
-                self._query_handlers.append(QueryHandler(
-                    pattern=re.compile(f"^{re.escape(self._query_wire_line(query_text))}$"),
-                    response_var=response_var,
-                ))
-
-        # on_connect entries participate only when they declare query_for —
-        # an initial-status query the device should answer in simulation too.
-        # No name inference here: on_connect never fed the handler table, so
-        # only declared semantics add to it.
-        for entry in self._driver_def.get("on_connect", []) or []:
-            if not isinstance(entry, dict) or "each_child" in entry:
-                continue
-            qf = entry.get("query_for")
-            send = entry.get("send", "")
-            if (
-                isinstance(qf, str) and qf and "." not in qf
-                and isinstance(send, str) and send
-                and "address" not in entry
-            ):
-                self._query_handlers.append(QueryHandler(
-                    pattern=re.compile(f"^{re.escape(self._query_wire_line(send))}$"),
-                    response_var=qf,
-                ))
-
     def _query_wire_line(self, query_text: str) -> str:
         """The stripped line a raw poll query actually arrives as.
 
@@ -1780,75 +1703,16 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         info["children"] = children
         return info
 
-    def _build_list_query_handlers(self) -> None:
-        """Handlers for list reads: a query sent once whose ``query_for`` is
-        ``<child type>.<variable>``, and each page of a paged per-child query,
-        for every variable a ``child_list`` rule fills."""
-        for q in every_query_entry(self._driver_def):
-            if not isinstance(q, dict):
-                continue
-            template = q.get("send")
-            qf = q.get("query_for")
-            if not (isinstance(template, str) and template and isinstance(qf, str)):
-                continue
-            ctype = q.get("each_child")
-            if ctype is None:
-                ctype, _, var = qf.partition(".")
-                if not var or (ctype, var) not in self._child_list_answers:
-                    continue
-                wire = self._query_wire_line(template)
-                if wire:
-                    self._child_query_handlers.append(ListQueryHandler(
-                        re.compile(f"^{re.escape(wire)}$"), ctype, var,
-                    ))
-                continue
-            page = q.get("page_size")
-            if (
-                not isinstance(page, int) or isinstance(page, bool) or page < 2
-                or (ctype, qf) not in self._child_list_answers
-            ):
-                continue
-            roster = [int(c) if c.isdigit() else c for c in self._child_roster.get(ctype, [])]
-            for first in page_starts(roster, page):
-                wire = self._query_wire_line(
-                    safe_substitute(template, {"child_id": first})
-                )
-                if wire:
-                    self._child_query_handlers.append(ListQueryHandler(
-                        re.compile(f"^{re.escape(wire)}$"), ctype, qf,
-                        str(first), page,
-                    ))
-
     def _execute_list_query_handler(self, handler: ListQueryHandler) -> bytes | None:
-        """Answer a list read with every child it covers, from each child's
-        own state. By place, the list runs without a gap from its first child
-        (a child the roster lacks reads as its variable's default, the way a
-        device lists outputs nobody configured); by id, it lists the rostered
-        children the read covers."""
+        """Answer a list read with every child it covers (its handler's
+        ``covers``), from each child's own state; a child the roster lacks
+        reads as its variable's default, the way a device lists outputs
+        nobody configured."""
         answer = self._child_list_answers.get((handler.child_type, handler.response_var))
         if answer is None:
             return None
         ctype, var = handler.child_type, handler.response_var
-        roster = self._child_roster.get(ctype, [])
-        ids: list[str]
-        if answer.by_place:
-            numbers = sorted(int(c) for c in roster if c.isdigit())
-            first = int(handler.first) if handler.first and handler.first.isdigit() else (
-                answer.start if handler.first is None else None
-            )
-            if first is None or not numbers:
-                return None
-            last = numbers[-1] if handler.count is None else min(
-                numbers[-1], first + handler.count - 1
-            )
-            ids = [str(n) for n in range(first, last + 1)]
-            start: int | str = first
-        else:
-            ids = list(roster)
-            if handler.first is not None and handler.count is not None and handler.first.isdigit():
-                low = int(handler.first)
-                ids = [c for c in ids if c.isdigit() and low <= int(c) < low + handler.count]
-            start = handler.first or ""
+        ids, start = handler.covers(answer, self._child_roster.get(ctype, []))
         if not ids:
             return None
         var_def = self._child_vars(ctype).get(var) or {}
@@ -1860,40 +1724,13 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return (answer.render(start, items) + self._get_delimiter()).encode()
 
     def _build_child_query_handlers(self) -> None:
-        """One handler per (each_child query x rostered child). Declared
-        semantics only: the entry's ``query_for`` names which child variable
-        the reply reports — without it there is nothing to derive. List reads
-        (``_build_list_query_handlers``) come first: a paged query's page
-        names its first child the way a per-child query does."""
+        """The list, page and per-child reads for the current roster
+        (query_handlers.py), rebuilt when project children arrive."""
         self._child_query_handlers = []
-        self._build_list_query_handlers()
-        for q in every_query_entry(self._driver_def):
-            if not isinstance(q, dict) or "each_child" not in q:
-                continue
-            if "page_size" in q:
-                continue
-            ctype = q.get("each_child")
-            template = q.get("send")
-            qf = q.get("query_for")
-            if not (
-                isinstance(ctype, str)
-                and isinstance(template, str) and template
-                and isinstance(qf, str) and qf
-            ):
-                continue
-            for cid in self._child_roster.get(ctype, []):
-                sub: Any = int(cid) if cid.isdigit() else cid
-                wire = self._query_wire_line(
-                    safe_substitute(template, {"child_id": sub})
-                )
-                if not wire:
-                    continue
-                self._child_query_handlers.append(ChildQueryHandler(
-                    pattern=re.compile(f"^{re.escape(wire)}$"),
-                    child_type=ctype,
-                    child_id=cid,
-                    response_var=qf,
-                ))
+        self._child_query_handlers.extend(child_handlers(
+            every_query_entry(self._driver_def), self._child_roster,
+            self._child_list_answers, self._query_wire_line,
+        ))
 
     def _execute_child_query_handler(
         self, handler: ChildQueryHandler | ListQueryHandler
@@ -2760,49 +2597,6 @@ class _CommandRead:
         else:
             self.state_changes.pop(target, None)
             self.child_state_keys.discard(target)
-
-
-class QueryHandler:
-    """Auto-generated handler for a polling query."""
-    def __init__(self, pattern: re.Pattern, response_var: str):
-        self.pattern = pattern
-        self.response_var = response_var
-
-
-class ChildQueryHandler:
-    """Auto-generated handler for one child's each_child poll query."""
-    def __init__(
-        self,
-        pattern: re.Pattern,
-        child_type: str,
-        child_id: str,
-        response_var: str,
-    ):
-        self.pattern = pattern
-        self.child_type = child_type
-        self.child_id = child_id          # unpadded id, as the wire carries it
-        self.response_var = response_var  # a child state variable
-
-
-class ListQueryHandler:
-    """Auto-generated handler for a list read: a query sent once whose
-    ``query_for`` names ``<child type>.<variable>``, or one page of a paged
-    per-child query. Answered with every child the reply covers, in the shape
-    of the driver's ``child_list`` rule."""
-
-    def __init__(
-        self,
-        pattern: re.Pattern,
-        child_type: str,
-        response_var: str,
-        first: str | None = None,
-        count: int | None = None,
-    ):
-        self.pattern = pattern
-        self.child_type = child_type
-        self.response_var = response_var
-        self.first = first    # the page's first child (unpadded); None = the whole list
-        self.count = count    # children on a page; None = the whole list
 
 
 class ExplicitHandler:
