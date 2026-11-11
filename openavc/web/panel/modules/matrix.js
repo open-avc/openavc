@@ -345,6 +345,11 @@ function cellSizes(style, remPx) {
     };
 }
 
+/**
+ * What every style shares. A style is a subclass that provides draw(scrollWrap)
+ * (returning a legend or null), updateRoutes(routes), nameSelector() and either
+ * rowSelector() or its own destinationRows(); showLockOnRow() is optional.
+ */
 class MatrixControl {
     constructor(element, style, host) {
         const config = element.matrix_config || {};
