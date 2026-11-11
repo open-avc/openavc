@@ -18,6 +18,8 @@ import asyncio
 import re
 import socket
 import struct
+from collections.abc import Coroutine
+from typing import Any
 
 from openavc.discovery.mdns_scanner import (
     DNS_CLASS_IN,
@@ -49,6 +51,12 @@ ANNOUNCEMENT_INTERVAL = 1.0  # seconds between initial announcements
 
 # Periodic re-announcement interval
 RE_ANNOUNCE_INTERVAL = 60.0  # seconds
+
+# RFC 6762 section 6: a responder multicasts a record on an adapter at most
+# once a second. A query that arrives sooner after the last record set is
+# answered when the second has passed, and every query that arrives while that
+# answer waits shares it.
+QUERY_ANSWER_INTERVAL = 1.0  # seconds
 
 # Default TTL for mDNS records (75 minutes)
 DEFAULT_TTL = 4500
@@ -321,6 +329,11 @@ class MDNSAdvertiser:
         self._responder_task: asyncio.Task | None = None
         self._retry_task: asyncio.Task | None = None
         self._announce_tasks: set[asyncio.Task] = set()
+        # When the record set last started out (loop time). Every set goes out
+        # on every joined adapter, so this is each adapter's clock too.
+        self._last_announced: float | None = None
+        # The query answer waiting for QUERY_ANSWER_INTERVAL to pass, if any.
+        self._held_answer: asyncio.Task | None = None
         self._joined_ips: list[str] = []
         self._local_ip: str = ""
         self._hostname: str = ""
@@ -495,10 +508,10 @@ class MDNSAdvertiser:
         for name, qtype in questions:
             name_lower = name.rstrip(".").lower()
             if qtype == DNS_TYPE_PTR and name_lower == service_type_lower:
-                self._spawn_announcement()
+                self._answer_query()
                 return
             if name_lower == instance_fqdn_lower:
-                self._spawn_announcement()
+                self._answer_query()
                 return
             # Direct A query for "<hostname>.local" — what a device sends when
             # someone types the hostname URL from the setup screen or Panel
@@ -507,20 +520,52 @@ class MDNSAdvertiser:
             # responder, so answer it here. The full announcement carries the
             # A record, which satisfies the question.
             if qtype == DNS_TYPE_A and name_lower == hostname_fqdn_lower:
-                self._spawn_announcement()
+                self._answer_query()
                 return
 
-    def _spawn_announcement(self) -> None:
-        """Fire off a query-triggered announcement as a tracked task.
+    def _answer_query(self) -> None:
+        """Answer a query that names this instance: at once, or, inside a
+        second of the last record set, once that second has passed
+        (``QUERY_ANSWER_INTERVAL``). A query that arrives while an answer waits
+        is answered by it, so a burst of queries sends at most one record set
+        per adapter per second. The startup announcements, the periodic one and
+        the goodbye are never held.
+        """
+        if self._held_answer is not None:
+            return
+        loop = asyncio.get_running_loop()
+        hold = 0.0
+        if self._last_announced is not None:
+            hold = self._last_announced + QUERY_ANSWER_INTERVAL - loop.time()
+        if hold <= 0:
+            self._last_announced = loop.time()
+            self._spawn(self._send_announcement())
+        else:
+            self._held_answer = self._spawn(self._answer_after(hold))
+
+    async def _answer_after(self, hold: float) -> None:
+        """The held query answer: sent when ``hold`` seconds have passed,
+        unless the advertiser stopped meanwhile (its goodbye already said the
+        records are gone)."""
+        try:
+            await asyncio.sleep(hold)
+        finally:
+            self._held_answer = None
+        if self._running:
+            await self._send_announcement()
+
+    def _spawn(self, coro: Coroutine[Any, Any, None]) -> asyncio.Task:
+        """Run a query answer as a tracked task.
 
         Tracked (not a detached ``create_task``) so ``stop()`` can cancel and
         await it before closing the socket. Otherwise a query that arrives
         during shutdown races its send against a torn-down socket.
         """
-        task = asyncio.create_task(self._send_announcement())
+        task = asyncio.create_task(coro)
         self._announce_tasks.add(task)
         task.add_done_callback(self._announce_tasks.discard)
         task.add_done_callback(self._on_task_done)
+        return task
 
     async def _send_record_set(self, ttl: int) -> None:
         """Send the full record set once per joined interface.
@@ -533,6 +578,8 @@ class MDNSAdvertiser:
         if not self._sock:
             return
         loop = asyncio.get_running_loop()
+        if ttl:
+            self._last_announced = loop.time()
         for iface in self._joined_ips or [ANY_INTERFACE]:
             # The INADDR_ANY fallback can't know its interface; re-detect
             # the primary IP each time (handles interface changes).

@@ -187,3 +187,101 @@ def test_txt_name_is_the_project_name_while_the_dns_label_is_sanitised():
     adv.update_name("Huddle 2B")
     assert adv._instance_name == "Huddle-2B"
     assert adv._build_txt_pairs()["name"] == "Huddle 2B"
+
+
+# --- One query-triggered answer per adapter per second (RFC 6762 section 6) ---
+
+
+class _CountingSock(_FakeSock):
+    """Records which adapter each record set left through."""
+
+    def __init__(self):
+        super().__init__()
+        self.adapter = None
+        self.sent: list[str] = []
+
+    def setsockopt(self, level, option, value):
+        import socket as _socket
+
+        if option == _socket.IP_MULTICAST_IF:
+            self.adapter = _socket.inet_ntoa(value)
+
+    def sendto(self, *a, **k):
+        self.sent.append(self.adapter)
+        return 0
+
+
+def _stamp_record_sets(adv) -> list[float]:
+    """When each record set starts out, on the event loop's clock (the one the
+    advertiser holds answers by)."""
+    stamps: list[float] = []
+    send = adv._send_record_set
+
+    async def stamped(ttl):
+        stamps.append(asyncio.get_running_loop().time())
+        await send(ttl)
+
+    adv._send_record_set = stamped
+    return stamps
+
+
+# A timer may fire up to one tick of the loop's clock early (about 16 ms on
+# Windows), so a held answer is measured against the interval less that.
+_EARLY = 0.02
+
+
+async def test_a_burst_of_queries_gets_one_answer_per_adapter_per_second(monkeypatch):
+    import openavc.discovery.mdns_advertiser as advertiser
+
+    monkeypatch.setattr(advertiser, "QUERY_ANSWER_INTERVAL", 0.2)
+    adv = _make_advertiser()
+    adv._running = True
+    adv._hostname = "openavc-box"
+    adv._joined_ips = ["192.168.1.5", "10.0.0.5"]
+    adv._sock = _CountingSock()
+    stamps = _stamp_record_sets(adv)
+    packet = _query_packet(SERVICE_TYPE.rstrip("."), DNS_TYPE_PTR)
+
+    async def burst():
+        for _ in range(10):
+            adv._handle_query(packet, ("192.168.1.9", 5353))
+            await asyncio.sleep(0)
+        # One answer at most waits for its second, whatever the burst's size.
+        assert len(adv._announce_tasks) <= 2
+        await asyncio.gather(*list(adv._announce_tasks))
+
+    # The first query is answered at once on each adapter; the other nine
+    # share one record set, held until the interval has passed.
+    await burst()
+    assert adv._sock.sent == ["192.168.1.5", "10.0.0.5"] * 2
+    assert len(stamps) == 2
+    assert stamps[1] - stamps[0] >= 0.2 - _EARLY
+
+    # A burst inside the interval after that answer waits for it to pass.
+    await burst()
+    assert adv._sock.sent == ["192.168.1.5", "10.0.0.5"] * 3
+    assert len(stamps) == 3
+    assert stamps[2] - stamps[1] >= 0.2 - _EARLY
+
+    await adv.stop()
+
+
+async def test_an_answer_held_past_stop_is_never_sent(monkeypatch):
+    import openavc.discovery.mdns_advertiser as advertiser
+
+    monkeypatch.setattr(advertiser, "QUERY_ANSWER_INTERVAL", 0.2)
+    adv = _make_advertiser()
+    adv._running = True
+    adv._hostname = "openavc-box"
+    adv._joined_ips = ["192.168.1.5"]
+    adv._sock = _CountingSock()
+    await adv._send_announcement()
+    packet = _query_packet(SERVICE_TYPE.rstrip("."), DNS_TYPE_PTR)
+    adv._handle_query(packet, ("192.168.1.9", 5353))
+    await asyncio.sleep(0)
+
+    sock = adv._sock
+    await adv.stop()
+    await asyncio.sleep(0.3)
+    # The announcement, then the two goodbyes; the held answer never went out.
+    assert len(sock.sent) == 3
