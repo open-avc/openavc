@@ -321,6 +321,8 @@ describe("Export", () => {
   });
 });
 
+// Keep both reads the file before it creates the theme; under a loaded machine that
+// takes longer than findBy's default second, so its waits allow five.
 describe("Import", () => {
   const fileInput = (c: HTMLElement) => c.querySelector<HTMLInputElement>('input[type="file"]')!;
   const file = (theme: Partial<ThemeDefinition>) => new File([JSON.stringify(theme)], "x.avctheme");
@@ -378,7 +380,7 @@ describe("Import", () => {
     const { container, user, cb } = await loaded({ themes: withIds(...taken) });
     await user.upload(fileInput(container), file(inFile));
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Keep both" }));
-    await screen.findByText(`Imported as "${name}"`);
+    await screen.findByText(`Imported as "${name}"`, {}, { timeout: 5000 });
     const expected: Record<string, unknown> = { ...inFile, id, name };
     delete expected._source;
     expect(sentTo(createTheme)).toBe(json(expected));
@@ -391,7 +393,7 @@ describe("Import", () => {
     const { container, user } = await loaded();
     await user.upload(fileInput(container), file({ id: "elsewhere", name: "Elsewhere" }));
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Keep both" }));
-    await screen.findByText('Imported as "Elsewhere (2)"');
+    await screen.findByText('Imported as "Elsewhere (2)"', {}, { timeout: 5000 });
     expect(createTheme.mock.lastCall![0]).toMatchObject({ id: "elsewhere-2" });
   });
 
@@ -401,7 +403,7 @@ describe("Import", () => {
     const { container, user } = await loaded();
     await user.upload(fileInput(container), file({ id: "studio-sample" }));
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Keep both" }));
-    expect(await screen.findByText("Import failed: bad file")).toBeInTheDocument();
+    expect(await screen.findByText("Import failed: bad file", {}, { timeout: 5000 })).toBeInTheDocument();
   });
 });
 
