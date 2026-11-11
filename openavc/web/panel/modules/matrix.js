@@ -15,10 +15,11 @@
  * panel does not draw. The sources and destinations arrive already expanded
  * by the server (matrix_model.py), so nothing here expands a pattern.
  *
- * The panel lends a matrix what it needs as a host: `read(key)` for the
- * current state, `send(frame)`, `sendOwn(frame)` for a frame that names no
- * control (so the panel knows this one sent it), `offline(key)`,
- * `orientation` and `remPx`.
+ * The panel lends a matrix what it needs as a host. Its functions read the
+ * panel when called: `read(key)` the current state, `send(frame)`,
+ * `sendOwn(frame)` for a frame that names no control (so the panel knows this
+ * one sent it), `offline(key)`. Its values are fixed when the matrix is
+ * drawn: `orientation` (of the arrangement being drawn) and `remPx`.
  */
 
 // How far a finger may travel on a matrix crosspoint before the gesture stops
@@ -76,17 +77,6 @@ const NUMBER_TEXT = /^[+-]?\d+(?:\.\d+)?$/;
 // The keys each destination is watched by, in the order they are listed.
 const DESTINATION_KEYS = ['route_key', 'audio_route_key', 'label_key', 'lock_key'];
 
-// The node each style names a destination with. Scoped to these, never to
-// every `data-output-idx`: the list's <select> carries one too, and setting
-// textContent on a <select> destroys every <option> in it.
-const DESTINATION_LABELS = '.matrix-output-header[data-output-idx], '
-    + '.matrix-list-label[data-output-idx], .matrix-tile-dest[data-output-idx]';
-
-// The two styles whose destination label sits inside a real row container.
-const ROW_CONTAINERS = [
-    ['.matrix-tile-dest[data-output-idx]', '.matrix-tile'],
-    ['.matrix-list-label[data-output-idx]', '.matrix-list-row'],
-];
 
 /**
  * How many columns and rows a wall of `count` tiles is drawn in.
@@ -259,7 +249,7 @@ function isNamed(v) {
 // --- Things a matrix leaves outside itself ---------------------------------
 
 /** Take down the tile wall's source chooser, wherever it was opened from. */
-export function closeMatrixChooser() {
+function closeMatrixChooser() {
     document.querySelectorAll('.matrix-chooser').forEach(node => node.remove());
 }
 
@@ -278,31 +268,6 @@ export function endMatrixGestures(root) {
 export function clearMatrixOverlays() {
     document.querySelectorAll('.matrix-drag-line').forEach(el => el.remove());
     closeMatrixChooser();
-}
-
-/**
- * Every destination's row, as `[index, nodes]`, for marking a destination
- * whose device cannot be reached.
- *
- * The tiles and the list hang each destination inside a real row container.
- * The crosspoint does not: it is a flat CSS grid -- a corner, one header per
- * source, then for each destination its name followed by one cell per source
- * -- with no element standing for a row. So its row is the header plus the
- * siblings up to the next header. Marking only the name would leave a row of
- * live-looking crosspoints beside it.
- */
-export function matrixDestinationRows(el) {
-    const rows = [];
-    for (const [labelSel, rowSel] of ROW_CONTAINERS) {
-        el.querySelectorAll(labelSel).forEach(node => {
-            const row = node.closest(rowSel);
-            if (row) rows.push([parseInt(node.dataset.outputIdx), [row]]);
-        });
-    }
-    el.querySelectorAll('.matrix-output-header[data-output-idx]').forEach(header => {
-        rows.push([parseInt(header.dataset.outputIdx), crosspointRow(header)]);
-    });
-    return rows;
 }
 
 function crosspointRow(header) {
@@ -414,7 +379,7 @@ class MatrixControl {
     /** Draw the matrix into `el`, after whatever the panel already put there. */
     mount(el) {
         this.el = el;
-        const presets = this.element.matrix_config?.presets || [];
+        const presets = this.config.presets || [];
         if (presets.length > 0) el.appendChild(this.presetBar(presets));
         this.scrollWrap = div('matrix-scroll');
         const legend = this.draw(this.scrollWrap);
@@ -551,13 +516,29 @@ class MatrixControl {
             btn.textContent = engaged ? LOCKED_ICON : UNLOCKED_ICON;
             btn.classList.toggle('locked', engaged);
             btn.title = engaged ? 'Unlock output' : 'Lock output';
-            const row = btn.closest('.matrix-list-row');
-            const sel = row && row.querySelector('.matrix-list-select');
-            // Muted disables the dropdown too, so unlocking must not undo it.
-            if (sel) sel.disabled = engaged || sel.dataset.muted === '1';
-            const tile = btn.closest('.matrix-tile');
-            if (tile) tile.classList.toggle('locked', engaged);
+            this.showLockOnRow(btn, engaged);
         });
+    }
+
+    /** What a lock does to the rest of its destination's row, beyond the button. */
+    showLockOnRow() {}
+
+    /**
+     * Every destination's row, as `[index, nodes]`, for marking a destination
+     * whose device cannot be reached. A style whose destinations sit in a real
+     * row container answers with that container.
+     */
+    destinationRows() {
+        return this.rowsIn(this.rowSelector());
+    }
+
+    rowsIn(rowSel) {
+        const rows = [];
+        this.el.querySelectorAll(this.nameSelector()).forEach(node => {
+            const row = node.closest(rowSel);
+            if (row) rows.push([parseInt(node.dataset.outputIdx), [row]]);
+        });
+        return rows;
     }
 
     presetBar(presets) {
@@ -608,7 +589,10 @@ class MatrixControl {
      * Live names, written to the [data-label-text] child where there is one
      * (the crosspoint's header has siblings) and to the node itself otherwise.
      * Through entryLabel, not straight off label_key: the authored name wins
-     * where there is one, and this pass runs after the drawing.
+     * where there is one, and this pass runs after the drawing. A style's
+     * destination names are the nodes its nameSelector() picks, never every
+     * `data-output-idx`: the list's <select> carries one too, and setting
+     * textContent on a <select> destroys every <option> in it.
      */
     updateNames() {
         const applyLabel = (node, entry) => {
@@ -620,14 +604,37 @@ class MatrixControl {
         this.el.querySelectorAll('[data-input-idx]').forEach(h => {
             applyLabel(h, this.sources[parseInt(h.dataset.inputIdx)]);
         });
-        this.el.querySelectorAll(DESTINATION_LABELS).forEach(h => {
+        this.el.querySelectorAll(this.nameSelector()).forEach(h => {
             applyLabel(h, this.destinations[parseInt(h.dataset.outputIdx)]);
         });
     }
 }
 
+/**
+ * A list row's dropdown is disabled while its destination is locked or muted:
+ * unlocking must not re-enable a muted one, nor unmuting a locked one. The
+ * mute is recorded on the node as `data-muted`.
+ */
+function settleSelect(select, locked) {
+    select.disabled = locked || select.dataset.muted === '1';
+}
+
 /** One dropdown per destination. */
 class ListMatrix extends MatrixControl {
+    nameSelector() {
+        return '.matrix-list-label[data-output-idx]';
+    }
+
+    rowSelector() {
+        return '.matrix-list-row';
+    }
+
+    showLockOnRow(btn, engaged) {
+        const row = btn.closest('.matrix-list-row');
+        const sel = row && row.querySelector('.matrix-list-select');
+        if (sel) settleSelect(sel, engaged);
+    }
+
     draw(scrollWrap) {
         const list = div('matrix-list');
         for (let o = 0; o < this.destinations.length; o++) list.appendChild(this.row(o));
@@ -648,12 +655,9 @@ class ListMatrix extends MatrixControl {
         if (this.showLock) row.appendChild(this.lockButton(o, false));
         if (this.showMute) {
             row.appendChild(this.muteButton(o, {
-                // Recorded on the node so the lock pass can tell a dropdown
-                // disabled by a mute from one it disabled itself, and not
-                // re-enable somebody else's.
                 afterPress: () => {
                     select.dataset.muted = this.mutedOutputs.has(o) ? '1' : '';
-                    select.disabled = this.isLocked(o) || this.mutedOutputs.has(o);
+                    settleSelect(select, this.isLocked(o));
                 },
             }));
         }
@@ -769,6 +773,19 @@ class ListMatrix extends MatrixControl {
  * tile wall nothing, where they cost a crosspoint grid sixteen columns.
  */
 class TileMatrix extends MatrixControl {
+    nameSelector() {
+        return '.matrix-tile-dest[data-output-idx]';
+    }
+
+    rowSelector() {
+        return '.matrix-tile';
+    }
+
+    showLockOnRow(btn, engaged) {
+        const tile = btn.closest('.matrix-tile');
+        if (tile) tile.classList.toggle('locked', engaged);
+    }
+
     draw(scrollWrap) {
         const wall = div('matrix-tiles');
         const [tileCols, tileRows] = matrixTileGridShape(
@@ -911,6 +928,22 @@ class CrosspointMatrix extends MatrixControl {
         // Shared by every cell of this matrix: the line a drag draws, and the
         // column the gesture in progress started from.
         this.drag = { line: null, startInput: null };
+    }
+
+    nameSelector() {
+        return '.matrix-output-header[data-output-idx]';
+    }
+
+    /**
+     * The crosspoint has no element standing for a row: it is a flat CSS grid
+     * -- a corner, one header per source, then for each destination its name
+     * followed by one cell per source. So a row is the header plus the
+     * siblings up to the next header. Marking only the name would leave a row
+     * of live-looking crosspoints beside it.
+     */
+    destinationRows() {
+        return Array.from(this.el.querySelectorAll(this.nameSelector()),
+            header => [parseInt(header.dataset.outputIdx), crosspointRow(header)]);
     }
 
     draw(scrollWrap) {

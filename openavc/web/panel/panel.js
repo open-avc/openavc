@@ -7,7 +7,7 @@
 
 import { pickLook, withTwoStateWords } from './modules/looks.js';
 import {
-    clearMatrixOverlays, createMatrix, endMatrixGestures, matrixDestinationRows,
+    clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
 
 // --- Programmer session bridge ---------------------------------------------
@@ -3501,8 +3501,9 @@ class PanelApp {
     }
 
     /**
-     * What a matrix borrows from the panel. Read and sent at call time, never
-     * captured: the state object is replaced wholesale on a full update.
+     * What a matrix borrows from the panel. The functions read and send at
+     * call time, never captured: the state object is replaced wholesale on a
+     * full update. The two values are the drawing's, fixed when it is drawn.
      */
     _matrixHost(element) {
         return {
@@ -3524,7 +3525,7 @@ class PanelApp {
     evaluateMatrixRoutes(b) {
         const matrix = b._matrix;
         const destOffline = matrix.offlineDestinations();
-        this._markMatrixAvailability(b.element, destOffline);
+        this._markMatrixAvailability(matrix, destOffline);
         matrix.update(destOffline);
     }
 
@@ -5607,8 +5608,8 @@ class PanelApp {
      * one control that can be half true, so it is marked per row rather than
      * per element: every node of a destination's row takes the mark.
      */
-    _markMatrixAvailability(el, destOffline) {
-        for (const [index, nodes] of matrixDestinationRows(el)) {
+    _markMatrixAvailability(matrix, destOffline) {
+        for (const [index, nodes] of matrix.destinationRows()) {
             const offline = !!destOffline[index];
             for (const node of nodes) node.classList.toggle('device-offline', offline);
         }
