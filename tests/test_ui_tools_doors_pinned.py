@@ -661,6 +661,29 @@ async def test_element_the_same_parent_again_leaves_an_unrounded_box_as_stored()
     assert _boxes(engine, "main", "landscape")["kid"]["x"] == 10.123456
 
 
+@pytest.mark.asyncio
+async def test_element_moved_into_a_container_whose_box_is_not_a_number_raises():
+    # 0 x inf: the innermost container's page box comes out NaN, which no
+    # area test refuses, so the conversion divides by it and the rounding raises.
+    project = _project()
+    page = project["ui"]["pages"][1]
+    page["elements"] += [
+        {"id": "g1", "type": "group"},
+        {"id": "g2", "type": "group", "parent": "g1"},
+        {"id": "g3", "type": "group", "parent": "g2"},
+    ]
+    huge = {"x": 0, "y": 0, "w": 1e300, "h": 1e300}
+    page["layouts"][0]["placements"] = {
+        "g1": huge, "g2": dict(huge), "g3": {"x": 0, "y": 0, "w": 0, "h": 0},
+        "back": {"x": 10, "y": 10, "w": 10, "h": 10},
+    }
+    engine = _engine(project)
+    before = _dump(engine)
+    with pytest.raises(ValueError):
+        await _call(engine, "update_ui_element", {"element_id": "back", "parent": "g3"})
+    assert _dump(engine) == before
+
+
 @pytest.mark.parametrize("parent, error", [
     ("ghost", "Container 'ghost' is not an element on page 'main'"),
     ("btn", "'btn' is a button, not a container -- only a group element can hold children"),
