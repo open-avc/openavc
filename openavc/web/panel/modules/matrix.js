@@ -624,6 +624,17 @@ function settleSelect(select, locked) {
     select.disabled = locked || select.dataset.muted === '1';
 }
 
+/**
+ * A source this matrix does not list, named by what the device said. The
+ * first option, which is what a <select> shows on its own, would name a
+ * source that is not routed.
+ */
+function showUnlisted(sel, unlisted, raw) {
+    unlisted.textContent = `${raw} (not listed)`;
+    unlisted.hidden = false;
+    sel.selectedIndex = unlisted.index;
+}
+
 /** One dropdown per destination. */
 class ListMatrix extends MatrixControl {
     nameSelector() {
@@ -751,20 +762,13 @@ class ListMatrix extends MatrixControl {
 
     showRoute(sel, routed) {
         const unlisted = sel.querySelector('.matrix-list-unlisted');
-        if (routed.state === 'listed') {
-            this.selectSource(sel, routed.source);
-            if (unlisted) unlisted.hidden = true;
-        } else if (routed.state === 'unlisted' && unlisted) {
-            // A source this matrix does not list. The first option, which is
-            // what a <select> shows on its own, would name a source that is
-            // not routed.
-            unlisted.textContent = `${routed.raw} (not listed)`;
-            unlisted.hidden = false;
-            sel.selectedIndex = unlisted.index;
-        } else {
-            sel.selectedIndex = 0;
-            if (unlisted) unlisted.hidden = true;
+        if (routed.state === 'unlisted' && unlisted) {
+            showUnlisted(sel, unlisted, routed.raw);
+            return;
         }
+        if (routed.state === 'listed') this.selectSource(sel, routed.source);
+        else sel.selectedIndex = 0;
+        if (unlisted) unlisted.hidden = true;
     }
 }
 
