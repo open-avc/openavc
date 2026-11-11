@@ -603,8 +603,18 @@ describe("while a file action runs", () => {
     const finish = await start(view);
     expect(screen.getByRole("button", { name: "Save as Copy" })).toBeDisabled();
     expect(screen.queryByText("Reverted to saved values") !== null).toBe(keeps);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     await act(async () => finish());
     await waitFor(() => expect(screen.getByRole("button", { name: "Save as Copy" })).toBeEnabled());
+  });
+
+  it("Save as Custom with a blank name holds nothing", async () => {
+    await loaded({ currentThemeId: "dark" });
+    fireEvent.change(sectionBody("Theme Info").querySelector("input")!, { target: { value: " " } });
+    fireEvent.click(screen.getByTitle("Close (Esc)"));
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "Save as Custom" }));
+    expect(await screen.findByText("Enter a theme name")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeEnabled();
   });
 
   it("an import that collides says nothing and frees the buttons while it asks", async () => {

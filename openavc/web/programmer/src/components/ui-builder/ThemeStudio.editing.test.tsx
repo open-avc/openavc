@@ -635,6 +635,18 @@ describe("the colour fields", () => {
     }
   });
 
+  it("say what a colour saved empty inherits", async () => {
+    const theme = customTheme();
+    theme.variables.danger = "";
+    theme.element_defaults.label.text_color = "";
+    getTheme.mockResolvedValue(theme);
+    await loaded();
+    expect(textIn(tokenRow("Danger"))).toHaveAttribute("placeholder", "#F44336 (inherited)");
+    expect(textIn(tokenRow("Danger"))).toHaveAttribute("title", "Inherits #F44336");
+    expect(textIn(controlRow("Label", "Text Color"))).toHaveAttribute("placeholder", "inherited");
+    expect(textIn(controlRow("Label", "Text Color"))).toHaveAttribute("title", "Inherits the theme default");
+  });
+
   it("are drawn as they always have been, set and cleared", async () => {
     await loaded();
     const rows = () => [
