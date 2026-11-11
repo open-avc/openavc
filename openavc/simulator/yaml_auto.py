@@ -26,7 +26,12 @@ offered to the handlers is ``_HANDLER_CHAIN``, at the bottom of this module.
 The device's half of the driver's ``auth:`` sign-in is telnet_sign_in; what
 the Simulator UI is told about the device (each variable's control, the
 children section) is ui_info; the ``simulator:`` section's settings are read
-by base.py's ``_read_device_settings``, as a Python simulator's are.
+by base.py's ``_read_device_settings``, as a Python simulator's are. The
+handler a command or a setting is read into is command_handler, a device
+setting's write is read into one by setting_handlers, and a Generic device's
+inline protocol (its merge, its own response patterns, an HTTP one's JSON
+status poll) is inline_device. Construction runs in named stages, each saying
+what it must follow.
 """
 
 from __future__ import annotations
