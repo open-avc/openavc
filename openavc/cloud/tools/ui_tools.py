@@ -278,7 +278,9 @@ def _refuse_if_locked(target: Any, input: dict, what: str) -> None:
     somebody could pin the background art and have it moved out from under
     them on the next request -- the one failure the flag exists to prevent,
     one door over. Property edits stay allowed, the way the Properties panel
-    allows them, which is also how the flag gets turned back off.
+    allows them, which is also how the flag gets turned back off. The fields
+    refused are the two of :data:`_PLACING` that move a control, named
+    placement first; a hide does not move it.
     """
     if not getattr(target, "locked", False):
         return
@@ -288,6 +290,31 @@ def _refuse_if_locked(target: Any, input: dict, what: str) -> None:
             "error": f"{what} is locked, so its {' and '.join(blocked)} cannot be "
                      f"changed. Send locked: false first if you meant to move it."
         })
+
+
+def _reparent(page: Any, layout: Any, element_id: str, parent: Any) -> None:
+    """Into the container named, or onto the page for an empty one."""
+    reparent_element(page, element_id, parent or None)
+
+
+def _show_or_hide(page: Any, layout: Any, element_id: str, hidden: Any) -> None:
+    set_hidden(page, layout, element_id, bool(hidden))
+
+
+#: Where an element update puts the control, in the order it is put there:
+#: its container, its box, whether it shows in the arrangement named. None of
+#: the three lives on the element (:func:`_place_element` says why the order).
+_PLACING = {
+    "parent": _reparent,
+    "placement": restate_box,
+    "hidden": _show_or_hide,
+}
+
+#: The fields of an element update its door handles itself: which element and
+#: which arrangement the call names, where the control goes (:data:`_PLACING`),
+#: and its bindings, checked before anything moves. The rest are plain fields
+#: on the element (:func:`_assign_plain_fields`).
+_ELEMENT_DOOR_FIELDS = {"element_id", "layout_id", "bindings", *_PLACING}
 
 
 def _place_element(page: Any, layout: Any, element_id: str, input: dict) -> list[str]:
@@ -305,15 +332,10 @@ def _place_element(page: Any, layout: Any, element_id: str, input: dict) -> list
     named and the other arrangements keep the converted one.
     """
     changed: list[str] = []
-    if "parent" in input:
-        reparent_element(page, element_id, input["parent"] or None)
-        changed.append("parent")
-    if "placement" in input:
-        restate_box(page, layout, element_id, input["placement"])
-        changed.append("placement")
-    if "hidden" in input:
-        set_hidden(page, layout, element_id, bool(input["hidden"]))
-        changed.append("hidden")
+    for field, place in _PLACING.items():
+        if field in input:
+            place(page, layout, element_id, input[field])
+            changed.append(field)
     return changed
 
 
@@ -895,15 +917,9 @@ class UIToolsMixin:
                 target_el.bindings = bindings
                 changed.append("bindings")
 
-            # Everything else is a plain field on the element. The four above
-            # are handled by hand because they do not live on it: a box and a
-            # hide belong to a layout, a parent needs the percentage
-            # conversion, and bindings were validated before anything moved.
+            # Everything else is a plain field on the element.
             changed.extend(_assign_plain_fields(
-                target_el,
-                _left_over(input, {
-                    "element_id", "layout_id", "parent", "placement", "hidden", "bindings",
-                }),
+                target_el, _left_over(input, _ELEMENT_DOOR_FIELDS),
                 f"Element '{element_id}'", notes,
             ))
 
