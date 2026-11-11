@@ -2003,3 +2003,30 @@ def test_unmuting_a_locked_list_row_keeps_its_dropdown_disabled(panel_page) -> N
     mute.click()
     mute.click()
     assert select.is_disabled(), "unmuting re-enabled a locked dropdown"
+
+
+def test_a_list_row_follows_its_route_through_every_state(panel_page) -> None:
+    """Listed, unlisted, listed again, nothing, unlisted again: the dropdown
+    and its "not listed" option follow each report, not only the first."""
+    element = _resolved(
+        sources=[{"value": 1, "label": "Apple TV"}, {"value": 2, "label": "Room PC"}],
+        destinations=[{"value": 1, "label": "Main LCD", "route_key": "device.mx.output.1.input"}],
+    )
+    element["matrix_style"] = "list"
+    _mount(panel_page, element, 600, 300)
+    seen = []
+    for state in [{"device.mx.output.1.input": 2}, {"device.mx.output.1.input": 9},
+                  {"device.mx.output.1.input": 1}, {}, {"device.mx.output.1.input": 9}]:
+        panel_page.evaluate("(s) => window.__setState(s)", state)
+        seen.append(panel_page.evaluate("""() => {
+            const s = document.querySelector('.matrix-list-select');
+            const u = s.querySelector('.matrix-list-unlisted');
+            return [s.selectedIndex, s.options[s.selectedIndex].textContent, u.hidden];
+        }"""))
+    assert seen == [
+        [2, "Room PC", True],
+        [3, "9 (not listed)", False],
+        [1, "Apple TV", True],
+        [0, "—", True],
+        [3, "9 (not listed)", False],
+    ]
