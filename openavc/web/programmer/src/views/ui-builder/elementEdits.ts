@@ -42,6 +42,7 @@ import {
   validateElementId,
   withHidden,
   type ElementClipboard,
+  type PageSelection,
 } from "../../components/ui-builder/uiBuilderHelpers";
 import { takenIds, type Landing } from "./paletteDrop";
 import { projectEdit, type EditRun, type ProjectEdit } from "./useEditRun";
@@ -194,26 +195,21 @@ export interface Offset {
   dy: number;
 }
 
-/** The pages with these controls moved by (dx, dy) in the arrangement being
- *  authored, each box rounded the way a drag rounds it. */
-export function nudgedPages(
-  pages: UIPage[],
-  pageId: string,
-  { ids, dx, dy }: Offset & { ids: string[] },
-  layoutId: string | null,
-): UIPage[] {
-  const target = pages.find((p) => p.id === pageId);
+/** The pages with the selected controls moved by (dx, dy) in the arrangement
+ *  being authored, each box rounded the way a drag rounds it. */
+export function nudgedPages(pages: UIPage[], selection: PageSelection, { dx, dy }: Offset): UIPage[] {
+  const target = pages.find((p) => p.id === selection.pageId);
   if (!target) return pages;
   const moved: Record<string, Placement> = {};
-  for (const id of ids) {
-    const box = getPlacement(target, id, layoutId);
+  for (const id of selection.elementIds) {
+    const box = getPlacement(target, id, selection.layoutId);
     moved[id] = roundPlacement({ ...box, x: box.x + dx, y: box.y + dy });
   }
-  return moveElementsInPage(pages, { pageId, layoutId }, moved);
+  return moveElementsInPage(pages, selection, moved);
 }
 
 export function nudge({ page, editPages, layoutId }: InLayout, ids: string[], offset: Offset, description: string): void {
-  if (page) editPages((pages) => nudgedPages(pages, page.id, { ids, ...offset }, layoutId), description, true);
+  if (page) editPages((pages) => nudgedPages(pages, { pageId: page.id, elementIds: ids, layoutId }, offset), description, true);
 }
 
 export function editMaster({ project, masters, run }: OnProject, id: string, patch: Partial<MasterElement>): void {

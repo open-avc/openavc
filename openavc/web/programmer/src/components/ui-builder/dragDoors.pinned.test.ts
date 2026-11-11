@@ -111,7 +111,7 @@ describe("a move's commit, where it landed and what it landed in", () => {
 
 describe("a nudge's pages", () => {
   it("moves each box in the arrangement named, rounded, and leaves the primary", () => {
-    const out = nudgedPages([onePage(), otherPage()], "pg", { ids: ["a", "k"], dx: 0.123456, dy: -1 }, "port");
+    const out = nudgedPages([onePage(), otherPage()], { pageId: "pg", elementIds: ["a", "k"], layoutId: "port" }, { dx: 0.123456, dy: -1 });
     expect(stored(out[0], "port").a).toEqual({ x: 0.1235, y: 79, w: 10, h: 10 });
     // k has no portrait box of its own: the nudge starts from the one it inherits.
     expect(stored(out[0], "port").k).toEqual({ x: 10.1235, y: 9, w: 50, h: 50 });
@@ -119,13 +119,13 @@ describe("a nudge's pages", () => {
   });
 
   it("gives an id the page does not hold the default box, moved", () => {
-    const out = nudgedPages([onePage()], "pg", { ids: ["ghost"], dx: 1, dy: 1 }, null);
+    const out = nudgedPages([onePage()], { pageId: "pg", elementIds: ["ghost"], layoutId: null }, { dx: 1, dy: 1 });
     expect(Object.keys(stored(out[0], "land"))).toEqual(["a", "g", "k", "ghost"]);
   });
 
   it("aimed at a page that is not there, hands back the same list", () => {
     const pages = [onePage(), otherPage()];
-    expect(nudgedPages(pages, "nope", { ids: ["a"], dx: 1, dy: 1 }, "port")).toBe(pages);
+    expect(nudgedPages(pages, { pageId: "nope", elementIds: ["a"], layoutId: "port" }, { dx: 1, dy: 1 })).toBe(pages);
   });
 });
 
