@@ -234,6 +234,16 @@ SCENARIOS = [
     "remote_session_other_answers_leave_it_standing",
     "remote_session_a_drop_asks_once_and_stops_reconnecting",
     "remote_session_a_drop_that_is_not_the_end_reconnects",
+    # The screens a refused or turned-off connection shows, the check-in's
+    # pace and its unusable answers, the admin password's refusals, and every
+    # server address under the path the panel was opened at.
+    "access_a_4013_or_4014_close_says_why_and_offers_try_again",
+    "access_a_check_in_with_no_usable_answer_is_null",
+    "access_after_a_refusal_it_keeps_asking_at_its_own_pace",
+    "access_the_waiting_screen_fills_in_what_the_answer_left_out",
+    "access_the_admin_password_refusals_say_what_happened",
+    "remote_session_ended_is_drawn_once_and_ends_the_holds",
+    "every_server_address_follows_the_path_the_panel_was_opened_under",
     # A page nobody has built yet says so, without sending anyone to the IDE.
     "q160_an_empty_page_says_so",
     "q160_a_page_with_a_control_says_nothing",

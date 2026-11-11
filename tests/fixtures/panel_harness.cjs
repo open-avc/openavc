@@ -4605,6 +4605,385 @@ const tests = {
         }
     },
 
+    // A socket the server closes with 4013 (this interface is turned off) or
+    // 4014 (Preview without a Programmer session) puts the reason in place of
+    // the panel with a way to try again, and does not reconnect or ask
+    // anything, even under Remote Access. The panel goes offline first, so
+    // the screen is what shows, not the offline overlay.
+    async access_a_4013_or_4014_close_says_why_and_offers_try_again() {
+        const sentences = {
+            4013: ['OpenAVC interface disabled', 'This interface is disabled in product management.'],
+            4014: ['Preview sign-in required', 'Sign in to the Programmer to use Preview.'],
+        };
+        for (const code of [4013, 4014]) {
+            clearAccessOverlay();
+            const rig = remoteRig(reply(404, REMOTE_ACCESS_ENDED));
+            const app = mkApp();
+            const hold = window.setInterval(() => {}, 100000);
+            try {
+                await atPath('/tunnel/t1/panel/', async () => {
+                    app.connect();
+                    app.holdTimers = { held: hold };
+                    const scheduled = dropSocket(app, code);
+                    await rig.settle();
+                    assert(scheduled.length === 0, `${code} schedules no reconnect, got ${JSON.stringify(scheduled)}`);
+                    assert(app.reconnectAttempts === 0, `${code} is not a reconnect attempt`);
+                    assert(rig.fetched.length === 0, `${code} asks nothing, got ${JSON.stringify(rig.fetched)}`);
+                    assert(Object.keys(app.holdTimers).length === 0, `${code} ends every hold-repeat`);
+                    const overlay = document.getElementById('panel-access-overlay');
+                    assert(overlay, `${code} puts a screen up`);
+                    assert(overlay.dataset.status === 'unavailable',
+                        `${code} screen status, got ${overlay.dataset.status}`);
+                    assert(overlay.querySelector('.panel-access-title').textContent === sentences[code][0],
+                        `${code} title, got "${overlay.querySelector('.panel-access-title').textContent}"`);
+                    assert(overlay.querySelector('.panel-access-message').textContent === sentences[code][1],
+                        `${code} sentence, got "${overlay.querySelector('.panel-access-message').textContent}"`);
+                    assert(overlay.querySelector('.panel-access-claim-link').hidden
+                        && overlay.querySelector('.panel-access-claim').hidden,
+                    `${code}: no admin password route`);
+                    const retry = overlay.querySelectorAll('.panel-access-container > button.panel-access-submit');
+                    assert(retry.length === 1 && retry[0].textContent === 'Try again',
+                        `${code}: one Try again button, got ${retry.length}`);
+                    assert(typeof retry[0].onclick === 'function', `${code}: Try again does something`);
+                    const status = document.getElementById('connection-status');
+                    assert(status.textContent === 'Disconnected' && status.classList.contains('hidden'),
+                        `${code}: offline, with the pill hidden under the screen`);
+                    assert(!document.getElementById('offline-overlay').classList.contains('visible'),
+                        `${code}: the offline overlay is not over the screen`);
+                    assert(app.root.style.pointerEvents === 'none', `${code}: the panel takes no touches`);
+                });
+            } finally {
+                window.clearInterval(hold);
+                resetAfterDrop(app);
+                rig.restore();
+            }
+        }
+        // The Remote Access ended screen is the only other one with its own
+        // status, and nothing but these two closes carries a Try again button.
+        clearAccessOverlay();
+        const app = mkApp();
+        app._showWaitingScreen({ status: 'pending', code: '1', space: 'x' });
+        assert(!document.querySelector('.panel-access-container > button.panel-access-submit'),
+            'the waiting screen has no Try again button');
+        clearAccessOverlay();
+    },
+
+    // The check-in reads an answer only when it is an object the server sent
+    // with a success status; anything else, including no network, is no
+    // answer. A screen whose zone cannot be read asks without one.
+    async access_a_check_in_with_no_usable_answer_is_null() {
+        const app = mkApp();
+        const savedFetch = window.fetch;
+        const savedIntl = window.Intl;
+        const urls = [];
+        const answer = (value) => { window.fetch = async (u) => { urls.push(String(u)); return value(); }; };
+        try {
+            answer(() => { throw new Error('network down'); });
+            assert(await app._fetchPanelAccess() === null, 'no network is no answer');
+            answer(() => ({ ok: true, status: 200, json: async () => 'approved' }));
+            assert(await app._fetchPanelAccess() === null, 'a string is no answer');
+            answer(() => ({ ok: true, status: 200, json: async () => null }));
+            assert(await app._fetchPanelAccess() === null, 'null is no answer');
+            answer(() => ({ ok: true, status: 200, json: async () => { throw new Error('not JSON'); } }));
+            assert(await app._fetchPanelAccess() === null, 'a body that is not JSON is no answer');
+            answer(() => ({ ok: false, status: 500, json: async () => ({ access: 'open' }) }));
+            assert(await app._fetchPanelAccess() === null, 'an error status is no answer, whatever it says');
+            answer(() => ({ ok: true, status: 200, json: async () => ({ access: 'open' }) }));
+            const got = await app._fetchPanelAccess();
+            assert(got && got.access === 'open', 'an object is the answer');
+
+            urls.length = 0;
+            window.Intl = { DateTimeFormat: () => ({ resolvedOptions: () => ({ timeZone: '' }) }) };
+            await app._fetchPanelAccess();
+            window.Intl = { DateTimeFormat: () => { throw new Error('no Intl'); } };
+            await app._fetchPanelAccess();
+            window.Intl = { DateTimeFormat: () => ({ resolvedOptions: () => ({ timeZone: 'America/New_York' }) }) };
+            await app._fetchPanelAccess();
+            assert(JSON.stringify(urls) === JSON.stringify([
+                '/api/panel/access', '/api/panel/access',
+                '/api/panel/access?time_zone=America%2FNew_York',
+            ]), `a screen with no zone asks without one, got ${JSON.stringify(urls)}`);
+        } finally {
+            window.fetch = savedFetch;
+            window.Intl = savedIntl;
+        }
+    },
+
+    // After a refusal the page keeps asking through no answer, a few seconds
+    // apart; a denied or full system is asked again a minute apart; and the
+    // first approval ends the wait. Two callers share the one loop.
+    async access_after_a_refusal_it_keeps_asking_at_its_own_pace() {
+        clearAccessOverlay();
+        const rig = accessRig([null, { access: 'approved', status: 'denied' },
+            { access: 'approved', status: 'unavailable' }, PENDING_ANSWER, APPROVED_ANSWER]);
+        const realSetTimeout = window.setTimeout;
+        const waits = [];
+        window.setTimeout = (fn, ms) => { waits.push(ms); return 0; };
+        try {
+            const app = mkApp();
+            const first = app._waitForPanelAccess({ afterRefusal: true });
+            const second = app._waitForPanelAccess();
+            assert(first === second, 'a second caller joins the loop in flight');
+            let done = false;
+            first.then(() => { done = true; });
+            const statuses = [];
+            for (let i = 0; i < 4; i++) {
+                await rig.settle();
+                const overlay = document.getElementById('panel-access-overlay');
+                statuses.push(overlay ? overlay.dataset.status : null);
+                app._wakeAccessPoll();
+            }
+            await rig.settle();
+            assert(JSON.stringify(waits) === JSON.stringify([3000, 60000, 60000, 3000]),
+                `no answer and pending wait 3 s, denied and full 60 s, got ${JSON.stringify(waits)}`);
+            assert(JSON.stringify(statuses) === JSON.stringify([null, 'denied', 'unavailable', 'pending']),
+                `the screen follows each answer, got ${JSON.stringify(statuses)}`);
+            assert(done, 'approval ends the wait');
+            assert(!document.getElementById('panel-access-overlay'), 'and takes the screen down');
+            const later = app._waitForPanelAccess();
+            assert(later !== first, 'the loop is gone once it ends: a later caller starts its own');
+            await rig.settle();
+
+            // While the waiting screen is up, no answer keeps it asking even
+            // on the first load.
+            waits.length = 0;
+            rig.answers = [PENDING_ANSWER];
+            const app2 = mkApp();
+            app2._waitForPanelAccess();
+            await rig.settle();
+            rig.answers = [null];
+            app2._wakeAccessPoll();
+            await rig.settle();
+            assert(JSON.stringify(waits) === JSON.stringify([3000, 3000]),
+                `the screen stays and it asks again, got ${JSON.stringify(waits)}`);
+            assert(document.getElementById('panel-access-overlay'), 'the waiting screen stays up');
+
+            // Once a screen has come down it is gone: a later first load with
+            // no answer goes on at once rather than waiting behind it.
+            rig.answers = [APPROVED_ANSWER];
+            app2._wakeAccessPoll();
+            await rig.settle();
+            assert(!document.getElementById('panel-access-overlay'), 'approved, the screen is down');
+            waits.length = 0;
+            rig.answers = [null];
+            let went = false;
+            app2._waitForPanelAccess().then(() => { went = true; });
+            await rig.settle();
+            assert(went && waits.length === 0,
+                `no answer on a first load goes on at once, waited ${JSON.stringify(waits)}`);
+        } finally {
+            window.setTimeout = realSetTimeout;
+            clearAccessOverlay();
+            rig.restore();
+        }
+    },
+
+    // A waiting screen the server named no space or code for still reads as
+    // a sentence; an answer with any other status reads as waiting.
+    access_the_waiting_screen_fills_in_what_the_answer_left_out() {
+        clearAccessOverlay();
+        const app = mkApp();
+        try {
+            app._showWaitingScreen({ access: 'approved', status: 'pending' });
+            let overlay = document.getElementById('panel-access-overlay');
+            assert(overlay.querySelector('.panel-access-message').textContent
+                === 'This panel needs approval before it can control this space. '
+                    + 'Ask your AV administrator to approve code .',
+            `got "${overlay.querySelector('.panel-access-message').textContent}"`);
+            app._showWaitingScreen({ access: 'approved', status: 'something-new', space: 7, code: 12 });
+            overlay = document.getElementById('panel-access-overlay');
+            assert(overlay.dataset.status === 'pending', 'an unknown status waits');
+            assert(overlay.querySelector('.panel-access-title').textContent === 'Waiting for approval',
+                'with the waiting title');
+            assert(overlay.querySelector('.panel-access-space').textContent === '7'
+                && overlay.querySelector('.panel-access-code').textContent === '12',
+            'names and codes are drawn as text');
+            // A form already opened stays open when the screen is refilled.
+            overlay.querySelector('.panel-access-claim-link').click();
+            app._showWaitingScreen({ access: 'approved', status: 'denied' });
+            assert(overlay.querySelector('.panel-access-claim-link').hidden
+                && !overlay.querySelector('.panel-access-claim').hidden,
+            'an opened form is not folded back behind its link');
+            // A full system takes an opened form away too: nothing to approve.
+            app._showWaitingScreen({ access: 'approved', status: 'unavailable' });
+            assert(overlay.querySelector('.panel-access-claim-link').hidden
+                && overlay.querySelector('.panel-access-claim').hidden,
+            'a full system hides an opened form');
+            // A screen taken off the page by something else is drawn again,
+            // not refilled where nobody can see it.
+            overlay.remove();
+            app._showWaitingScreen({ access: 'approved', status: 'denied' });
+            const again = document.getElementById('panel-access-overlay');
+            assert(again && again !== overlay, 'a new screen goes up');
+            assert(again.querySelector('.panel-access-title').textContent === 'Not approved',
+                'and it says the answer');
+        } finally {
+            clearAccessOverlay();
+        }
+    },
+
+    // What the panel says when the admin password does not approve it: the
+    // server's own sentence where it gave one, else a plain one, and a
+    // separate one when the system cannot be reached. One submit, one try.
+    async access_the_admin_password_refusals_say_what_happened() {
+        const app = mkApp();
+        const savedFetch = window.fetch;
+        const claim = async (res) => {
+            window.fetch = async () => { if (res instanceof Error) throw res; return res; };
+            return app._claimWithPassword('admin', 'x');
+        };
+        const json = (status, body) => ({ ok: status < 300, status, json: async () => body });
+        const notJson = (status) => ({ ok: status < 300, status, json: async () => { throw new Error('html'); } });
+        try {
+            const cases = [
+                [json(200, {}), { ok: true }],
+                [json(401, { detail: 'Bad credentials' }), { ok: false, message: 'That password is not correct.' }],
+                [notJson(401), { ok: false, message: 'That password is not correct.' }],
+                [json(403, { detail: 'Panel approval is turned off.' }),
+                    { ok: false, message: 'Panel approval is turned off.' }],
+                [json(409, { detail: '' }), { ok: false, message: 'This panel could not be approved. Try again.' }],
+                [json(409, { detail: { code: 'x' } }),
+                    { ok: false, message: 'This panel could not be approved. Try again.' }],
+                [notJson(500), { ok: false, message: 'This panel could not be approved. Try again.' }],
+                [new Error('offline'), { ok: false, message: "Can't reach the system. Try again." }],
+            ];
+            for (const [res, want] of cases) {
+                const got = await claim(res);
+                assert(JSON.stringify(got) === JSON.stringify(want),
+                    `${res.status || res} answered ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
+            }
+
+            // Enter and the button both fire: one attempt while one is out.
+            clearAccessOverlay();
+            let claims = 0;
+            let release;
+            window.fetch = async () => {
+                claims++;
+                await new Promise((r) => { release = r; });
+                return json(401, {});
+            };
+            app._showWaitingScreen(PENDING_ANSWER);
+            const form = document.querySelector('.panel-access-claim');
+            const submit = form.querySelector('button.panel-access-submit');
+            form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+            form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+            await Promise.resolve();
+            assert(claims === 1, `one claim while one is out, got ${claims}`);
+            assert(submit.disabled, 'the button is off while it is out');
+            release();
+            for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 0));
+            assert(!submit.disabled, 'and back once it answered');
+        } finally {
+            window.fetch = savedFetch;
+            clearAccessOverlay();
+        }
+    },
+
+    // The ended screen is drawn once and ends every hold-repeat.
+    remote_session_ended_is_drawn_once_and_ends_the_holds() {
+        clearAccessOverlay();
+        const rig = remoteRig(reply(200, '{}', true));
+        const app = mkApp();
+        const hold = window.setInterval(() => {}, 100000);
+        try {
+            app.holdTimers = { held: hold };
+            app._showRemoteSessionEnded();
+            assert(Object.keys(app.holdTimers).length === 0, 'every hold-repeat ends');
+            app.connect();
+            assert(rig.sockets === 0, 'the panel does not connect once its session is over');
+            const overlay = document.getElementById('panel-access-overlay');
+            overlay.querySelector('.panel-access-title').textContent = 'touched';
+            app._showRemoteSessionEnded();
+            assert(overlay.querySelector('.panel-access-title').textContent === 'touched',
+                'a second call draws nothing');
+            assert(document.querySelectorAll('#panel-access-overlay').length === 1, 'one screen');
+        } finally {
+            window.clearInterval(hold);
+            clearAccessOverlay();
+            rig.restore();
+        }
+    },
+
+    // Every address the panel builds for its own server keeps the path it
+    // was opened under, so it works through Remote Access as it does on the
+    // system's own address. Read when it is asked, not when the panel starts.
+    async every_server_address_follows_the_path_the_panel_was_opened_under() {
+        const savedFetch = window.fetch;
+        const savedWS = window.WebSocket;
+        const seen = [];
+        window.fetch = async (u) => {
+            seen.push(String(u));
+            return { ok: false, status: 404, json: async () => ({}) };
+        };
+        class UrlWS extends FakeWS { constructor(url) { super(); seen.push(String(url)); } }
+        UrlWS.OPEN = 1;
+        window.WebSocket = UrlWS;
+        const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const addresses = async (app) => {
+            seen.length = 0;
+            app.uiSettings = { lock_enabled: true };
+            app._pluginExtensions = {};
+            await app._loadPluginExtensions();
+            await app._fetchPluginExtToken('p 1');
+            app.uiDef = { pages: [] };          // the designer's fetch draws nothing on its own
+            app._fetchProjectAndRender();
+            await Promise.resolve();
+            app.connect();
+            await app._checkLockCode('1234');
+            await app._fetchPanelAccess();
+            await app._claimWithPassword('admin', 'x');
+            app.currentTheme = null; app.inlineTheme = null;
+            app.applyTheme({ theme_id: 'slate blue' });
+            await app._probeRemoteSession();
+            const built = [
+                app._resolveAbsoluteUrl('/api/x.mp3'),
+                app._resolveSoundUrl('chime 1'),
+                app.resolveAssetUrl('assets://a b.png'),
+                app.renderIcon('play').querySelector('use').getAttribute('href'),
+                app.renderCustomElement({ id: 'c', type: 'custom', custom_file: 'map/index.html' })
+                    ._pluginIframe.getAttribute('src'),
+                app.renderPluginElement({ id: 'p', type: 'plugin', plugin_id: 'clock', plugin_type: 'face' })
+                    ._pluginIframe.getAttribute('src'),
+            ];
+            return seen.concat(built);
+        };
+        const want = (base) => [
+            `${base}/api/plugins/extensions`,
+            `${base}/api/plugins/p%201/ext-token`,
+            `${base}/api/ui/resolved`,
+            `ws://localhost:8080${base}/ws?client=panel&namespaces=device,var,ui,system,plugin`,
+            `${base}/api/panel/unlock`,
+            `${base}/api/panel/access?time_zone=${encodeURIComponent(zone)}`,
+            `${base}/api/panel/access/claim`,
+            `${base}/api/themes/slate%20blue`,
+            `${base}/api/panel/access`,
+            // A custom control's frame asks for its own file first, to say
+            // so when it is missing (_watchIframeStatuses).
+            `${base}/api/projects/default/ui/map/index.html`,
+            `${base}/api/x.mp3`,
+            `${base}/api/plugins/audio_player/files/sounds/chime%201.mp3`,
+            `${base}/api/projects/default/assets/a%20b.png`,
+            `${base}/panel/icons.svg#play`,
+            `${base}/api/projects/default/ui/map/index.html`,
+            `${base}/api/plugins/clock/panel/face.html`,
+        ];
+        const realWarn = window.console.warn;
+        window.console.warn = () => {};
+        try {
+            for (const [path, base] of [['/tunnel/t1/panel/', '/tunnel/t1'], ['/panel', ''],
+                ['/tunnel/t1/panel/index.html?x=1', '/tunnel/t1']]) {
+                const got = await atPath(path, async () => addresses(mkApp()));
+                assert(JSON.stringify(got) === JSON.stringify(want(base)),
+                    `under ${path}:\n got  ${JSON.stringify(got)}\n want ${JSON.stringify(want(base))}`);
+            }
+        } finally {
+            window.console.warn = realWarn;
+            window.fetch = savedFetch;
+            window.WebSocket = savedWS;
+            for (const id of ['c', 'p']) document.querySelectorAll(`[data-element-id="${id}"]`).forEach((n) => n.remove());
+        }
+    },
+
     // the band carries failures of things people did. A frame
     // with no source_type is the connection refusing a message before anything
     // was read off it, so it cannot name what failed; "Rate limit exceeded" in
