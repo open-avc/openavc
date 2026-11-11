@@ -131,15 +131,20 @@ export function ChildEntities({
   // Refresh from Device, while the Live State panel on the same screen said 56
   // child keys were being shown up here.
   //
-  // Two signals, because a roster can change without any child key moving.
+  // Three signals, because a roster can change without any child key moving.
   // `connected` covers the driver itself coming and going: the types this
   // panel is built from come from a LIVE driver, so a device that was
   // disabled while this page was open answered with no types at all, and the
-  // whole section stayed gone after it was switched back on.
+  // whole section stayed gone after it was switched back on. The device's
+  // `enabled` key is written when the running system takes the device on: a
+  // page opened right after Add Device can ask before the save lands and be
+  // told there is no such device, and one that never connects moves nothing
+  // else.
   const settledKeyCount = useSettled(childKeyCount, 400);
+  const registered = liveState[`device.${deviceId}.enabled`];
   useEffect(() => {
     void reload();
-  }, [reload, settledKeyCount, connected]);
+  }, [reload, settledKeyCount, connected, registered]);
 
   // The refresh line is about the refresh that was just pressed, so it goes
   // away on its own rather than sitting over a list that has since changed --

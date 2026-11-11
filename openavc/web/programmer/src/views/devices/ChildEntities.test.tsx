@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     status: "refreshed", device_id: "mx", result: {},
   })),
   patchChildEntity: vi.fn(),
+  liveState: {} as Record<string, unknown>,
 }));
 
 vi.mock("../../api/restClient", () => ({
@@ -27,10 +28,11 @@ vi.mock("../../api/restClient", () => ({
 
 vi.mock("../../store/connectionStore", () => ({
   useConnectionStore: (selector: (s: unknown) => unknown) =>
-    selector({ liveState: {} }),
+    selector({ liveState: mocks.liveState }),
 }));
 
 import { ChildEntities } from "./ChildEntities";
+import { ApiError } from "../../api/errors";
 
 /** A declarative driver covering a family of frames: this one's size is a
  *  number somebody types into the device, not a fact about the driver. */
@@ -85,6 +87,7 @@ function panel(props: Record<string, unknown> = {}) {
 beforeEach(() => {
   mocks.listChildEntities.mockReset();
   mocks.refreshChildEntities.mockClear();
+  for (const k of Object.keys(mocks.liveState)) delete mocks.liveState[k];
 });
 
 describe("the empty state", () => {
@@ -150,6 +153,24 @@ describe("keeping up with the roster", () => {
     mocks.listChildEntities.mockResolvedValue(payload([]));
     rerender(panel({ connected: true }));
     expect(await screen.findByTestId("child-empty")).toBeTruthy();
+  });
+
+  it("asks again once the running system has the device, after a page opened before it did", async () => {
+    /** Add Device saves the device after its page opens, so the first ask
+     *  can reach the running system before the device does and get a 404.
+     *  A device that never connects moves no child key and no connection,
+     *  so the red line stayed until the page was reloaded. */
+    mocks.listChildEntities
+      .mockRejectedValueOnce(new ApiError(404, JSON.stringify({ detail: "Device 'mx' not found" })))
+      .mockResolvedValue(payload([1, 2]));
+    const { rerender } = render(panel({ connected: false }));
+    await screen.findByText(/Failed to load child entities/);
+
+    mocks.liveState["device.mx.enabled"] = true;
+    rerender(panel({ connected: false }));
+
+    await waitFor(() => expect(screen.queryByText(/Failed to load child entities/)).toBeNull());
+    expect(mocks.listChildEntities).toHaveBeenCalledTimes(2);
   });
 
   it("says what a refresh found, so it is not pressed again", async () => {
