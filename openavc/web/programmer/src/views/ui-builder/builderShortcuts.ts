@@ -59,16 +59,19 @@ export function handleBuilderKey(e: KeyboardEvent, k: BuilderKeys): void {
   // element underneath, and Delete reached the canvas and removed it.
   if (isModalOpen()) return;
   if (toggleKey(e, k) || k.previewMode) return;
-  if (typingInField(e)) {
-    // Every key typed in a field is the field's, Ctrl+S apart. With Ctrl or
-    // Cmd held, an arrow, Delete, Backspace or Escape is the field's own
-    // editing (Ctrl+Left jumps a word, Cmd+Backspace deletes to the start of
-    // the line), never a move or delete of the control being edited; undo,
-    // copy, paste and duplicate are the field's own too.
-    if (commandKey(e) && FIELD_CHORDS.has(chordLetter(e))) chordKey(e, k);
-    return;
-  }
-  if (!selectionKey(e, k) && commandKey(e)) chordKey(e, k);
+  if (typingInField(e)) fieldKey(e, k);
+  else if (!selectionKey(e, k) && commandKey(e)) chordKey(e, k);
+}
+
+/**
+ * A key typed in a field is the field's, Ctrl+S apart. With Ctrl or Cmd held,
+ * an arrow, Delete, Backspace or Escape is the field's own editing (Ctrl+Left
+ * jumps a word, Cmd+Backspace deletes to the start of the line), never a move
+ * or delete of the control being edited; undo, copy, paste and duplicate are
+ * the field's own too.
+ */
+function fieldKey(e: KeyboardEvent, k: BuilderKeys): void {
+  if (commandKey(e) && FIELD_CHORDS.has(chordLetter(e))) chordKey(e, k);
 }
 
 /** Escape, the arrows, Delete and Backspace. True when the key is spent. */
