@@ -210,3 +210,19 @@ async def test_add_elements_an_empty_box_is_stored_as_the_default_one():
     stored = _boxes(engine, "other", "landscape")
     assert "boxless" not in stored
     assert stored["plain"] == {"x": 0.0, "y": 0.0, "w": 100.0, "h": 100.0}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("box, raised", [(5, TypeError), ({"x": "abc"}, ValueError)])
+async def test_element_a_bad_box_is_met_before_an_unhide_the_chain_refuses(box, raised):
+    engine = _engine()
+    before = engine.project
+    with pytest.raises(raised):
+        await _call(engine, "update_ui_element", {
+            "element_id": "lbl", "layout_id": "portrait", "hidden": False, "placement": box,
+        })
+    assert engine.project is before
+    result = await _call(engine, "update_ui_element", {
+        "element_id": "lbl", "layout_id": "portrait", "hidden": False,
+    })
+    assert result["error"].startswith("Element 'lbl' is hidden by layout 'landscape'")
