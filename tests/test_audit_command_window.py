@@ -13,6 +13,7 @@ driver's own request.
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from types import SimpleNamespace as NS
 
@@ -494,8 +495,30 @@ async def test_a_known_secret_is_masked_wherever_the_live_view_shows_it():
     assert [c["new"] for c in view["changes"] if c["key"] == "title"] == ["***"]
     assert [e["error"] for e in view["device_errors"]] == ["bad ***"]
     assert view["refusals"]["last_error"] == "no ***"
+    # The value the command declares it sets, and the sentence and timeline line made from it.
+    assert "tulip-7391" not in json.dumps(view["effects"]) and "***" in json.dumps(view["effects"])
+    assert "tulip-7391" not in view["summary"] and "***" in view["summary"]
+    (done,) = [e.text for e in commands.session.timeline if e.kind == "command.done"]
+    assert "tulip-7391" not in done and "***" in done
     # The record keeps what the device did; only what is shown is masked.
     assert trial.refusals["last_error"] == "no tulip-7391"
+
+
+async def test_a_known_secret_in_a_status_answer_is_masked():
+    conn = _Connection()
+    conn.observer.add_secrets({"tulip-7391"})
+    commands = _pass(conn)
+
+    async def answers(command, params):
+        conn.sent("TITLE?\r")
+        conn.report("title", "tulip-7391")
+
+    conn.call = answers
+    await _done(await commands.send("query_title"))
+    view = commands.to_dict()["trials"][0]
+    assert view["query"] is not None
+    assert "tulip-7391" not in json.dumps(view["query"]) and "***" in json.dumps(view["query"])
+    assert "tulip-7391" not in view["summary"]
 
 
 async def test_the_live_view_keeps_the_newest_and_the_report_keeps_every_one():

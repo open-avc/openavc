@@ -896,8 +896,10 @@ class CommandPass:
         self.session.publish({"type": "audit.commands", "run": self.run.index, "commands": update})
 
 
-# What a trial view masks: everything in it a person typed or a device said.
-_MASKED = ("params", "changes", "device_errors", "refusals")
+# What a trial view masks: everything in it a person typed or a device said,
+# the declared effects filled from typed values and a status query's answer
+# among them. Masked before the sentence is written, so it masks that too.
+_MASKED = ("params", "changes", "device_errors", "refusals", "effects", "query")
 # What a trial keeps of what the command declares, each only when set.
 _DECLARED = ("sets", "query_for", "restarts_device_for", "available_offline", "confirm")
 
