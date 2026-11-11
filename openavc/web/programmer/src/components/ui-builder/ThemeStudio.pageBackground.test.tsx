@@ -162,6 +162,14 @@ describe("the page background's gradient", () => {
     expect(working().page_defaults!.background_gradient).toEqual({ from: "#444444", to: "#555555", angle: 360 });
   });
 
+  it("ends a gradient saved without an end colour on black, shown empty", async () => {
+    await loadedWith({ background_gradient: { from: "#111111" } });
+    expect(text(labelled("To")).value).toBe("");
+    expect(swatch(labelled("To")).value).toBe("#000000");
+    commitNumber(numberIn("Angle (deg)"), "45");
+    expect(pageDefaults()).toBe(json({ background_gradient: { from: "#111111", to: "#000000", angle: 45 } }));
+  });
+
   it("keeps an emptied gradient colour inside the gradient, with its swatch on the default", async () => {
     await loadedWith({ background_gradient: { from: "#111111", to: "#222222", angle: 45 } });
     fireEvent.change(text(labelled("From")), { target: { value: "" } });
