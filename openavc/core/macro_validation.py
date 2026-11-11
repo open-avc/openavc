@@ -431,10 +431,10 @@ def validate_macro(
 ) -> str | None:
     """Validate macro steps and triggers. Returns error string or None.
 
-    ``project`` enables soft reference checks (unknown device/group/macro ids
-    are logged as warnings, not errors — a macro may legitimately be authored
-    before the device it drives). ``extra_actions`` and ``missing_params`` see
-    validate_macro_step.
+    ``project`` enables soft reference checks (unknown device/group/macro ids,
+    and a page move's page, are logged as warnings, not errors — a macro may
+    legitimately be authored before the device it drives or the page it
+    opens). ``extra_actions`` and ``missing_params`` see validate_macro_step.
     """
     # One traversal, shared with the editor's lint door: what refuses a
     # generated macro and what marks a hand-built one are the same findings,
@@ -452,9 +452,14 @@ def validate_macro(
 
     # Soft reference checks
     if project and not errors:
+        # Imported here: openavc.ui's reviews import this module.
+        from openavc.ui.page_references import NAVIGATION_SENTINELS
+
         macro_ids = {m.id for m in project.macros} if hasattr(project, "macros") else set()
         device_ids = {d.id for d in project.devices} if hasattr(project, "devices") else set()
         group_ids = {g.id for g in project.device_groups} if hasattr(project, "device_groups") else set()
+        ui = getattr(project, "ui", None)
+        page_ids = {p.id for p in ui.pages} if ui is not None and hasattr(ui, "pages") else set()
         # A group's MEMBERS are ids too, and nothing anywhere checked them: the
         # project save is shape-only, so a group listing a device that does not
         # exist saves silently and the fan-out then reports the ghost as an
@@ -483,6 +488,9 @@ def validate_macro(
             if action == "macro" and step.get("macro"):
                 if step["macro"] not in macro_ids:
                     warnings.append(f"{path}: macro '{step['macro']}' not found in project")
+            page = step.get("page")
+            if action == "ui.navigate" and page and page not in page_ids and page not in NAVIGATION_SENTINELS:
+                warnings.append(f"{path}: page '{page}' not found in project")
             for branch in ("then_steps", "else_steps"):
                 for i, sub in enumerate(step.get(branch) or []):
                     if isinstance(sub, dict):

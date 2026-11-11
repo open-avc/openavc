@@ -22,13 +22,15 @@ interface Fixture {
   pages?: Record<string, unknown>[];
   masters?: El[];
   macros?: Record<string, unknown>[];
+  groups?: Record<string, unknown>[];
   idle?: string;
 }
 
-function project({ elements = [], pages, masters = [], macros = [], idle }: Fixture): ProjectConfig {
+function project({ elements = [], pages, masters = [], macros = [], groups, idle }: Fixture): ProjectConfig {
   return {
     project: { id: "p", name: "P" },
     devices: [{ id: "amp", name: "Amp", driver: "acme_amp" }],
+    ...(groups ? { device_groups: groups } : {}),
     macros: [{ id: "all_on", name: "All On", steps: [] }, ...macros],
     ui: {
       settings: idle === undefined ? {} : { idle_page: idle },
@@ -513,7 +515,7 @@ describe("validateProject: the page review sees the master elements", () => {
 });
 
 describe("validateProject: macro steps", () => {
-  it("names a missing device or macro at each step, nested branches included, in order", () => {
+  it("names a missing device, macro or device group at each step, nested branches included, in order", () => {
     const macros = [{
       id: "startup", name: "Startup",
       steps: [
@@ -538,7 +540,13 @@ describe("validateProject: macro steps", () => {
       { severity: "error", message: 'Macro "ghost_macro" not found', location: 'Macro "Startup" > Run the rest' },
       { severity: "error", message: 'Macro "deep_ghost" not found', location: 'Macro "Startup" > call macro' },
       { severity: "error", message: 'Device "else_ghost" not found', location: 'Macro "Startup" > device.command' },
+      { severity: "error", message: 'Device group "ghost_group" not found', location: 'Macro "Startup" > group.command' },
     ]);
+  });
+
+  it("names a device group that is in the project as found", () => {
+    const macros = [{ id: "m", name: "M", steps: [{ action: "group.command", group: "rooms", command: "on" }] }];
+    expect(checked(project({ macros, groups: [{ id: "rooms", name: "Rooms", device_ids: ["amp"] }] }))).toEqual([]);
   });
 
   it("reports what the platform said about any step, after its own reference", () => {
@@ -551,7 +559,8 @@ describe("validateProject: macro steps", () => {
       [group, ["group refused"]],
       [nested, ["nested said"]],
     ]);
-    expect(checked(project({ macros }), answers)).toEqual([
+    const groups = [{ id: "rooms", name: "Rooms", device_ids: [] }];
+    expect(checked(project({ macros, groups }), answers)).toEqual([
       { severity: "error", message: 'Device "ghost_dev" not found', location: 'Macro "M" > device.command' },
       { severity: "error", message: "step refused", location: 'Macro "M" > device.command' },
       { severity: "error", message: "group refused", location: 'Macro "M" > All rooms' },
@@ -559,15 +568,19 @@ describe("validateProject: macro steps", () => {
     ]);
   });
 
-  it("says nothing about a step's page, the panel's own targets included", () => {
+  it("names a step's page that is not in the project, and never the panel's own targets", () => {
     const macros = [{
       id: "m", name: "M",
       steps: [
         { action: "ui.navigate", page: "ghost_page" },
         { action: "ui.navigate", page: "$back", description: "Back" },
+        { action: "ui.navigate", page: "$dismiss" },
+        { action: "ui.navigate", page: "other", description: "Other page" },
       ],
     }];
-    expect(checked(project({ macros }))).toEqual([]);
+    expect(checked(project({ macros }))).toEqual([
+      { severity: "error", message: 'Navigate to deleted page "ghost_page"', location: 'Macro "M" > ui.navigate' },
+    ]);
   });
 
   it("reads only the field the step's action names", () => {

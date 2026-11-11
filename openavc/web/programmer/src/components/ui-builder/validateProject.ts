@@ -69,6 +69,8 @@ export function stateKeyDevice(key: string | undefined): string | null {
 /** What a project's references resolve against, and what the platform said
  *  about the commands it was asked about (`validateProject`'s second argument). */
 interface ProjectRefs extends BindingRefIds {
+  /** The device groups a macro step may name; no control action names one. */
+  groupIds: ReadonlySet<string>;
   commandIssues?: Map<Record<string, unknown>, string[]>;
 }
 
@@ -336,17 +338,22 @@ function masterIssues(mel: MasterElement, refs: ProjectRefs, theme: ElementDefau
 
 /** What a finding calls a step with no description, by the kind of thing the
  *  step names. A step's page is not checked, so a page has no entry. */
-const UNNAMED_STEP: Record<Exclude<BrokenReference["kind"], "page">, string> = {
+const UNNAMED_STEP: Record<BrokenReference["kind"], string> = {
   device: "device.command",
   macro: "call macro",
+  page: "ui.navigate",
 };
 
-/** The device or macro a step names that is not in the project: the field an
- *  action names, read as a control's action is (`brokenReference`), in the same
- *  words. `at` places a finding, given what to call a step with no description. */
+/** The device, macro or page a step names that is not in the project: the
+ *  field an action names, read as a control's action is (`brokenReference`), in
+ *  the same words; and a group command's device group, which no control action
+ *  names. `at` places a finding, given what to call a step with no description. */
 function stepReferenceIssues(step: MacroStep, at: (unnamed: string) => string, refs: ProjectRefs): ValidationIssue[] {
+  if (step.action === "group.command" && step.group && !refs.groupIds.has(step.group)) {
+    return [{ severity: "error", message: `Device group "${step.group}" not found`, location: at("group.command") }];
+  }
   const broken = brokenReference(step as unknown as Record<string, unknown>, refs);
-  if (!broken || broken.kind === "page") return [];
+  if (!broken) return [];
   return [{ severity: "error", message: validateSays(broken), location: at(UNNAMED_STEP[broken.kind]) }];
 }
 
@@ -394,6 +401,7 @@ export function validateProject(
     pageIds: new Set(project.ui.pages.map((p) => p.id)),
     deviceIds: new Set(project.devices.map((d) => d.id)),
     macroIds: new Set(project.macros.map((m) => m.id)),
+    groupIds: new Set((project.device_groups ?? []).map((g) => g.id)),
     commandIssues,
   };
   const theme = sliderThemeDefaults(project);
