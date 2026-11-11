@@ -1103,26 +1103,26 @@ def test_osc_handler_bare_value_survives_encoding():
     ],
 )
 def test_bare_values_take_the_tag_their_type_implies(value, expected):
-    from openavc.simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.osc_addresses import normalize_osc_args as _normalize_osc_args
 
     assert _normalize_osc_args([value]) == [expected]
 
 
 def test_a_typed_pair_passes_through_untouched():
-    from openavc.simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.osc_addresses import normalize_osc_args as _normalize_osc_args
 
     assert _normalize_osc_args([("f", 0.25)]) == [("f", 0.25)]
     assert _normalize_osc_args([["i", 3]]) == [("i", 3)]
 
 
 def test_a_lone_value_outside_a_list_is_accepted():
-    from openavc.simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.osc_addresses import normalize_osc_args as _normalize_osc_args
 
     assert _normalize_osc_args("hello") == [("s", "hello")]
 
 
 def test_no_args_is_still_no_args():
-    from openavc.simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.osc_addresses import normalize_osc_args as _normalize_osc_args
 
     assert _normalize_osc_args(None) == []
     assert _normalize_osc_args([]) == []
@@ -1131,7 +1131,7 @@ def test_no_args_is_still_no_args():
 def test_a_pair_with_an_unknown_type_tag_is_loud():
     """Loud beats silent: the old behavior turned this into a garbage type tag
     and an empty payload, which looked like a working simulator."""
-    from openavc.simulator.yaml_auto import _normalize_osc_args
+    from openavc.simulator.osc_addresses import normalize_osc_args as _normalize_osc_args
 
     with pytest.raises(ValueError, match="type_tag"):
         _normalize_osc_args([("zz", 1)])

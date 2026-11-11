@@ -26,6 +26,7 @@ the PushChannels mixin in push_channels.
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import logging
 import math
@@ -61,6 +62,15 @@ from openavc.drivers.inline_protocol import (
 from openavc.transport.binary_helpers import encode_escape_sequences
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
+from openavc.simulator.osc_addresses import (
+    PushTarget,
+    address_rules,
+    normalize_osc_args,
+    push_targets,
+    system_reply,
+    tagged,
+    type_tag,
+)
 from openavc.simulator.osc_simulator import OSCDispatchMixin
 from openavc.simulator.push_channels import PushChannels
 from openavc.simulator.reply_templates import (
@@ -396,12 +406,12 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # Push notification tracking: prevent echo during command processing
         self._handling_command = False
         self._handling_osc = False
-        # OSC push: build the reverse state→address map (the client to push to
+        # OSC push: where each variable's change goes (the client to push to
         # is the datagram server's _last_client_addr)
-        self._osc_state_to_address: dict[str, tuple[str, int, str, dict[str, str] | None]] = {}
+        self._osc_state_to_address: dict[str, PushTarget] = {}
         if self._is_osc:
             self._build_osc_address_handlers()
-            self._build_osc_state_reverse_map()
+            self._osc_state_to_address = push_targets(self._osc_address_handlers)
 
         # Merge explicit simulator: section if present
         sim_section = driver_def.get("simulator", {})
@@ -806,89 +816,75 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         """Handle a decoded OSC message using the response address mappings.
 
         The OSC override point a Python simulator implements by hand; here it
-        is answered from the driver's own response definitions.
-
-        Two behaviors:
-        - Message WITH args: update state from arg values, echo back
-        - Message WITHOUT args: respond with current state values (query)
-
-        Also checks script handlers from the simulator: section.
+        is answered from the driver's own definition: the console's own
+        addresses first (osc_addresses.system_reply), then a script handler
+        from the simulator: section, then the first response rule whose
+        address matches. A message WITH args sets the variables its mappings
+        name and is echoed back (the standard OSC feedback pattern); one
+        WITHOUT reports them.
         """
-        import fnmatch
-
-        # Special system addresses (handle before address handlers so they
-        # aren't intercepted by response patterns)
-        if address == "/xremote":
-            # Real X32 starts pushing state changes after /xremote. Send back
-            # a heartbeat so the connection watchdog sees activity.
-            return [("/xremote", [])]
-        if address == "/info":
-            model = self._state.get("console_model", "Simulator")
-            firmware = self._state.get("firmware_version", "1.0.0")
-            return [("/info", [
-                ("s", "V2.07"), ("s", "osc-server"),
-                ("s", model), ("s", firmware),
-            ])]
-        if address == "/status":
-            return [("/status", [
-                ("s", "active"), ("s", "127.0.0.1"), ("s", "osc-server"),
-            ])]
-        if address.startswith("/-action/") or address.startswith("/-show/"):
-            return [(address, args)] if args else [(address, [])]
-
-        # Try script handlers first (from simulator: command_handlers with address:)
-        for handler in self._osc_script_handlers:
-            if fnmatch.fnmatch(address, handler.address_pattern):
-                return self._execute_osc_script_handler(handler, address, args)
-
-        # Match against response address patterns
+        system = system_reply(address, args, self._state)
+        if system is not None:
+            return system
+        script = next(
+            (h for h in self._osc_script_handlers
+             if fnmatch.fnmatch(address, h.address_pattern)),
+            None,
+        )
+        if script is not None:
+            return self._execute_osc_script_handler(script, address, args)
         for addr_pattern, mappings in self._osc_address_handlers:
-            if not fnmatch.fnmatch(address, addr_pattern):
-                continue
-
-            if args:
-                # SET: update state from incoming args
-                for mapping in mappings:
-                    arg_idx = mapping.get("arg", 0)
-                    state_key = mapping.get("state")
-                    if state_key and arg_idx < len(args):
-                        _, value = args[arg_idx]
-                        value_map = mapping.get("map")
-                        mapped = value_map.get(str(value)) if value_map else None
-                        if mapped is not None:
-                            value = mapped
-                        else:
-                            value = self._from_wire(state_key, value)
-                        self.set_state(state_key, self._coerce_value(state_key, value))
-                # Echo the message back (standard OSC feedback pattern)
-                return [(address, args)]
-            else:
-                # QUERY: respond with current state values
-                resp_args: list[tuple[str, Any]] = []
-                for mapping in mappings:
-                    state_key = mapping.get("state")
-                    value_type = mapping.get("type", "float")
-                    if state_key:
-                        value = self._state.get(state_key, 0)
-                        tag = _type_to_osc_tag(value_type)
-                        # Apply reverse value map (e.g., mute false → OSC 1)
-                        reverse_info = self._osc_state_to_address.get(state_key)
-                        raw = None
-                        if reverse_info:
-                            _, _, _, reverse_map = reverse_info
-                            if reverse_map:
-                                raw = reverse_map.get(str(value).lower())
-                                if raw is not None:
-                                    value = int(raw) if tag == "i" else float(raw) if tag == "f" else raw
-                        if raw is None:
-                            value = self._to_wire(state_key, value)
-                        resp_args.append((tag, value))
-                if resp_args:
-                    return [(address, resp_args)]
-                return [(address, [])]
-
+            if fnmatch.fnmatch(address, addr_pattern):
+                return self._osc_rule_answer(address, args, mappings)
         logger.debug("%s: unmatched OSC address: %s", self.device_id, address)
         return None
+
+    def _osc_rule_answer(
+        self, address: str, args: list[tuple[str, Any]], mappings: list[dict]
+    ) -> list[tuple[str, list[tuple[str, Any]]]]:
+        """A message to a rule's address: with args it sets and is echoed
+        back, without it is answered with the variables' values."""
+        if args:
+            self._osc_set(mappings, args)
+            return [(address, args)]
+        return [(address, self._osc_query(mappings))]
+
+    def _osc_set(self, mappings: list[dict], args: list[tuple[str, Any]]) -> None:
+        """Each mapping's argument into its variable: through the mapping's
+        map, else the variable's conversion, then its type."""
+        for mapping in mappings:
+            arg_idx = mapping.get("arg", 0)
+            state_key = mapping.get("state")
+            if state_key and arg_idx < len(args):
+                _, value = args[arg_idx]
+                value_map = mapping.get("map")
+                mapped = value_map.get(str(value)) if value_map else None
+                if mapped is None:
+                    mapped = self._from_wire(state_key, value)
+                self.set_state(state_key, self._coerce_value(state_key, mapped))
+
+    def _osc_query(self, mappings: list[dict]) -> list[tuple[str, Any]]:
+        """Each variable the mappings name, as an argument in its mapping's
+        tag."""
+        answer: list[tuple[str, Any]] = []
+        for mapping in mappings:
+            state_key = mapping.get("state")
+            value_type = mapping.get("type", "float")
+            if state_key:
+                tag = type_tag(value_type)
+                answer.append((tag, self._osc_answer(state_key, tag)))
+        return answer
+
+    def _osc_answer(self, state_key: str, tag: str) -> Any:
+        """A variable's value as a query answers it: the device's token from
+        the variable's push target (e.g. mute false -> 1) cast to ``tag``,
+        else the device's number, uncast."""
+        value = self._state.get(state_key, 0)
+        target = self._osc_state_to_address.get(state_key)
+        raw = target.device_token(value) if target else None
+        if raw is not None:
+            return tagged(raw, tag)
+        return self._to_wire(state_key, value)
 
     def _execute_osc_script_handler(
         self, handler: OSCScriptHandler, address: str, args: list[tuple[str, Any]]
@@ -897,7 +893,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         response_data: list[tuple[str, list[tuple[str, Any]]]] = []
 
         def respond(resp_address: str, resp_args: Any = None) -> None:
-            response_data.append((resp_address, _normalize_osc_args(resp_args)))
+            response_data.append((resp_address, normalize_osc_args(resp_args)))
 
         state_proxy = _StateProxy(self._state, self.set_state)
 
@@ -2335,47 +2331,12 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return json.dumps(body).encode()
 
     def _build_osc_address_handlers(self) -> None:
-        """Build OSC address → state mapping from responses with 'address' key."""
-        responses = self._driver_def.get("responses", [])
-        for resp_def in responses:
-            address = resp_def.get("address")
-            if not address:
-                continue
-            mappings = resp_def.get("mappings", [])
-            if mappings:
-                self._osc_address_handlers.append((address, mappings))
-
+        """The address rules a message is matched against (osc_addresses)."""
+        self._osc_address_handlers = address_rules(self._driver_def.get("responses", []))
         logger.info(
             "Auto-gen OSC simulator for %s: %d address handlers",
             self.driver_id, len(self._osc_address_handlers),
         )
-
-    def _build_osc_state_reverse_map(self) -> None:
-        """Build reverse map: state_key → (osc_address, arg_idx, tag, reverse_value_map).
-
-        Used to push state changes from the simulator UI to the connected driver
-        via OSC messages (the OSC equivalent of TCP notifications).
-        """
-        for addr_pattern, mappings in self._osc_address_handlers:
-            for mapping in mappings:
-                state_key = mapping.get("state")
-                if not state_key:
-                    continue
-                arg_idx = mapping.get("arg", 0)
-                value_type = mapping.get("type", "float")
-                tag = _type_to_osc_tag(value_type)
-
-                reverse_map: dict[str, str] | None = None
-                value_map = mapping.get("map")
-                if value_map:
-                    reverse_map = {
-                        str(state_val).lower(): str(osc_val)
-                        for osc_val, state_val in value_map.items()
-                    }
-
-                self._osc_state_to_address[state_key] = (
-                    addr_pattern, arg_idx, tag, reverse_map,
-                )
 
     # ── Merge explicit simulator: section ──
 
@@ -2568,34 +2529,20 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return self._peer_heard()
 
     def _push_osc_state(self, key: str, value: Any) -> None:
-        """Send an OSC message to the connected driver for a state change."""
+        """Send an OSC message to the connected driver for a state change:
+        the device's token from the reverse map (nothing when the map has none
+        for the value), else the device's number, cast to the target's tag."""
         from openavc.transport.osc_codec import osc_encode_message
 
-        addr, _arg_idx, tag, reverse_map = self._osc_state_to_address[key]
-
-        if reverse_map:
-            lookup = str(value).lower()
-            raw = reverse_map.get(lookup)
+        target = self._osc_state_to_address[key]
+        if target.reverse_map:
+            raw = target.device_token(value)
             if raw is None:
                 return
-            if tag == "i":
-                osc_value: Any = int(raw)
-            elif tag == "f":
-                osc_value = float(raw)
-            else:
-                osc_value = raw
+            osc_value = tagged(raw, target.tag)
         else:
-            value = self._to_wire(key, value)
-            if tag == "f":
-                osc_value = float(value)
-            elif tag == "i":
-                osc_value = int(value) if not isinstance(value, bool) else (1 if value else 0)
-            elif tag == "s":
-                osc_value = str(value)
-            else:
-                osc_value = value
-
-        self.push_datagram(osc_encode_message(addr, [(tag, osc_value)]))
+            osc_value = tagged(self._to_wire(key, value), target.tag)
+        self.push_datagram(osc_encode_message(target.address, [(target.tag, osc_value)]))
 
     def _script_reply(self, key: str) -> str | None:
         """A script handler's ``reply(key)``: the text this device sends to
@@ -3227,81 +3174,3 @@ class OSCScriptHandler:
     def __init__(self, address_pattern: str, code: Any):
         self.address_pattern = address_pattern
         self.code = code
-
-
-def _type_to_osc_tag(value_type: str) -> str:
-    """Map a state variable type to an OSC type tag."""
-    return {
-        "float": "f",
-        "number": "f",
-        "integer": "i",
-        "boolean": "i",
-        "string": "s",
-    }.get(value_type, "f")
-
-
-# The type tags osc_encode_message understands.
-_OSC_TYPE_TAGS = frozenset("fishdbTFN")
-
-
-def _osc_tag_for(value: Any) -> str:
-    """The OSC type tag a bare Python value implies.
-
-    Booleans send ``i`` as 1/0 rather than OSC's payload-free ``T``/``F``,
-    because that is what AV gear expects and what ``_type_to_osc_tag`` already
-    picks for a boolean state variable.
-    """
-    if isinstance(value, bool):
-        return "i"
-    if isinstance(value, int):
-        return "i"
-    if isinstance(value, float):
-        return "f"
-    if isinstance(value, (bytes, bytearray)):
-        return "b"
-    if value is None:
-        return "N"
-    return "s"
-
-
-def _normalize_osc_args(args: Any) -> list[tuple[str, Any]]:
-    """Coerce a script handler's ``respond`` arguments into (tag, value) pairs.
-
-    ``osc_encode_message`` wants ``(type_tag, value)`` pairs, but the author
-    guide describes the OSC handler contract as "``respond(address, args)``
-    sends an OSC message" with an ``args`` *list* — which reads as a list of
-    values, so handlers get written as ``respond(addr, [cue])``. That used to
-    reach the encoder untouched, where ``for tag, value in args`` unpacked the
-    two-character string ``"12"`` into tag ``"1"`` and value ``"2"``: no branch
-    matched the bogus tag, so the message went out with a garbage type tag and
-    **no payload at all**. The driver's ``arg: 0`` mapping then found nothing,
-    and a simulator that answers every request with an empty reply is
-    indistinguishable from one that works.
-
-    So accept both shapes. An already-typed pair passes through; a bare value
-    gets the tag its Python type implies. A sequence that is neither raises,
-    which the caller's ``except Exception`` logs — loud beats silent here.
-
-    One ambiguity is unavoidable and deliberate: ``["s", "hello"]`` reads as a
-    typed pair, not as two strings. The typed form is the documented one, and a
-    bare data value that happens to be a lone type-tag letter is far less
-    likely than a handler passing a pair.
-    """
-    if args is None:
-        return []
-    if not isinstance(args, (list, tuple)):
-        args = [args]
-
-    normalized: list[tuple[str, Any]] = []
-    for arg in args:
-        if isinstance(arg, (tuple, list)):
-            if len(arg) == 2 and isinstance(arg[0], str) and arg[0] in _OSC_TYPE_TAGS:
-                normalized.append((arg[0], arg[1]))
-                continue
-            raise ValueError(
-                f"OSC respond() argument {arg!r} is not a (type_tag, value) "
-                f"pair — the type tag must be one of {sorted(_OSC_TYPE_TAGS)}. "
-                f"Pass a bare value to have its type inferred."
-            )
-        normalized.append((_osc_tag_for(arg), arg))
-    return normalized

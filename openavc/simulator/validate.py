@@ -68,6 +68,7 @@ import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.simulator.capacity import capacity_problems
+from openavc.simulator.osc_addresses import SYSTEM_ADDRESSES, SYSTEM_PREFIXES
 from openavc.simulator.single_client import single_client_problems
 from openavc.drivers.compiled_protocol import (
     decode_delimiter,
@@ -1037,13 +1038,6 @@ _SIMULATOR_SERVED_TRANSPORTS = frozenset(
 
 # ── OSC coverage (address-based) ──
 
-# Addresses the simulator answers without any handler (yaml_auto
-# _handle_osc_message): subscription renewal, console info/status, and the
-# action/show namespaces it echoes back.
-_OSC_SPECIAL_ADDRESSES = {"/xremote", "/info", "/status"}
-_OSC_SPECIAL_PREFIXES = ("/-action/", "/-show/")
-
-
 def _collect_osc_patterns(sim_handlers: list, responses: list) -> list[str]:
     """Address patterns (fnmatch) the OSC simulator matches against: script
     handlers with address:, plus response entries with address: (the sim
@@ -1059,7 +1053,9 @@ def _collect_osc_patterns(sim_handlers: list, responses: list) -> list[str]:
 
 
 def _osc_address_covered(address: str, patterns: list[str]) -> bool:
-    if address in _OSC_SPECIAL_ADDRESSES or address.startswith(_OSC_SPECIAL_PREFIXES):
+    # The console's own addresses, which the simulator answers before any
+    # rule (osc_addresses.system_reply).
+    if address in SYSTEM_ADDRESSES or address.startswith(SYSTEM_PREFIXES):
         return True
     return any(fnmatch.fnmatch(address, p) for p in patterns)
 
