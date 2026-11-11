@@ -186,7 +186,11 @@ export function usePaletteDrop(opts: {
 
   useAltTracker(d);
   const updatePreview = useCallback(() => publish(previewNow(d, page, layoutId)), [d, page, layoutId]);
-  const trackPointer = usePointerTracker(d, updatePreview);
+  // The pointer listener outlives the render that started the drag, so it
+  // redraws through the newest preview: the page as it is now, its snap too.
+  const latestPreview = useRef(updatePreview);
+  useEffect(() => { latestPreview.current = updatePreview; }, [updatePreview]);
+  const trackPointer = usePointerTracker(d, latestPreview);
 
   const onDragStart = useCallback((event: DragStartEvent) => {
     if (begin(d, event, panelElements)) trackPointer();
@@ -212,8 +216,9 @@ export function usePaletteDrop(opts: {
     if (page) onAdd(type, clickLanding(page, layoutId, defaultElementSize(type, panelElements)));
   }, [page, layoutId, panelElements, onAdd]);
 
-  // A drag in flight when the view unmounts would leave the tracker attached.
-  useEffect(() => () => d.stopTracking?.(), [d]);
+  // A drag in flight when the view unmounts would leave the tracker attached
+  // and its footprint in the Builder store for the next visit to draw.
+  useEffect(() => () => { finish(d); }, [d]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   return {
@@ -271,12 +276,12 @@ function useAltRedraw(dragging: boolean, redraw: () => void) {
 
 /** Follow the pointer from the window, redrawing the preview on each move;
  *  `d.stopTracking` lets go. Starting again lets go of the last one first. */
-function usePointerTracker(d: Drag, redraw: () => void) {
+function usePointerTracker(d: Drag, redraw: { current: () => void }) {
   return useCallback(() => {
     d.stopTracking?.();
     const onMove = (ev: PointerEvent) => {
       d.pointer = { x: ev.clientX, y: ev.clientY };
-      redraw();
+      redraw.current();
     };
     window.addEventListener("pointermove", onMove);
     d.stopTracking = () => {

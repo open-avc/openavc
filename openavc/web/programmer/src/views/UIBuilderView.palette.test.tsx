@@ -22,6 +22,7 @@ vi.mock("../components/ui-builder/ThemeStudio", async () => (await import("../te
 vi.mock("../components/ui-builder/StylesheetEditor", async () => (await import("../test/uiBuilderMocks")).stubs.StylesheetEditor);
 
 import { UIBuilderView } from "./UIBuilderView";
+import { useProjectStore } from "../store/projectStore";
 import { usePluginStore } from "../store/pluginStore";
 import {
   builder,
@@ -455,6 +456,38 @@ describe("dragging a control in from the palette", () => {
     r.unmount();
     move(600, 300);
     expect(builder().paletteDragPreview).toBeNull();
+  });
+
+  it("leaves no drag behind in the Builder when the page goes away mid-drag", async () => {
+    canvas();
+    const r = await renderPage(UIBuilderView);
+    start("button");
+    move(600, 300);
+    expect(builder().paletteDragPreview).not.toBeNull();
+    r.unmount();
+    expect(builder().paletteDragPreview).toBeNull();
+    expect(builder().activeDragSource).toBeNull();
+  });
+
+  it("follows the page as it is now when its snap changes mid-drag", async () => {
+    canvas();
+    await renderPage(UIBuilderView);
+    start("button");
+    // The box centred at (20%, 75%): clear of the page's centre and of every
+    // other control's edges, so only the snap grid decides where it lands.
+    move(300, 425);
+    const snapped = builder().paletteDragPreview!.placement;
+    const pages = useProjectStore.getState().project!.ui.pages.map((pg) =>
+      pg.id === "main" ? { ...pg, snap: { enabled: true, x: 100 / 3, y: 100 / 3 } } : pg,
+    );
+    call(() => useProjectStore.getState().update({ ui: { ...useProjectStore.getState().project!.ui, pages } }));
+    move(300, 425);
+    const moved = builder().paletteDragPreview!.placement;
+    expect(moved).not.toEqual(snapped);
+    // An Alt press and release redraws from the page as it is now: the same box.
+    press("Alt", { alt: true });
+    call(() => window.dispatchEvent(new KeyboardEvent("keyup", { key: "Alt", altKey: false, bubbles: true })));
+    expect(builder().paletteDragPreview!.placement).toEqual(moved);
   });
 
   it("tells the drag library to drop on the pointer and not to scroll", async () => {
