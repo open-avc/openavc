@@ -16,7 +16,7 @@ vi.mock("../../api/restClient", () => ({
 }));
 
 import { LiveTestPanel } from "./LiveTestPanel";
-import { CommandConfirmField } from "./CommandBuilder";
+import { CommandConfirmField } from "./CommandConfirmField";
 import { commandConfirmMessage } from "../shared/commandParams";
 import type { DriverDefinition } from "../../api/types";
 

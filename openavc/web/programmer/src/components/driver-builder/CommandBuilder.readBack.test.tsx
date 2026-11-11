@@ -8,7 +8,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // the command itself back (true) until queries are chosen instead; and a
 // command renamed while another reads back with it keeps the reference.
 
-import { CommandBuilder, readBackValue } from "./CommandBuilder";
+import { CommandBuilder } from "./CommandBuilder";
+import { readBackValue } from "./ReadBackField";
 import type { DriverDefinition } from "../../api/types";
 
 function draftWith(
