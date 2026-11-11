@@ -15,8 +15,9 @@ Three surfaces have to agree or the gap reopens somewhere else:
 * the **field comments** name those types, since the stale "slider/fader" one
   is what made this look like a slider feature for as long as it did.
 
-There is no vitest/jest harness for the Builder's React components, so -- like
-the other frontend regression tests here -- the Builder half is pinned to source.
+Like the other frontend regression tests here, the Builder half is pinned to
+source: which component the Basic section draws for each type, and what that
+component offers. (The IDE's own `BasicProperties.pinned.test.tsx` renders it.)
 """
 
 from __future__ import annotations
@@ -28,10 +29,18 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
 PROJECT_LOADER = OPENAVC_ROOT / "openavc" / "core" / "project_loader.py"
 TYPES_TS = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "api" / "types.ts"
-BASIC_PROPS = (
+PROPERTY_SECTIONS = (
     OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "components" / "ui-builder"
-    / "PropertySections" / "BasicProperties.tsx"
+    / "PropertySections"
 )
+BASIC_PROPS = PROPERTY_SECTIONS / "BasicProperties.tsx"
+VALUE_FIELDS = PROPERTY_SECTIONS / "ValueFields.tsx"
+
+#: The component the Basic section draws for each type checked here, and its file.
+TYPE_SECTIONS = {
+    "gauge": ("GaugeFields", VALUE_FIELDS),
+    "label": ("LabelTextFields", BASIC_PROPS),
+}
 
 #: Every element type that draws a number and therefore reads the property.
 HONORING_TYPES = ("slider", "fader", "gauge", "label")
@@ -41,18 +50,26 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _element_type_block(src: str, el_type: str) -> str:
-    """The JSX guarded by `{element.type === "<el_type>" && (`, to the next guard.
+def _element_type_block(el_type: str) -> str:
+    """The component the Basic section draws for `el_type`, from its own file.
 
+    The section picks it from its TYPE_FIELDS table, which is checked first; the
+    slice runs from that component's `function` line to the next top-level one.
     Slicing is what makes the assertion about the section an author actually
     sees when that element is selected. A bare substring search over the whole
     file would pass on the slider's copy of the field.
     """
-    guard = f'{{element.type === "{el_type}" && ('
-    start = src.index(guard)
-    rest = src[start + len(guard):]
-    end = rest.find("{element.type ")
-    return rest[:end] if end != -1 else rest
+    name, path = TYPE_SECTIONS[el_type]
+    assert f"  {el_type}: {name},\n" in _read(BASIC_PROPS), (
+        f"the Basic section no longer draws {name} for a {el_type}"
+    )
+    src = _read(path)
+    start = src.index(f"function {name}(")
+    rest = src[start:]
+    end = rest.find("\nfunction ", 1)
+    later = rest.find("\nexport function ", 1)
+    ends = [i for i in (end, later) if i != -1]
+    return rest[:min(ends)] if ends else rest
 
 
 def test_panel_label_rounds_through_the_shared_helper() -> None:
@@ -97,7 +114,7 @@ def test_decimals_are_clamped_before_tofixed() -> None:
 
 def test_builder_offers_shown_decimals_for_every_honoring_type() -> None:
     """A runtime capability the Builder hides cannot be reached by hand."""
-    src = _read(BASIC_PROPS)
+    src = _read(BASIC_PROPS) + _read(VALUE_FIELDS)
     assert src.count("<ShownDecimalsRow") == 3, (
         "expected one ShownDecimalsRow per authoring section: the shared "
         "slider/fader block, the gauge block, and the label block"
@@ -105,7 +122,7 @@ def test_builder_offers_shown_decimals_for_every_honoring_type() -> None:
     # The shared slider/fader component, by the one prop only it passes.
     assert 'placeholder="Auto"' in src, "the slider/fader row lost its placeholder"
     for el_type in ("gauge", "label"):
-        assert "<ShownDecimalsRow" in _element_type_block(src, el_type), (
+        assert "<ShownDecimalsRow" in _element_type_block(el_type), (
             f"the {el_type} properties panel never offers Shown decimals, so the "
             f"panel honours a setting nobody can reach"
         )
@@ -113,9 +130,9 @@ def test_builder_offers_shown_decimals_for_every_honoring_type() -> None:
 
 def test_builder_placeholders_state_each_default() -> None:
     """The empty-field default differs per type; the placeholder is where it shows."""
-    gauge = _element_type_block(_read(BASIC_PROPS), "gauge")
+    gauge = _element_type_block("gauge")
     assert 'placeholder="1"' in gauge, "an unset gauge draws one decimal"
-    label = _element_type_block(_read(BASIC_PROPS), "label")
+    label = _element_type_block("label")
     assert 'placeholder="As reported"' in label, "an unset label prints the value as-is"
     assert "Text is shown exactly as the device reports it" in label, (
         "the label needs the note that only numbers are rounded -- otherwise "
