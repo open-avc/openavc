@@ -473,3 +473,11 @@ def test_a_text_id_that_is_all_digits_misses_its_project_label():
     assert sim._child_roster["zone"] == ["001", "B2"]
     assert sim.to_info_dict()["children"]["zone"]["entries"] == [
         {"id": "001", "label": "Zone 001"}, {"id": "B2", "label": "Bar"}]
+
+
+def test_an_empty_unit_leaves_the_slider_without_one():
+    info = YAMLAutoSimulator._build_info({"state_variables": {
+        "a": {"type": "number", "min": 0, "max": 1, "unit": ""},
+        "b": {"type": "integer", "min": 0, "max": 1, "unit": None},
+    }})
+    assert [list(c) for c in info["controls"]] == [["type", "key", "label", "min", "max", "step"]] * 2
