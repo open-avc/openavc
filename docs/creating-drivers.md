@@ -2934,6 +2934,8 @@ In the **Code** view, the **Python Drivers** section header has an **Import** bu
 
 A single `.py` file is enough to control hardware on its own; importing the bundle is what brings the simulator and the discovery companion too.
 
+A bundle can be up to 25 MB, or 12 MB when you import it through Remote Access.
+
 > A Python driver is executable code. Importing one runs it inside the OpenAVC server, so only import drivers from a source you trust.
 
 ### Installing Python Drivers

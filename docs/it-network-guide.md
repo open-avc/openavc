@@ -629,6 +629,7 @@ The cloud platform can open a remote access tunnel to the device's web interface
 - No inbound ports are opened on the device or the network
 - Tunnel connections are authenticated with a per-tunnel token
 - Tunnels are closed when the remote session ends or when the device disconnects
+- One upload through a tunnel can be at most 12 MB. A larger file is refused with a message saying to upload it from a computer on the system's own network
 
 **What a tunnel grants.** The tunnel is a transport, not a set of permissions. A request arriving through it is treated as a remote request in every respect: it must present the Programmer credential, it is rate-limited, and its failed logins count toward the brute-force lockout. The proxy delivers traffic to the device's own loopback interface, and that fact earns the caller nothing. Surfaces the device reserves for its own screen, host network configuration and the network identifiers on the setup page, are reached only with the Programmer credential when the request comes through a tunnel. The one thing a tunnel does grant is the room panel: Remote Panel needs no panel approval, because the cloud has already decided who may open it, and the instance issues no panel cookie to a tunnelled request.
 

@@ -557,6 +557,7 @@ Projects can include uploaded image assets (PNG, JPG, SVG, etc.) stored in the p
 - Assets are referenced as `assets://filename` in the project file
 - The Asset Picker shows thumbnails of all uploaded images with search by filename
 - A warning appears when uploading images larger than 500KB with a suggestion to compress
+- An image can be up to 50 MB. Through Remote Access the limit is 12 MB; upload a larger one from a computer on the system's own network
 - Unused assets (not referenced by any element) are flagged so you can clean up
 - Deleting an asset something still shows is refused, and the message names what shows it — a page background, a control (including a picture picked for one of its Appearance states), a master element, a theme or a plugin. Point those somewhere else first. There is no undo: the only way back is uploading the file again
 - Assets are included automatically when you export a project as `.zip`
