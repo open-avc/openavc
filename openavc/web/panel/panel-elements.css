@@ -438,8 +438,8 @@
 }
 /* Crosspoint grid.
    The cell rows are minmax(floor, ceiling) and the cell columns minmax(floor,
-   1fr) under a max-width that is the same ceiling summed (panel.js
-   renderMatrix), so the grid has to be told it may use the whole wrapper
+   1fr) under a max-width that is the same ceiling summed (panel
+   modules/matrix.js), so the grid has to be told it may use the whole wrapper
    before there is any spare room for them to grow into -- hence 100% on both
    axes rather than the fit-content it used to be, which pinned every cell at
    its floor no matter how much of the page the matrix had been given. The
@@ -520,7 +520,7 @@
     text-overflow: ellipsis;
 }
 /* No min-width/min-height here: the grid TRACK owns the cell size now
-   (minmax in renderMatrix), and a second floor in here only contradicted it --
+   (minmax in modules/matrix.js), and a second floor in here only contradicted it --
    an authored cell_size below 44 got a 44px cell laid out in a smaller track,
    which overlapped its neighbour. */
 .panel-matrix .matrix-cell {
@@ -626,7 +626,7 @@
     appearance: none;
 }
 /* Tile wall — one card per destination, naming what is on it in large type.
-   The tracks are minmax(floor, 1fr) (panel.js renderMatrix), so a tile grows
+   The tracks are minmax(floor, 1fr) (modules/matrix.js), so a tile grows
    into whatever room the element has and never draws below the floor
    openavc/ui/control_minimums.py states for it. The column and row COUNTS come
    from the destination count rather than from the box (matrixTileGridShape),
@@ -708,7 +708,7 @@
     inset: 0;
     z-index: 900;
     /* On document.body, so no control's font-size reaches it by inheritance:
-       the token is its base, and panel.js pins it to the matrix that opened it
+       the token is its base, and modules/matrix.js pins it to the matrix that opened it
        so an authored font_size on that matrix carries into its chooser. */
     font-size: var(--panel-font-size);
     display: flex;

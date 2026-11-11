@@ -1339,7 +1339,7 @@ def test_a_row_nobody_has_named_reads_as_a_position_not_an_id(panel_page) -> Non
     **This passes on both sides of the change, deliberately.** It is not guarding
     a defect; it pins a caption that used to be written out four times (the
     crosspoint header, the source legend, the chooser's grid and its title) and is
-    now produced once, in `_entryLabel`, alongside the two names that outrank it.
+    now produced once, in `entryLabel` (modules/matrix.js), alongside the two names that outrank it.
     Four copies of "what is this row called" is how the tile and its chooser came
     to disagree in the first place.
     """

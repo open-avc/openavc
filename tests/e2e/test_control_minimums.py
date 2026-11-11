@@ -529,7 +529,7 @@ def test_a_tile_wall_at_its_floor_shows_every_tile(panel_page) -> None:
     """A wall's floor is a rectangle, and the shape it names has to be the one drawn.
 
     The column and row counts come from the destination count rather than from
-    the box (panel.js matrixTileGridShape, mirrored as tile_grid_shape), which is
+    the box (matrixTileGridShape in the panel's modules/matrix.js, mirrored as tile_grid_shape), which is
     the whole reason a floor can be stated for a layout that wraps. If those two
     ever disagree the floor is for a shape nothing renders, and the way that
     shows up is tiles below the fold at the size the review calls the minimum.

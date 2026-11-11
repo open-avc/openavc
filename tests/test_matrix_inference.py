@@ -454,7 +454,7 @@ def test_a_port_the_device_names_gets_no_invented_caption():
     """Because an invented one would outrank the name, once it arrives.
 
     A caption is a stored name and a stored name is what the panel draws first
-    (`_entryLabel`), so "Sink 1" written here would sit on a tile for good and
+    (`entryLabel` in the panel's modules/matrix.js), so "Sink 1" written here would sit on a tile for good and
     the endpoint's real name -- typed into the rack an hour later -- would never
     show. The renderer captions an unnamed row instead.
     """

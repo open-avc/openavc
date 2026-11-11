@@ -214,7 +214,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "widthPx": 44,
         "heightPx": 44,
         "origin": "declared",
-        "source": "panel.js MATRIX_CELL_MIN_PX"
+        "source": "modules/matrix.js MATRIX_CELL_MIN_PX"
       }
     ],
     "scalesWith": null,
@@ -230,7 +230,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "axis": "width",
         "sizeProperty": "cell_size",
         "origin": "declared",
-        "source": "panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
+        "source": "modules/matrix.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
         "layout": "linear"
       },
       {
@@ -243,7 +243,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "axis": "height",
         "sizeProperty": "cell_size",
         "origin": "declared",
-        "source": "panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
+        "source": "modules/matrix.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
         "layout": "linear"
       }
     ],
@@ -270,7 +270,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "sizePx": 45,
         "when": "lock_column",
         "origin": "declared",
-        "source": "panel.js renderMatrix extraColDefs + .matrix-grid gap"
+        "source": "modules/matrix.js sizeGrid extraColDefs + .matrix-grid gap"
       },
       {
         "part": "mute column",
@@ -278,7 +278,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
         "sizePx": 45,
         "when": "mute_column",
         "origin": "declared",
-        "source": "panel.js renderMatrix extraColDefs + .matrix-grid gap"
+        "source": "modules/matrix.js sizeGrid extraColDefs + .matrix-grid gap"
       }
     ],
     "styleProperty": "matrix_style",
@@ -360,7 +360,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
             "widthPx": 120,
             "heightPx": 91,
             "origin": "font-driven",
-            "source": "panel.js MATRIX_TILE_MIN_W_EM / MATRIX_TILE_MIN_H_EM at the default text size"
+            "source": "modules/matrix.js MATRIX_TILE_MIN_W_EM / MATRIX_TILE_MIN_H_EM at the default text size"
           }
         ],
         "scalesWith": null,
@@ -376,7 +376,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
             "axis": "width",
             "sizeProperty": "",
             "origin": "font-driven",
-            "source": "panel.js MATRIX_TILE_MIN_W_EM + .matrix-tiles gap",
+            "source": "modules/matrix.js MATRIX_TILE_MIN_W_EM + .matrix-tiles gap",
             "layout": "grid_columns"
           },
           {
@@ -389,7 +389,7 @@ export const CONTROL_MINIMUMS: Record<string, ControlMinimumRule> =
             "axis": "height",
             "sizeProperty": "",
             "origin": "font-driven",
-            "source": "panel.js MATRIX_TILE_MIN_H_EM + .matrix-tiles gap",
+            "source": "modules/matrix.js MATRIX_TILE_MIN_H_EM + .matrix-tiles gap",
             "layout": "grid_rows"
           }
         ],

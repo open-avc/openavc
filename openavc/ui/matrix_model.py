@@ -98,7 +98,7 @@ _DIGIT_RUN = re.compile(r"\d+")
 def route_value(value: Any) -> float | int | str | None:
     """A routed-source value in comparable form, or None when nothing is routed.
 
-    Mirrors ``_routeValue`` in panel.js, which is the copy that decides what a
+    Mirrors ``routeValue`` in the panel's modules/matrix.js, which is the copy that decides what a
     panel actually lights. Everything about which crosspoint is lit used to go
     through ``parseInt``, and ``parseInt('IN1')`` is NaN -- so a switcher that
     labels its ports lit no crosspoint at all and flagged every output as an
@@ -110,7 +110,7 @@ def route_value(value: Any) -> float | int | str | None:
     """
     if value is None:
         return None
-    # bool before number: JavaScript's `typeof true` is 'boolean', so panel.js
+    # bool before number: JavaScript's `typeof true` is 'boolean', so the panel
     # takes it down the string branch. Python would call it an int and compare
     # True equal to 1.
     if isinstance(value, int | float) and not isinstance(value, bool):
@@ -219,7 +219,7 @@ def _with_default_label(entry: dict[str, Any], axis: str, position: int) -> dict
     The position is where it was written, before anything is excluded. An entry
     carrying a ``label_key`` is left unlabelled on purpose: the device is about
     to say what it is called, and "Out 2" would win over "Lobby TV" the moment
-    the renderer prefers the authored name (``_entryLabel`` in panel.js). Asked
+    the renderer prefers the authored name (``entryLabel`` in the panel's modules/matrix.js). Asked
     last, so an override naming either one is honoured. A generated entry and an
     authored one both ask it, as they ask ``withDefaultLabel`` in the Builder.
     """
@@ -347,8 +347,8 @@ _GENERATOR_FROM_KEYS = {
 #: The keys one written-out entry may carry, per axis.
 _ENTRY_KEYS = {"sources": SOURCE_KEYS, "destinations": DESTINATION_KEYS}
 
-#: What a preset button is: a caption and the macro it runs (``panel.js``
-#: reads exactly these two).
+#: What a preset button is: a caption and the macro it runs (the panel's
+#: modules/matrix.js reads exactly these two).
 _PRESET_KEYS = frozenset({"name", "macro"})
 
 #: The matrix_config keys that are simply on or off.

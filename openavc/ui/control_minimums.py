@@ -398,7 +398,7 @@ class MinimumRule:
     """An element property that picks a different rule -- ``matrix_style``.
 
     The rule carrying this IS the default style, so a matrix that says nothing
-    gets the crosspoint numbers, exactly as ``renderMatrix`` does. ``styles``
+    gets the crosspoint numbers, exactly as the panel's matrix (``modules/matrix.js``) does. ``styles``
     holds only the alternatives.
     """
 
@@ -474,22 +474,22 @@ _MATRIX_TILES = MinimumRule(
     # INSIDE a tile as glyphs rather than taking a column, so neither is a
     # conditional here.
     10, 10,
-    # A tile's floor is em of the matrix's text (panel.js), because a tile is
+    # A tile's floor is em of the matrix's text (modules/matrix.js), because a tile is
     # two lines of that text: 4.2857em by 3.25em, which at the default text
     # size is the 120x91 recorded here.
     (FixedInternal("matrix-tile", 120, 91, "font-driven",
-                   "panel.js MATRIX_TILE_MIN_W_EM / MATRIX_TILE_MIN_H_EM at the default text size"),),
+                   "modules/matrix.js MATRIX_TILE_MIN_W_EM / MATRIX_TILE_MIN_H_EM at the default text size"),),
     repeated=(
         RepeatedInternal(
             "matrix-tile", 120, 6, "destinations", "matrix_config", 0, "width",
             origin="font-driven",
-            source="panel.js MATRIX_TILE_MIN_W_EM + .matrix-tiles gap",
+            source="modules/matrix.js MATRIX_TILE_MIN_W_EM + .matrix-tiles gap",
             layout="grid_columns",
         ),
         RepeatedInternal(
             "matrix-tile", 91, 6, "destinations", "matrix_config", 0, "height",
             origin="font-driven",
-            source="panel.js MATRIX_TILE_MIN_H_EM + .matrix-tiles gap",
+            source="modules/matrix.js MATRIX_TILE_MIN_H_EM + .matrix-tiles gap",
             layout="grid_rows",
         ),
     ),
@@ -512,7 +512,7 @@ _MATRIX_TILES = MinimumRule(
 
 _MATRIX_CROSSPOINT = MinimumRule(
     # 95 of that width is the element's padding, the grid gaps and the 80px
-    # destination-name column (panel.js MATRIX_LABEL_MIN_PX); 84 of the height
+    # destination-name column (modules/matrix.js MATRIX_LABEL_MIN_PX); 84 of the height
     # is padding, gaps, the column-number row and the one-line source legend.
     # The name column and the number row's floor are DECLARED rather than left
     # to their content, and for the same reason: .matrix-header sets
@@ -524,17 +524,17 @@ _MATRIX_CROSSPOINT = MinimumRule(
     # The number row (min-height max(1.7857rem, 1.25em), 30px at the default
     # text) and the legend (33px at it) are what the text default moves.
     95, 84,
-    (FixedInternal("matrix-cell", 44, 44, "declared", "panel.js MATRIX_CELL_MIN_PX"),),
+    (FixedInternal("matrix-cell", 44, 44, "declared", "modules/matrix.js MATRIX_CELL_MIN_PX"),),
     repeated=(
         RepeatedInternal(
             "matrix-cell", 44, 1, "sources", "matrix_config", 0, "width",
             size_property="cell_size",
-            source="panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
+            source="modules/matrix.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
         ),
         RepeatedInternal(
             "matrix-cell", 44, 1, "destinations", "matrix_config", 0, "height",
             size_property="cell_size",
-            source="panel.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
+            source="modules/matrix.js MATRIX_CELL_MIN_PX + .matrix-grid gap 1px",
         ),
     ),
     conditionals=(
@@ -543,9 +543,9 @@ _MATRIX_CROSSPOINT = MinimumRule(
         ConditionalPart("matrix-presets", "height", 50, "presets", "font-driven",
                         "panel-elements.css .matrix-presets padding + .matrix-preset-btn"),
         ConditionalPart("lock column", "width", 45, "lock_column", "declared",
-                        "panel.js renderMatrix extraColDefs + .matrix-grid gap"),
+                        "modules/matrix.js sizeGrid extraColDefs + .matrix-grid gap"),
         ConditionalPart("mute column", "width", 45, "mute_column", "declared",
-                        "panel.js renderMatrix extraColDefs + .matrix-grid gap"),
+                        "modules/matrix.js sizeGrid extraColDefs + .matrix-grid gap"),
     ),
     style_property="matrix_style",
     styles={"list": _MATRIX_LIST, "tiles": _MATRIX_TILES},
@@ -639,10 +639,10 @@ def _style_px(element: Mapping[str, Any], key: str) -> float | None:
 def part_is_present(when: str, element: Mapping[str, Any]) -> bool:
     """Whether a ConditionalPart is drawn. Mirrored in the Builder's controlMinimums.ts.
 
-    Each case is ``renderMatrix``'s own test, written the same way round: the
+    Each case is the panel matrix's own test (``modules/matrix.js``), written the same way round: the
     lock column is drawn only when it is asked for, and the mute column
     additionally needs a mute_route binding, because without one the button
-    sends a command the engine has no action for and ``renderMatrix`` declines
+    sends a command the engine has no action for and the panel declines
     to draw it.
 
     The lock used to be on unless turned off, which cost every matrix ever
