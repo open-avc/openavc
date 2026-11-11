@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from openavc.drivers.declared_names import UNEVALUATED_KEY, did_you_mean
+from openavc.drivers.declared_names import UNEVALUATED_KEY, DeclaredSections, did_you_mean
 from openavc.drivers.spec import ROUTING_INHERITED
 
 _ENDS: tuple[str, str] = ("destination_param", "source_param")
@@ -97,14 +97,15 @@ def _text_or_none(value: Any) -> str | None:
 
 
 class _Targets:
-    """What the block's names resolve against, read once from the driver: its
-    child types, its commands and its own state variables, each a mapping or
-    empty when the section is missing or malformed."""
+    """What the block's names resolve against: the driver's child types, its
+    commands and its own state variables, as ``DeclaredSections`` reads them
+    (each a mapping, or empty when the section is missing or malformed)."""
 
     def __init__(self, driver_def: dict[str, Any]) -> None:
-        self.child_types = _mapping(driver_def.get("child_entity_types"))
-        self.commands = _mapping(driver_def.get("commands"))
-        self.device_vars = _mapping(driver_def.get("state_variables"))
+        declared = DeclaredSections(driver_def)
+        self.child_types = declared.child_types
+        self.commands = declared.commands
+        self.device_vars = declared.state_variables
 
     def child_state_vars(self, child_type: str) -> dict[str, Any] | None:
         """A declared child type's state variables, or None when they cannot
