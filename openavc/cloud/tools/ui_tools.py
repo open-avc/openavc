@@ -99,6 +99,14 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: lis
     return {"note": f"'{element_id}' has a do.{action} binding, but no action in it ran."}
 
 
+def _page_named(project: Any, page_id: str) -> Any:
+    """The page with this id, or refused by name."""
+    page = next((p for p in project.ui.pages if p.id == page_id), None)
+    if page is None:
+        raise ToolEditError({"error": f"UI page '{page_id}' not found"})
+    return page
+
+
 def _rounded_placement(box: Any) -> Any:
     """A Placement quantized to 4 decimal places, exactly as the Builder stores.
 
@@ -661,6 +669,87 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
     page.layouts = normalize_primary_layout(page.layouts)
 
 
+def _set_snap(page: Any, value: Any, what: str) -> None:
+    """Partial merge: omitted fields keep their values (the increment is not
+    reset to the defaults) and forward-compat keys survive."""
+    from openavc.core.project_loader import SnapConfig
+    page.snap = _merge_forward_compat(page.snap, SnapConfig, value)
+
+
+def _set_overlay(page: Any, value: Any, what: str) -> None:
+    from openavc.core.project_loader import OverlayConfig
+    page.overlay = OverlayConfig(**value) if value else None
+
+
+def _set_background(page: Any, value: Any, what: str) -> None:
+    from openavc.core.project_loader import PageBackground
+    page.background = PageBackground(**value) if value else None
+
+
+def _set_render_mode(page: Any, value: Any, what: str) -> None:
+    """Checked rather than assigned: the model declares a Literal and does not
+    validate on assignment, so "Custom" or a typo would land and the page would
+    quietly go back to drawing its elements."""
+    if value not in ("elements", "custom"):
+        raise ToolEditError({
+            "error": f"{what}: render_mode is 'elements' (draw the page's own "
+                     f"controls) or 'custom' (give the screen to a page in the "
+                     f"project's ui/ folder), not {value!r}."
+        })
+    page.render_mode = value
+
+
+def _set_grant(page: Any, value: Any, what: str) -> None:
+    page.grant = _validated_grant(value, what)
+
+
+def _set_plain(field: str) -> Any:
+    def assign(page: Any, value: Any, what: str) -> None:
+        setattr(page, field, value)
+    return assign
+
+
+#: Every page field the AI may set, in the order an update applies them and
+#: names them in its reply, each with how an update assigns it. The create door
+#: hands the same fields to the model, which validates as it constructs; an
+#: update assigns, which validates nothing, so the fields a wrong value would
+#: break are converted or checked here. What the page DRAWS (its own controls,
+#: or one page out of the project's ui/ folder given the whole screen) is
+#: settable at both doors: a page the AI can read as ``render_mode: "custom"``
+#: and cannot set back is the element door's old defect one level up.
+_PAGE_FIELDS = {
+    "name": _set_plain("name"),
+    "layouts": lambda page, value, what: _apply_layouts(page, value),
+    "snap": _set_snap,
+    "page_type": _set_plain("page_type"),
+    "overlay": _set_overlay,
+    "background": _set_background,
+    "render_mode": _set_render_mode,
+    "custom_file": _set_plain("custom_file"),
+    "custom_config": _set_plain("custom_config"),
+    "grant": _set_grant,
+}
+
+
+def _page_update_touches(input: dict) -> set[str] | None:
+    """The elements a page update answers for, or None when it has nothing to review.
+
+    Only a layouts edit moves anything, and it answers for the boxes it named
+    -- a rename or a background swap has no geometry to measure. A page that
+    has just been handed to markup -- or granted, or pointed at another file --
+    is reviewed even though nothing moved: those three are exactly the write
+    whose mistake is invisible.
+    """
+    moved = {
+        el_id
+        for entry in (input.get("layouts") or [])
+        if isinstance(entry, dict)
+        for el_id in (entry.get("placements") or {})
+    } if "layouts" in input else set()
+    hands_over = any(field in input for field in ("render_mode", "custom_file", "grant"))
+    return moved if moved or hands_over else None
+
+
 def _theme_defaults(project: Any, element_type: str) -> dict | None:
     """The project's own theme overrides for one element type.
 
@@ -816,20 +905,12 @@ class UIToolsMixin:
             # be created and then converted. Pydantic answers for the Literal
             # and the grant shape here; the update door checks them by hand
             # because assignment does not.
-            extra = {
-                field: input[field]
-                for field in ("render_mode", "custom_file", "custom_config", "grant",
-                              "page_type", "overlay", "background")
-                if field in input
-            }
+            given = {field: input[field] for field in _PAGE_FIELDS if field in input}
             try:
                 new_page = UIPage(
                     id=page_id,
-                    name=input.get("name", page_id),
-                    snap=input.get("snap", {}),
                     elements=elements,
-                    layouts=input.get("layouts", []),
-                    **extra,
+                    **{"name": page_id, "snap": {}, "layouts": [], **given},
                 )
             except ValidationError as exc:
                 raise ToolEditError({
@@ -873,90 +954,24 @@ class UIToolsMixin:
         grant_change: dict = {}
 
         def mutate(project):
-            page = None
-            for p in project.ui.pages:
-                if p.id == page_id:
-                    page = p
-                    break
-            if page is None:
-                raise ToolEditError({"error": f"UI page '{page_id}' not found"})
-
-            _reject_retired_geometry(input, f"Page '{page_id}'")
-            if "name" in input:
-                page.name = input["name"]
-                changed.append("name")
-            if "layouts" in input:
-                _apply_layouts(page, input["layouts"])
-                changed.append("layouts")
-            if "snap" in input:
-                from openavc.core.project_loader import SnapConfig
-                # Partial merge: keep omitted fields (don't reset the increment
-                # to defaults) and preserve any forward-compat keys.
-                page.snap = _merge_forward_compat(page.snap, SnapConfig, input["snap"])
-                changed.append("snap")
-            if "page_type" in input:
-                page.page_type = input["page_type"]
-                changed.append("page_type")
-            if "overlay" in input:
-                from openavc.core.project_loader import OverlayConfig
-                page.overlay = OverlayConfig(**input["overlay"]) if input["overlay"] else None
-                changed.append("overlay")
-            if "background" in input:
-                from openavc.core.project_loader import PageBackground
-                page.background = PageBackground(**input["background"]) if input["background"] else None
-                changed.append("background")
-            # What the page DRAWS: its own controls, or one page out of the
-            # project's ui/ folder given the whole screen. The element door
-            # takes the same three fields plus the grant; a page that could not
-            # take them left the AI able to see `render_mode: "custom"` in a
-            # page it read and unable to set it back, which is the shape of the
-            # element defect one level up.
-            if "render_mode" in input:
-                # Checked rather than assigned: the model declares a Literal and
-                # does not validate on assignment, so "Custom" or a typo would
-                # land and the page would quietly go back to drawing its
-                # elements -- the silent-write failure this door just spent a
-                # commit removing.
-                mode = input["render_mode"]
-                if mode not in ("elements", "custom"):
-                    raise ToolEditError({
-                        "error": f"Page '{page_id}': render_mode is 'elements' (draw the "
-                                 f"page's own controls) or 'custom' (give the screen to a "
-                                 f"page in the project's ui/ folder), not {mode!r}."
-                    })
-                page.render_mode = mode
-                changed.append("render_mode")
-            for field in ("custom_file", "custom_config"):
+            page = _page_named(project, page_id)
+            what = f"Page '{page_id}'"
+            _reject_retired_geometry(input, what)
+            grant_before = page.grant
+            for field, assign in _PAGE_FIELDS.items():
                 if field in input:
-                    setattr(page, field, input[field])
+                    assign(page, input[field], what)
                     changed.append(field)
-            if "grant" in input:
-                # Echoed rather than folded into "updated": see _grant_echo.
-                granted = _validated_grant(input["grant"], f"Page '{page_id}'")
-                grant_change.update(_grant_echo(page.grant, granted))
-                page.grant = granted
-                changed.append("grant")
-
             if not changed:
                 raise ToolEditError({"error": "No fields to update"})
+            if "grant" in input:
+                # Echoed rather than folded into "updated": see _grant_echo.
+                grant_change.update(_grant_echo(grant_before, page.grant))
 
-            # Only a layouts edit moves anything, and it answers for the boxes
-            # it named -- a rename or a background swap has no geometry to
-            # measure. Nothing here expresses a range, so no auto-fill.
-            moved = {
-                el_id
-                for entry in (input.get("layouts") or [])
-                if isinstance(entry, dict)
-                for el_id in (entry.get("placements") or {})
-            } if "layouts" in input else set()
-            # A page that has just been handed to markup -- or granted, or
-            # pointed at another file -- is reviewed even though nothing moved:
-            # those three are exactly the write whose mistake is invisible.
-            hands_over = any(
-                field in input for field in ("render_mode", "custom_file", "grant")
-            )
-            if moved or hands_over:
-                found, filled = self._review_write(project, page, moved, ranges=False)
+            # Nothing here expresses a range, so no auto-fill.
+            touched = _page_update_touches(input)
+            if touched is not None:
+                found, filled = self._review_write(project, page, touched, ranges=False)
                 findings.extend(found)
                 adjustments.extend(filled)
 
@@ -1046,13 +1061,7 @@ class UIToolsMixin:
         granted_on_create: dict = {}
 
         def mutate(project):
-            page = None
-            for p in project.ui.pages:
-                if p.id == page_id:
-                    page = p
-                    break
-            if page is None:
-                raise ToolEditError({"error": f"UI page '{page_id}' not found"})
+            page = _page_named(project, page_id)
 
             # Every element is checked before any of them lands, and every
             # complaint comes back together. The write is atomic either way; the
