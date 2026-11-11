@@ -7,6 +7,7 @@
 import { useState } from "react";
 import type { DriverParamDef } from "../../api/types";
 import {
+  CHOICE_SOURCES,
   cascadeRepointed,
   cascadeSiblings,
   childIdSiblings,
@@ -18,10 +19,10 @@ import {
   typesTicked,
   unitsFromText,
   type CascadeDef,
+  type CascadeType,
 } from "./paramChoices";
+import type { ParamUpdate } from "./paramEdits";
 import { PARAM_CAPTION, PARAM_HINT, PARAM_WARNING } from "./commandFieldParts";
-
-type ParamUpdate = (partial: Partial<DriverParamDef>) => void;
 
 const MONO_SELECT = {
   width: "100%",
@@ -31,7 +32,7 @@ const MONO_SELECT = {
 
 /** The control types a cascade can be narrowed to, named as the child
  *  state-variable editor names them. */
-const CASCADE_TYPES: { value: string; label: string }[] = [
+const CASCADE_TYPES: { value: CascadeType; label: string }[] = [
   { value: "boolean", label: "Boolean" },
   { value: "number", label: "Number" },
   { value: "integer", label: "Integer" },
@@ -66,7 +67,7 @@ function CascadeNarrowing({
           <label key={t.value} style={{ fontSize: "var(--font-size-sm)", display: "flex", gap: 4, alignItems: "center" }}>
             <input
               type="checkbox"
-              checked={(types as readonly string[]).includes(t.value)}
+              checked={types.includes(t.value)}
               onChange={(e) => write({ types: typesTicked(types, t.value, e.target.checked) })}
               data-testid={`param-options-from-type-${name}-${t.value}`}
             />
@@ -251,11 +252,11 @@ export function ParamOptionsEditor({
         data-testid={`param-options-source-${name}`}
         style={{ width: "100%", fontSize: "var(--font-size-sm)" }}
       >
-        <option value="fixed">Whatever the type allows</option>
-        <option value="state">A list the device publishes</option>
-        <option value="cascade">
-          The controls of a child picked in another parameter
-        </option>
+        {CHOICE_SOURCES.map((s) => (
+          <option key={s.value} value={s.value}>
+            {s.label}
+          </option>
+        ))}
       </select>
 
       {source === "state" && (

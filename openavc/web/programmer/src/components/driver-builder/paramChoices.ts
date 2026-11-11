@@ -16,9 +16,10 @@
  *  command runs is `components/shared/paramOptions.ts`. */
 
 import type { DriverParamDef } from "../../api/types";
+import type { Params } from "./paramEdits";
 
-type Params = Record<string, DriverParamDef>;
 export type CascadeDef = NonNullable<DriverParamDef["options_from"]>;
+export type CascadeType = NonNullable<CascadeDef["types"]>[number];
 export type ChoiceSource = "fixed" | "state" | "cascade";
 
 /** The source a parameter declares: a cascade before a published list. */
@@ -49,22 +50,53 @@ export interface ChoiceContext {
   childIds: string[];
 }
 
-/** The write for a change of source. A published list starts on the one it
+interface Source {
+  /** What the source select calls it. */
+  label: string;
+  /** The field it is written to; none for whatever the type allows. */
+  field?: "options_state" | "options_from";
+  /** What its field starts as when the source is chosen. */
+  start?: (def: DriverParamDef, context: ChoiceContext) => Partial<DriverParamDef>;
+}
+
+/** The sources, in the select's order. A published list starts on the one it
  *  already names, else the first state variable; a cascade on the parameter
  *  it already reads, else the first child_id sibling. */
+const SOURCES: Record<ChoiceSource, Source> = {
+  fixed: { label: "Whatever the type allows" },
+  state: {
+    label: "A list the device publishes",
+    field: "options_state",
+    start: (def, { stateKeys }) => ({ options_state: def.options_state ?? stateKeys[0] ?? "" }),
+  },
+  cascade: {
+    label: "The controls of a child picked in another parameter",
+    field: "options_from",
+    start: (def, { childIds }) => ({
+      options_from: { param: def.options_from?.param ?? childIds[0] ?? "", source: "child_schema" },
+    }),
+  },
+};
+
+export const CHOICE_SOURCES = (Object.keys(SOURCES) as ChoiceSource[]).map((value) => ({
+  value,
+  label: SOURCES[value].label,
+}));
+
+/** The write for a change of source: every other source's field cleared, in
+ *  the sources' order, then the chosen one's start. Anything but "fixed" or
+ *  "state" is a cascade. */
 export function sourceChanged(
   next: string,
   def: DriverParamDef,
-  { stateKeys, childIds }: ChoiceContext,
+  context: ChoiceContext,
 ): Partial<DriverParamDef> {
-  if (next === "fixed") return { options_state: undefined, options_from: undefined };
-  if (next === "state") {
-    return { options_from: undefined, options_state: def.options_state ?? stateKeys[0] ?? "" };
+  const chosen: ChoiceSource = next === "fixed" || next === "state" ? next : "cascade";
+  const cleared: Partial<DriverParamDef> = {};
+  for (const [source, { field }] of Object.entries(SOURCES)) {
+    if (field && source !== chosen) cleared[field] = undefined;
   }
-  return {
-    options_state: undefined,
-    options_from: { param: def.options_from?.param ?? childIds[0] ?? "", source: "child_schema" },
-  };
+  return { ...cleared, ...SOURCES[chosen].start?.(def, context) };
 }
 
 /** The write for a cascade pointed at another parameter: its narrowing kept. */
@@ -92,8 +124,8 @@ export function narrowed(optionsFrom: CascadeDef, patch: Partial<CascadeDef>): C
 }
 
 /** The type list with `type` ticked on or off. */
-export function typesTicked(types: string[], type: string, on: boolean): CascadeDef["types"] {
-  return (on ? [...types, type] : types.filter((x) => x !== type)) as CascadeDef["types"];
+export function typesTicked(types: CascadeType[], type: CascadeType, on: boolean): CascadeType[] {
+  return on ? [...types, type] : types.filter((x) => x !== type);
 }
 
 /** A unit list as typed: comma-separated, spaces and blanks dropped. */

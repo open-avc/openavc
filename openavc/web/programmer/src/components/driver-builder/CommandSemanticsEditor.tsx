@@ -31,7 +31,8 @@ const MONO_SMALL = {
 
 /** A variable select's options: the device's, then (on a child-addressed
  *  command) the child type's in their own group, and the current name first
- *  when it is not declared, so the select does not show another. */
+ *  when it is not declared, so the select does not show another. `exclude`
+ *  is the other rows' names; it never holds the current one. */
 function VarOptions({
   scope,
   current,
@@ -43,7 +44,7 @@ function VarOptions({
   exclude?: Set<string>;
   format?: (v: string) => string;
 }) {
-  const offered = (names: string[]) => names.filter((v) => v === current || !exclude?.has(v));
+  const offered = (names: string[]) => names.filter((v) => !exclude?.has(v));
   const dev = offered(scope.deviceVarNames);
   const chi = offered(scope.childVarNames);
   const unknown = current !== "" && !dev.includes(current) && !chi.includes(current);

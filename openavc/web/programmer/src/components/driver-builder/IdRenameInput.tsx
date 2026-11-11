@@ -10,8 +10,9 @@ export interface RenameResult {
  * (or Enter). Renaming on every keystroke remounts the row — editors key rows
  * by the id being edited — which drops focus and swallows intermediate
  * collisions/empties. Committing on blur keeps the row mounted while typing.
- * Mirrors CommandBuilder's draftName pattern. Shared by the Driver Builder
- * editors (child entity types, device settings).
+ * The parameter editor's name box (useNameDraft in ParamEditor.tsx) works the
+ * same way. Shared by the Driver Builder editors (child entity types, device
+ * settings).
  */
 export function IdRenameInput({
   value,

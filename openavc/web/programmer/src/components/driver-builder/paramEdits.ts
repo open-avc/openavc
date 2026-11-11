@@ -13,6 +13,9 @@ import { PARAM_TYPES, type DriverParamDef } from "../../api/types";
 
 export type Params = Record<string, DriverParamDef>;
 
+/** A field's write to one parameter: undefined removes the field. */
+export type ParamUpdate = (partial: Partial<DriverParamDef>) => void;
+
 /** The first free paramN, counting on from the number there are. */
 export function newParamName(params: Params): string {
   let counter = Object.keys(params).length + 1;
@@ -122,15 +125,19 @@ export function retyped(
 /** A box in a parameter's value row. */
 export type ValueBox = "help" | "default" | "min" | "max" | "decimals" | "unit";
 
-/** The value row's boxes, in order: help and default always; min, max and
- *  decimals where the type has them; the unit on a numeric type, where it is
- *  the usual need, and wherever one is already set. */
+const VALUE_BOX_ORDER: readonly ValueBox[] = ["help", "default", "min", "max", "decimals", "unit"];
+
+const isTypeField = (box: ValueBox): box is ValueBox & TypeField => box in TYPE_FIELDS;
+
+/** The value row's boxes, in order: a box for a field only some types have
+ *  (min, max, decimals) where the type has it, by `TYPE_FIELDS`; the unit on a
+ *  numeric type, where it is the usual need, and wherever one is already set;
+ *  the others always. */
 export function valueBoxes(def: DriverParamDef): ValueBox[] {
-  const boxes: ValueBox[] = ["help", "default"];
-  if (typeHas(def, "min")) boxes.push("min", "max");
-  if (typeHas(def, "decimals")) boxes.push("decimals");
-  if (NUMERIC.includes(def.type) || def.unit !== undefined) boxes.push("unit");
-  return boxes;
+  return VALUE_BOX_ORDER.filter((box) => {
+    if (box === "unit") return NUMERIC.includes(def.type) || def.unit !== undefined;
+    return !isTypeField(box) || typeHas(def, box);
+  });
 }
 
 /** Whether the free-text aids (pattern, trim, masked) show: on a string,

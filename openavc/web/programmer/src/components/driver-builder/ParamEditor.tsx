@@ -19,15 +19,10 @@ import {
   retyped,
   showsTextAids,
   typeHas,
+  type ParamUpdate,
   type Params,
 } from "./paramEdits";
-import {
-  AllowedValues,
-  ChildTypeField,
-  TextAids,
-  ValueRow,
-  type ParamUpdate,
-} from "./ParamTypeFields";
+import { AllowedValues, ChildTypeField, TextAids, ValueRow } from "./ParamTypeFields";
 import { ParamOptionsEditor } from "./ParamOptionsEditor";
 import { PARAM_CAPTION, RowFlag } from "./commandFieldParts";
 

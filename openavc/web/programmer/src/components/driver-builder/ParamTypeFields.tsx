@@ -13,11 +13,10 @@ import {
   defaultFromText,
   defaultHint,
   valueBoxes,
+  type ParamUpdate,
   type ValueBox,
 } from "./paramEdits";
 import { PARAM_CAPTION, PARAM_HINT, PARAM_WARNING, RowFlag } from "./commandFieldParts";
-
-export type ParamUpdate = (partial: Partial<DriverParamDef>) => void;
 
 interface BoxProps {
   name: string;
