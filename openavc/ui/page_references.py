@@ -512,6 +512,78 @@ def reference_findings(
     return findings
 
 
+@dataclass(frozen=True)
+class _Read:
+    """One state key a control reads, and what its driver is asked about it."""
+
+    where: str
+    """The field holding the key, as the sentence and the finding's key name it."""
+    key: Any
+    asked: str | None
+    """The key the driver is asked whether it declares, or None not to ask."""
+    by_child: bool
+    """Whether the key's child id is checked against the declared roster first."""
+
+
+def _read_finding(control: _Control, read: _Read, project: _Project) -> Finding | None:
+    """What one key a control reads gets wrong: its device, else its child, else its property.
+
+    At most one finding a key: one binding, one thing to fix. Only a device key
+    is judged; a ``var.`` key can be created by a script at any time.
+    """
+    key = read.key
+    if not isinstance(key, str) or not key.startswith("device."):
+        return None
+    said = f"reads {read.where} from '{key}', and"
+    if _device_of(key, project.device_ids) is None:
+        named = key.split(".")[1] if key.count(".") >= 1 else key
+        return control.finding(
+            "dangling_reference",
+            f"{said} no device '{named}' is in this project. The devices are: "
+            f"{_listed(project.device_ids)}.",
+            read.where,
+        )
+    # The child id before the property, because a page repeating one block
+    # per output gets the NUMBER wrong, not the name -- and reported first
+    # it names the actual mistake instead of a property that is spelled
+    # right on a child that does not exist. Reported instead of, not as well
+    # as, the property complaint: one binding, one thing to fix.
+    roster = (
+        project.unknown_child_id(key)
+        if read.by_child and project.unknown_child_id is not None else None
+    )
+    if roster:
+        return control.finding(
+            "dangling_reference",
+            f"{said} its driver declares no such child. It declares: {_listed(roster)}.",
+            f"{read.where}.child",
+        )
+    # The device resolved; the property after it is checked as closely, because
+    # a typo'd property is at least as common as a typo'd device.
+    declared = (
+        project.undeclared_property(read.asked)
+        if read.asked is not None and project.undeclared_property is not None else None
+    )
+    if declared:
+        return control.finding(
+            "dangling_reference",
+            f"{said} its driver does not declare that. It declares: {_listed(declared)}.",
+            f"{read.where}.property",
+        )
+    return None
+
+
+def _show_reads(control: _Control) -> list[_Read]:
+    """The keys a control shows, its value then its look."""
+    show = _bindings(control.dump, "show")
+    reads = []
+    for slot in ("value", "look"):
+        binding = _mapping(show.get(slot))
+        key = binding.get("key") if binding else None
+        reads.append(_Read(f"show.{slot}", key, asked=key, by_child=True))
+    return reads
+
+
 #: The `matrix_config` keys that hold a state-key GLOB rather than a plain key.
 #:
 #: Each is a state key with the input or output number replaced by `*`, which
@@ -532,7 +604,7 @@ MATRIX_KEY_PATTERNS = (
 _PROBE_INDEX = "1"
 
 
-def _matrix_pattern_findings(control: _Control, project: _Project) -> list[Finding]:
+def _matrix_reads(control: _Control) -> list[_Read]:
     """State-key globs inside `matrix_config`, checked like any other binding.
 
     A matrix is the one control that reads state from somewhere other than
@@ -544,42 +616,40 @@ def _matrix_pattern_findings(control: _Control, project: _Project) -> list[Findi
     their default captions and the author believes the labels are live.
 
     Checked by substituting `*` for index 1 and asking the same question
-    `show.value` asks. A pattern with no `*` is left alone: it is a plain key,
-    it will be read for every row, and saying "this is not a glob" is a
-    different complaint than this function makes.
+    `show.value` asks. A pattern with no `*` is not asked about its property:
+    it is a plain key, it will be read for every row, and saying "this is not a
+    glob" is a different complaint. The child id is not checked here.
     """
     if control.what != "matrix":
         return []
     config = _mapping(control.dump.get("matrix_config"))
     if not config:
         return []
-
-    findings: list[Finding] = []
+    reads = []
     for name in MATRIX_KEY_PATTERNS:
         pattern = config.get(name)
-        if not isinstance(pattern, str) or not pattern.startswith("device."):
-            continue
-        if _device_of(pattern, project.device_ids) is None:
-            named = pattern.split(".")[1] if pattern.count(".") >= 1 else pattern
-            findings.append(control.finding(
-                "dangling_reference",
-                f"reads matrix_config.{name} from '{pattern}', and no "
-                f"device '{named}' is in this project. The devices are: "
-                f"{_listed(project.device_ids)}.",
-                f"matrix_config.{name}",
-            ))
-            continue
-        if project.undeclared_property is None or "*" not in pattern:
-            continue
-        declared = project.undeclared_property(pattern.replace("*", _PROBE_INDEX, 1))
-        if declared:
-            findings.append(control.finding(
-                "dangling_reference",
-                f"reads matrix_config.{name} from '{pattern}', and its "
-                f"driver does not declare that. It declares: {_listed(declared)}.",
-                f"matrix_config.{name}.property",
-            ))
+        probe = (
+            pattern.replace("*", _PROBE_INDEX, 1)
+            if isinstance(pattern, str) and "*" in pattern else None
+        )
+        reads.append(_Read(f"matrix_config.{name}", pattern, asked=probe, by_child=False))
+    return reads
+
+
+def _state_key_findings(control: _Control, project: _Project) -> list[Finding]:
+    """Every state key the control reads that names a device, child or property not there."""
+    findings = []
+    for read in _matrix_reads(control) + _show_reads(control):
+        found = _read_finding(control, read, project)
+        if found:
+            findings.append(found)
     return findings
+
+
+def _bindings(dump: Mapping[str, Any], part: str) -> Mapping[str, Any]:
+    """One half of an element's bindings (``show`` or ``do``), or empty."""
+    bindings = _mapping(dump.get("bindings")) or {}
+    return _mapping(bindings.get(part)) or {}
 
 
 def _element_findings(control: _Control, project: _Project) -> list[Finding]:
@@ -614,55 +684,9 @@ def _element_findings(control: _Control, project: _Project) -> list[Finding]:
                 f"grant.devices.{granted}",
             ))
 
-    findings.extend(_matrix_pattern_findings(control, project))
+    findings.extend(_state_key_findings(control, project))
 
-    bindings = _mapping(dump.get("bindings")) or {}
-    show = _mapping(bindings.get("show")) or {}
-    for slot in ("value", "look"):
-        binding = _mapping(show.get(slot))
-        key = binding.get("key") if binding else None
-        if not isinstance(key, str) or not key.startswith("device."):
-            continue
-        if _device_of(key, project.device_ids) is None:
-            named = key.split(".")[1] if key.count(".") >= 1 else key
-            findings.append(control.finding(
-                "dangling_reference",
-                f"reads show.{slot} from '{key}', and no device "
-                f"'{named}' is in this project. The devices are: "
-                f"{_listed(project.device_ids)}.",
-                f"show.{slot}",
-            ))
-            continue
-        # The child id before the property, because a page repeating one block
-        # per output gets the NUMBER wrong, not the name -- and reported first
-        # it names the actual mistake instead of a property that is spelled
-        # right on a child that does not exist. Reported instead of, not as well
-        # as, the property complaint: one binding, one thing to fix.
-        if project.unknown_child_id is not None:
-            roster = project.unknown_child_id(key)
-            if roster:
-                findings.append(control.finding(
-                    "dangling_reference",
-                    f"reads show.{slot} from '{key}', and its driver "
-                    f"declares no such child. It declares: {_listed(roster)}.",
-                    f"show.{slot}.child",
-                ))
-                continue
-        # The device resolved; the property after it is the half that used to
-        # pass silently while a typo'd device, command, macro and page were all
-        # caught. A typo'd property is at least as common as a typo'd device.
-        if project.undeclared_property is None:
-            continue
-        declared = project.undeclared_property(key)
-        if declared:
-            findings.append(control.finding(
-                "dangling_reference",
-                f"reads show.{slot} from '{key}', and its driver does "
-                f"not declare that. It declares: {_listed(declared)}.",
-                f"show.{slot}.property",
-            ))
-
-    do_map = _mapping(bindings.get("do")) or {}
+    do_map = _bindings(dump, "do")
     options = _option_values(dump)
     for slot in ACTION_SLOTS:
         shape = _shape_finding(do_map, slot, control)
