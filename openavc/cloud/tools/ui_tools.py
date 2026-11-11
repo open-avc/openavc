@@ -1,6 +1,6 @@
 """Mixin for AI tool handlers that manage UI pages and elements."""
 
-from typing import Any
+from typing import Any, NamedTuple
 
 from pydantic import ValidationError
 
@@ -585,25 +585,35 @@ def _set_plain(field: str) -> Any:
     return assign
 
 
+class _PageField(NamedTuple):
+    """How an update assigns one page field, and whether writing it hands the
+    page over: what the page draws, or what its markup may reach, changes
+    though nothing moved, the write whose mistake is invisible, so it is
+    reviewed."""
+
+    assign: Any
+    hands_over: bool = False
+
+
 #: Every page field the AI may set, in the order an update applies them and
-#: names them in its reply, each with how an update assigns it. The create door
-#: hands the same fields to the model, which validates as it constructs; an
-#: update assigns, which validates nothing, so the fields a wrong value would
-#: break are converted or checked here. What the page DRAWS (its own controls,
-#: or one page out of the project's ui/ folder given the whole screen) is
-#: settable at both doors: a page the AI can read as ``render_mode: "custom"``
-#: and cannot set back is the element door's old defect one level up.
+#: names them in its reply. The create door hands the same fields to the
+#: model, which validates as it constructs; an update assigns, which validates
+#: nothing, so the fields a wrong value would break are converted or checked
+#: here. What the page DRAWS (its own controls, or one page out of the
+#: project's ui/ folder given the whole screen) is settable at both doors: a
+#: page the AI can read as ``render_mode: "custom"`` and cannot set back is the
+#: element door's old defect one level up.
 _PAGE_FIELDS = {
-    "name": _set_plain("name"),
-    "layouts": _set_layouts,
-    "snap": _set_snap,
-    "page_type": _set_plain("page_type"),
-    "overlay": _set_overlay,
-    "background": _set_background,
-    "render_mode": _set_render_mode,
-    "custom_file": _set_plain("custom_file"),
-    "custom_config": _set_plain("custom_config"),
-    "grant": _set_grant,
+    "name": _PageField(_set_plain("name")),
+    "layouts": _PageField(_set_layouts),
+    "snap": _PageField(_set_snap),
+    "page_type": _PageField(_set_plain("page_type")),
+    "overlay": _PageField(_set_overlay),
+    "background": _PageField(_set_background),
+    "render_mode": _PageField(_set_render_mode, hands_over=True),
+    "custom_file": _PageField(_set_plain("custom_file"), hands_over=True),
+    "custom_config": _PageField(_set_plain("custom_config")),
+    "grant": _PageField(_set_grant, hands_over=True),
 }
 
 
@@ -613,10 +623,10 @@ def _assign_page_fields(page: Any, input: dict, what: str, notes: WriteNotes) ->
     before and after."""
     assigned: list[str] = []
     with notes.assigning(page, input):
-        for field, assign in _PAGE_FIELDS.items():
-            if field in input:
-                assign(page, input[field], what)
-                assigned.append(field)
+        for name, field in _PAGE_FIELDS.items():
+            if name in input:
+                field.assign(page, input[name], what)
+                assigned.append(name)
     return assigned
 
 
@@ -624,10 +634,9 @@ def _page_update_touches(input: dict) -> set[str] | None:
     """The elements a page update answers for, or None when it has nothing to review.
 
     Only a layouts edit moves anything, and it answers for the boxes it named
-    -- a rename or a background swap has no geometry to measure. A page that
-    has just been handed to markup -- or granted, or pointed at another file --
-    is reviewed even though nothing moved: those three are exactly the write
-    whose mistake is invisible.
+    -- a rename or a background swap has no geometry to measure. A write of a
+    field that hands the page over (``_PageField.hands_over``) is reviewed even
+    though nothing moved.
     """
     moved = {
         el_id
@@ -635,12 +644,17 @@ def _page_update_touches(input: dict) -> set[str] | None:
         if isinstance(entry, dict)
         for el_id in (entry.get("placements") or {})
     } if "layouts" in input else set()
-    hands_over = any(field in input for field in ("render_mode", "custom_file", "grant"))
+    hands_over = any(name in input for name, field in _PAGE_FIELDS.items() if field.hands_over)
     return moved if moved or hands_over else None
 
 
 class UIToolsMixin:
     """UI page CRUD, element management, master elements, and action simulation."""
+
+    def _review_of(self, engine: Any, project: Any) -> UIReview:
+        """The review a write or ``review_ui`` asks of this project: the engine
+        for its ui/ folder, this handler's devices for what drivers declare."""
+        return UIReview(engine, self._devices, project)
 
     async def _get_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -684,7 +698,7 @@ class UIToolsMixin:
             # ui.definition to connected panels.
             project.ui.pages.append(new_page)
             notes.created(new_page.grant)
-            notes.add(*UIReview(engine, self._devices, project).write(
+            notes.add(*self._review_of(engine, project).write(
                 new_page, {el.id for el in new_page.elements},
             ))
 
@@ -714,7 +728,7 @@ class UIToolsMixin:
             # Nothing here expresses a range, so no auto-fill.
             touched = _page_update_touches(input)
             if touched is not None:
-                notes.add(*UIReview(engine, self._devices, project).write(
+                notes.add(*self._review_of(engine, project).write(
                     page, touched, ranges=False,
                 ))
 
@@ -763,7 +777,7 @@ class UIToolsMixin:
             batch = _NewControls(project, _page_named(project, page_id))
             batch.accept(elements)
             batch.land(notes)
-            notes.add(*UIReview(engine, self._devices, project).write(
+            notes.add(*self._review_of(engine, project).write(
                 batch.page, {el.get("id", "") for el in elements},
             ))
 
@@ -846,7 +860,7 @@ class UIToolsMixin:
                 f"Element '{element_id}'", notes,
             ))
 
-            notes.add(*UIReview(engine, self._devices, project).write(
+            notes.add(*self._review_of(engine, project).write(
                 target_page, {element_id}, ranges=touches_range,
             ))
 
@@ -986,7 +1000,7 @@ class UIToolsMixin:
         engine = self._get_engine()
         if not engine or not engine.project:
             return {"error": "No project loaded"}
-        return UIReview(engine, self._devices, engine.project).whole(input.get("page_id"))
+        return self._review_of(engine, engine.project).whole(input.get("page_id"))
 
     async def _simulate_ui_action(self, input: dict) -> Any:
         engine = self._get_engine()
