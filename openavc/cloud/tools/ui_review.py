@@ -78,6 +78,10 @@ class WriteNotes:
     for a batch of new controls, what each may reach). Kept apart from the
     status because the mutate can still be refused after a review ran: only a
     write that landed hands these back.
+
+    The doors hand over what they created or are assigning, never the grant
+    itself: which fields are said back is read here, by :meth:`created`,
+    :meth:`created_on` and :meth:`assigning`, and nowhere else.
     """
 
     def __init__(self) -> None:
@@ -90,15 +94,16 @@ class WriteNotes:
         self.findings.extend(findings)
         self.adjustments.extend(adjustments)
 
-    def created(self, grant: Any) -> None:
-        """A grant on a page or master this write created."""
-        if grant is not None:
-            self.grant.update(grant_echo(None, grant))
+    def created(self, target: Any) -> None:
+        """A page or master this write created: its grant, if it has one."""
+        if target.grant is not None:
+            self.grant.update(grant_echo(None, target.grant))
 
-    def created_on(self, element_id: str, grant: Any) -> None:
-        """What one control of a batch this write created may reach."""
-        if grant is not None:
-            self.grants[element_id] = grant_echo(None, grant)["after"]
+    def created_on(self, element: Any) -> None:
+        """One control of a batch this write created: what it may reach, if
+        it has a grant."""
+        if element.grant is not None:
+            self.grants[element.id] = grant_echo(None, element.grant)["after"]
 
     def changed(self, before: Any, after: Any) -> None:
         """A grant this write changed: what it was and what it is now."""

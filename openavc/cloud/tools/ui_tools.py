@@ -508,7 +508,7 @@ class _NewControls(_NewElements):
             self.page.elements.append(element)
             # A grant arriving on a create is no more visible afterwards for
             # having arrived early.
-            notes.created_on(element.id, element.grant)
+            notes.created_on(element)
         place_in_primary(self.page, {
             element.id: place for element, place in self.accepted if place is not None
         })
@@ -746,7 +746,7 @@ class UIToolsMixin:
             # A UI-only change just swaps the project and pushes the new
             # ui.definition to connected panels.
             project.ui.pages.append(new_page)
-            notes.created(new_page.grant)
+            notes.created(new_page)
             notes.add(*review.write(new_page, {el.id for el in new_page.elements}))
 
         err = await self._apply_ui_edit(engine, mutate)
@@ -926,7 +926,7 @@ class UIToolsMixin:
         def mutate(project):
             new_el = _new_master(project, el_data)
             project.ui.master_elements.append(new_el)
-            notes.created(new_el.grant)
+            notes.created(new_el)
             notes.add(master_findings(project, new_el))
 
         err = await apply_tool_edit(engine, mutate)
