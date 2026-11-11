@@ -1,3 +1,14 @@
+/**
+ * The Theme Studio, the UI Builder's theme editor, in three columns: the
+ * picker, the editor and a live preview. This module holds the theme being
+ * edited: the working copy, loaded as the theme is saved (without the
+ * project's overrides, which the editor's banner names), and the saved copy
+ * that Unsaved, Discard and every "modified" mark compare with. It also holds
+ * the file actions and their questions, and what the preview is handed. The
+ * editor's sections each read and edit the working copy through one
+ * `ThemeDraft` (`themeEdits.ts`), and every file action runs through
+ * `statusLine.ts`'s `attempt`, which holds the buttons and says how it went.
+ */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { X } from "lucide-react";
