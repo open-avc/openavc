@@ -18,7 +18,7 @@ from openavc.cloud.tools.ui_layouts import (
 )
 from openavc.cloud.tools.ui_rewrites import scrub_page_references
 from openavc.cloud.tools.ui_simulate import simulate_ui_action
-from openavc.cloud.tools.ui_review import UIReview, master_findings, with_findings
+from openavc.cloud.tools.ui_review import UIReview, WriteNotes, master_findings
 from openavc.ui.matrix_model import matrix_config_problems
 from openavc.ui.page_geometry import (
     resolved_placements,
@@ -239,31 +239,9 @@ def _validated_grant(value: Any, what: str) -> Any:
         }) from exc
 
 
-def _grant_echo(before: Any, after: Any) -> dict:
-    """A grant change, said out loud rather than folded into "updated".
-
-    The grant is the entire reach model for markup somebody else wrote -- the
-    panel enforces it and nothing else can -- and it is the one field on an
-    element that nobody can see afterwards without reading the project back. So
-    a reply that changes one names what it was and what it is now.
-
-    It matters more now than it did: the AI may set a grant, on create and on
-    update, which is what makes the human review surface
-    -- the Builder's **Can reach** section -- the only other place this shows.
-    """
-    def shown(grant: Any) -> dict | None:
-        if grant is None:
-            return None
-        dump = getattr(grant, "model_dump", None)
-        return dump() if callable(dump) else dict(grant)
-
-    return {"before": shown(before), "after": shown(after)}
-
-
-def _assign_plain_fields(
-    target: Any, input: dict, skip: set[str], what: str, changed: list[str],
-) -> None:
-    """Assign every field the caller named that the model declares.
+def _assign_plain_fields(target: Any, input: dict, skip: set[str], what: str) -> list[str]:
+    """Assign every field the caller named that the model declares; the names
+    assigned come back, in the caller's order.
 
     The alternative -- an if-block per settable field -- is what left
     ``update_ui_element`` able to change eight properties of an existing
@@ -287,6 +265,7 @@ def _assign_plain_fields(
     that too: a grant of ``"projector1"`` matches every device id that is a
     substring of it. Coerce it, and say what was wrong.
     """
+    assigned: list[str] = []
     for field, value in input.items():
         if field in skip:
             continue
@@ -304,7 +283,8 @@ def _assign_plain_fields(
                 "error": f"{what}: '{field}' is not a field on a UI element."
             })
         setattr(target, field, value)
-        changed.append(field)
+        assigned.append(field)
+    return assigned
 
 
 def _refuse_if_locked(target: Any, input: dict, what: str) -> None:
@@ -479,9 +459,7 @@ class UIToolsMixin:
 
         from openavc.core.project_loader import UIPage
         elements = input.get("elements", [])
-        findings: list = []
-        adjustments: list = []
-        created_grant: dict = {}
+        notes = WriteNotes()
 
         def mutate(project):
             if any(p.id == page_id for p in project.ui.pages):
@@ -528,22 +506,16 @@ class UIToolsMixin:
             # A UI-only change just swaps the project and pushes the new
             # ui.definition to connected panels.
             project.ui.pages.append(new_page)
-            if new_page.grant is not None:
-                created_grant.update(_grant_echo(None, new_page.grant))
-            found, filled = UIReview(engine, self._devices, project).write(
+            notes.created(new_page.grant)
+            notes.add(*UIReview(engine, self._devices, project).write(
                 new_page, {el.id for el in new_page.elements},
-            )
-            findings.extend(found)
-            adjustments.extend(filled)
+            ))
 
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        result: dict = {"status": "created", "id": page_id}
-        if created_grant:
-            result["grant"] = created_grant
-        return with_findings(result, findings, adjustments)
+        return notes.reply({"status": "created", "id": page_id})
 
     async def _update_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -552,9 +524,7 @@ class UIToolsMixin:
 
         page_id = input.get("page_id", "")
         changed = []
-        findings: list = []
-        adjustments: list = []
-        grant_change: dict = {}
+        notes = WriteNotes()
 
         def mutate(project):
             page = _page_named(project, page_id)
@@ -568,26 +538,20 @@ class UIToolsMixin:
             if not changed:
                 raise ToolEditError({"error": "No fields to update"})
             if "grant" in input:
-                # Echoed rather than folded into "updated": see _grant_echo.
-                grant_change.update(_grant_echo(grant_before, page.grant))
+                notes.changed(grant_before, page.grant)
 
             # Nothing here expresses a range, so no auto-fill.
             touched = _page_update_touches(input)
             if touched is not None:
-                found, filled = UIReview(engine, self._devices, project).write(
+                notes.add(*UIReview(engine, self._devices, project).write(
                     page, touched, ranges=False,
-                )
-                findings.extend(found)
-                adjustments.extend(filled)
+                ))
 
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        result: dict = {"status": "updated", "page_id": page_id, "changed": changed}
-        if grant_change:
-            result["grant"] = grant_change
-        return with_findings(result, findings, adjustments)
+        return notes.reply({"status": "updated", "page_id": page_id, "changed": changed})
 
     async def _delete_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -623,9 +587,7 @@ class UIToolsMixin:
             return {"error": "No elements provided"}
 
         from openavc.core.project_loader import UIElement
-        findings: list = []
-        adjustments: list = []
-        granted_on_create: dict = {}
+        notes = WriteNotes()
 
         def mutate(project):
             page = _page_named(project, page_id)
@@ -674,32 +636,26 @@ class UIToolsMixin:
 
             for element, place in prepared:
                 page.elements.append(element)
-                if element.grant is not None:
-                    granted_on_create[element.id] = _grant_echo(None, element.grant)["after"]
+                # What each new control may reach, named rather than assumed:
+                # a grant arriving on a create is no more visible afterwards
+                # for having arrived early.
+                notes.created_on(element.id, element.grant)
             place_in_primary(page, {
                 element.id: place for element, place in prepared if place is not None
             })
 
-            found, filled = UIReview(engine, self._devices, project).write(
+            notes.add(*UIReview(engine, self._devices, project).write(
                 page, {el.get("id", "") for el in elements},
-            )
-            findings.extend(found)
-            adjustments.extend(filled)
+            ))
 
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        added_ids = [el.get("id", "") for el in elements]
-        result: dict = {
-            "status": "created", "page_id": page_id, "element_ids": added_ids,
-        }
-        # What each new control may reach, named rather than assumed. A grant
-        # arrives on a create as often as on an update, and it is no more
-        # visible afterwards for having arrived early: see _grant_echo.
-        if granted_on_create:
-            result["grants"] = granted_on_create
-        return with_findings(result, findings, adjustments)
+        return notes.reply({
+            "status": "created", "page_id": page_id,
+            "element_ids": [el.get("id", "") for el in elements],
+        })
 
     async def _update_ui_element(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -707,13 +663,11 @@ class UIToolsMixin:
             return {"error": "No project loaded"}
 
         element_id = input.get("element_id", "")
-        findings: list = []
-        adjustments: list = []
+        notes = WriteNotes()
         # What actually landed, named in the reply. A caller that asked for a
         # grant change and a range change should not have to re-read the
         # element to find out which of them the door accepted.
         changed: list[str] = []
-        grant_change: dict = {}
         # An edit that says nothing about a control's range gets no auto-fill:
         # completing a bound the caller never mentioned would be a surprise
         # mutation on an unrelated update.
@@ -772,33 +726,25 @@ class UIToolsMixin:
             # hide belong to a layout, a parent needs the percentage
             # conversion, and bindings were validated before anything moved.
             grant_before = target_el.grant
-            _assign_plain_fields(
+            changed.extend(_assign_plain_fields(
                 target_el, input,
                 skip={"element_id", "layout_id", "parent", "placement", "hidden", "bindings"},
                 what=f"Element '{element_id}'",
-                changed=changed,
-            )
+            ))
             if "grant" in input:
-                # Echoed rather than folded into "updated": see _grant_echo.
-                grant_change.update(_grant_echo(grant_before, target_el.grant))
+                notes.changed(grant_before, target_el.grant)
 
-            found, filled = UIReview(engine, self._devices, project).write(
-                target_page, {element_id},
-                ranges=touches_range,
-            )
-            findings.extend(found)
-            adjustments.extend(filled)
+            notes.add(*UIReview(engine, self._devices, project).write(
+                target_page, {element_id}, ranges=touches_range,
+            ))
 
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        result: dict = {
+        return notes.reply({
             "status": "updated", "element_id": element_id, "changed": sorted(changed),
-        }
-        if grant_change:
-            result["grant"] = grant_change
-        return with_findings(result, findings, adjustments)
+        })
 
     async def _delete_ui_elements(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -865,8 +811,7 @@ class UIToolsMixin:
         from openavc.core.project_loader import MasterElement
         el_data = {k: v for k, v in input.items() if k != "id"}
         el_data["id"] = element_id
-        findings: list = []
-        created_grant: dict = {}
+        notes = WriteNotes()
 
         def mutate(project):
             _refuse_bad_master_definition(el_data, f"Master element '{element_id}'")
@@ -882,18 +827,14 @@ class UIToolsMixin:
                 el_data["placements"] = _master_boxes(el_data["placements"])
             new_el = MasterElement(**el_data)
             project.ui.master_elements.append(new_el)
-            if new_el.grant is not None:
-                created_grant.update(_grant_echo(None, new_el.grant))
-            findings.extend(master_findings(project, new_el))
+            notes.created(new_el.grant)
+            notes.add(master_findings(project, new_el))
 
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        result: dict = {"status": "created", "id": element_id}
-        if created_grant:
-            result["grant"] = created_grant
-        return with_findings(result, findings, [])
+        return notes.reply({"status": "created", "id": element_id})
 
     async def _update_master_element(self, input: dict) -> Any:
         """Change a master element in place.
@@ -916,8 +857,7 @@ class UIToolsMixin:
         if not element_id:
             return {"error": "element_id is required"}
         changed: list[str] = []
-        findings: list = []
-        grant_change: dict = {}
+        notes = WriteNotes()
 
         def mutate(project):
             target = _master_named(project, element_id)
@@ -939,31 +879,24 @@ class UIToolsMixin:
             # way to be given a src. Shared with update_ui_element, which had
             # exactly that defect until the rule moved into one place.
             grant_before = target.grant
-            _assign_plain_fields(
+            changed.extend(_assign_plain_fields(
                 target, input,
                 skip={"element_id", "bindings", "placements", "placement"},
                 what=f"Master element '{element_id}'",
-                changed=changed,
-            )
+            ))
             if "grant" in input:
-                # Echoed rather than folded into "updated": see _grant_echo. A
-                # master can be a custom control too, drawn on every page.
-                grant_change.update(_grant_echo(grant_before, target.grant))
+                # A master can be a custom control too, drawn on every page.
+                notes.changed(grant_before, target.grant)
 
             if not changed:
                 raise ToolEditError({"error": "No fields to update"})
-            findings.extend(master_findings(project, target))
+            notes.add(master_findings(project, target))
 
         err = await apply_tool_edit(engine, mutate)
         if err:
             return err
 
-        result: dict = {
-            "status": "updated", "element_id": element_id, "changed": changed,
-        }
-        if grant_change:
-            result["grant"] = grant_change
-        return with_findings(result, findings, [])
+        return notes.reply({"status": "updated", "element_id": element_id, "changed": changed})
 
     async def _delete_master_element(self, input: dict) -> Any:
         engine = self._get_engine()

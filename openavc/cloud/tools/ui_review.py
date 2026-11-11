@@ -16,7 +16,8 @@ write: it fills nothing in, reads the whole page rather than what one call
 touched, and leaves the markup review to the write that set a grant (and to
 ``review_custom_ui``).
 
-:func:`with_findings` puts what a review found into the reply.
+:class:`WriteNotes` is the rest of what a write says back: the warnings, the
+bounds it filled in, and a grant change said out loud.
 """
 
 from functools import cached_property
@@ -49,14 +50,71 @@ _CLEAN_NOTE = (
 )
 
 
-def with_findings(result: dict, findings: list, adjustments: list) -> dict:
-    """Hand the caller its own mistakes back, in the reply it is already reading."""
-    if adjustments:
-        result["auto_filled"] = [a.message for a in adjustments]
-    if findings:
-        result["warnings"] = [f.message for f in findings]
-        result["warning_note"] = WARNING_NOTE
-    return result
+def grant_echo(before: Any, after: Any) -> dict:
+    """A grant change, said out loud rather than folded into "updated".
+
+    The grant is the entire reach model for markup somebody else wrote -- the
+    panel enforces it and nothing else can -- and it is the one field on an
+    element that nobody can see afterwards without reading the project back. So
+    a reply that changes one names what it was and what it is now. The AI may
+    set a grant on create and on update, which leaves the Builder's **Can
+    reach** section the only other place this shows.
+    """
+    def shown(grant: Any) -> dict | None:
+        if grant is None:
+            return None
+        dump = getattr(grant, "model_dump", None)
+        return dump() if callable(dump) else dict(grant)
+
+    return {"before": shown(before), "after": shown(after)}
+
+
+class WriteNotes:
+    """What a UI write says back besides its status, gathered inside its mutate.
+
+    The review's warnings and the bounds it filled in, under the note that says
+    what they are for; and a grant the write set, named before and after (or,
+    for a batch of new controls, what each may reach). Kept apart from the
+    status because the mutate can still be refused after a review ran: only a
+    write that landed hands these back.
+    """
+
+    def __init__(self) -> None:
+        self.findings: list = []
+        self.adjustments: list = []
+        self.grant: dict = {}
+        self.grants: dict = {}
+
+    def add(self, findings: list, adjustments: list = ()) -> None:
+        self.findings.extend(findings)
+        self.adjustments.extend(adjustments)
+
+    def created(self, grant: Any) -> None:
+        """A grant on a page or master this write created."""
+        if grant is not None:
+            self.grant.update(grant_echo(None, grant))
+
+    def created_on(self, element_id: str, grant: Any) -> None:
+        """What one control of a batch this write created may reach."""
+        if grant is not None:
+            self.grants[element_id] = grant_echo(None, grant)["after"]
+
+    def changed(self, before: Any, after: Any) -> None:
+        """A grant this write changed: what it was and what it is now."""
+        self.grant.update(grant_echo(before, after))
+
+    def reply(self, result: dict) -> dict:
+        """The write's reply, with what it has to say added after its status."""
+        if self.grant:
+            result["grant"] = self.grant
+        if self.grants:
+            result["grants"] = self.grants
+        if self.adjustments:
+            result["auto_filled"] = [a.message for a in self.adjustments]
+        if self.findings:
+            result["warnings"] = [f.message for f in self.findings]
+            result["warning_note"] = WARNING_NOTE
+        return result
 
 
 def project_theme(project: Any) -> dict | None:
