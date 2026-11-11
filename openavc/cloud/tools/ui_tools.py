@@ -704,6 +704,19 @@ class UIToolsMixin:
         for its ui/ folder, this handler's devices for what drivers declare."""
         return UIReview(engine, self._devices, project)
 
+    async def _apply_ui_edit(self, engine: Any, mutate: Any) -> dict | None:
+        """``apply_tool_edit`` for a write that reviews what it wrote: the
+        mutate is handed the project it writes and that project's review.
+
+        So a write reviews the copy it is changing and nothing else; the
+        engine's own project is still the one from before the write. The
+        review asks nothing until a check runs, so a write refused before
+        it reviews costs nothing.
+        """
+        return await apply_tool_edit(
+            engine, lambda project: mutate(project, self._review_of(engine, project)),
+        )
+
     async def _get_ui_page(self, input: dict) -> Any:
         engine = self._get_engine()
         if not engine or not engine.project:
@@ -728,17 +741,15 @@ class UIToolsMixin:
 
         notes = WriteNotes()
 
-        def mutate(project):
+        def mutate(project, review):
             new_page = _new_page(project, page_id, input)
             # A UI-only change just swaps the project and pushes the new
             # ui.definition to connected panels.
             project.ui.pages.append(new_page)
             notes.created(new_page.grant)
-            notes.add(*self._review_of(engine, project).write(
-                new_page, {el.id for el in new_page.elements},
-            ))
+            notes.add(*review.write(new_page, {el.id for el in new_page.elements}))
 
-        err = await apply_tool_edit(engine, mutate)
+        err = await self._apply_ui_edit(engine, mutate)
         if err:
             return err
 
@@ -753,7 +764,7 @@ class UIToolsMixin:
         changed = []
         notes = WriteNotes()
 
-        def mutate(project):
+        def mutate(project, review):
             page = _page_named(project, page_id)
             what = f"Page '{page_id}'"
             _reject_retired_geometry(input, what)
@@ -764,11 +775,9 @@ class UIToolsMixin:
             # Nothing here expresses a range, so no auto-fill.
             touched = _page_update_touches(input)
             if touched is not None:
-                notes.add(*self._review_of(engine, project).write(
-                    page, touched, ranges=False,
-                ))
+                notes.add(*review.write(page, touched, ranges=False))
 
-        err = await apply_tool_edit(engine, mutate)
+        err = await self._apply_ui_edit(engine, mutate)
         if err:
             return err
 
@@ -809,15 +818,13 @@ class UIToolsMixin:
 
         notes = WriteNotes()
 
-        def mutate(project):
+        def mutate(project, review):
             batch = _NewControls(project, _page_named(project, page_id))
             batch.accept(elements)
             batch.land(notes)
-            notes.add(*self._review_of(engine, project).write(
-                batch.page, {el.get("id", "") for el in elements},
-            ))
+            notes.add(*review.write(batch.page, {el.get("id", "") for el in elements}))
 
-        err = await apply_tool_edit(engine, mutate)
+        err = await self._apply_ui_edit(engine, mutate)
         if err:
             return err
 
@@ -844,7 +851,7 @@ class UIToolsMixin:
             field in input for field in ("bindings", "min", "max", "step", "unit")
         )
 
-        def mutate(project):
+        def mutate(project, review):
             target_page, target_el = _page_element(project, element_id)
             _refuse_bad_definition(input, f"Element '{element_id}'")
             # Geometry and per-layout visibility belong to one arrangement. The
@@ -875,11 +882,9 @@ class UIToolsMixin:
                 f"Element '{element_id}'", notes,
             ))
 
-            notes.add(*self._review_of(engine, project).write(
-                target_page, {element_id}, ranges=touches_range,
-            ))
+            notes.add(*review.write(target_page, {element_id}, ranges=touches_range))
 
-        err = await apply_tool_edit(engine, mutate)
+        err = await self._apply_ui_edit(engine, mutate)
         if err:
             return err
 
