@@ -290,6 +290,56 @@ def _refuse_if_locked(target: Any, input: dict, what: str) -> None:
         })
 
 
+def _refuse_locked_deletes(project: Any, ids: set) -> None:
+    """A locked control is protected from deletion for the reason the canvas
+    protects it from the Delete key: it was pinned on purpose. Every one in the
+    call is named, because a batch of twenty that holds one pinned logo should
+    say which."""
+    pinned = sorted(
+        el.id
+        for page in project.ui.pages
+        for el in page.elements
+        if el.id in ids and getattr(el, "locked", False)
+    )
+    if pinned:
+        raise ToolEditError({
+            "error": "Locked, so nothing was deleted: "
+                     + ", ".join(f"'{i}'" for i in pinned)
+                     + ". Unlock with update_ui_element locked: false first."
+        })
+
+
+def _delete_elements(project: Any, ids: set) -> list[str]:
+    """The controls in ``ids`` deleted from every page; each id comes back once
+    per page that held it. Nothing is deleted when one is locked or none is
+    there."""
+    _refuse_locked_deletes(project, ids)
+    deleted: list[str] = []
+    for page in project.ui.pages:
+        deleted.extend(remove_elements(page, ids))
+    if not deleted:
+        raise ToolEditError({"error": "No matching elements found"})
+    return deleted
+
+
+def _deleted_reply(ids: set, deleted: list[str]) -> dict:
+    """What a delete says back: the ids it deleted, and each one it did not find.
+
+    The deletes that DID land are kept -- an id that is already gone is not a
+    reason to put twenty-seven elements back. But it is said, because the
+    caller otherwise has to diff two lists to notice.
+    """
+    result = {"status": "deleted", "element_ids": sorted(deleted)}
+    missing = sorted(ids - set(deleted))
+    if missing:
+        result["not_found"] = missing
+        result["warnings"] = [
+            f"No element with id '{el_id}' on any page, so nothing was deleted for it."
+            for el_id in missing
+        ]
+    return result
+
+
 def _problem(exc: Exception, el_id: str) -> str:
     """One rejected element, said the way the single-element path says it."""
     if isinstance(exc, ToolEditError):
@@ -758,48 +808,13 @@ class UIToolsMixin:
             return {"error": "No element_ids provided"}
 
         ids_set = set(element_ids)
-        deleted_ids = []
-
-        def mutate(project):
-            # A locked element is protected from deletion here for the same
-            # reason the canvas protects it from the Delete key: it was pinned
-            # on purpose. Named individually, because a batch of twenty that
-            # contains one pinned logo should say which one.
-            pinned = sorted(
-                el.id
-                for page in project.ui.pages
-                for el in page.elements
-                if el.id in ids_set and getattr(el, "locked", False)
-            )
-            if pinned:
-                raise ToolEditError({
-                    "error": "Locked, so nothing was deleted: "
-                             + ", ".join(f"'{i}'" for i in pinned)
-                             + ". Unlock with update_ui_element locked: false first."
-                })
-
-            for page in project.ui.pages:
-                deleted_ids.extend(remove_elements(page, ids_set))
-
-            if not deleted_ids:
-                raise ToolEditError({"error": "No matching elements found"})
-
-        err = await apply_tool_edit(engine, mutate)
+        deleted: list[str] = []
+        err = await apply_tool_edit(
+            engine, lambda project: deleted.extend(_delete_elements(project, ids_set)),
+        )
         if err:
             return err
-
-        result = {"status": "deleted", "element_ids": sorted(deleted_ids)}
-        # The deletes that DID land are kept -- an id that is already gone is not
-        # a reason to put twenty-seven elements back. But it is said, because the
-        # caller otherwise has to diff two lists to notice.
-        missing = sorted(ids_set - set(deleted_ids))
-        if missing:
-            result["not_found"] = missing
-            result["warnings"] = [
-                f"No element with id '{el_id}' on any page, so nothing was deleted for it."
-                for el_id in missing
-            ]
-        return result
+        return _deleted_reply(ids_set, deleted)
 
     async def _add_master_element(self, input: dict) -> Any:
         engine = self._get_engine()
