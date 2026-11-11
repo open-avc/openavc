@@ -1006,6 +1006,10 @@ class TestHelperScriptVenvRecovery:
         assert _as_bash_path(app_dir / "requirements.txt") in logged[pip_calls[0]], (
             "the sync must install the NEW release's requirements.txt"
         )
+        # The helper runs as root with the service user's HOME, whose pip cache
+        # root does not own: pip would turn the cache off with a warning that
+        # reads like a fault in the journal of every update.
+        assert "--no-cache-dir" in logged[pip_calls[0]].split(), logged[pip_calls[0]]
 
         # Update completed, on an install that can now start.
         assert _read_version(app_dir) == "2.0.0"

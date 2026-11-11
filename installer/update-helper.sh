@@ -476,9 +476,14 @@ handle_update() {
     #    no rollback armed. Keep pip's stderr in the journal, check its real exit
     #    status, and on failure abort the update — rolling back in place to the
     #    snapshot so the service comes up on the previous working version.
+    #    --no-cache-dir: this runs as root with the service user's HOME, whose
+    #    pip cache root does not own, so pip turned the cache off anyway and
+    #    logged a warning that read like a fault. A cache would rarely help: an
+    #    update downloads only requirements whose version changed, and a venv
+    #    rebuilt for a new Python minor needs that minor's wheels.
     if [ -x "$APP_DIR/venv/bin/pip" ] && [ -f "$APP_DIR/requirements.txt" ]; then
         echo "$LOG_TAG: syncing venv dependencies"
-        if ! "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet; then
+        if ! "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt" --quiet --no-cache-dir; then
             echo "$LOG_TAG: venv dependency sync failed; aborting update and rolling back in place"
             recover_from_snapshot
             defer_update "could not download the release's dependencies"
