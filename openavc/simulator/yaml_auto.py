@@ -20,7 +20,9 @@ machinery as TCP.
 How a state value is written back on the wire (the reply tables this module
 fills from the response rules) is state_replies; where the device's
 notifications go (its push: block and the notifications: templates) is
-the PushChannels mixin in push_channels.
+the PushChannels mixin in push_channels; which of the driver's reads gets a
+handler, and what a list read covers, is query_handlers. The order a line is
+offered to the handlers is ``_HANDLER_CHAIN``, at the bottom of this module.
 """
 
 from __future__ import annotations
@@ -31,8 +33,8 @@ import json
 import logging
 import math
 import re
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, NamedTuple
 from urllib.parse import unquote
 
@@ -61,6 +63,7 @@ from openavc.drivers.inline_protocol import (
     normalize_config_state_vars,
 )
 from openavc.transport.binary_helpers import encode_escape_sequences
+from openavc.simulator.base import StateMachine
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
 from openavc.simulator.osc_addresses import (
@@ -1815,109 +1818,106 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         )
 
     def _merge_simulator_section(self, sim: dict) -> None:
-        """Merge explicit simulator: enhancements onto auto-generated behavior."""
-        # Override initial state
+        """Merge explicit simulator: enhancements onto auto-generated behavior:
+        the device's settings, its state machines, its hand-written handlers,
+        then its own wording for state changes."""
+        self._merge_section_settings(sim)
+        self._build_section_state_machines(sim.get("state_machines", {}))
+        self._read_section_handlers(sim.get("command_handlers", []))
+        # The device's own wording for state changes (push_channels.py).
+        self._read_notifications(sim.get("notifications", {}))
+
+    def _merge_section_settings(self, sim: dict) -> None:
+        """The section's state, delays, capacity, connection mode, error
+        modes and controls, each over what the definition gave."""
         for key, value in sim.get("initial_state", {}).items():
             self._state[key] = value
-
-        # Override delays
         for key, value in sim.get("delays", {}).items():
             self._delays[key] = value
-
         # How much the device can take in (off until switched on per device).
         if "capacity" in sim:
             self._capacity.declare(sim["capacity"])
-
         # Whether the device serves one connection at a time (in force at once).
         if "single_client" in sim:
             self._single_client.declare(sim["single_client"])
-
-        # Add error modes
         for mode, mode_def in sim.get("error_modes", {}).items():
             self._error_modes[mode] = mode_def
-
-        # Add declarative controls schema
+        # Declared controls replace the ones read from the state variables.
         controls = sim.get("controls")
         if controls:
             self.SIMULATOR_INFO["controls"] = controls
 
-        # Build state machines. Skip malformed entries with a warning rather
-        # than letting a missing key raise a KeyError that aborts the whole
-        # device's construction (the validator flags these up front).
-        from openavc.simulator.base import StateMachine
-        for name, sm_def in sim.get("state_machines", {}).items():
-            if not (isinstance(sm_def, dict)
-                    and {"states", "initial", "transitions"} <= sm_def.keys()):
+    def _build_section_state_machines(self, machines: dict) -> None:
+        """Each state machine the section declares, its state seeded with its
+        initial value. A malformed one is skipped with a warning rather than
+        aborting the device's construction (the validator flags it up front)."""
+        for name, sm_def in machines.items():
+            machine = StateMachine.from_definition(
+                name, sm_def, lambda key, val: self.set_state(key, val)
+            )
+            if machine is None:
                 logger.warning(
                     "%s: skipping malformed state_machine '%s' "
                     "(needs states, initial, transitions)", self.driver_id, name,
                 )
                 continue
-            self._state_machines[name] = StateMachine(
-                name=name,
-                states=sm_def["states"],
-                initial=sm_def["initial"],
-                transitions=sm_def["transitions"],
-                on_change=lambda key, val: self.set_state(key, val),
-            )
+            self._state_machines[name] = machine
             self._state[name] = sm_def["initial"]
 
-        # Build command handlers from simulator: section
-        # Two formats supported:
-        #   receive: + respond:/set_state: → ExplicitHandler (template-based)
-        #   match: + handler: → ScriptHandler (inline Python)
+    def _read_section_handlers(self, handler_defs: list) -> None:
+        """The section's hand-written command handlers, in their order: an
+        ``address`` with a ``handler`` is an OSC script; otherwise ``receive``
+        (or ``match``) is the line's pattern, with a ``handler`` an inline
+        Python script, without one a template (``respond:`` / ``set_state:``).
+        One whose pattern or code will not compile is skipped with a
+        warning."""
         self._explicit_handlers: list[ExplicitHandler] = []
         self._script_handlers: list[ScriptHandler] = []
-        for handler_def in sim.get("command_handlers", []):
-            # OSC handlers use "address" key (fnmatch pattern)
+        for handler_def in handler_defs:
             if "address" in handler_def and "handler" in handler_def:
-                try:
-                    code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
-                except SyntaxError as e:
-                    logger.warning(
-                        "%s: skipping OSC handler for %s — handler code has a "
-                        "syntax error: %s",
-                        self.driver_id, handler_def["address"], e,
-                    )
-                    continue
-                self._osc_script_handlers.append(OSCScriptHandler(
-                    address_pattern=handler_def["address"],
-                    code=code,
-                ))
+                self._read_osc_script(handler_def)
                 continue
-
-            # TCP/UDP handlers use "receive" or "match" as regex pattern
             pattern_str = handler_def.get("receive") or handler_def.get("match", "")
-            if not pattern_str:
-                continue
-            try:
-                pattern = re.compile(f"^{pattern_str}$")
-            except re.error:
-                logger.warning("Invalid regex in simulator command_handler: %s", pattern_str)
-                continue
+            if pattern_str:
+                self._read_line_handler(handler_def, pattern_str)
 
-            if "handler" in handler_def:
-                try:
-                    code = compile(handler_def["handler"], f"<sim:{self.driver_id}>", "exec")
-                except SyntaxError as e:
-                    logger.warning(
-                        "%s: skipping command handler %r — handler code has a "
-                        "syntax error: %s", self.driver_id, pattern_str, e,
-                    )
-                    continue
-                self._script_handlers.append(ScriptHandler(
-                    pattern=pattern,
-                    code=code,
-                ))
-            else:
-                self._explicit_handlers.append(ExplicitHandler(
-                    pattern=pattern,
-                    respond=handler_def.get("respond"),
-                    set_state=handler_def.get("set_state", {}),
-                ))
+    def _read_osc_script(self, handler_def: dict) -> None:
+        code = self._handler_code(
+            handler_def["handler"], f"OSC handler for {handler_def['address']}"
+        )
+        if code is not None:
+            self._osc_script_handlers.append(OSCScriptHandler(
+                address_pattern=handler_def["address"], code=code,
+            ))
 
-        # The device's own wording for state changes (push_channels.py).
-        self._read_notifications(sim.get("notifications", {}))
+    def _read_line_handler(self, handler_def: dict, pattern_str: str) -> None:
+        try:
+            pattern = re.compile(f"^{pattern_str}$")
+        except re.error:
+            logger.warning("Invalid regex in simulator command_handler: %s", pattern_str)
+            return
+        if "handler" not in handler_def:
+            self._explicit_handlers.append(ExplicitHandler(
+                pattern=pattern,
+                respond=handler_def.get("respond"),
+                set_state=handler_def.get("set_state", {}),
+            ))
+            return
+        code = self._handler_code(handler_def["handler"], f"command handler {pattern_str!r}")
+        if code is not None:
+            self._script_handlers.append(ScriptHandler(pattern=pattern, code=code))
+
+    def _handler_code(self, source: Any, what: str) -> Any:
+        """A handler's Python compiled, or None (with a warning naming
+        ``what``) when it has a syntax error."""
+        try:
+            return compile(source, f"<sim:{self.driver_id}>", "exec")
+        except SyntaxError as e:
+            logger.warning(
+                "%s: skipping %s — handler code has a syntax error: %s",
+                self.driver_id, what, e,
+            )
+            return None
 
     # Ensure handler lists exist even without simulator: section
     _explicit_handlers: list[ExplicitHandler] = []

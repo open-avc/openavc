@@ -79,20 +79,16 @@ class BaseSimulator(ABC):
         # entries with a warning instead of letting a missing key raise a
         # KeyError that aborts construction of the whole simulator.
         for name, sm_def in info.get("state_machines", {}).items():
-            if not (isinstance(sm_def, dict)
-                    and {"states", "initial", "transitions"} <= sm_def.keys()):
+            machine = StateMachine.from_definition(
+                name, sm_def, lambda key, val: self.set_state(key, val)
+            )
+            if machine is None:
                 logger.warning(
                     "Skipping malformed state_machine '%s' on %s "
                     "(needs states, initial, transitions)", name, self.device_id,
                 )
                 continue
-            self._state_machines[name] = StateMachine(
-                name=name,
-                states=sm_def["states"],
-                initial=sm_def["initial"],
-                transitions=sm_def["transitions"],
-                on_change=lambda key, val: self.set_state(key, val),
-            )
+            self._state_machines[name] = machine
             # Set initial state
             self._state[name] = sm_def["initial"]
 
@@ -504,6 +500,25 @@ class StateMachine:
         self.transitions = transitions
         self._on_change = on_change
         self._timer_tasks: list[asyncio.Task] = []
+
+    @classmethod
+    def from_definition(
+        cls, name: str, sm_def: Any, on_change: Callable[[str, Any], None],
+    ) -> StateMachine | None:
+        """The machine a ``state_machines:`` entry declares, or None when it
+        is malformed: not a mapping, or missing ``states``, ``initial`` or
+        ``transitions``. The caller says so in its own log, and seeds the
+        machine's state."""
+        if not (isinstance(sm_def, dict)
+                and {"states", "initial", "transitions"} <= sm_def.keys()):
+            return None
+        return cls(
+            name=name,
+            states=sm_def["states"],
+            initial=sm_def["initial"],
+            transitions=sm_def["transitions"],
+            on_change=on_change,
+        )
 
     def _match(self, trigger_name: str) -> dict | None:
         """Resolve which transition entry wins for this trigger.
