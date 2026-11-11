@@ -306,7 +306,8 @@ async def test_a_command_sent_after_its_call_returned_still_owns_its_refusal():
     """Nothing went out before the call returned: the first message after it
     is the command's own, and a refusal after that is still the command's."""
     conn = _Connection()
-    commands = _pass(conn)
+    # A window no stalled loop can outlast, closed here once both writes are in.
+    commands = _pass(conn, window_seconds=30.0)
 
     async def queued(command, params):
         return None
@@ -315,6 +316,7 @@ async def test_a_command_sent_after_its_call_returned_still_owns_its_refusal():
     trial = await commands.send("power_on")
     conn.sent("PWR 1\r")
     conn.report("last_error", "refused")
+    trial.ends_at = time.time()
     await _done(trial)
     assert trial.refusals["last_error"] == "refused"
     assert trial.refusals["later"] == []

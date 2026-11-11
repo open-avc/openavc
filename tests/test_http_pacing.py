@@ -111,14 +111,20 @@ async def test_a_command_waits_behind_at_most_the_request_in_flight(device) -> N
     try:
         slow = asyncio.create_task(t.get("/slow"))
         await asyncio.sleep(0.05)
-        await t.get("/press")
-        await slow
+        press = asyncio.create_task(t.get("/press"))
+        await asyncio.sleep(0.01)
+        later = asyncio.create_task(t.get("/later"))
+        await asyncio.gather(slow, press, later)
     finally:
         await t.close()
     slow_row = next(r for r in log if r[0] == "/slow")
     press_row = next(r for r in log if r[0] == "/press")
+    later_row = next(r for r in log if r[0] == "/later")
     gap = press_row[1] - slow_row[2]
-    assert DELAY - 0.01 <= gap < DELAY + 0.25, gap
+    assert gap >= DELAY - 0.01, gap
+    # The press waited behind the request in flight only: it went out before
+    # the request made after it.
+    assert press_row[1] < later_row[1]
 
 
 async def test_a_failed_request_still_leaves_the_gap(device) -> None:

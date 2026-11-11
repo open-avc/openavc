@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 import time
 from dataclasses import dataclass
 
@@ -62,6 +63,7 @@ class _Port:
         self.hold_open = hold_open
         self.accepted = 0
         self.open_now = 0
+        self._open: set[asyncio.StreamWriter] = set()
         self.most_open = 0
         self.received: list[bytes] = []
         self.server: asyncio.AbstractServer | None = None
@@ -77,8 +79,28 @@ class _Port:
         self.server.close()
         await self.server.wait_closed()
 
+    def _settle_closes(self) -> None:
+        """Stop counting each open connection its client has already closed.
+        On loopback the close is here the moment the client makes it, but the
+        handler that reads it can run after the next connection's, which
+        would then count two open at once."""
+        for writer in list(self._open):
+            try:
+                with writer.get_extra_info("socket").dup() as peek:
+                    peek.setblocking(False)
+                    closed = peek.recv(1, socket.MSG_PEEK) == b""
+            except BlockingIOError:
+                closed = False
+            except OSError:
+                closed = True
+            if closed:
+                self._open.discard(writer)
+                self.open_now -= 1
+
     async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         self.accepted += 1
+        self._settle_closes()
+        self._open.add(writer)
         self.open_now += 1
         self.most_open = max(self.most_open, self.open_now)
         got = bytearray()
@@ -122,7 +144,9 @@ class _Port:
         except (ConnectionError, OSError):
             pass
         finally:
-            self.open_now -= 1
+            if writer in self._open:
+                self._open.discard(writer)
+                self.open_now -= 1
             self.received.append(bytes(got))
             writer.close()
 
@@ -571,6 +595,7 @@ class TestOneConnectionPerPort:
                         _, writer = await asyncio.open_connection(HOST, dev.port)
                         await asyncio.sleep(0.15)
                         writer.close()
+                        await writer.wait_closed()
 
             def context(driver_id: str) -> ProbeContext:
                 async def emit(host, ev):

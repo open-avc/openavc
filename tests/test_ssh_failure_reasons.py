@@ -356,6 +356,12 @@ async def test_a_closed_ssh_port_reads_refused_from_the_first_attempt(
             "known_hosts_path": str(tmp_path / "known_hosts"),
         },
     })
+    # The refusal is read when the ssh client exits, which a slow machine
+    # reports a moment after the device was added.
+    for _ in range(200):
+        if state.get("device.shell.offline_reason") is not None:
+            break
+        await asyncio.sleep(0.05)
     assert state.get("device.shell.offline_reason") == CONNECTION_REFUSED
     assert f"127.0.0.1:{port}" in state.get("device.shell.offline_detail")
 

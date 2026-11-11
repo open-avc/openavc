@@ -781,7 +781,12 @@ class TestInstallPipDeps:
         proc.returncode = 0
 
         async def slow_communicate():
-            await asyncio.sleep(0.2)
+            # pip "works" until the heartbeat has run a few times, which it
+            # can only do if the install awaits pip instead of blocking.
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 5.0
+            while ticks < 3 and loop.time() < deadline:
+                await asyncio.sleep(0.01)
             return (b"", b"")
 
         proc.communicate = slow_communicate
@@ -794,7 +799,7 @@ class TestInstallPipDeps:
                 await _install_pip_deps("deps_plugin", plugin_dir)
         finally:
             hb.cancel()
-        assert ticks >= 10, "event loop starved during pip install"
+        assert ticks >= 3, "event loop starved during pip install"
 
     async def test_no_deps_skips_pip(self, plugin_repo):
         """Plugin without dependencies does not call pip."""
