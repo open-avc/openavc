@@ -73,7 +73,8 @@ _UNIVERSAL_SLOTS = {"visible_when"}
 def panel_method_bodies() -> dict[str, str]:
     if not PANEL_JS.is_file():  # pragma: no cover - the repo always has it
         pytest.fail(f"panel renderer not found at {PANEL_JS}")
-    lines = PANEL_JS.read_text(encoding="utf-8").split("\n")
+    source = PANEL_JS.read_text(encoding="utf-8")
+    lines = source.split("\n")
     starts = [
         (i, match.group(1))
         for i, line in enumerate(lines)
@@ -81,10 +82,47 @@ def panel_method_bodies() -> dict[str, str]:
     ]
     assert len(starts) > 50, "method scan found almost nothing -- the parse is wrong"
     starts.append((len(lines), "<eof>"))
-    return {
+    bodies = {
         name: "\n".join(lines[start:end])
         for (start, name), (end, _) in zip(starts, starts[1:])
     }
+    imported = _module_imports(source)
+    for name, body in bodies.items():
+        delegated = sorted(_modules_handed_the_element(body, imported))
+        if delegated:
+            bodies[name] = "\n".join([body, *delegated])
+    return bodies
+
+
+#: The named imports panel.js takes from its own modules.
+_MODULE_IMPORT = re.compile(r"import\s*\{([^}]*)\}\s*from\s*'\./(modules/[\w./-]+\.js)'", re.S)
+
+
+def _module_imports(panel_source: str) -> dict[str, str]:
+    """Each function panel.js imports from a module under web/panel/, with that module's source."""
+    found: dict[str, str] = {}
+    for names, rel in _MODULE_IMPORT.findall(panel_source):
+        text = (PANEL_JS.parent / rel).read_text(encoding="utf-8")
+        for name in re.split(r"[\s,]+", names.strip()):
+            if name:
+                found[name] = text
+    return found
+
+
+def _modules_handed_the_element(body: str, imported: dict[str, str]) -> set[str]:
+    """The source of every module whose function this body hands the element to.
+
+    A renderer that gives its element to a module function reads whatever that
+    module reads: the matrix renderer passes its element to ``createMatrix``,
+    and the whole of modules/matrix.js is the matrix. Same argument rule as a
+    method call: a function not given the element cannot read its properties.
+    """
+    found: set[str] = set()
+    for name, text in imported.items():
+        for match in re.finditer(rf"(?<![\w.$]){re.escape(name)}\(", body):
+            if _TAKES_ELEMENT.search(_positional_args(body, match.end())):
+                found.add(text)
+    return found
 
 
 @pytest.fixture(scope="module")
@@ -272,18 +310,22 @@ def _calls(body: str) -> list[tuple[str, str]]:
     named inside a callback body is a closure, not an argument, and a helper
     that was not given the element cannot read its properties.
     """
-    found: list[tuple[str, str]] = []
-    for match in _CALL_HEAD.finditer(body):
-        depth, i = 1, match.end()
-        while i < len(body) and depth:
-            if body[i] == "(":
-                depth += 1
-            elif body[i] == ")":
-                depth -= 1
-            i += 1
-        args = body[match.end():i - 1]
-        found.append((match.group(1), re.split(r"\{|=>", args, maxsplit=1)[0]))
-    return found
+    return [
+        (match.group(1), _positional_args(body, match.end()))
+        for match in _CALL_HEAD.finditer(body)
+    ]
+
+
+def _positional_args(body: str, start: int) -> str:
+    """The arguments of the call whose ``(`` ends just before ``start``, up to any callback or options object."""
+    depth, i = 1, start
+    while i < len(body) and depth:
+        if body[i] == "(":
+            depth += 1
+        elif body[i] == ")":
+            depth -= 1
+        i += 1
+    return re.split(r"\{|=>", body[start:i - 1], maxsplit=1)[0]
 
 
 def _reachable(entry: str, bodies: dict[str, str], seen: set[str] | None = None) -> set[str]:
