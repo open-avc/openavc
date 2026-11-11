@@ -12,16 +12,18 @@
  * text.
  *
  * A section of the Studio is handed a `ThemeDraft`: the theme as it stands, as
- * it was saved, and `edit`, which applies one of these rules to the working
- * copy. Each section reads what it shows from the draft and writes through it,
- * so a new part of the theme to edit is a rule here and the section that draws
- * it, with nothing to pass along between them.
+ * it was saved, and `edit`, which applies one of these rules (or Quick Adjust's
+ * surface style, `withSurfaceStyle` in `quickAdjust.ts`) to the working copy.
+ * Each section reads what it shows from the draft and writes through it, so a
+ * new part of the theme to edit is a rule here and the section that draws it,
+ * with nothing to pass along between them.
  */
 import type { ThemeDefinition } from "../../api/restClient";
 
 type ElementDefaults = ThemeDefinition["element_defaults"];
 
-/** The theme a section edits: as it stands, as it was saved, and the one way to change it. */
+/** The theme a section edits: as it stands, as it was saved, and the one way to change it.
+ *  It is built afresh on every render, so nothing may memoise on its identity. */
 export interface ThemeDraft {
   theme: ThemeDefinition;
   /** What a field's "modified" mark and its reset compare with. */
@@ -96,6 +98,11 @@ export function withElementDefault(
   if (Object.keys(own).length === 0) delete defaults[type];
   else defaults[type] = own;
   return { ...theme, element_defaults: defaults };
+}
+
+/** Rename the theme or change its description, kept exactly as typed. */
+export function withInfo(theme: ThemeDefinition, info: { name: string } | { description: string }): ThemeDefinition {
+  return { ...theme, ...info };
 }
 
 /** Replace the page defaults whole (the Page Background section works out the

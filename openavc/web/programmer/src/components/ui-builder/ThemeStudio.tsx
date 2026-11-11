@@ -6,8 +6,9 @@
  * that Unsaved, Discard and every "modified" mark compare with. It also holds
  * the file actions and their questions, and what the preview is handed. The
  * editor's sections each read and edit the working copy through one
- * `ThemeDraft` (`themeEdits.ts`), and every file action runs through
- * `statusLine.ts`'s `attempt`, which holds the buttons and says how it went.
+ * `ThemeDraft` (`themeEdits.ts`), and every file action that waits on the
+ * server runs through `statusLine.ts`'s `attempt`, which holds the buttons and
+ * says how it went (Discard and Export answer at once, without it).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -124,8 +125,8 @@ export function ThemeStudio({
   const isCustom = working?._source === "custom";
   const isDirty = working ? JSON.stringify(working) !== savedJson : false;
 
-  // Every edit is one of themeEdits' rules applied to the working copy, which
-  // each section applies itself through the draft.
+  // Every edit is a rule of themeEdits.ts (or Quick Adjust's surface style)
+  // applied to the working copy; each section applies its own through the draft.
   const edit = (change: (theme: ThemeDefinition) => ThemeDefinition) =>
     setWorking((prev) => (prev ? change(prev) : prev));
   const draft: ThemeDraft | null = working && { theme: working, saved: savedTheme, edit };

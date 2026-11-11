@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ThemeDefinition, ThemeSummary } from "../../api/restClient";
+import { TYPOGRAPHY } from "./quickAdjust";
 import {
   customTheme, builtinTheme, themeById, renderStudio, sectionBody, tokenRow, textIn, SUMMARIES, elementSection,
 } from "../../test/themeStudioFixtures";
@@ -119,6 +120,12 @@ describe("the editor column", () => {
       expect(sectionBody("Theme").parentElement!.outerHTML).toMatchSnapshot();
     },
   );
+
+  it("offers, in the Theme section's font list, every stack Quick Adjust's Typography writes", async () => {
+    await loaded();
+    const offered = [...tokenRow("Font Family").querySelectorAll("option")].map((o) => o.value);
+    for (const preset of TYPOGRAPHY) expect(offered).toContain(preset.font);
+  });
 
   it("keeps a name and description exactly as typed", async () => {
     await loaded();

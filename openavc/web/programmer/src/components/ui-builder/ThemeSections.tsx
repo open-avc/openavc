@@ -5,8 +5,9 @@
  * `ELEMENT_SECTIONS` (elementControls.ts) repeats one. A token's field is drawn
  * by its kind: a colour says what it inherits while unset, a length is shown in
  * pixels and stored in rem like every panel length, and the font is a list
- * that holds every stack Quick Adjust's Typography writes (`TYPOGRAPHY`), so a
- * preset chosen there always shows here as one of the choices.
+ * that holds every stack Quick Adjust's Typography writes (`TYPOGRAPHY`, by
+ * name, and a test holds the list to it), so a preset chosen there always
+ * shows here as one of the choices.
  */
 import type { ReactElement } from "react";
 import { NumericInput } from "../shared/NumericInput";
@@ -14,7 +15,7 @@ import { ColorField } from "./ColorField";
 import { CSS_VAR_FALLBACKS } from "./colorUtils";
 import { DEFAULT_FONT, typographyFont } from "./quickAdjust";
 import { ResetToSaved, StudioSection } from "./StudioParts";
-import { differsFromSaved, variablesOf, withVariable, type ThemeDraft } from "./themeEdits";
+import { differsFromSaved, variablesOf, withInfo, withVariable, type ThemeDraft } from "./themeEdits";
 import { displayStyleValue, storeStyleValue } from "./uiBuilderHelpers";
 
 interface ThemeToken {
@@ -37,14 +38,21 @@ const THEME_TOKENS: readonly ThemeToken[] = [
   { key: "font_family", label: "Font Family", kind: "font", hint: "Typeface across the entire panel" },
 ];
 
+/** The stack a Typography preset writes; a preset not there is a mistake in this list. */
+function presetFont(preset: string): string {
+  const font = typographyFont(preset);
+  if (font === undefined) throw new Error(`No Typography preset "${preset}"`);
+  return font;
+}
+
 /** The Font Family choices, in order: each stack and what the list calls it. */
 const FONT_CHOICES: readonly (readonly [font: string, label: string])[] = [
   [DEFAULT_FONT, "Inter"],
   ["system-ui, sans-serif", "System UI"],
   ["'Roboto', sans-serif", "Roboto"],
   ["'Segoe UI', sans-serif", "Segoe UI"],
-  [typographyFont("serif")!, "Serif"],
-  [typographyFont("mono")!, "Monospace"],
+  [presetFont("serif"), "Serif"],
+  [presetFont("mono"), "Monospace"],
 ];
 
 const INFO_LABEL = { width: 70, fontSize: 11, color: "var(--text-secondary)" };
@@ -58,7 +66,10 @@ export function ThemeInfoSection({ draft }: { draft: ThemeDraft }) {
           <label style={INFO_LABEL}>Name</label>
           <input
             value={theme.name}
-            onChange={(e) => edit((t) => ({ ...t, name: e.target.value }))}
+            onChange={(e) => {
+              const name = e.target.value;
+              edit((t) => withInfo(t, { name }));
+            }}
             style={{ flex: 1, fontSize: 12 }}
           />
         </div>
@@ -68,7 +79,10 @@ export function ThemeInfoSection({ draft }: { draft: ThemeDraft }) {
           </label>
           <input
             value={theme.description || ""}
-            onChange={(e) => edit((t) => ({ ...t, description: e.target.value }))}
+            onChange={(e) => {
+              const description = e.target.value;
+              edit((t) => withInfo(t, { description }));
+            }}
             style={{ flex: 1, fontSize: 12 }}
           />
         </div>

@@ -34,12 +34,12 @@ function drawnColor(variables: Record<string, unknown>, key: string): string {
 }
 
 /** Every pair the panel draws both colours of, rated, in the order above. */
-export function contrastChecks(variables: Record<string, unknown> | undefined): ContrastCheck[] {
-  const v = variables || {};
+export function contrastChecks(variables: Record<string, unknown>): ContrastCheck[] {
   const checks: ContrastCheck[] = [];
   for (const [label, fgKey, bgKey] of PAIRS) {
-    const fg = drawnColor(v, fgKey);
-    const bg = drawnColor(v, bgKey);
+    const fg = drawnColor(variables, fgKey);
+    const bg = drawnColor(variables, bgKey);
+    // Every pair above has a panel default today; one added without would be skipped, not rated against "".
     if (fg && bg) {
       const ratio = contrastRatio(fg, bg);
       checks.push({ label, fg, bg, ratio, level: wcagLevel(ratio) });
