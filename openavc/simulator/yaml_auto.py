@@ -65,6 +65,13 @@ from openavc.simulator.reply_templates import (
     fill_template,
 )
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
+from openavc.simulator.state_replies import (
+    ChildListAnswer,
+    ChildStateResponse,
+    StateResponse,
+    map_key,
+    rule_pattern,
+)
 from openavc.simulator.send_templates import (
     is_passthrough_send,
     send_param_groups,
@@ -1708,14 +1715,10 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 ]
 
             for state_key, set_value in set_dict.items():
-                # Normalize like StateResponse.format() normalizes its lookup
-                # key, or a YAML bare `true` (Python True) stores a "True"
-                # key that a boolean state value can never hit.
-                set_value_str = (
-                    str(set_value).lower()
-                    if isinstance(set_value, bool)
-                    else str(set_value)
-                )
+                # The key every value map lookup uses, or a YAML bare `true`
+                # (Python True) stores a "True" key that a boolean state value
+                # can never hit.
+                set_value_str = map_key(set_value)
 
                 if state_key not in self._state_responses:
                     self._state_responses[state_key] = StateResponse(
@@ -1741,7 +1744,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                         emit_template(match_pattern, group) if group > 0 else None
                     )
                     if template:
-                        sr.add_template(template, _rule_pattern(match_pattern, group))
+                        sr.add_template(template, rule_pattern(match_pattern, group))
                 else:
                     # Value-mapped: Amt1 with set: { mute: "true" }
                     # → value "true" maps to response text "Amt1"
@@ -1769,13 +1772,8 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 if sr is None:
                     continue
                 for raw, friendly in mapping["map"].items():
-                    key = (
-                        str(friendly).lower()
-                        if isinstance(friendly, bool)
-                        else str(friendly)
-                    )
                     sr.value_map.setdefault(
-                        key, fill_template(template, {"value": raw})
+                        map_key(friendly), fill_template(template, {"value": raw})
                     )
 
     def _build_command_handlers(self) -> None:
@@ -2512,9 +2510,6 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
             )
         sr = self._child_state_responses[key]
 
-        def norm(value: Any) -> str:
-            return str(value).lower() if isinstance(value, bool) else str(value)
-
         if isinstance(expr, str) and expr.startswith("$"):
             try:
                 group = int(expr[1:])
@@ -2524,7 +2519,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 pattern, {id_group: "{child_id}", group: "{value}"}
             )
             if template:
-                sr.add_template(template, _rule_pattern(pattern, group), wire_id_map)
+                sr.add_template(template, rule_pattern(pattern, group), wire_id_map)
             return
         if isinstance(expr, dict):
             if "group" in expr:
@@ -2535,7 +2530,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 value_map = expr.get("map")
                 if isinstance(value_map, dict) and value_map:
                     for wire_tok, value in value_map.items():
-                        vkey = norm(value)
+                        vkey = map_key(value)
                         if vkey in sr.value_map:
                             continue
                         reply = emit_template_multi(
@@ -2551,7 +2546,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                         pattern, {id_group: "{child_id}", group: "{value}"}
                     )
                     if template:
-                        sr.add_template(template, _rule_pattern(pattern, group), wire_id_map)
+                        sr.add_template(template, rule_pattern(pattern, group), wire_id_map)
                 return
             if "value" in expr:
                 expr = expr["value"]
@@ -2559,7 +2554,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 return
         # Static value (bare or {value: ...}): the whole reply is a literal
         # carrying only the child id slot.
-        vkey = norm(expr)
+        vkey = map_key(expr)
         if vkey not in sr.value_map:
             reply = emit_template_multi(pattern, {id_group: "{child_id}"})
             if reply:
@@ -2618,8 +2613,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                     if isinstance(expr.get("map"), dict) and expr["map"]:
                         value_words = {}
                         for word, value in expr["map"].items():
-                            norm = str(value).lower() if isinstance(value, bool) else str(value)
-                            value_words.setdefault(norm, str(word))
+                            value_words.setdefault(map_key(value), str(word))
                 else:
                     continue
                 if group is None or group == id_group:
@@ -2631,7 +2625,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
                 if item is None:
                     continue
                 self._child_list_answers[key] = ChildListAnswer(
-                    ctype, var, outer, item, _rule_pattern(element, group),
+                    ctype, var, outer, item, rule_pattern(element, group),
                     spec.get("separator") or "", cid is None, start,
                     value_words, id_wire_map,
                     conversion_of(self._child_vars(ctype).get(var)),
@@ -3133,8 +3127,7 @@ class YAMLAutoSimulator(HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
         value_map = self._notification_map.get(key) if self._notification_map else None
         if not value_map:
             return None
-        lookup = str(value).lower() if isinstance(value, bool) else str(value)
-        return value_map.get(lookup) or value_map.get("*") or None
+        return value_map.get(map_key(value)) or value_map.get("*") or None
 
     def _sends_notifications(self) -> bool:
         """Whether a ``notifications:`` template can reach the driver: the map
@@ -3608,122 +3601,6 @@ class ListQueryHandler:
         self.count = count    # children on a page; None = the whole list
 
 
-class ChildListAnswer:
-    """How the device writes one child variable as a list, read back from a
-    ``child_list`` response rule: the reply around the list, one item, the
-    text between items, and how an item names its child."""
-
-    def __init__(
-        self,
-        child_type: str,
-        var: str,
-        outer: str,
-        item: str,
-        item_rule: _ReadBack,
-        separator: str,
-        by_place: bool,
-        start: int,
-        value_words: dict[str, str] | None,
-        id_wire_map: dict[str, str] | None,
-        conversion: dict | None,
-    ):
-        self.child_type = child_type
-        self.var = var
-        self.outer = outer            # e.g. "Vgp0*Out{start} {list}Vid"
-        self.item = item              # e.g. "{value:02d}" or "{value}>{child_id}"
-        self.item_rule = item_rule    # the element, compiled, and the value's group
-        self.separator = separator
-        self.by_place = by_place      # items named by place, from start
-        self.start = start            # the first place when the reply says nothing
-        self.value_words = value_words  # value -> the device's word, from a map
-        self.id_wire_map = id_wire_map  # local id -> wire id
-        self.conversion = conversion
-
-    def render_item(self, child_id: str, value: Any) -> str:
-        wire_id = child_id
-        if self.id_wire_map is not None:
-            wire_id = self.id_wire_map.get(str(child_id), str(child_id))
-        if self.value_words is not None:
-            key = str(value).lower() if isinstance(value, bool) else str(value)
-            word = self.value_words.get(key)
-            if word is not None:
-                return fill_template(self.item, {"value": word, "child_id": wire_id})
-        return _first_read_back([
-            (
-                fill_template(self.item, {"value": wire, "child_id": wire_id}),
-                _value_text(self.item, wire),
-                self.item_rule,
-            )
-            for wire in _wire_forms(value, self.conversion)
-        ])
-
-    def render(self, start: int | str, items: list[str]) -> str:
-        return fill_template(
-            self.outer, {"list": self.separator.join(items), "start": start}
-        )
-
-
-class ChildStateResponse:
-    """Reply formatting for one (child type, state variable) pair, derived
-    from the driver's child_set: response rules. The template carries a
-    {child_id} slot alongside {value}; value_map entries carry {child_id}
-    inside each mapped reply."""
-
-    def __init__(self, child_type: str, var: str, conversion: dict | None = None):
-        self.child_type = child_type
-        self.var = var
-        # The variable's scale / offset / unknown: the reply carries the
-        # device's own number, not the real value the simulator holds.
-        self.conversion = conversion
-        self.template: str | None = None     # e.g. "Out{child_id} In{value} Vid"
-        self.value_map: dict[str, str] = {}  # e.g. {"true": "Vmt{child_id}*1"}
-        # local id -> wire id, from the child_set rule's id map: reversed —
-        # a device that reports 0-based ids must answer with them too.
-        self.id_wire_map: dict[str, str] | None = None
-        # The rule the template came from, and every later rule that writes
-        # this variable as (template, rule, id map). See _first_read_back.
-        self.template_rule: _ReadBack = None
-        self.alternates: list[tuple[str, _ReadBack, dict[str, str] | None]] = []
-
-    def add_template(
-        self, template: str, rule: _ReadBack, id_wire_map: dict[str, str] | None
-    ) -> None:
-        """Keep a rule's template: the first becomes ``template``, the rest
-        are alternates, in the order the rules were read."""
-        if self.template is None:
-            self.template = template
-            self.template_rule = rule
-            self.id_wire_map = id_wire_map
-        else:
-            self.alternates.append((template, rule, id_wire_map))
-
-    def format(self, child_id: str, value: Any) -> str | None:
-        """Reply text for this child/value, or None when nothing derivable
-        represents the value (unlike flat replies, a bare value with no id
-        slot would be garbage on the wire)."""
-        wire_id = child_id
-        if self.id_wire_map is not None:
-            wire_id = self.id_wire_map.get(str(child_id), str(child_id))
-        value_str = str(value).lower() if isinstance(value, bool) else str(value)
-        if value_str in self.value_map:
-            return fill_template(self.value_map[value_str], {"child_id": wire_id})
-        if self.template:
-            lines = []
-            for template, rule, id_map in (
-                (self.template, self.template_rule, self.id_wire_map),
-                *self.alternates,
-            ):
-                cid = child_id if id_map is None else id_map.get(str(child_id), str(child_id))
-                for wire in _wire_forms(value, self.conversion):
-                    lines.append((
-                        fill_template(template, {"child_id": cid, "value": wire}),
-                        _value_text(template, wire),
-                        rule,
-                    ))
-            return _first_read_back(lines)
-        return None
-
-
 class ExplicitHandler:
     """Explicit handler from simulator: command_handlers section."""
     def __init__(self, pattern: re.Pattern, respond: str | None, set_state: dict):
@@ -3761,50 +3638,6 @@ class _StateProxy(dict):
         return key in self._real
 
 
-class StateResponse:
-    """Tracks how to format a response for a state variable."""
-    def __init__(self, state_key: str, conversion: dict | None = None):
-        self.state_key = state_key
-        # The variable's scale / offset / unknown (see ChildStateResponse).
-        self.conversion = conversion
-        self.template: str | None = None  # e.g., "In{value} All"
-        self.value_map: dict[str, str] = {}  # e.g., {"true": "Amt1", "false": "Amt0"}
-        # The rule the template came from, and every later rule that writes
-        # this variable as (template, rule). See _first_read_back.
-        self.template_rule: _ReadBack = None
-        self.alternates: list[tuple[str, _ReadBack]] = []
-
-    def add_template(self, template: str, rule: _ReadBack) -> None:
-        """Keep a rule's template: the first becomes ``template``, the rest
-        are alternates, in the order the rules were read."""
-        if self.template is None:
-            self.template = template
-            self.template_rule = rule
-        else:
-            self.alternates.append((template, rule))
-
-    def format(self, value: Any) -> str:
-        """Generate response text for the given value."""
-        value_str = str(value).lower() if isinstance(value, bool) else str(value)
-
-        # Check value map first (for boolean/enum values)
-        if value_str in self.value_map:
-            return self.value_map[value_str]
-
-        # Use template
-        if self.template:
-            return _first_read_back([
-                (fill_template(template, {"value": wire}), _value_text(template, wire), rule)
-                for template, rule in (
-                    (self.template, self.template_rule), *self.alternates
-                )
-                for wire in _wire_forms(value, self.conversion)
-            ])
-
-        # Fallback
-        return str(value_to_wire(value, self.conversion))
-
-
 def _ref_number(ref: Any) -> int | None:
     """``"$2"`` or ``2`` as 2; None for anything else."""
     if isinstance(ref, bool):
@@ -3814,69 +3647,6 @@ def _ref_number(ref: Any) -> int | None:
     if isinstance(ref, str) and re.fullmatch(r"\$\d+", ref):
         return int(ref[1:]) or None
     return None
-
-
-# A response rule's ``match:`` compiled the way the driver reads it
-# (``search``), with the capture group the value is read from; None when the
-# pattern does not compile as written.
-_ReadBack = tuple[re.Pattern, int] | None
-
-_VALUE_SLOT = re.compile(r"\{value(?::0\d+d)?\}")
-
-
-def _rule_pattern(pattern: str, group: int) -> _ReadBack:
-    try:
-        return re.compile(pattern), group
-    except re.error:
-        return None
-
-
-def _wire_forms(value: Any, conversion: dict | None) -> list[Any]:
-    """The ways a value can go out, the simulator's own rendering first.
-
-    A boolean has three: Python's ``True``, the ``true`` most devices send,
-    and ``1``. A rule written for the device's lowercase ``(true|false)``
-    never reads back ``True``, so a change pushed from the Simulator UI was
-    dropped by the driver. _first_read_back takes the first form the rule
-    reads back; with none, the first (today's) rendering still goes out."""
-    wire = value_to_wire(value, conversion)
-    if not isinstance(value, bool):
-        return [wire]
-    forms = [wire, str(value).lower(), "1" if value else "0"]
-    return [form for index, form in enumerate(forms)
-            if str(form) not in {str(f) for f in forms[:index]}]
-
-
-def _value_text(template: str, wire: Any) -> str:
-    """The text a template's value slot renders, padding included."""
-    slot = _VALUE_SLOT.search(template)
-    return fill_template(slot.group(0), {"value": wire}) if slot else str(wire)
-
-
-def _first_read_back(lines: list[tuple[str, str, _ReadBack]]) -> str:
-    """The first rendering whose own rule reads the value back, else the first.
-
-    Several rules can write one variable: a driver puts a rule for the
-    device's codes ahead of the general one (``BATT_RUN_TIME (6553[2-5])``,
-    then ``BATT_RUN_TIME (\\d{5})``), because the driver takes the first rule
-    that matches. Rendering a value from the first rule alone sent ``400`` in
-    the codes rule's unpadded form, which the general rule rejects, so the
-    driver never saw the change. Each rule gets its own rendering, and the
-    first one whose rule matches it AND captures exactly the rendered value
-    in the value's group is sent. A rule that matches the line but reads
-    something else there is not enough: it would hand the driver a different
-    value from the one the simulator holds. When none reads it back, the
-    first rendering goes out, as it always did."""
-    for index, (line, text, rule) in enumerate(lines):
-        if rule is None:
-            if index == 0:
-                return line
-            continue
-        pattern, group = rule
-        match = pattern.search(line)
-        if match and match.group(group) == text:
-            return line
-    return lines[0][0]
 
 
 # The state keys a notification template names as ``{state.<key>}``.

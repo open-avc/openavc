@@ -14,7 +14,8 @@ import re
 import pytest
 
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
-from openavc.simulator.yaml_auto import _first_read_back, _ref_number
+from openavc.simulator.state_replies import first_read_back as _first_read_back
+from openavc.simulator.yaml_auto import _ref_number
 
 
 def _sim(**overrides) -> YAMLAutoSimulator:

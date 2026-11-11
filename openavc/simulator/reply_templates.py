@@ -335,6 +335,16 @@ def fill_template(template: str, values: dict[str, Any]) -> str:
     return _SLOT_RE.sub(repl, template)
 
 
+def slot_text(template: str, name: str, value: Any) -> str | None:
+    """The text the first {name} slot in template renders value
+    as, padding included, the way fill_template fills it; None when the
+    template has no such slot."""
+    for m in _SLOT_RE.finditer(template):
+        if m.group(1) == name:
+            return _zero_pad(value, int(m.group(2))) if m.group(2) else str(value)
+    return None
+
+
 def _zero_pad(value: Any, width: int) -> str:
     """``value`` as a whole number zero-padded to ``width``; anything that is
     not a whole number goes in as ``str()``."""
