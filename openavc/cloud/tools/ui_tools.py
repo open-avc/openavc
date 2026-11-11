@@ -475,6 +475,12 @@ def _batch_error(problems: list[str], verb: str) -> ToolEditError:
     })
 
 
+def _set_layouts(page: Any, value: Any, what: str) -> None:
+    """Every setter takes ``what`` (whose field it is), the table's one shape;
+    the layouts write names each arrangement itself."""
+    apply_layouts(page, value)
+
+
 def _set_snap(page: Any, value: Any, what: str) -> None:
     """Partial merge: omitted fields keep their values (the increment is not
     reset to the defaults) and forward-compat keys survive."""
@@ -525,7 +531,7 @@ def _set_plain(field: str) -> Any:
 #: and cannot set back is the element door's old defect one level up.
 _PAGE_FIELDS = {
     "name": _set_plain("name"),
-    "layouts": lambda page, value, what: apply_layouts(page, value),
+    "layouts": _set_layouts,
     "snap": _set_snap,
     "page_type": _set_plain("page_type"),
     "overlay": _set_overlay,
