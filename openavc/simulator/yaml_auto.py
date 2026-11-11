@@ -53,13 +53,11 @@ from openavc.drivers.compiled_protocol import (
     decode_delimiter,
     reading_from_wire,
     safe_substitute,
-    value_for_map_word,
     split_send_frames,
     state_var_default,
     value_to_wire,
 )
 from openavc.drivers.child_ids import coerce_child_local_id
-from openavc.drivers.spec import placeholder_names
 from openavc.drivers.inline_protocol import (
     declare_command_params,
     derive_state_vars_from_responses,
@@ -67,6 +65,7 @@ from openavc.drivers.inline_protocol import (
     normalize_config_responses,
     normalize_config_state_vars,
 )
+from openavc.simulator.command_handler import CommandHandler
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
 from openavc.simulator.osc_addresses import (
@@ -100,6 +99,7 @@ from openavc.simulator.state_replies import (
     ChildStateResponse,
     StateResponse,
 )
+from openavc.simulator.setting_handlers import setting_handlers
 from openavc.simulator.send_templates import (
     is_passthrough_send,
     send_param_groups,
@@ -119,9 +119,6 @@ from openavc.simulator.telnet_sign_in import (
 )
 
 logger = logging.getLogger(__name__)
-
-# The variable types a capture's non-decimal base decodes into a number for.
-_NUMERIC_TYPES = ("integer", "number", "float")
 
 # How many numbers start(0) tries before a side receiver's refusal stands.
 _SIDE_PORT_ATTEMPTS = 5
@@ -221,58 +218,6 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
 #: `set_state` value; a value with neither is the author's, as written.
 _HANDLER_PLACEHOLDER = re.compile(r"\{(?:\d+|state\.[^{}]+)\}")
 _HANDLER_STATE_REF = re.compile(r"\{state\.([^{}]+)\}")
-
-#: A setting's declared type, read as the command-parameter type whose capture
-#: matches the same wire form. `enum` and `float` have no param equivalent: an
-#: enum's members are wire tokens of any shape, so it captures like a string,
-#: and a float captures like a number.
-_SETTING_PARAM_TYPE: dict[str, str] = {
-    "string": "string",
-    "integer": "integer",
-    "number": "number",
-    "float": "number",
-    "boolean": "boolean",
-    "enum": "string",
-}
-
-
-def _settings_write_template(write: dict) -> str | None:
-    """The wire line a ``device_settings`` write puts on this transport.
-
-    Asked in the runtime's own order (``set_device_setting``): an ``address``
-    write is OSC and wins over everything, then ``path``/``method`` is HTTP,
-    and ``send`` is the byte-stream form last. Checking ``send`` first would
-    build a handler for a write the driver never sends that way.
-
-    **No ``command_prefix``.** A command is framed with the driver's prefix and
-    suffix on the way out; ``set_device_setting`` does no such thing -- it
-    substitutes, escape-decodes, applies ``send_frame`` and sends. Drivers know
-    it: the one prefixed driver in the catalog that declares settings spells
-    its prefix into every write string by hand. Adding one here would build a
-    pattern the wire never carries.
-
-    An HTTP write is built into the exact line ``respond_http`` synthesizes --
-    ``"METHOD /path|body"``, no body section when there is no body -- so one
-    handler chain still serves both transports, with POST the default method
-    the runtime uses.
-
-    Returns None for a write this chain never sees: OSC, and an empty one.
-    """
-    if write.get("address"):
-        # OSC never reaches the command chain; handle_message answers from the
-        # response address mappings instead.
-        return None
-    path = write.get("path")
-    if (isinstance(path, str) and path) or write.get("method"):
-        method = str(write.get("method") or "POST").upper()
-        line = f"{method} {path if isinstance(path, str) and path else '/'}"
-        body = write.get("body")
-        return f"{line}|{body}" if isinstance(body, str) and body else line
-    send = write.get("send")
-    if isinstance(send, str) and send:
-        return send
-    return None
-
 
 class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     """Auto-generated simulator from a .avcdriver definition.
@@ -1240,138 +1185,14 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # needs the local id back.
         return _ChildAddress(param_name, ctype, reversed_ids(cpdef.get("map")), child_vars)
 
-    def _settings_wire_line(self, template: str) -> str | None:
-        """The one line of a settings write that actually carries the value.
-
-        Two things stand between the authored template and the line the
-        simulator sees, and both are visible in the catalog today.
-
-        A write may be more than one command: a set followed by a read-back
-        query, joined by the terminator, sent as one blob and arriving as
-        separate lines. Only the segment holding ``{value}`` is the write --
-        the query is a query, answered by the handlers that answer queries --
-        so a pattern built from the whole string could never match either
-        line.
-
-        And a write may carry ``{config_field}`` placeholders (a monitor id, a
-        unit address). The driver substitutes those before sending, so the
-        simulator has to as well or the pattern would look for the literal
-        braces. Same substitution ``_query_wire_line`` does for a raw poll
-        query, from the same two sources; ``{value}`` is not a config key and
-        is left alone for ``send_regex`` to turn into the capture.
-        """
-        segments = [
-            s for s in decode_delimiter(template).replace("\r", "\n").split("\n")
-            if s.strip()
-        ]
-        wire = next(
-            # `value` is the one name the runtime always substitutes with the
-            # value being written, with or without a format spec.
-            (s for s in segments if "value" in placeholder_names(s)), None
-        )
-        if wire is None:
-            return None
-        if "{" in wire:
-            fields = self._instance_config()
-            fields.pop("value", None)
-            wire = safe_substitute(wire, fields)
-        return wire.strip() or None
-
     def _build_settings_handlers(self) -> None:
-        """Answer a ``device_settings`` write the way a command is answered.
-
-        A setting's ``write`` carries the same templates a command's ``send``
-        does and its ``state_key`` names where the value lands, so the pair is
-        everything a handler needs -- and without one, a setting write reached
-        the end of the dispatch chain, logged *unrecognized command* and was
-        dropped. Nothing in the catalog shows it, because every driver that
-        declares settings also hand-writes a ``simulator:`` section whose
-        handlers happen to match its own write strings; a NEW driver written
-        without one got settings that did nothing in simulation.
-
-        **Reporting the value back is the point, not a nicety.** A setting
-        write now waits for the device to say the value took, so a handler
-        that changed state silently would leave the setting pending forever
-        and re-sent on every connect. ``response_var`` is the state key, and
-        the sentence comes from the same ``responses:`` rule the real driver
-        parses the device's report with -- which every such driver has, or it
-        could never learn the value either.
-
-        **Two of the three write forms are built here.** ``send`` is the wire
-        string. An HTTP write is built from ``method``/``path``/``body`` into
-        the line ``respond_http`` synthesizes, so one handler chain still
-        serves both transports. An OSC write (``address``/``args``) is NOT
-        built: OSC never reaches this chain -- ``handle_message`` answers from
-        the response address mappings instead -- and no driver in the catalog
-        writes a setting over OSC. A driver that does needs a rule there, and
-        gets today's behaviour until then rather than a handler that silently
-        never matches.
-        """
-        settings = self._driver_def.get("device_settings") or {}
-        if not isinstance(settings, dict):
-            return
-        built = 0
-
-        for name, entry in settings.items():
-            if not isinstance(entry, dict):
-                continue
-            write = entry.get("write")
-            if not isinstance(write, dict):
-                continue
-            template = _settings_write_template(write)
-            if not template:
-                continue
-            template = self._settings_wire_line(template)
-            if not template:
-                # Every segment was a query, or config substitution left
-                # nothing addressable. A handler with no {value} capture would
-                # set the state key to nothing on every match.
-                continue
-
-            # One parameter, always called `value` -- that is the placeholder
-            # the runtime substitutes -- typed from the setting so the capture
-            # matches what went on the wire. `enum` and `float` are settings
-            # types with no param equivalent: an enum's members are wire
-            # tokens of any shape, and a float captures like a number. A
-            # setting with a `map` writes the device's own words (ON for
-            # true), which the type's capture would not match, so it captures
-            # like a string and the word is mapped back below.
-            value_map = entry.get("map")
-            if not (isinstance(value_map, dict) and value_map):
-                value_map = None
-            param_type = (
-                "string" if value_map
-                else _SETTING_PARAM_TYPE.get(str(entry.get("type", "")), "string")
-            )
-            params = {"value": {"type": param_type}}
-
-            pattern_str = send_regex(template, params)
-            try:
-                pattern = re.compile(f"^{pattern_str}$")
-            except re.error:
-                logger.warning(
-                    "Invalid regex from setting '%s': %s", name, pattern_str
-                )
-                continue
-
-            state_key = str(entry.get("state_key") or name)
-            group_bases: dict[int, int] = {}
-            base = spec_int_base(send_param_specs(template, params).get("value", ""))
-            if base:
-                group_bases[1] = base
-            conversion = conversion_of(self._var_def_for_key(state_key))
-
-            self._command_handlers.append(CommandHandler(
-                name=f"setting:{name}",
-                pattern=pattern,
-                state_changes={state_key: 1},
-                response_var=state_key,
-                group_bases=group_bases,
-                group_conversions={1: conversion} if conversion else None,
-                group_value_maps={1: value_map} if value_map else None,
-            ))
-            built += 1
-
+        """Answer a ``device_settings`` write the way a command is answered
+        (setting_handlers.py), after the commands' handlers."""
+        before = len(self._command_handlers)
+        self._command_handlers.extend(setting_handlers(
+            self._driver_def, self._instance_config, self._var_def_for_key
+        ))
+        built = len(self._command_handlers) - before
         if built:
             logger.debug(
                 "Auto-sim %s: %d device_settings write handlers",
@@ -2024,83 +1845,6 @@ _HANDLER_CHAIN: tuple[_HandlerFamily, ...] = (
 
 
 # ── Data classes ──
-
-class CommandHandler:
-    """Auto-generated handler for a driver command."""
-    def __init__(
-        self,
-        name: str,
-        pattern: re.Pattern,
-        state_changes: dict,
-        response_var: str | None,
-        group_bases: dict[int, int] | None = None,
-        child_type: str | None = None,
-        child_id_group: int = 0,
-        group_conversions: dict[int, dict] | None = None,
-        child_wire_map: dict[str, str] | None = None,
-        child_state_keys: set[str] | None = None,
-        response_is_child: bool = False,
-        group_value_maps: dict[int, dict] | None = None,
-    ):
-        self.name = name
-        self.pattern = pattern
-        self.state_changes = state_changes
-        self.response_var = response_var
-        # Capture groups whose wire form is non-decimal ({level:02X}),
-        # mapped to the int base that decodes them.
-        self.group_bases = group_bases or {}
-        # Capture groups carrying a param (or setting) with scale / offset:
-        # the device's number, converted back to the real value it stores.
-        self.group_conversions = group_conversions or {}
-        # Capture groups carrying a device setting with a map: the setting
-        # value -> device word table, read in reverse.
-        self.group_value_maps = group_value_maps or {}
-        # Child-addressed command (exactly one child_id param): the capture
-        # group holding the child id, the wire->local id translation from the
-        # param's map:, and which state_changes keys are the child's own
-        # variables (routed to its dotted state) vs flat fallbacks.
-        self.child_type = child_type
-        self.child_id_group = child_id_group
-        self.child_wire_map = child_wire_map
-        self.child_state_keys = child_state_keys or set()
-        self.response_is_child = response_is_child
-
-    def target_key(self, state_key: str, child_id: str | None) -> str:
-        """Where a state change lands: the addressed child's own dotted
-        state for a variable its type declares, else the flat variable."""
-        if child_id is not None and state_key in self.child_state_keys:
-            return f"{self.child_type}.{child_id}.{state_key}"
-        return state_key
-
-    def read_capture(self, group: int, raw: Any, var_def: dict) -> Any:
-        """The value a capture group carries, before the variable's type:
-        a device setting's own word (ON) read back to the setting value
-        (true), which no base or conversion applies to; else the wire number
-        decoded from its non-decimal spec (a numeric variable only: a
-        string one keeps the code itself, as hex-code protocols declare it),
-        then the param's conversion back to the real value."""
-        found, setting_value = value_for_map_word(raw, self.group_value_maps.get(group))
-        if found:
-            return setting_value
-        var_type = var_def.get("type", "string")
-        return self._converted(group, self._from_base(group, raw, var_type), var_type)
-
-    def _from_base(self, group: int, value: Any, var_type: str) -> Any:
-        base = self.group_bases.get(group)
-        if not base or var_type not in _NUMERIC_TYPES:
-            return value
-        try:
-            return int(value, base)
-        except ValueError:
-            return value
-
-    def _converted(self, group: int, value: Any, var_type: str) -> Any:
-        conversion = self.group_conversions.get(group)
-        if not conversion:
-            return value
-        handled, real = reading_from_wire(value, conversion, var_type)
-        return real if handled else value
-
 
 def _framed_send(cmd_def: dict, prefix: str) -> Any:
     """The text a command puts on the wire, framed with the driver's prefix
