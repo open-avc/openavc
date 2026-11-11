@@ -11,6 +11,19 @@ import {
 
 export type { UndoEntry, UndoScope } from "./uiBuilderStore.helpers";
 
+/** How long after its last edit a run of quick edits ends. */
+export const RUN_IDLE_MS = 800;
+
+/** The run of quick edits in progress: the parts of the project its undo
+ *  entry holds, by their UndoScope names. */
+export interface EditRunState {
+  parts: string[];
+}
+
+// The open run's idle timer. Only the run it was set for may end on it, so a
+// timer left over from a run the store no longer holds does nothing.
+let runTimer: ReturnType<typeof setTimeout> | undefined;
+
 interface UIBuilderStore {
   selectedPageId: string | null;
   /** The layout being authored. null means the page's primary, which is the
@@ -30,6 +43,12 @@ interface UIBuilderStore {
   contextMenu: { x: number; y: number; elementId: string; isMaster?: boolean } | null;
   undoStack: UndoEntry[];
   redoStack: UndoEntry[];
+  /** A run of quick edits (typing in a field, a held arrow key, a dragged
+   *  colour) is one undo entry. This is the run in progress, null when there
+   *  is none. It lives here so that every other writer ends it without
+   *  knowing about it: any entry pushed, undone or redone ends the run, and
+   *  the next quick edit starts an entry of its own. */
+  editRun: EditRunState | null;
   lastMutationTime: number;
   activeDragSource: string | null;
   /** A palette drag over the canvas, snapped live: the footprint to draw, the
@@ -75,7 +94,14 @@ interface UIBuilderStore {
   setContextMenu: (
     menu: { x: number; y: number; elementId: string; isMaster?: boolean } | null,
   ) => void;
+  /** An undo entry of its own. Ends the run in progress. */
   pushUndo: (snapshot: UndoScope, description: string) => void;
+  /** A quick edit: one undo entry for the whole run. The run's first edit
+   *  pushes the entry; a later one joins it when it comes within RUN_IDLE_MS
+   *  of the last. */
+  joinUndo: (snapshot: UndoScope, description: string) => void;
+  /** End the run in progress, so the next quick edit starts an entry of its own. */
+  endEditRun: () => void;
   undo: () => void;
   redo: () => void;
   /** Drop the history only when an external project change actually moved a
@@ -117,6 +143,7 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   contextMenu: null,
   undoStack: [],
   redoStack: [],
+  editRun: null,
   lastMutationTime: 0,
   activeDragSource: null,
   paletteDragPreview: null,
@@ -180,14 +207,37 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   setContextMenu: (contextMenu) => set({ contextMenu }),
 
   pushUndo: (snapshot, description) => {
+    clearTimeout(runTimer);
     const { undoStack } = get();
     set({
       undoStack: [...undoStack.slice(-49), { description, snapshot }],
       redoStack: [],
+      editRun: null,
     });
   },
 
+  joinUndo: (snapshot, description) => {
+    const parts = Object.keys(snapshot);
+    let run = get().editRun;
+    if (!run) {
+      get().pushUndo(snapshot, description);
+      run = { parts };
+      set({ editRun: run });
+    }
+    clearTimeout(runTimer);
+    const open = run;
+    runTimer = setTimeout(() => {
+      if (get().editRun === open) set({ editRun: null });
+    }, RUN_IDLE_MS);
+  },
+
+  endEditRun: () => {
+    clearTimeout(runTimer);
+    if (get().editRun) set({ editRun: null });
+  },
+
   undo: () => {
+    get().endEditRun();
     const { undoStack, redoStack } = get();
     if (undoStack.length === 0) return;
     const projectStore = useProjectStore.getState();
@@ -221,6 +271,7 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   },
 
   redo: () => {
+    get().endEditRun();
     const { undoStack, redoStack } = get();
     if (redoStack.length === 0) return;
     const projectStore = useProjectStore.getState();
@@ -254,6 +305,7 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
     const { undoStack, redoStack } = get();
     if (undoStack.length === 0 && redoStack.length === 0) return false;
     if (!undoHistoryIsStale([...undoStack, ...redoStack], before, after)) return false;
+    get().endEditRun();
     set({ undoStack: [], redoStack: [] });
     return true;
   },

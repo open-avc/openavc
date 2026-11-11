@@ -3,30 +3,26 @@
  * history.
  *
  * An edit is one of two kinds. A structural edit (add, delete, rename, a
- * theme change, a dialog's Save) is an undo entry of its own and ends any
- * run in progress (`commit`). A run edit (typing in the Properties panel, a
- * held arrow key, dragging a colour) joins the run in progress (`join`): the
- * run's first edit pushes the entry, holding the project from before it, and
- * the run ends 0.8 s after its last edit, on a structural edit, on undo or
- * redo (`endRun`), and when the selection changes.
+ * theme change, a dialog's Save) is an undo entry of its own (`commit`). A
+ * run edit (typing in the Properties panel, a held arrow key, dragging a
+ * colour) joins the run in progress (`join`): the run's first edit pushes the
+ * entry, holding the project from before it, and the run ends 0.8 s after its
+ * last edit, and when the selection changes.
  *
- * One run serves every part of the project: an element edit followed within
- * 0.8 s by a page or master edit is one entry, holding only what the first
- * edit named. The canvas gestures, the toolbar and the store's lock push their
- * own entries without ending a run here.
+ * The run itself is the Builder store's (`joinUndo`), so every other writer
+ * ends it without knowing it is there: any entry pushed (a structural edit
+ * here, a canvas move, a toolbar edit, the lock), and any undo or redo, from
+ * the keyboard or the toolbar's buttons.
  *
  * An edit says only what it changes (`projectEdit`); what it puts back on undo
  * follows from that, through the store's own table of where each part of the
  * project lives and what it reads as when absent.
  */
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import type { ProjectConfig } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useUIBuilderStore, type UndoScope } from "../../store/uiBuilderStore";
 import { computeRollbackPatch } from "../../store/uiBuilderStore.helpers";
-
-/** How long after its last edit a run ends. */
-export const RUN_IDLE_MS = 800;
 
 /** What an edit puts back on undo, what it is called, and what it changes. */
 export interface ProjectEdit {
@@ -52,8 +48,6 @@ export interface EditRun {
   commit: (edit: ProjectEdit) => void;
   /** A run edit: one entry for the whole run. */
   join: (edit: ProjectEdit) => void;
-  /** End the run in progress, so the next edit starts an entry of its own. */
-  endRun: () => void;
 }
 
 function apply(patch: Partial<ProjectConfig>) {
@@ -62,35 +56,20 @@ function apply(patch: Partial<ProjectConfig>) {
 }
 
 export function useEditRun(): EditRun {
-  const pushed = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const selectedElementId = useUIBuilderStore((s) => s.selectedElementId);
   const selectedMasterElementId = useUIBuilderStore((s) => s.selectedMasterElementId);
-
-  const endRun = useCallback(() => {
-    pushed.current = false;
-    clearTimeout(timer.current);
-  }, []);
+  const endRun = useUIBuilderStore((s) => s.endEditRun);
 
   useEffect(endRun, [selectedElementId, selectedMasterElementId, endRun]);
 
   return useMemo(() => ({
-    endRun,
     commit: ({ before, description, patch }) => {
       useUIBuilderStore.getState().pushUndo(before, description);
-      endRun();
       apply(patch);
     },
     join: ({ before, description, patch }) => {
-      if (!pushed.current) {
-        useUIBuilderStore.getState().pushUndo(before, description);
-        pushed.current = true;
-      }
-      clearTimeout(timer.current);
+      useUIBuilderStore.getState().joinUndo(before, description);
       apply(patch);
-      timer.current = setTimeout(() => {
-        pushed.current = false;
-      }, RUN_IDLE_MS);
     },
-  }), [endRun]);
+  }), []);
 }

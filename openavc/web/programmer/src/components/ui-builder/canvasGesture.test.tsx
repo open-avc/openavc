@@ -8,12 +8,13 @@
  * which is what a control inside it converts its travel against.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { act, render } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
 import type { MasterElement, Placement, ProjectConfig, UIElement, UIPage } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { Canvas } from "./Canvas";
 import { HANDLE_POSITIONS } from "./CanvasElement";
+import { projectEdit, useEditRun, type EditRun } from "../../views/ui-builder/useEditRun";
 
 const W = 1000;
 const H = 500;
@@ -901,5 +902,36 @@ describe("moving and resizing a master element", () => {
     release();
     expect(storedMaster("m")).toEqual({ x: 59.7, y: 70, w: 20, h: 20 });
     expect(undoLabels()).toEqual(["Move master element"]);
+  });
+});
+
+describe("a move among quick edits", () => {
+  // A quick edit (typing a label) is one undo entry for its whole run, which
+  // the canvas's own entry ends without knowing the run is there.
+  function relabel(run: EditRun, text: string) {
+    const project = useProjectStore.getState().project!;
+    const pages = project.ui.pages.map((p) => ({
+      ...p,
+      elements: p.elements.map((e) => (e.id === "a" ? { ...e, label: text } : e)),
+    }));
+    act(() => run.join(projectEdit(project, { pages }, "Edit element")));
+    // The Builder draws the canvas from the page as it now is.
+    view.rerender(
+      <Canvas page={pages[0]} previewMode={false} showGrid={false} zoom={1} screenWidth={W} screenHeight={H} masterElements={[]} />,
+    );
+  }
+
+  it("ends the run in progress, so a quick edit after the move is undone alone", () => {
+    load(makePage([el("a", { label: "Start" })], { a: A }));
+    const run = renderHook(() => useEditRun()).result.current;
+    relabel(run, "A");
+    press(node("a"));
+    drag(153, 0);
+    release();
+    relabel(run, "B");
+    expect(undoLabels()).toEqual(["Edit element", "Move element", "Edit element"]);
+    act(() => useUIBuilderStore.getState().undo());
+    expect(storedEl("a")!.label).toBe("A");
+    expect(stored("a")).toEqual({ x: 25.3, y: 10, w: 20, h: 20 });
   });
 });

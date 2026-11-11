@@ -77,7 +77,6 @@ export function UIBuilderView() {
     hasClipboard: !!clipboard,
     togglePalette: () => setShowPalette((v) => !v),
     edits,
-    run,
   });
 
   if (!project) return <BuilderNote>Loading project...</BuilderNote>;

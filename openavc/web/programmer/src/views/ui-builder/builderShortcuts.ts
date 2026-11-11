@@ -9,11 +9,12 @@
  * Backspace; then the Ctrl chords, which a field keeps for itself.
  *
  * The page hands the keyboard the Builder as it was last drawn, with the edits
- * a key can make and the undo run (`BuilderKeys`); which edit each key makes,
- * which box an arrow moves and how far, are here. Undo, redo, Escape and
- * Ctrl+P are the Builder store's own actions, and Ctrl+S is saving now
- * (saveState.ts). `useBuilderShortcuts` registers again on every render, so a
- * key always acts on the page as it was last drawn.
+ * a key can make (`BuilderKeys`); which edit each key makes, which box an
+ * arrow moves and how far, are here. Undo, redo, Escape and Ctrl+P are the
+ * Builder store's own actions (undo and redo end the run of quick edits
+ * there), and Ctrl+S is saving now (saveState.ts). `useBuilderShortcuts`
+ * registers again on every render, so a key always acts on the page as it was
+ * last drawn.
  */
 import { useEffect } from "react";
 import type { MasterElement, SnapConfig, UIPage } from "../../api/types";
@@ -27,7 +28,6 @@ import {
 import { saveNow } from "../../store/saveState";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import type { Offset } from "./elementEdits";
-import type { EditRun } from "./useEditRun";
 import type { ElementEdits } from "./useElementEdits";
 
 /** Arrow-key travel, in percent, when snapping is off or bypassed. Small
@@ -49,22 +49,9 @@ export interface BuilderKeys {
   /** Delete, copy and duplicate are handed the selection; a nudge, of
    *  controls or of a master, joins the run in progress. */
   edits: Pick<ElementEdits, "nudge" | "editMaster" | "deleteMaster" | "remove" | "copy" | "paste" | "duplicate">;
-  run: Pick<EditRun, "endRun">;
 }
 
 const store = () => useUIBuilderStore.getState();
-
-/** Undo and redo end the run first: an undo that keeps the selection would
- *  otherwise leave the next edit inside the entry just undone. */
-function undo(k: BuilderKeys) {
-  k.run.endRun();
-  store().undo();
-}
-
-function redo(k: BuilderKeys) {
-  k.run.endRun();
-  store().redo();
-}
 
 export function handleBuilderKey(e: KeyboardEvent, k: BuilderKeys): void {
   // A dialog is up: the canvas is behind a backdrop, so these keys are meant
@@ -217,9 +204,9 @@ function chordAction(e: KeyboardEvent, k: BuilderKeys): (() => void) | null {
   const hasSelection = k.selectedIds.length > 0 && !!k.page;
   switch (e.key) {
     case "z":
-      return e.shiftKey ? () => redo(k) : () => undo(k);
+      return e.shiftKey ? store().redo : store().undo;
     case "y":
-      return () => redo(k);
+      return store().redo;
     case "s":
       return e.shiftKey ? null : saveNow;
     case "c":
