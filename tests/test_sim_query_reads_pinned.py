@@ -369,3 +369,50 @@ def test_only_a_parameterless_command_names_a_query_and_the_first_one_wins():
     assert [(h.pattern.pattern, h.response_var) for h in sim._query_handlers] == [
         ("^PQ\\?$", "power"),
     ]
+
+
+def _routes(poll: list, **changes) -> tuple:
+    d = _base()
+    d["polling"] = {"queries": poll}
+    for key, value in changes.items():
+        d[key] = value
+    sim = YAMLAutoSimulator("m1", {}, driver_def=d)
+    return (
+        [(h.pattern.pattern, h.response_var) for h in sim._query_handlers],
+        [(type(h).__name__, h.pattern.pattern, getattr(h, "first", None))
+         for h in sim._child_query_handlers],
+    )
+
+
+def test_a_page_size_that_is_there_but_empty_still_reads_nothing():
+    assert _routes([
+        {"send": "A{child_id}?", "each_child": "output", "query_for": "name", "page_size": 0},
+        {"send": "B{child_id}?", "each_child": "output", "query_for": "input", "page_size": None},
+    ]) == ([], [])
+
+
+def test_a_query_for_dotted_twice_reads_nothing_and_a_listed_each_child_raises_nothing():
+    assert _routes([
+        {"send": "NAMES?", "query_for": "output.name.x"},
+        {"send": "Q{child_id}?", "each_child": ["output"], "query_for": "input"},
+    ]) == ([], [])
+
+
+def test_a_declared_variable_wins_over_the_command_that_sends_the_same_text():
+    assert _routes([{"send": "PWR?", "query_for": "status"}]) == (
+        [("^PWR\\?$", "status")], [])
+
+
+def test_pages_follow_the_numbers_and_a_child_id_takes_its_format():
+    types = _base()["child_entity_types"]
+    types["output"]["instances"] = {"ids": [1, 3, 4]}
+    assert _routes([
+        {"send": "N{child_id}?", "each_child": "output", "query_for": "name", "page_size": 2},
+        {"send": "Q{child_id:02d}?", "each_child": "output", "query_for": "input"},
+    ], child_entity_types=types) == ([], [
+        ("ListQueryHandler", "^N1\\?$", "1"),
+        ("ListQueryHandler", "^N3\\?$", "3"),
+        ("ChildQueryHandler", "^Q01\\?$", None),
+        ("ChildQueryHandler", "^Q03\\?$", None),
+        ("ChildQueryHandler", "^Q04\\?$", None),
+    ])

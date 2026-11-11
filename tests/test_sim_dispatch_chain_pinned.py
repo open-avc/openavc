@@ -320,3 +320,23 @@ def test_receive_wins_over_match_and_no_controls_keep_the_generated_ones():
     generated = _sim().SIMULATOR_INFO["controls"]
     assert _sim({"push_state": False}).SIMULATOR_INFO["controls"] == generated
     assert _sim({"controls": []}).SIMULATOR_INFO["controls"] == generated
+
+
+def test_only_a_syntax_error_skips_a_handler_and_an_osc_one_needs_both_keys_present():
+    import pytest
+
+    assert _sim({"command_handlers": [{"match": "Z", "handler": "x = 1\x00"}]})._script_handlers == []
+    with pytest.raises(TypeError):
+        _sim({"command_handlers": [{"match": "Z", "handler": 5}]})
+    sim = _sim({"command_handlers": [
+        {"address": "", "handler": "respond('/e', [1])"},
+        {"address": "/n", "handler": "", "match": "N", "respond": "n"},
+    ]})
+    assert [h.address_pattern for h in sim._osc_script_handlers] == ["", "/n"]
+    assert sim._explicit_handlers == [] and sim._script_handlers == []
+
+
+def test_an_empty_handler_body_is_still_a_script():
+    sim = _sim({"command_handlers": [{"match": "E", "handler": "", "respond": "e"}]})
+    assert [h.pattern.pattern for h in sim._script_handlers] == ["^E$"]
+    assert sim._explicit_handlers == []
