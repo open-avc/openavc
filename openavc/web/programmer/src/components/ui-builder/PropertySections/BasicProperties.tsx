@@ -10,19 +10,16 @@ import { KEYPAD_DIGITS_DEFAULT, KEYPAD_SEND_DELAY_DEFAULT_MS } from "../reviewPr
 import { HONORED_PROPERTIES } from "../../../api/uiBindingReach.gen";
 import { InlineColorPicker } from "../../shared/InlineColorPicker";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
-import { OptionSourcePicker } from "../../shared/OptionSourcePicker";
-import { MacroRefPicker, DeviceRefPicker } from "../../shared/RefPickers";
 import { SearchableSelect } from "../../shared/SearchableSelect";
 import { pageGroups } from "../../shared/pickerOptions";
 import { CustomControlConfig } from "./CustomControlConfig";
 import { FieldRow } from "./FieldRow";
 import { MatrixFields } from "./MatrixFields";
+import { PluginElementConfig } from "./PluginElementConfig";
 import { FaderFields, GaugeFields, LevelMeterFields, ShownDecimalsRow, SliderFields } from "./ValueFields";
 import { useRowKeys } from "./rowKeys";
 import { GrantEditor } from "./GrantEditor";
-import { panelElementFieldKind } from "./panelElementConfig";
-import { numOrUndefined, intOrUndefined } from "./numericField";
-import { usePluginStore } from "../../../store/pluginStore";
+import { numOrUndefined } from "./numericField";
 
 /**
  * Whether this element type's renderer draws `label`, per the panel's own
@@ -1041,164 +1038,6 @@ function ElementIdField({
         cursor: onRename ? "text" : "default",
       }}
     />
-  );
-}
-
-type PanelConfigField = {
-  key: string;
-  label: string;
-  type: string;
-  default?: unknown;
-  options?: string[];
-  options_source?: string;
-};
-
-/**
- * Renders one panel-element config_schema field. Routes ref types to the same
- * pickers the plugin CONFIG_SCHEMA form uses (see panelElementFieldKind), so an
- * author declaring `state_key`/`device_ref`/`macro_ref` gets a picker instead
- * of a raw text box, and `text` is a textarea while `string` is single-line.
- */
-function PanelFieldControl({
-  field,
-  config,
-  onChange,
-}: {
-  field: PanelConfigField;
-  config: Record<string, unknown>;
-  onChange: (cfg: Record<string, unknown>) => void;
-}) {
-  const set = (v: unknown) => onChange({ ...config, [field.key]: v });
-  const strVal = String(config[field.key] ?? field.default ?? "");
-
-  switch (panelElementFieldKind(field)) {
-    case "boolean":
-      return (
-        <input
-          type="checkbox"
-          checked={config[field.key] != null ? !!config[field.key] : !!field.default}
-          onChange={(e) => set(e.target.checked)}
-        />
-      );
-    case "select":
-      return (
-        <OptionSourcePicker
-          value={strVal}
-          staticOptions={field.options}
-          optionsSource={field.options_source}
-          onChange={set}
-          emptyHint={
-            field.options_source
-              ? "Nothing has offered a source yet. A device whose driver publishes a preview shows up here on its own; anything else is added by hand under Video Streams."
-              : undefined
-          }
-        />
-      );
-    case "number":
-      return (
-        <input
-          type="number"
-          value={config[field.key] != null ? Number(config[field.key]) : ""}
-          placeholder={field.default != null ? String(field.default) : undefined}
-          onChange={(e) => set(field.type === "integer" ? intOrUndefined(e.target.value) : numOrUndefined(e.target.value))}
-          step={field.type === "float" ? 0.1 : 1}
-          style={{ flex: 1 }}
-        />
-      );
-    case "state_key":
-      return <VariableKeyPicker value={strVal} onChange={set} style={{ flex: 1 }} />;
-    case "macro_ref":
-      return <MacroRefPicker value={strVal} onChange={set} style={{ flex: 1 }} />;
-    case "device_ref":
-      return <DeviceRefPicker value={strVal} onChange={set} style={{ flex: 1 }} />;
-    case "textarea":
-      return (
-        <textarea
-          value={strVal}
-          onChange={(e) => set(e.target.value)}
-          placeholder={field.default != null ? String(field.default) : ""}
-          rows={4}
-          style={{ flex: 1, resize: "vertical", fontFamily: "var(--font-mono, monospace)", fontSize: "var(--font-size-sm)" }}
-        />
-      );
-    default:
-      return (
-        <input
-          value={strVal}
-          onChange={(e) => set(e.target.value)}
-          placeholder={field.default != null ? String(field.default) : ""}
-          style={{ flex: 1 }}
-        />
-      );
-  }
-}
-
-function PluginElementConfig({
-  pluginId,
-  pluginType,
-  config,
-  onChange,
-}: {
-  pluginId: string;
-  pluginType: string;
-  config: Record<string, unknown>;
-  onChange: (cfg: Record<string, unknown>) => void;
-}) {
-  const panelElements = usePluginStore((s) => s.extensions.panel_elements);
-  const ext = panelElements.find(
-    (e) => e.plugin_id === pluginId && e.type === pluginType,
-  );
-  const schema = ext?.config_schema;
-
-  const [jsonMode, setJsonMode] = useState(false);
-
-  return (
-    <>
-      <FieldRow label="Plugin">
-        <input value={pluginId} readOnly style={{ flex: 1, opacity: 0.6 }} />
-      </FieldRow>
-      <FieldRow label="Type">
-        <input value={pluginType} readOnly style={{ flex: 1, opacity: 0.6 }} />
-      </FieldRow>
-
-      {schema && schema.length > 0 && !jsonMode ? (
-        <>
-          {schema.map((field) => (
-            <FieldRow key={field.key} label={field.label}>
-              <PanelFieldControl field={field} config={config} onChange={onChange} />
-            </FieldRow>
-          ))}
-          <button
-            onClick={() => setJsonMode(true)}
-            style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", alignSelf: "flex-start", textDecoration: "underline" }}
-          >
-            Edit as JSON
-          </button>
-        </>
-      ) : (
-        <>
-          <div style={{ fontSize: 10, color: "var(--text-muted)", padding: "2px 0" }}>
-            {schema && schema.length > 0 ? "Raw JSON:" : "Plugin configuration (JSON):"}
-          </div>
-          <textarea
-            value={JSON.stringify(config, null, 2)}
-            onChange={(e) => {
-              try { onChange(JSON.parse(e.target.value)); } catch { /* invalid JSON */ }
-            }}
-            rows={4}
-            style={{ width: "100%", fontSize: 11, fontFamily: "monospace", resize: "vertical" }}
-          />
-          {schema && schema.length > 0 && (
-            <button
-              onClick={() => setJsonMode(false)}
-              style={{ fontSize: 10, color: "var(--text-muted)", background: "transparent", border: "none", cursor: "pointer", alignSelf: "flex-start", textDecoration: "underline" }}
-            >
-              Edit as form
-            </button>
-          )}
-        </>
-      )}
-    </>
   );
 }
 
