@@ -1,4 +1,9 @@
 /**
+ * The pieces a properties section is built from: a labelled row, the note
+ * under one, and the heading over a group of them.
+ */
+
+/**
  * One labelled row in the properties panel.
  *
  * Lived twice — identically — in `PropertiesPanel.tsx` and
@@ -32,6 +37,53 @@ export function FieldRow({
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+/**
+ * A note under a row, lined up with the fields rather than the labels. A
+ * warning says what is missing for the row above to do anything.
+ */
+export function FieldHint({
+  tone = "muted",
+  italic = false,
+  children,
+}: {
+  tone?: "muted" | "warning";
+  italic?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        fontSize: 10,
+        color: tone === "warning" ? "var(--color-warning)" : "var(--text-muted)",
+        padding: "0 0 0 76px",
+        ...(italic ? { fontStyle: "italic" } : {}),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** A heading that starts a group of rows within a section. */
+export function SubSection({ label }: { label: string }) {
+  return (
+    <div
+      style={{
+        fontSize: 10,
+        fontWeight: 600,
+        color: "var(--text-muted)",
+        textTransform: "uppercase",
+        letterSpacing: 1,
+        marginTop: 6,
+        paddingBottom: 2,
+        borderBottom: "1px solid var(--border-color)",
+      }}
+    >
+      {label}
     </div>
   );
 }
