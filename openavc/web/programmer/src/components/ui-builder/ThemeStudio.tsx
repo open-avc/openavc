@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import {
-  X, Copy, Trash2, Save, Upload, Download, RotateCcw, AlertTriangle, FilePlus,
+  X, Copy, Upload,
 } from "lucide-react";
 import {
   getTheme, createTheme, updateTheme, deleteTheme, importTheme,
@@ -19,7 +19,9 @@ import { QuickAdjustSection } from "./QuickAdjustSection";
 import { ThemeInfoSection, ThemeTokensSection } from "./ThemeSections";
 import { PageBackgroundSection } from "./PageBackgroundSection";
 import { themeFile, savedFile, previewColors, customCopy, duplicateOf, keptBeside } from "./themeFiles";
-import { useStatusLine, orStepFailed, importFailed } from "./statusLine";
+import { useStatusLine, orStepFailed, importFailed, type StatusLine } from "./statusLine";
+import { FileActionBar, FileActionLine, type FileActions } from "./FileActionBar";
+import { OverridesBanner } from "./OverridesBanner";
 import { galleryPage, GALLERY_PAGE_ID, GALLERY_DEMO_STATE } from "./themeGallery";
 
 // --- Main component ---
@@ -465,12 +467,14 @@ export function ThemeStudio({
                 isCustom={isCustom}
                 isDirty={isDirty}
                 busy={busy}
-                statusMsg={statusMsg}
-                onSaveChanges={handleSaveChanges}
-                onSaveAsCustom={handleSaveAsCustom}
-                onDiscard={handleDiscard}
-                onExport={handleExport}
-                onDelete={() => setConfirmDelete(true)}
+                line={statusMsg}
+                actions={{
+                  saveChanges: handleSaveChanges,
+                  saveAsCustom: handleSaveAsCustom,
+                  discard: handleDiscard,
+                  exportFile: handleExport,
+                  askDelete: () => setConfirmDelete(true),
+                }}
                 themeOverrides={themeOverrides}
                 onClearOverrides={onClearOverrides}
               />
@@ -945,13 +949,9 @@ interface EditorColumnProps {
   isCustom: boolean;
   isDirty: boolean;
   busy: boolean;
-  statusMsg: { kind: "info" | "error"; text: string } | null;
+  line: StatusLine | null;
+  actions: FileActions;
   themeOverrides: Record<string, unknown>;
-  onSaveChanges: () => void;
-  onSaveAsCustom: () => void;
-  onDiscard: () => void;
-  onExport: () => void;
-  onDelete: () => void;
   onClearOverrides: () => void;
 }
 
@@ -960,13 +960,9 @@ function EditorColumn({
   isCustom,
   isDirty,
   busy,
-  statusMsg,
+  line,
+  actions,
   themeOverrides,
-  onSaveChanges,
-  onSaveAsCustom,
-  onDiscard,
-  onExport,
-  onDelete,
   onClearOverrides,
 }: EditorColumnProps) {
   if (!draft) {
@@ -990,199 +986,9 @@ function EditorColumn({
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      {/* Action bar */}
-      <div
-        style={{
-          padding: "8px 10px",
-          background: "var(--bg-surface)",
-          borderBottom: "1px solid var(--border-color)",
-          display: "flex",
-          gap: 6,
-          flexWrap: "wrap",
-          alignItems: "center",
-        }}
-      >
-        {isCustom ? (
-          <button
-            onClick={onSaveChanges}
-            disabled={busy || !isDirty}
-            title={isDirty ? "Save changes to this theme file" : "No changes to save"}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "6px 12px",
-              background: "var(--accent-bg)",
-              color: "#fff",
-              border: "none",
-              borderRadius: 4,
-              cursor: busy || !isDirty ? "not-allowed" : "pointer",
-              fontSize: 12,
-              fontWeight: 600,
-              opacity: busy || !isDirty ? 0.55 : 1,
-            }}
-          >
-            <Save size={14} /> Save Changes
-          </button>
-        ) : (
-          <div
-            title="Built-in themes can't be modified. Save as Custom to keep your edits."
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "6px 10px",
-              background: "rgba(255,167,38,0.12)",
-              color: "#ffa726",
-              border: "1px solid rgba(255,167,38,0.3)",
-              borderRadius: 4,
-              fontSize: 11,
-              fontWeight: 600,
-            }}
-          >
-            <AlertTriangle size={12} /> Built-in (read-only)
-          </div>
-        )}
-        <button
-          onClick={onSaveAsCustom}
-          disabled={busy || !working.name.trim()}
-          title={isCustom ? "Save a new copy under a different name" : "Create an editable custom copy"}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "6px 12px",
-            background: isCustom ? "var(--bg-hover)" : "var(--accent-bg)",
-            color: isCustom ? "var(--text-primary)" : "#fff",
-            border: isCustom ? "1px solid var(--border-color)" : "none",
-            borderRadius: 4,
-            cursor: busy ? "not-allowed" : "pointer",
-            fontSize: 12,
-            opacity: busy ? 0.55 : 1,
-          }}
-        >
-          {isCustom ? <Copy size={14} /> : <FilePlus size={14} />}
-          {isCustom ? "Save as Copy" : "Save as Custom"}
-        </button>
-        <button
-          onClick={onDiscard}
-          disabled={busy || !isDirty}
-          title={isDirty ? "Reload theme and discard your edits" : "No edits to discard"}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "6px 12px",
-            background: "var(--bg-hover)",
-            border: "1px solid var(--border-color)",
-            borderRadius: 4,
-            cursor: !isDirty ? "not-allowed" : "pointer",
-            fontSize: 12,
-            color: "var(--text-secondary)",
-            opacity: !isDirty ? 0.5 : 1,
-          }}
-        >
-          <RotateCcw size={14} /> Discard
-        </button>
-        <button
-          onClick={onExport}
-          title="Download theme JSON"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
-            padding: "6px 12px",
-            background: "var(--bg-hover)",
-            border: "1px solid var(--border-color)",
-            borderRadius: 4,
-            cursor: "pointer",
-            fontSize: 12,
-            color: "var(--text-secondary)",
-          }}
-        >
-          <Download size={14} /> Export
-        </button>
-        {isCustom && (
-          <button
-            onClick={onDelete}
-            disabled={busy}
-            title="Delete this custom theme"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-              padding: "6px 12px",
-              background: "transparent",
-              border: "1px solid var(--border-color)",
-              borderRadius: 4,
-              cursor: busy ? "not-allowed" : "pointer",
-              fontSize: 12,
-              color: "#ef5350",
-              marginLeft: "auto",
-            }}
-          >
-            <Trash2 size={14} /> Delete
-          </button>
-        )}
-      </div>
-
-      {statusMsg && (
-        <div
-          style={{
-            padding: "6px 12px",
-            fontSize: 11,
-            color: statusMsg.kind === "error" ? "#ef5350" : "#66bb6a",
-            background: "var(--bg-surface)",
-            borderBottom: "1px solid var(--border-color)",
-          }}
-        >
-          {statusMsg.text}
-        </div>
-      )}
-
-      {/* Project-level override banner — visible whenever the project has
-          theme_overrides set. Without this, overrides silently shift every
-          theme's editor values and the user has no way to see why. */}
-      {Object.keys(themeOverrides).length > 0 && (
-        <div
-          style={{
-            padding: "8px 12px",
-            background: "rgba(255,167,38,0.12)",
-            borderBottom: "1px solid rgba(255,167,38,0.4)",
-            color: "#ffa726",
-            fontSize: 11,
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-          }}
-        >
-          <AlertTriangle size={14} style={{ flexShrink: 0 }} />
-          <div style={{ flex: 1 }}>
-            <strong>{Object.keys(themeOverrides).length} project override{Object.keys(themeOverrides).length === 1 ? "" : "s"}</strong>
-            {" "}applied on top of this theme:{" "}
-            <code style={{ fontSize: 10 }}>{Object.keys(themeOverrides).join(", ")}</code>
-            <div style={{ color: "var(--text-muted)", marginTop: 2 }}>
-              The panel may not match what the editor shows until these are cleared or saved into the theme.
-            </div>
-          </div>
-          <button
-            onClick={onClearOverrides}
-            style={{
-              padding: "4px 10px",
-              background: "transparent",
-              border: "1px solid #ffa726",
-              borderRadius: 4,
-              color: "#ffa726",
-              cursor: "pointer",
-              fontSize: 11,
-              fontWeight: 600,
-              flexShrink: 0,
-            }}
-          >
-            Clear overrides
-          </button>
-        </div>
-      )}
+      <FileActionBar isCustom={isCustom} isDirty={isDirty} busy={busy} name={working.name} actions={actions} />
+      {line && <FileActionLine line={line} />}
+      <OverridesBanner overrides={themeOverrides} onClear={onClearOverrides} />
 
       <div style={{ flex: 1, overflow: "auto", padding: 10 }}>
         <ThemeInfoSection draft={draft} />
