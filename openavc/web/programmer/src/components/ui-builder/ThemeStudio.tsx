@@ -18,12 +18,12 @@ import { contrastRatio, wcagLevel, CSS_VAR_FALLBACKS, type WcagLevel } from "./c
 import { ColorPickerCell } from "./ColorPickerCell";
 import { ElementSections } from "./ElementSections";
 import { ResetToSaved, StudioSection } from "./StudioParts";
-import { parseApiError } from "../../api/errors";
 import { editableCopy, withVariable, withElementDefault, withPageDefaults, differsFromSaved } from "./themeEdits";
 import { withSurfaceStyle, DEFAULT_FONT, type SurfaceStyle } from "./quickAdjust";
 import { QuickAdjustSection } from "./QuickAdjustSection";
 import { PageBackgroundSection } from "./PageBackgroundSection";
 import { themeFile, savedFile, previewColors, customCopy, duplicateOf, keptBeside } from "./themeFiles";
+import { useStatusLine, orStepFailed, importFailed } from "./statusLine";
 
 interface ThemeTokenDef {
   key: string;
@@ -340,8 +340,7 @@ export function ThemeStudio({
   // The "saved" copy is kept so we can detect dirty state and discard.
   const [working, setWorking] = useState<ThemeDefinition | null>(null);
   const [savedJson, setSavedJson] = useState<string>("");
-  const [busy, setBusy] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<{ kind: "info" | "error"; text: string } | null>(null);
+  const { busy, line: statusMsg, say, attempt } = useStatusLine();
   const [pendingThemeSwitch, setPendingThemeSwitch] = useState<string | null>(null);
   const [pendingClose, setPendingClose] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -373,13 +372,13 @@ export function ThemeStudio({
   useEffect(() => {
     if (!open || !currentThemeId) return;
     let cancelled = false;
-    setStatusMsg(null);
+    say(null);
     getTheme(currentThemeId)
       .then((t) => {
         if (!cancelled) hold(t);
       })
       .catch(() => {
-        if (!cancelled) setStatusMsg({ kind: "error", text: `Failed to load "${currentThemeId}"` });
+        if (!cancelled) say({ kind: "error", text: `Failed to load "${currentThemeId}"` });
       });
     return () => { cancelled = true; };
   }, [open, currentThemeId]);
@@ -403,13 +402,6 @@ export function ThemeStudio({
 
   const setName = (name: string) => edit((t) => ({ ...t, name }));
   const setDesc = (description: string) => edit((t) => ({ ...t, description }));
-
-  // Auto-clear info status; keep errors
-  useEffect(() => {
-    if (!statusMsg || statusMsg.kind === "error") return;
-    const t = setTimeout(() => setStatusMsg(null), 2500);
-    return () => clearTimeout(t);
-  }, [statusMsg]);
 
   // Build the previewProject and inlineTheme that drive the iframe
   const isGallery = previewView === "gallery";
@@ -437,29 +429,27 @@ export function ThemeStudio({
 
   const takenIds = () => new Set(themes.map((t) => t.id));
 
-  const refreshAndReload = async (themeId: string) => {
-    onRefreshThemes();
-    hold(await getTheme(themeId));
+  const clearOverrides = () => {
+    if (Object.keys(themeOverrides).length > 0) onClearOverrides();
   };
 
   // --- Save Changes (custom only) --- returns true on success
   const handleSaveChanges = async (): Promise<boolean> => {
     if (!working || !isCustom) return false;
-    setBusy(true);
-    setStatusMsg(null);
-    try {
-      await updateTheme(working.id, savedFile(working));
-      if (Object.keys(themeOverrides).length > 0) onClearOverrides();
-      await refreshAndReload(working.id);
-      onThemeSaved?.();
-      setStatusMsg({ kind: "info", text: `Saved "${working.name}"` });
-      setBusy(false);
-      return true;
-    } catch (e) {
-      setStatusMsg({ kind: "error", text: parseApiError(e) || "Save failed" });
-      setBusy(false);
-      return false;
-    }
+    return attempt({
+      failure: orStepFailed("Save"),
+      work: async () => {
+        await updateTheme(working.id, savedFile(working));
+        clearOverrides();
+        onRefreshThemes();
+        return getTheme(working.id);
+      },
+      done: (reloaded) => {
+        hold(reloaded);
+        onThemeSaved?.();
+        return `Saved "${working.name}"`;
+      },
+    });
   };
 
   // --- Save as Custom ---
@@ -469,67 +459,62 @@ export function ThemeStudio({
     if (!working) return false;
     const copy = customCopy(working.name, isCustom, takenIds());
     if (!copy) {
-      setStatusMsg({ kind: "error", text: "Enter a theme name" });
+      say({ kind: "error", text: "Enter a theme name" });
       return false;
     }
     const { id, name } = copy;
-    setBusy(true);
-    setStatusMsg(null);
-    try {
-      await createTheme(themeFile(working, { id, name, author: "Custom", preview_colors: previewColors(working.variables) }));
-      if (Object.keys(themeOverrides).length > 0) onClearOverrides();
-      onChangeTheme(id);
-      onRefreshThemes();
-      setStatusMsg({ kind: "info", text: `Saved as "${name}"` });
-      setBusy(false);
-      return true;
-    } catch (e) {
-      setStatusMsg({ kind: "error", text: parseApiError(e) || "Save failed" });
-      setBusy(false);
-      return false;
-    }
+    return attempt({
+      failure: orStepFailed("Save"),
+      work: () => createTheme(themeFile(working, { id, name, author: "Custom", preview_colors: previewColors(working.variables) })),
+      done: () => {
+        clearOverrides();
+        onChangeTheme(id);
+        onRefreshThemes();
+        return `Saved as "${name}"`;
+      },
+    });
   };
 
   // --- Discard ---
   const handleDiscard = () => {
     if (!savedJson) return;
     setWorking(JSON.parse(savedJson));
-    setStatusMsg({ kind: "info", text: "Reverted to saved values" });
+    say({ kind: "info", text: "Reverted to saved values" });
   };
 
   // --- Delete (custom only) ---
   const handleDeleteTheme = async () => {
     if (!working || !isCustom) return;
     setConfirmDelete(false);
-    setBusy(true);
-    try {
-      await deleteTheme(working.id);
-      if (Object.keys(themeOverrides).length > 0) onClearOverrides();
-      onChangeTheme("dark-default");
-      onRefreshThemes();
-      setStatusMsg({ kind: "info", text: `Deleted "${working.name}"` });
-    } catch (e) {
-      setStatusMsg({ kind: "error", text: parseApiError(e) || "Delete failed" });
-    }
-    setBusy(false);
+    await attempt({
+      keepLine: true,
+      failure: orStepFailed("Delete"),
+      work: () => deleteTheme(working.id),
+      done: () => {
+        clearOverrides();
+        onChangeTheme("dark-default");
+        onRefreshThemes();
+        return `Deleted "${working.name}"`;
+      },
+    });
   };
 
   // --- Duplicate (from picker hover button) ---
-  const handleDuplicate = async (sourceId: string, sourceName: string) => {
-    setBusy(true);
-    setStatusMsg(null);
-    try {
-      const source = await getTheme(sourceId);
-      const copy = duplicateOf(sourceId, sourceName, takenIds());
-      await createTheme(themeFile(source, { ...copy, author: "Custom" }));
-      onChangeTheme(copy.id);
-      onRefreshThemes();
-      setStatusMsg({ kind: "info", text: `Duplicated as "${copy.name}"` });
-    } catch (e) {
-      setStatusMsg({ kind: "error", text: parseApiError(e) || "Duplicate failed" });
-    }
-    setBusy(false);
-  };
+  const handleDuplicate = (sourceId: string, sourceName: string) =>
+    attempt({
+      failure: orStepFailed("Duplicate"),
+      work: async () => {
+        const source = await getTheme(sourceId);
+        const copy = duplicateOf(sourceId, sourceName, takenIds());
+        await createTheme(themeFile(source, { ...copy, author: "Custom" }));
+        return copy;
+      },
+      done: (copy) => {
+        onChangeTheme(copy.id);
+        onRefreshThemes();
+        return `Duplicated as "${copy.name}"`;
+      },
+    });
 
   // --- Export / Import ---
   const handleExport = () => {
@@ -543,30 +528,34 @@ export function ThemeStudio({
     URL.revokeObjectURL(url);
   };
 
-  const runImport = async (file: File, overwrite: boolean) => {
-    const result = await importTheme(file, overwrite);
+  /** An import the server took: chosen, and said. */
+  const chooseImported = (result: { theme_id: string; name: string }) => {
     onChangeTheme(result.theme_id);
     onRefreshThemes();
-    setStatusMsg({ kind: "info", text: `Imported "${result.name}"` });
+    return `Imported "${result.name}"`;
   };
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (fileInputRef.current) fileInputRef.current.value = "";
     if (!file) return;
-    setBusy(true);
-    setStatusMsg(null);
-    try {
-      await runImport(file, false);
-    } catch (err) {
-      if (err instanceof ThemeExistsError) {
-        // Don't silently clobber an edited custom theme — ask first.
-        setImportCollision({ file, id: err.themeId, name: err.themeName });
-      } else {
-        setStatusMsg({ kind: "error", text: `Import failed: ${parseApiError(err)}` });
-      }
-    }
-    setBusy(false);
+    await attempt({
+      failure: importFailed,
+      work: async () => {
+        try {
+          return await importTheme(file, false);
+        } catch (err) {
+          // Don't silently clobber an edited custom theme — ask first.
+          if (err instanceof ThemeExistsError) return err;
+          throw err;
+        }
+      },
+      done: (answer) => {
+        if (!(answer instanceof ThemeExistsError)) return chooseImported(answer);
+        setImportCollision({ file, id: answer.themeId, name: answer.themeName });
+        return null;
+      },
+    });
   };
 
   // Overwrite the existing custom theme with the imported one.
@@ -574,13 +563,7 @@ export function ThemeStudio({
     if (!importCollision) return;
     const { file } = importCollision;
     setImportCollision(null);
-    setBusy(true);
-    try {
-      await runImport(file, true);
-    } catch (err) {
-      setStatusMsg({ kind: "error", text: `Import failed: ${parseApiError(err)}` });
-    }
-    setBusy(false);
+    await attempt({ keepLine: true, failure: importFailed, work: () => importTheme(file, true), done: chooseImported });
   };
 
   // Keep both: re-import the file's theme under a fresh, non-colliding id.
@@ -588,18 +571,21 @@ export function ThemeStudio({
     if (!importCollision) return;
     const { file, id } = importCollision;
     setImportCollision(null);
-    setBusy(true);
-    try {
-      const parsed = JSON.parse(await file.text()) as ThemeDefinition;
-      const kept = keptBeside(id, parsed.name, takenIds());
-      await createTheme(themeFile(parsed, kept));
-      onChangeTheme(kept.id);
-      onRefreshThemes();
-      setStatusMsg({ kind: "info", text: `Imported as "${kept.name}"` });
-    } catch (err) {
-      setStatusMsg({ kind: "error", text: `Import failed: ${parseApiError(err)}` });
-    }
-    setBusy(false);
+    await attempt({
+      keepLine: true,
+      failure: importFailed,
+      work: async () => {
+        const parsed = JSON.parse(await file.text()) as ThemeDefinition;
+        const kept = keptBeside(id, parsed.name, takenIds());
+        await createTheme(themeFile(parsed, kept));
+        return kept;
+      },
+      done: (kept) => {
+        onChangeTheme(kept.id);
+        onRefreshThemes();
+        return `Imported as "${kept.name}"`;
+      },
+    });
   };
 
   // --- Theme switch (confirm if dirty) ---
