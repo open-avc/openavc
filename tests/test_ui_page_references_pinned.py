@@ -349,6 +349,33 @@ def test_a_state_key_is_resolved_by_its_longest_device_id() -> None:
     ]
 
 
+def test_a_key_that_stops_at_a_device_names_the_missing_property() -> None:
+    """The device is in the project; what is missing is the property after it,
+    on a value, a look and a matrix pattern alike. A device that is not there
+    is still said as one."""
+    page = _raw_page([
+        {"id": "lbl", "type": "label", "bindings": {"show": {
+            "value": {"key": "device.acme_amp"}, "look": {"key": "device.ghost"},
+        }}},
+        {"id": "mx", "type": "matrix", "matrix_config": {
+            "sources": [{"value": 1}], "destinations": [{"value": 1}],
+            "route_key_pattern": "device.acme_amp",
+        }},
+    ])
+    assert [(message, key) for _, _, message, key in _answer(page)] == [
+        ("lbl (label) reads show.value from 'device.acme_amp', and that names device 'acme_amp' "
+         "with no property, so it reads nothing. Name the property after it: "
+         "'device.acme_amp.<property>'.", ("dangling_reference", "lbl", "show.value.property")),
+        ("lbl (label) reads show.look from 'device.ghost', and no device 'ghost' is in this "
+         "project. The devices are: acme, acme.sw, acme_amp.",
+         ("dangling_reference", "lbl", "show.look")),
+        ("mx (matrix) reads matrix_config.route_key_pattern from 'device.acme_amp', and that "
+         "names device 'acme_amp' with no property, so it reads nothing. Name the property after "
+         "it: 'device.acme_amp.<property>'.",
+         ("dangling_reference", "mx", "matrix_config.route_key_pattern.property")),
+    ]
+
+
 # --- Grants ---
 
 
@@ -639,9 +666,9 @@ EXPECTED_LONGEST_DEVICE = [('lbl',
   ('dangling_reference', 'lbl', 'show.look.property')),
  ('lbl2',
   'dangling_reference',
-  "lbl2 (label) reads show.value from 'device.acme_amp', and no device 'acme_amp' is in this "
-  'project. The devices are: acme, acme.sw, acme_amp.',
-  ('dangling_reference', 'lbl2', 'show.value')),
+  "lbl2 (label) reads show.value from 'device.acme_amp', and that names device 'acme_amp' with "
+  "no property, so it reads nothing. Name the property after it: 'device.acme_amp.<property>'.",
+  ('dangling_reference', 'lbl2', 'show.value.property')),
  ('lbl2',
   'dangling_reference',
   "lbl2 (label) reads show.look from 'device.', and no device '' is in this project. The "

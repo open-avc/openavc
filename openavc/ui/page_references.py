@@ -181,9 +181,7 @@ class _Site:
         return _Site(self.control, f"{self.where}['{value}']", None)
 
     def nested(self, field: str) -> _Site:
-        """The action an action carries under ``field`` (a toggle's off action,
-        a long press's action), run in its own place, so it answers to no
-        options either."""
+        """The action carried under ``field``, which answers to no options either."""
         return _Site(self.control, f"{self.where}.{field}", None)
 
 
@@ -610,13 +608,7 @@ def _read_finding(control: _Control, read: _Read, project: _Project) -> Finding 
         return None
     said = f"reads {read.where} from '{key}', and"
     if device_of(key, project.device_ids) is None:
-        named = key.split(".")[1] if key.count(".") >= 1 else key
-        return control.finding(
-            "dangling_reference",
-            f"{said} no device '{named}' is in this project. The devices are: "
-            f"{_listed(project.device_ids)}.",
-            read.where,
-        )
+        return _no_device_finding(control, read, said, project.device_ids)
     # The child id before the property, because a page repeating one block
     # per output gets the NUMBER wrong, not the name -- and reported first
     # it names the actual mistake instead of a property that is spelled
@@ -645,6 +637,28 @@ def _read_finding(control: _Control, read: _Read, project: _Project) -> Finding 
             f"{read.where}.property",
         )
     return None
+
+
+def _no_device_finding(control: _Control, read: _Read, said: str, device_ids: set[str]) -> Finding:
+    """A key that names no device of the project. One that stops at a device
+    the project has is missing its property instead, and saying the device is
+    missing would send somebody to fix the wrong half."""
+    key, where = read.key, read.where
+    alone = key[len("device."):]
+    if alone in device_ids:
+        return control.finding(
+            "dangling_reference",
+            f"{said} that names device '{alone}' with no property, so it reads "
+            f"nothing. Name the property after it: '{key}.<property>'.",
+            f"{where}.property",
+        )
+    named = key.split(".")[1] if key.count(".") >= 1 else key
+    return control.finding(
+        "dangling_reference",
+        f"{said} no device '{named}' is in this project. The devices are: "
+        f"{_listed(device_ids)}.",
+        where,
+    )
 
 
 def _show_reads(control: _Control) -> Iterator[_Read]:
