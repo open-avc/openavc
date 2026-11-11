@@ -67,7 +67,8 @@ action is judged by ``_ACTION_CHECKS`` under its name, at a ``_Site`` (its
 control, its path, the options a value_map answers to). A state key a control
 reads is a ``_Read``, judged by ``_read_finding`` whether it is written under
 ``bindings.show`` or in ``matrix_config``. So a new lookup is a ``_Project``
-field and a keyword on ``reference_findings``; a new element check, or a new
+field, its keyword on ``reference_findings`` and the line there that passes it
+in; a new element check, or a new
 action that names something, is one entry in its table. Which actions are
 walked is ``_do_findings``: each ``do`` slot's own list, and a value_map's
 entries at every depth (``_value_map_findings``).
@@ -77,7 +78,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from openavc.ui.page_review import Finding
@@ -114,10 +115,10 @@ class _Project:
 
     ``reference_findings`` builds one per call from its keyword arguments and
     every check below reads it, so a new question for the platform is a field
-    here and a keyword there, not an argument passed down every function in
-    the file. Each lookup answers None for "no opinion", which never warns;
-    what an EMPTY answer means is each check's own call (an empty command list
-    warns, an empty roster does not).
+    here, its keyword there and the line that passes it in, not an argument
+    passed down every function in the file. Each lookup answers None for "no
+    opinion", which never warns; what an EMPTY answer means is each check's own
+    call (an empty command list warns, an empty roster does not).
     """
 
     page_ids: set[str]
@@ -149,9 +150,9 @@ class _Holder:
 class _Control(_Holder):
     """One element of the page being checked, as the page walk found it."""
 
-    dump: Mapping[str, Any] = field(default_factory=dict)
-    page_id: str = "?"
-    shows: CustomFileUse | None = None
+    dump: Mapping[str, Any]
+    page_id: str
+    shows: CustomFileUse | None
     """The ``ui/`` file ``custom_file_references`` found under this id, if any."""
 
 
@@ -371,8 +372,8 @@ class CustomFileUse:
 def _granted_ids(grant: Any) -> tuple[str, ...]:
     dump = _mapping(grant) or {}
     ids: list[str] = []
-    for part in ("devices", "variables"):
-        value = dump.get(part)
+    for field in ("devices", "variables"):
+        value = dump.get(field)
         if isinstance(value, (list, tuple)):
             ids.extend(str(v) for v in value if isinstance(v, str))
     return tuple(ids)
@@ -515,34 +516,33 @@ def reference_findings(
         missing_params=missing_params, file_command=file_command, ui_files=ui_files,
     )
     page_id = str(getattr(page, "id", "?"))
+    # What the page itself names is not scoped by `touched`: the page is not one
+    # of its elements, and a write that never mentions it is still a write onto
+    # a page that can no longer reach what it was given.
+    findings = _grant_findings(
+        _Holder(page_id, "page"), getattr(page, "grant", None), "the page it shows", project,
+    )
     # One walk says what the page and its controls show, so what counts as
     # naming a file lives in one place -- see custom_file_references.
     uses = custom_file_references(page)
-    findings = _page_findings(page, page_id, uses, project)
+    findings.extend(_page_file_findings(uses, page_id, project))
     for control in _controls(page, page_id, uses, touched):
         for check in _ELEMENT_CHECKS:
             findings.extend(check(control, project))
     return findings
 
 
-def _page_findings(
-    page: Any, page_id: str, uses: list[CustomFileUse], project: _Project,
+def _page_file_findings(
+    uses: list[CustomFileUse], page_id: str, project: _Project,
 ) -> list[Finding]:
-    """What the page itself names: the devices a custom page is granted, and its file.
+    """The file a custom page shows, when it is not in ``ui/``.
 
-    A custom page carries the same grant an iframe element does, and names its
-    file the same way an element does, so it can lose either in exactly the
-    same way -- and it is exactly as invisible, because a grant matching
-    nothing looks like a grant nobody set. Neither is scoped by ``touched``:
-    the page is not one of its elements, and a write that never mentions it is
-    still a write onto a page that can no longer reach what it was given.
+    A page that hands the screen to markup names its file the same way an
+    element does, and loses it the same way. Its grant is judged beside it,
+    by the same rule as a control's (``_grant_findings``).
     """
-    findings = _grant_findings(
-        _Holder(page_id, "page"), getattr(page, "grant", None), "the page it shows", project,
-    )
     shown = next((use for use in uses if use.what == "page"), None)
-    missing = _missing_file_finding(shown, page_id, project.ui_files) if shown else None
-    return findings + _found(missing)
+    return _found(_missing_file_finding(shown, page_id, project.ui_files)) if shown else []
 
 
 def _controls(
@@ -625,15 +625,13 @@ def _read_finding(control: _Control, read: _Read, project: _Project) -> Finding 
     return None
 
 
-def _show_reads(control: _Control) -> list[_Read]:
+def _show_reads(control: _Control) -> Iterator[_Read]:
     """The keys a control shows, its value then its look."""
     show = _bindings(control.dump, "show")
-    reads = []
     for slot in ("value", "look"):
         binding = _mapping(show.get(slot))
         key = binding.get("key") if binding else None
-        reads.append(_Read(f"show.{slot}", key, asked=key, by_child=True))
-    return reads
+        yield _Read(f"show.{slot}", key, asked=key, by_child=True)
 
 
 #: The `matrix_config` keys that hold a state-key GLOB rather than a plain key.
@@ -656,7 +654,7 @@ MATRIX_KEY_PATTERNS = (
 _PROBE_INDEX = "1"
 
 
-def _matrix_reads(control: _Control) -> list[_Read]:
+def _matrix_reads(control: _Control) -> Iterator[_Read]:
     """State-key globs inside `matrix_config`, checked like any other binding.
 
     A matrix is the one control that reads state from somewhere other than
@@ -673,28 +671,25 @@ def _matrix_reads(control: _Control) -> list[_Read]:
     glob" is a different complaint. The child id is not checked here.
     """
     if control.what != "matrix":
-        return []
+        return
     config = _mapping(control.dump.get("matrix_config"))
     if not config:
-        return []
-    reads = []
+        return
     for name in MATRIX_KEY_PATTERNS:
         pattern = config.get(name)
         probe = (
             pattern.replace("*", _PROBE_INDEX, 1)
             if isinstance(pattern, str) and "*" in pattern else None
         )
-        reads.append(_Read(f"matrix_config.{name}", pattern, asked=probe, by_child=False))
-    return reads
+        yield _Read(f"matrix_config.{name}", pattern, asked=probe, by_child=False)
 
 
 def _state_key_findings(control: _Control, project: _Project) -> list[Finding]:
     """Every state key the control reads that names a device, child or property not there."""
     findings = []
-    for read in _matrix_reads(control) + _show_reads(control):
-        found = _read_finding(control, read, project)
-        if found:
-            findings.append(found)
+    for reads in (_matrix_reads, _show_reads):
+        for read in reads(control):
+            findings.extend(_found(_read_finding(control, read, project)))
     return findings
 
 
@@ -792,7 +787,7 @@ def _navigate_findings(
     action: Mapping[str, Any], site: _Site, project: _Project,
 ) -> list[Finding]:
     moved = _navigation_finding(site, action.get("page"), project, "page")
-    return [moved] if moved else []
+    return _found(moved)
 
 
 def _macro_findings(
@@ -838,7 +833,7 @@ def _command_findings(
             "command",
         )]
     refusal = _refusal(action, site, project)
-    return [refusal] if refusal else []
+    return _found(refusal)
 
 
 def _refusal(action: Mapping[str, Any], site: _Site, project: _Project) -> Finding | None:
