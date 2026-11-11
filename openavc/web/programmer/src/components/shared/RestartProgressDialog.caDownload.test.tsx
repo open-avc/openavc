@@ -61,6 +61,9 @@ describe("Download CA + Open new URL", () => {
     await act(async () => { fireEvent.click(button); });
     expect(downloadCertificate).toHaveBeenCalled();
     expect(saved).toEqual(["openavc-ca.crt blob:ca true"]);
+    // Released a turn later: some browsers start the save after click() returns.
+    expect(revoked).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     expect(revoked).toHaveBeenCalledWith("blob:ca");
     expect(document.querySelectorAll("a[download]")).toHaveLength(0);
     expect(opened).toHaveBeenCalledWith("https://localhost:8443/programmer", "_blank", "noopener,noreferrer");

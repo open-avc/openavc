@@ -152,8 +152,12 @@ describe("A certificate made here", () => {
     const revoked = vi.fn();
     Object.assign(URL, { createObjectURL: created, revokeObjectURL: revoked });
     const clicks: string[] = [];
+    // Whether the address was already released by the end of the click's own
+    // turn: some browsers start the save after click() returns.
+    const releasedInTurn: boolean[] = [];
     const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
       clicks.push(`${this.download} ${this.getAttribute("href")} ${document.body.contains(this)}`);
+      void Promise.resolve().then(() => releasedInTurn.push(revoked.mock.calls.length > 0));
     });
     await renderLoaded(<SystemSettingsView />);
     fireEvent.click(screen.getByRole("button", { name: /Download CA certificate/ }));
@@ -161,7 +165,8 @@ describe("A certificate made here", () => {
       "CA certificate downloaded. Install it on your panel devices to skip the security warning.",
     ));
     expect(clicks).toEqual(["openavc-ca.crt blob:ca true"]);
-    expect(revoked).toHaveBeenCalledWith("blob:ca");
+    expect(releasedInTurn).toEqual([false]);
+    await waitFor(() => expect(revoked).toHaveBeenCalledWith("blob:ca"));
     expect(document.querySelectorAll("a[download]").length).toBe(0);
     click.mockRestore();
   });
