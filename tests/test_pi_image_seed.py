@@ -1,7 +1,7 @@
 """Guards for the Pi image's starter project seeding.
 
 Every deployment target must ship the canonical starter project from
-``installer/seed/default/`` — never a fork. The Pi image used to commit its
+``openavc/seed/default/`` — never a fork. The Pi image used to commit its
 own copy under the pi-gen stage's ``files/`` directory, which silently
 drifted (it was still on a pre-``device_groups`` schema while every other
 target shipped the current seed). Both build paths (the release workflow and
@@ -60,8 +60,44 @@ def _render_info_box(*lines: str) -> list[str]:
     assert proc.returncode == 0, f"render_box failed: {proc.stderr}"
     return [ln for ln in proc.stdout.splitlines() if ln.strip()]
 
-CANONICAL_SEED = "installer/seed/default/project.avc"
+CANONICAL_SEED = "openavc/seed/default/project.avc"
 STAGED_SEED = "installer/pi-image/stage-openavc/01-install-openavc/files/project.avc"
+
+
+def test_the_seed_ships_inside_the_package():
+    """A pip-installed wheel carries only the package, so the one seed every
+    install type reads lives in it, where the runtime looks first."""
+    from openavc import system_config
+
+    assert REPO_ROOT / CANONICAL_SEED == system_config.SEED_PROJECT_PATH
+    assert system_config.SEED_PROJECT_PATH.is_file()
+    assert system_config.PACKAGE_DIR in system_config.SEED_PROJECT_PATH.parents
+    assert system_config.get_seed_project_path() == system_config.SEED_PROJECT_PATH
+
+
+def test_only_install_sh_still_names_the_old_seed_path():
+    """The seed moved out of installer/seed/. install.sh still names the old
+    path, after the new one, for a release tarball from before the move; any
+    other reader of it would find nothing and ship no starter project."""
+    gates.skip_or_fail(
+        gates.GIT, None if shutil.which("git") else "git not installed"
+    )
+    proc = subprocess.run(
+        ["git", "grep", "-lIE", r"installer.seed"],
+        capture_output=True,
+        text=True,
+        cwd=str(REPO_ROOT),
+        timeout=30,
+    )
+    gates.skip_or_fail(
+        gates.GIT, None if proc.returncode in (0, 1) else "not a git checkout"
+    )
+    readers = set(proc.stdout.split()) - {"tests/test_pi_image_seed.py"}
+    assert readers == {"installer/install.sh"}, f"still reading installer/seed/: {sorted(readers)}"
+    text = (REPO_ROOT / "installer" / "install.sh").read_text(encoding="utf-8")
+    assert text.index(f'"$INSTALL_DIR/{CANONICAL_SEED}"') < text.index(
+        '"$INSTALL_DIR/installer/seed/default/project.avc"'
+    ), "install.sh must try the package's seed before the old path"
 
 
 def test_release_workflow_stages_canonical_seed():

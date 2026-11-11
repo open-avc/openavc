@@ -511,12 +511,17 @@ setup_data_dir() {
     mkdir -p "$DATA_DIR"/{projects/default,backups,logs}
     mkdir -p "$LOG_DIR"
 
-    # Seed default project if not present
+    # Seed default project if not present. The starter project ships inside
+    # the package; a release from before that keeps it under installer/seed/.
     if [ ! -f "$DATA_DIR/projects/default/project.avc" ]; then
-        if [ -f "$INSTALL_DIR/installer/seed/default/project.avc" ]; then
-            cp "$INSTALL_DIR/installer/seed/default/project.avc" "$DATA_DIR/projects/default/project.avc"
-            info "Seeded default project"
-        fi
+        for seed in "$INSTALL_DIR/openavc/seed/default/project.avc" \
+                    "$INSTALL_DIR/installer/seed/default/project.avc"; do
+            if [ -f "$seed" ]; then
+                cp "$seed" "$DATA_DIR/projects/default/project.avc"
+                info "Seeded default project"
+                break
+            fi
+        done
     fi
 
     # Set ownership

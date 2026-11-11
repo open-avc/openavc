@@ -136,11 +136,11 @@ jobs:
       - name: Stage systemd unit
         run: cp installer/openavc.service installer/pi-image/stage-openavc/01-install-openavc/files/openavc.service
 
-      # Stage the canonical starter project from installer/seed/default/ (the
+      # Stage the canonical starter project from openavc/seed/default/ (the
       # single source of truth every deployment target ships). The image must
       # not carry its own copy — a committed fork can only drift.
       - name: Stage seed project
-        run: cp installer/seed/default/project.avc installer/pi-image/stage-openavc/01-install-openavc/files/project.avc
+        run: cp openavc/seed/default/project.avc installer/pi-image/stage-openavc/01-install-openavc/files/project.avc
 
       - name: Configure pi-gen
         env:

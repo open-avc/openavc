@@ -362,7 +362,6 @@ jobs:
             --exclude='openavc/web/simulator/src' \
             --exclude='openavc/web/simulator/.env*' \
             openavc/ \
-            installer/seed/ \
             installer/openavc.service \
             installer/update-helper.sh \
             installer/firewall-sync.sh \
@@ -429,7 +428,6 @@ jobs:
             --exclude='openavc/web/simulator/src' \
             --exclude='openavc/web/simulator/.env*' \
             openavc/ \
-            installer/seed/ \
             installer/openavc.service \
             installer/update-helper.sh \
             installer/firewall-sync.sh \

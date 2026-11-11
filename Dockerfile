@@ -89,8 +89,7 @@ COPY --from=frontend /build/panel/ ./openavc/web/panel/
 # Copy built Simulator UI from stage 1
 COPY --from=frontend /build/simulator/dist/ ./openavc/web/simulator/dist/
 
-# Copy data files (themes ride along inside the package)
-COPY installer/seed/default/ ./seed/default/
+# Copy data files (themes and the starter project ride along inside the package)
 COPY installer/openavc.service ./installer/openavc.service
 
 # Set up data directory structure. plugin_repo and driver_repo are
@@ -99,7 +98,7 @@ COPY installer/openavc.service ./installer/openavc.service
 # pull (the old /app/{driver,plugin}_repo layout was wiped by every
 # `docker compose up -d` with a new image).
 RUN mkdir -p /data/projects/default /data/backups /data/logs \
-    && cp seed/default/project.avc /data/projects/default/project.avc \
+    && cp openavc/seed/default/project.avc /data/projects/default/project.avc \
     && chown -R openavc:openavc /data /app
 
 USER openavc

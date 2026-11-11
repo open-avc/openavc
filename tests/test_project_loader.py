@@ -529,7 +529,7 @@ def test_matrix_element():
     assert el.matrix_config["destinations"]["from"]["route_key"] == "dev.sw.out_*_src"
 
 
-def test_installer_seed_project_matches_v04_schema():
+def test_seed_project_matches_v04_schema():
     """Regression for A5: the starter project bundled with every fresh
     install must validate against the v0.4.0 loader schema with NO extra
     fields at the top level, ui.settings, ui.pages[0], ui.pages[0].grid,
@@ -538,7 +538,7 @@ def test_installer_seed_project_matches_v04_schema():
     (element_stagger_ms, background, shared_state, etc.) get loader
     defaults instead of seed values.
     """
-    seed_path = Path(__file__).parent.parent / "installer" / "seed" / "default" / "project.avc"
+    seed_path = Path(__file__).parent.parent / "openavc" / "seed" / "default" / "project.avc"
     data = json.loads(seed_path.read_text(encoding="utf-8"))
     project = ProjectConfig(**data)
 

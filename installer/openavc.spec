@@ -39,8 +39,10 @@ datas = [
     # upgrades. The runtime creates them on first start.
     # Themes
     (str(PROJECT_ROOT / 'openavc' / 'themes'), 'openavc/themes'),
-    # Clean starter project (not the dev project which may have cloud pairing, assets, etc.)
-    (str(PROJECT_ROOT / 'installer' / 'seed' / 'default'), 'projects/default'),
+    # Clean starter project (not the dev project which may have cloud pairing,
+    # assets, etc.). Lands at projects/default/, where setup.iss,
+    # install-service.bat and the macOS postinstall copy it from.
+    (str(PROJECT_ROOT / 'openavc' / 'seed' / 'default'), 'projects/default'),
     # User templates
     (str(PROJECT_ROOT / 'user_templates'), 'user_templates'),
     # pyproject.toml (for version reading)

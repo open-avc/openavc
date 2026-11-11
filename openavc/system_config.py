@@ -191,16 +191,19 @@ SEED_TEMPLATES_DIR = PACKAGE_DIR / "templates"
 USER_TEMPLATES_DIR = APP_DIR / "user_templates"
 PYPROJECT_PATH = APP_DIR / "pyproject.toml"
 
-# Canonical seed for the default project, bundled read-only in APP_DIR. Its
-# location differs by deployment layout, so probe the known candidates in
-# priority order. Used as a runtime seed when the configured project path is
-# missing, making default-project seeding independent of how the data dir was
-# provided (notably a bind-mounted Docker /data, which shadows the seed cp'd
-# into the image layer — only named volumes inherit image content).
+# The canonical starter project a first run starts from, the one file every
+# install type ships: inside the package, so a checkout, a pip-installed wheel,
+# the Linux and Pi tarballs and the Docker image all carry it at the same place.
+# The frozen PyInstaller bundle copies it to projects/default/ (openavc.spec),
+# where the Windows installer and the macOS package read it at install. Used
+# as a runtime seed when the configured project path is missing, so seeding
+# does not depend on how the data dir was provided (notably a bind-mounted
+# Docker /data, which shadows the seed cp'd into the image layer; only named
+# volumes inherit image content).
+SEED_PROJECT_PATH = PACKAGE_DIR / "seed" / "default" / "project.avc"
 _SEED_PROJECT_CANDIDATES = (
-    APP_DIR / "seed" / "default" / "project.avc",              # Docker image layout
-    APP_DIR / "installer" / "seed" / "default" / "project.avc",  # source / dev checkout
-    APP_DIR / "projects" / "default" / "project.avc",         # frozen PyInstaller bundle
+    SEED_PROJECT_PATH,
+    APP_DIR / "projects" / "default" / "project.avc",  # frozen PyInstaller bundle
 )
 
 
@@ -208,8 +211,9 @@ def get_seed_project_path() -> Path | None:
     """Return the bundled default-project seed, or None if none is present.
 
     Returns the first candidate that exists so the caller can seed a missing
-    project path from it. All candidates live under APP_DIR (the read-only
-    bundle), never the data dir, so this never returns a live user project.
+    project path from it. Both candidates live in the read-only bundle (the
+    package, or APP_DIR when frozen), never the data dir, so this never
+    returns a live user project.
     """
     for candidate in _SEED_PROJECT_CANDIDATES:
         if candidate.is_file():

@@ -126,3 +126,18 @@ def test_resource_dirs_are_bundled():
     }
     missing = required - dests
     assert not missing, f"openavc.spec datas is missing resource dirs: {missing}"
+
+
+def test_the_starter_project_is_bundled_from_the_package_seed():
+    """The spec drops a datas source that does not exist without a word, so a
+    stale path would ship a Windows or macOS build with no starter project
+    (setup.iss, install-service.bat and the macOS postinstall all copy it out
+    of projects/default/)."""
+    from openavc.system_config import SEED_PROJECT_PATH
+
+    src = SPEC_PATH.read_text(encoding="utf-8")
+    m = re.search(r"\(str\(PROJECT_ROOT((?:\s*/\s*'[^']+')+)\),\s*'projects/default'\)", src)
+    assert m, "openavc.spec bundles nothing to projects/default"
+    source = SPEC_PATH.parents[1].joinpath(*re.findall(r"'([^']+)'", m.group(1)))
+    assert source == SEED_PROJECT_PATH.parent
+    assert (source / "project.avc").is_file()
