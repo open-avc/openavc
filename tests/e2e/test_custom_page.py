@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.e2e._panel_modules import panel_script_tag, serve_panel_scripts
 
 # Skip-gate only: the browser comes from pytest-playwright's session fixtures.
 pytest.importorskip("playwright.sync_api")
@@ -56,7 +57,6 @@ def _panel_html() -> str:
         for line in (PANEL_DIR / "panel.css").read_text(encoding="utf-8").splitlines()
         if not line.strip().startswith("@import")
     )
-    panel_js = (PANEL_DIR / "panel.js").read_text(encoding="utf-8")
     return f"""<!DOCTYPE html>
 <html><head><style>{elements_css}
 {panel_css}</style>
@@ -84,7 +84,7 @@ def _panel_html() -> str:
   class FakeWS {{ constructor() {{ this.readyState = 1; }} send() {{}} close() {{}} }}
   FakeWS.OPEN = 1; window.WebSocket = FakeWS;
 </script>
-<script>{panel_js}</script>
+{panel_script_tag()}
 </body></html>
 """
 
@@ -121,6 +121,7 @@ def _project(page_extra: dict | None = None, masters: list | None = None) -> dic
 def panel(browser):
     context = browser.new_context(viewport={"width": REF_W, "height": REF_H})
     page = context.new_page()
+    serve_panel_scripts(page)
     page.route(PANEL_URL + "*", lambda route: route.fulfill(
         status=200, content_type="text/html", body=_panel_html(),
     ))

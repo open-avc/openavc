@@ -44,8 +44,10 @@ def harness_results() -> dict:
     reason = _toolchain_reason()
     if reason:
         gates.skip_or_fail(gates.NODE, reason)
+    # panel.js is an ES module; the harness links it inside jsdom's window
+    # with vm.SourceTextModule, which Node keeps behind this flag.
     proc = subprocess.run(
-        ["node", str(HARNESS), str(PANEL_JS)],
+        ["node", "--experimental-vm-modules", str(HARNESS), str(PANEL_JS)],
         capture_output=True,
         text=True,
         cwd=str(OPENAVC_ROOT),

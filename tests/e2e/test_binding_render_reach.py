@@ -25,6 +25,7 @@ from pathlib import Path
 import pytest
 
 from openavc.ui.page_review import HONORED_SHOW_SLOTS, STATE_LABEL_TYPES
+from tests.e2e._panel_modules import panel_script_tag, serve_panel_scripts
 
 # Skip-gate only: the browser itself comes from pytest-playwright's session
 # fixtures, never from a second sync_playwright() of our own.
@@ -72,7 +73,6 @@ def _page_html() -> str:
         for line in (PANEL_DIR / "panel.css").read_text(encoding="utf-8").splitlines()
         if not line.strip().startswith("@import")
     )
-    panel_js = (PANEL_DIR / "panel.js").read_text(encoding="utf-8")
     return f"""<!DOCTYPE html>
 <html><head><style>{elements_css}
 {panel_css}</style>
@@ -90,7 +90,7 @@ def _page_html() -> str:
   class FakeWS {{ constructor() {{ this.readyState = 1; }} send() {{}} close() {{}} }}
   FakeWS.OPEN = 1; window.WebSocket = FakeWS;
 </script>
-<script>{panel_js}</script>
+{panel_script_tag()}
 </body></html>
 """
 
@@ -104,6 +104,7 @@ def panel_page(browser):
     """
     context = browser.new_context(viewport={"width": REF_W, "height": REF_H})
     page = context.new_page()
+    serve_panel_scripts(page)
     page.set_content(_page_html(), wait_until="load")
     assert page.evaluate("() => !!window.__openavcPanel"), (
         "panel.js did not initialise -- the harness page is wrong, not the table"

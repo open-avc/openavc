@@ -4,16 +4,19 @@
  * Loads the real panel.js into a jsdom window and exercises the behaviours
  * fixed in the bug-fix campaign. Each test throws on failure; results are
  * emitted as JSON on stdout for the pytest wrapper (tests/test_panel_js.py)
- * to assert on. Invoked as: node panel_harness.cjs <abs path to panel.js>
- * with cwd set to openavc/web/programmer so `require('jsdom')` resolves.
+ * to assert on. Invoked as:
+ *   node --experimental-vm-modules panel_harness.cjs <abs path to panel.js>
+ * with NODE_PATH at openavc/web/programmer/node_modules so `require('jsdom')`
+ * resolves.
  */
 const fs = require('fs');
+const vm = require('vm');
+const { pathToFileURL, fileURLToPath } = require('url');
 const { JSDOM } = require('jsdom');
 
 const path = require('path');
 
 const panelPath = process.argv[2];
-const source = fs.readFileSync(panelPath, 'utf8') + '\n;window.__PanelApp = PanelApp;';
 
 // The real stylesheets, inlined. jsdom won't resolve the @import, so the two
 // files are concatenated by hand. This is what lets the layout scenarios below
@@ -60,12 +63,37 @@ if (!window.Audio) window.Audio = window.HTMLAudioElement;
 window.HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
 window.HTMLMediaElement.prototype.pause = function () {};
 
-window.eval(source);
+/**
+ * Run panel.js and the modules it imports inside the jsdom window's own
+ * context, so the panel runs as a browser runs it: strict, with jsdom's window
+ * as its global, its imports resolved relative to each file. Linking is
+ * asynchronous, and jsdom has already fired DOMContentLoaded by the time it
+ * finishes, so it is fired again here: a browser runs a module script before
+ * that event, which is when the panel's start-up listener expects it.
+ */
+async function loadPanel(entry) {
+    const context = dom.getInternalVMContext();
+    const modules = new Map();
+    const load = (file) => {
+        if (!modules.has(file)) {
+            modules.set(file, new vm.SourceTextModule(fs.readFileSync(file, 'utf8'),
+                { context, identifier: pathToFileURL(file).href }));
+        }
+        return modules.get(file);
+    };
+    const root = load(entry);
+    await root.link((specifier, referrer) =>
+        load(path.resolve(path.dirname(fileURLToPath(referrer.identifier)), specifier)));
+    await root.evaluate();
+    document.dispatchEvent(new window.Event('DOMContentLoaded'));
+}
+
+// Set once the panel has loaded, before any scenario runs.
 // panel.js replaced window.fetch with its credential-attaching wrapper. Held
 // here because a later scenario reassigns window.fetch for its own purposes,
 // and the auth scenarios must exercise the real wrapper whatever ran first.
-const patchedFetch = window.fetch;
-const PanelApp = window.__PanelApp;
+let patchedFetch;
+let PanelApp;
 const mkApp = () => new PanelApp();
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
@@ -5173,6 +5201,9 @@ const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.
 (async () => {
+    await loadPanel(panelPath);
+    patchedFetch = window.fetch;
+    PanelApp = window.__openavcPanel.constructor;
     for (const [name, fn] of Object.entries(tests)) {
         try { await fn(); results[name] = { pass: true }; }
         catch (e) { results[name] = { pass: false, error: String(e && e.message), stack: (e && e.stack || '').split('\n').slice(0, 4).join(' | ') }; }

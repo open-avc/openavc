@@ -29,6 +29,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from tests.e2e._panel_modules import panel_script_tag, serve_panel_scripts
 
 # Skip-gate only: the browser itself comes from pytest-playwright's session
 # fixtures, never from a second sync_playwright() of our own (see the note in
@@ -57,7 +58,6 @@ def _page_html() -> str:
         for line in (PANEL_DIR / "panel.css").read_text(encoding="utf-8").splitlines()
         if not line.strip().startswith("@import")
     )
-    panel_js = (PANEL_DIR / "panel.js").read_text(encoding="utf-8")
     return f"""<!DOCTYPE html>
 <html><head><style>{elements_css}
 {panel_css}</style>
@@ -84,7 +84,7 @@ def _page_html() -> str:
   }}
   FakeWS.OPEN = 1; window.WebSocket = FakeWS;
 </script>
-<script>{panel_js}</script>
+{panel_script_tag()}
 <script>
   window.__mount = (element, w, h, state) => {{
     const app = window.__openavcPanel;
@@ -128,6 +128,7 @@ CLOCK_START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 def _open(context):
     """The harness page on a paused fake clock: time moves only by run_for()."""
     page = context.new_page()
+    serve_panel_scripts(page)
     page.clock.install(time=CLOCK_START)
     page.set_content(_page_html(), wait_until="load")
     assert page.evaluate("() => !!window.__openavcPanel"), (
