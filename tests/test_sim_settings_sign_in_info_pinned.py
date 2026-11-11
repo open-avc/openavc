@@ -13,6 +13,7 @@ import logging
 import pytest
 
 from openavc.simulator.tcp_simulator import TCPSimulator
+from openavc.simulator.ui_info import slider_step
 from openavc.simulator.yaml_auto import SIGN_IN_REQUIRED_MODE, YAMLAutoSimulator
 
 
@@ -373,7 +374,7 @@ def test_every_kind_of_variable_gets_its_control():
     ((0, 0.4, None, True), 1), ((0, 0.3, None, False), 0.01), ((0, 3, None, False), 0.01), ((0, 7, None, False), 0.02),
 ])
 def test_the_step_an_invented_slider_gets(args, step):
-    got = YAMLAutoSimulator._slider_step(*args[:3], integral=args[3])
+    got = slider_step(*args[:3], integral=args[3])
     assert got == step and type(got) is type(step)
 
 
