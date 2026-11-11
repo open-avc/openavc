@@ -396,13 +396,23 @@ Some devices send each change as a UDP packet to a port set on the device, such 
 
 With host networking, also open the port in the host's firewall, as for any other port ([Host firewall: handled for you](#host-firewall-handled-for-you) covers what Docker leaves to you).
 
+### What a container off the LAN cannot do
+
+With bridge networking (the multi-room compose file), and on Docker Desktop, the container sits behind NAT on a private address. It still opens connections to your equipment, so control works. It cannot hear the LAN or send to all of it:
+
+- Device discovery finds nothing, and panel apps cannot find the server on their own: enter its address in the app.
+- Wake-on-LAN, Art-Net broadcast and sACN multicast reach no device, so equipment that a Wake-on-LAN packet turns on stays off.
+- A device that sends its changes to OpenAVC (a callback to OpenAVC's web port, a connection back to OpenAVC, a multicast group) never reaches it. The exception is a device that sends to one fixed port, once that port is published ([A device that sends to a UDP port](#a-device-that-sends-to-a-udp-port)). A device OpenAVC also polls still updates, at poll speed.
+
+To have all of these, give each container its own address on the LAN with macvlan networking, or run one OpenAVC per computer with the single-room compose file.
+
 ### Docker Desktop on Windows or Mac
 
-Docker Desktop runs the Linux container inside a WSL2 (Windows) or HyperKit (Mac) virtual machine that does not share the host's LAN, so device discovery cannot work even with `network_mode: host`. If you need discovery on Windows or Mac, use the native installer instead. Docker Desktop is fine for evaluating the software or for IP-only deployments where you'll add devices manually.
+Docker Desktop runs the container inside a Linux virtual machine that is not on your LAN, so even with `network_mode: host` it has the limits in [What a container off the LAN cannot do](#what-a-container-off-the-lan-cannot-do). If you need any of them on Windows or a Mac, use the native installer. Docker Desktop is fine for evaluating OpenAVC, or for a space whose devices you add by address and OpenAVC connects to.
 
 ### Multi-space deployments
 
-For multiple rooms on a single host, use separate containers with different ports and data volumes. Multi-room layouts must use bridge networking (host mode would conflict on port 8080), which means **device discovery is not available in multi-room mode** and devices must be added manually by IP. If discovery matters, run one OpenAVC container per physical host using the single-room compose above, or set up macvlan networking so each container gets its own LAN IP.
+For several spaces on one host, use separate containers with different ports and data volumes. They use bridge networking (with host networking every container would take port 8080), so each has the limits in [What a container off the LAN cannot do](#what-a-container-off-the-lan-cannot-do) and its devices are added by address.
 
 ```yaml
 services:

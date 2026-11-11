@@ -6,13 +6,15 @@
 # Start:   docker compose -f docker-compose.multi-room.yml up -d
 # Update:  docker compose -f docker-compose.multi-room.yml pull && docker compose -f docker-compose.multi-room.yml up -d
 #
-# Discovery note: this multi-room layout uses bridge networking because each
-# room needs its own port (8081/8082/8083). Containers in bridge mode cannot
-# reach AV devices on your physical LAN, so device discovery WILL NOT WORK
-# here -- you'll need to add devices manually by IP. If you need discovery,
-# either run one room per physical host using docker-compose.yml (host
+# Bridge networking: each space needs its own port (8081/8082/8083), so the
+# containers sit behind NAT on a private network. They still connect to and
+# control your devices, added by IP address. They cannot hear the LAN or send
+# to all of it: device discovery finds nothing, panel apps cannot find them on
+# their own, Wake-on-LAN, Art-Net and sACN reach no device, and a device that
+# sends its changes to OpenAVC reaches it only on a fixed port published below.
+# To have those, run one space per computer with docker-compose.yml (host
 # networking), or set up macvlan networking so each container gets its own
-# LAN IP.
+# LAN address.
 
 services:
   room-101:
