@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ThemeDefinition, ThemeSummary } from "../../api/restClient";
 import {
-  customTheme, themeById, renderStudio, sectionBody, tokenRow, textIn, SUMMARIES, elementSection,
+  customTheme, builtinTheme, themeById, renderStudio, sectionBody, tokenRow, textIn, SUMMARIES, elementSection,
 } from "../../test/themeStudioFixtures";
 
 const { getTheme, updateTheme, createTheme, preview } = vi.hoisted(() => ({
@@ -21,6 +21,9 @@ async function loaded(props: Parameters<typeof renderStudio>[0] = {}) {
   await screen.findByText("Theme Info");
   return view;
 }
+
+const working = () => (preview.mock.lastCall![0] as { inlineTheme: ThemeDefinition }).inlineTheme;
+const json = (v: unknown) => JSON.stringify(v);
 
 /** The editor column's bar of file buttons. */
 const bar = () => screen.getByRole("button", { name: /Export/ }).parentElement!;
@@ -117,6 +120,28 @@ describe("the editor column", () => {
     },
   );
 
+  it("keeps a name and description exactly as typed", async () => {
+    await loaded();
+    const [name, description] = within(sectionBody("Theme Info")).getAllByRole("textbox");
+    fireEvent.change(name, { target: { value: "  Spaced  name " } });
+    fireEvent.change(description, { target: { value: " A  b " } });
+    expect(working().name).toBe("  Spaced  name ");
+    expect(working().description).toBe(" A  b ");
+  });
+
+  it("keeps a half-typed radius with the theme it was typed for when another theme is chosen", async () => {
+    const view = await loaded();
+    const radius = tokenRow("Border Radius (px)").querySelector("input")!;
+    radius.focus();
+    fireEvent.change(radius, { target: { value: "20" } });
+    view.rerender({ currentThemeId: "dark" });
+    await waitFor(() => expect(working().id).toBe("dark"));
+    expect(tokenRow("Border Radius (px)").querySelector("input")).toBe(radius);
+    expect(radius.value).toBe("0");
+    fireEvent.blur(radius);
+    expect(json(working().variables)).toBe(json(builtinTheme().variables));
+  });
+
   it("draws the Theme section's edited, reset-able rows as they always have been", async () => {
     await loaded();
     edit();
@@ -167,6 +192,13 @@ describe("the picker's cards", () => {
   it("are not drawn, and nothing is said about custom themes, while the list is empty", async () => {
     await loaded({ themes: [] });
     expect(picker().textContent).toBe("Themes Import .avctheme");
+  });
+
+  it("list a theme from anywhere but the built-in set with the custom ones", async () => {
+    await loaded({ themes: [...SUMMARIES, { ...SUMMARIES[1], id: "other", name: "Other", source: "project" }] });
+    const heading = within(picker()).getByText("Custom", { selector: "div" });
+    expect(heading.compareDocumentPosition(card("Other")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card("Sample").compareDocumentPosition(card("Other")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("mark the open theme while it has unsaved edits", async () => {
