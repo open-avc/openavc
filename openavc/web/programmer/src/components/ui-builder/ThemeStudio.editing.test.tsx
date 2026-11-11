@@ -344,6 +344,39 @@ describe("the page background", () => {
   });
 });
 
+describe("a field being typed in", () => {
+  it("stays the same field, keeping the focus, while its value changes and clears", async () => {
+    await loaded();
+    const cases: [() => HTMLElement, string[]][] = [
+      [() => textIn(tokenRow("Accent")), ["#1", "#12", "", "#123456"]],
+      [() => textIn(controlRow("Label", "Text Color")), ["#a", "", "#abcdef"]],
+      [() => controlRow("Button", "Border Width (px)").querySelector<HTMLElement>('input[type="number"]')!, ["3", "", "4"]],
+      [() => controlRow("Button", "Box Shadow").querySelector("textarea")!, ["none", "", "0 1px 2px red"]],
+      [() => within(sectionBody("Quick Adjust")).getByLabelText("Brand accent hex value"), ["#", "#00ff00", ""]],
+    ];
+    for (const [field, values] of cases) {
+      const node = field();
+      node.focus();
+      for (const value of values) {
+        fireEvent.change(node, { target: { value } });
+        expect(field()).toBe(node);
+        expect(document.activeElement).toBe(node);
+      }
+    }
+  });
+
+  it("keeps an opaque colour's swatch while the colour changes, typed or picked", async () => {
+    await loaded();
+    const swatch = () => controlRow("Camera Preset", "Background").querySelector('input[type="color"]');
+    const node = swatch();
+    fireEvent.change(textIn(controlRow("Camera Preset", "Background")), { target: { value: "#222222" } });
+    expect(swatch()).toBe(node);
+    fireEvent.input(node!, { target: { value: "#333333" } });
+    expect(swatch()).toBe(node);
+    expect(working().element_defaults.camera_preset.bg_color).toBe("#333333");
+  });
+});
+
 describe("unsaved edits", () => {
   it("are marked in the header and the picker, and Discard puts the saved theme back", async () => {
     await loaded();
@@ -456,6 +489,21 @@ describe("a control clicked in the preview", () => {
     expect(elementSection("Camera Preset").style.outline).toBe("2px solid var(--accent)");
     act(() => vi.advanceTimersByTime(1200));
     expect(elementSection("Camera Preset").style.outline).toBe("");
+  });
+
+  it("opens the section named for each element type", async () => {
+    await loaded();
+    const types: [string, string][] = [
+      ["button", "Button"], ["page_nav", "Page Nav"], ["camera_preset", "Camera Preset"], ["keypad", "Keypad"],
+      ["label", "Label"], ["slider", "Slider"], ["fader", "Fader"], ["select", "Select"], ["text_input", "Text Input"],
+      ["status_led", "Status LED"], ["gauge", "Gauge"], ["level_meter", "Level Meter"], ["list", "List"],
+      ["matrix", "Matrix"], ["group", "Group"], ["image", "Image"], ["clock", "Clock"],
+    ];
+    for (const [type, name] of types) {
+      post({ type: "openavc:theme-element-click", elementType: type });
+      expect([...sectionBody("Elements").querySelectorAll("details")].filter((d) => d.open))
+        .toEqual([elementSection(name)]);
+    }
   });
 
   it("can open the same section again after it was closed", async () => {
