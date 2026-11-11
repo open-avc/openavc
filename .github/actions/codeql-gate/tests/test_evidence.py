@@ -3,6 +3,7 @@ import copy
 import unittest
 from unittest.mock import patch
 import subprocess
+import sys
 from codeql_gate.api import GitHub, Unavailable
 from codeql_gate.evidence import Findings, Pending, verify
 from codeql_gate.revisions import Request
@@ -149,6 +150,20 @@ class ApiTests(unittest.TestCase):
         with patch('subprocess.run') as run, self.assertRaises(Unavailable):
             run.return_value.stdout = 'not json'
             GitHub('example/repo').get('code-scanning/analyses')
+
+    def test_a_reply_is_read_as_utf8_whatever_the_console_codepage(self):
+        # GitHub answers in UTF-8. A right double quote is e2 80 9d, and 0x9d
+        # is a byte Windows' console codepage (cp1252) has no character for.
+        reply = '{"comment": "\u201dquoted\u201d"}'.encode('utf-8')
+        real_run = subprocess.run
+
+        def child_writing_the_reply(_command, **kwargs):
+            script = f"import sys; sys.stdout.buffer.write({reply!r})"
+            return real_run([sys.executable, '-c', script], **kwargs)
+
+        with patch('subprocess.run', side_effect=child_writing_the_reply) as run:
+            self.assertEqual(GitHub('o/r').get('x'), {'comment': '\u201dquoted\u201d'})
+        self.assertEqual(run.call_args.kwargs.get('encoding'), 'utf-8')
 
     def test_sarif_requested_explicitly(self):
         with patch('subprocess.run') as run:

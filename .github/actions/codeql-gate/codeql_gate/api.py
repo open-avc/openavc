@@ -15,9 +15,12 @@ class GitHub:
     def get(self, endpoint, sarif=False):
         accept = "application/sarif+json" if sarif else "application/vnd.github+json"
         try:
+            # GitHub answers in UTF-8; without the encoding, Windows reads the
+            # reply in its console codepage and a byte it has no character for
+            # loses the whole reply.
             result = subprocess.run(
                 ["gh", "api", self.root + endpoint, "-H", f"Accept: {accept}"],
-                capture_output=True, text=True, timeout=60, check=True,
+                capture_output=True, encoding="utf-8", timeout=60, check=True,
             )
             return json.loads(result.stdout)
         except (OSError, subprocess.SubprocessError, ValueError) as exc:
