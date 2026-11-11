@@ -695,94 +695,145 @@ def _option_values(dump: Mapping[str, Any]) -> set[str] | None:
 def _action_findings(
     action: Mapping[str, Any], site: _Site, project: _Project,
 ) -> list[Finding]:
-    findings: list[Finding] = []
+    """What one action names that is not there, asked of the check for its kind.
+
+    Only a string is looked up. A nested action object written where the name
+    goes (``{"action": {"action": ...}}``) is a shape that does arrive, and it
+    cannot be a key in a table: asking would raise inside the one function whose
+    job is turning bad input into a sentence.
+    """
     name = action.get("action")
+    check = _ACTION_CHECKS.get(name) if isinstance(name, str) else None
+    return check(action, site, project) if check else []
 
-    if name == "ui.navigate":
-        target = action.get("page")
-        if (
-            isinstance(target, str) and target
-            and target not in project.page_ids and target not in NAVIGATION_SENTINELS
-        ):
-            findings.append(site.finding(
-                "dangling_reference",
-                f"navigates to page '{target}', which does not "
-                f"exist. The pages are: {_listed(project.page_ids)}.",
-                "page",
-            ))
 
-    elif name == "macro":
-        macro = action.get("macro")
-        if isinstance(macro, str) and macro and macro not in project.macro_ids:
-            findings.append(site.finding(
-                "dangling_reference",
-                f"runs macro '{macro}', which does not exist. "
-                f"The macros are: {_listed(project.macro_ids)}.",
-                "macro",
-            ))
+def _navigate_findings(
+    action: Mapping[str, Any], site: _Site, project: _Project,
+) -> list[Finding]:
+    target = action.get("page")
+    if not (
+        isinstance(target, str) and target
+        and target not in project.page_ids and target not in NAVIGATION_SENTINELS
+    ):
+        return []
+    return [site.finding(
+        "dangling_reference",
+        f"navigates to page '{target}', which does not "
+        f"exist. The pages are: {_listed(project.page_ids)}.",
+        "page",
+    )]
 
-    elif name == "device.command":
-        device = action.get("device")
-        command = action.get("command")
-        if isinstance(device, str) and device and device not in project.device_ids:
-            findings.append(site.finding(
-                "dangling_reference",
-                f"commands device '{device}', which is not in "
-                f"this project. The devices are: {_listed(project.device_ids)}.",
-                "device",
-            ))
-        elif isinstance(device, str) and isinstance(command, str):
-            declared = project.device_commands(device) if project.device_commands else None
-            if declared is not None and command not in declared:
-                findings.append(site.finding(
-                    "dangling_reference",
-                    f"sends '{command}' to '{device}', which its "
-                    f"driver does not have. Its commands are: {_listed(declared)}.",
-                    "command",
-                ))
-            else:
-                # The command is one the driver has, and it can still be
-                # unrunnable: a parameter the driver declares required, never
-                # filled in. Nothing else on the page says so, and the control
-                # draws and takes a press exactly like a working one. Or no press
-                # can run it at all: it takes or hands back a file.
-                refused = project.file_command(action) if project.file_command else None
-                unsupplied = (
-                    project.missing_params(action)
-                    if project.missing_params and not refused else None
-                )
-                if refused:
-                    findings.append(site.finding(
-                        "unrunnable_command",
-                        f"sends '{command}' to '{device}', "
-                        f"and every press is refused with \"{refused}\"",
-                    ))
-                elif unsupplied:
-                    findings.append(_unrunnable_finding(site, device, command, unsupplied))
 
-    elif name == "value_map":
-        mapped = _mapping(action.get("map")) or {}
-        if site.options is not None:
-            stray = sorted(str(k) for k in mapped if str(k) not in site.options)
-            if stray:
-                findings.append(site.finding(
-                    "dangling_reference",
-                    f"maps "
-                    f"{', '.join(repr(s) for s in stray)}, which {'is' if len(stray) == 1 else 'are'} "
-                    f"not among its options ({_listed(site.options)}), so nothing the user can pick "
-                    f"reaches {'it' if len(stray) == 1 else 'them'}.",
-                    "value_map",
-                ))
-        # The engine executes each mapped entry as an action of its own, so the
-        # same checks apply one level down. This is where the AI's unreachable
-        # device command was hiding.
-        for value, inner in mapped.items():
-            nested = _mapping(inner)
-            if nested is None:
-                continue
+def _macro_findings(
+    action: Mapping[str, Any], site: _Site, project: _Project,
+) -> list[Finding]:
+    macro = action.get("macro")
+    if not isinstance(macro, str) or not macro or macro in project.macro_ids:
+        return []
+    return [site.finding(
+        "dangling_reference",
+        f"runs macro '{macro}', which does not exist. "
+        f"The macros are: {_listed(project.macro_ids)}.",
+        "macro",
+    )]
+
+
+def _command_findings(
+    action: Mapping[str, Any], site: _Site, project: _Project,
+) -> list[Finding]:
+    """A command for a device that is not here, one its driver does not have, or one it refuses.
+
+    Each question is asked only once the one before it passed: a missing device
+    is the whole story, and a command the driver does not have cannot be asked
+    about its parameters.
+    """
+    device = action.get("device")
+    command = action.get("command")
+    if isinstance(device, str) and device and device not in project.device_ids:
+        return [site.finding(
+            "dangling_reference",
+            f"commands device '{device}', which is not in "
+            f"this project. The devices are: {_listed(project.device_ids)}.",
+            "device",
+        )]
+    if not isinstance(device, str) or not isinstance(command, str):
+        return []
+    declared = project.device_commands(device) if project.device_commands else None
+    if declared is not None and command not in declared:
+        return [site.finding(
+            "dangling_reference",
+            f"sends '{command}' to '{device}', which its "
+            f"driver does not have. Its commands are: {_listed(declared)}.",
+            "command",
+        )]
+    refusal = _refusal(action, site, project)
+    return [refusal] if refusal else []
+
+
+def _refusal(action: Mapping[str, Any], site: _Site, project: _Project) -> Finding | None:
+    """A command the driver has, which every press is still refused.
+
+    Nothing else on the page says so, and the control draws and takes a press
+    exactly like a working one. No press can run a command that takes or hands
+    back a file, so that one is not asked about its parameters as well.
+    """
+    device, command = action.get("device"), action.get("command")
+    refused = project.file_command(action) if project.file_command else None
+    if refused:
+        return site.finding(
+            "unrunnable_command",
+            f"sends '{command}' to '{device}', "
+            f"and every press is refused with \"{refused}\"",
+        )
+    unsupplied = project.missing_params(action) if project.missing_params else None
+    if unsupplied:
+        return _unrunnable_finding(site, device, command, unsupplied)
+    return None
+
+
+def _value_map_findings(
+    action: Mapping[str, Any], site: _Site, project: _Project,
+) -> list[Finding]:
+    mapped = _mapping(action.get("map")) or {}
+    findings = _stray_findings(mapped, site)
+    # The engine executes each mapped entry as an action of its own, so the
+    # same checks apply one level down. This is where the AI's unreachable
+    # device command was hiding.
+    for value, inner in mapped.items():
+        nested = _mapping(inner)
+        if nested is not None:
             findings.extend(_action_findings(nested, site.entry(value), project))
-
     return findings
+
+
+def _stray_findings(mapped: Mapping[Any, Any], site: _Site) -> list[Finding]:
+    """The map's keys that none of the select's own options can produce."""
+    if site.options is None:
+        return []
+    stray = sorted(str(k) for k in mapped if str(k) not in site.options)
+    if not stray:
+        return []
+    one = len(stray) == 1
+    return [site.finding(
+        "dangling_reference",
+        f"maps "
+        f"{', '.join(repr(s) for s in stray)}, which {'is' if one else 'are'} "
+        f"not among its options ({_listed(site.options)}), so nothing the user can pick "
+        f"reaches {'it' if one else 'them'}.",
+        "value_map",
+    )]
+
+
+#: The check for each action that names something, by the action's name. An
+#: action not listed here names nothing this module can look up.
+_ACTION_CHECKS: dict[
+    str, Callable[[Mapping[str, Any], _Site, _Project], list[Finding]],
+] = {
+    "ui.navigate": _navigate_findings,
+    "macro": _macro_findings,
+    "device.command": _command_findings,
+    "value_map": _value_map_findings,
+}
 
 
 def _unrunnable_finding(
