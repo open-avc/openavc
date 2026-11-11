@@ -67,7 +67,10 @@
     catalog's (``catalog_sha256``, ``matches_catalog``), where the zip holds
     it (``in_report``, under ``driver/``) and whether redaction changed that
     copy (``redacted_in_report``); ``modified`` is true when a file differs
-    from the catalog's; ``catalog`` says whether and at what version the
+    from the catalog's, false when every file compared matches, and null when
+    none could be (the catalog was not reached, does not list the driver, or
+    lists another version, whose hashes ``matches_catalog`` leaves null);
+    ``catalog`` says whether and at what version the
     catalog lists it, and whether it is ``verified``; ``catalog_files_missing``
     names any file the catalog lists that the installed copy lacks.
   - ``entered`` (the make, model and firmware given with this choice),

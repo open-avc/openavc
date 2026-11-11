@@ -30,8 +30,9 @@ or variables, the system's settings or its credentials is in it.
 - ``device``: ``id``, ``name``, ``enabled``, ``connected``, the
   ``manufacturer`` and ``model`` when the device reported them,
   ``driver_identity`` (the driver's id, name, version, format and source, each
-  file's hashes against the driver library's, ``modified``, the library's
-  listing), ``settings`` (credentials masked), ``address`` (where it really
+  file's hashes against the driver library's, ``modified`` (null when nothing
+  was compared: the library was not reached, does not list the driver, or
+  lists another version), the library's listing), ``settings`` (credentials masked), ``address`` (where it really
   connects, from the saved record: a simulation's 127.0.0.1 never shows),
   ``transport``, ``simulated`` and ``simulator_gap``, ``orphaned`` and
   ``orphan_reason``, and ``installed`` for product hardware.
@@ -296,6 +297,7 @@ def preview(snapshot: Snapshot) -> dict[str, Any]:
             "modified": identity.get("modified"),
             "listed": (identity.get("catalog") or {}).get("listed"),
             "checked": (identity.get("catalog") or {}).get("checked"),
+            "catalog_version": (identity.get("catalog") or {}).get("version") or "",
             "files": [f.get("name") for f in identity.get("files") or []],
             "loaded": snapshot.driver_loaded,
         } if snapshot.driver_id else None,
@@ -472,6 +474,19 @@ _SOURCE_WORDS = {"built_in": "built into OpenAVC", "catalog": "from the driver l
                  "imported": "imported on this system"}
 
 
+def _compared_words(identity: dict[str, Any]) -> str:
+    """What the driver row adds about the library's copy: edited, or the
+    library's own version when it lists another one (its files' hashes are
+    that version's, so this copy was not compared with them)."""
+    if identity.get("modified"):
+        return ", edited"
+    catalog = identity.get("catalog") or {}
+    listed = catalog.get("version") or ""
+    if catalog.get("checked") and listed and listed != identity.get("version"):
+        return f", the library has {_e(listed)}"
+    return ""
+
+
 def render_summary(report: dict[str, Any]) -> str:
     """``summary.html``: the report for a person, self-contained, no scripts."""
     device = report.get("device") or {}
@@ -520,7 +535,7 @@ def render_summary(report: dict[str, Any]) -> str:
         "<h2>Device</h2><table>",
         _row("Driver", f"{_e(identity.get('name') or identity.get('id'))} "
              f"{_e(identity.get('version'))} ({_e(source_words)}"
-             f"{', edited' if identity.get('modified') else ''})" if identity else "none loaded"),
+             f"{_compared_words(identity)})" if identity else "none loaded"),
         _row("Address", _e(f"{address.get('transport', '')} {where}".strip())),
         _row("Connected", _e(device.get("connected"))),
         _row("Simulated", "yes" if device.get("simulated") else "no"),
@@ -587,9 +602,10 @@ context
 
 device.driver_identity
   files lists each driver file with its SHA-256 and the driver library's
-  (catalog_sha256); matches_catalog is null when the library has no copy or
-  could not be reached. modified is true when a file differs from the
-  library's.
+  (catalog_sha256); matches_catalog is null when the library has no copy,
+  could not be reached, or lists another version (its hashes are that
+  version's). modified is true when a file differs from the library's, false
+  when every file compared matches, and null when none could be compared.
 
 history
   This device's value changes, oldest first: key, old_value, new_value, source

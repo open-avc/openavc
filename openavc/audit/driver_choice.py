@@ -81,7 +81,14 @@ def driver_identity(driver_id: str, catalog: list[dict[str, Any]] | None) -> dic
     main = driver_main_file(driver_id)
     fmt = "python" if main is not None and main.suffix == ".py" else "avcdriver"
 
+    installed_version = str(info.get("version") or "")
+    catalog_version = str(entry.get("version") or "") if entry else ""
+    # The catalog publishes hashes for its current version only, so a copy of
+    # any other version has nothing to be compared with: an unedited older copy
+    # would otherwise read as edited.
     published = entry.get("files") if isinstance(entry, dict) else None
+    if catalog_version != installed_version:
+        published = None
     published_by_name: dict[str, str] = {}
     if isinstance(published, dict):
         for path, digest in published.items():
@@ -115,19 +122,17 @@ def driver_identity(driver_id: str, catalog: list[dict[str, Any]] | None) -> dic
     else:
         source = SOURCE_IMPORTED
 
-    modified = any(f["matches_catalog"] is False for f in files)
-    catalog_version = str(entry.get("version") or "") if entry else ""
     return {
         "id": driver_id,
         "name": info.get("name") or driver_id,
         "manufacturer": info.get("manufacturer", ""),
-        "version": str(info.get("version") or ""),
+        "version": installed_version,
         "format": fmt,
         "transport": info.get("transport", ""),
         "source": source,
         "files": files,
         "catalog_files_missing": missing,
-        "modified": modified,
+        "modified": _modified(files),
         "catalog": {
             "listed": entry is not None,
             "version": catalog_version,
@@ -137,6 +142,14 @@ def driver_identity(driver_id: str, catalog: list[dict[str, Any]] | None) -> dic
         "_paths": [str(p) for p in (driver_files(main) if main is not None else [])],
         "_contents": contents,
     }
+
+
+def _modified(files: list[dict[str, Any]]) -> bool | None:
+    """True when a file differs from the catalog's copy, False when every file
+    compared matches it, None when nothing could be compared (the catalog was
+    not reached, does not list the driver, or lists another version)."""
+    compared = [f["matches_catalog"] for f in files if f["matches_catalog"] is not None]
+    return (not all(compared)) if compared else None
 
 
 def _within_app(path: Path) -> bool:

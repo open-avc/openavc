@@ -219,6 +219,20 @@ describe("the words", () => {
     expect(lines[lines.length - 1]).toBe("Nothing about your other devices or the rest of the project");
   });
 
+  it("names the library's version for an older copy instead of calling it edited or unchanged", () => {
+    const preview = {
+      driver: {
+        id: "acme_widget", name: "Acme Widget", version: "1.3.0", source: "catalog",
+        modified: null, listed: true, checked: true, catalog_version: "1.3.1", files: [], loaded: true,
+      },
+      address: {}, values: 0, changes: 0, messages: 0, window_start: null, log_lines: 0,
+      serial_found: false, simulated: false, openavc_version: "0.38.0", os: "Linux-6.8", deployment_type: "docker",
+    } as unknown as ProblemReportPreview;
+    expect(includedLines(preview)[0]).toBe(
+      "Driver: Acme Widget 1.3.0, from the driver library, the library has 1.3.1",
+    );
+  });
+
   it("never calls a driver imported when the driver library could not be read", () => {
     const preview = {
       driver: {

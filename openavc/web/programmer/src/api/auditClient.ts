@@ -136,7 +136,8 @@ export interface AuditDriverFile {
   name: string;
   sha256: string | null;
   catalog_sha256: string | null;
-  /** null when the catalog publishes no hash for this file. */
+  /** null when the catalog publishes no hash for this file, or lists another
+   *  version (its hashes are that version's). */
   matches_catalog: boolean | null;
 }
 
@@ -151,8 +152,9 @@ export interface AuditDriverIdentity {
   source: "catalog" | "imported" | "built_in";
   files: AuditDriverFile[];
   catalog_files_missing: string[];
-  /** True when a file differs from the one the catalog publishes. */
-  modified: boolean;
+  /** True when a file differs from the one the catalog publishes, false when
+   *  every file compared matches, null when none could be compared. */
+  modified: boolean | null;
   catalog: { listed: boolean; version: string; verified: boolean | null; checked: boolean };
 }
 

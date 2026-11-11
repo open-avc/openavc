@@ -306,6 +306,26 @@ def test_create_then_download_then_send_one_file(wired, monkeypatch):
         asyncio.run(routes.send_problem_report("openavc-problem-report-gone-20260101-0000.zip"))
 
 
+def test_the_summary_names_the_librarys_version_when_it_could_not_compare():
+    """An unedited copy of an older version is not called edited: the summary
+    says which version the library has instead."""
+    identity = {"id": "acme_widget", "name": "Acme Widget", "version": "1.0.0",
+                "source": "catalog", "modified": None,
+                "catalog": {"listed": True, "checked": True, "version": "1.1.0"}}
+    report = {"device": {"id": "w", "name": "W", "driver_identity": identity}, "created_at": 0}
+    html = pr.render_summary(report)
+    assert "the library has 1.1.0" in html and "edited" not in html
+    identity.update(version="1.1.0", modified=True)
+    identity["catalog"]["version"] = "1.1.0"
+    html = pr.render_summary(report)
+    assert ", edited" in html and "the library has" not in html
+
+
+def test_the_preview_carries_the_librarys_version(wired):
+    answer = asyncio.run(routes.problem_report_preview("hall_widget"))
+    assert "catalog_version" in answer["driver"]
+
+
 def test_the_summary_never_calls_an_unchecked_driver_imported():
     """With the driver library unreachable, a library driver reads as imported;
     the summary says it was not checked instead."""

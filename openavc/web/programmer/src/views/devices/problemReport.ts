@@ -170,6 +170,16 @@ const SOURCE_WORDS: Record<string, string> = {
   imported: "imported on this system",
 };
 
+/** Edited or unchanged when the library's copy was compared; when the library
+ *  lists another version, its files are that version's, so it names the
+ *  version instead. Mirrors _compared_words in support/problem_report.py. */
+function comparedWords(driver: NonNullable<ProblemReportPreview["driver"]>): string {
+  if (driver.modified === true) return "edited on this system";
+  if (driver.modified === false) return "unchanged";
+  const listed = driver.catalog_version ?? "";
+  return listed && listed !== driver.version ? `the library has ${listed}` : "";
+}
+
 function driverLine(preview: ProblemReportPreview): string {
   const driver = preview.driver;
   if (!driver) return "No driver is set for this device";
@@ -183,7 +193,8 @@ function driverLine(preview: ProblemReportPreview): string {
     parts.push(SOURCE_WORDS[driver.source]);
   }
   if (driver.source === "catalog" && driver.checked) {
-    parts.push(driver.modified ? "edited on this system" : "unchanged");
+    const compared = comparedWords(driver);
+    if (compared) parts.push(compared);
   }
   return `Driver: ${parts.join(", ")}`;
 }

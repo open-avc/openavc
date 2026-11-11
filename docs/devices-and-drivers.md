@@ -227,7 +227,7 @@ The report is built from what OpenAVC has already recorded: building it sends no
 
 - what you write under **What happened?**, and your name and email if you leave them (both optional; this browser remembers them for the next report)
 - the error the page showed, and for a failed command, the command and the values you sent
-- the driver, its file, and whether the file matches the driver library's copy
+- the driver, its file, and whether the file matches the driver library's copy (or, for an older version than the library has, which version the library has)
 - the device's settings with passwords hidden, and its address
 - the device's current values and their recent changes, its recent messages, and OpenAVC's recent log lines about it, since the device last started (saving a settings change starts it again)
 - the OpenAVC version, the operating system and how OpenAVC was installed

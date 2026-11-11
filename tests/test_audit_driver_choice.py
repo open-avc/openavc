@@ -91,6 +91,26 @@ def test_a_locally_edited_copy_is_flagged(repo):
     assert identity["files"][0]["matches_catalog"] is False
 
 
+def test_an_older_published_copy_is_not_called_edited(repo):
+    """The catalog publishes hashes for its current version only, so an
+    unedited copy of an older version cannot be compared with them: it is
+    neither edited nor unchanged, and the newer version is named instead."""
+    newer = hashlib.sha256(b"what 1.3.0 serves").hexdigest()
+    identity = driver_identity("acme_choice", _catalog(newer, version="1.3.0"))
+    assert identity["version"] == "1.2.0"
+    assert identity["modified"] is None
+    assert identity["files"][0]["matches_catalog"] is None
+    assert identity["catalog"]["version"] == "1.3.0" and identity["catalog"]["checked"] is True
+    assert identity["catalog_files_missing"] == []
+
+
+def test_a_copy_compared_with_nothing_is_neither_edited_nor_unchanged(repo):
+    for unreachable in (None, []):
+        identity = driver_identity("acme_choice", unreachable)
+        assert identity["modified"] is None
+        assert identity["catalog"]["checked"] is False
+
+
 def test_a_driver_the_catalog_does_not_list_was_imported(repo):
     identity = driver_identity("acme_choice", [])
     assert identity["source"] == SOURCE_IMPORTED

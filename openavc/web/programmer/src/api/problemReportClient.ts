@@ -18,6 +18,9 @@ export interface ProblemReportPreview {
     listed: boolean | null;
     /** False when the driver library could not be reached. */
     checked: boolean | null;
+    /** The version the driver library lists ("" when it lists none). When it
+     *  is not this one, modified is null: nothing could be compared. */
+    catalog_version?: string;
     files: string[];
     loaded: boolean;
   } | null;
