@@ -81,6 +81,7 @@ def _level(pattern: str) -> list[tuple]:
     ({"send": "LVL 5"}, []),
     ({"send": "  \\r{value}  "}, _level(r"^(-?\d+)$")),
     ({"send": "LVL {nope} {value}"}, _level(r"^LVL \{nope\} (-?\d+)$")),
+    ({"send": "  LVL {value}"}, _level(r"^LVL (-?\d+)$")),
 ])
 def test_a_settings_write_builds_one_handler_from_the_line_it_puts_on_the_wire(write, rows):
     assert _setting_rows(_sim({"level": {"type": "integer", "write": write}})) == rows
@@ -385,6 +386,15 @@ def test_a_file_json_rule_on_an_inline_http_device_is_a_field_too():
     assert [(m["state"], m["key"]) for m in sim._inline_json_fields] == [("lvl", "v")]
 
 
+def test_a_json_mapping_needs_both_a_state_and_a_key_to_be_answered():
+    sim = _generic_sim({"commands": {"s": {"label": "S", "path": "/s", "poll": True}}}, "http",
+                       state_variables={"lvl": {"type": "integer"}},
+                       responses=[{"json": True, "mappings": [{"state": "lvl", "key": ""}, {"state": "x"},
+                                                              {"state": "", "key": "k"},
+                                                              {"state": "ok", "key": "v"}]}])
+    assert [(m.get("state"), m.get("key")) for m in sim._inline_json_fields] == [("ok", "v")]
+
+
 @pytest.mark.parametrize("transport", ["tcp", "udp"])
 def test_the_json_poll_is_an_http_devices_only(transport):
     sim = _generic_sim(_JSON_CONFIG, transport)
@@ -443,6 +453,8 @@ def test_a_command_handler_fills_its_tables_and_compares_by_identity():
     ("zz", {"type": "integer"}, "zz"),
     ("1F", {}, "1F"),
     ("4", {"type": "number"}, 2.0),
+    ("abc", {"type": "number"}, "abc"),
+    ("", {"type": "number"}, ""),
 ])
 def test_a_capture_reads_a_word_then_a_base_then_a_conversion(raw, var_def, expected):
     import re
@@ -508,6 +520,14 @@ def test_a_send_frame_turns_line_mode_off_and_a_side_send_listens_beside_a_strea
     assert _sim({}, commands=side)._side_receiver is True
     assert _sim({}, commands=side, transport="udp")._side_receiver is False
     assert _sim({}, commands=side, transport="osc")._side_receiver is False
+
+
+def test_only_a_udp_mapping_makes_a_command_a_side_send():
+    sim = _sim({}, commands={"wake": {"udp": "yes"}, "w2": {"udp": ["x"]},
+                             "w4": {"udp": {"magic_packet": True}}})
+    assert sim._udp_side_commands == {"w4": {"magic_packet": True}}
+    assert sim._side_receiver is True
+    assert _sim({}, commands={"wake": {"udp": "yes"}})._side_receiver is False
 
 
 @pytest.mark.parametrize("transport, ssl, tls", [("http", True, True), ("tcp", True, False),
