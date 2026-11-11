@@ -1991,3 +1991,15 @@ def test_a_chooser_takes_the_text_size_of_the_matrix_that_opened_it(panel_page) 
     panel_page.locator(".matrix-chooser-cancel").click()
     assert size == "21px"
 
+
+
+def test_unmuting_a_locked_list_row_keeps_its_dropdown_disabled(panel_page) -> None:
+    element = _muting("list", show_lock=True)
+    element["matrix_config"]["destinations"][0]["lock_key"] = "var.mx_lock_1"
+    _mount(panel_page, element, 700, 300)
+    panel_page.evaluate("(s) => window.__setState(s)", {"var.mx_lock_1": True})
+    select = panel_page.locator(".matrix-list-select")
+    mute = panel_page.locator(".matrix-mute-btn")
+    mute.click()
+    mute.click()
+    assert select.is_disabled(), "unmuting re-enabled a locked dropdown"
