@@ -14,22 +14,18 @@ import { ColorField } from "./ColorField";
 import { CSS_VAR_FALLBACKS } from "./colorUtils";
 import { ELEMENT_ORDER, ELEMENT_SECTIONS, hasElementSection, type ElementControl } from "./elementControls";
 import { ResetToSaved, StudioSection } from "./StudioParts";
-import { differsFromSaved } from "./themeEdits";
+import {
+  differsFromSaved, elementDefaultsOf, variablesOf, withElementDefault, withVariable, type ThemeDraft,
+} from "./themeEdits";
 import { displayStyleValue, storeStyleValue } from "./uiBuilderHelpers";
 
 type Refs = Record<string, HTMLDetailsElement | null>;
 type ElementDefaults = Record<string, Record<string, unknown>>;
 
-interface ElementSectionsProps {
-  vars: Record<string, unknown>;
-  defaults: ElementDefaults;
-  savedVars: Record<string, unknown>;
-  savedDefaults: ElementDefaults;
-  onSetVar: (key: string, value: unknown) => void;
-  onSetElementDefault: (elType: string, key: string, value: unknown) => void;
-}
-
-export function ElementSections({ vars, defaults, savedVars, savedDefaults, onSetVar, onSetElementDefault }: ElementSectionsProps) {
+export function ElementSections({ draft }: { draft: ThemeDraft }) {
+  const { theme, saved, edit } = draft;
+  const current = { vars: variablesOf(theme), defaults: elementDefaultsOf(theme) };
+  const asSaved = { vars: variablesOf(saved), defaults: elementDefaultsOf(saved) };
   const refs = useRef<Refs>({});
   const bodyRef = useRef<HTMLDivElement>(null);
   const focused = usePreviewClicks();
@@ -39,8 +35,9 @@ export function ElementSections({ vars, defaults, savedVars, savedDefaults, onSe
   const valueOf = (type: string, control: ElementControl, from: { vars: Record<string, unknown>; defaults: ElementDefaults }) =>
     control.source.kind === "var" ? from.vars[control.source.key] : from.defaults[type]?.[control.source.key];
   const setter = (type: string, control: ElementControl) => (next: unknown) => {
-    if (control.source.kind === "var") onSetVar(control.source.key, next);
-    else onSetElementDefault(type, control.source.key, next);
+    const { kind, key } = control.source;
+    if (kind === "var") edit((t) => withVariable(t, key, next));
+    else edit((t) => withElementDefault(t, type, key, next));
   };
 
   return (
@@ -58,8 +55,8 @@ export function ElementSections({ vars, defaults, savedVars, savedDefaults, onSe
                 <ControlRow
                   key={`${control.source.kind}:${control.source.key}`}
                   control={control}
-                  value={valueOf(type, control, { vars, defaults })}
-                  saved={valueOf(type, control, { vars: savedVars, defaults: savedDefaults })}
+                  value={valueOf(type, control, current)}
+                  saved={valueOf(type, control, asSaved)}
                   onChange={setter(type, control)}
                 />
               ))}

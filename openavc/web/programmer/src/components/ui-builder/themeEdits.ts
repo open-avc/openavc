@@ -10,10 +10,30 @@
  * before they reach `withPageDefaults`.) A key set again after it was deleted lands at
  * the end of its object, and that does read as unsaved: the comparison is of
  * text.
+ *
+ * A section of the Studio is handed a `ThemeDraft`: the theme as it stands, as
+ * it was saved, and `edit`, which applies one of these rules to the working
+ * copy. Each section reads what it shows from the draft and writes through it,
+ * so a new part of the theme to edit is a rule here and the section that draws
+ * it, with nothing to pass along between them.
  */
 import type { ThemeDefinition } from "../../api/restClient";
 
 type ElementDefaults = ThemeDefinition["element_defaults"];
+
+/** The theme a section edits: as it stands, as it was saved, and the one way to change it. */
+export interface ThemeDraft {
+  theme: ThemeDefinition;
+  /** What a field's "modified" mark and its reset compare with. */
+  saved: ThemeDefinition | null;
+  edit: (change: (theme: ThemeDefinition) => ThemeDefinition) => void;
+}
+
+/** A theme's variables, or none. */
+export const variablesOf = (theme: ThemeDefinition | null): Record<string, unknown> => theme?.variables || {};
+
+/** A theme's element defaults, or none. */
+export const elementDefaultsOf = (theme: ThemeDefinition | null): ElementDefaults => theme?.element_defaults || {};
 
 /** A theme as the Studio holds it: variables and element defaults copied (and
  *  added, empty, when the server sent none), so no edit reaches the answer the

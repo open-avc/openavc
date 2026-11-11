@@ -1,17 +1,17 @@
 /**
  * The Theme Studio's Quick Adjust: the brand accent and the three presets
  * (`quickAdjust.ts`), each marked "modified" while it differs from the saved
- * theme. A preset choice goes back through the Studio's edits like any other,
- * so the radius drag-along applies to Roundness too.
+ * theme. A preset choice is one of the Studio's edits like any other
+ * (`withVariable`, `withSurfaceStyle`), so the radius drag-along applies to
+ * Roundness too.
  */
 import type { CSSProperties, ReactNode } from "react";
-import type { ThemeDefinition } from "../../api/restClient";
 import {
   ROUNDNESS, SURFACE_STYLES, TYPOGRAPHY, DEFAULT_FONT, radiusPx, roundnessOf, roundnessRadius,
-  surfaceStyleOf, typographyOf, typographyFont, type Preset, type SurfaceStyle,
+  surfaceStyleOf, typographyOf, typographyFont, withSurfaceStyle, type Preset, type SurfaceStyle,
 } from "./quickAdjust";
 import { StudioSection } from "./StudioParts";
-import { differsFromSaved } from "./themeEdits";
+import { differsFromSaved, elementDefaultsOf, variablesOf, withVariable, type ThemeDraft } from "./themeEdits";
 
 const HEX_RE = /^#[0-9a-f]{6}$/i;
 const DEFAULT_ACCENT = "#2196F3";
@@ -110,16 +110,12 @@ function AccentPicker({ accent, onSet }: { accent: string; onSet: (value: string
   );
 }
 
-interface QuickAdjustProps {
-  vars: Record<string, unknown>;
-  defaults: ThemeDefinition["element_defaults"];
-  savedVars: Record<string, unknown>;
-  savedDefaults: ThemeDefinition["element_defaults"];
-  onSetVar: (key: string, value: unknown) => void;
-  onApplySurfaceStyle: (style: SurfaceStyle) => void;
-}
-
-export function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, onSetVar, onApplySurfaceStyle }: QuickAdjustProps) {
+export function QuickAdjustSection({ draft }: { draft: ThemeDraft }) {
+  const { theme, saved, edit } = draft;
+  const vars = variablesOf(theme);
+  const savedVars = variablesOf(saved);
+  const defaults = elementDefaultsOf(theme);
+  const onSetVar = (key: string, value: unknown) => edit((t) => withVariable(t, key, value));
   const accent = String(vars.accent ?? DEFAULT_ACCENT);
   const radius = radiusPx(vars);
   const roundness = roundnessOf(radius);
@@ -157,14 +153,14 @@ export function QuickAdjustSection({ vars, defaults, savedVars, savedDefaults, o
 
         <Adjustment
           label="Surface Style"
-          modified={surfaceStyle !== surfaceStyleOf(savedDefaults)}
+          modified={surfaceStyle !== surfaceStyleOf(elementDefaultsOf(saved))}
           hint="How elements sit on the page: flat, with depth shadows, or with outlines"
         >
           <SegmentedControl
             ariaLabel="Surface style"
             options={SURFACE_STYLES}
             value={surfaceStyle}
-            onChange={(v) => onApplySurfaceStyle(v as SurfaceStyle)}
+            onChange={(v) => edit((t) => withSurfaceStyle(t, v as SurfaceStyle))}
           />
         </Adjustment>
 

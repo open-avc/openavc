@@ -19,8 +19,8 @@ import { ContrastSection } from "./ContrastSection";
 import { ColorField } from "./ColorField";
 import { ElementSections } from "./ElementSections";
 import { ResetToSaved, StudioSection } from "./StudioParts";
-import { editableCopy, withVariable, withElementDefault, withPageDefaults, differsFromSaved } from "./themeEdits";
-import { withSurfaceStyle, DEFAULT_FONT, type SurfaceStyle } from "./quickAdjust";
+import { editableCopy, withVariable, differsFromSaved, variablesOf, type ThemeDraft } from "./themeEdits";
+import { DEFAULT_FONT } from "./quickAdjust";
 import { QuickAdjustSection } from "./QuickAdjustSection";
 import { PageBackgroundSection } from "./PageBackgroundSection";
 import { themeFile, savedFile, previewColors, customCopy, duplicateOf, keptBeside } from "./themeFiles";
@@ -140,18 +140,11 @@ export function ThemeStudio({
   const isCustom = working?._source === "custom";
   const isDirty = working ? JSON.stringify(working) !== savedJson : false;
 
-  // Every edit is one of themeEdits' rules applied to the working copy.
+  // Every edit is one of themeEdits' rules applied to the working copy, which
+  // each section applies itself through the draft.
   const edit = (change: (theme: ThemeDefinition) => ThemeDefinition) =>
     setWorking((prev) => (prev ? change(prev) : prev));
-  const setVar = (key: string, value: unknown) => edit((t) => withVariable(t, key, value));
-  const setElementDefault = (elType: string, key: string, value: unknown) =>
-    edit((t) => withElementDefault(t, elType, key, value));
-  const setPageDefaults = (next: Record<string, unknown>) => edit((t) => withPageDefaults(t, next));
-
-  const applySurfaceStyle = (style: SurfaceStyle) => edit((t) => withSurfaceStyle(t, style));
-
-  const setName = (name: string) => edit((t) => ({ ...t, name }));
-  const setDesc = (description: string) => edit((t) => ({ ...t, description }));
+  const draft: ThemeDraft | null = working && { theme: working, saved: savedTheme, edit };
 
   // Build the previewProject and inlineTheme that drive the iframe
   const isGallery = previewView === "gallery";
@@ -496,21 +489,11 @@ export function ThemeStudio({
             />
             <Panel defaultSize={36} minSize={26}>
               <EditorColumn
-                working={working}
+                draft={draft}
                 isCustom={isCustom}
                 isDirty={isDirty}
                 busy={busy}
                 statusMsg={statusMsg}
-                onSetName={setName}
-                onSetDesc={setDesc}
-                onSetVar={setVar}
-                onSetElementDefault={setElementDefault}
-                onSetPageDefaults={setPageDefaults}
-                onApplySurfaceStyle={applySurfaceStyle}
-                savedVars={savedTheme?.variables || {}}
-                savedDefaults={savedTheme?.element_defaults || {}}
-                pageDefaults={(working?.page_defaults as Record<string, unknown>) || {}}
-                savedPageDefaults={(savedTheme?.page_defaults as Record<string, unknown>) || {}}
                 onSaveChanges={handleSaveChanges}
                 onSaveAsCustom={handleSaveAsCustom}
                 onDiscard={handleDiscard}
@@ -986,22 +969,12 @@ function ThemePickerColumn({
 // --- Editor column ---
 
 interface EditorColumnProps {
-  working: ThemeDefinition | null;
+  draft: ThemeDraft | null;
   isCustom: boolean;
   isDirty: boolean;
   busy: boolean;
   statusMsg: { kind: "info" | "error"; text: string } | null;
   themeOverrides: Record<string, unknown>;
-  onSetName: (name: string) => void;
-  onSetDesc: (desc: string) => void;
-  onSetVar: (key: string, value: unknown) => void;
-  onSetElementDefault: (elType: string, key: string, value: unknown) => void;
-  onSetPageDefaults: (next: Record<string, unknown>) => void;
-  onApplySurfaceStyle: (style: SurfaceStyle) => void;
-  savedVars: Record<string, unknown>;
-  savedDefaults: Record<string, Record<string, unknown>>;
-  pageDefaults: Record<string, unknown>;
-  savedPageDefaults: Record<string, unknown>;
   onSaveChanges: () => void;
   onSaveAsCustom: () => void;
   onDiscard: () => void;
@@ -1011,22 +984,12 @@ interface EditorColumnProps {
 }
 
 function EditorColumn({
-  working,
+  draft,
   isCustom,
   isDirty,
   busy,
   statusMsg,
   themeOverrides,
-  onSetName,
-  onSetDesc,
-  onSetVar,
-  onSetElementDefault,
-  onSetPageDefaults,
-  onApplySurfaceStyle,
-  savedVars,
-  savedDefaults,
-  pageDefaults,
-  savedPageDefaults,
   onSaveChanges,
   onSaveAsCustom,
   onDiscard,
@@ -1034,7 +997,7 @@ function EditorColumn({
   onDelete,
   onClearOverrides,
 }: EditorColumnProps) {
-  if (!working) {
+  if (!draft) {
     return (
       <div
         style={{
@@ -1051,8 +1014,10 @@ function EditorColumn({
     );
   }
 
-  const vars = working.variables || {};
-  const defaults = working.element_defaults || {};
+  const working = draft.theme;
+  const vars = variablesOf(working);
+  const savedVars = variablesOf(draft.saved);
+  const setVar = (key: string, value: unknown) => draft.edit((t) => withVariable(t, key, value));
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -1257,7 +1222,7 @@ function EditorColumn({
               <label style={{ width: 70, fontSize: 11, color: "var(--text-secondary)" }}>Name</label>
               <input
                 value={working.name}
-                onChange={(e) => onSetName(e.target.value)}
+                onChange={(e) => draft.edit((t) => ({ ...t, name: e.target.value }))}
                 style={{ flex: 1, fontSize: 12 }}
               />
             </div>
@@ -1267,7 +1232,7 @@ function EditorColumn({
               </label>
               <input
                 value={working.description || ""}
-                onChange={(e) => onSetDesc(e.target.value)}
+                onChange={(e) => draft.edit((t) => ({ ...t, description: e.target.value }))}
                 style={{ flex: 1, fontSize: 12 }}
               />
             </div>
@@ -1275,14 +1240,7 @@ function EditorColumn({
         </StudioSection>
 
         {/* Quick Adjust — composed controls for the most common tweaks */}
-        <QuickAdjustSection
-          vars={vars}
-          defaults={defaults}
-          savedVars={savedVars}
-          savedDefaults={savedDefaults}
-          onSetVar={onSetVar}
-          onApplySurfaceStyle={onApplySurfaceStyle}
-        />
+        <QuickAdjustSection draft={draft} />
 
         {/* Theme tokens — foundational values used across many elements */}
         <StudioSection title="Theme">
@@ -1311,7 +1269,7 @@ function EditorColumn({
                         value={val}
                         inherits={CSS_VAR_FALLBACKS[tok.key]}
                         fontSize={11}
-                        onChange={(next) => onSetVar(tok.key, next)}
+                        onChange={(next) => setVar(tok.key, next)}
                       />
                     ) : tok.type === "number" ? (
                       <NumericInput
@@ -1320,7 +1278,7 @@ function EditorColumn({
                         // panel reads stored measurements as rem. Show px.
                         value={(displayStyleValue(tok.key, Number(val || 0)) as number) ?? 0}
                         onCommit={(v) => {
-                          if (v !== undefined) onSetVar(tok.key, storeStyleValue(tok.key, v));
+                          if (v !== undefined) setVar(tok.key, storeStyleValue(tok.key, v));
                         }}
                         min={0}
                         max={64}
@@ -1329,7 +1287,7 @@ function EditorColumn({
                     ) : (
                       <select
                         value={String(val ?? DEFAULT_FONT)}
-                        onChange={(e) => onSetVar(tok.key, e.target.value)}
+                        onChange={(e) => setVar(tok.key, e.target.value)}
                         style={{ flex: 1, fontSize: 11 }}
                       >
                         <option value="Inter, system-ui, sans-serif">Inter</option>
@@ -1340,7 +1298,7 @@ function EditorColumn({
                         <option value="monospace">Monospace</option>
                       </select>
                     )}
-                    {isModified && <ResetToSaved saved={saved} size={11} onReset={() => onSetVar(tok.key, saved)} />}
+                    {isModified && <ResetToSaved saved={saved} size={11} onReset={() => setVar(tok.key, saved)} />}
                   </div>
                 </div>
               );
@@ -1349,21 +1307,9 @@ function EditorColumn({
         </StudioSection>
 
         {/* Page background — theme-level page_defaults */}
-        <PageBackgroundSection
-          pageDefaults={pageDefaults}
-          savedPageDefaults={savedPageDefaults}
-          owner={working?.id ?? ""}
-          onChange={onSetPageDefaults}
-        />
+        <PageBackgroundSection draft={draft} />
 
-        <ElementSections
-          vars={vars}
-          defaults={defaults}
-          savedVars={savedVars}
-          savedDefaults={savedDefaults}
-          onSetVar={onSetVar}
-          onSetElementDefault={onSetElementDefault}
-        />
+        <ElementSections draft={draft} />
 
         <ContrastSection variables={vars} />
       </div>

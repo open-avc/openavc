@@ -1,28 +1,22 @@
 /**
  * The Theme Studio's Page Background section: the theme's own colour, a gradient
  * over it and an image over that, each drawn from and written through
- * `pageBackground.ts`. Its title says "modified" while the page background
- * differs from the saved theme. The two number fields are told which theme they
- * edit (`owner`): switching theme draws this section again in place, and a
- * half-typed number would otherwise land on the theme switched to.
+ * `pageBackground.ts` and written to the theme whole (`withPageDefaults`). Its
+ * title says "modified" while the page background differs from the saved
+ * theme. The two number fields are told which theme they edit (`owner`):
+ * switching theme draws this section again in place, and a half-typed number
+ * would otherwise land on the theme switched to.
  */
 import type { CSSProperties } from "react";
 import { ColorPickerCell } from "./ColorPickerCell";
 import { NumericInput } from "../shared/NumericInput";
 import { StudioSection } from "./StudioParts";
+import { withPageDefaults, type ThemeDraft } from "./themeEdits";
 import {
   readBackground, patched, withCustomColor, withGradient, withGradientPart, withImage, backgroundDiffers,
   DEFAULT_PAGE_COLOR, DEFAULT_GRADIENT_END, DEFAULT_GRADIENT_ANGLE,
   type PageDefaults, type PageBackground, type Gradient,
 } from "./pageBackground";
-
-interface PageBackgroundSectionProps {
-  pageDefaults: PageDefaults;
-  savedPageDefaults: PageDefaults;
-  /** The theme being edited. */
-  owner: string;
-  onChange: (next: PageDefaults) => void;
-}
 
 const IMAGE_SIZE_OPTIONS = [
   { value: "cover", label: "Cover" },
@@ -38,8 +32,13 @@ const HINT: CSSProperties = { fontSize: 9, color: "var(--text-muted)", lineHeigh
 const FIELD: CSSProperties = { flex: 1, fontSize: 11 };
 const TEXT_FIELD: CSSProperties = { flex: 1, fontSize: 11, fontFamily: "monospace" };
 
-export function PageBackgroundSection({ pageDefaults, savedPageDefaults, owner, onChange }: PageBackgroundSectionProps) {
-  const pd = pageDefaults || {};
+export function PageBackgroundSection({ draft }: { draft: ThemeDraft }) {
+  const { theme, saved, edit } = draft;
+  const pageDefaults = (theme.page_defaults as PageDefaults) || {};
+  const savedPageDefaults = (saved?.page_defaults as PageDefaults) || {};
+  const owner = theme.id ?? "";
+  const onChange = (next: PageDefaults) => edit((t) => withPageDefaults(t, next));
+  const pd = pageDefaults;
   const background = readBackground(pd);
   const parts = { pd, background, owner, onChange };
   return (
