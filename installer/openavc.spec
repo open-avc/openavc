@@ -188,6 +188,8 @@ hiddenimports = [
     'openavc.cloud.tools.ui_layouts',
     'openavc.cloud.tools.ui_lookups',
     'openavc.cloud.tools.ui_rewrites',
+    'openavc.cloud.tools.ui_review',
+    'openavc.cloud.tools.ui_simulate',
     'openavc.cloud.tools.plugin_tools',
     'openavc.cloud.tools.macro_tools',
     'openavc.cloud.tools.system_tools',
