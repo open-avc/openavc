@@ -575,34 +575,109 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
     control must not blank the rest) while `hidden` replaces, because it is a
     set and "hide exactly these" is the only unambiguous reading of a list.
     """
-    from openavc.core.project_loader import Layout, normalize_primary_layout
+    from openavc.core.project_loader import normalize_primary_layout
 
     if not isinstance(layouts_input, list):
         raise ToolEditError({"error": "'layouts' must be an array of layout objects"})
+    edit = _LayoutEdit(page)
+    for entry in layouts_input:
+        edit.apply(entry)
+    _refuse_inheritance_loop(page.layouts, edit.by_id)
+    page.layouts = normalize_primary_layout(page.layouts)
 
-    by_id = {lay.id: lay for lay in page.layouts}
-    primary_id = primary_layout(page).id
 
-    def check_inherits(layout_id: str, target: Any) -> None:
-        # A dangling inherits does not error anywhere downstream -- the variant
-        # silently becomes its own chain root and everything without a delta
-        # falls to default boxes. Refuse it at the door, by name.
+def _entry_boxes(entry: Any) -> tuple[str, dict]:
+    """A layout entry's id and its boxes, each rounded as the Builder stores it."""
+    if not isinstance(entry, dict) or not entry.get("id"):
+        raise ToolEditError({"error": "Each layout needs an 'id'"})
+    layout_id = entry["id"]
+    placements = entry.get("placements") or {}
+    if not isinstance(placements, dict):
+        raise ToolEditError({
+            "error": f"Layout '{layout_id}': 'placements' must be an object keyed by element id"
+        })
+    return layout_id, {el_id: _rounded_placement(box) for el_id, box in placements.items()}
+
+
+class _LayoutEdit:
+    """One layouts write on one page: the arrangements it adds and edits, by id.
+
+    ``by_id`` takes each new arrangement as it is added, so a later entry in
+    the same write may inherit from it; ``primary_id`` is the primary the write
+    started with.
+    """
+
+    def __init__(self, page: Any) -> None:
+        self.page = page
+        self.by_id = {lay.id: lay for lay in page.layouts}
+        self.primary_id = primary_layout(page).id
+
+    def apply(self, entry: Any) -> None:
+        layout_id, boxes = _entry_boxes(entry)
+        existing = self.by_id.get(layout_id)
+        if existing is None:
+            self._add(layout_id, entry, boxes)
+        else:
+            self._edit(layout_id, existing, entry, boxes)
+
+    def _add(self, layout_id: str, entry: dict, boxes: dict) -> None:
+        """A new arrangement, always a variant.
+
+        The primary is the page's fallback for an unmatched screen and the
+        layout every variant inherits from. Handing that role to a new
+        arrangement is a bigger change than "add a portrait version".
+        """
+        from openavc.core.project_loader import Layout
+
+        fields = {k: v for k, v in entry.items() if k not in ("placements", "hidden", "primary")}
+        fields.setdefault("inherits", self.primary_id)
+        self._check_inherits(layout_id, fields.get("inherits"))
+        new_layout = Layout(**fields, placements=boxes, hidden=entry.get("hidden") or [])
+        self._check_orientation(layout_id, new_layout.orientation)
+        new_layout.primary = False
+        self.page.layouts.append(new_layout)
+        self.by_id[layout_id] = new_layout
+
+    def _edit(self, layout_id: str, existing: Any, entry: dict, boxes: dict) -> None:
+        self._refuse_primary_change(layout_id, existing, entry)
+        if "inherits" in entry:
+            self._check_inherits(layout_id, entry["inherits"])
+        if "orientation" in entry:
+            self._check_orientation(layout_id, entry["orientation"])
+        for field in ("orientation", "inherits"):
+            if field in entry:
+                setattr(existing, field, entry[field])
+        existing.placements.update(boxes)
+        if "hidden" in entry:
+            existing.hidden = list(entry["hidden"] or [])
+
+    def _refuse_primary_change(self, layout_id: str, existing: Any, entry: dict) -> None:
+        if entry.get("primary") is not None and bool(entry["primary"]) != existing.primary:
+            raise ToolEditError({
+                "error": f"Layout '{layout_id}': which layout is primary cannot be changed here. "
+                         f"'{self.primary_id}' is the arrangement an unmatched screen falls back to."
+            })
+
+    def _check_inherits(self, layout_id: str, target: Any) -> None:
+        """A dangling inherits does not error anywhere downstream -- the variant
+        silently becomes its own chain root and everything without a delta
+        falls to default boxes. Refuse it at the door, by name."""
         if target is None:
             return
         if target == layout_id:
             raise ToolEditError({"error": f"Layout '{layout_id}' cannot inherit from itself"})
-        if target not in by_id:
+        if target not in self.by_id:
             raise ToolEditError({
                 "error": f"Layout '{layout_id}': inherits '{target}', which is not an "
-                         f"arrangement on this page. Available: {', '.join(by_id)}"
+                         f"arrangement on this page. Available: {', '.join(self.by_id)}"
             })
 
-    def check_orientation(layout_id: str, orientation: Any) -> None:
-        # One arrangement per orientation is the Builder's invariant -- the
-        # runtime draws the first match, so a second one is unreachable and
-        # makes the canvas and the panel disagree.
+    def _check_orientation(self, layout_id: str, orientation: Any) -> None:
+        """One arrangement per orientation is the Builder's invariant -- the
+        runtime draws the first match, so a second one is unreachable and makes
+        the canvas and the panel disagree."""
         taken = next(
-            (lay.id for lay in page.layouts
+            (lay.id for lay in self.page.layouts
              if lay.orientation == orientation and lay.id != layout_id),
             None,
         )
@@ -612,50 +687,13 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
                          f"arrangement ('{taken}'). Edit that one instead."
             })
 
-    for entry in layouts_input:
-        if not isinstance(entry, dict) or not entry.get("id"):
-            raise ToolEditError({"error": "Each layout needs an 'id'"})
-        layout_id = entry["id"]
-        placements = entry.get("placements") or {}
-        if not isinstance(placements, dict):
-            raise ToolEditError({"error": f"Layout '{layout_id}': 'placements' must be an object keyed by element id"})
-        boxes = {el_id: _rounded_placement(box) for el_id, box in placements.items()}
-        existing = by_id.get(layout_id)
-        if existing is None:
-            # The primary is the page's fallback for an unmatched screen and the
-            # layout every variant inherits from. Handing that role to a new
-            # arrangement is a bigger change than "add a portrait version", so
-            # a new layout is always a variant.
-            fields = {k: v for k, v in entry.items() if k not in ("placements", "hidden", "primary")}
-            fields.setdefault("inherits", primary_id)
-            check_inherits(layout_id, fields.get("inherits"))
-            new_layout = Layout(**fields, placements=boxes, hidden=entry.get("hidden") or [])
-            check_orientation(layout_id, new_layout.orientation)
-            new_layout.primary = False
-            page.layouts.append(new_layout)
-            by_id[layout_id] = new_layout
-            continue
-        if entry.get("primary") is not None and bool(entry["primary"]) != existing.primary:
-            raise ToolEditError({
-                "error": f"Layout '{layout_id}': which layout is primary cannot be changed here. "
-                         f"'{primary_id}' is the arrangement an unmatched screen falls back to."
-            })
-        if "inherits" in entry:
-            check_inherits(layout_id, entry["inherits"])
-        if "orientation" in entry:
-            check_orientation(layout_id, entry["orientation"])
-        for field in ("orientation", "inherits"):
-            if field in entry:
-                setattr(existing, field, entry[field])
-        existing.placements.update(boxes)
-        if "hidden" in entry:
-            existing.hidden = list(entry["hidden"] or [])
 
-    # Two edits in one call can each be legal and still tie the chains in a
-    # loop (A inherits B, then B inherits A). Both renderers cycle-guard, so
-    # nothing crashes -- but the layouts stop inheriting and the file is
-    # permanently odd. Walk every chain before accepting the batch.
-    for lay in page.layouts:
+def _refuse_inheritance_loop(layouts: list, by_id: dict) -> None:
+    """Two edits in one call can each be legal and still tie the chains in a
+    loop (A inherits B, then B inherits A). Both renderers cycle-guard, so
+    nothing crashes -- but the layouts stop inheriting and the file is
+    permanently odd. Every chain is walked before the write is accepted."""
+    for lay in layouts:
         seen: set[str] = set()
         cursor = lay
         while cursor is not None and cursor.id not in seen:
@@ -665,8 +703,6 @@ def _apply_layouts(page: Any, layouts_input: Any) -> None:
             raise ToolEditError({
                 "error": f"Layout inheritance loops: '{lay.id}' eventually inherits from itself"
             })
-
-    page.layouts = normalize_primary_layout(page.layouts)
 
 
 def _set_snap(page: Any, value: Any, what: str) -> None:
