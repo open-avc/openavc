@@ -73,11 +73,12 @@ from openavc.simulator.osc_addresses import (
 )
 from openavc.simulator.osc_simulator import OSCDispatchMixin
 from openavc.simulator.push_channels import PushChannels
-from openavc.simulator.reply_templates import (
-    emit_literal,
-    emit_template,
-    emit_template_multi,
-    fill_template,
+from openavc.simulator.reply_rules import (
+    child_replies,
+    flat_replies,
+    list_answers,
+    mappings_to_set,
+    reversed_ids,
 )
 from openavc.simulator.reread_queries import (
     every_query_entry,
@@ -88,8 +89,6 @@ from openavc.simulator.state_replies import (
     ChildListAnswer,
     ChildStateResponse,
     StateResponse,
-    map_key,
-    rule_pattern,
 )
 from openavc.simulator.send_templates import (
     is_passthrough_send,
@@ -170,25 +169,6 @@ def _encode_line_ending(value: str | bytes) -> bytes:
     return encode_escape_sequences(value)
 
 
-def _mappings_to_set(mappings: list[dict]) -> dict[str, Any]:
-    """Convert canonical response mappings to the simulator's ``set`` shorthand.
-
-    ``_build_state_responses`` understands ``match`` + ``set`` (state → a
-    literal value or a ``$N`` capture), so an inline response (which normalizes
-    to ``match`` + ``mappings``) is remapped here: a fixed ``value`` becomes the
-    literal, a ``group`` becomes ``$<n>``.
-    """
-    out: dict[str, Any] = {}
-    for m in mappings:
-        if not isinstance(m, dict):
-            continue
-        state = m.get("state")
-        if not state:
-            continue
-        out[str(state)] = m["value"] if "value" in m else f"${m.get('group', 1)}"
-    return out
-
-
 def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict, bool]:
     """Merge a Generic device's inline protocol (config-authored commands /
     responses / state_variables) into the definition the auto-simulator builds
@@ -222,7 +202,7 @@ def _merge_inline_protocol(driver_def: dict, config: dict | None) -> tuple[dict,
             sim_responses.append(r)
         elif "match" in r:
             sim_responses.append(
-                {"match": r["match"], "set": _mappings_to_set(r.get("mappings", []))}
+                {"match": r["match"], "set": mappings_to_set(r.get("mappings", []))}
             )
     merged["responses"] = list(driver_def.get("responses") or []) + sim_responses
     derived = derive_state_vars_from_responses(canonical)
@@ -376,9 +356,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # Build handlers from driver definition
         self._command_handlers: list[CommandHandler] = []
         self._query_handlers: list[QueryHandler] = []
-        self._state_responses: dict[str, StateResponse] = {}
-
-        self._build_state_responses()
+        # How each variable goes back on the wire, read from the response
+        # rules (reply_rules.py).
+        self._state_responses: dict[str, StateResponse] = flat_replies(
+            driver_def.get("responses", []), self._var_def_for_key
+        )
         self._build_command_handlers()
         # After the commands, so a command and a setting whose wire forms
         # collide resolve to the command -- the thing the driver named.
@@ -433,11 +415,13 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         # section, and the project child_entities the manager delivers via
         # set_child_entities() after construction.
         self._child_roster: dict[str, list[str]] = {}
-        self._child_state_responses: dict[tuple[str, str], ChildStateResponse] = {}
-        self._child_list_answers: dict[tuple[str, str], ChildListAnswer] = {}
+        self._child_state_responses: dict[tuple[str, str], ChildStateResponse] = (
+            child_replies(driver_def.get("responses", []), self._child_types(), self._child_vars)
+        )
+        self._child_list_answers: dict[tuple[str, str], ChildListAnswer] = list_answers(
+            driver_def.get("responses") or [], self._child_types(), self._child_vars
+        )
         self._child_query_handlers: list[ChildQueryHandler | ListQueryHandler] = []
-        self._build_child_state_responses()
-        self._build_child_list_answers()
         self._seed_declared_children()
         self._adopt_dotted_state_children()
         self._build_child_query_handlers()
@@ -1326,104 +1310,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     # ── Build handlers from driver definition ──
 
-    def _build_state_responses(self) -> None:
-        """Build state_var → response format mapping from responses: section."""
-        responses = self._driver_def.get("responses", [])
-
-        for resp_def in responses:
-            # JSON-body responses populate state from a parsed object, not a
-            # regex template, so there's no literal to reconstruct here.
-            # Auto-generating JSON query replies is a separate follow-on;
-            # drivers that need JSON simulation ship an explicit simulator:
-            # section. Skip so json rules don't create empty response entries.
-            if resp_def.get("json"):
-                continue
-            match_pattern = resp_def.get("match", "")
-            set_dict = resp_def.get("set", {})
-
-            # Canonical mappings: form (what the Driver Builder persists) —
-            # derive the set shorthand so those rules feed the same loop
-            # below. OSC address rules carry no match pattern (they're built
-            # into address handlers instead), so they're skipped here.
-            map_reversals: list[dict] = []
-            mappings = resp_def.get("mappings")
-            if (
-                not set_dict
-                and match_pattern
-                and not resp_def.get("address")
-                and isinstance(mappings, list)
-            ):
-                set_dict = _mappings_to_set(mappings)
-                map_reversals = [
-                    m for m in mappings
-                    if isinstance(m, dict)
-                    and m.get("state")
-                    and "value" not in m
-                    and isinstance(m.get("map"), dict)
-                ]
-
-            for state_key, set_value in set_dict.items():
-                # The key every value map lookup uses, or a YAML bare `true`
-                # (Python True) stores a "True" key that a boolean state value
-                # can never hit.
-                set_value_str = map_key(set_value)
-
-                if state_key not in self._state_responses:
-                    self._state_responses[state_key] = StateResponse(
-                        state_key, conversion_of(self._var_def_for_key(state_key))
-                    )
-
-                sr = self._state_responses[state_key]
-
-                # Check if the response has capture groups (template-based)
-                # vs fixed text (value-mapped)
-                has_groups = bool(re.search(r"\(.*\)", match_pattern))
-
-                if has_groups and set_value_str.startswith("$"):
-                    # Template-based: In(\d+) All with set: { input: "$1" }
-                    # → template: In{value} All. The $N picks which capture
-                    # group becomes {value}, so a multi-group pattern puts
-                    # the value where this state key actually reads it.
-                    try:
-                        group = int(set_value_str[1:])
-                    except ValueError:
-                        group = 0
-                    template = (
-                        emit_template(match_pattern, group) if group > 0 else None
-                    )
-                    if template:
-                        sr.add_template(template, rule_pattern(match_pattern, group))
-                else:
-                    # Value-mapped: Amt1 with set: { mute: "true" }
-                    # → value "true" maps to response text "Amt1"
-                    # Reconstruct the literal response text from the regex
-                    literal = emit_literal(match_pattern)
-                    if literal:
-                        sr.value_map[set_value_str] = literal
-
-            # A mapping's map: stores the friendly value in state (raw wire
-            # token → friendly), so emitting the template with the state value
-            # would put the friendly text on the wire. Reverse each pair
-            # instead: friendly value → the wire text with the raw token at
-            # the mapping's group. First writer wins, like the template guard.
-            for mapping in map_reversals:
-                try:
-                    group = int(mapping.get("group", 1))
-                except (TypeError, ValueError):
-                    continue
-                template = (
-                    emit_template(match_pattern, group) if group > 0 else None
-                )
-                if not template:
-                    continue
-                sr = self._state_responses.get(str(mapping["state"]))
-                if sr is None:
-                    continue
-                for raw, friendly in mapping["map"].items():
-                    sr.value_map.setdefault(
-                        map_key(friendly), fill_template(template, {"value": raw})
-                    )
-
     def _build_command_handlers(self) -> None:
         """A handler for each command in the commands: section: the pattern
         its send template matches, then what it does, as declared (``sets:``
@@ -1501,15 +1387,9 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         param_name, cpdef = child_id_params[0]
         ctype = cpdef.get("child_type")
         child_vars = self._child_vars(ctype)
-        raw_map = cpdef.get("map")
         # Param map: local id -> wire token; the sim sees the wire token and
         # needs the local id back.
-        wire_map = (
-            {str(v): str(k) for k, v in raw_map.items()}
-            if isinstance(raw_map, dict) and raw_map
-            else None
-        )
-        return _ChildAddress(param_name, ctype, wire_map, child_vars)
+        return _ChildAddress(param_name, ctype, reversed_ids(cpdef.get("map")), child_vars)
 
     def _settings_wire_line(self, template: str) -> str | None:
         """The one line of a settings write that actually carries the value.
@@ -1910,214 +1790,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             }
         info["children"] = children
         return info
-
-    def _build_child_state_responses(self) -> None:
-        """Derive per-(child type, variable) reply formatting from the
-        driver's ``child_set:`` response rules — the child twin of
-        _build_state_responses.
-
-        Two passes: rules whose child_set touches exactly one property bind
-        first (a per-property view reply like "Out2 In1 Vid"), then broader
-        rules fill remaining gaps ("Out2 In1 All" sets input AND
-        audio_input). Only capture-ref ids derive anything — a literal id
-        rule serves one hardwired child and has no generic form.
-        """
-        responses = self._driver_def.get("responses", [])
-        child_types = self._child_types()
-        if not child_types or not isinstance(responses, list):
-            return
-        for exact_only in (True, False):
-            for resp in responses:
-                if not isinstance(resp, dict):
-                    continue
-                raw = resp.get("child_set")
-                pattern = resp.get("match", "")
-                if not isinstance(raw, list) or not pattern:
-                    continue
-                for entry in raw:
-                    if not isinstance(entry, dict):
-                        continue
-                    ctype = entry.get("type")
-                    state_map = entry.get("state")
-                    if ctype not in child_types or not isinstance(state_map, dict):
-                        continue
-                    if exact_only != (len(state_map) == 1):
-                        continue
-                    id_group, wire_id_map = self._child_set_id_group(entry)
-                    if id_group is None:
-                        continue
-                    for prop, expr in state_map.items():
-                        self._absorb_child_rule(
-                            ctype, prop, pattern, id_group, wire_id_map, expr
-                        )
-
-    @staticmethod
-    def _child_set_id_group(entry: dict) -> tuple[int | None, dict[str, str] | None]:
-        """The capture group holding a child_set rule's child id, plus the
-        local-id -> wire-id map (the reverse of the rule's wire -> local
-        ``map:``) a reply must apply to put the device's own id form back on
-        the wire."""
-        cid = entry.get("id")
-        wire_map: dict[str, str] | None = None
-        if isinstance(cid, dict):
-            gref = cid.get("group")
-            if isinstance(gref, str) and gref.startswith("$"):
-                gref = gref[1:]
-            try:
-                group = int(gref)
-            except (TypeError, ValueError):
-                return None, None
-            raw_map = cid.get("map")
-            if isinstance(raw_map, dict) and raw_map:
-                wire_map = {str(v): str(k) for k, v in raw_map.items()}
-            return group, wire_map
-        if isinstance(cid, str) and cid.startswith("$"):
-            try:
-                return int(cid[1:]), None
-            except ValueError:
-                return None, None
-        return None, None
-
-    def _absorb_child_rule(
-        self,
-        ctype: str,
-        prop: str,
-        pattern: str,
-        id_group: int,
-        wire_id_map: dict[str, str] | None,
-        expr: Any,
-    ) -> None:
-        """Fold one child_set property expression into the (ctype, prop)
-        reply table: a capture ref becomes the {value} template, a mapped
-        capture becomes one value_map entry per mapped value, and a static
-        value becomes a whole-reply value_map entry."""
-        key = (ctype, prop)
-        if key not in self._child_state_responses:
-            self._child_state_responses[key] = ChildStateResponse(
-                ctype, prop, conversion_of(self._child_vars(ctype).get(prop))
-            )
-        sr = self._child_state_responses[key]
-
-        if isinstance(expr, str) and expr.startswith("$"):
-            try:
-                group = int(expr[1:])
-            except ValueError:
-                return
-            template = emit_template_multi(
-                pattern, {id_group: "{child_id}", group: "{value}"}
-            )
-            if template:
-                sr.add_template(template, rule_pattern(pattern, group), wire_id_map)
-            return
-        if isinstance(expr, dict):
-            if "group" in expr:
-                try:
-                    group = int(expr["group"])
-                except (TypeError, ValueError):
-                    return
-                value_map = expr.get("map")
-                if isinstance(value_map, dict) and value_map:
-                    for wire_tok, value in value_map.items():
-                        vkey = map_key(value)
-                        if vkey in sr.value_map:
-                            continue
-                        reply = emit_template_multi(
-                            pattern,
-                            {id_group: "{child_id}", group: str(wire_tok)},
-                        )
-                        if reply:
-                            sr.value_map[vkey] = reply
-                            if sr.id_wire_map is None:
-                                sr.id_wire_map = wire_id_map
-                else:
-                    template = emit_template_multi(
-                        pattern, {id_group: "{child_id}", group: "{value}"}
-                    )
-                    if template:
-                        sr.add_template(template, rule_pattern(pattern, group), wire_id_map)
-                return
-            if "value" in expr:
-                expr = expr["value"]
-            else:
-                return
-        # Static value (bare or {value: ...}): the whole reply is a literal
-        # carrying only the child id slot.
-        vkey = map_key(expr)
-        if vkey not in sr.value_map:
-            reply = emit_template_multi(pattern, {id_group: "{child_id}"})
-            if reply:
-                sr.value_map[vkey] = reply
-                if sr.id_wire_map is None:
-                    sr.id_wire_map = wire_id_map
-
-    def _build_child_list_answers(self) -> None:
-        """Read each ``child_list`` rule back into how the device writes the
-        list, per child variable it fills: the reply with the list (and the
-        page's start) as slots, one item with the value (and its child id)
-        as slots. A variable a rule fills from a static, or a rule whose
-        patterns the emitter cannot model (a lookaround), gets nothing, and
-        a list read for it goes unanswered."""
-        child_types = self._child_types()
-        for resp in self._driver_def.get("responses") or []:
-            spec = resp.get("child_list") if isinstance(resp, dict) else None
-            pattern = resp.get("match") if isinstance(resp, dict) else None
-            if not isinstance(spec, dict) or not isinstance(pattern, str):
-                continue
-            ctype = spec.get("type")
-            element = spec.get("element")
-            state_map = spec.get("state")
-            if (
-                ctype not in child_types
-                or not isinstance(element, str)
-                or not isinstance(state_map, dict)
-            ):
-                continue
-            list_group = _ref_number(spec.get("group", 1))
-            cid = spec.get("id")
-            id_group = _ref_number(cid.get("group") if isinstance(cid, dict) else cid)
-            id_wire_map: dict[str, str] | None = None
-            if isinstance(cid, dict) and isinstance(cid.get("map"), dict) and cid["map"]:
-                id_wire_map = {str(v): str(k) for k, v in cid["map"].items()}
-            raw_start = spec.get("start", 1)
-            start_group = _ref_number(raw_start) if isinstance(raw_start, str) else None
-            start = raw_start if isinstance(raw_start, int) and not isinstance(raw_start, bool) else 1
-            if list_group is None or (cid is not None and id_group is None):
-                continue
-            outer_slots = {list_group: "{list}"}
-            if cid is None and start_group is not None:
-                outer_slots[start_group] = "{start}"
-            outer = emit_template_multi(pattern, outer_slots)
-            if outer is None:
-                continue
-            for var, expr in state_map.items():
-                key = (ctype, var)
-                if key in self._child_list_answers:
-                    continue
-                value_words: dict[str, str] | None = None
-                if isinstance(expr, str) and expr.startswith("$"):
-                    group = _ref_number(expr)
-                elif isinstance(expr, dict) and "group" in expr:
-                    group = _ref_number(expr.get("group"))
-                    if isinstance(expr.get("map"), dict) and expr["map"]:
-                        value_words = {}
-                        for word, value in expr["map"].items():
-                            value_words.setdefault(map_key(value), str(word))
-                else:
-                    continue
-                if group is None or group == id_group:
-                    continue
-                item_slots = {group: "{value}"}
-                if id_group is not None:
-                    item_slots[id_group] = "{child_id}"
-                item = emit_template_multi(element, item_slots)
-                if item is None:
-                    continue
-                self._child_list_answers[key] = ChildListAnswer(
-                    ctype, var, outer, item, rule_pattern(element, group),
-                    spec.get("separator") or "", cid is None, start,
-                    value_words, id_wire_map,
-                    conversion_of(self._child_vars(ctype).get(var)),
-                )
 
     def _build_list_query_handlers(self) -> None:
         """Handlers for list reads: a query sent once whose ``query_for`` is
@@ -3154,17 +2826,6 @@ class _StateProxy(dict):
 
     def __contains__(self, key: object) -> bool:
         return key in self._real
-
-
-def _ref_number(ref: Any) -> int | None:
-    """``"$2"`` or ``2`` as 2; None for anything else."""
-    if isinstance(ref, bool):
-        return None
-    if isinstance(ref, int):
-        return ref if ref >= 1 else None
-    if isinstance(ref, str) and re.fullmatch(r"\$\d+", ref):
-        return int(ref[1:]) or None
-    return None
 
 
 # ── Utility functions ──

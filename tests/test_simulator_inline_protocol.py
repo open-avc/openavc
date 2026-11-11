@@ -11,10 +11,10 @@ import json
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.configurable import create_configurable_driver_class
+from openavc.simulator.reply_rules import mappings_to_set as _mappings_to_set
 from openavc.simulator.yaml_auto import (
     YAMLAutoSimulator,
     _merge_inline_protocol,
-    _mappings_to_set,
 )
 
 # A bare "Generic" definition — the protocol comes entirely from the config.
