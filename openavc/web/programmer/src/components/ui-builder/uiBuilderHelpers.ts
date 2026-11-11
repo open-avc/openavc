@@ -19,6 +19,8 @@ import {
   withPlacement,
   withPlacements,
   withoutPlacement,
+  type OnScreen,
+  type PageSelection,
 } from "./pageGeometry";
 import { rewriteElement } from "./projectRewrites";
 import { descendantIds, reparentPlacements, topmostSelection } from "./containerTree";
@@ -200,6 +202,8 @@ export {
   toPageBox,
   containerOf,
   containersAbove,
+  type OnScreen,
+  type PageSelection,
 } from "./pageGeometry";
 
 // --- Where a box goes under the pointer, and with none ---
@@ -394,31 +398,12 @@ export function updateElementInPage(
 /** Move/resize several elements in one mutation -- a multi-select drag. */
 export function moveElementsInPage(
   pages: UIPage[],
-  pageId: string,
+  { pageId, layoutId }: OnScreen,
   placements: Record<string, Placement>,
-  layoutId?: string | null,
 ): UIPage[] {
   return pages.map((p) =>
     p.id === pageId ? withPlacements(p, placements, layoutId) : p,
   );
-}
-
-/**
- * The page an edit is aimed at, and the arrangement on screen: where a tool
- * measures the boxes it reads and stores the ones it moves.
- *
- * The arrangement is required, never left to a default: a caller that forgot it
- * would read and write the primary while the author looks at another (null is
- * the primary, said on purpose).
- */
-export interface OnScreen {
-  pageId: string;
-  layoutId: string | null;
-}
-
-/** ... and the controls selected on it, in the order they were selected. */
-export interface PageSelection extends OnScreen {
-  elementIds: string[];
 }
 
 /**

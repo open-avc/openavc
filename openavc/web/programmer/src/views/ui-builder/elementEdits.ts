@@ -209,7 +209,7 @@ export function nudgedPages(
     const box = getPlacement(target, id, layoutId);
     moved[id] = roundPlacement({ ...box, x: box.x + dx, y: box.y + dy });
   }
-  return moveElementsInPage(pages, pageId, moved, layoutId);
+  return moveElementsInPage(pages, { pageId, layoutId }, moved);
 }
 
 export function nudge({ page, editPages, layoutId }: InLayout, ids: string[], offset: Offset, description: string): void {

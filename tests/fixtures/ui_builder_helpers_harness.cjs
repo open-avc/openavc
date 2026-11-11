@@ -1987,7 +1987,7 @@ const dragPage = () => alignPage(
   // container it landed in, with the drawn rect unchanged by the adoption.
   const page = dragPage();
   const moved = { loose: { x: 20, y: 20, w: 5, h: 5 } };
-  const out = H.commitGesturePlacements([page], "pg", moved);
+  const out = H.commitGesturePlacements([page], { pageId: "pg", layoutId: null }, moved);
   const el = out[0].elements.find((e) => e.id === "loose");
   const stored = out[0].layouts[0].placements.loose;
   const abs = H.absolutePlacements(out[0]);
@@ -2005,7 +2005,7 @@ const dragPage = () => alignPage(
 {
   // A drag that changes no parent is just a move.
   const page = dragPage();
-  const out = H.commitGesturePlacements([page], "pg", { loose: { x: 75, y: 75, w: 10, h: 10 } });
+  const out = H.commitGesturePlacements([page], { pageId: "pg", layoutId: null }, { loose: { x: 75, y: 75, w: 10, h: 10 } });
   const el = out[0].elements.find((e) => e.id === "loose");
   results.c112_commit_leaves_parents_alone_when_nothing_changed = {
     pass: (el.parent ?? null) === null && eq(out[0].layouts[0].placements.loose, { x: 75, y: 75, w: 10, h: 10 }),
@@ -2027,7 +2027,7 @@ const dragPage = () => alignPage(
       b: { x: 80, y: 10, w: 5, h: 5 },
     },
   );
-  const out = H.commitGesturePlacements([page], "pg", {
+  const out = H.commitGesturePlacements([page], { pageId: "pg", layoutId: null }, {
     a: { x: 15, y: 15, w: 5, h: 5 },
     b: { x: 25, y: 15, w: 5, h: 5 },
   });

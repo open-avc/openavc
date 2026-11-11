@@ -565,6 +565,7 @@ export function Canvas({
     (next: Record<string, Placement>, kind: "move" | "resize") => {
       if (!project) return;
       pushUndo({ pages: project.ui.pages }, kind === "move" ? "Move element" : "Resize element");
+      const onScreen = { pageId: page.id, layoutId: activeLayoutId };
       update({
         ui: {
           ...project.ui,
@@ -575,8 +576,8 @@ export function Canvas({
           // is not a request to join that frame.
           pages:
             kind === "move"
-              ? commitGesturePlacements(project.ui.pages, page.id, next, activeLayoutId)
-              : moveElementsInPage(project.ui.pages, page.id, next, activeLayoutId),
+              ? commitGesturePlacements(project.ui.pages, onScreen, next)
+              : moveElementsInPage(project.ui.pages, onScreen, next),
         },
       });
       touchMutation();

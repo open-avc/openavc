@@ -394,7 +394,7 @@ describe("commitGesturePlacements: where everything landed, and what it landed i
       [el("g", "group"), el("a"), el("b")],
       [primary({ g: box(20, 20, 50, 50), a: box(0, 0, 5, 5), b: box(90, 90, 5, 5) })],
     );
-    const [out] = commitGesturePlacements([p], "pg", { a: box(30, 30, 10, 10) });
+    const [out] = commitGesturePlacements([p], { pageId: "pg", layoutId: null }, { a: box(30, 30, 10, 10) });
     expect(out.elements.map((e) => [e.id, e.parent ?? null])).toEqual([["g", null], ["a", "g"], ["b", null]]);
     expect(out.layouts[0].placements.a).toEqual(box(20, 20, 20, 20));
     expect(out.layouts[0].placements.b).toEqual(box(90, 90, 5, 5));
@@ -403,7 +403,7 @@ describe("commitGesturePlacements: where everything landed, and what it landed i
   it("writes a box for an id the page does not hold without adopting anything, and leaves other pages alone", () => {
     const p = page([el("g", "group")], [primary({ g: box(0, 0, 50, 50) })]);
     const other = page([el("z")], [primary({ z: box(0, 0, 5, 5) })], "other");
-    const out = commitGesturePlacements([p, other], "pg", { ghost: box(10, 10, 5, 5) });
+    const out = commitGesturePlacements([p, other], { pageId: "pg", layoutId: null }, { ghost: box(10, 10, 5, 5) });
     expect(out[0].layouts[0].placements.ghost).toEqual(box(10, 10, 5, 5));
     expect(out[0].elements).toEqual(p.elements);
     expect(out[1]).toBe(other);
@@ -411,7 +411,7 @@ describe("commitGesturePlacements: where everything landed, and what it landed i
 
   it("takes a control out to the page once it no longer touches its container", () => {
     const p = page([el("g", "group"), el("a", "button", "g")], [primary({ g: box(0, 0, 50, 50), a: box(0, 0, 10, 10) })]);
-    const [out] = commitGesturePlacements([p], "pg", { a: box(300, 0, 10, 10) });
+    const [out] = commitGesturePlacements([p], { pageId: "pg", layoutId: null }, { a: box(300, 0, 10, 10) });
     expect(out.elements.find((e) => e.id === "a")?.parent).toBeNull();
     expect(out.layouts[0].placements.a).toEqual(box(150, 0, 5, 5));
   });

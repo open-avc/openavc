@@ -17,6 +17,10 @@
  * the panel runtime reads all of this the same way (`_selectLayout`,
  * `_masterPlacement` and the grouping in `_renderPageElements`, in panel.js).
  *
+ * An edit aimed from the screen says which page and which arrangement as one
+ * value, `OnScreen` (`PageSelection` adds the controls selected on it), which
+ * the page model's tools and a move's commit take.
+ *
  * A leaf: the container tree, the arranging tools and the page review import
  * it (the canvas, the toolbar and the properties panel read it through the
  * helpers file's re-exports), and it imports only the project's types and the
@@ -87,6 +91,25 @@ export function layoutById(page: UIPage, layoutId?: string | null): Layout | und
     if (found) return found;
   }
   return primaryLayout(page);
+}
+
+/**
+ * The page an edit is aimed at, and the arrangement on screen: where a tool
+ * measures the boxes it reads and stores the ones it moves.
+ *
+ * The arrangement is required, never left to a default: a caller that forgot it
+ * would read and write the primary while the author looks at another (null is
+ * the primary, said on purpose). The reads in this module take it as an
+ * optional last argument instead, an absent one the primary (`layoutById`).
+ */
+export interface OnScreen {
+  pageId: string;
+  layoutId: string | null;
+}
+
+/** ... and the controls selected on it, in the order they were selected. */
+export interface PageSelection extends OnScreen {
+  elementIds: string[];
 }
 
 /**

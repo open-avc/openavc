@@ -55,7 +55,7 @@ const stored = (p: UIPage, layout: string) => p.layouts!.find((l) => l.id === la
 describe("moving boxes, as a resize and a multi-select drag write them", () => {
   it("writes the arrangement named, rounded, and leaves the primary and the other pages", () => {
     const pages = [onePage(), otherPage()];
-    const out = moveElementsInPage(pages, "pg", { a: { x: 5.123456, y: 70, w: 10, h: 10 } }, "port");
+    const out = moveElementsInPage(pages, { pageId: "pg", layoutId: "port" }, { a: { x: 5.123456, y: 70, w: 10, h: 10 } });
     expect(stored(out[0], "port")).toEqual({ ...PORT, a: { x: 5.1235, y: 70, w: 10, h: 10 } });
     expect(stored(out[0], "land")).toBe(LAND);
     expect(out[1]).toBe(pages[1]);
@@ -63,21 +63,21 @@ describe("moving boxes, as a resize and a multi-select drag write them", () => {
 
   it("writes the primary for null, and for an arrangement the page does not have", () => {
     for (const layoutId of [null, "gone"]) {
-      const out = moveElementsInPage([onePage()], "pg", { a: { x: 5, y: 5, w: 10, h: 10 } }, layoutId);
+      const out = moveElementsInPage([onePage()], { pageId: "pg", layoutId: layoutId }, { a: { x: 5, y: 5, w: 10, h: 10 } });
       expect(stored(out[0], "land").a).toEqual({ x: 5, y: 5, w: 10, h: 10 });
       expect(stored(out[0], "port")).toBe(PORT);
     }
   });
 
   it("writes a box for an id the page does not hold", () => {
-    const out = moveElementsInPage([onePage()], "pg", { ghost: { x: 1, y: 2, w: 3, h: 4 } }, "port");
+    const out = moveElementsInPage([onePage()], { pageId: "pg", layoutId: "port" }, { ghost: { x: 1, y: 2, w: 3, h: 4 } });
     expect(stored(out[0], "port").ghost).toEqual({ x: 1, y: 2, w: 3, h: 4 });
     expect(out[0].elements.map((e) => e.id)).toEqual(["a", "g", "k"]);
   });
 
   it("aimed at a page that is not there, hands back a new list of the same pages", () => {
     const pages = [onePage(), otherPage()];
-    const out = moveElementsInPage(pages, "nope", { a: { x: 5, y: 5, w: 10, h: 10 } }, "port");
+    const out = moveElementsInPage(pages, { pageId: "nope", layoutId: "port" }, { a: { x: 5, y: 5, w: 10, h: 10 } });
     expect(out).not.toBe(pages);
     expect(out).toHaveLength(2);
     expect(out[0]).toBe(pages[0]);
@@ -88,13 +88,13 @@ describe("moving boxes, as a resize and a multi-select drag write them", () => {
 describe("a move's commit, where it landed and what it landed in", () => {
   it("measures the container it lands in where the arrangement on screen draws it", () => {
     // In portrait the group is at the top left; in the primary it is bottom right.
-    const out = commitGesturePlacements([onePage()], "pg", { a: { x: 10, y: 10, w: 10, h: 10 } }, "port");
+    const out = commitGesturePlacements([onePage()], { pageId: "pg", layoutId: "port" }, { a: { x: 10, y: 10, w: 10, h: 10 } });
     expect(out[0].elements.find((e) => e.id === "a")!.parent).toBe("g");
     expect(stored(out[0], "port").a).toEqual({ x: 25, y: 25, w: 25, h: 25 });
   });
 
   it("in the primary, the same box lands at page level and stays there", () => {
-    const out = commitGesturePlacements([onePage()], "pg", { a: { x: 10, y: 10, w: 10, h: 10 } }, null);
+    const out = commitGesturePlacements([onePage()], { pageId: "pg", layoutId: null }, { a: { x: 10, y: 10, w: 10, h: 10 } });
     expect(out[0].elements.find((e) => e.id === "a")!.parent ?? null).toBe(null);
     expect(stored(out[0], "land").a).toEqual({ x: 10, y: 10, w: 10, h: 10 });
     expect(stored(out[0], "port")).toBe(PORT);
@@ -102,7 +102,7 @@ describe("a move's commit, where it landed and what it landed in", () => {
 
   it("aimed at a page that is not there, hands back a new list of the same pages", () => {
     const pages = [onePage(), otherPage()];
-    const out = commitGesturePlacements(pages, "nope", { a: { x: 10, y: 10, w: 10, h: 10 } }, "port");
+    const out = commitGesturePlacements(pages, { pageId: "nope", layoutId: "port" }, { a: { x: 10, y: 10, w: 10, h: 10 } });
     expect(out).not.toBe(pages);
     expect(out[0]).toBe(pages[0]);
     expect(out[1]).toBe(pages[1]);

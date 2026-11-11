@@ -28,6 +28,7 @@ import {
   primaryLayout,
   roundPlacement,
   withPlacements,
+  type OnScreen,
 } from "./pageGeometry";
 
 /** Everything hanging off an element, however deep. */
@@ -312,9 +313,8 @@ function stillTouching(
  */
 export function commitGesturePlacements(
   pages: UIPage[],
-  pageId: string,
+  { pageId, layoutId }: OnScreen,
   placements: Record<string, Placement>,
-  layoutId?: string | null,
 ): UIPage[] {
   return pages.map((p) => {
     if (p.id !== pageId) return p;
