@@ -276,6 +276,39 @@ def _reject_bad_matrix_config(data: dict, what: str) -> None:
         })
 
 
+def _refuse_bad_definition(data: dict, what: str) -> None:
+    """What an element's definition is refused for at every door that takes one:
+    geometry the format retired, and a ``matrix_config`` that draws less than
+    it says."""
+    _reject_retired_geometry(data, what)
+    _reject_bad_matrix_config(data, what)
+
+
+def _refuse_bad_master_definition(data: dict, what: str) -> None:
+    """An element's refusals, and a box given the way a page element's is.
+
+    A master is valid on every page it appears on, so its box is a percentage
+    of the VIEWPORT keyed by orientation -- it borrows no page's layout, which
+    is exactly what used to make the same master land somewhere different on
+    each page.
+    """
+    _refuse_bad_definition(data, what)
+    if "placement" in data:
+        raise ToolEditError({
+            "error": f"{what}: use 'placements' keyed by orientation, "
+                     f"e.g. {{\"landscape\": {{\"x\": 2, \"y\": 2, \"w\": 20, \"h\": 8}}}}. "
+                     f"A master is not part of any page's layout."
+        })
+
+
+def _master_boxes(boxes: dict) -> dict:
+    """A master's boxes by orientation, each object one stored as the Builder stores it."""
+    return {
+        orientation: _rounded_placement(box) if isinstance(box, dict) else box
+        for orientation, box in boxes.items()
+    }
+
+
 def _take_placement(el_data: dict, what: str) -> dict | None:
     """Lift an element's box out of its definition, where the box no longer lives.
 
@@ -284,8 +317,7 @@ def _take_placement(el_data: dict, what: str) -> dict | None:
     arrangements without being duplicated. Callers still describe an element and
     its box in one breath, so the tools split them back apart here.
     """
-    _reject_retired_geometry(el_data, what)
-    _reject_bad_matrix_config(el_data, what)
+    _refuse_bad_definition(el_data, what)
     place = el_data.pop("placement", None)
     if place is None:
         return None
@@ -1148,8 +1180,7 @@ class UIToolsMixin:
                                  f"Use update_master_element to change it."
                     })
                 raise ToolEditError({"error": f"UI element '{element_id}' not found"})
-            _reject_retired_geometry(input, f"Element '{element_id}'")
-            _reject_bad_matrix_config(input, f"Element '{element_id}'")
+            _refuse_bad_definition(input, f"Element '{element_id}'")
             # Geometry and per-layout visibility belong to one arrangement. The
             # primary is where a box lives unless the caller is authoring a
             # variant and says so.
@@ -1338,18 +1369,7 @@ class UIToolsMixin:
         created_grant: dict = {}
 
         def mutate(project):
-            # A master is valid on every page it appears on, so its box is a
-            # percentage of the VIEWPORT keyed by orientation -- it borrows no
-            # page's layout, which is exactly what used to make the same master
-            # land somewhere different on each page.
-            _reject_retired_geometry(el_data, f"Master element '{element_id}'")
-            _reject_bad_matrix_config(el_data, f"Master element '{element_id}'")
-            if "placement" in el_data:
-                raise ToolEditError({
-                    "error": f"Master element '{element_id}': use 'placements' keyed by orientation, "
-                             f"e.g. {{\"landscape\": {{\"x\": 2, \"y\": 2, \"w\": 20, \"h\": 8}}}}. "
-                             f"A master is not part of any page's layout."
-                })
+            _refuse_bad_master_definition(el_data, f"Master element '{element_id}'")
             # Check for ID collision with page elements and existing master elements
             for page in project.ui.pages:
                 if any(el.id == element_id for el in page.elements):
@@ -1359,10 +1379,7 @@ class UIToolsMixin:
 
             _check_created_bindings(el_data, project, f"Master element '{element_id}'")
             if isinstance(el_data.get("placements"), dict):
-                el_data["placements"] = {
-                    key: _rounded_placement(box) if isinstance(box, dict) else box
-                    for key, box in el_data["placements"].items()
-                }
+                el_data["placements"] = _master_boxes(el_data["placements"])
             new_el = MasterElement(**el_data)
             project.ui.master_elements.append(new_el)
             if new_el.grant is not None:
@@ -1421,14 +1438,7 @@ class UIToolsMixin:
                     })
                 raise ToolEditError({"error": f"Master element '{element_id}' not found"})
 
-            _reject_retired_geometry(input, f"Master element '{element_id}'")
-            _reject_bad_matrix_config(input, f"Master element '{element_id}'")
-            if "placement" in input:
-                raise ToolEditError({
-                    "error": f"Master element '{element_id}': use 'placements' keyed by "
-                             f"orientation, e.g. {{\"landscape\": {{\"x\": 2, \"y\": 2, "
-                             f"\"w\": 20, \"h\": 8}}}}. A master is not part of any page's layout."
-                })
+            _refuse_bad_master_definition(input, f"Master element '{element_id}'")
 
             if "bindings" in input:
                 target.bindings = _updated_bindings(
@@ -1445,12 +1455,7 @@ class UIToolsMixin:
                         "error": f"Master element '{element_id}': 'placements' must be an "
                                  f"object keyed by orientation"
                     })
-                merged = dict(target.placements or {})
-                for orientation, box in boxes.items():
-                    merged[orientation] = (
-                        _rounded_placement(box) if isinstance(box, dict) else box
-                    )
-                target.placements = merged
+                target.placements = {**(target.placements or {}), **_master_boxes(boxes)}
                 changed.append("placements")
 
             # Everything else is a plain field on the element. Anything the
