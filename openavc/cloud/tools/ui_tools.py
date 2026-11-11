@@ -333,6 +333,55 @@ def _batch_error(problems: list[str], verb: str) -> ToolEditError:
     })
 
 
+class _NewElements:
+    """One create call's new controls, every one checked before any lands.
+
+    The write is atomic either way; the only question is whether the caller
+    learns about one mistake or all of them, so each refusal is kept and they
+    come back together. Every definition goes through the same three checks,
+    in this order: what every door refuses (retired geometry, a matrix that
+    draws less than it says), its box lifted out of it, and its bindings
+    checked in place. A door that builds each control itself hands ``build``,
+    whose refusal is kept the same way.
+    """
+
+    def __init__(self, project: Any) -> None:
+        self.project = project
+        self.problems: list[str] = []
+
+    def refuse(self, problem: str) -> None:
+        self.problems.append(problem)
+
+    def prepare(self, el_data: dict, build: Any = None) -> tuple[Any, Any] | None:
+        """(its box, the control ``build`` made) for one definition, or None
+        when it was refused, the refusal kept."""
+        el_id = el_data.get("id", "?")
+        what = f"Element '{el_id}'"
+        try:
+            place = _take_placement(el_data, what)
+            _check_created_bindings(el_data, self.project, what)
+            return place, (build(el_data) if build else None)
+        except (ToolEditError, ValueError) as exc:
+            self.problems.append(_problem(exc, el_id))
+            return None
+
+    def check(self) -> None:
+        """Refuse the whole batch, naming every offender, when any was refused."""
+        if self.problems:
+            raise _batch_error(self.problems, "added")
+
+
+def _id_taken(el_id: Any, existing_ids: set, seen: set, page_id: str) -> str | None:
+    """Why a new control cannot have this id on this page, or None when it can."""
+    if el_id in existing_ids:
+        return f"Element '{el_id}' already exists on page '{page_id}'"
+    if el_id in seen:
+        # Two elements with one id: the second silently replaced the first at
+        # render time, and nothing said so.
+        return f"Element '{el_id}' appears twice in this batch"
+    return None
+
+
 def _set_layouts(page: Any, value: Any, what: str) -> None:
     """Every setter takes ``what`` (whose field it is), the table's one shape;
     the layouts write names each arrangement itself."""
@@ -466,25 +515,17 @@ class UIToolsMixin:
                 raise ToolEditError({"error": f"UI page '{page_id}' already exists"})
             _reject_retired_geometry(input, f"Page '{page_id}'")
 
-            # Normalize + validate inline-element bindings the same way
-            # _add_ui_elements does — otherwise a page-with-elements created in one
-            # call yields bindings that were never validated (buttons silently do
-            # nothing), while the identical elements added via add_ui_elements work.
+            # Each inline element goes through what add_ui_elements puts each
+            # through -- otherwise a page created with its elements in one call
+            # keeps bindings nothing validated (buttons silently do nothing).
+            # One that is not an object is left to the model, with the page.
+            batch = _NewElements(project)
             boxes: dict[str, dict] = {}
-            problems: list[str] = []
             for el_data in elements:
-                if not isinstance(el_data, dict):
-                    continue
-                el_id = el_data.get("id", "?")
-                try:
-                    place = _take_placement(el_data, f"Element '{el_id}'")
-                    if place is not None:
-                        boxes[el_id] = place
-                    _check_created_bindings(el_data, project, f"Element '{el_id}'")
-                except (ToolEditError, ValueError) as exc:
-                    problems.append(_problem(exc, el_id))
-            if problems:
-                raise _batch_error(problems, "added")
+                made = batch.prepare(el_data) if isinstance(el_data, dict) else None
+                if made and made[0] is not None:
+                    boxes[el_data.get("id", "?")] = made[0]
+            batch.check()
 
             # Built through the model rather than field by field, so a page can
             # be created as one that draws its own markup instead of having to
@@ -592,47 +633,38 @@ class UIToolsMixin:
         def mutate(project):
             page = _page_named(project, page_id)
 
-            # Every element is checked before any of them lands, and every
-            # complaint comes back together. The write is atomic either way; the
-            # only question is whether the caller learns about one mistake or
-            # all of them.
-            existing_ids = {el.id for el in page.elements}
+            batch = _NewElements(project)
             holders = {el.id: el for el in page.elements}
-            problems: list[str] = []
-            prepared: list[tuple[Any, dict | None]] = []
+            existing_ids = set(holders)
             seen: set[str] = set()
+            prepared: list[tuple[Any, dict | None]] = []
+
+            def build(el_data: dict) -> Any:
+                element = UIElement(**el_data)
+                problem = element.parent is not None and container_problem(
+                    holders, element.parent, page_id,
+                )
+                if problem:
+                    raise ToolEditError({"error": f"Element '{el_data.get('id', '?')}': {problem}"})
+                return element
 
             for el_data in elements:
                 el_id = el_data.get("id", "?")
-                if el_id in existing_ids:
-                    problems.append(f"Element '{el_id}' already exists on page '{page_id}'")
-                    continue
-                if el_id in seen:
-                    # Two elements with one id: the second silently replaced the
-                    # first at render time, and nothing said so.
-                    problems.append(f"Element '{el_id}' appears twice in this batch")
+                taken = _id_taken(el_id, existing_ids, seen, page_id)
+                if taken:
+                    batch.refuse(taken)
                     continue
                 seen.add(el_id)
-                try:
-                    place = _take_placement(el_data, f"Element '{el_id}'")
-                    _check_created_bindings(el_data, project, f"Element '{el_id}'")
-                    element = UIElement(**el_data)
-                    problem = element.parent is not None and container_problem(
-                        holders, element.parent, page_id,
-                    )
-                    if problem:
-                        raise ToolEditError({"error": f"Element '{el_id}': {problem}"})
-                except (ToolEditError, ValueError) as exc:
-                    problems.append(_problem(exc, el_id))
-                    continue
-                prepared.append((element, place))
-                # A container and its children can arrive in one call, so an
-                # element accepted here is a candidate parent for a later one --
-                # exactly as when each was appended before the next was checked.
-                holders[element.id] = element
-
-            if problems:
-                raise _batch_error(problems, "added")
+                made = batch.prepare(el_data, build)
+                if made is not None:
+                    place, element = made
+                    prepared.append((element, place))
+                    # A container and its children can arrive in one call, so
+                    # an element accepted here is a candidate parent for a
+                    # later one -- as when each was appended before the next
+                    # was checked.
+                    holders[element.id] = element
+            batch.check()
 
             for element, place in prepared:
                 page.elements.append(element)
