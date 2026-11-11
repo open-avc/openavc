@@ -132,6 +132,106 @@ function renderProject(app, proj) {
     app.renderCurrentPage();
 }
 
+/**
+ * One look evaluation on a bare element in edit mode, which is where the panel
+ * records the authored slot its words came from. The element starts out
+ * reading "Own" in its own grey.
+ */
+function runLook(method, type, binding, value, ownStyle) {
+    const app = mkApp();
+    app.editMode = true;
+    app.currentPage = 'main';
+    app.state = value === undefined ? {} : { [binding.key]: value };
+    const element = document.createElement('div');
+    element.setAttribute('data-element-id', 'probe');
+    element.textContent = 'Own';
+    document.body.appendChild(element);
+    const elementDef = {
+        id: 'probe', type, label: 'Own', text: 'Own', target_page: 'elsewhere',
+        style: { bg_color: '#555555', ...(ownStyle || {}) },
+    };
+    try {
+        app[method]({ type: 'look', element, elementDef, binding: JSON.parse(JSON.stringify(binding)) });
+        return {
+            bg: element.style.backgroundColor,
+            text: element.textContent,
+            path: JSON.parse(element.getAttribute('data-avc-text-src') || 'null'),
+        };
+    } finally {
+        element.remove();
+    }
+}
+
+const LOOK_OWN_BG = 'rgb(85, 85, 85)';
+const LOOK_ENTRIES = {
+    A: { label: 'A', bg_color: '#110000' },
+    B: { label: 'B', bg_color: '#002200' },
+    C: { label: 'C', bg_color: '#000033' },
+    E: { label: 'E', bg_color: '#440044' },
+};
+const LOOK_BG = { A: 'rgb(17, 0, 0)', B: 'rgb(0, 34, 0)', C: 'rgb(0, 0, 51)', E: 'rgb(68, 0, 68)' };
+const LOOK_STATES = { key: 'var.v', default_state: 'off', states: { on: LOOK_ENTRIES.A, off: LOOK_ENTRIES.B, 1: LOOK_ENTRIES.C } };
+const LOOK_BLANK = { key: 'var.v', states: { on: LOOK_ENTRIES.A, '': LOOK_ENTRIES.E } };
+const LOOK_BARE = { key: 'var.v', states: { on: LOOK_ENTRIES.A } };
+const LOOK_DEFAULT_AND_BLANK = {
+    key: 'var.v', default_state: 'off', states: { on: LOOK_ENTRIES.A, off: LOOK_ENTRIES.B, '': LOOK_ENTRIES.E },
+};
+const LOOK_NULL_ENTRY = { key: 'var.v', default_state: 'off', states: { on: null, off: LOOK_ENTRIES.B } };
+const twoState = (equals) => ({
+    key: 'var.v', condition: { equals }, style_active: LOOK_ENTRIES.A, style_inactive: LOOK_ENTRIES.B,
+});
+// [what, binding, state value, entry it draws (null: the control's own look),
+//  the authored slot its words come from]
+const LOOK_CASES = [
+    ['a matching state', LOOK_STATES, 'on', 'A', ['states', 'on']],
+    ['a state is matched exactly, case and all', LOOK_STATES, 'ON', 'B', ['states', 'off']],
+    ['an unknown value takes the default', LOOK_STATES, 'zzz', 'B', ['states', 'off']],
+    ['null takes the default', LOOK_STATES, null, 'B', ['states', 'off']],
+    ['no value takes the default', LOOK_STATES, undefined, 'B', ['states', 'off']],
+    ['a number matches its words', LOOK_STATES, 1, 'C', ['states', '1']],
+    ['no default: null is the blank state', LOOK_BLANK, null, 'E', ['states', '']],
+    ['no default: an unknown value is the blank state', LOOK_BLANK, 'zzz', 'E', ['states', '']],
+    ['no default and no blank state: its own look', LOOK_BARE, 'zzz', null, null],
+    ['null takes the default over a blank state', LOOK_DEFAULT_AND_BLANK, null, 'B', ['states', 'off']],
+    ['an empty value takes the blank state', LOOK_DEFAULT_AND_BLANK, '', 'E', ['states', '']],
+    ['a blank entry draws the default but names its own state', LOOK_NULL_ENTRY, 'on', 'B', ['states', 'on']],
+    ['two-state: equal apart from case is active', twoState('On'), 'on', 'A', ['style_active']],
+    ['two-state: anything else is inactive', twoState('On'), 'off', 'B', ['style_inactive']],
+    ['two-state: no value is inactive', twoState('On'), undefined, 'B', ['style_inactive']],
+    ['two-state: a number matches its words', twoState('1'), 1, 'A', ['style_active']],
+    ['two-state: true matches TRUE', twoState('TRUE'), true, 'A', ['style_active']],
+    ['two-state: null is compared as the word null', twoState('null'), null, 'A', ['style_active']],
+    ['two-state with no condition: the word undefined is active',
+        { key: 'var.v', style_active: LOOK_ENTRIES.A, style_inactive: LOOK_ENTRIES.B }, 'undefined', 'A', ['style_active']],
+    ['two-state with no inactive look: its own look',
+        { key: 'var.v', condition: { equals: 'x' }, style_active: LOOK_ENTRIES.A }, 'y', null, null],
+    ['two-state with no active look: its own look',
+        { key: 'var.v', condition: { equals: 'x' }, style_inactive: LOOK_ENTRIES.B }, 'x', null, null],
+];
+
+/**
+ * Every LOOK_CASES row through one look evaluator. Image and Container have no
+ * words, so only their colour is read. Where nothing is picked, a label keeps
+ * the words it had and records no source, while a page nav and a button write
+ * their own label back.
+ */
+function checkLookTable(method, type) {
+    const words = type !== 'image' && type !== 'group';
+    for (const [what, binding, value, pick, slot] of LOOK_CASES) {
+        const r = runLook(method, type, binding, value);
+        const bg = pick ? LOOK_BG[pick] : LOOK_OWN_BG;
+        assert(r.bg === bg, `${what}: colour ${bg}, got ${r.bg}`);
+        if (!words) continue;
+        const text = pick || 'Own';
+        const path = pick
+            ? ['bindings', 'show', 'look', ...slot, 'label']
+            : (type === 'label' ? null : ['label']);
+        assert(r.text === text, `${what}: words "${text}", got "${r.text}"`);
+        assert(JSON.stringify(r.path) === JSON.stringify(path),
+            `${what}: words from ${JSON.stringify(path)}, got ${JSON.stringify(r.path)}`);
+    }
+}
+
 function startupPage(id) {
     const page = project({ elements: [el(`${id}_heading`, 'label', { text: `${id} heading` })] }).ui.pages[0];
     return { ...page, id, name: id };
@@ -4564,6 +4664,45 @@ const tests = {
         app.evaluateAllBindings(['var.s']);
         assert(el.style.color === '' && el.style.opacity === '',
             `ok: no colour or dimming left over, got "${el.style.color}" / "${el.style.opacity}"`);
+    },
+
+    // Which appearance a look picks for a state value, through every control
+    // that has a look of its own. One table, five controls: the same value
+    // must pick the same entry everywhere.
+    look_picks_the_same_state_on_a_label() { checkLookTable('evaluateLabelLook', 'label'); },
+    look_picks_the_same_state_on_an_image() { checkLookTable('evaluateImageLook', 'image'); },
+    look_picks_the_same_state_on_a_page_nav() { checkLookTable('evaluateNavLook', 'page_nav'); },
+    look_picks_the_same_state_on_a_container() { checkLookTable('evaluateGroupLook', 'group'); },
+    look_picks_the_same_state_on_a_button() { checkLookTable('evaluateFeedback', 'button'); },
+
+    // The two-state form's own words: a label or page nav takes label_active /
+    // label_inactive whenever one is set, an empty one included; a button takes
+    // one only when it has words, and otherwise the state's own label.
+    two_state_words_on_a_label_page_nav_and_button() {
+        const binding = {
+            key: 'var.v', condition: { equals: 'on' },
+            style_active: { label: 'Style on' }, style_inactive: { label: 'Style off' },
+            label_active: 'Word on', label_inactive: '',
+        };
+        const run = (method, type, value) => {
+            const r = runLook(method, type, binding, value);
+            return [r.text, r.path];
+        };
+        const same = (got, want, what) => assert(JSON.stringify(got) === JSON.stringify(want),
+            `${what}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+        const word = (w) => ['bindings', 'show', 'look', w];
+        same(run('evaluateLabelLook', 'label', 'on'), ['Word on', word('label_active')], 'label, on');
+        same(run('evaluateLabelLook', 'label', 'off'), ['', word('label_inactive')], 'label, off');
+        same(run('evaluateNavLook', 'page_nav', 'on'), ['Word on', word('label_active')], 'nav, on');
+        same(run('evaluateNavLook', 'page_nav', 'off'), ['', word('label_inactive')], 'nav, off');
+        same(run('evaluateFeedback', 'button', 'on'), ['Word on', word('label_active')], 'button, on');
+        same(run('evaluateFeedback', 'button', 'off'),
+            ['Style off', [...word('style_inactive'), 'label']], 'button, off');
+        // A button whose own style carries its words, under a state that
+        // names none: the words are its own style's.
+        const plain = { key: 'var.v', condition: { equals: 'on' }, style_active: { bg_color: '#110000' } };
+        const own = runLook('evaluateFeedback', 'button', plain, 'on', { label: 'Styled' });
+        same([own.text, own.path], ['Styled', ['style', 'label']], 'button, words in its own style');
     },
 
     // applyStyle decides background-image on every call (the gradient, or

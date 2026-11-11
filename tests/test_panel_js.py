@@ -248,6 +248,14 @@ SCENARIOS = [
     "state_naming_no_colour_drops_the_last_states_colour_and_opacity",
     "themed_element_returns_to_its_theme_colour",
     "label_look_lets_go_of_its_colour",
+    # One table of state values through every control with a look: the same
+    # value picks the same entry everywhere.
+    "look_picks_the_same_state_on_a_label",
+    "look_picks_the_same_state_on_an_image",
+    "look_picks_the_same_state_on_a_page_nav",
+    "look_picks_the_same_state_on_a_container",
+    "look_picks_the_same_state_on_a_button",
+    "two_state_words_on_a_label_page_nav_and_button",
     "looks_and_toggles_keep_the_buttons_own_image",
     # Clearing a ui.<id>.* override hands the element back to its look as it
     # stands now.
