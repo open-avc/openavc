@@ -1962,3 +1962,32 @@ def test_pressing_an_engaged_backed_lock_writes_false(panel_page, held) -> None:
     assert _sent(panel_page) == [
         {"type": "state.set", "key": "var.mx_lock_1", "value": False},
     ]
+
+
+def test_a_finger_scrolling_the_grid_draws_no_drag_line(panel_page) -> None:
+    """Once the grid has moved under the finger the gesture is a scroll, so no
+    line is drawn towards a crosspoint it will never route to."""
+    _mount(panel_page, _matrix(input_count=16, output_count=16), 420, 300)
+    _crosspoint(panel_page, 1, 1).scroll_into_view_if_needed()
+    box = _crosspoint(panel_page, 1, 1).bounding_box()
+    cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    panel_page.mouse.move(cx, cy)
+    panel_page.mouse.down()
+    panel_page.mouse.move(cx + 30, cy, steps=3)
+    drawn = panel_page.evaluate("() => document.querySelectorAll('.matrix-drag-line').length")
+    panel_page.evaluate("() => { document.querySelector('.matrix-scroll').scrollTop = 120; }")
+    panel_page.mouse.move(cx + 120, cy + 90, steps=12)
+    lines = panel_page.evaluate("() => document.querySelectorAll('.matrix-drag-line').length")
+    panel_page.mouse.up()
+    assert (drawn, lines) == (1, 0), "a drag draws its line, and a scroll takes it away"
+    assert _sent(panel_page) == []
+
+
+def test_a_chooser_takes_the_text_size_of_the_matrix_that_opened_it(panel_page) -> None:
+    _mount(panel_page, _wall(destinations=2, sources=2), 700, 400)
+    panel_page.evaluate("() => { document.querySelector('.panel-matrix').style.fontSize = '21px'; }")
+    panel_page.locator('.matrix-tile[data-dest-idx="0"]').click()
+    size = panel_page.evaluate("() => document.querySelector('.matrix-chooser').style.fontSize")
+    panel_page.locator(".matrix-chooser-cancel").click()
+    assert size == "21px"
+

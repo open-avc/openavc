@@ -4030,6 +4030,37 @@ const tests = {
         assert(routes() === 1, `a gesture the redraw ended still routed (${routes()} routes)`);
     },
 
+    // Two fingers down on the crosspoints and one lifted: one route goes out,
+    // the second finger's source to the first finger's destination. Pinned as
+    // it behaves; the gesture keeps one starting column per matrix.
+    matrix_two_fingers_on_the_crosspoints_send_one_route() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
+        renderProject(app, project({
+            elements: [{
+                id: 'mx', type: 'matrix',
+                matrix_config: {
+                    sources: [{ value: 1, label: 'A' }, { value: 2, label: 'B' }],
+                    destinations: [
+                        { value: 11, label: 'L', route_key: 'device.sw.route_1' },
+                        { value: 12, label: 'R', route_key: 'device.sw.route_2' },
+                    ],
+                },
+            }],
+            placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
+        }));
+        const press = (type) => new window.MouseEvent(type, { bubbles: true, clientX: 5, clientY: 5 });
+        const cell = (src, dst) => app.root.querySelector(
+            `.matrix-crosspoint[data-input="${src}"][data-output="${dst}"]`).parentElement;
+        cell(1, 11).dispatchEvent(press('pointerdown'));
+        cell(2, 12).dispatchEvent(press('pointerdown'));
+        document.dispatchEvent(press('pointerup'));
+        const routes = app.ws.sent.filter(m => m.type === 'ui.route');
+        assert(JSON.stringify(routes) === JSON.stringify(
+            [{ type: 'ui.route', element_id: 'mx', input: 2, output: 11 }]),
+            `two fingers sent ${JSON.stringify(routes)}`);
+    },
+
     // A tile wall follows the arrangement being drawn: on a portrait page its
     // eight tiles are two across and four down, on a landscape one four across.
     matrix_a_tile_wall_takes_the_shape_of_the_page_it_is_drawn_on() {

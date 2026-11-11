@@ -214,6 +214,7 @@ SCENARIOS = [
     "matrix_a_lock_variable_alone_redraws_the_lock",
     "matrix_a_tile_wall_takes_the_shape_of_the_page_it_is_drawn_on",
     "matrix_a_redraw_takes_down_an_open_chooser",
+    "matrix_two_fingers_on_the_crosspoints_send_one_route",
     # The Programmer's session reaches the embedded panel's requests and socket.
     "bridge_sends_the_programmer_session_as_a_bearer_token",
     "bridge_attaches_nothing_without_a_session",
