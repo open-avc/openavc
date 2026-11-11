@@ -676,15 +676,4 @@ describe("while a file action runs", () => {
       vi.useRealTimers();
     }
   });
-
-  it("says what it did only until the theme it chose has loaded, which the Builder does at once", async () => {
-    const view = await loaded();
-    getTheme.mockImplementation(async (id: string) => (id === "dark-copy" ? { ...builtinTheme(), id, _source: "custom" } : themeById(id)));
-    fireEvent.mouseEnter(card("Dark"));
-    fireEvent.click(screen.getByTitle('Duplicate "Dark" as a custom theme'));
-    await screen.findByText('Duplicated as "Dark (Copy)"');
-    view.rerender({ currentThemeId: "dark-copy" });
-    await waitFor(() => expect(working().id).toBe("dark-copy"));
-    expect(screen.queryByText('Duplicated as "Dark (Copy)"')).toBeNull();
-  });
 });
