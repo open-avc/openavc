@@ -167,6 +167,15 @@ def _as_number(value: Any) -> float | None:
 _HANDLER_PLACEHOLDER = re.compile(r"\{(?:\d+|state\.[^{}]+)\}")
 _HANDLER_STATE_REF = re.compile(r"\{state\.([^{}]+)\}")
 
+def _udp_side_commands(driver_def: dict) -> dict[str, dict]:
+    """Each command's udp: block, by command name."""
+    return {
+        name: cmd["udp"]
+        for name, cmd in (driver_def.get("commands") or {}).items()
+        if isinstance(cmd, dict) and isinstance(cmd.get("udp"), dict)
+    }
+
+
 class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     """Auto-generated simulator from a .avcdriver definition.
 
@@ -191,135 +200,22 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         *,
         driver_def: dict,
     ):
-        # Inline protocol: a Generic device authors its commands / responses /
-        # state_variables in the device config (the no-code Commands & Responses
-        # editor). Merge them into the definition the simulator builds from so
-        # the auto-sim machinery drives a config-authored protocol.
+        """The device a definition describes, built in stages whose order is
+        part of what it means; each stage says what it must follow."""
+        # A Generic device's inline protocol is merged first: it is the
+        # definition every stage reads (inline_device.py).
         driver_def, self._inline_protocol = _merge_inline_protocol(driver_def, config)
-
-        # Build SIMULATOR_INFO from driver definition before calling super().__init__
+        # Before the base, which reads the device's settings from it.
         self.SIMULATOR_INFO = self._build_info(driver_def)
         super().__init__(device_id, config)
-
-        # YAML drivers are text-based — always use flexible line reading
-        # so the simulator accepts \r, \n, or \r\n regardless of the
-        # response delimiter configured in the driver definition.
-        self._line_mode = True
-
-        # Send-side packet framing (send_frame): a driver whose commands ride
-        # inside a computed-length binary header (e.g. eISCP) sends frames the
-        # line reader would mis-split (the length byte can be 0x0a/0x0d). When
-        # present, read length-prefixed frames instead and strip the header
-        # before matching / re-wrap it on every response, so a simulated device
-        # answers the framed commands exactly as real hardware does.
-        self._send_frame = self._build_sim_send_frame(driver_def.get("send_frame"))
-        if self._send_frame:
-            self._line_mode = False
-
+        self._read_framing(driver_def)
         self._driver_def = driver_def
-
-        # UDP/OSC/HTTP transport support — start()/stop() run the datagram or
-        # HTTP server from the mixins instead of the inherited TCP one.
-        transport = driver_def.get("transport", "tcp")
-        self._is_udp = transport == "udp"
-        self._is_osc = transport == "osc"
-        self._is_http = transport == "http"
-
-        # Commands that send a datagram BESIDE the main transport (a udp:
-        # block: a wake-on-LAN magic packet, a message to a presentation's
-        # UDP receiver). A TCP or HTTP device that declares one also gets a
-        # UDP receiver on its own port number, so the datagram shows in the
-        # protocol log and its declared state effect applies, instead of
-        # vanishing into a port nothing listens on.
-        self._udp_side_commands: dict[str, dict] = {
-            name: cmd["udp"]
-            for name, cmd in (driver_def.get("commands") or {}).items()
-            if isinstance(cmd, dict) and isinstance(cmd.get("udp"), dict)
-        }
-        self._side_receiver = bool(self._udp_side_commands) and not (
-            self._is_udp or self._is_osc
-        )
-
-        # HTTPS-only devices: the driver dials https:// when its config says
-        # ssl, so the simulator terminates TLS and the driver connects here
-        # exactly as it connects in the field (see self_signed_tls.py). The
-        # platform reads this back out of to_info_dict() and leaves such a
-        # device's ssl setting alone while it is redirected.
-        if self._is_http and self._resolve_ssl(driver_def, config):
-            self.SIMULATOR_INFO["tls"] = True
-
-        # Build handlers from driver definition
-        self._command_handlers: list[CommandHandler] = []
-        self._query_handlers: list[QueryHandler] = []
-        # How each variable goes back on the wire, read from the response
-        # rules (reply_rules.py).
-        self._state_responses: dict[str, StateResponse] = flat_replies(
-            driver_def.get("responses", []), self._var_def_for_key
-        )
-        self._build_command_handlers()
-        # After the commands, so a command and a setting whose wire forms
-        # collide resolve to the command -- the thing the driver named.
-        self._build_settings_handlers()
-        # The flat reads (query_handlers.py).
-        self._query_handlers = flat_handlers(self._driver_def, self._query_wire_line)
-
-        self._build_inline_handlers()
-
-        # OSC-specific: build address-based handlers from responses
-        self._osc_address_handlers: list[tuple[str, list[dict]]] = []
-        self._osc_script_handlers: list[OSCScriptHandler] = []
-        # Push notification tracking: prevent echo during command processing
-        self._handling_command = False
-        self._handling_osc = False
-        # OSC push: where each variable's change goes (the client to push to
-        # is the datagram server's _last_client_addr)
-        self._osc_state_to_address: dict[str, PushTarget] = {}
-        if self._is_osc:
-            self._build_osc_address_handlers()
-            self._osc_state_to_address = push_targets(self._osc_address_handlers)
-
-        # Merge explicit simulator: section if present
+        self._read_transport(driver_def, config)
+        self._build_generated_handlers()
         sim_section = driver_def.get("simulator", {})
-        if sim_section:
-            self._merge_simulator_section(sim_section)
-
-        if offers_sign_in_required(driver_def):
-            self._error_modes.setdefault(
-                SIGN_IN_REQUIRED_MODE, dict(SIGN_IN_REQUIRED_DEFINITION)
-            )
-
-        # v0.5.0 child entities: per-child state lives in the flat state dict
-        # under dotted keys "<type>.<id>.<prop>" (the sim-side mirror of the
-        # runtime's device.<id>.<type>.<id>.<prop> convention). The roster
-        # unions three sources: declared instances: blocks resolved against
-        # this instance's config, dotted keys seeded by the simulator:
-        # section, and the project child_entities the manager delivers via
-        # set_child_entities() after construction.
-        self._child_roster: dict[str, list[str]] = {}
-        self._child_state_responses: dict[tuple[str, str], ChildStateResponse] = (
-            child_replies(driver_def.get("responses", []), self._child_types(), self._child_vars)
-        )
-        self._child_list_answers: dict[tuple[str, str], ChildListAnswer] = list_answers(
-            driver_def.get("responses") or [], self._child_types(), self._child_vars
-        )
-        self._child_query_handlers: list[ChildQueryHandler | ListQueryHandler] = []
-        self._seed_declared_children()
-        self._adopt_dotted_state_children()
-        self._build_child_query_handlers()
-
-        # push_state: whether this simulator pushes state changes to connected
-        # drivers (matching real device behavior). Set in simulator: section.
-        # Inline (Generic) devices push by default so driving a variable from
-        # the simulator UI emits the matching string to the panel. An HTTP one
-        # holds no connection to push on: its driver sees a change at its
-        # next poll.
-        self._push_state = sim_section.get("push_state", False) or (
-            self._inline_protocol and not self._is_http
-        )
-
-        # Where the device's notifications go (push_channels.py).
-        self._set_up_push()
-
+        self._apply_section(sim_section)
+        self._build_children()
+        self._set_up_pushing(sim_section)
         logger.info(
             "Auto-gen simulator for %s: %d command handlers, %d query handlers, %d state responses",
             self.driver_id,
@@ -327,6 +223,124 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             len(self._query_handlers),
             len(self._state_responses),
         )
+
+    def _read_framing(self, driver_def: dict) -> None:
+        """How lines are read, after the base set its own default.
+
+        YAML drivers are text-based, so the simulator reads flexible lines
+        (\\r, \\n or \\r\\n, whatever the driver's delimiter). A driver whose
+        commands ride inside a computed-length binary header (send_frame,
+        e.g. eISCP) sends frames the line reader would mis-split (the length
+        byte can be 0x0a or 0x0d): those are read as length-prefixed frames,
+        the header stripped before matching and put back on every reply, as
+        the real device answers.
+        """
+        self._line_mode = True
+        self._send_frame = self._build_sim_send_frame(driver_def.get("send_frame"))
+        if self._send_frame:
+            self._line_mode = False
+
+    def _read_transport(self, driver_def: dict, config: dict | None) -> None:
+        """Which server start() runs, and what listens beside it.
+
+        UDP, OSC and HTTP run the datagram or HTTP server from the mixins in
+        place of the inherited TCP one. A command that sends a datagram
+        BESIDE the main transport (a udp: block: a wake-on-LAN magic packet,
+        a message to a presentation's UDP receiver) gives a TCP or HTTP
+        device a UDP receiver on its own port number, so the datagram shows
+        in the protocol log and its declared state effect applies. An HTTPS
+        device is served over TLS, as the driver dials it in the field
+        (self_signed_tls.py); the platform reads that back out of
+        to_info_dict() and leaves its ssl setting alone while redirected.
+        """
+        transport = driver_def.get("transport", "tcp")
+        self._is_udp = transport == "udp"
+        self._is_osc = transport == "osc"
+        self._is_http = transport == "http"
+        self._udp_side_commands: dict[str, dict] = _udp_side_commands(driver_def)
+        self._side_receiver = bool(self._udp_side_commands) and not (
+            self._is_udp or self._is_osc
+        )
+        if self._is_http and self._resolve_ssl(driver_def, config):
+            self.SIMULATOR_INFO["tls"] = True
+
+    def _build_generated_handlers(self) -> None:
+        """Every handler the definition itself implies: how each variable
+        goes back on the wire (reply_rules.py), the commands, then the
+        settings (after the commands, so a command and a setting whose wire
+        forms collide resolve to the command, the thing the driver named),
+        the flat reads (query_handlers.py), a Generic device's own handlers,
+        and an OSC device's addresses."""
+        self._command_handlers: list[CommandHandler] = []
+        self._query_handlers: list[QueryHandler] = []
+        self._state_responses: dict[str, StateResponse] = flat_replies(
+            self._driver_def.get("responses", []), self._var_def_for_key
+        )
+        self._build_command_handlers()
+        self._build_settings_handlers()
+        self._query_handlers = flat_handlers(self._driver_def, self._query_wire_line)
+        self._build_inline_handlers()
+        self._build_osc_handlers()
+
+    def _build_osc_handlers(self) -> None:
+        """An OSC device's address rules and where each variable's change is
+        pushed (the client is the datagram server's _last_client_addr), with
+        the flags that keep a reply from echoing as a push."""
+        self._osc_address_handlers: list[tuple[str, list[dict]]] = []
+        self._osc_script_handlers: list[OSCScriptHandler] = []
+        self._handling_command = False
+        self._handling_osc = False
+        self._osc_state_to_address: dict[str, PushTarget] = {}
+        if self._is_osc:
+            self._build_osc_address_handlers()
+            self._osc_state_to_address = push_targets(self._osc_address_handlers)
+
+    def _apply_section(self, sim_section: dict) -> None:
+        """The simulator: section over the generated device, then the error
+        mode a driver's sign-in offers, which a section that defines the
+        same mode keeps."""
+        if sim_section:
+            self._merge_simulator_section(sim_section)
+        if offers_sign_in_required(self._driver_def):
+            self._error_modes.setdefault(
+                SIGN_IN_REQUIRED_MODE, dict(SIGN_IN_REQUIRED_DEFINITION)
+            )
+
+    def _build_children(self) -> None:
+        """The child roster and its reads, after the section, whose dotted
+        state seeds name children too.
+
+        Per-child state lives in the flat state dict under dotted keys
+        "<type>.<id>.<prop>" (the simulator's mirror of the runtime's
+        device.<id>.<type>.<id>.<prop>). The roster unions three sources:
+        the declared instances: blocks resolved against this instance's
+        config, the dotted keys the section seeds, and the project's
+        children, which the manager delivers through set_child_entities()
+        after construction.
+        """
+        self._child_roster: dict[str, list[str]] = {}
+        self._child_state_responses: dict[tuple[str, str], ChildStateResponse] = (
+            child_replies(self._driver_def.get("responses", []), self._child_types(), self._child_vars)
+        )
+        self._child_list_answers: dict[tuple[str, str], ChildListAnswer] = list_answers(
+            self._driver_def.get("responses") or [], self._child_types(), self._child_vars
+        )
+        self._child_query_handlers: list[ChildQueryHandler | ListQueryHandler] = []
+        self._seed_declared_children()
+        self._adopt_dotted_state_children()
+        self._build_child_query_handlers()
+
+    def _set_up_pushing(self, sim_section: dict) -> None:
+        """Whether the device pushes its changes to a connected driver, as a
+        real one does (the section's push_state), then where its
+        notifications go (push_channels.py). A Generic device pushes by
+        default, so driving a variable from the Simulator UI sends its
+        string to the panel; an HTTP one holds no connection to push on,
+        and its driver sees a change at its next poll."""
+        self._push_state = sim_section.get("push_state", False) or (
+            self._inline_protocol and not self._is_http
+        )
+        self._set_up_push()
 
     @classmethod
     def from_avcdriver(
