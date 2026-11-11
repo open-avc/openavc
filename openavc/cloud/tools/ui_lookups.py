@@ -98,7 +98,7 @@ class BoundKey:
 
 
 def longest_first(project: Any) -> list[str]:
-    """The project's device ids, the order :func:`bound_key` takes them in."""
+    """The project's device ids, longest first: the order :func:`bound_key` takes them in."""
     return sorted((d.id for d in project.devices), key=len, reverse=True)
 
 
@@ -109,10 +109,10 @@ def _is_device_key(key: Any) -> bool:
 def bound_key(devices: Any, device_ids: list[str], key: Any) -> BoundKey | None:
     """Which device's driver ``key`` names, or None.
 
-    The first id in ``device_ids`` that prefixes the key is the device, never a
-    split on dots: an id may contain them, and a child key looks exactly like a
-    nested one. So the ids come longest first. None for a key that is not a
-    ``device.*`` string, one no id prefixes, and a device with no driver loaded.
+    The first id in ``device_ids`` that prefixes the key (``device.<id>.``) is
+    the device, never a split on dots, which cannot tell a child key from a
+    nested property. None for a key that is not a ``device.*`` string, one no
+    id prefixes, and a device with no driver loaded.
     """
     if devices is None or not _is_device_key(key):
         return None

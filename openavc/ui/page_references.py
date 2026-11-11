@@ -218,9 +218,9 @@ def _shape_finding(do_map: Mapping[str, Any], slot: str, control: _Control) -> F
 def _device_of(key: str, device_ids: Iterable[str]) -> str | None:
     """The device a state key belongs to, or None if no declared device owns it.
 
-    Resolved by longest matching id rather than by splitting on dots: a device
-    id may contain a dot, and a child-entity key looks exactly like a nested
-    one. The same rule ``_declared_state_variable`` uses.
+    Resolved by the longest id that prefixes it rather than by splitting on
+    dots: a child-entity key looks exactly like a nested one. The same rule
+    the AI's write door reads keys by (``cloud/tools/ui_lookups.bound_key``).
     """
     for device_id in sorted(device_ids, key=len, reverse=True):
         if key.startswith(f"device.{device_id}."):
