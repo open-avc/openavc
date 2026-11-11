@@ -290,6 +290,33 @@ def _refuse_if_locked(target: Any, input: dict, what: str) -> None:
         })
 
 
+def _place_element(page: Any, layout: Any, element_id: str, input: dict) -> list[str]:
+    """Where an element update puts the control: its container, then its box,
+    then whether it shows in the arrangement named; the names it changed.
+
+    None of the three lives on the element. Percentages are of the parent box,
+    so changing only the parent teleports the element: the conversion runs
+    across every arrangement -- including when the caller also states a box,
+    because the stated box lands in ONE layout and a variant with its own
+    delta would otherwise keep a box still expressed in the old parent's
+    space. The same guards apply either way; the old stated-box shortcut
+    skipped them, which let a parent cycle into the project. The stated box
+    comes after the reparent, so it overrides the conversion in the layout
+    named and the other arrangements keep the converted one.
+    """
+    changed: list[str] = []
+    if "parent" in input:
+        reparent_element(page, element_id, input["parent"] or None)
+        changed.append("parent")
+    if "placement" in input:
+        restate_box(page, layout, element_id, input["placement"])
+        changed.append("placement")
+    if "hidden" in input:
+        set_hidden(page, layout, element_id, bool(input["hidden"]))
+        changed.append("hidden")
+    return changed
+
+
 def _refuse_locked_deletes(project: Any, ids: set) -> None:
     """A locked control is protected from deletion for the reason the canvas
     protects it from the Delete key: it was pinned on purpose. Every one in the
@@ -517,7 +544,28 @@ def _new_master(project: Any, el_data: dict) -> Any:
     return MasterElement(**el_data)
 
 
-def _new_page(page_id: str, elements: list, given: dict) -> Any:
+def _new_page(project: Any, page_id: str, input: dict) -> Any:
+    """A new page built from the call, its controls' boxes in its primary.
+
+    Refused in this order: an id already taken, page geometry the format
+    retired, then every inline control (what ``add_ui_elements`` puts each
+    through -- otherwise a page created with its elements in one call keeps
+    bindings nothing validated, and buttons silently do nothing), then the
+    page itself as the model sees it.
+    """
+    if any(p.id == page_id for p in project.ui.pages):
+        raise ToolEditError({"error": f"UI page '{page_id}' already exists"})
+    _reject_retired_geometry(input, f"Page '{page_id}'")
+    elements = input.get("elements", [])
+    boxes = _NewElements(project).checked_boxes(elements)
+    page = _page_model(page_id, elements, {
+        name: input[name] for name in _PAGE_FIELDS if name in input
+    })
+    place_in_primary(page, boxes)
+    return page
+
+
+def _page_model(page_id: str, elements: list, given: dict) -> Any:
     """A page built through the model from the fields the AI may set.
 
     Through the model rather than field by field, so a page can be created as
@@ -678,22 +726,10 @@ class UIToolsMixin:
         if not page_id:
             return {"error": "Page ID is required"}
 
-        elements = input.get("elements", [])
         notes = WriteNotes()
 
         def mutate(project):
-            if any(p.id == page_id for p in project.ui.pages):
-                raise ToolEditError({"error": f"UI page '{page_id}' already exists"})
-            _reject_retired_geometry(input, f"Page '{page_id}'")
-
-            # Each inline element goes through what add_ui_elements puts each
-            # through -- otherwise a page created with its elements in one call
-            # keeps bindings nothing validated (buttons silently do nothing).
-            boxes = _NewElements(project).checked_boxes(elements)
-            new_page = _new_page(page_id, elements, {
-                field: input[field] for field in _PAGE_FIELDS if field in input
-            })
-            place_in_primary(new_page, boxes)
+            new_page = _new_page(project, page_id, input)
             # A UI-only change just swaps the project and pushes the new
             # ui.definition to connected panels.
             project.ui.pages.append(new_page)
@@ -822,28 +858,7 @@ class UIToolsMixin:
                 bindings = _updated_bindings(input, project, f"Element '{element_id}'")
 
             _refuse_if_locked(target_el, input, f"Element '{element_id}'")
-
-            if "parent" in input:
-                # Percentages are of the parent box, so changing only the parent
-                # teleports the element. The conversion runs across every
-                # arrangement -- including when the caller also states a box,
-                # because the stated box lands in ONE layout and a variant with
-                # its own delta would otherwise keep a box still expressed in
-                # the old parent's space. The same guards apply either way; the
-                # old stated-box shortcut skipped them, which let a parent
-                # cycle into the project.
-                new_parent = input["parent"] or None
-                reparent_element(target_page, element_id, new_parent)
-                changed.append("parent")
-            if "placement" in input:
-                # Runs after any reparent, so the stated box overrides the
-                # conversion in the resolved layout and the other arrangements
-                # keep the converted one.
-                restate_box(target_page, layout, target_el.id, input["placement"])
-                changed.append("placement")
-            if "hidden" in input:
-                set_hidden(target_page, layout, element_id, bool(input["hidden"]))
-                changed.append("hidden")
+            changed.extend(_place_element(target_page, layout, element_id, input))
             if "bindings" in input:
                 target_el.bindings = bindings
                 changed.append("bindings")
