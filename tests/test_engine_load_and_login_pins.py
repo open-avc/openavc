@@ -436,11 +436,13 @@ def test_a_device_login_saved_here_is_not_one_of_the_projects_secrets(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_the_shutdown_leaves_the_isc_endpoint_and_proxy_on_the_stopped_mesh(tmp_path):
-    """Today's shutdown: the mesh is stopped and its slot emptied, but the ISC
-    WebSocket endpoint and the scripts' isc proxy keep the stopped manager
-    (a reload that turns ISC off hands them None). A change here is a change
-    in behaviour, not a refactor."""
+async def test_the_shutdown_unplugs_the_isc_endpoint_and_proxy_from_the_stopped_mesh(tmp_path):
+    """The shutdown stops the mesh the way a reload that turns ISC off does:
+    its slot is emptied and the ISC WebSocket endpoint and the scripts' isc
+    proxy are handed None. Holding the stopped manager, a peer dialing /isc on
+    an engine started again in the same process would reach it instead of
+    being refused, and a script's isc.send_to() would raise ConnectionError
+    instead of saying ISC is off."""
     from openavc.api import isc_ws
     from openavc.core.script_api import isc as isc_proxy
 
@@ -458,8 +460,8 @@ async def test_the_shutdown_leaves_the_isc_endpoint_and_proxy_on_the_stopped_mes
         await eng._stop_network_services()
         assert stopped == ["isc"]
         assert eng.isc is None
-        assert isc_ws._isc_manager is mesh
-        assert isc_proxy._manager is mesh
+        assert isc_ws._isc_manager is None
+        assert isc_proxy._manager is None
     finally:
         isc_ws.set_isc_manager(None)
         isc_proxy._bind(None)

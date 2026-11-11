@@ -64,10 +64,7 @@ class RuntimeServicesMixin:
         await self._stop_cloud_agent()
         await self._stop_mdns_advertiser()
         if self.isc:
-            # Unlike _stop_isc, the shutdown leaves the ISC endpoint and the
-            # scripts' isc proxy holding the stopped mesh.
-            await self.isc.stop()
-            self.isc = None
+            await self._stop_isc()
 
     def isc_gates(self) -> tuple[bool, bool]:
         """The two switches ISC runs behind: (system config, this project).
