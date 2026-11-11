@@ -15,7 +15,7 @@ import asyncio
 import ipaddress
 import logging
 import re
-import select
+import selectors
 import socket
 import struct
 from dataclasses import dataclass, field as dataclass_field
@@ -248,6 +248,19 @@ def _st_to_category(st: str | None) -> str | None:
     return None
 
 
+def _readable(socks: list[socket.socket], timeout: float) -> list[socket.socket]:
+    """The sockets with a datagram waiting, within ``timeout`` seconds.
+
+    Through ``selectors`` rather than the ``select()`` call: the server raises
+    its open-files limit at startup (openavc/open_files.py), so a socket here
+    can be numbered past 1023, which ``select()`` refuses to watch.
+    """
+    with selectors.DefaultSelector() as selector:
+        for sock in socks:
+            selector.register(sock, selectors.EVENT_READ)
+        return [key.fileobj for key, _events in selector.select(timeout)]
+
+
 class SSDPScanner:
     """SSDP/UPnP device scanner.
 
@@ -436,7 +449,7 @@ class SSDPScanner:
 
         The ephemeral search socket carries the unicast M-SEARCH replies; the
         1900-bound socket (when available) carries passive NOTIFY beacons.
-        Both are polled together with ``select`` so one blocking recv never
+        Both are polled together (``_readable``) so one blocking recv never
         starves the other.
         """
         socks = [s for s in (self._search_sock, self._sock) if s is not None]
@@ -452,8 +465,8 @@ class SSDPScanner:
                 break
 
             try:
-                ready, _, _ = await loop.run_in_executor(
-                    None, select.select, socks, [], [], min(remaining, 0.5)
+                ready = await loop.run_in_executor(
+                    None, _readable, socks, min(remaining, 0.5)
                 )
                 for sock in ready:
                     try:
@@ -606,8 +619,8 @@ class SSDPScanner:
     def _close_socket(self) -> None:
         """Safely close both sockets.
 
-        ``shutdown`` before ``close``: the listen loop runs ``select`` /
-        ``recvfrom`` in the default executor, and closing the socket from
+        ``shutdown`` before ``close``: the listen loop waits (``_readable``) and
+        calls ``recvfrom`` in the default executor, and closing the socket from
         another thread does not wake a thread blocked on it on Linux/Windows
         — only ``shutdown`` does. Without it, a cancel/stop leaves that pool
         thread parked until its socket timeout, briefly starving the shared

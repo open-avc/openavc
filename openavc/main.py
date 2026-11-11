@@ -929,7 +929,13 @@ def _serve(sockets: list) -> None:
 
 
 def main():
-    from openavc import listen, listen_sockets
+    from openavc import listen, listen_sockets, open_files
+
+    # Before anything opens a connection: a service manager's default soft
+    # limit (1024 under systemd, 256 under launchd) caps connected devices.
+    before, after = open_files.raise_open_file_limit() or (None, None)
+    if after != before:
+        log.info("Open files limit raised from %s to %s", before, after)
 
     # Who can connect, settled and resolved against the adapters present now
     # (openavc/listen.py), before anything binds.
