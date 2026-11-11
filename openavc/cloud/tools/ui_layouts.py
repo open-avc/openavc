@@ -113,6 +113,7 @@ class _LayoutEdit:
 
     def apply(self, entry: Any) -> None:
         layout_id, boxes = _entry_boxes(entry)
+        self._refuse_locked_boxes(boxes)
         existing = self.by_id.get(layout_id)
         if existing is None:
             self._add(layout_id, entry, boxes)
@@ -149,6 +150,29 @@ class _LayoutEdit:
         existing.placements.update(boxes)
         if "hidden" in entry:
             existing.hidden = list(entry["hidden"] or [])
+
+    def _refuse_locked_boxes(self, boxes: dict) -> None:
+        """A box for a locked control is refused here as the element door
+        refuses one (``_refuse_if_locked`` in ``ui_tools``), in its words, and
+        as the canvas refuses a drag: the lock is the integrator's pin, and a
+        layouts write is just another way to move the control. Every locked
+        control the entry names is named. A hide does not move a control, so
+        ``hidden`` is not asked."""
+        locked = [
+            el.id for el in self.page.elements
+            if el.id in boxes and getattr(el, "locked", False)
+        ]
+        if not locked:
+            return
+        if len(locked) == 1:
+            subject, verb, box, them = f"Element '{locked[0]}'", "is", "its placement", "it"
+        else:
+            names = ", ".join(f"'{i}'" for i in locked[:-1]) + f" and '{locked[-1]}'"
+            subject, verb, box, them = f"Elements {names}", "are", "their placements", "them"
+        raise ToolEditError({
+            "error": f"{subject} {verb} locked, so {box} cannot be changed. "
+                     f"Send locked: false first if you meant to move {them}."
+        })
 
     def _refuse_primary_change(self, layout_id: str, existing: Any, entry: dict) -> None:
         if entry.get("primary") is not None and bool(entry["primary"]) != existing.primary:

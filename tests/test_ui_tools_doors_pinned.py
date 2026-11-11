@@ -712,6 +712,50 @@ async def test_element_locked_refuses_a_move_and_a_rehome_but_not_a_property():
 
 
 @pytest.mark.asyncio
+async def test_a_locked_control_is_moved_by_neither_door():
+    """The element door and the page door's layouts write refuse a locked
+    control's box in the same words; a hide is not a move, and an unlocked
+    control in the same entry moves once the locked one is left out."""
+    engine = _engine()
+    before = _dump(engine)
+    element = await _call(engine, "update_ui_element", {
+        "element_id": "pin", "placement": {"x": 50},
+    })
+    page = await _call(engine, "update_ui_page", {"page_id": "main", "layouts": [
+        {"id": "landscape", "placements": {"btn": BOX, "pin": BOX}},
+    ]})
+    refusal = ("Element 'pin' is locked, so its placement cannot be changed. "
+               "Send locked: false first if you meant to move it.")
+    assert element == {"error": refusal}
+    assert page == {"error": refusal}
+    new_variant = await _call(engine, "update_ui_page", {"page_id": "main", "layouts": [
+        {"id": "wide", "orientation": "landscape", "placements": {"pin": BOX}},
+    ]})
+    assert new_variant == {"error": refusal}
+    assert _dump(engine) == before
+
+    hidden = await _call(engine, "update_ui_page", {"page_id": "main", "layouts": [
+        {"id": "portrait", "hidden": ["pin"], "placements": {"btn": BOX}},
+    ]})
+    assert hidden["changed"] == ["layouts"]
+    assert _layout(engine, "main", "portrait").hidden == ["pin"]
+    assert _boxes(engine, "main", "landscape")["pin"] == {"x": 80, "y": 0, "w": 10, "h": 10}
+
+
+@pytest.mark.asyncio
+async def test_the_layouts_write_names_every_locked_control_it_was_asked_to_move():
+    project = _project()
+    project["ui"]["pages"][0]["elements"][3]["locked"] = True  # btn
+    engine = _engine(project)
+    result = await _call(engine, "update_ui_page", {"page_id": "main", "layouts": [
+        {"id": "portrait", "placements": {"kid": BOX, "btn": BOX, "pin": BOX}},
+    ]})
+    assert result == {"error": "Elements 'btn' and 'pin' are locked, so their placements "
+                               "cannot be changed. Send locked: false first if you meant "
+                               "to move them."}
+
+
+@pytest.mark.asyncio
 async def test_element_refusal_order_bindings_then_lock_then_parent():
     engine = _engine()
     r = await _call(engine, "update_ui_element", {
