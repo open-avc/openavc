@@ -58,6 +58,27 @@ beforeEach(() => {
   seed();
 });
 
+describe("copying in an arrangement other than the primary", () => {
+  it("puts the boxes the arrangement on screen draws on the clipboard", async () => {
+    // The group sits at the top left in portrait and at the bottom right in
+    // the primary; a control copied without it comes back in page space.
+    const p = page("main", [el("grp_1", "group"), el("in_1", "button", { parent: "grp_1" } as never)], {
+      grp_1: { x: 50, y: 50, w: 40, h: 40 },
+      in_1: { x: 10, y: 10, w: 50, h: 50 },
+    });
+    const turned = { ...p, layouts: [p.layouts![0], { ...p.layouts![1], placements: { grp_1: { x: 0, y: 0, w: 40, h: 40 } } }] } as typeof p;
+    reseed(makeProject({ pages: [turned] }), {
+      selectedPageId: "main",
+      selectedElementId: "in_1",
+      selectedElementIds: ["in_1"],
+      activeLayoutId: "main_port",
+    });
+    await renderPage(UIBuilderView);
+    press("c", { ctrl: true });
+    expect(builder().clipboard!.placements).toEqual({ in_1: { x: 4, y: 4, w: 20, h: 20 } });
+  });
+});
+
 describe("nudging with the arrow keys", () => {
   it("moves the selection one snap step, ten with shift, a hair with alt", async () => {
     selected(["btn_1", "lbl_1"]);

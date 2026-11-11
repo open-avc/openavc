@@ -413,6 +413,23 @@ describe("the marquee", () => {
     sweep(150, 75);
     expect(useUIBuilderStore.getState().selectedElementIds).toEqual([]);
   });
+
+  it("leaves a locked control out, and with Shift adds what it touches to the selection, once each", () => {
+    load(
+      makePage([el("a", { locked: true }), el("b"), el("c"), el("d")], {
+        a: { x: 55, y: 55, w: 5, h: 5 },
+        b: { x: 58, y: 52, w: 5, h: 5 },
+        c: { x: 0, y: 0, w: 5, h: 5 },
+        d: { x: 62, y: 62, w: 5, h: 5 },
+      }),
+      { selected: ["c", "b"] },
+    );
+    const overlay = view.container.querySelector("[data-canvas-grid]")!;
+    press(overlay, { shiftKey: true });
+    drag(150, 75);
+    release();
+    expect(useUIBuilderStore.getState().selectedElementIds).toEqual(["c", "b", "d"]);
+  });
 });
 
 describe("the hit boxes", () => {

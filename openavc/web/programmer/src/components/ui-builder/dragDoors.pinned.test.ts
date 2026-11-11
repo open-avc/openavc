@@ -139,6 +139,15 @@ describe("the clipboard a copy fills", () => {
     expect(clip.placements).toEqual({ g: { x: 0, y: 0, w: 40, h: 40 }, k: { x: 10, y: 10, w: 50, h: 50 } });
   });
 
+  it("a control copied with its container comes back in the box the arrangement on screen stores for it", () => {
+    const p = onePage();
+    const turned = {
+      ...p,
+      layouts: [p.layouts![0], { ...p.layouts![1], placements: { ...PORT, k: { x: 0, y: 50, w: 50, h: 50 } } }],
+    } as UIPage;
+    expect(clipboardForSelection(turned, ["g"], "port").placements.k).toEqual({ x: 0, y: 50, w: 50, h: 50 });
+  });
+
   it("in the primary, the primary's boxes", () => {
     const clip = clipboardForSelection(onePage(), ["k", "a"], null);
     expect(clip.elements.map((e) => e.id)).toEqual(["a", "k"]);
