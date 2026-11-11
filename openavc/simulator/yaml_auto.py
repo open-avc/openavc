@@ -101,6 +101,9 @@ from openavc.simulator.tcp_simulator import TCPSimulator
 
 logger = logging.getLogger(__name__)
 
+# The variable types a capture's non-decimal base decodes into a number for.
+_NUMERIC_TYPES = ("integer", "number", "float")
+
 # How many numbers start(0) tries before a side receiver's refusal stands.
 _SIDE_PORT_ATTEMPTS = 5
 
@@ -1113,7 +1116,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return any(h.pattern.fullmatch(text) for h in self._query_handlers)
 
     def _execute_command_handler(self, handler: CommandHandler, m: re.Match) -> bytes | None:
-        """Execute a command handler: update state and generate response."""
+        """Run a matched command: the state machines it drives, the child it
+        names, each state change it makes, then its reply."""
         delimiter = self._get_delimiter()
 
         # Drive any state machines with this command name (the documented
@@ -1122,93 +1126,82 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         if self._state_machines and self._fire_state_machine_triggers(handler.name):
             return None
 
-        # A child-addressed command resolves the captured id to a rostered
-        # child; an id the roster doesn't know goes unanswered (the device
-        # analog of addressing a port that isn't there).
         child_id: str | None = None
         if handler.child_type:
-            try:
-                raw_id = m.group(handler.child_id_group)
-            except (IndexError, re.error):
-                raw_id = None
-            if raw_id is None:
-                return None
-            raw_id = str(raw_id).strip()
-            if handler.child_wire_map is not None:
-                raw_id = handler.child_wire_map.get(raw_id, raw_id)
-            child_id = str(int(raw_id)) if raw_id.isdigit() else raw_id
-            if child_id not in self._child_roster.get(handler.child_type, []):
-                logger.debug(
-                    "%s: %s addressed unknown %s %r",
-                    self.device_id, handler.name, handler.child_type, child_id,
-                )
+            child_id = self._addressed_child(handler, m)
+            if child_id is None:
                 return None
 
-        # Apply state changes
         for state_key, source in handler.state_changes.items():
-            target_key = (
-                f"{handler.child_type}.{child_id}.{state_key}"
-                if child_id is not None and state_key in handler.child_state_keys
-                else state_key
-            )
-            if isinstance(source, tuple) and source[0] == "literal":
-                # Declared literal from a command's sets: block — wrapped so
-                # an integer literal can't read as a capture-group index.
-                value: Any = self._coerce_value(target_key, source[1])
-            elif isinstance(source, int) and not isinstance(source, bool):
-                # Capture group index
-                value = m.group(source)
-                found, setting_value = value_for_map_word(
-                    value, handler.group_value_maps.get(source)
-                )
-                if found:
-                    # A device setting's own word (ON) stands for a setting
-                    # value (true), which no base or conversion applies to.
-                    # A word the map does not name is read as it is, below.
-                    value = setting_value
-                else:
-                    base = handler.group_bases.get(source)
-                    if base and self._numeric_state_var(target_key):
-                        # The wire value was formatted with a non-decimal spec —
-                        # decode it back before coercion, or an integer var would
-                        # end up holding the raw hex string. String-typed vars
-                        # keep the wire form: hex-code protocols (eISCP) declare
-                        # the code itself as the state value.
-                        try:
-                            value = int(value, base)
-                        except ValueError:
-                            pass
-                    conversion = handler.group_conversions.get(source)
-                    if conversion:
-                        var_type = self._var_def_for_key(target_key).get("type", "string")
-                        handled, real = reading_from_wire(value, conversion, var_type)
-                        if handled:
-                            value = real
-                value = self._coerce_value(target_key, value)
-            else:
-                # Literal value (heuristic booleans arrive bare)
-                value = source
-            self.set_state(target_key, value)
+            target_key = handler.target_key(state_key, child_id)
+            self.set_state(target_key, self._state_change_value(handler, source, m, target_key))
 
-        # Generate response for the primary state variable
-        if handler.response_var and handler.response_is_child and child_id is not None:
-            resp = self._child_state_responses.get(
-                (handler.child_type, handler.response_var)
-            )
-            if resp is not None:
-                value = self._state.get(
-                    f"{handler.child_type}.{child_id}.{handler.response_var}"
-                )
-                response_text = resp.format(child_id, value)
-                if response_text is not None:
-                    return (response_text + delimiter).encode()
+        text = self._command_reply(handler, child_id)
+        return None if text is None else (text + delimiter).encode()
+
+    def _addressed_child(self, handler: CommandHandler, m: re.Match) -> str | None:
+        """The rostered child a child-addressed command names: its captured
+        id, through the param's map, unpadded. None when the capture is
+        missing or names a child the roster doesn't know (the device analog
+        of addressing a port that isn't there), and the command goes
+        unanswered."""
+        try:
+            raw_id = m.group(handler.child_id_group)
+        except (IndexError, re.error):
+            raw_id = None
+        if raw_id is None:
             return None
-        if handler.response_var and handler.response_var in self._state_responses:
-            resp = self._state_responses[handler.response_var]
-            response_text = resp.format(self._state.get(handler.response_var))
-            return (response_text + delimiter).encode()
+        raw_id = str(raw_id).strip()
+        if handler.child_wire_map is not None:
+            raw_id = handler.child_wire_map.get(raw_id, raw_id)
+        child_id = str(int(raw_id)) if raw_id.isdigit() else raw_id
+        if child_id not in self._child_roster.get(handler.child_type, []):
+            logger.debug(
+                "%s: %s addressed unknown %s %r",
+                self.device_id, handler.name, handler.child_type, child_id,
+            )
+            return None
+        return child_id
 
-        return None
+    def _state_change_value(
+        self, handler: CommandHandler, source: Any, m: re.Match, target_key: str
+    ) -> Any:
+        """The value one state change stores: a declared literal from a
+        command's sets: (wrapped so an integer literal can't read as a
+        capture-group index), a capture group read back to a value, or a
+        bare literal (heuristic booleans), stored as it is."""
+        if isinstance(source, tuple) and source[0] == "literal":
+            return self._coerce_value(target_key, source[1])
+        if isinstance(source, int) and not isinstance(source, bool):
+            raw = m.group(source)
+            value = handler.read_capture(source, raw, self._var_def_for_key(target_key))
+            return self._coerce_value(target_key, value)
+        return source
+
+    def _command_reply(self, handler: CommandHandler, child_id: str | None) -> str | None:
+        """The reply to a command, without the delimiter: the addressed
+        child's report of its variable (never the flat one in its place),
+        else the flat variable's."""
+        var = handler.response_var
+        if not var:
+            return None
+        if handler.response_is_child and child_id is not None:
+            return self._child_reply_text(handler.child_type, child_id, var)
+        return self._flat_reply_text(var)
+
+    def _flat_reply_text(self, var: str) -> str | None:
+        """How the device reports a flat variable's current value; None when
+        no response rule describes it."""
+        resp = self._state_responses.get(var)
+        return None if resp is None else resp.format(self._state.get(var))
+
+    def _child_reply_text(self, ctype: str, child_id: str, var: str) -> str | None:
+        """How the device reports one child's variable; None when no rule
+        describes it or nothing derivable represents the value."""
+        resp = self._child_state_responses.get((ctype, var))
+        if resp is None:
+            return None
+        return resp.format(child_id, self._state.get(f"{ctype}.{child_id}.{var}"))
 
     def _fire_state_machine_triggers(self, trigger_name: str) -> bool:
         """Drive every state machine with a command-name trigger.
@@ -1228,12 +1221,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
     def _execute_query_handler(self, handler: QueryHandler) -> bytes | None:
         """Execute a query handler: respond with current state."""
         delimiter = self._get_delimiter()
-        resp = self._state_responses.get(handler.response_var)
-        if resp:
-            value = self._state.get(handler.response_var)
-            response_text = resp.format(value)
-            return (response_text + delimiter).encode()
-        return None
+        text = self._flat_reply_text(handler.response_var)
+        return None if text is None else (text + delimiter).encode()
 
     def _execute_explicit_handler(self, handler: ExplicitHandler, m: re.Match) -> bytes | None:
         """Execute an explicit command_handler from the simulator: section."""
@@ -1912,15 +1901,9 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         """Answer a per-child query from the addressed child's own state."""
         if isinstance(handler, ListQueryHandler):
             return self._execute_list_query_handler(handler)
-        resp = self._child_state_responses.get(
-            (handler.child_type, handler.response_var)
+        text = self._child_reply_text(
+            handler.child_type, handler.child_id, handler.response_var
         )
-        if resp is None:
-            return None
-        value = self._state.get(
-            f"{handler.child_type}.{handler.child_id}.{handler.response_var}"
-        )
-        text = resp.format(handler.child_id, value)
         if text is None:
             return None
         return (text + self._get_delimiter()).encode()
@@ -2276,11 +2259,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         """The real value back to the device's own number (see _from_wire)."""
         return value_to_wire(value, conversion_of(self._var_def_for_key(state_key)))
 
-    def _numeric_state_var(self, state_key: str) -> bool:
-        """True when the state variable's declared type is numeric."""
-        vtype = self._var_def_for_key(state_key).get("type", "string")
-        return vtype in ("integer", "number", "float")
-
     def _coerce_value(self, state_key: str, value: Any) -> Any:
         """Coerce a value to the state variable's declared type and clamp to range."""
         var_def = self._var_def_for_key(state_key)
@@ -2498,6 +2476,42 @@ class CommandHandler:
         self.child_wire_map = child_wire_map
         self.child_state_keys = child_state_keys or set()
         self.response_is_child = response_is_child
+
+    def target_key(self, state_key: str, child_id: str | None) -> str:
+        """Where a state change lands: the addressed child's own dotted
+        state for a variable its type declares, else the flat variable."""
+        if child_id is not None and state_key in self.child_state_keys:
+            return f"{self.child_type}.{child_id}.{state_key}"
+        return state_key
+
+    def read_capture(self, group: int, raw: Any, var_def: dict) -> Any:
+        """The value a capture group carries, before the variable's type:
+        a device setting's own word (ON) read back to the setting value
+        (true), which no base or conversion applies to; else the wire number
+        decoded from its non-decimal spec (a numeric variable only: a
+        string one keeps the code itself, as hex-code protocols declare it),
+        then the param's conversion back to the real value."""
+        found, setting_value = value_for_map_word(raw, self.group_value_maps.get(group))
+        if found:
+            return setting_value
+        var_type = var_def.get("type", "string")
+        return self._converted(group, self._from_base(group, raw, var_type), var_type)
+
+    def _from_base(self, group: int, value: Any, var_type: str) -> Any:
+        base = self.group_bases.get(group)
+        if not base or var_type not in _NUMERIC_TYPES:
+            return value
+        try:
+            return int(value, base)
+        except ValueError:
+            return value
+
+    def _converted(self, group: int, value: Any, var_type: str) -> Any:
+        conversion = self.group_conversions.get(group)
+        if not conversion:
+            return value
+        handled, real = reading_from_wire(value, conversion, var_type)
+        return real if handled else value
 
 
 def _framed_send(cmd_def: dict, prefix: str) -> Any:
