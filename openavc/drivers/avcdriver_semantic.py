@@ -12,7 +12,10 @@ framing each way (``framing_checks``), the sign-in (``sign_in_checks``), the
 watchdog (``liveness_checks``), the ``routing:`` block
 (``routing_checks``), where a value conversion may be declared
 (``conversion_checks``) and the ``{name}`` placeholders in its wire templates
-(``substitution_checks``). ``validate_driver_warnings`` walks it the same
+(``substitution_checks``). The walk is ``_DefinitionWalk``, one method per
+part in the order they report; the sections other parts name into are read
+once (``declared_names.DeclaredSections``) and handed to the checks that
+follow a name into them. ``validate_driver_warnings`` walks it the same
 way for the rules that only warn (``driver_warnings``). The runtime
 loader wraps it (adding the discovery-block check, which needs the
 discovery engine's parser), and the community driver catalog runs a copy of
