@@ -1,6 +1,6 @@
 /**
- * The pieces a properties section is built from: a labelled row, the note
- * under one, and the heading over a group of them.
+ * The pieces a properties section is built from: a labelled row, a row that
+ * is one checkbox, the note under a row, and the heading over a group of them.
  */
 import type { UIElement } from "../../../api/types";
 
