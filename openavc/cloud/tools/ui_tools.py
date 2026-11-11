@@ -566,28 +566,38 @@ def _new_master(project: Any, el_data: dict) -> Any:
     return MasterElement(**el_data)
 
 
+def _set_master_bindings(project: Any, target: Any, input: dict, what: str) -> None:
+    """Refused unless the runtime would dispatch them."""
+    target.bindings = _updated_bindings(input, project, what)
+
+
+def _merge_master_placements(project: Any, target: Any, input: dict, what: str) -> None:
+    """Merged per orientation, so moving the landscape box does not blank the
+    portrait one."""
+    merge_master_boxes(target, input["placements"], what)
+
+
+#: The fields of a master update checked or merged rather than assigned, in
+#: the order they apply (:func:`_master_own_fields`).
+_MASTER_OWN = {
+    "bindings": _set_master_bindings,
+    "placements": _merge_master_placements,
+}
+
 #: The fields of a master update its door handles itself: which master the
-#: call names, and the two it checks or merges rather than assigns
-#: (:func:`_master_own_fields`). ``placement`` never reaches an assigner:
-#: :func:`_refuse_bad_master_definition` refuses it first.
-_MASTER_DOOR_FIELDS = {"element_id", "bindings", "placements", "placement"}
+#: call names, and :data:`_MASTER_OWN`. ``placement`` is kept from the plain
+#: assigner too, though :func:`_refuse_bad_master_definition` refuses it first.
+_MASTER_DOOR_FIELDS = {"element_id", "placement", *_MASTER_OWN}
 
 
 def _master_own_fields(project: Any, target: Any, input: dict, what: str) -> list[str]:
-    """The fields of a master update checked or merged rather than assigned,
-    in this order; the names it changed.
-
-    Its bindings, refused unless the runtime would dispatch them; then its
-    boxes, merged per orientation, so moving the landscape box does not blank
-    the portrait one.
-    """
+    """Every field of :data:`_MASTER_OWN` the call names, in the table's
+    order; the names it changed."""
     changed: list[str] = []
-    if "bindings" in input:
-        target.bindings = _updated_bindings(input, project, what)
-        changed.append("bindings")
-    if "placements" in input:
-        merge_master_boxes(target, input["placements"], what)
-        changed.append("placements")
+    for field, apply in _MASTER_OWN.items():
+        if field in input:
+            apply(project, target, input, what)
+            changed.append(field)
     return changed
 
 
