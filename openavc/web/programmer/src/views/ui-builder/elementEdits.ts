@@ -42,6 +42,7 @@ import {
   validateElementId,
   withHidden,
   type ElementClipboard,
+  type OnScreen,
   type PageSelection,
 } from "../../components/ui-builder/uiBuilderHelpers";
 import { takenIds, type Landing } from "./paletteDrop";
@@ -58,10 +59,12 @@ export interface OnPage {
   editPages: EditPages;
 }
 
-/** ... and the arrangement being authored, which decides which box it reads. */
-export interface InLayout extends OnPage {
-  layoutId: string | null;
-}
+/** ... and what an `OnScreen` holds beside the page's id: the arrangement
+ *  being authored, which decides which box it reads. The edits hold the page
+ *  as drawn, null while none is on screen, which they read and check before
+ *  anything else; `aimedAt` turns the two into the `OnScreen` the page model
+ *  takes. */
+export interface InLayout extends OnPage, Omit<OnScreen, "pageId"> {}
 
 /** ... and the masters' ids, which a new control may not take. */
 export interface Making extends InLayout {
@@ -77,6 +80,11 @@ export interface OnProject {
 }
 
 const store = () => useUIBuilderStore.getState();
+
+/** The page on screen, as the page model's tools are told it. */
+function aimedAt(page: UIPage, on: InLayout): OnScreen {
+  return { pageId: page.id, layoutId: on.layoutId };
+}
 
 /** The words for an edit of `n` controls. */
 function counted(verb: string, n: number): string {
@@ -107,12 +115,13 @@ export function removeControls({ page, editPages }: OnPage, ids: string[]): void
 /** A duplicate copies each container's contents with it, so a selection
  *  holding a container and something inside it makes one copy of that child,
  *  not two. The count in the words is what actually gets copied. */
-export function duplicateControls({ page, editPages, layoutId, masterIds }: Making, ids: string[]): void {
+export function duplicateControls(on: Making, ids: string[]): void {
+  const { page, editPages, masterIds } = on;
   if (!page) return;
   const roots = topmostSelection(page, ids);
   if (roots.length === 0) return;
   editPages(
-    (pages) => duplicateElementsInPage(pages, { pageId: page.id, elementIds: ids, layoutId }, masterIds),
+    (pages) => duplicateElementsInPage(pages, { ...aimedAt(page, on), elementIds: ids }, masterIds),
     counted("Duplicate", roots.length),
   );
 }
@@ -124,10 +133,11 @@ export function copyControls({ page, layoutId }: Omit<InLayout, "editPages">, id
   if (payload.elements.length > 0) store().setClipboard(payload);
 }
 
-export function pasteControls({ page, editPages, layoutId, masterIds }: Making, clipboard: ElementClipboard | null): void {
+export function pasteControls(on: Making, clipboard: ElementClipboard | null): void {
+  const { page, editPages, masterIds } = on;
   const held = clipboard?.elements.length ?? 0;
   if (!page || held === 0) return;
-  editPages((pages) => pasteIntoPage(pages, { pageId: page.id, layoutId }, clipboard!, masterIds), counted("Paste", held));
+  editPages((pages) => pasteIntoPage(pages, aimedAt(page, on), clipboard!, masterIds), counted("Paste", held));
 }
 
 /** Hiding is per arrangement: it writes to the layout being authored and
@@ -208,8 +218,9 @@ export function nudgedPages(pages: UIPage[], selection: PageSelection, { dx, dy 
   return moveElementsInPage(pages, selection, moved);
 }
 
-export function nudge({ page, editPages, layoutId }: InLayout, ids: string[], offset: Offset, description: string): void {
-  if (page) editPages((pages) => nudgedPages(pages, { pageId: page.id, elementIds: ids, layoutId }, offset), description, true);
+export function nudge(on: InLayout, ids: string[], offset: Offset, description: string): void {
+  const { page, editPages } = on;
+  if (page) editPages((pages) => nudgedPages(pages, { ...aimedAt(page, on), elementIds: ids }, offset), description, true);
 }
 
 export function editMaster({ project, masters, run }: OnProject, id: string, patch: Partial<MasterElement>): void {
