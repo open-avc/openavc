@@ -63,7 +63,6 @@ const AWAY_BANNERS: Record<AwayBanner, PlacedBanner> = {
     below: true,
     draw: (c) => (
       <NeedsLoginBanner
-        key={c.deviceId}
         deviceId={c.deviceId}
         fields={c.info?.needs_login ?? []}
         driverInfo={c.info?.driver_info}
@@ -114,7 +113,6 @@ export function DeviceBanners({
       />
       {installed && (
         <InstalledEquipment
-          key={deviceId}
           deviceId={deviceId}
           name={deviceName}
           completionWait={info?.completion_wait}

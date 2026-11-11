@@ -289,6 +289,23 @@ describe("where the away banners sit beside product hardware's panel", () => {
     expect(before(screen.getByTestId("installed-panel"), box)).toBe(true);
   });
 
+  it("draws one panel across live updates while the login box shows", async () => {
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    setInfo({ ownership: "manufacturer", needs_login: ["password"] });
+    setLive({ "device.amp.connected": false, "device.amp.offline_reason": "login_missing" });
+    const view = await showPage();
+    await screen.findByTestId("needs-login-banner");
+    for (let i = 0; i < 3; i++) {
+      liveState["device.amp.uptime"] = i;
+      view.rerender(<DeviceDetail deviceId="amp" onEdit={() => {}} onDeleted={() => {}} onDuplicate={() => {}} />);
+    }
+    expect(screen.getAllByTestId("installed-panel")).toHaveLength(1);
+    expect(screen.getAllByTestId("needs-login-banner")).toHaveLength(1);
+    const sameKey = warn.mock.calls.filter((args) => String(args[0]).includes("same key"));
+    warn.mockRestore();
+    expect(sameKey).toEqual([]);
+  });
+
   it("children in trouble sit above it", async () => {
     setInfo({ ownership: "manufacturer", driver_info: { child_entity_types: { port: { label: "Port", label_plural: "Ports" } } } });
     setLive({ "device.amp.connected": true, "device.amp.port.01.online": false, "device.amp.port.02.online": true });
