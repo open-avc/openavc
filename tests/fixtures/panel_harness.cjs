@@ -9235,7 +9235,7 @@ Object.assign(tests, {
         // Visibility handed back to the control's own visible_when.
         const shown = {
             id: 'vw', type: 'button', label: 'Shown',
-            bindings: { show: { visible_when: { conditions: [{ key: 'var.show', operator: 'eq', value: true }] } } },
+            bindings: { show: { visible_when: { key: 'var.show', operator: 'eq', value: true } } },
         };
         run('visible_when_underneath', { elements: [shown, { id: 'plain', type: 'button', label: 'Plain' }], state: { 'var.show': true } }, (m) => {
             m.set({ 'ui.vw.visible': false, 'ui.plain.visible': false });
@@ -9257,10 +9257,35 @@ Object.assign(tests, {
             m.clear(['ui.b.label', 'ui.b.bg_color', 'ui.b.opacity', 'ui.mst.label']);
             m.redraw();
         });
-        // On the design canvas the same overrides draw.
-        run('design_canvas', { elements: [{ id: 'b', type: 'button', label: 'Go', icon: 'power' }], edit: true }, (m) => {
-            m.set(overrideKeys('b', { label: 'Edit', bg_color: '#123123' }));
-            m.clear(['ui.b.label', 'ui.b.bg_color']);
+        // On the design canvas the same overrides draw, and the words given
+        // back say which field they came from.
+        run('design_canvas', {
+            elements: [{ id: 'b', type: 'button', label: 'Go', icon: 'power' }, { id: 'l', type: 'label', text: 'Words' }],
+            edit: true,
+        }, (m) => {
+            m.set({ ...overrideKeys('b', { label: 'Edit', bg_color: '#123123' }), 'ui.l.label': 'Over' });
+            m.clear(['ui.b.label', 'ui.b.bg_color', 'ui.l.label']);
+        });
+        // A control's own opacity comes back, and one a look draws is drawn again.
+        const dimmed = {
+            id: 'dim', type: 'button', label: 'Dim',
+            bindings: { show: { look: { key: 'var.dim', condition: { equals: true }, style_active: { opacity: 0.4 } } } },
+        };
+        run('opacity_underneath', {
+            elements: [{ id: 'own', type: 'button', label: 'Own', style: { opacity: 0.8 } }, dimmed],
+            state: { 'var.dim': false },
+        }, (m) => {
+            m.set({ 'ui.own.opacity': 0.3, 'var.dim': true });
+            m.set({ 'ui.dim.opacity': 0.9 });
+            m.clear(['ui.own.opacity']);
+            m.clear(['ui.dim.opacity']);
+        });
+        // A control hidden by its visible_when when it was drawn, shown since.
+        run('visible_when_starts_hidden', { elements: [shown], state: { 'var.show': false } }, (m) => {
+            m.set({ 'ui.vw.opacity': 0.5 });
+            m.set({ 'var.show': true });
+            m.set({ 'ui.vw.visible': false });
+            m.clear(['ui.vw.visible']);
         });
         comparePins('override', got, OVERRIDE_PINS.override);
     },

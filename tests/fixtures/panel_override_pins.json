@@ -1402,15 +1402,18 @@
       {},
       {
         "c": {
-          "vw": {
-            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
-          },
           "plain": {
             "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;"
           }
         }
       },
-      {},
+      {
+        "c": {
+          "vw": {
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+          }
+        }
+      },
       {},
       {}
     ],
@@ -1485,6 +1488,15 @@
             "r.1@": "span class",
             "r.1@class": "panel-label-span",
             "r.1#": "Go"
+          },
+          "l": {
+            "r@": "div class data-element-id data-avc-text-src data-element-type style",
+            "r@class": "panel-element panel-label",
+            "r@data-element-id": "l",
+            "r@data-avc-text-src": "[\"text\"]",
+            "r@data-element-type": "label",
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Words"
           }
         }
       },
@@ -1496,6 +1508,11 @@
             "r@aria-label": "Edit",
             "r@style": "gap: 0.4286rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; background-color: rgb(18, 49, 35);",
             "r.1#": "Edit"
+          },
+          "l": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@data-avc-text-src": null,
+            "r#": "Over"
           }
         }
       },
@@ -1507,6 +1524,112 @@
             "r@style": "gap: 0.4286rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
             "r.1#": "Go",
             "r@data-avc-text-src": "[\"label\"]"
+          },
+          "l": {
+            "r@": "div class data-element-id data-element-type style data-avc-text-src",
+            "r#": "Words",
+            "r@data-avc-text-src": "[\"text\"]"
+          }
+        }
+      }
+    ],
+    "opacity_underneath": [
+      {
+        "c": {
+          "own": {
+            "r@": "button type class data-element-id aria-label style data-element-type",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "own",
+            "r@aria-label": "Own",
+            "r@style": "opacity: 0.8; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "button",
+            "r#": "Own"
+          },
+          "dim": {
+            "r@": "button type class data-element-id aria-label data-element-type style",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "dim",
+            "r@aria-label": "Dim",
+            "r@data-element-type": "button",
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Dim"
+          }
+        }
+      },
+      {
+        "c": {
+          "own": {
+            "r@style": "opacity: 0.3; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+          },
+          "dim": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%; opacity: 0.4;"
+          }
+        }
+      },
+      {
+        "c": {
+          "dim": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%; opacity: 0.9;"
+          }
+        }
+      },
+      {
+        "c": {
+          "own": {
+            "r@style": "opacity: 0.8; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+          }
+        }
+      },
+      {
+        "c": {
+          "dim": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%; opacity: 0.4;"
+          }
+        }
+      }
+    ],
+    "visible_when_starts_hidden": [
+      {
+        "c": {
+          "vw": {
+            "r@": "button type class data-element-id aria-label data-element-type style",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "vw",
+            "r@aria-label": "Shown",
+            "r@data-element-type": "button",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; display: none;",
+            "r#": "Shown"
+          }
+        }
+      },
+      {
+        "c": {
+          "vw": {
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; display: none; opacity: 0.5;"
+          }
+        }
+      },
+      {
+        "c": {
+          "vw": {
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; opacity: 0.5;"
+          }
+        }
+      },
+      {
+        "c": {
+          "vw": {
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; opacity: 0.5; display: none;"
+          }
+        }
+      },
+      {
+        "c": {
+          "vw": {
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; opacity: 0.5;"
           }
         }
       }
