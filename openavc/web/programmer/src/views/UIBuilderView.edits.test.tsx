@@ -304,6 +304,17 @@ describe("structural edits", () => {
     expect(toast.showSuccess).not.toHaveBeenCalled();
   });
 
+  it("takes the Theme Studio's choice of a theme, overrides set, as one entry that puts both back", async () => {
+    await drawn();
+    expect(ui().settings.theme_overrides).toEqual({ accent: "#123456" });
+    call(() => seen.ThemeStudio.onChangeTheme("paper"));
+    expect(undoLog()).toEqual([["Change theme", "settings"]]);
+    expect(ui().settings.theme_overrides).toEqual({});
+    call(() => builder().undo());
+    expect(ui().settings.theme_id).toBe("dark-default");
+    expect(ui().settings.theme_overrides).toEqual({ accent: "#123456" });
+  });
+
   it("changes the theme, choosing light or dark from its background and clearing the old theme's tuning", async () => {
     await renderPage(UIBuilderView);
     call(() => props().onThemeChange("paper"));

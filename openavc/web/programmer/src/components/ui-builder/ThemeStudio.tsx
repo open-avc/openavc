@@ -195,7 +195,7 @@ export function ThemeStudio({
       failure: orStepFailed("Save"),
       work: () => createTheme(themeFile(working, { id, name, author: "Custom", preview_colors: previewColors(working.variables) })),
       done: () => {
-        clearOverrides();
+        // Choosing a theme clears the project's overrides in the same edit.
         onChangeTheme(id);
         onRefreshThemes();
         return `Saved as "${name}"`;
@@ -219,7 +219,6 @@ export function ThemeStudio({
       failure: orStepFailed("Delete"),
       work: () => deleteTheme(working.id),
       done: () => {
-        clearOverrides();
         onChangeTheme("dark-default");
         onRefreshThemes();
         return `Deleted "${working.name}"`;

@@ -147,7 +147,7 @@ describe("Save Changes", () => {
 });
 
 describe("Save as Custom", () => {
-  it("copies a built-in theme under a new name and id, and chooses it", async () => {
+  it("copies a built-in theme under a new name and id, and chooses it, which clears the overrides too", async () => {
     const { cb } = await loaded({ currentThemeId: "dark", themeOverrides: { accent: "#00ff00" } });
     editAccent("#010101");
     fireEvent.click(screen.getByRole("button", { name: "Save as Custom" }));
@@ -157,7 +157,7 @@ describe("Save as Custom", () => {
     expect(sentTo(createTheme)).toBe(json(sent(edited, {
       id: "dark-custom", name: "Dark (Custom)", author: "Custom", preview_colors: ["#010101"],
     })));
-    expect(calls).toEqual(["createTheme", "clearOverrides", "changeTheme", "refreshThemes"]);
+    expect(calls).toEqual(["createTheme", "changeTheme", "refreshThemes"]);
     expect(cb.onChangeTheme).toHaveBeenCalledWith("dark-custom");
     expect(cb.onThemeSaved).not.toHaveBeenCalled();
   });
@@ -203,7 +203,7 @@ describe("Delete", () => {
     fireEvent.click(within(question).getByRole("button", { name: "Delete" }));
     await screen.findByText('Deleted "Sample"');
     expect(deleteTheme).toHaveBeenCalledExactlyOnceWith("studio-sample");
-    expect(calls).toEqual(["deleteTheme", "clearOverrides", "changeTheme", "refreshThemes"]);
+    expect(calls).toEqual(["deleteTheme", "changeTheme", "refreshThemes"]);
     expect(cb.onChangeTheme).toHaveBeenCalledWith("dark-default");
     expect(screen.queryByRole("alertdialog")).toBeNull();
   });
