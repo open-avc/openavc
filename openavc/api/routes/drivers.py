@@ -1268,70 +1268,62 @@ def _register_bundle_main(main_path: Path) -> str:
     register_driver(driver_class)
     return driver_class.DRIVER_INFO.get("id", main_path.name)
 
+def _installed_definition_entry(filepath: Path) -> dict[str, Any] | None:
+    """An ``.avcdriver`` in the driver folder as Installed lists it: by its own
+    id, name and version; by its file name when it cannot be read or parsed;
+    and not at all when it parses to something other than a mapping."""
+    import yaml
+
+    try:
+        data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError):
+        data = {}
+    else:
+        if not isinstance(data, dict):
+            return None
+    return {
+        "id": data.get("id", filepath.stem),
+        "name": data.get("name", filepath.stem),
+        "format": "avcdriver",
+        "filename": filepath.name,
+        "version": data.get("version", ""),
+    }
+
+
+def _installed_python_entry(filepath: Path) -> dict[str, Any]:
+    """A Python driver file as Installed lists it: by the id, name and version
+    of the first registered class with an id whose module name contains the
+    file's name, else by the file name made readable, with no version."""
+    info: dict[str, Any] = {"id": filepath.stem}
+    for _registered_id, cls in registered_driver_classes():
+        if cls.DRIVER_INFO.get("id") and filepath.stem in getattr(cls, "__module__", ""):
+            info = cls.DRIVER_INFO
+            break
+    return {
+        "id": info["id"],
+        "name": info.get("name", filepath.stem.replace("_", " ").title()),
+        "format": "python",
+        "filename": filepath.name,
+        "version": info.get("version", ""),
+    }
+
+
 @router.get("/drivers/installed")
 async def list_installed_community_drivers() -> dict[str, Any]:
     """List drivers installed in driver_repo/."""
+    from openavc.drivers.driver_loader import _is_driver_file
+
     driver_repo = _get_driver_repo_dir()
     if not driver_repo.exists():
         return {"drivers": []}
 
-    installed: list[dict[str, Any]] = []
-
-    # Scan .avcdriver files
-    for filepath in sorted(driver_repo.glob("*.avcdriver")):
-        try:
-            import yaml
-            data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                installed.append({
-                    "id": data.get("id", filepath.stem),
-                    "name": data.get("name", filepath.stem),
-                    "format": "avcdriver",
-                    "filename": filepath.name,
-                    "version": data.get("version", ""),
-                })
-        except (yaml.YAMLError, OSError):
-            installed.append({
-                "id": filepath.stem,
-                "name": filepath.stem,
-                "format": "avcdriver",
-                "filename": filepath.name,
-                "version": "",
-            })
-
-    # Scan .py files (skip discovery / simulator companions and
-    # underscore-prefixed helpers — they live next to drivers but
-    # aren't drivers themselves).
-    from openavc.drivers.driver_loader import _is_driver_file
-
-    for filepath in sorted(driver_repo.glob("*.py")):
-        if not _is_driver_file(filepath):
-            continue
-        driver_id = filepath.stem
-        driver_name = filepath.stem.replace("_", " ").title()
-
-        # Try to extract actual info from the loaded registry
-        driver_version = ""
-        for reg_id, cls in registered_driver_classes():
-            info = cls.DRIVER_INFO
-            # Match by checking if the module was loaded from this file
-            if info.get("id") and filepath.stem in getattr(
-                cls, "__module__", ""
-            ):
-                driver_id = info["id"]
-                driver_name = info.get("name", driver_name)
-                driver_version = info.get("version", "")
-                break
-
-        installed.append({
-            "id": driver_id,
-            "name": driver_name,
-            "format": "python",
-            "filename": filepath.name,
-            "version": driver_version,
-        })
-
-    return {"drivers": installed}
+    definitions = [_installed_definition_entry(f) for f in sorted(driver_repo.glob("*.avcdriver"))]
+    # A discovery or simulator companion, or an underscore helper, lives
+    # beside its driver but is not one.
+    python = [
+        _installed_python_entry(f) for f in sorted(driver_repo.glob("*.py")) if _is_driver_file(f)
+    ]
+    return {"drivers": [entry for entry in definitions if entry is not None] + python}
 
 
 def _refuse_while_in_use(driver_id: str) -> None:
