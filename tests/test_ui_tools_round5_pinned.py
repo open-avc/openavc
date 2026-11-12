@@ -39,6 +39,38 @@ async def test_add_elements_names_only_the_controls_given_a_grant():
 
 
 @pytest.mark.asyncio
+async def test_add_page_names_the_inline_controls_given_a_grant_as_add_elements_does():
+    engine = _engine()
+    result = await _call(engine, "add_ui_page", {
+        "id": "np",
+        "elements": [
+            {"id": "c1", "type": "button", "grant": {"devices": ["amp"]}},
+            {"id": "c2", "type": "button"},
+        ],
+    })
+    batch = await _call(_engine(), "add_ui_elements", {
+        "page_id": "other",
+        "elements": [{"id": "c1", "type": "button", "grant": {"devices": ["amp"]}}],
+    })
+    assert result["status"] == "created"
+    assert list(result["grants"]) == ["c1"]
+    assert result["grants"] == batch["grants"]
+    assert "grant" not in result
+
+
+@pytest.mark.asyncio
+async def test_add_page_says_back_its_own_grant_and_its_controls_apart():
+    engine = _engine()
+    result = await _call(engine, "add_ui_page", {
+        "id": "np", "grant": {"devices": ["amp"]},
+        "elements": [{"id": "c1", "type": "button", "grant": {"macros": True}}],
+    })
+    assert result["grant"]["after"]["devices"] == ["amp"]
+    assert list(result["grants"]) == ["c1"]
+    assert result["grants"]["c1"]["macros"] is True
+
+
+@pytest.mark.asyncio
 async def test_master_an_empty_box_map_is_named_as_changed():
     engine = _engine()
     result = await _call(engine, "update_master_element", {

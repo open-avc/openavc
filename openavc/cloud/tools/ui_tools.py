@@ -834,6 +834,9 @@ class UIToolsMixin:
             # ui.definition to connected panels.
             project.ui.pages.append(new_page)
             notes.created(new_page)
+            # Each inline control's grant, as add_ui_elements says back.
+            for element in new_page.elements:
+                notes.created_on(element)
             notes.add(*review.write(new_page, {el.id for el in new_page.elements}))
 
         err = await self._apply_ui_edit(engine, mutate)
