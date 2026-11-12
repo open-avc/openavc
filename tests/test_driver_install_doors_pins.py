@@ -562,6 +562,21 @@ async def test_update_finds_a_yaml_by_the_id_it_declares_and_removes_the_old_nam
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("driver_id", "file_name"),
+    [("acme-widget", "acme-widget.avcdriver"), ("acme.widget", "acme_widget.avcdriver")],
+)
+async def test_update_names_the_file_for_the_id_in_safe_characters(world, driver_id, file_name):
+    (world.repo / f"{driver_id}.avcdriver").write_bytes(_yaml())
+    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(version="2.0.0")
+    result = await update_driver(
+        driver_id, _json_request({"file_url": CATALOG + "acme_widget.avcdriver"})
+    )
+    assert result["file"] == file_name
+    assert set(_tree(world.repo)) == {file_name}
+
+
+@pytest.mark.asyncio
 async def test_update_refuses_a_url_of_neither_kind_after_finding_the_driver(world):
     (world.repo / "acme_widget.avcdriver").write_bytes(_yaml())
     refusal = await _refused(_update("acme_widget.json"))
