@@ -299,6 +299,16 @@ SCENARIOS = [
     # Simulation is marked on the panel while it runs, never in the IDE preview.
     "simulation_tag_shows_while_the_devices_are_simulated",
     "simulation_tag_is_never_drawn_in_the_ide_preview",
+    # What a style writes onto a node, and a button's face after its look or
+    # toggle, pinned value for value (tests/fixtures/panel_paint_pins.json).
+    "paint_writes_each_style_key_as_it_does_today",
+    "paint_draws_a_faded_picture_as_one_reused_layer",
+    "paint_draws_a_button_picture_in_each_mode",
+    "paint_retints_only_a_mask_or_blend_layer",
+    "paint_frameless_and_the_state_colour_clear",
+    "paint_sanitizes_and_resolves_as_it_does_today",
+    "paint_draws_a_page_background_as_it_does_today",
+    "button_face_after_feedback_and_toggle_looks",
 ]
 
 

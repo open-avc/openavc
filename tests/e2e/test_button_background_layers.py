@@ -188,3 +188,78 @@ def test_a_gradient_survives_an_element_background_image(panel_page) -> None:
         "drawing over it"
     )
     assert "url(" in style["backgroundImage"]
+
+
+# --- What jsdom cannot read, pinned as Chromium draws it -------------------
+#
+# The jsdom harness pins every other value the style writers set
+# (tests/fixtures/panel_paint_pins.json); jsdom drops a background-position
+# with more than one layer and the -webkit- mask longhands, so those are read
+# here, inline, as the panel writes them.
+
+INLINE_JS = r"""
+(element) => {
+  const app = window.__openavcPanel;
+  const box = document.getElementById('box');
+  box.innerHTML = '';
+  app.bindings = [];
+  app.state = {};
+  const node = app.renderElement(element);
+  box.appendChild(node);
+  const layer = node.querySelector(':scope > .panel-button-image-layer');
+  const read = (s, names) => Object.fromEntries(names.map((n) => [n, s.getPropertyValue(n)]));
+  return {
+    node: read(node.style, ['background-image', 'background-size', 'background-position',
+      'border-style', '-webkit-mask-image']),
+    layer: layer ? read(layer.style, ['-webkit-mask-image', '-webkit-mask-size',
+      '-webkit-mask-position', '-webkit-mask-repeat', 'mask-image']) : null,
+  };
+}
+"""
+
+PIXEL_URL = f'url("{PIXEL}")'
+GRADIENT_CSS = "linear-gradient(rgb(231, 76, 60), rgb(142, 68, 173))"
+NO_LAYER = None
+
+
+def _node(image="", size="", position="", border="") -> dict:
+    return {"background-image": image, "background-size": size, "background-position": position,
+            "border-style": border, "-webkit-mask-image": ""}
+
+
+#: Each case: the element, then what Chromium reads back inline.
+INLINE_PINS = {
+    "picture_over_gradient": (
+        _with_image(label="P", style={"background_gradient": GRADIENT}),
+        {"node": _node(f"{PIXEL_URL}, {GRADIENT_CSS}", "cover, cover", "center center, center center"),
+         "layer": NO_LAYER},
+    ),
+    "background_picture_over_gradient": (
+        {"label": "P", "style": {"background_gradient": GRADIENT, "background_image": PIXEL,
+                                 "background_position": "top", "background_size": "contain"}},
+        {"node": _node(f"{PIXEL_URL}, {GRADIENT_CSS}", "contain, cover", "center top, center center"),
+         "layer": NO_LAYER},
+    ),
+    "background_picture_alone": (
+        {"label": "P", "style": {"background_image": PIXEL, "background_position": "left"}},
+        {"node": _node(PIXEL_URL, "cover", "left center"), "layer": NO_LAYER},
+    ),
+    "frameless": (
+        {"label": "P", "frameless": True, "style": {"border_width": 0.2}},
+        {"node": _node("none", border="none"), "layer": NO_LAYER},
+    ),
+    "mask_layer": (
+        _with_image(label="P", image_blend_mode="mask"),
+        {"node": _node("none"),
+         "layer": {"-webkit-mask-image": PIXEL_URL, "-webkit-mask-size": "cover",
+                   "-webkit-mask-position": "center center", "-webkit-mask-repeat": "no-repeat",
+                   "mask-image": PIXEL_URL}},
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(INLINE_PINS))
+def test_what_jsdom_cannot_read_is_drawn_as_it_is_today(panel_page, case) -> None:
+    element, expected = INLINE_PINS[case]
+    got = panel_page.evaluate(INLINE_JS, {"id": "probe", "type": "button", **element})
+    assert got == expected

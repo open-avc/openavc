@@ -98,6 +98,35 @@ const mkApp = () => new PanelApp();
 
 function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed'); }
 
+// --- What a style writes onto a node, called the way the panel calls it ----
+//
+// The paint scenarios reach the panel's style writers through these, so the
+// pins below say what is drawn, not where the code that draws it lives.
+const paintStyle = (node, style) => mkApp().applyStyle(node, style);
+const paintPicture = (node, ref, opts) => mkApp().applyImageEffect(node, ref, opts);
+const paintTint = (node, colour) => mkApp().updateImageTint(node, colour);
+const paintFrameless = (node) => mkApp().applyFrameless(node);
+const clearColours = (node, rest) => mkApp()._clearStateColours(node, rest);
+const sanitizeValue = (value) => mkApp()._sanitizeCssValue(value);
+const sanitizeUrl = (url) => mkApp()._sanitizeCssUrl(url);
+const assetUrl = (ref) => mkApp().resolveAssetUrl(ref);
+
+/**
+ * The paint pins: what each case drew when it was pinned, in
+ * panel_paint_pins.json. Compared whole, so a value, a missing write or a
+ * change of order fails. PAINT_PINS_RECORD=<file> writes what this run drew
+ * instead, for reading by eye before it replaces the pins.
+ */
+const PAINT_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_paint_pins.json'), 'utf8'));
+const recordedPins = {};
+function comparePins(group, got, expected) {
+    if (process.env.PAINT_PINS_RECORD) { recordedPins[group] = got; return; }
+    const wrong = Object.keys({ ...expected, ...got })
+        .filter((k) => JSON.stringify(got[k]) !== JSON.stringify(expected?.[k]))
+        .map((k) => `${k}: got ${JSON.stringify(got[k])}, pinned ${JSON.stringify(expected?.[k])}`);
+    assert(wrong.length === 0, `${group}: ${wrong.join(' ;; ')}`);
+}
+
 // --- Layout-scenario helpers ------------------------------------------------
 
 /** jsdom's window size is writable; the panel picks a layout from it. */
@@ -5964,6 +5993,355 @@ const tests = {
         app.handleMessage({ type: 'state.snapshot', state: { 'system.simulation_active': true } });
         assert(!document.getElementById('simulation-tag'), 'the IDE says it in its own bar');
     },
+
+    // --- what a style writes onto a node, branch by branch -----------------
+    //
+    // Pinned as the panel draws today, value and order (the style attribute
+    // is compared whole, so a write that moves or goes missing fails here).
+    // jsdom keeps every value below except a multi-layer background-position
+    // and the -webkit- mask longhands; tests/e2e/test_button_background_layers.py
+    // reads those in Chromium.
+
+    paint_writes_each_style_key_as_it_does_today() {
+        const rows = {
+            nothing: null,
+            empty: {},
+            flat: { bg_color: '#111111' },
+            gradient_default_angle: { background_gradient: { from: '#ff0000', to: '#0000ff' } },
+            gradient_angle_zero_reads_180: { background_gradient: { from: '#ff0000', to: '#0000ff', angle: 0 } },
+            gradient_angle_text_reads_180: { background_gradient: { from: '#ff0000', to: '#0000ff', angle: 'abc' } },
+            gradient_angle_45_with_colour: { bg_color: '#222222', background_gradient: { from: '#ff0000', to: '#0000ff', angle: 45 } },
+            gradient_needs_both_stops: { bg_color: '#333333', background_gradient: { from: '#ff0000' } },
+            gradient_stops_sanitized: { background_gradient: { from: 'red; color: blue', to: 'url(x)' } },
+            picture_over_gradient: { background_gradient: { from: '#ff0000', to: '#0000ff' },
+                background_image: 'assets://a b.png', background_size: 'stretch', background_position: 'top' },
+            picture_alone: { background_image: '/x.png' },
+            picture_contain_left: { background_image: '/x.png', background_size: 'contain', background_position: 'left' },
+            picture_opacity_text_reads_whole: { background_image: '/x.png', background_opacity: 'abc' },
+            text: { text_color: '#00ff00', font_size: 1.2, font_weight: 700, border_radius: 0 },
+            zeros_skipped: { font_size: 0, letter_spacing: 0, border_width: 0, font_weight: 0, line_height: 0 },
+            zeros_written: { border_radius: 0, opacity: 0, transition_duration: 0, margin: 0, padding: 0 },
+            align_left_top: { text_align: 'left', vertical_align: 'top' },
+            align_right_bottom: { text_align: 'right', vertical_align: 'bottom' },
+            align_unknown: { text_align: 'justify', vertical_align: 'middle' },
+            align_center: { text_align: 'center', vertical_align: 'center' },
+            border_default_style: { border_width: 0.2 },
+            border_full: { border_width: 0.3, border_style: 'dashed', border_color: '#abcdef' },
+            border_colour_alone_ignored: { border_color: '#abcdef' },
+            shadow_none: { box_shadow: 'none' },
+            shadow_sm: { box_shadow: 'sm' },
+            shadow_md: { box_shadow: 'md' },
+            shadow_lg: { box_shadow: 'lg' },
+            shadow_inset: { box_shadow: 'inset' },
+            shadow_glow_default: { box_shadow: 'glow' },
+            shadow_glow_text_colour: { box_shadow: 'glow', text_color: '#ff00ff' },
+            shadow_custom: { box_shadow: '1px 2px 3px red' },
+            margin_all: { margin: 1 },
+            margin_all_vertical: { margin: 1, margin_vertical: 2 },
+            margin_all_horizontal: { margin: 1, margin_horizontal: 3 },
+            margin_vertical: { margin_vertical: 2 },
+            margin_horizontal: { margin_horizontal: 3 },
+            margin_both_sides: { margin_vertical: 2, margin_horizontal: 3 },
+            padding_all: { padding: 1 },
+            padding_all_vertical: { padding: 1, padding_vertical: 2 },
+            padding_all_horizontal: { padding: 1, padding_horizontal: 3 },
+            padding_vertical: { padding_vertical: 2 },
+            padding_horizontal: { padding_horizontal: 3 },
+            padding_both_sides: { padding_vertical: 2, padding_horizontal: 3 },
+            typography: { text_transform: 'uppercase', letter_spacing: 0.1, line_height: 1.3,
+                white_space: 'pre-wrap', transition_duration: 250, overflow: 'hidden', opacity: 0.4 },
+            accents: { accent_color: '#123456', track_color: '#654321' },
+        };
+        const expected = PAINT_PINS.style;
+        const got = {};
+        for (const [name, style] of Object.entries(rows)) {
+            const node = document.createElement('div');
+            paintStyle(node, style);
+            got[name] = node.getAttribute('style');
+        }
+        comparePins('style', got, expected);
+    },
+
+    // A faded background picture is a layer of its own, reused on every call
+    // and kept under the content, without unplacing anything already placed.
+    paint_draws_a_faded_picture_as_one_reused_layer() {
+        const node = document.createElement('div');
+        node.style.position = 'absolute';
+        const plain = node.appendChild(document.createElement('span'));
+        const stacked = node.appendChild(document.createElement('span'));
+        stacked.style.zIndex = '3';
+        const placed = node.appendChild(document.createElement('span'));
+        placed.style.position = 'absolute';
+        const style = { background_image: 'assets://a.png', background_opacity: 0.5,
+            background_size: 'stretch', background_position: 'bottom' };
+        paintStyle(node, style);
+        paintStyle(node, { ...style, background_opacity: 0 });
+        const got = {
+            node: node.getAttribute('style'),
+            layers: node.querySelectorAll(':scope > .panel-bg-image-layer').length,
+            first: node.firstElementChild.className,
+            layer: node.querySelector('.panel-bg-image-layer').getAttribute('style'),
+            plain: plain.getAttribute('style'),
+            stacked: stacked.getAttribute('style'),
+            placed: placed.getAttribute('style'),
+        };
+        const fresh = document.createElement('div');
+        paintStyle(fresh, style);
+        got.fresh_node = fresh.getAttribute('style');
+        paintStyle(fresh, { ...style, background_size: 'contain', background_opacity: 0.3 });
+        got.fresh_contain = fresh.querySelector('.panel-bg-image-layer').getAttribute('style');
+        comparePins('faded', got, PAINT_PINS.faded);
+    },
+
+    // A button's picture: on the button itself, or on an effect layer for a
+    // mask, a blend or an opacity, always over the gradient rather than
+    // instead of it.
+    paint_draws_a_button_picture_in_each_mode() {
+        const GRAD = { background_gradient: { from: '#ff0000', to: '#0000ff' } };
+        const rows = {
+            no_picture: ['', {}, null],
+            plain: ['/p.png', {}, null],
+            plain_over_gradient: ['/p.png', {}, GRAD],
+            plain_fill: ['/p.png', { fit: 'fill' }, null],
+            plain_contain: ['/p.png', { fit: 'contain' }, null],
+            asset: ['assets://a b.png', {}, null],
+            normal_blend_is_plain: ['/p.png', { blend: 'normal' }, null],
+            none_blend_is_plain: ['/p.png', { blend: 'none' }, null],
+            faded: ['/p.png', { opacity: 0.5 }, null],
+            faded_text_opacity: ['/p.png', { opacity: '0.25' }, GRAD],
+            mask: ['/p.png', { blend: 'mask', tintColor: '#00ff00' }, null],
+            mask_no_tint: ['/p.png', { blend: 'mask' }, GRAD],
+            multiply: ['/p.png', { blend: 'multiply', tintColor: '#00ff00', fit: 'fill' }, null],
+            screen_no_tint: ['/p.png', { blend: 'screen' }, GRAD],
+        };
+        const got = {};
+        for (const [name, [ref, opts, style]] of Object.entries(rows)) {
+            const node = document.createElement('button');
+            node.appendChild(document.createTextNode('Words'));
+            node.style.maskImage = 'url("/old.png")';
+            node.style.isolation = 'isolate';
+            if (style) paintStyle(node, style);
+            paintPicture(node, ref, opts);
+            // A second call replaces the layer rather than stacking one.
+            paintPicture(node, ref, opts);
+            const layers = node.querySelectorAll(':scope > .panel-button-image-layer');
+            got[name] = `${node.getAttribute('style')} | layers=${layers.length}`
+                + (layers[0] ? ` | ${layers[0].getAttribute('style')}` : '');
+        }
+        comparePins('picture', got, PAINT_PINS.picture);
+    },
+
+    // Retint touches only a layer whose fill is the tint (a mask or a blend).
+    paint_retints_only_a_mask_or_blend_layer() {
+        const got = {};
+        for (const [name, opts] of Object.entries({
+            none: null, mask: { blend: 'mask', tintColor: '#111111' },
+            multiply: { blend: 'multiply', tintColor: '#111111' }, faded: { opacity: 0.5 },
+        })) {
+            const node = document.createElement('button');
+            if (opts) paintPicture(node, '/p.png', opts);
+            paintTint(node, '#ff0000');
+            const layer = node.querySelector('.panel-button-image-layer');
+            got[name] = layer ? layer.getAttribute('style') : `no layer: ${node.getAttribute('style')}`;
+        }
+        comparePins('tint', got, PAINT_PINS.tint);
+    },
+
+    // Frameless strips the chrome; a picture drawn after it still composes
+    // with a gradient the style named (as it draws today).
+    paint_frameless_and_the_state_colour_clear() {
+        const got = {};
+        let node = document.createElement('button');
+        paintStyle(node, { bg_color: '#111111', border_width: 0.2, box_shadow: 'sm',
+            background_gradient: { from: '#ff0000', to: '#0000ff' } });
+        paintFrameless(node);
+        got.frameless = node.getAttribute('style');
+        paintPicture(node, '/p.png', {});
+        got.frameless_then_picture = node.getAttribute('style');
+
+        const clears = {
+            rest_names_nothing: {},
+            rest_names_colours: { bg_color: '#010101', text_color: '#020202', opacity: 0.5 },
+            rest_names_gradient: { background_gradient: { from: '#ff0000', to: '#0000ff' } },
+            rest_opacity_zero: { opacity: 0 },
+        };
+        for (const [name, rest] of Object.entries(clears)) {
+            node = document.createElement('div');
+            node.style.backgroundColor = '#aaaaaa';
+            node.style.color = '#bbbbbb';
+            node.style.opacity = '0.7';
+            node.style.fontSize = '2rem';
+            clearColours(node, rest);
+            got[`clear_${name}`] = node.getAttribute('style');
+        }
+        clearColours({}, {});   // something with no style is left alone
+        comparePins('frameless', got, PAINT_PINS.frameless);
+    },
+
+    paint_sanitizes_and_resolves_as_it_does_today() {
+        const app = mkApp();
+        const got = {
+            value_number: sanitizeValue(12),
+            value_null: sanitizeValue(null),
+            value_undefined: sanitizeValue(undefined),
+            value_tricks: sanitizeValue('expression(x) javascript:y behavior:z @import /*c*/ image-set(a) \\e\r\nf'),
+            url_number: sanitizeUrl(5),
+            url_ftp: sanitizeUrl('ftp://x/y.png'),
+            url_vbscript: sanitizeUrl(' VBScript:x'),
+            url_javascript_spaced: sanitizeUrl('  javascript:alert(1)'),
+            url_data_image: sanitizeUrl('data:image/png;base64,AAA='),
+            url_upper_http: sanitizeUrl('HTTP://x/y (1).png'),
+            url_relative: sanitizeUrl("a b'c\\d.png"),
+            asset_empty: assetUrl(''),
+            asset_null: assetUrl(null),
+            asset_plain: assetUrl('http://x/y.png'),
+            asset_ref: assetUrl('assets://a b#c.png'),
+        };
+        assert(app, 'built');
+        comparePins('sanitize', got, PAINT_PINS.sanitize);
+    },
+
+    // A page's own background: its colour, its picture as a faded layer, and
+    // its gradient as a layer over the picture.
+    paint_draws_a_page_background_as_it_does_today() {
+        const rows = {
+            colour_only: { color: '#101010' },
+            picture: { image: 'assets://a b.png', image_size: 'contain', image_position: 'top' },
+            picture_faded: { image: '/p.png', image_opacity: 0.4 },
+            picture_opacity_zero: { image: '/p.png', image_opacity: 0 },
+            picture_opacity_text: { image: '/p.png', image_opacity: 'abc' },
+            gradient_default_angle: { gradient: { from: '#ff0000', to: '#0000ff' } },
+            gradient_angle_zero: { gradient: { from: '#ff0000', to: '#0000ff', angle: 0 } },
+            gradient_angle_45: { gradient: { from: '#00ff00', to: '#0000ff', angle: 45 } },
+            gradient_needs_both: { color: '#202020', gradient: { from: '#ff0000' } },
+            everything: { color: '#303030', image: '/p.png', image_opacity: 0.5,
+                gradient: { from: '#ff0000', to: '#0000ff', angle: 90 } },
+        };
+        const got = {};
+        for (const [name, background] of Object.entries(rows)) {
+            const app = mkApp();
+            renderProject(app, project({ elements: [], background }));
+            const grid = app.root.querySelector('.panel-page-bg-image, .panel-page-bg-gradient')?.parentElement
+                || app.root.querySelector('[style*="background-color"]');
+            const layers = grid ? [...grid.children]
+                .filter((c) => /panel-page-bg-/.test(c.className))
+                .map((c) => `${c.className}: ${c.getAttribute('style')}`) : [];
+            got[name] = [grid ? `grid: ${grid.getAttribute('style')}` : 'no grid', ...layers];
+        }
+        comparePins('page', got, PAINT_PINS.page);
+    },
+
+    // --- a button's face after its look or toggle, every branch ------------
+
+    button_face_after_feedback_and_toggle_looks() {
+        const PIXEL = '/p.png';
+        const mount = (def, state) => {
+            const app = mkApp();
+            renderProject(app, project({
+                elements: [def], placements: { [def.id]: { x: 5, y: 5, w: 20, h: 10 } },
+            }));
+            app.state = state;
+            app.evaluateAllBindings(Object.keys(state));
+            return { app, el: app.root.querySelector(`[data-element-id="${def.id}"]`) };
+        };
+        const set = (m, key, value) => { m.app.state[key] = value; m.app.evaluateAllBindings([key]); };
+        const face = (el) => {
+            const layer = el.querySelector(':scope > .panel-button-image-layer');
+            const kids = [...el.children].map((c) => `${c.tagName.toLowerCase()}.${c.getAttribute('class') || ''}`
+                + (c.tagName === 'svg' ? `[${c.querySelector('use')?.getAttribute('href')}|${c.getAttribute('stroke')}]` : '')
+                + (c.classList.contains('panel-label-span') ? `"${c.textContent}"` : ''));
+            return `${el.getAttribute('style')} | text="${el.textContent}" | ${kids.join(',')}`
+                + (layer ? ` | layer: ${layer.getAttribute('style')}` : '')
+                + ` | src=${JSON.stringify(el.getAttribute('data-avc-text-src'))}`
+                + ` | class="${el.className}" aria-current=${el.getAttribute('aria-current')}`;
+        };
+        const down = { 'device.d1.connected': false };
+        const up = { 'device.d1.connected': true };
+        const states = { key: 'device.d1.mode', default_state: 'a', states: {
+            a: { label: 'A', bg_color: '#ff0000', icon: 'play', icon_color: '#00ff00' },
+            b: { text_color: '#0000ff', button_image: '/b.png' },
+        } };
+        const legacy = (extra) => ({ key: 'device.d1.mode', condition: { equals: 'on' },
+            style_active: { bg_color: '#ff0000', label: 'From style' }, style_inactive: {}, ...extra });
+        const rows = [
+            ['multi_framed_icon', { type: 'button', label: 'Own', icon: 'stop', frameless: true,
+                bindings: { show: { look: states } } }, ['a', 'b', 'zzz']],
+            ['multi_suppressed', { type: 'button', label: 'Own', display_mode: 'icon_only', icon: 'stop',
+                bindings: { show: { look: states } } }, ['a', 'b']],
+            ['multi_image_mode', { type: 'button', label: 'Own', display_mode: 'image', button_image: PIXEL,
+                image_blend_mode: 'mask', bindings: { show: { look: states } } }, ['a', 'b']],
+            ['multi_no_own_label', { type: 'button', label: '',
+                bindings: { show: { look: states } } }, ['b', 'a']],
+            ['legacy_words', { type: 'button', label: 'Own', frameless: true, icon: 'stop',
+                bindings: { show: { look: legacy({ label_active: 'On!', label_inactive: 'Off!' }) } } }, ['on', 'off']],
+            ['legacy_state_icon', { type: 'button', label: 'Own',
+                bindings: { show: { look: legacy({ style_active: { icon: 'play', icon_color: '#00ff00' } }) } } },
+                ['on', 'off']],
+            ['legacy_style_label', { type: 'button', label: 'Own',
+                bindings: { show: { look: legacy({}) } } }, ['on', 'off']],
+            ['legacy_style_label_rest', { type: 'button', label: 'Own', style: { label: 'Rest' },
+                bindings: { show: { look: legacy({}) } } }, ['off', 'on']],
+            ['legacy_suppressed', { type: 'button', label: 'Own', display_mode: 'image', button_image: PIXEL,
+                image_blend_mode: 'multiply', bindings: { show: { look: legacy({ label_active: 'On!' }) } } }, ['on', 'off']],
+            ['offline_full', { type: 'button', label: 'Own', icon: 'stop', frameless: true, button_image: PIXEL,
+                image_blend_mode: 'mask', style: { bg_color: '#123456' }, bindings: { show: { look: states } } }, ['a']],
+            ['offline_suppressed', { type: 'button', label: 'Own', display_mode: 'image', button_image: PIXEL,
+                bindings: { show: { look: states } } }, ['b']],
+            ['offline_no_label', { type: 'button', bindings: { show: { look: states } } }, ['a']],
+            ['offline_retints_a_state_layer', { type: 'button', label: 'Own', image_blend_mode: 'mask',
+                style: { bg_color: '#123456' }, bindings: { show: { look: { ...states, states: {
+                    ...states.states, c: { bg_color: '#ff0000', button_image: '/c.png' } } } } } }, ['c']],
+            ['state_artwork_layer_goes', { type: 'button', label: 'Own', image_blend_mode: 'multiply',
+                bindings: { show: { look: states } } }, ['b', 'a']],
+            ['nav_lit_icon', { type: 'page_nav', label: 'Go', target_page: 'main', highlight_current: true,
+                bindings: { show: { look: states } } }, ['a', 'b', 'zzz']],
+            ['nav_unlit_own_icon', { type: 'page_nav', target_page: 'elsewhere', icon: 'stop', highlight_current: true,
+                style: { accent_color: '#00ffff' }, bindings: { show: { look: states } } }, ['b', 'a']],
+            ['nav_no_words', { type: 'page_nav', bindings: { show: { look: states } } }, ['b']],
+            ['offline_nav', { type: 'page_nav', label: 'Go', target_page: 'main', highlight_current: true,
+                bindings: { show: { look: states } } }, ['a']],
+        ];
+        const got = {};
+        for (const [name, def, values] of rows) {
+            const m = mount({ id: name, ...def }, { ...up, 'device.d1.mode': values[0] });
+            const seen = [face(m.el)];
+            for (const v of values.slice(1)) { set(m, 'device.d1.mode', v); seen.push(face(m.el)); }
+            if (name.startsWith('offline')) { set(m, 'device.d1.connected', false); seen.push(face(m.el)); }
+            got[name] = seen;
+        }
+        const toggle = (extra) => ({ do: { press: [{ action: 'state.set', key: 'var.on', value: true,
+            mode: 'toggle', toggle_key: 'var.on', toggle_value: true, ...extra }] } });
+        const toggles = [
+            ['toggle_words_icon', { type: 'button', label: 'Own', icon: 'stop', bindings: toggle({ on_label: 'ON', off_label: '' }) }],
+            ['toggle_no_own_label', { type: 'button', bindings: toggle({ on_label: '', off_label: 'OFF' }) }],
+            ['toggle_suppressed', { type: 'button', label: 'Own', display_mode: 'icon_only', icon: 'stop',
+                bindings: toggle({ on_label: 'ON' }) }],
+            ['toggle_frameless_picture', { type: 'button', label: 'Own', frameless: true, display_mode: 'image_text',
+                button_image: PIXEL, image_blend_mode: 'mask', bindings: toggle({}) }],
+        ];
+        for (const [name, def] of toggles) {
+            const m = mount({ id: name, ...def }, { 'var.on': false });
+            const seen = [face(m.el)];
+            set(m, 'var.on', true); seen.push(face(m.el));
+            set(m, 'var.on', false); seen.push(face(m.el));
+            got[name] = seen;
+        }
+        // A toggle binding reached directly, with no `_labelBase` on it.
+        const m = mount({ id: 'direct', type: 'button', label: 'Own',
+            bindings: toggle({ on_label: 'ON' }) }, { 'var.on': false });
+        const b = m.app.bindings.find((x) => x.elementDef?.id === 'direct' && x.type === 'toggle_look');
+        if (b) {
+            delete b.binding._labelBase;
+            m.app.state['var.on'] = true;
+            m.app.editMode = true;      // where the words' source is recorded
+            m.app.evaluateToggleLook(b);
+            got.toggle_without_label_base = [face(m.el)];
+        } else {
+            got.toggle_without_label_base = ['no toggle_look binding'];
+        }
+        assert(down, 'unused');
+        comparePins('face', got, PAINT_PINS.face);
+    },
 };
 
 const results = {};
@@ -5979,5 +6357,8 @@ const results = {};
     }
     // Exit explicitly once stdout is flushed so jsdom/lingering timers from the
     // scenarios don't keep the process alive.
+    if (process.env.PAINT_PINS_RECORD) {
+        fs.writeFileSync(process.env.PAINT_PINS_RECORD, JSON.stringify(recordedPins, null, 2) + '\n');
+    }
     process.stdout.write(JSON.stringify(results, null, 2), () => process.exit(0));
 })();
