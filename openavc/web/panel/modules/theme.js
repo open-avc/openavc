@@ -20,8 +20,9 @@
  * the first page waits for the theme (`drawWhenReady`), for at most
  * FIRST_THEME_WAIT_MS, rather than drawing everything twice.
  *
- * The panel lends what this reads (`redraw`, whether a state snapshot has
- * arrived, the definition's settings), each at call time.
+ * The panel lends what this reads (`redraw`, `stateArrived` -- whether the
+ * first state snapshot is in, which is what a repaint waits for, not whether a
+ * page is up -- and the definition's settings), each at call time.
  */
 
 import { assetUrl, basePath } from './base_path.js';
@@ -310,7 +311,7 @@ export class PanelTheme {
     _repaintIfChanged(before, repaint) {
         if (!repaint) return;
         if (before === JSON.stringify(this.elementDefaults || {})) return;
-        if (!this._host.drawn()) return;
+        if (!this._host.stateArrived()) return;
         this._applying = true;
         this._host.redraw();
         this._applying = false;

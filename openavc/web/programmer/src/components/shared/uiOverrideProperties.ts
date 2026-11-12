@@ -5,7 +5,7 @@
  * showing it, live, and clearing the key puts the element back the way it was
  * authored. The panel reads exactly these five and nothing else.
  *
- * MIRRORS `evaluateUiOverrides` in `openavc/web/panel/panel.js`. Pinned by
+ * MIRRORS `OVERRIDES` in `openavc/web/panel/modules/overrides.js`. Pinned by
  * `tests/test_ui_override_properties_mirror.py`, because a property offered
  * here that the panel does not read is a control that silently does nothing.
  */

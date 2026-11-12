@@ -1,7 +1,7 @@
 /**
  * The theme's page background, its `page_defaults`, as the Theme Studio's Page
- * Background section reads and writes it: the keys panel.js's
- * `_themePageDefaultsToBackground` paints behind every page that sets none of
+ * Background section reads and writes it: the keys the panel's theme
+ * (`backgroundFromDefaults` in modules/theme.js) paints behind every page that sets none of
  * its own (`background_color`, `background_gradient` {from, to, angle}, and
  * `background_image` with its `_size`, `_position` and `_opacity`).
  *

@@ -142,10 +142,11 @@ export function ThemeStudio({
   const isGallery = previewView === "gallery";
   const previewProject = useMemo<ProjectConfig>(() => {
     if (!working) return project;
-    // Settings carry the working theme's id (so applyTheme matches inlineTheme)
+    // Settings carry the working theme's id (so the panel's theme uses inlineTheme)
     // AND blank out the project-level overrides so the studio's working theme
-    // is what's actually rendered. Without these blanks, panel.js's
-    // "per-setting overrides take priority" path would clobber the user's
+    // is what's actually rendered. Without these blanks, the panel's
+    // "per-setting overrides take priority" path (applySettings in
+    // modules/theme.js) would clobber the user's
     // accent / font_family edits with the saved project values.
     const settings = {
       ...project.ui.settings,

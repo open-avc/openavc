@@ -3,8 +3,9 @@
  * the program runs, drawn over whatever the control's own bindings drew.
  *
  * OVERRIDES is the list: the five properties a script can set, the order they
- * are put back and drawn in, and what each does to a control. The Programmer's
- * key picker offers the same five from `uiOverrideProperties.ts`, and
+ * are put back and drawn in, and for each what it keeps of the control as first
+ * drawn, how it draws and how it is put back. The Programmer's key picker offers
+ * the same five from `uiOverrideProperties.ts`, and
  * tests/test_ui_override_properties_mirror.py holds the two lists equal, so a
  * sixth property is a row here, a row there and a line in the scripting
  * reference.
@@ -32,18 +33,22 @@ const isSet = (v) => v !== undefined && v !== null;
 /** An override that writes one style property, put back from the snapshot. */
 function styleOverride(property) {
     return {
+        capture: (el) => ({ [property]: el.style[property] }),
         putBack: (el, base) => { el.style[property] = base[property]; },
         draw: (el, value) => { el.style[property] = String(value); return true; },
     };
 }
 
 /**
- * The five, in the order they are put back and drawn. `draw` answers whether
- * it drew anything: a control with no words to replace takes no label.
+ * The five, in the order they are put back and drawn. `capture` is what a
+ * row keeps of the control as first drawn, which is all its `putBack` reads;
+ * `draw` answers whether it drew anything: a control with no words to
+ * replace takes no label.
  */
 export const OVERRIDES = [
     {
         name: 'label',
+        capture: (el, elementDef) => wordsAsDrawn(el, elementDef),
         putBack: (el, base, ui) => ui.writeWords(el, base.words, { text: base.label, path: base.labelPath, rich: base.labelRich }),
         // Runtime words with no authored home. The editor refuses these and
         // says which key is setting them: writing the element's own label here
@@ -60,6 +65,7 @@ export const OVERRIDES = [
     { name: 'opacity', ...styleOverride('opacity') },
     {
         name: 'visible',
+        capture: (el) => ({ display: el.style.display }),
         // Hand display back to a visible_when binding if one governs this
         // element (the redraw after a clear re-asserts it); otherwise restore
         // the rendered base.
@@ -123,21 +129,21 @@ function wordsToGiveBack(words, rich, elementDef) {
     return rich ? String(elementDef.text ?? '') : drawnWords(words);
 }
 
-/** The control as first drawn: what a cleared override puts back. */
-function snapshot(el, elementDef) {
+/** A control's words as first drawn: where they are, what they say, and the field they came from. */
+function wordsAsDrawn(el, elementDef) {
     const words = overrideWordsNode(el, elementDef);
     const rich = drawnAsRichText(el, words, elementDef);
-    const label = wordsToGiveBack(words, rich, elementDef);
     return {
-        backgroundColor: el.style.backgroundColor,
-        color: el.style.color,
-        opacity: el.style.opacity,
-        display: el.style.display,
         words,
-        label,
+        label: wordsToGiveBack(words, rich, elementDef),
         labelRich: rich,
         labelPath: elementDef?.type === 'label' ? ['text'] : ['label'],
     };
+}
+
+/** The control as first drawn: what each row keeps, which is what a cleared override puts back. */
+function snapshot(el, elementDef) {
+    return Object.assign({}, ...OVERRIDES.map((o) => o.capture(el, elementDef)));
 }
 
 export class UiOverrides {

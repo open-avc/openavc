@@ -295,7 +295,7 @@ class PanelApp {
     _themeHost() {
         return {
             redraw: () => this.renderCurrentPage(),
-            drawn: () => this.snapshotReceived,
+            stateArrived: () => this.snapshotReceived,
             settings: () => this.uiDef?.settings,
         };
     }
