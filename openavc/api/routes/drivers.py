@@ -1619,12 +1619,9 @@ async def get_driver_definition(driver_id: str) -> dict:
     """Get a single JSON driver definition by ID."""
     from openavc.drivers.driver_loader import list_driver_definitions as _list
 
-    dirs = _get_driver_dirs()
-    for d in _list(dirs):
-        if d.get("id") == driver_id:
-            d.pop("_source_file", None)
-            return d
-    raise HTTPException(status_code=404, detail=f"Driver definition '{driver_id}' not found")
+    definition = _current_definition(driver_id, _list(_get_driver_dirs()))
+    definition.pop("_source_file", None)
+    return definition
 
 
 @router.post("/driver-definitions/validate")
@@ -1670,144 +1667,137 @@ async def validate_driver_definition_draft(
     return {"issues": validate_driver_issues(draft, strict=True)}
 
 
-@router.post("/driver-definitions")
-async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
-    """Create a new JSON driver definition."""
-    from openavc.drivers.driver_loader import (
-        list_driver_definitions as _list,
-        save_driver_definition,
-        validate_driver_definition,
-    )
-    from openavc.drivers.configurable import create_configurable_driver_class
-
-    dirs = _get_driver_dirs()
-    # Echo only what the client sent: exclude_unset keeps model defaults
-    # (manufacturer, delimiter, empty containers) out of the saved YAML;
-    # explicit nulls are dropped, not written into the file.
-    driver_def = _strip_listing_decorations(
-        body.model_dump(exclude_unset=True, exclude_none=True)
-    )
-
-    # Check for duplicate ID
-    existing = _list(dirs)
-    if any(d.get("id") == driver_def["id"] for d in existing):
-        raise _id_taken(driver_def["id"])
-
-    # Validate. strict: this is an authoring gate, so an undeclared key is a
-    # typo to reject now, not a mystery to debug later.
-    errors = validate_driver_definition(driver_def, strict=True)
-    if errors:
-        raise _definition_invalid(errors)
-
-    # Last gate before it is stored and registered. This door is an import
-    # door as much as an authoring one — the Driver Builder's "import a
-    # definition" lands here — so a file that names a floor above this
-    # platform is refused in the catalog door's own words. Run after the
-    # contract check so an author holding a broken draft still gets the
-    # errors that describe the draft; the way out of this one is to update
-    # OpenAVC, or to lower the floor and save again.
-    _enforce_declared_floor(driver_def.get("min_platform_version"))
-
-    # Save to driver_repo (user/community directory)
-    save_dir = dirs[1]  # driver_repo/
-    save_driver_definition(driver_def, save_dir)
-
-    # Register immediately
-    driver_class = create_configurable_driver_class(driver_def)
-    register_driver(driver_class)
-
-    # Reconnect any devices orphaned while waiting for this driver id, so a
-    # device that referenced a not-yet-created driver comes online as soon as
-    # it's authored (mirrors the Python hot-reload path; no full reload needed).
-    reconnected = await _get_engine().devices.reload_driver(driver_def["id"])
-
-    await announce_drivers_changed(driver_def["id"])
-    return {"status": "created", "driver_id": driver_def["id"], "devices_reconnected": reconnected}
+def _definition_not_found(driver_id: str) -> HTTPException:
+    """404 for a definition id no file in the library declares."""
+    return HTTPException(status_code=404, detail=f"Driver definition '{driver_id}' not found")
 
 
-@router.put("/driver-definitions/{driver_id}")
-async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest) -> dict:
-    """Update an existing JSON driver definition."""
+def _current_definition(driver_id: str, existing: list[dict[str, Any]]) -> dict[str, Any]:
+    """The listed definition that serves ``driver_id``, or the 404."""
+    current = next((d for d in existing if d.get("id") == driver_id), None)
+    if current is None:
+        raise _definition_not_found(driver_id)
+    return current
+
+
+def _refuse_built_in_edit(driver_id: str, dirs: Any) -> None:
+    """Built-in drivers are read-only: editing one in place would unlink the
+    shipped file from the install tree (no recovery). The Driver Builder forks
+    a built-in to an editable copy with a new id instead."""
+    from openavc.drivers.driver_loader import is_builtin_driver
+
+    if is_builtin_driver(driver_id, dirs):
+        raise HTTPException(
+            status_code=403,
+            detail="Built-in drivers are read-only. Customize a copy to edit.",
+        )
+
+
+def _refuse_rename_onto_another(
+    new_id: str, driver_id: str, existing: list[dict[str, Any]], dirs: Any
+) -> None:
+    """A rename may not take an id that is already served: a built-in's is
+    read-only, and any other driver's would be saved over."""
+    from openavc.drivers.driver_loader import is_builtin_driver
+
+    if new_id == driver_id:
+        return
+    if is_builtin_driver(new_id, dirs):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Driver id '{new_id}' belongs to a read-only built-in driver.",
+        )
+    if any(d.get("id") == new_id for d in existing):
+        raise _id_taken(new_id)
+
+
+async def _save_definition(
+    driver_def: dict[str, Any], dirs: Any, *, replacing: str | None = None
+) -> dict[str, Any]:
+    """Check, store, register and bring up a definition the Driver Builder saves.
+
+    The three save doors (create, replace, patch) refuse what is theirs to
+    refuse first, then all come here. The contract check is strict: this is an
+    authoring gate, so an undeclared key is a typo to reject now, not a mystery
+    to debug later. The platform floor comes after it, so an author holding a
+    broken draft still gets the errors that describe the draft; it is read off
+    the definition in hand, never the stored copy, so lowering a floor that
+    blocks the save is always possible, and it is checked at every save
+    because a save is what registers the driver (the Builder's "import a
+    definition" lands here too).
+
+    The new file is written to the user driver folder first, replacing a
+    same-named old one in place, and only then are other copies of
+    ``replacing`` removed, so the driver is never absent from disk. The devices
+    on it reconnect to the new class without a project reload. A rename leaves
+    devices on the old id waiting: if the removed file was overriding a shipped
+    built-in, the built-in is registered again so the old id keeps working,
+    otherwise its registration is dropped, and those devices are retried too.
+    """
     from openavc.drivers.driver_loader import (
         delete_driver_definition,
-        is_builtin_driver,
-        list_driver_definitions as _list,
         restore_driver_registration,
         save_driver_definition,
         validate_driver_definition,
     )
     from openavc.drivers.configurable import create_configurable_driver_class
 
-    dirs = _get_driver_dirs()
-    # Echo only what the client sent (see create_driver_definition).
-    driver_def = _strip_listing_decorations(
-        body.model_dump(exclude_unset=True, exclude_none=True)
-    )
-
-    # Must already exist
-    existing = _list(dirs)
-    if not any(d.get("id") == driver_id for d in existing):
-        raise HTTPException(
-            status_code=404,
-            detail=f"Driver definition '{driver_id}' not found",
-        )
-
-    # Built-in drivers are read-only: editing in place would unlink the
-    # shipped file from the install tree (no recovery). The Driver Builder
-    # forks built-ins to an editable copy with a new id instead.
-    if is_builtin_driver(driver_id, dirs):
-        raise HTTPException(
-            status_code=403,
-            detail="Built-in drivers are read-only. Customize a copy to edit.",
-        )
-    if driver_def.get("id") != driver_id and is_builtin_driver(driver_def.get("id", ""), dirs):
-        raise HTTPException(
-            status_code=403,
-            detail=f"Driver id '{driver_def.get('id')}' belongs to a read-only built-in driver.",
-        )
-    # A rename onto another driver's id would save over that driver.
-    if driver_def.get("id") != driver_id and any(
-        d.get("id") == driver_def.get("id") for d in existing
-    ):
-        raise _id_taken(driver_def["id"])
-
-    # Validate. strict: this is an authoring gate, so an undeclared key is a
-    # typo to reject now, not a mystery to debug later.
     errors = validate_driver_definition(driver_def, strict=True)
     if errors:
         raise _definition_invalid(errors)
-
-    # Same gate as create: a save is what registers the driver, so raising a
-    # driver's floor past this platform is refused here too — otherwise the
-    # create gate is a two-step walk around. Checked against the body in hand,
-    # never the stored copy, so lowering a floor that already blocks the save
-    # is always possible.
     _enforce_declared_floor(driver_def.get("min_platform_version"))
 
-    # Save the new file first (it replaces a same-named old one in place),
-    # then remove any other copy of the old id, so the driver is never
-    # absent from disk.
-    save_dir = dirs[1]  # driver_repo/
-    saved = save_driver_definition(driver_def, save_dir)
-    delete_driver_definition(driver_id, dirs, keep=saved)
+    saved = save_driver_definition(driver_def, dirs[1])  # driver_repo/
+    if replacing is not None:
+        delete_driver_definition(replacing, dirs, keep=saved)
 
-    # Re-register, then reconnect live devices so they pick up the new class
-    # without a full project reload (mirrors the Python hot-reload path).
-    driver_class = create_configurable_driver_class(driver_def)
-    register_driver(driver_class)
-
+    register_driver(create_configurable_driver_class(driver_def))
     engine = _get_engine()
-    reconnected = await engine.devices.reload_driver(driver_def["id"])
-    # A renamed driver id leaves devices on the old id orphaned — retry those too.
-    if driver_def.get("id") != driver_id:
-        # The rename removed the user file for the old id. If that file was
-        # overriding a shipped built-in, re-register the built-in so the old
-        # id keeps working; otherwise drop the stale registration.
-        restore_driver_registration(driver_id, dirs)
-        reconnected = reconnected + await engine.devices.reload_driver(driver_id)
+    new_id = driver_def["id"]
+    reconnected = await engine.devices.reload_driver(new_id)
+    if replacing is not None and new_id != replacing:
+        restore_driver_registration(replacing, dirs)
+        reconnected = reconnected + await engine.devices.reload_driver(replacing)
 
-    await announce_drivers_changed(driver_def["id"])
-    return {"status": "updated", "driver_id": driver_def["id"], "devices_reconnected": reconnected}
+    await announce_drivers_changed(new_id)
+    return {"driver_id": new_id, "devices_reconnected": reconnected}
+
+
+def _requested_definition(body: DriverDefinitionRequest) -> dict[str, Any]:
+    """Only what the client sent: unset model defaults (manufacturer,
+    delimiter, empty containers) stay out of the saved YAML, explicit nulls are
+    dropped, and the listing's own bookkeeping keys are stripped."""
+    return _strip_listing_decorations(body.model_dump(exclude_unset=True, exclude_none=True))
+
+
+@router.post("/driver-definitions")
+async def create_driver_definition(body: DriverDefinitionRequest) -> dict:
+    """Create a new JSON driver definition."""
+    from openavc.drivers.driver_loader import list_driver_definitions as _list
+
+    dirs = _get_driver_dirs()
+    driver_def = _requested_definition(body)
+    if any(d.get("id") == driver_def["id"] for d in _list(dirs)):
+        raise _id_taken(driver_def["id"])
+
+    saved = await _save_definition(driver_def, dirs)
+    return {"status": "created", **saved}
+
+
+@router.put("/driver-definitions/{driver_id}")
+async def update_driver_definition(driver_id: str, body: DriverDefinitionRequest) -> dict:
+    """Update an existing JSON driver definition."""
+    from openavc.drivers.driver_loader import list_driver_definitions as _list
+
+    dirs = _get_driver_dirs()
+    driver_def = _requested_definition(body)
+    existing = _list(dirs)
+    _current_definition(driver_id, existing)
+    _refuse_built_in_edit(driver_id, dirs)
+    _refuse_rename_onto_another(driver_def.get("id", ""), driver_id, existing, dirs)
+
+    saved = await _save_definition(driver_def, dirs, replacing=driver_id)
+    return {"status": "updated", **saved}
 
 
 def _merge_patch(current: Any, patch: Any) -> Any:
@@ -1833,61 +1823,18 @@ def _merge_patch(current: Any, patch: Any) -> Any:
 @router.patch("/driver-definitions/{driver_id}")
 async def patch_driver_definition(driver_id: str, body: dict) -> dict:
     """Partially update a driver definition (JSON Merge Patch semantics)."""
-    from openavc.drivers.driver_loader import (
-        delete_driver_definition,
-        is_builtin_driver,
-        list_driver_definitions as _list,
-        save_driver_definition,
-        validate_driver_definition,
-    )
-    from openavc.drivers.configurable import create_configurable_driver_class
+    from openavc.drivers.driver_loader import list_driver_definitions as _list
 
     dirs = _get_driver_dirs()
+    current = _current_definition(driver_id, _list(dirs))
+    _refuse_built_in_edit(driver_id, dirs)
 
-    # Find existing definition
-    existing = _list(dirs)
-    current = next((d for d in existing if d.get("id") == driver_id), None)
-    if current is None:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Driver definition '{driver_id}' not found",
-        )
-
-    # Built-in drivers are read-only (see update_driver_definition).
-    if is_builtin_driver(driver_id, dirs):
-        raise HTTPException(
-            status_code=403,
-            detail="Built-in drivers are read-only. Customize a copy to edit.",
-        )
-
+    # A patch never changes the id. The floor is read off the merge, so a
+    # patch carrying a lower floor (or clearing it) is the way out of one.
     merged = _merge_patch(current, body)
-    # Don't allow changing ID via PATCH
     merged["id"] = driver_id
-    merged = _strip_listing_decorations(merged)
-
-    # Validate merged result (authoring gate — strict, as for create/replace)
-    errors = validate_driver_definition(merged, strict=True)
-    if errors:
-        raise _definition_invalid(errors)
-
-    # Same gate as create/replace, on the merged result — a patch that leaves
-    # a too-high floor in place is still a save. A patch carrying a lower
-    # floor (or clearing it) merges first and passes, which is the way out.
-    _enforce_declared_floor(merged.get("min_platform_version"))
-
-    # Save first, then remove any other copy of the id (as replace does).
-    save_dir = dirs[1]  # driver_repo/
-    saved = save_driver_definition(merged, save_dir)
-    delete_driver_definition(driver_id, dirs, keep=saved)
-
-    # Re-register, then reconnect live devices so they pick up the new class
-    # without a full project reload (mirrors the Python hot-reload path).
-    driver_class = create_configurable_driver_class(merged)
-    register_driver(driver_class)
-    reconnected = await _get_engine().devices.reload_driver(driver_id)
-
-    await announce_drivers_changed(driver_id)
-    return {"status": "updated", "driver_id": driver_id, "devices_reconnected": reconnected}
+    saved = await _save_definition(_strip_listing_decorations(merged), dirs, replacing=driver_id)
+    return {"status": "updated", **saved}
 
 
 @router.delete("/driver-definitions/{driver_id}")
@@ -1911,10 +1858,7 @@ async def delete_driver_definition_endpoint(driver_id: str) -> dict:
 
     deleted = delete_driver_definition(driver_id, dirs)
     if not deleted:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Driver definition '{driver_id}' not found",
-        )
+        raise _definition_not_found(driver_id)
     # The deleted file may have been a user copy overriding a shipped
     # built-in: re-register the built-in so the id keeps working, or drop
     # the stale registration when nothing serves the id anymore.
