@@ -15,6 +15,10 @@ import {
 import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
+import {
+    LevelScale, formatLevel, levelSettings, liveSender, responseCurveInverse, scaleMarks, snapToStep,
+    unknownText,
+} from './modules/level.js';
 
 // --- Programmer session bridge ---------------------------------------------
 // When the panel is embedded as an iframe inside the Programmer IDE (the UI
@@ -2772,21 +2776,16 @@ class PanelApp {
 
         const input = document.createElement('input');
         input.type = 'range';
+        const settings = levelSettings(element, { decimals: null, rateMs: 100 });
         const sliderMin = element.min ?? 0;
         const sliderMax = element.max ?? 100;
-        const sliderStep = element.step ?? 1;
-        const sSpan = sliderMax - sliderMin;
-        const sResponse = element.response || 'linear';
-        const sResponseDbRange = element.response_db_range != null ? Number(element.response_db_range) : 60;
-        const sUnit = element.unit || '';
-        const sDisplayDecimals = element.display_decimals != null ? Number(element.display_decimals) : null;
-        const sSendOnRelease = element.send_on_release === true;
-        const sThrottle = element.send_throttle_ms != null ? Number(element.send_throttle_ms) : 100;
+        const sliderStep = settings.step;
+        const scale = new LevelScale(sliderMin, sliderMax, settings);
+        const sSpan = scale.span;
+        const sResponse = settings.response;
+        const sUnit = settings.unit;
+        const sSendOnRelease = settings.sendOnRelease;
         input.setAttribute('aria-label', element.label || element.id);
-        const sOutputMin = element.output_min;
-        const sOutputMax = element.output_max;
-        const sHasOutputRange = sOutputMin != null && sOutputMax != null;
-        const sScaleToFull = element.scale_to_full !== false;
 
         // The native range input runs in a normalized POSITION domain (0..STEPS)
         // rather than the display-value domain, because a native thumb is always
@@ -2801,30 +2800,24 @@ class PanelApp {
 
         // position (0..STEPS) -> display value (curved, snapped to step, clamped)
         const posToValue = (pos) => {
-            const travel = STEPS > 0 ? pos / STEPS : 0;
-            let v = sliderMin + this._responseCurve(travel, sResponse, sResponseDbRange) * sSpan;
-            if (sliderStep > 0) v = this._snapToStep(v, sliderStep);
+            let v = scale.valueAt(STEPS > 0 ? pos / STEPS : 0);
+            if (sliderStep > 0) v = snapToStep(v, sliderStep);
             v = Math.max(sliderMin, Math.min(sliderMax, v));
-            if (sHasOutputRange && !sScaleToFull) v = Math.max(sOutputMin, Math.min(sOutputMax, v));
+            if (scale.limited) v = scale.toOutput(v);
             return v;
         };
         // display value -> position (0..STEPS)
         const valueToPos = (v) => {
-            const vf = sSpan !== 0 ? (v - sliderMin) / sSpan : 0;
-            const travel = this._responseCurveInverse(vf, sResponse, sResponseDbRange);
+            const travel = sSpan !== 0 ? scale.travelOf(v) : 0;
             return Math.max(0, Math.min(STEPS, Math.round(travel * STEPS)));
         };
-        const fmtValue = (v) => {
-            const n = Number(v);
-            const dec = sDisplayDecimals != null ? sDisplayDecimals : (sliderStep < 1 ? 1 : 0);
-            const s = dec > 0 ? n.toFixed(dec) : String(Math.round(n));
-            return sUnit ? `${s} ${sUnit}` : s;
-        };
+        const sDecimals = settings.decimals != null ? settings.decimals : (sliderStep < 1 ? 1 : 0);
+        const fmtValue = (v) => formatLevel(v, sDecimals, sUnit);
 
         // Use a design sample when the author has no reading to work with.
         const sliderBinding = element.bindings?.show?.value;
         const initialRaw = sliderBinding?.key ? this.state[sliderBinding.key] : undefined;
-        const initialValue = this._controlDisplayValue(initialRaw, sliderMin, sliderMax, sOutputMin, sOutputMax, sScaleToFull);
+        const initialValue = scale.reading(initialRaw, this.editMode);
         input.value = valueToPos(initialValue ?? sliderMin);
 
         // Update fill from current travel position
@@ -2852,14 +2845,16 @@ class PanelApp {
         }
 
         // Streams at the element's rate while dragging live; the release sends
-        // the final value (see _liveSender).
-        const sender = this._liveSender(element.id, sThrottle, !sSendOnRelease);
+        // the final value (see liveSender in modules/level.js).
+        const sender = liveSender(
+            (value) => this.send({ type: 'ui.change', element_id: element.id, value }),
+            settings.rateMs, !sSendOnRelease, (timer) => this.debounceTimers.push(timer));
         input.addEventListener('input', () => {
             // Dead-space mode: clamp travel so the thumb can't enter the region
             // past the device's output limit (mirrors the value clamp above).
-            if (sHasOutputRange && !sScaleToFull) {
-                const loPos = valueToPos(sOutputMin);
-                const hiPos = valueToPos(sOutputMax);
+            if (scale.limited) {
+                const loPos = valueToPos(scale.outputMin);
+                const hiPos = valueToPos(scale.outputMax);
                 const p = parseFloat(input.value);
                 input.value = Math.max(Math.min(loPos, hiPos), Math.min(Math.max(loPos, hiPos), p));
             }
@@ -2905,9 +2900,8 @@ class PanelApp {
                 fill,
                 valueDisplay,
                 isVertical,
-                outputMin: sOutputMin,
-                outputMax: sOutputMax,
-                scaleToFull: sScaleToFull,
+                // Readings are placed against the range read as numbers.
+                readings: new LevelScale(parseFloat(element.min ?? 0), parseFloat(element.max ?? 100), settings),
                 steps: STEPS,
                 unit: sUnit,
                 valueToPos,
@@ -3811,22 +3805,12 @@ class PanelApp {
         let min = element.min != null ? parseFloat(element.min) : 0;
         let max = element.max != null ? parseFloat(element.max) : 100;
         if (min >= max) { const tmp = min; min = max; max = tmp; }
-        const step = element.step ?? 1;
-        const unit = element.unit || '';
-        const outputMin = element.output_min;
-        const outputMax = element.output_max;
-        const hasOutputRange = outputMin != null && outputMax != null;
-        const scaleToFull = element.scale_to_full !== false;
-        const response = element.response || 'linear';
-        const responseDbRange = element.response_db_range != null ? Number(element.response_db_range) : 60;
-        const faderDisplayDecimals = element.display_decimals != null ? Number(element.display_decimals) : 1;
-        const faderSendOnRelease = element.send_on_release === true;
-        const faderThrottle = element.send_throttle_ms != null ? Number(element.send_throttle_ms) : 50;
-        const fmtFaderValue = (v) => {
-            const n = Number(v);
-            const s = faderDisplayDecimals > 0 ? n.toFixed(faderDisplayDecimals) : String(Math.round(n));
-            return unit ? `${s} ${unit}` : s;
-        };
+        const settings = levelSettings(element, { decimals: 1, rateMs: 50 });
+        const scale = new LevelScale(min, max, settings);
+        const step = settings.step;
+        const unit = settings.unit;
+        const faderSendOnRelease = settings.sendOnRelease;
+        const fmtFaderValue = (v) => formatLevel(v, settings.decimals, unit);
         // Merge theme element_defaults for consistency with other renderers,
         // even though show_value/show_scale aren't currently theme-editable
         // — keeps the pattern uniform if those flags become themable later.
@@ -3852,19 +3836,19 @@ class PanelApp {
 
         // Scale marks
         if (showScale) {
-            const scale = document.createElement('div');
-            scale.className = 'fader-scale';
-            const marks = this._faderScaleMarks(min, max);
+            const marksNode = document.createElement('div');
+            marksNode.className = 'fader-scale';
+            const marks = scaleMarks(min, max);
             for (const m of marks) {
                 const mark = document.createElement('div');
                 mark.className = 'fader-mark';
-                const frac = this._responseCurveInverse((m - min) / (max - min), response, responseDbRange);
+                const frac = scale.travelOf(m);
                 if (isHorizontal) mark.style.left = `${frac * 100}%`;
                 else mark.style.bottom = `${frac * 100}%`;
                 mark.textContent = m.toString();
-                scale.appendChild(mark);
+                marksNode.appendChild(mark);
             }
-            body.appendChild(scale);
+            body.appendChild(marksNode);
         }
 
         // Track + handle
@@ -3878,9 +3862,9 @@ class PanelApp {
         // Dead space overlay when output range is clamped and not scaled to full.
         // Position it through the response curve so it lines up with where the
         // handle actually stops on a logarithmic fader (identity for linear).
-        if (hasOutputRange && !scaleToFull) {
-            const maxFrac = this._responseCurveInverse((outputMax - min) / (max - min), response, responseDbRange);
-            const minFrac = this._responseCurveInverse((outputMin - min) / (max - min), response, responseDbRange);
+        if (scale.limited) {
+            const maxFrac = scale.travelOf(scale.outputMax);
+            const minFrac = scale.travelOf(scale.outputMin);
             if (maxFrac < 1) {
                 const dead = document.createElement('div');
                 dead.className = 'fader-dead-space';
@@ -3921,7 +3905,7 @@ class PanelApp {
         // Position the handle from a reading, or a sample in the design canvas.
         const valueBinding = element.bindings?.show?.value;
         const initialRaw = valueBinding?.key ? this.state[valueBinding.key] : undefined;
-        let currentValue = this._controlDisplayValue(initialRaw, min, max, outputMin, outputMax, scaleToFull) ?? 0;
+        let currentValue = scale.reading(initialRaw, this.editMode) ?? 0;
         currentValue = Math.max(min, Math.min(max, currentValue));
 
         // Touch/mouse drag interaction
@@ -3941,16 +3925,14 @@ class PanelApp {
                 const clientY = e.touches ? e.touches[0].clientY : e.clientY;
                 frac = 1 - Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
             }
-            let val = min + this._responseCurve(frac, response, responseDbRange) * (max - min);
+            let val = scale.valueAt(frac);
             // Clamp to output range when not scaling (dead space mode)
-            if (hasOutputRange && !scaleToFull) {
-                val = Math.max(outputMin, Math.min(outputMax, val));
-            }
-            return this._snapToStep(val, step);
+            if (scale.limited) val = scale.toOutput(val);
+            return snapToStep(val, step);
         };
 
         const updateFader = (val) => {
-            const frac = this._responseCurveInverse((val - min) / (max - min), response, responseDbRange);
+            const frac = scale.travelOf(val);
             if (isHorizontal) handle.style.left = `${frac * 100}%`;
             else handle.style.bottom = `${frac * 100}%`;
             handle.setAttribute('aria-valuenow', String(Math.round(val * 10) / 10));
@@ -3965,8 +3947,10 @@ class PanelApp {
         updateFader(currentValue);
 
         // Streams at the element's rate during a live drag; the release sends
-        // the final value (see _liveSender).
-        const sender = this._liveSender(element.id, faderThrottle, !faderSendOnRelease);
+        // the final value (see liveSender in modules/level.js).
+        const sender = liveSender(
+            (value) => this.send({ type: 'ui.change', element_id: element.id, value }),
+            settings.rateMs, !faderSendOnRelease, (timer) => this.debounceTimers.push(timer));
 
         const onStart = (e) => {
             e.preventDefault();
@@ -4030,12 +4014,12 @@ class PanelApp {
             let current = parseFloat(handle.getAttribute('aria-valuenow') || String(min));
             if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
                 e.preventDefault();
-                current = Math.min(max, this._snapToStep(current + step, step));
+                current = Math.min(max, snapToStep(current + step, step));
                 updateFader(current);
                 sender.live(current);
             } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
                 e.preventDefault();
-                current = Math.max(min, this._snapToStep(current - step, step));
+                current = Math.max(min, snapToStep(current - step, step));
                 updateFader(current);
                 sender.live(current);
             }
@@ -4048,87 +4032,12 @@ class PanelApp {
                 element: el,
                 elementDef: element,
                 binding: valueBinding,
-                _fader: { handle, valueDisplay, min, max, unit, horizontal: isHorizontal, outputMin, outputMax, scaleToFull, response, responseDbRange, fmt: fmtFaderValue },
+                _fader: { handle, valueDisplay, unit, horizontal: isHorizontal, scale, fmt: fmtFaderValue },
             };
             this.bindings.push(faderBinding);
         }
 
         return el;
-    }
-
-    _reverseScale(deviceValue, displayMin, displayMax, outputMin, outputMax, scaleToFull) {
-        if (outputMin == null || outputMax == null) return deviceValue;
-        if (scaleToFull === false) return deviceValue;
-        const outputRange = outputMax - outputMin;
-        if (outputRange === 0) return displayMin;
-        const frac = (deviceValue - outputMin) / outputRange;
-        return displayMin + frac * (displayMax - displayMin);
-    }
-
-    // How a slider or fader puts its value on the wire. While it moves, at
-    // most one ui.change per `rateMs`: the first movement goes out at once,
-    // and a movement inside the interval is held and sent (the newest one
-    // only) when the interval ends, so the stream always lands where the
-    // control stopped. A rate of 0 sends every movement. `release(v)` ends a
-    // gesture: it sends v now and drops anything held, so nothing stale can
-    // follow it. On a control that streams (`streaming`), a release that only
-    // repeats the value the stream just sent is skipped, so a tap or an arrow
-    // key press is one command, not two. Times come from performance.now(),
-    // never Date.now(): a wall clock that steps (a time sync at boot) would
-    // hold the stream for as long as the step.
-    _liveSender(elementId, rateMs, streaming) {
-        const rate = Number(rateMs) > 0 ? Number(rateMs) : 0;
-        let lastSentAt = -Infinity;
-        let timer = null;
-        let held;
-        let streamed;   // what the stream last sent, forgotten at each release
-        const put = (v) => {
-            lastSentAt = performance.now();
-            this.send({ type: 'ui.change', element_id: elementId, value: v });
-        };
-        const cancel = () => {
-            if (timer) { clearTimeout(timer); timer = null; }
-        };
-        return {
-            live: (v) => {
-                const wait = rate - (performance.now() - lastSentAt);
-                if (wait <= 0) {
-                    cancel();
-                    streamed = v;
-                    put(v);
-                    return;
-                }
-                held = v;
-                if (!timer) {
-                    timer = setTimeout(() => { timer = null; streamed = held; put(held); }, wait);
-                    this.debounceTimers.push(timer);
-                }
-            },
-            release: (v) => {
-                const repeat = streaming && !timer && streamed === v;
-                cancel();
-                streamed = undefined;
-                if (!repeat) put(v);
-            },
-        };
-    }
-
-    // Snap a value to the nearest multiple of `step`, then strip the binary
-    // float noise that Math.round(value/step)*step leaves behind — e.g. a 0.1
-    // step yielding 0.30000000000000004 — by rounding to the step's own decimal
-    // precision. Without this a fractional-step slider/fader puts that noise
-    // straight on the wire (the engine only re-rounds when a driver declares a
-    // decimals rule, which new controls no longer carry a default for). A
-    // non-positive step means "don't snap" and returns the value unchanged.
-    _snapToStep(value, step) {
-        if (!(step > 0)) return value;
-        const snapped = Math.round(value / step) * step;
-        // Decimal places the step implies (0.1 -> 1, 0.25 -> 2, 5 -> 0). Panel
-        // steps are clean decimals, so String() never goes exponential here.
-        const s = String(step);
-        const dot = s.indexOf('.');
-        const decimals = dot === -1 ? 0 : s.length - dot - 1;
-        return decimals > 0 ? Number(snapped.toFixed(decimals)) : snapped;
     }
 
     // The fixed decimal count an element asked for in its readout, or null when
@@ -4141,68 +4050,6 @@ class PanelApp {
         const n = Number(raw);
         if (!Number.isFinite(n)) return null;
         return Math.max(0, Math.min(20, Math.round(n)));
-    }
-
-    // Response curve for faders/sliders. Maps physical travel (0..1, bottom to
-    // top) to a normalized value fraction (0..1). Linear is the identity.
-    // Logarithmic makes the travel linear in decibels so the control feels like
-    // a real audio fader — equal travel is an equal loudness step — instead of
-    // cramming all the audible change into the top of the throw. `dbRange` is
-    // how many dB the throw spans (larger = finer control down low). This is
-    // purely a feel transform: the value handed to the device is unchanged, so
-    // it lives entirely on the panel and the server never sees the curve.
-    _responseCurve(travelFrac, response, dbRange) {
-        if (response !== 'logarithmic') return travelFrac;
-        const D = dbRange > 0 ? dbRange : 60;
-        const denom = Math.pow(10, D / 20) - 1;
-        if (denom <= 0) return travelFrac;
-        return (Math.pow(10, (D * travelFrac) / 20) - 1) / denom;
-    }
-
-    // Inverse of _responseCurve: normalized value fraction (0..1) -> travel (0..1).
-    // Used to place the handle/thumb (and scale marks) for a known value.
-    _responseCurveInverse(valueFrac, response, dbRange) {
-        if (response !== 'logarithmic') return valueFrac;
-        const D = dbRange > 0 ? dbRange : 60;
-        const denom = Math.pow(10, D / 20) - 1;
-        if (denom <= 0) return valueFrac;
-        const vf = Math.max(0, Math.min(1, valueFrac));
-        return (20 / D) * Math.log10(vf * denom + 1);
-    }
-
-    _faderScaleMarks(min, max) {
-        const range = max - min;
-        if (range === 0) return [min];
-        // Pick a step that gives 3-7 marks
-        const rawStep = range / 5;
-        const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-        const nice = [1, 2, 2.5, 5, 10].find(n => n * mag >= rawStep) * mag;
-        const marks = [];
-        const start = Math.ceil(min / nice) * nice;
-        for (let v = start; v <= max + nice * 0.01; v += nice) {
-            const rounded = Math.round(v * 1e6) / 1e6;
-            if (rounded >= min && rounded <= max) marks.push(rounded);
-        }
-        if (marks.length === 0 || marks[0] > min) marks.unshift(min);
-        if (marks[marks.length - 1] < max) marks.push(max);
-        return marks;
-    }
-
-    /**
-     * A display-domain reading, or a sample for an unreported design control.
-     * The sample never enters state or reaches the live panel. Keep it within
-     * the usable range so an author can see the handle, fill and readout even
-     * before choosing a binding or connecting equipment.
-     */
-    _controlDisplayValue(raw, min, max, outputMin, outputMax, scaleToFull) {
-        if (raw !== undefined && raw !== null) {
-            return this._reverseScale(Number(raw), min, max, outputMin, outputMax, scaleToFull);
-        }
-        if (!this.editMode) return null;
-        const limited = scaleToFull === false && outputMin != null && outputMax != null;
-        const low = limited ? Math.max(min, outputMin) : min;
-        const high = limited ? Math.min(max, outputMax) : max;
-        return low + (high - low) / 2;
     }
 
     /**
@@ -4227,7 +4074,7 @@ class PanelApp {
         else handle.style.bottom = '0%';
         handle.removeAttribute('aria-valuenow');
         handle.classList.add('no-reading');
-        if (valueDisplay) valueDisplay.textContent = this._unknownValueText(unit);
+        if (valueDisplay) valueDisplay.textContent = unknownText(unit);
     }
 
     evaluateFaderValue(b) {
@@ -4239,15 +4086,14 @@ class PanelApp {
         b._lastFaderRaw = raw;
         b._lastFaderOffline = offline;
         this._markBindingAvailability(b, offline);
-        const { handle, valueDisplay, min, max, horizontal, outputMin, outputMax, scaleToFull, response, responseDbRange, fmt } = b._fader;
+        const { handle, valueDisplay, horizontal, scale, fmt } = b._fader;
         // Don't fight the operator while they're dragging the handle.
         if (handle._dragging) return;
-        const span = max - min;
         if (offline) {
             this._renderFaderUnknown(b);
             return;
         }
-        const displayValue = this._controlDisplayValue(raw, min, max, outputMin, outputMax, scaleToFull);
+        const displayValue = scale.reading(raw, this.editMode);
         if (displayValue === null) {
             // No reading: the key was deleted, or the device is reachable and
             // simply has not reported this one yet. Same answer either way, and
@@ -4257,8 +4103,8 @@ class PanelApp {
             return;
         }
         handle.classList.remove('no-reading');
-        const value = Math.max(min, Math.min(max, displayValue));
-        const frac = span > 0 ? this._responseCurveInverse((value - min) / span, response, responseDbRange) : 0;
+        const value = Math.max(scale.min, Math.min(scale.max, displayValue));
+        const frac = scale.span > 0 ? scale.travelOf(value) : 0;
         if (horizontal) handle.style.left = `${frac * 100}%`;
         else handle.style.bottom = `${frac * 100}%`;
         // The arrow keys read their starting point off this, so a state update
@@ -5675,11 +5521,6 @@ class PanelApp {
         };
     }
 
-    /** What a readout says when there is no reading: "--", with the unit if it carries one. */
-    _unknownValueText(unit) {
-        return unit ? `-- ${unit}` : '--';
-    }
-
     evaluateAllBindings(changedKeys = null) {
         // Which devices just changed reachability. A binding reading one of
         // them has to be re-evaluated even though its OWN key did not move:
@@ -6502,7 +6343,7 @@ class PanelApp {
     }
 
     evaluateSliderValue(b) {
-        const { element, elementDef, binding, fill, valueDisplay, isVertical, outputMin, outputMax, scaleToFull, steps, unit, valueToPos, fmtValue } = b;
+        const { element, binding, fill, valueDisplay, isVertical, readings, steps, unit, valueToPos, fmtValue } = b;
         // Don't yank the thumb out from under an operator who is actively
         // dragging it when a device echo or another panel's change arrives.
         // A native range input keeps keyboard focus after pointer release or
@@ -6515,27 +6356,23 @@ class PanelApp {
         b._lastSliderRaw = rawValue;
         b._lastSliderOffline = offline;
         this._markBindingAvailability(b, offline);
-        // The input runs in the position domain (0..steps); display min/max come
-        // from the element definition, not the input's own min/max.
-        const min = parseFloat(elementDef.min ?? 0);
-        const max = parseFloat(elementDef.max ?? 100);
         const setFill = (pct) => {
             if (!fill) return;
             if (isVertical) fill.style.height = pct + '%';
             else fill.style.width = pct + '%';
         };
-        const displayValue = this._controlDisplayValue(rawValue, min, max, outputMin, outputMax, scaleToFull);
+        const displayValue = readings.reading(rawValue, this.editMode);
         if (offline || displayValue === null) {
             // Nothing to read -- the device is unreachable, the key was
             // deleted, or the device is right there and has not reported this
             // one yet. The fill is emptied, the thumb is hidden (a thumb at the
             // bottom is a claim of minimum) and the readout says so rather than
             // printing the range's floor as a value.
-            element.value = valueToPos(min);
+            element.value = valueToPos(readings.min);
             element.removeAttribute('aria-valuetext');
             element.classList.add('no-reading');
             setFill(0);
-            if (valueDisplay) valueDisplay.textContent = this._unknownValueText(unit);
+            if (valueDisplay) valueDisplay.textContent = unknownText(unit);
             return;
         }
         element.classList.remove('no-reading');

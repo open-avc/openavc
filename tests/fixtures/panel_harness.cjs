@@ -125,7 +125,7 @@ const assetUrl = (ref) => panelModule('base_path.js').assetUrl(ref);
 // The scenarios below drive the nodes a slider or fader drew and the value
 // binding it registered, so they say what the control does, not how its code
 // is laid out. The step snap is reached through `snapToStep`.
-const snapToStep = (value, step) => mkApp()._snapToStep(value, step);
+const snapToStep = (value, step) => panelModule('level.js').snapToStep(value, step);
 
 /** A slider or fader drawn by the panel, and the value binding it registered. */
 function drawnLevel(app, def) {
