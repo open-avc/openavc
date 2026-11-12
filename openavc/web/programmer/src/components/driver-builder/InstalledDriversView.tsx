@@ -13,20 +13,19 @@ import {
 } from "../shared/catalogUpdates";
 import {
   UpdateAvailableLine,
-  UpdateRowButton,
   UpdatesAvailableCount,
 } from "../shared/CatalogUpdateControls";
+import { DriverListRow, NotLoadedNote } from "./DriverListRow";
+import { listedDrivers } from "./installedDriverList";
 import type {
   ChildEntityStateVarDef,
   ChildEntityTypeSchema,
-  CommunityDriver,
   DeviceSettingDef,
   DriverInfo,
   InstalledDriver,
 } from "../../api/types";
 import { booleanWord, valueText } from "../shared/booleanWords";
 
-const GENERIC_IDS = new Set(["generic_tcp", "generic_serial", "generic_http"]);
 
 /** Whether the list shows a driver for what is in the search box: every word
  *  typed appears in its name, manufacturer or category, wherever each one is,
@@ -39,41 +38,6 @@ export function driverMatchesSearch(
   const fields = [driver.name, driver.manufacturer, driver.category].map((f) => f.toLowerCase());
   return words.every((word) => fields.some((f) => f.includes(word)));
 }
-
-/** What the list shows: every registered driver but the generics, then each
- *  library file that never registered (it failed to import, or was written for
- *  an older OpenAVC), so it can be updated or uninstalled from here. Such a
- *  file is named as the catalog names it, else as the file does. */
-export function listedDrivers(
-  registered: DriverInfo[],
-  installed: InstalledDriver[],
-  catalog: CommunityDriver[],
-): { drivers: DriverInfo[]; notLoaded: Set<string> } {
-  const registeredIds = new Set(registered.map((d) => d.id));
-  const catalogById = new Map(catalog.map((d) => [d.id, d]));
-  const notLoaded = installed
-    .filter((d) => !registeredIds.has(d.id) && !GENERIC_IDS.has(d.id))
-    .map((d): DriverInfo => {
-      const entry = catalogById.get(d.id);
-      return {
-        id: d.id,
-        name: entry?.name || d.name || d.id,
-        manufacturer: entry?.manufacturer ?? "",
-        category: entry?.category ?? "",
-        version: d.version || undefined,
-        commands: {},
-        config_schema: {},
-      };
-    });
-  return {
-    drivers: [...registered.filter((d) => !GENERIC_IDS.has(d.id)), ...notLoaded],
-    notLoaded: new Set(notLoaded.map((d) => d.id)),
-  };
-}
-
-const NOT_LOADED_TEXT =
-  "This driver did not load, so devices can't use it. Update it, or uninstall it and " +
-  "install it again from Browse Community. The Log has the reason.";
 
 const headerBtnStyle: React.CSSProperties = {
   display: "flex",
@@ -393,118 +357,6 @@ export function InstalledDriversView({
   );
 }
 
-
-/** One driver in the list: its name (a PY mark for a Python driver), its
- *  maker and category or that it did not load, and Update when there is one. */
-function DriverListRow({
-  driver,
-  selected,
-  notLoaded,
-  python,
-  update,
-  updating,
-  onSelect,
-  onUpdate,
-}: {
-  driver: DriverInfo;
-  selected: boolean;
-  notLoaded: boolean;
-  python: boolean;
-  update?: CatalogUpdate;
-  updating: boolean;
-  onSelect: () => void;
-  onUpdate: (update: CatalogUpdate) => void;
-}) {
-  return (
-    <div
-      onClick={onSelect}
-      style={{
-        padding: "var(--space-sm) var(--space-md)",
-        cursor: "pointer",
-        borderBottom: "1px solid var(--border-color)",
-        background:
-          selected ? "var(--accent-dim, rgba(59,130,246,0.1))" : "transparent",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          fontWeight: 500,
-          fontSize: "var(--font-size-sm)",
-        }}
-      >
-        <span
-          style={{
-            flex: 1,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {driver.name}
-        </span>
-        {python && (
-          <span
-            title="Python driver"
-            style={{
-              fontSize: 10,
-              padding: "1px 5px",
-              borderRadius: 3,
-              background: "var(--bg-hover)",
-              color: "var(--text-muted)",
-              fontFamily: "var(--font-mono)",
-              fontWeight: 600,
-              flexShrink: 0,
-            }}
-          >
-            PY
-          </span>
-        )}
-      </div>
-      <div
-        style={{
-          fontSize: "var(--font-size-xs)",
-          color: notLoaded ? "var(--color-warning)" : "var(--text-muted)",
-          marginTop: 2,
-        }}
-      >
-        {notLoaded
-          ? "Did not load"
-          : <>{driver.manufacturer} &middot; {driver.category || "Other"}</>}
-      </div>
-      {update && (
-        <div style={{ marginTop: 4 }}>
-          <UpdateRowButton
-            update={update}
-            updating={updating}
-            onUpdate={() => onUpdate(update)}
-          />
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Said above a driver's page when its file never registered. */
-function NotLoadedNote({ show }: { show: boolean }) {
-  if (!show) return null;
-  return (
-    <p
-      style={{
-        margin: "0 0 var(--space-md)",
-        padding: "var(--space-sm) var(--space-md)",
-        borderRadius: "var(--radius)",
-        border: "1px solid var(--color-warning)",
-        fontSize: "var(--font-size-sm)",
-        color: "var(--color-warning)",
-      }}
-    >
-      {NOT_LOADED_TEXT}
-    </p>
-  );
-}
 
 export function DriverDetailPanel({
   driver,
