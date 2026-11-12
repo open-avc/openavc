@@ -68,16 +68,15 @@ from typing import Any
 import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
-from openavc.simulator.capacity import capacity_problems
 from openavc.simulator.control_checks import check_controls
 from openavc.simulator.handler_checks import STATE_REF, check_handler_code, check_templates
+from openavc.simulator.settings_checks import check_declared_settings, check_initial_state_types
 from openavc.simulator.osc_coverage import (
     OscAddresses,
     check_osc_command_coverage,
     check_osc_poll_coverage,
     check_osc_read_back_coverage,
 )
-from openavc.simulator.single_client import single_client_problems
 from openavc.simulator.state_machine_checks import check_state_machines
 from openavc.drivers.compiled_protocol import state_var_default
 from openavc.simulator.driver_sends import (
@@ -169,46 +168,10 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
     # ── Check 11: Child entity simulation gap ──
     _check_child_entities(result, driver_def, sim)
 
-    # ── Check 12: Declared capacity ──
-    if "capacity" in sim:
-        _check_capacity(result, sim["capacity"], "simulator.capacity")
-
-    # ── Check 13: One connection at a time ──
-    if "single_client" in sim:
-        _check_single_client(result, sim["single_client"], "simulator.single_client", transport)
+    # ── Checks 12-13: Declared capacity, one connection at a time ──
+    check_declared_settings(result, sim, "simulator.{}", transport)
 
     return result
-
-
-def _check_capacity(result: ValidationResult, value: Any, where: str) -> None:
-    """A declared capacity the simulator would ignore is an error: the
-    simulator logs it and falls back to its own numbers."""
-    from openavc.drivers.python_info import UNEVALUATED
-
-    if value is UNEVALUATED:
-        result.info("capacity", f"{where} is computed, so it could not be checked.")
-        return
-    for problem in capacity_problems(value):
-        result.error("capacity", f"{where}: {problem}")
-
-
-def _check_single_client(
-    result: ValidationResult, value: Any, where: str, transport: Any,
-) -> None:
-    """A declared single_client the simulator would ignore is an error (a
-    mode that does not exist), or a warning (a device that is not TCP)."""
-    from openavc.drivers.python_info import UNEVALUATED
-
-    if value is UNEVALUATED:
-        result.info("single_client", f"{where} is computed, so it could not be checked.")
-        return
-    for problem in single_client_problems(value):
-        result.error("single_client", f"{where}: {problem}")
-    if transport not in (None, "tcp", UNEVALUATED):
-        result.warning(
-            "single_client",
-            f"{where} applies to a TCP device; a {transport} device answers its one connection",
-        )
 
 
 def _known_state_keys(state_vars: dict, sim_initial: dict, sim: dict) -> set[str]:
@@ -277,8 +240,8 @@ def _check_python_state_coverage(
 
     Reported as one counted line, not as a warning per name, because the two
     sides are **different namespaces** — the same reason
-    ``_check_initial_state_types`` reports at info, and the same reason the
-    YAML half of this check was downgraded years earlier.
+    ``settings_checks.check_initial_state_types`` reports at info, and the
+    same reason the YAML half of this check was downgraded years earlier.
 
     ``SIMULATOR_INFO.initial_state`` seeds what the device puts on the wire.
     ``DRIVER_INFO.state_variables`` are what the driver publishes after
@@ -534,111 +497,6 @@ def _report_acknowledgements(result: ValidationResult, acknowledgements: list[st
     )
 
 
-def _check_initial_state_types(
-    result: ValidationResult,
-    state_vars: dict,
-    sim_initial: dict,
-) -> None:
-    """Compare each declared state variable's type against its seeded value.
-
-    Shared by the YAML and Python paths so the two cannot drift apart again.
-
-    Reports at ``info``, never as a finding, because the two sides are not the
-    same namespace. A state variable's declared type is the *logical* value the
-    driver publishes; ``initial_state`` seeds the *wire* value the simulator
-    puts on the socket, and the driver's own response rules map one to the
-    other. Whenever a protocol's wire form differs from the logical form the
-    two legitimately disagree, and that is the only time this check can fire at
-    all — an auto-generated seed is built from the declared type by
-    ``yaml_auto._build_info`` and matches by construction, so the check only
-    ever sees a hand-written override, which authors write precisely because
-    the wire form differs.
-
-    Measured over the shipped corpus on 2026-07-31: 26 errors across 9 drivers,
-    every one of them a correct wire value. ``at_atdm_0604`` seeds
-    ``at_link_mode: 0`` because its simulator interpolates that straight into
-    ``g_link 0000 00 NC {state["at_link_mode"]}`` and the driver parses it back
-    with ``match: 'g_link 0000 \\S+ NC 0'``; seeding the declared ``false``
-    would put ``NC False`` on the wire and match neither response rule.
-    ``lg_webos`` seeds the SSAP string ``"Active"`` for a ``[off, standby, on]``
-    enum for the same reason. Making these "pass" means breaking them.
-
-    The round-trip that *can* be checked is ``_check_response_parsing``, which
-    resolves a seed through the simulator's respond template and matches the
-    result against the driver's own response patterns — the wire namespace,
-    where the seeds actually live.
-
-    Same reasoning as the ``command_coverage`` downgrade below: a check that
-    fires permanently on correct drivers trains an author to ignore the one
-    channel that might say something real.
-    """
-    if not isinstance(state_vars, dict) or not isinstance(sim_initial, dict):
-        return
-
-    for var_name, var_def in state_vars.items():
-        if not isinstance(var_name, str) or not isinstance(var_def, dict):
-            continue
-        if var_name not in sim_initial:
-            continue
-        var_type = var_def.get("type", "string")
-        initial = sim_initial[var_name]
-
-        if var_type == "boolean" and not isinstance(initial, bool):
-            result.info(
-                "type_consistency",
-                f"State variable '{var_name}' is boolean but initial_state "
-                f"value is {type(initial).__name__}: {initial!r}. Expected when "
-                f"the wire form differs from the logical type — confirm the "
-                f"driver's response rules map it back."
-            )
-
-        # bool is a subclass of int, so True would satisfy an integer
-        # declaration without this — a false pass on the one confusion this
-        # check exists to catch.
-        if var_type == "integer" and (
-            isinstance(initial, bool) or not isinstance(initial, int)
-        ):
-            result.info(
-                "type_consistency",
-                f"State variable '{var_name}' is integer but initial_state "
-                f"value is {type(initial).__name__}: {initial!r}. Expected when "
-                f"the wire form differs from the logical type — confirm the "
-                f"driver's response rules map it back."
-            )
-
-        if var_type in ("number", "float") and (
-            isinstance(initial, bool) or not isinstance(initial, (int, float))
-        ):
-            result.info(
-                "type_consistency",
-                f"State variable '{var_name}' is {var_type} but initial_state "
-                f"value is {type(initial).__name__}: {initial!r}. Expected when "
-                f"the wire form differs from the logical type — confirm the "
-                f"driver's response rules map it back."
-            )
-
-        if var_type == "enum":
-            valid_values = var_def.get("values", [])
-            if not isinstance(valid_values, list):
-                # Declared, but built from a constant or a call, so there is
-                # nothing to compare against. Say so — a silent skip here
-                # reads exactly like a pass.
-                result.info(
-                    "type_consistency",
-                    f"State variable '{var_name}' is an enum whose values are "
-                    f"computed, so its initial value {initial!r} could not be "
-                    f"checked against them."
-                )
-            elif valid_values and str(initial) not in [str(v) for v in valid_values]:
-                result.info(
-                    "type_consistency",
-                    f"State variable '{var_name}' initial value {initial!r} "
-                    f"not in enum values: {valid_values}. Expected when the wire "
-                    f"form differs from the logical type — confirm the driver's "
-                    f"response rules map it back."
-                )
-
-
 def _check_type_consistency(
     result: ValidationResult,
     state_vars: dict,
@@ -654,7 +512,7 @@ def _check_type_consistency(
     while the same mistake was caught in a YAML one. Neither copy covered
     ``number`` or ``float``, which are both declarable types.
     """
-    _check_initial_state_types(result, state_vars, sim_initial)
+    check_initial_state_types(result, state_vars, sim_initial)
 
     # Check for boolean state refs in respond: templates that might produce
     # capitalized Python booleans (True/False instead of true/false)
@@ -1192,13 +1050,9 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
         if field not in sim_info:
             result.error("simulator_info", f"SIMULATOR_INFO missing required field: '{field}'")
 
-    if "capacity" in sim_info:
-        _check_capacity(result, sim_info["capacity"], 'SIMULATOR_INFO["capacity"]')
-    if "single_client" in sim_info:
-        _check_single_client(
-            result, sim_info["single_client"], 'SIMULATOR_INFO["single_client"]',
-            driver_info.get("transport"),
-        )
+    check_declared_settings(
+        result, sim_info, 'SIMULATOR_INFO["{}"]', driver_info.get("transport"),
+    )
 
     # Check driver_id match
     if driver_info.get("id") and sim_info.get("driver_id"):
@@ -1242,7 +1096,7 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
 
     # Check type consistency for initial state — the same function the YAML
     # path calls, so a Python driver is held to the same rules.
-    _check_initial_state_types(result, driver_state_vars, sim_initial)
+    check_initial_state_types(result, driver_state_vars, sim_initial)
 
     # Check transport match
     driver_transport = driver_info.get("transport", "tcp")

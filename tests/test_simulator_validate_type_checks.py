@@ -156,18 +156,36 @@ def test_a_matching_type_is_not_reported(tmp_path):
 def test_both_driver_formats_run_the_same_function():
     """The two copies drifted once; a second copy must fail rather than drift.
 
-    Asserted on the source so adding a parallel implementation inside the
-    Python path is what breaks, not a later behavioural difference nobody
-    happens to test.
+    Asserted on the source so adding a parallel implementation inside either
+    driver format's path is what breaks, not a later behavioural difference
+    nobody happens to test: one definition in the simulator package, called
+    from the YAML path and from the Python path.
     """
     from pathlib import Path
 
-    import openavc.simulator.validate as validate
+    import openavc.simulator as simulator
 
-    source = Path(validate.__file__).read_text(encoding="utf-8")
-    assert source.count("def _check_initial_state_types(") == 1
-    # Once from the YAML path's wrapper, once from the Python path.
-    assert source.count("_check_initial_state_types(result") == 2
+    sources = {
+        path.name: path.read_text(encoding="utf-8")
+        for path in Path(simulator.__file__).parent.glob("*.py")
+    }
+    defining = [
+        name for name, source in sources.items()
+        if "def check_initial_state_types(" in source
+    ]
+    assert defining == ["settings_checks.py"]
+    assert sum(
+        source.count("def check_initial_state_types(")
+        + source.count("def _check_initial_state_types(")
+        for source in sources.values()
+    ) == 1
+    callers = sorted(
+        name for name, source in sources.items()
+        if "check_initial_state_types(result" in source
+    )
+    assert callers == ["validate.py"]
+    # Once from the YAML path, once from the Python path.
+    assert sources["validate.py"].count("check_initial_state_types(result") == 2
 
 
 # ── Command coverage ──
