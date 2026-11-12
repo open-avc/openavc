@@ -467,6 +467,7 @@ CASES: dict[str, dict] = {
     "respond_names_a_boolean": _handlers(
         {"receive": "PWR\\?", "respond": "P{state.power} {state.power}"},
         {"receive": "LVL\\?", "respond": "L{state.level}"},
+        {"receive": "INP\\?", "respond": "I{state.input}"},
         {"receive": "SRC\\?", "handler": "pass", "respond": "{state.power}"},
         {"receive": "X", "respond": "{state.nope}"},
         "bad",
