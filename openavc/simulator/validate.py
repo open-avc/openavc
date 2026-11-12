@@ -74,13 +74,9 @@ from openavc.simulator.osc_addresses import SYSTEM_ADDRESSES, SYSTEM_PREFIXES
 from openavc.simulator.single_client import single_client_problems
 from openavc.drivers.compiled_protocol import safe_substitute, state_var_default
 from openavc.simulator.driver_sends import (
-    asked_queries,
     command_sample,
     effective_config,
-    entry_text,
-    polled_queries,
     probed_lines,
-    query_line,
 )
 from openavc.simulator.validation_result import Issue, ValidationResult
 from openavc.simulator.reply_reading import (
@@ -88,7 +84,11 @@ from openavc.simulator.reply_reading import (
     frame_delimiter,
 )
 from openavc.simulator.reread_queries import read_back_query_lines
-from openavc.simulator.send_templates import is_passthrough_send, send_regex
+from openavc.simulator.send_coverage import (
+    check_command_coverage,
+    check_poll_coverage,
+    query_answering_handlers,
+)
 from openavc.drivers.spec import PLACEHOLDER
 
 
@@ -132,14 +132,13 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
         _check_osc_read_back_coverage(result, commands, sim_handlers, responses, driver_def)
     else:
         # ── Check 2: Command handler coverage ──
-        _check_command_coverage(result, commands, sim_handlers, driver_def)
+        check_command_coverage(result, commands, sim_handlers, driver_def)
 
         # ── Check 3: Response parsing (round-trip) ──
         _check_response_parsing(result, commands, sim_handlers, responses, sim_initial, driver_def)
 
         # ── Check 4: Poll query coverage: the poll, then_query, read_back ──
-        for label, entries in polled_queries(driver_def, queries):
-            _check_poll_coverage(result, entries, sim_handlers, driver_def, label=label)
+        check_poll_coverage(result, queries, sim_handlers, driver_def)
 
         # ── Check 4b: every reply ends where the driver splits the stream ──
         _check_reply_framing(result, commands, queries, driver_def)
@@ -435,65 +434,6 @@ def _check_python_state_coverage(
     )
 
 
-def _check_command_coverage(
-    result: ValidationResult,
-    commands: dict,
-    sim_handlers: list,
-    driver_def: dict,
-) -> None:
-    """Check every command has a matching handler in the simulator."""
-    # Build compiled patterns from simulator handlers
-    handler_patterns = _compile_handler_patterns(sim_handlers)
-
-    # A driver-level command_prefix is on the wire ahead of every command
-    # (a raw: true command excepted), and the simulator's auto handlers are
-    # built from the framed form, so the sample has to be framed too or a
-    # hand-written handler that expects the frame never matches it here.
-    prefix = driver_def.get("command_prefix") or ""
-
-    for cmd_name, cmd_def in commands.items():
-        send_template = cmd_def.get("send", "")
-        if not send_template:
-            continue
-        if (
-            prefix
-            and not cmd_def.get("raw")
-            and not send_template.startswith(prefix)
-        ):
-            send_template = prefix + send_template
-
-        params = cmd_def.get("params", {})
-
-        # A raw passthrough sends whatever the caller typed; there is no
-        # command shape to simulate, and the simulator builds no handler.
-        if is_passthrough_send(send_template, params):
-            continue
-
-        # Generate a sample command string with test values
-        sample = command_sample(send_template, params, driver_def)
-        if sample is None:
-            result.warning(
-                "command_coverage",
-                f"Could not generate sample for command '{cmd_name}' "
-                f"(send: {send_template!r})"
-            )
-            continue
-
-        # Check if any handler matches
-        matched = _find_matching_handler(sample, handler_patterns)
-        if not matched:
-            # Also check auto-gen command handlers
-            auto_pattern = _build_auto_pattern(send_template, params)
-            if auto_pattern and auto_pattern.match(sample):
-                # Auto-gen would handle it — that's fine
-                continue
-            result.error(
-                "command_coverage",
-                f"No simulator handler matches command '{cmd_name}' "
-                f"(sample: {sample!r})"
-            )
-
-
 # How many distinct acknowledgement-shaped responses the grouped info names
 # before it stops listing. The count is always exact; the examples are there
 # to recognise the shape, not to enumerate it.
@@ -547,7 +487,7 @@ def _check_response_parsing(
         return
 
     rules = _reply_rules(responses, driver_def)
-    answering = _query_answering_handlers(sim_handlers, driver_def)
+    answering = query_answering_handlers(sim_handlers, driver_def)
     acknowledgements: list[str] = []
 
     for handler_def in _text_handlers(sim_handlers):
@@ -684,116 +624,6 @@ def _report_acknowledgements(result: ValidationResult, acknowledgements: list[st
         f"{shown}. A polled query whose answer nothing parses warns "
         f"instead."
     )
-
-
-def _query_answering_handlers(sim_handlers: list, driver_def: dict) -> set[int]:
-    """Handlers (by identity) that answer a question the driver asks.
-
-    ``polling.queries`` is the set of strings a driver puts on the wire for
-    no reason other than to learn what comes back, which is what makes an
-    unreadable answer a defect; a response rule's ``then_query`` is too. An
-    ``on_connect`` entry counts only when it declares ``query_for`` — the
-    rest of that block is a bring-up sequence mixing reads with arming
-    writes, and a write's acknowledgement is not something a response rule
-    should match.
-    """
-    handler_patterns = _compile_handler_patterns(sim_handlers)
-    config = effective_config(driver_def)
-    transport = driver_def.get("transport", "tcp")
-    commands = driver_def.get("commands", {})
-
-    answering: set[int] = set()
-    for entry in asked_queries(driver_def):
-        if isinstance(entry, dict) and "address" in entry:
-            # OSC bring-up message; the OSC path has its own checks.
-            continue
-        query_text = entry_text(entry)
-        if not query_text:
-            continue
-        # An http/udp query may name a command instead of typing its wire
-        # string; what goes out is that command's send template.
-        named = commands.get(query_text)
-        if isinstance(named, dict):
-            query_text = named.get("send", "")
-            if not query_text:
-                continue
-        handler = _find_matching_handler(
-            query_line(query_text, config, transport),
-            handler_patterns,
-        )
-        if handler is not None:
-            answering.add(id(handler))
-    return answering
-
-
-def _check_poll_coverage(
-    result: ValidationResult,
-    queries: list,
-    sim_handlers: list,
-    driver_def: dict,
-    label: str = "polling query",
-) -> None:
-    """Check every polling query (or the queries ``label`` names) has a
-    matching simulator handler."""
-    handler_patterns = _compile_handler_patterns(sim_handlers)
-    config = effective_config(driver_def)
-    commands = driver_def.get("commands", {})
-    transport = driver_def.get("transport", "tcp")
-
-    for query in queries:
-        if isinstance(query, dict):
-            query_text = query.get("send", "")
-            qf = query.get("query_for")
-            if isinstance(qf, str) and qf:
-                # Declared pairing: the auto-generated simulator builds a
-                # query handler that answers this with the named state
-                # variable's value — covered by declaration.
-                continue
-        else:
-            query_text = str(query)
-
-        if not query_text:
-            continue
-
-        # A query naming a declared command runs as that command on every
-        # transport, not just HTTP and UDP — which is the reason the guides
-        # tell an author to poll a framed command by name rather than retype
-        # its wire string: named that way it picks up command_prefix /
-        # command_suffix, and its reply is matched. Command coverage checks
-        # those, so checking the bare name here only ever false-fails.
-        if query_text in commands:
-            continue
-
-        # Substitute config variables in query text; each_child queries get a
-        # sample child id (the runtime expands them per registered child).
-        # Shared with the round-trip check, which has to normalize a query the
-        # same way to tell a query's answer from a write's acknowledgement.
-        sample = query_line(query_text, config, transport)
-
-        matched = _find_matching_handler(sample, handler_patterns)
-        if not matched:
-            # Check if auto-gen handlers would cover this. The simulator
-            # builds a handler for every command's send template, so any
-            # query matching one of those patterns is answered too.
-            auto_covered = False
-            for cmd_def in commands.values():
-                if not cmd_def.get("send"):
-                    continue
-                if cmd_def.get("send") == query_text and not cmd_def.get("params"):
-                    auto_covered = True
-                    break
-                auto_pattern = _build_auto_pattern(
-                    cmd_def["send"], cmd_def.get("params", {})
-                )
-                if auto_pattern and auto_pattern.match(sample):
-                    auto_covered = True
-                    break
-
-            if not auto_covered:
-                result.error(
-                    "poll_coverage",
-                    f"No simulator handler matches {label}: {sample!r}"
-                )
 
 
 def _check_initial_state_types(
@@ -2054,32 +1884,6 @@ def _extract_simulator_info(sim_path: Path) -> dict | None:
 # ── Helper functions ──
 
 
-def _compile_handler_patterns(handlers: list) -> list[tuple[re.Pattern, dict]]:
-    """Compile regex patterns from simulator command handlers."""
-    patterns = []
-    for h in handlers:
-        if not isinstance(h, dict):
-            continue  # _check_handler_syntax reports the malformed entry
-        pattern_str = h.get("receive") or h.get("match", "")
-        if not pattern_str:
-            continue
-        try:
-            patterns.append((re.compile(f"^{pattern_str}$"), h))
-        except re.error:
-            pass
-    return patterns
-
-
-def _find_matching_handler(
-    text: str, patterns: list[tuple[re.Pattern, dict]]
-) -> dict | None:
-    """Find the first handler whose pattern matches the text."""
-    for pattern, handler in patterns:
-        if pattern.match(text):
-            return handler
-    return None
-
-
 def _substitute_config(template: str, config: dict) -> str:
     """Substitute config variables in a template string (shared runtime rules)."""
     return safe_substitute(template, config)
@@ -2089,18 +1893,6 @@ def _reply_rules(responses: list, driver_def: dict) -> ReplyRules:
     """The driver's reply rules, with the config the runtime would fill into
     their patterns."""
     return ReplyRules.of(responses, effective_config(driver_def), driver_def)
-
-
-def _build_auto_pattern(template: str, params: dict) -> re.Pattern | None:
-    """Build the regex the auto-gen simulator would create for a command.
-
-    Delegates to the shared inversion so this check stays byte-for-byte in
-    step with the handler patterns yaml_auto actually builds.
-    """
-    try:
-        return re.compile(f"^{send_regex(template, params)}$")
-    except re.error:
-        return None
 
 
 def _resolve_state_refs(template: str, state: dict) -> str:

@@ -14,9 +14,9 @@ from openavc.simulator.send_templates import send_regex
 from openavc.simulator.base import StateMachine
 from openavc.simulator.validate import (
     ValidationResult,
-    _build_auto_pattern,
     _check_state_machines,
 )
+from openavc.simulator.send_coverage import auto_handler_pattern
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 
@@ -644,7 +644,7 @@ def test_auto_pattern_keeps_trailing_letter():
     # {'\\', 'r', 'n'} off the end of the finished pattern, so a template
     # ending in a real 'n' lost it ("power_on" became ^power_o$) and the
     # coverage check false-failed.
-    pat = _build_auto_pattern("power_on", {})
+    pat = auto_handler_pattern("power_on", {})
     assert pat is not None
     assert pat.match("power_on")
 
