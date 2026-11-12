@@ -2475,10 +2475,10 @@ class PanelApp {
         if (element.frameless) applyFrameless(el);
 
         const displayMode = element.display_mode || 'text';
-        const showImage = (displayMode === 'image' || displayMode === 'image_text') && element.button_image;
+        const showImage = this._buttonShowsOwnPicture(element) && element.button_image;
 
         // Clear label text for image-only/icon-only modes BEFORE content/layer rendering
-        if (displayMode === 'image' || displayMode === 'icon_only') {
+        if (!this._buttonShowsWords(element)) {
             el.textContent = '';
             // The label still exists in data and is still the accessible name,
             // but nothing is on screen to put a caret in.
@@ -2494,12 +2494,7 @@ class PanelApp {
 
         // Image effect last so its DOM layer isn't removed by other content rendering paths
         if (showImage) {
-            applyImageEffect(el, element.button_image, {
-                fit: element.image_fit,
-                blend: element.image_blend_mode,
-                opacity: element.image_opacity,
-                tintColor: themedStyle.bg_color,
-            });
+            applyImageEffect(el, element.button_image, this._pictureOptions(element, themedStyle.bg_color));
             if (displayMode === 'image_text') {
                 el.style.textShadow = '0 1px 0.2143rem rgba(0,0,0,0.8)';
             }
@@ -5607,22 +5602,81 @@ class PanelApp {
      * masked image stays visible when the state carries no colour.
      */
     _reapplyButtonImage(element, elementDef, stateImage, tint) {
-        const mode = elementDef.display_mode || 'text';
-        const showsOwn = mode === 'image' || mode === 'image_text';
-        // A state's artwork shows in any mode (the Builder offers it on every
-        // button); the button's own only where its display mode draws it.
-        const image = stateImage || (showsOwn ? elementDef.button_image : null);
+        const image = stateImage
+            || (this._buttonShowsOwnPicture(elementDef) ? elementDef.button_image : null);
         if (!image) {
             // A previous state's artwork on an effect layer goes with it.
             element.querySelector(':scope > .panel-button-image-layer')?.remove();
             return;
         }
-        applyImageEffect(element, image, {
+        applyImageEffect(element, image, this._pictureOptions(elementDef, tint));
+    }
+
+    /**
+     * Whether a button's display mode draws its words (not `image` or
+     * `icon_only`) and its own picture (`image` or `image_text`). A picture a
+     * state names shows in any mode: the Builder offers it on every button.
+     */
+    _buttonShowsWords(elementDef) {
+        return !PanelApp.WORDLESS_MODES.has(elementDef.display_mode || 'text');
+    }
+
+    _buttonShowsOwnPicture(elementDef) {
+        return PanelApp.PICTURE_MODES.has(elementDef.display_mode || 'text');
+    }
+
+    static get WORDLESS_MODES() {
+        return new Set(['image', 'icon_only']);
+    }
+
+    static get PICTURE_MODES() {
+        return new Set(['image', 'image_text']);
+    }
+
+    /** How a button draws its picture: its fit, blend and opacity, tinted with `tint`. */
+    _pictureOptions(elementDef, tint) {
+        return {
             fit: elementDef.image_fit,
             blend: elementDef.image_blend_mode,
             opacity: elementDef.image_opacity,
             tintColor: tint,
-        });
+        };
+    }
+
+    /**
+     * Draw a button's words, or take them off where its display mode draws
+     * none. Only the text goes: the picture layer and an icon are children of
+     * their own. `words` is [text, where an edit of it goes], or null to leave
+     * the words as they are.
+     */
+    _drawButtonWords(element, elementDef, words) {
+        if (!this._buttonShowsWords(elementDef)) {
+            this._removeTextNodes(element);
+            this._recordTextSource(element, null);
+        } else if (words) {
+            this._setLabelText(element, ...words);
+        }
+    }
+
+    /**
+     * Draw again the icon a look names, else the control's own, beside the
+     * words: renderElementContent rebuilds the icon and text layout from the
+     * words on the control, so they are written first, and draws nothing on a
+     * control with no icon. With no look (`appearance` null) the control's own
+     * definition is drawn as it is.
+     */
+    _drawLookIcon(element, elementDef, appearance) {
+        this.renderElementContent(element,
+            appearance ? this._withLookIcon(elementDef, appearance) : elementDef);
+    }
+
+    /** The control with the icon and icon colour a look names in place of its own. */
+    _withLookIcon(elementDef, appearance) {
+        return {
+            ...elementDef,
+            icon: appearance.icon || elementDef.icon,
+            icon_color: appearance.icon_color || elementDef.icon_color,
+        };
     }
 
     /** What a readout says when there is no reading: "--", with the unit if it carries one. */
@@ -6067,14 +6121,7 @@ class PanelApp {
         this._setLabelText(element,
             named ? String(appearance.label) : (elementDef.label || elementDef.target_page || ''),
             named ? wordsPath : ['label']);
-        const icon = appearance.icon || elementDef.icon || elementDef.style?.icon;
-        if (icon) {
-            this.renderElementContent(element, {
-                ...elementDef,
-                icon: appearance.icon || elementDef.icon,
-                icon_color: appearance.icon_color || elementDef.icon_color,
-            });
-        }
+        this._drawLookIcon(element, elementDef, appearance);
     }
 
     /**
@@ -6109,131 +6156,76 @@ class PanelApp {
 
     evaluateFeedback(b) {
         const { element, elementDef, binding } = b;
-        const stateValue = this.state[binding.key];
-        const baseStyle = elementDef.style || {};
-        const displayMode = elementDef.display_mode || 'text';
-        const suppressLabel = displayMode === 'image' || displayMode === 'icon_only';
-
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
         if (offline) {
-            // No state is asserted while the device is unreachable: the button
-            // goes back to its own look and its own label. This is the mute
-            // button that was photographed drawing its not-muted face over a
-            // muted amplifier -- a null child key resolves to `default_state`,
-            // so "unknown" was being rendered as whatever state was nominated
-            // as the default.
-            // applyStyle only ever writes a property it has a value for, so a
-            // state colour on an element whose own style names none would
-            // survive the revert -- a MUTED button staying red for an amplifier
-            // nobody can reach is the whole fault, one property further down.
-            clearStateColours(element, baseStyle);
-            applyStyle(element, this.getThemedStyle(elementDef.type, baseStyle));
-            if (elementDef.frameless) applyFrameless(element);
-            if (baseStyle.bg_color) updateImageTint(element, baseStyle.bg_color);
-            if (suppressLabel) {
-                this._removeTextNodes(element);
-                this._recordTextSource(element, null);
-            } else {
-                // A state's WORD is a claim as much as its colour. A button
-                // with no name of its own is left blank rather than still
-                // reading MUTED for an amplifier nobody can reach.
-                this._setLabelText(element, elementDef.label || '', ['label']);
-            }
-            const baseIcon = elementDef.icon || elementDef.style?.icon;
-            if (baseIcon) this.renderElementContent(element, elementDef);
-            if (elementDef.button_image) {
-                applyImageEffect(element, elementDef.button_image, {
-                    fit: elementDef.image_fit,
-                    blend: elementDef.image_blend_mode,
-                    opacity: elementDef.image_opacity,
-                    tintColor: baseStyle.bg_color,
-                });
-            }
+            this._drawButtonClaimingNoState(element, elementDef);
             return;
         }
 
-        const { appearance, wordsPath, isActive } = pickLook(binding, stateValue);
-
-        // Multi-state feedback (new)
-        if (binding.states) {
-            const rest = this.getThemedStyle(elementDef.type, baseStyle);
-            const style = { ...rest, ...appearance };
-            clearStateColours(element, rest);
-            applyStyle(element, style);
-            // Re-apply frameless so state bg_color changes don't reintroduce chrome
-            if (elementDef.frameless) applyFrameless(element);
-            this._reapplyButtonImage(element, elementDef, appearance.button_image, style.bg_color);
-
-            // Update label (suppressed when display mode hides text).
-            // Remove only text nodes so we don't wipe the image layer (an element child).
-            if (suppressLabel) {
-                this._removeTextNodes(element);
-                this._recordTextSource(element, null);
-            } else if (appearance.label !== undefined) {
-                this._setLabelText(element, String(appearance.label), wordsPath);
-            } else if (elementDef.label) {
-                this._setLabelText(element, elementDef.label, ['label']);
-            }
-
-            // Rebuild icon+text layout if element has any icon (from appearance or base element)
-            const resolvedIcon = appearance.icon || elementDef.icon || elementDef.style?.icon;
-            if (resolvedIcon) {
-                const iconDef = {
-                    ...elementDef,
-                    icon: appearance.icon || elementDef.icon,
-                    icon_color: appearance.icon_color || elementDef.icon_color,
-                };
-                this.renderElementContent(element, iconDef);
-            }
-
-            return;
-        }
-
-        // Legacy binary feedback (backwards compatible): `appearance` is the
-        // half the value picked.
-        const rest = this.getThemedStyle(elementDef.type, baseStyle);
-        const style = { ...rest, ...appearance };
-
+        const look = pickLook(binding, this.state[binding.key]);
+        const rest = this.getThemedStyle(elementDef.type, elementDef.style || {});
+        const style = { ...rest, ...look.appearance };
         clearStateColours(element, rest);
         applyStyle(element, style);
+        // Again after the state's colours, which would bring the chrome back.
         if (elementDef.frameless) applyFrameless(element);
+        this._reapplyButtonImage(element, elementDef, look.appearance.button_image, style.bg_color);
+        this._drawButtonWords(element, elementDef, this._feedbackWords(elementDef, binding, look, style));
+        this._drawLookIcon(element, elementDef, look.appearance);
+    }
 
-        // Per-state image override (legacy feedback), else the button's own
-        this._reapplyButtonImage(element, elementDef, appearance.button_image, style.bg_color);
-
-        // Conditional labels — must run BEFORE renderElementContent so
-        // the icon+text layout rebuild captures the updated text.
-        // Suppressed when display mode hides text.
-        // Remove only text nodes to preserve the image layer (an element child).
-        if (suppressLabel) {
-            this._removeTextNodes(element);
-            this._recordTextSource(element, null);
-        } else if (isActive && binding.label_active) {
-            this._setLabelText(element, binding.label_active,
-                ['bindings', 'show', 'look', 'label_active']);
-        } else if (!isActive && binding.label_inactive) {
-            this._setLabelText(element, binding.label_inactive,
-                ['bindings', 'show', 'look', 'label_inactive']);
-        } else if (style.label !== undefined) {
-            // A label living in the STYLE dict, which is a real read path here.
-            // Whichever half supplied it is the half an edit has to write.
-            this._setLabelText(element, style.label,
-                appearance.label !== undefined ? wordsPath : ['style', 'label']);
-        } else if (elementDef.label) {
-            this._setLabelText(element, elementDef.label, ['label']);
+    /**
+     * No state is asserted while the device is unreachable: the button goes
+     * back to its own look, its own words, its own icon and picture. This is
+     * the mute button that was photographed drawing its not-muted face over a
+     * muted amplifier -- a null child key resolves to `default_state`, so
+     * "unknown" was being rendered as whatever state was nominated as the
+     * default.
+     *
+     * A state's colours go first: applyStyle only ever writes a property it has
+     * a value for, so a MUTED button staying red for an amplifier nobody can
+     * reach would be the same fault, one property further down. And a state's
+     * WORD is a claim as much as its colour: a button with no name of its own
+     * is left blank rather than still reading MUTED.
+     */
+    _drawButtonClaimingNoState(element, elementDef) {
+        const own = elementDef.style || {};
+        clearStateColours(element, own);
+        applyStyle(element, this.getThemedStyle(elementDef.type, own));
+        if (elementDef.frameless) applyFrameless(element);
+        if (own.bg_color) updateImageTint(element, own.bg_color);
+        this._drawButtonWords(element, elementDef, [elementDef.label || '', ['label']]);
+        this._drawLookIcon(element, elementDef, null);
+        if (elementDef.button_image) {
+            applyImageEffect(element, elementDef.button_image, this._pictureOptions(elementDef, own.bg_color));
         }
+    }
 
-        // Rebuild icon+text layout if element has any icon (from feedback or base element)
-        const resolvedIcon = appearance.icon || elementDef.icon || elementDef.style?.icon;
-        if (resolvedIcon) {
-            const iconDef = {
-                ...elementDef,
-                icon: appearance.icon || elementDef.icon,
-                icon_color: appearance.icon_color || elementDef.icon_color,
-            };
-            this.renderElementContent(element, iconDef);
-        }
+    /**
+     * The words a button's look draws, with where an edit of them goes: what
+     * the look's form names (`_stateWords`, `_twoStateWords`), else the
+     * button's own label. Null leaves the words as they are.
+     */
+    _feedbackWords(elementDef, binding, look, style) {
+        const named = binding.states ? this._stateWords(look) : this._twoStateWords(binding, look, style);
+        return named || (elementDef.label ? [elementDef.label, ['label']] : null);
+    }
+
+    /** A state's own words, when it names any. */
+    _stateWords({ appearance, wordsPath }) {
+        return appearance.label !== undefined ? [String(appearance.label), wordsPath] : null;
+    }
+
+    /**
+     * The two-state form's words: the active or inactive label, else a label
+     * in the style, where whichever half supplied it is the half an edit writes.
+     */
+    _twoStateWords(binding, { appearance, wordsPath, isActive }, style) {
+        const half = isActive ? 'label_active' : 'label_inactive';
+        if (binding[half]) return [binding[half], ['bindings', 'show', 'look', half]];
+        if (style.label === undefined) return null;
+        return [style.label, appearance.label !== undefined ? wordsPath : ['style', 'label']];
     }
 
     /**
@@ -6270,8 +6262,6 @@ class PanelApp {
     evaluateToggleLook(b) {
         const { element, elementDef, binding } = b;
         const baseStyle = elementDef.style || {};
-        const displayMode = elementDef.display_mode || 'text';
-        const suppressLabel = displayMode === 'image' || displayMode === 'icon_only';
 
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
@@ -6300,19 +6290,23 @@ class PanelApp {
         // label every pass would fight a `ui.<id>.label` override and rebuild
         // an icon layout for nothing.
         const named = binding.on_label != null || binding.off_label != null;
-        if (named && !suppressLabel) {
-            const word = offline ? null : (on ? binding.on_label : binding.off_label);
-            const hasWord = word != null && word !== '';
-            // An empty on/off word falls back to the button's own label, so an
-            // edit of what is showing belongs to whichever one actually drew.
-            const labelBase = binding._labelBase || ['bindings', 'do', 'press', 0];
-            this._setLabelText(element, hasWord ? word : (elementDef.label || ''),
-                hasWord
-                    ? [...labelBase, on ? 'on_label' : 'off_label']
-                    : ['label']);
-            const icon = elementDef.icon || elementDef.style?.icon;
-            if (icon) this.renderElementContent(element, elementDef);
+        if (named && this._buttonShowsWords(elementDef)) {
+            this._setLabelText(element, ...this._toggleWords(elementDef, binding, on, offline));
+            this._drawLookIcon(element, elementDef, null);
         }
+    }
+
+    /**
+     * A toggle's words and where an edit of them goes: its on or off word;
+     * an empty one, or none while its device is away, falls back to the
+     * button's own label, so an edit of what is showing belongs to whichever
+     * one actually drew.
+     */
+    _toggleWords(elementDef, binding, on, offline) {
+        const word = offline ? null : (on ? binding.on_label : binding.off_label);
+        if (word == null || word === '') return [elementDef.label || '', ['label']];
+        const labelBase = binding._labelBase || ['bindings', 'do', 'press', 0];
+        return [word, [...labelBase, on ? 'on_label' : 'off_label']];
     }
 
     /**

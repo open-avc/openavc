@@ -156,6 +156,18 @@ def test_every_type_reads_exactly_what_the_table_says(
     assert derived == HONORED_SHOW_SLOTS
 
 
+def _evaluator_reach(evaluator: str, bodies: dict[str, str]) -> str:
+    """An evaluator's body and every helper it hands the element to, as one text.
+
+    What a look draws is decided by what its evaluator CALLS, not only what it
+    writes itself: the button's evaluator gives its words and its icon to
+    helpers it shares with the toggle and the page nav. Followed by the same
+    rule as the property table below (``_reachable``): a helper not given the
+    element cannot draw on it.
+    """
+    return "\n".join(bodies[name] for name in sorted(_reachable(evaluator, bodies)))
+
+
 def test_only_the_state_text_types_can_draw_a_state_label(
     panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
 ) -> None:
@@ -189,7 +201,7 @@ def test_only_the_state_text_types_can_draw_a_state_label(
     evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
     derived = frozenset(
         el_type for el_type, bind_type in look_binding_type.items()
-        if "_setLabelText" in panel_method_bodies.get(evaluator_for.get(bind_type, ""), "")
+        if "_setLabelText" in _evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies)
     )
     assert derived == STATE_LABEL_TYPES
 
@@ -222,7 +234,7 @@ def test_only_the_state_icon_types_can_draw_a_state_icon(
     evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
     derived = frozenset(
         el_type for el_type, bind_type in look_binding_type.items()
-        if "renderElementContent" in panel_method_bodies.get(evaluator_for.get(bind_type, ""), "")
+        if "renderElementContent" in _evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies)
     )
     assert derived == STATE_ICON_TYPES
 
@@ -258,7 +270,7 @@ def test_only_the_state_image_types_can_draw_a_state_picture(
     derived = frozenset(
         el_type for el_type, bind_type in look_binding_type.items()
         if _STATE_PICTURE_READ.search(
-            panel_method_bodies.get(evaluator_for.get(bind_type, ""), "")
+            _evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies)
         )
     )
     assert derived == STATE_IMAGE_TYPES
