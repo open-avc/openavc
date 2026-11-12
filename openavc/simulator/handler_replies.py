@@ -38,7 +38,7 @@ from collections.abc import Iterator
 from openavc.simulator.driver_sends import effective_config
 from openavc.simulator.reply_reading import ReplyRules
 from openavc.simulator.send_coverage import query_answering_handlers
-from openavc.simulator.validation_result import ValidationResult
+from openavc.simulator.validation_result import ValidationResult, examples
 
 # How many distinct acknowledgement-shaped responses the grouped info names
 # before it stops listing. The count is always exact; the examples are there
@@ -225,10 +225,7 @@ def _warn_unread_answer(result: ValidationResult, handler_def: dict, reply: str)
 def _report_acknowledgements(result: ValidationResult, acknowledgements: list[str]) -> None:
     """The replies no rule reads that answer no polled query, counted once:
     the shape of a write acknowledgement."""
-    shown = ", ".join(repr(a) for a in acknowledgements[:_ACK_EXAMPLES])
-    rest = len(acknowledgements) - _ACK_EXAMPLES
-    if rest > 0:
-        shown += f" (+{rest} more)"
+    shown = examples([repr(a) for a in acknowledgements], _ACK_EXAMPLES, " (+{} more)")
     result.info(
         "response_parsing",
         f"{len(acknowledgements)} simulator reply/replies match no driver "

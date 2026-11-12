@@ -5,6 +5,10 @@ a module of their own, importing nothing, so a check can live beside the
 part of the simulator it judges without importing ``validate`` (which
 imports the checks). ``validate`` re-exports both names, the import path
 its callers use.
+
+``examples`` is how a finding that counts things names a few of them: the
+first so many, then how many more. Each finding passes its own limit and
+wording, so the count stays exact and the examples stay short.
 """
 
 from __future__ import annotations
@@ -61,3 +65,13 @@ class ValidationResult:
 
     def info(self, check: str, message: str) -> None:
         self.issues.append(Issue("info", check, message))
+
+
+def examples(shown: list[str], limit: int, more: str, separator: str = ", ") -> str:
+    """The first ``limit`` of ``shown`` joined by ``separator``, then ``more``
+    with how many were left out (``more`` holds one ``{}`` for the count)."""
+    text = separator.join(shown[:limit])
+    rest = len(shown) - limit
+    if rest > 0:
+        text += more.format(rest)
+    return text

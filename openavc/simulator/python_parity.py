@@ -31,7 +31,7 @@ from typing import Any
 
 from openavc.drivers.python_info import ExtractError, lenient_ast_value
 from openavc.simulator.settings_checks import check_declared_settings, check_initial_state_types
-from openavc.simulator.validation_result import ValidationResult
+from openavc.simulator.validation_result import ValidationResult, examples
 
 #: The fields a ``SIMULATOR_INFO`` must declare, in the order they are reported.
 _REQUIRED_FIELDS = ("driver_id", "name", "initial_state")
@@ -288,22 +288,12 @@ def check_state_coverage(
         f"SIMULATOR_INFO seeds {len(sim_initial)} state key(s); "
         f"{len(unseeded)} of the driver's {len(driver_state_vars)} state "
         f"variable(s) are not among them BY NAME: "
-        f"{_examples(unseeded, _STATE_EXAMPLES, ' (+{} more)')}. Usually correct — "
+        f"{examples(unseeded, _STATE_EXAMPLES, ' (+{} more)')}. Usually correct — "
         f"the simulator seeds what goes on the wire and the driver publishes "
         f"what it computes from that, so the names differ. Worth a look only "
         f"if the counts say the simulator models far less than the driver "
         f"reads."
     )
-
-
-def _examples(shown: list[str], limit: int, more: str) -> str:
-    """The first ``limit`` of ``shown``, then ``more`` with how many were left
-    out."""
-    text = ", ".join(shown[:limit])
-    rest = len(shown) - limit
-    if rest > 0:
-        text += more.format(rest)
-    return text
 
 
 def _check_transports(result: ValidationResult, driver_transport: Any, sim_transport: Any) -> None:
@@ -356,7 +346,7 @@ def _check_command_names(result: ValidationResult, sim_source: str, driver_comma
             "command_coverage",
             f"{len(unmentioned)} of {len(command_names)} DRIVER_INFO command "
             f"name(s) do not appear in the simulator source: "
-            f"{_examples(names, _COMMAND_EXAMPLES, ', … (+{} more)')}. A "
+            f"{examples(names, _COMMAND_EXAMPLES, ', … (+{} more)')}. A "
             "simulator that dispatches on raw protocol bytes will never "
             "mention them, so this is only worth checking when the simulator "
             "does dispatch by name."

@@ -27,7 +27,7 @@ from typing import Any
 
 from openavc.simulator.driver_sends import effective_config, probed_lines
 from openavc.simulator.reply_reading import ReplyRules, frame_delimiter
-from openavc.simulator.validation_result import ValidationResult
+from openavc.simulator.validation_result import ValidationResult, examples
 
 _FRAMING_EXAMPLES = 3
 
@@ -177,10 +177,7 @@ def _report_framing(
 def _report_unframed(result: ValidationResult, heard: _Heard, raw_delimiter: str) -> None:
     """The error: replies that never complete a frame."""
     unframed = heard.unframed
-    shown = "; ".join(unframed[:_FRAMING_EXAMPLES])
-    more = len(unframed) - _FRAMING_EXAMPLES
-    if more > 0:
-        shown += f"; +{more} more"
+    shown = examples(unframed, _FRAMING_EXAMPLES, "; +{} more", "; ")
     result.error(
         "reply_framing",
         f"{len(unframed)} of {heard.replies} simulator replies come back without the "
@@ -212,10 +209,7 @@ def _report_trailing_text(
     rules = ReplyRules.regex_only(
         driver_def.get("responses") or [], effective_config(driver_def)
     )
-    shown = "; ".join(example for example, _, _ in trailing[:_FRAMING_EXAMPLES])
-    more = len(trailing) - _FRAMING_EXAMPLES
-    if more > 0:
-        shown += f"; +{more} more"
+    shown = examples([example for example, _, _ in trailing], _FRAMING_EXAMPLES, "; +{} more", "; ")
     texts = sorted({text.decode("utf-8", errors="replace").strip() for _, text, _ in trailing})
 
     def read_alone(text: bytes) -> bool:
