@@ -22,8 +22,10 @@ that module's rule to own.
 """
 
 import re
-from pathlib import Path
+from collections.abc import Callable
+from pathlib import Path, PurePosixPath
 from typing import Any, NamedTuple
+from urllib.parse import urlparse
 
 from openavc.api.host_policy import EndpointPolicy, endpoint_policy, ProgrammerRoute
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
@@ -477,8 +479,6 @@ def _installed_yaml_companion(main_file: Path, driver_repo: Path) -> Path | None
     relpath = _companion_relpath_from_yaml(yaml_text)
     if not relpath:
         return None
-    from pathlib import PurePosixPath
-
     candidate = driver_repo / PurePosixPath(relpath).name
     try:
         candidate.resolve().relative_to(driver_repo.resolve())
@@ -636,6 +636,139 @@ async def _try_download_python_companion(
     return CompanionFetch(companion_filepath)
 
 
+async def _download_driver(url: str, driver_id: str) -> Any:
+    """The catalog's response for a driver's main file, or the 502 a person
+    sees: GitHub's own status when it refused, else why the request failed."""
+    import httpx
+
+    try:
+        async with internet_client(timeout=15.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
+    except httpx.RequestError as e:
+        raise _api_error(
+            502,
+            internet_failure(e, "raw.githubusercontent.com")
+            or f"Failed to download driver '{driver_id}'",
+            e,
+        )
+
+
+def _driver_file_kind(url: str) -> str:
+    """The kind of driver a catalog URL names, by its extension."""
+    if url.endswith(".avcdriver"):
+        return ".avcdriver"
+    if url.endswith(".py"):
+        return ".py"
+    raise HTTPException(status_code=422, detail="URL must point to a .avcdriver or .py file")
+
+
+class _CatalogFiles:
+    """One install's or update's files from the community catalog.
+
+    The install and the update bring a catalog driver onto this server the
+    same way, so the rules they share live here: the kind of driver the URL
+    names and the file it lands in (named for the id, not the URL), the main
+    file's download and how it fails, the companion a YAML driver names
+    (required: a failure fails the door) and a Python driver's conventional
+    companions (optional: only a definite 404 says one is not published).
+    Every file is checked against the catalog before it is written. What each
+    door does around them, the version floor, the rollback and the registry,
+    is the door's own.
+    """
+
+    def __init__(self, driver_id: str, url: str, driver_repo: Path, catalog: Any) -> None:
+        self.driver_id = driver_id
+        self.url = url
+        self.driver_repo = driver_repo
+        self.catalog = catalog
+        self.kind = _driver_file_kind(url)
+        safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in driver_id)
+        self.file_name = f"{safe_id}{self.kind}"
+        self.path = driver_repo / self.file_name
+
+    async def main_file(self) -> tuple[str, bytes]:
+        """The driver file's text and bytes, checked against the catalog and
+        refused for a protected id, both before anything is written."""
+        resp = await _download_driver(self.url, self.driver_id)
+        await _verify_against_catalog(self.catalog, self.url, resp.content)
+        require_mutable_driver_file(self.file_name, resp.content)
+        return resp.text, resp.content
+
+    async def yaml_companion(self, yaml_text: str) -> Path | None:
+        """Download the companion a YAML driver names, beside it. ``None`` for
+        a Python driver or a YAML that names none; a failure raises, and the
+        door removes what it wrote."""
+        if self.kind != ".avcdriver":
+            return None
+        relpath = _companion_relpath_from_yaml(yaml_text)
+        if not relpath:
+            return None
+        return await _download_companion(
+            yaml_url=self.url,
+            companion_relpath=relpath,
+            driver_repo=self.driver_repo,
+            driver_id=self.driver_id,
+            catalog=self.catalog,
+        )
+
+    async def python_companions(
+        self, on_unpublished: Callable[[Path], None] | None = None
+    ) -> None:
+        """Fetch a Python driver's discovery and simulator files, named from
+        the URL's file name, so discovery's backup path works and the device
+        can be simulated. A missing one is no failure; ``on_unpublished`` is
+        told the local file each definite 404 leaves stale, right after it.
+
+        The main file is named from the id instead, so the two names agree
+        only while a catalog driver's file name matches its id.
+        """
+        if self.kind != ".py":
+            return
+        stem = PurePosixPath(urlparse(self.url).path).stem
+        if not stem:
+            return
+        for suffix in COMPANION_SUFFIXES:
+            name = f"{stem}{suffix}"
+            fetched = await _try_download_python_companion(
+                main_url=self.url,
+                companion_filename=name,
+                driver_repo=self.driver_repo,
+                catalog=self.catalog,
+            )
+            if not fetched.published and on_unpublished is not None:
+                on_unpublished(self.driver_repo / name)
+
+
+def _driver_class_from(path: Path) -> Any:
+    """The driver class a downloaded file defines, by its kind: a YAML
+    definition through the loader's checks, a Python file by import. A file
+    the loader refuses is a 422 naming which kind; anything else it raises is
+    the door's to report."""
+    from openavc.drivers.configurable import create_configurable_driver_class
+    from openavc.drivers.driver_loader import load_driver_file, load_python_driver_file
+
+    if path.suffix == ".avcdriver":
+        driver_def = load_driver_file(path)
+        if driver_def is None:
+            raise HTTPException(status_code=422, detail="Invalid driver definition file")
+        return create_configurable_driver_class(driver_def)
+    driver_class = load_python_driver_file(path)
+    if driver_class is None:
+        raise HTTPException(status_code=422, detail="No valid driver class found in Python file")
+    return driver_class
+
+
+def _remove_files(*paths: Path | None) -> None:
+    """Remove what a failed door wrote; a ``None`` is a file it never wrote."""
+    for path in paths:
+        if path is not None:
+            path.unlink(missing_ok=True)
+
+
 _COMMUNITY_UNREACHABLE = (
     "Could not reach the community driver library at raw.githubusercontent.com. "
     "Check that this system can reach the internet."
@@ -667,13 +800,6 @@ async def get_community_drivers(refresh: bool = False) -> dict[str, Any]:
 @router.post("/drivers/install")
 async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[str, Any]:
     """Download and install a driver from the community repo."""
-    import httpx
-    from openavc.drivers.driver_loader import (
-        load_driver_file,
-        load_python_driver_file,
-    )
-    from openavc.drivers.configurable import create_configurable_driver_class
-
     require_mutable_driver(body.driver_id)
 
     # min_platform_version supplied by the caller. The YAML body itself is
@@ -687,126 +813,46 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     driver_repo.mkdir(parents=True, exist_ok=True)
 
     # Pin the source to the official catalog repo (not merely "some GitHub URL")
-    url = body.file_url
-    from urllib.parse import urlparse
-    _require_catalog_url(url, what="Driver URL")
+    _require_catalog_url(body.file_url, what="Driver URL")
 
     # The catalog's hashes for this driver, read server-side. Fetched before the
     # download so a mismatch is caught with nothing yet written.
-    catalog = await _catalog_check(body.driver_id)
+    files = _CatalogFiles(
+        body.driver_id, body.file_url, driver_repo, await _catalog_check(body.driver_id)
+    )
 
-    # Determine file type from URL
-    if url.endswith(".avcdriver"):
-        ext = ".avcdriver"
-    elif url.endswith(".py"):
-        ext = ".py"
-    else:
-        raise HTTPException(status_code=422, detail="URL must point to a .avcdriver or .py file")
-
-    # Sanitize filename from driver_id
-    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in body.driver_id)
-    filename = f"{safe_id}{ext}"
-    filepath = driver_repo / filename
-
-    # Download the file, check it against the catalog, and only then write it.
-    # Verifying after the write would mean a driver that fails the check has
-    # already landed in driver_repo/, where the loader would find it.
-    try:
-        async with internet_client(timeout=15.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            yaml_text = resp.text
-            await _verify_against_catalog(catalog, url, resp.content)
-            require_mutable_driver_file(filename, resp.content)
-            filepath.write_bytes(resp.content)
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
-    except httpx.RequestError as e:
-        raise _api_error(
-            502,
-            internet_failure(e, "raw.githubusercontent.com")
-            or f"Failed to download driver '{body.driver_id}'",
-            e,
-        )
+    # Checked against the catalog before it is written: verifying after the
+    # write would mean a driver that fails the check has already landed in
+    # driver_repo/, where the loader would find it.
+    yaml_text, content = await files.main_file()
+    files.path.write_bytes(content)
 
     # For YAML drivers, also enforce min_platform_version parsed from the file
     # itself. This guards endpoints that call install_community_driver without
     # passing the request field (Discovery's install-and-match, future callers).
-    if ext == ".avcdriver":
-        yaml_min_version = _peek_min_platform_version(yaml_text)
-        if yaml_min_version:
-            try:
-                _enforce_min_platform_version(yaml_min_version)
-            except HTTPException:
-                # Roll back the download so an incompatible driver isn't left
-                # on disk.
-                filepath.unlink(missing_ok=True)
-                raise
+    # The download is removed so an incompatible driver isn't left on disk.
+    if files.kind == ".avcdriver":
+        try:
+            _enforce_declared_floor(_peek_min_platform_version(yaml_text))
+        except HTTPException:
+            files.path.unlink(missing_ok=True)
+            raise
 
-    # If this is a YAML driver with a sibling Python companion (e.g.
-    # crestron_cip → crestron_cip_discovery.py), fetch the companion
-    # alongside. Roll back the YAML on any companion-fetch failure so
-    # the install is atomic.
-    companion_filepath: Path | None = None
-    if ext == ".avcdriver":
-        relpath = _companion_relpath_from_yaml(yaml_text)
-        if relpath:
-            try:
-                companion_filepath = await _download_companion(
-                    yaml_url=url,
-                    companion_relpath=relpath,
-                    driver_repo=driver_repo,
-                    driver_id=body.driver_id,
-                    catalog=catalog,
-                )
-            except HTTPException:
-                filepath.unlink(missing_ok=True)
-                raise
-
-    # Register the driver
+    # A YAML driver's sibling Python companion (e.g. crestron_cip →
+    # crestron_cip_discovery.py) is fetched alongside. Roll back the YAML on any
+    # companion-fetch failure so the install is atomic.
     try:
-        if ext == ".avcdriver":
-            driver_def = load_driver_file(filepath)
-            if driver_def is None:
-                filepath.unlink(missing_ok=True)
-                if companion_filepath:
-                    companion_filepath.unlink(missing_ok=True)
-                raise HTTPException(status_code=422, detail="Invalid driver definition file")
-            driver_class = create_configurable_driver_class(driver_def)
-            _enforce_driver_id_match(driver_class, body.driver_id, filepath, companion_filepath)
-            register_driver(driver_class)
-        else:
-            driver_class = load_python_driver_file(filepath)
-            if driver_class is None:
-                filepath.unlink(missing_ok=True)
-                raise HTTPException(status_code=422, detail="No valid driver class found in Python file")
-            _enforce_driver_id_match(driver_class, body.driver_id, filepath)
-            register_driver(driver_class)
+        companion = await files.yaml_companion(yaml_text)
     except HTTPException:
+        files.path.unlink(missing_ok=True)
         raise
-    except Exception as e:
-        filepath.unlink(missing_ok=True)
-        if companion_filepath:
-            companion_filepath.unlink(missing_ok=True)
-        raise _api_error(500, f"Failed to load driver '{body.driver_id}'", e)
 
-    # For Python drivers, also fetch the conventional sibling companions
-    # (_discovery.py / _sim.py) so the install is complete: discovery's backup
-    # path works and the device can be simulated. They're located by naming
-    # convention (not declared) and optional, so a 404 just means the driver
-    # ships without one. YAML drivers fetch their declared companion above and
-    # get simulation from their inline `simulator:` section instead.
-    if ext == ".py":
-        from pathlib import PurePosixPath
-        src_stem = PurePosixPath(urlparse(url).path).stem
-        if src_stem:
-            for suffix in COMPANION_SUFFIXES:
-                await _try_download_python_companion(
-                    main_url=url,
-                    companion_filename=f"{src_stem}{suffix}",
-                    driver_repo=driver_repo,
-                    catalog=catalog,
-                )
+    _register_install(files, companion)
+
+    # Python drivers get their conventional companions after registering. YAML
+    # drivers fetched their declared companion above and get simulation from
+    # their inline `simulator:` section instead.
+    await files.python_companions()
 
     # Refresh discovery engine with new driver hints
     from openavc.api.discovery import refresh_all_device_matches
@@ -826,9 +872,25 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     return {
         "status": "installed",
         "driver_id": body.driver_id,
-        "file": filename,
+        "file": files.file_name,
         "activated_devices": activated,
     }
+
+
+def _register_install(files: _CatalogFiles, companion: Path | None) -> None:
+    """Register an installed driver under the id the install asked for. Any
+    failure removes what the install wrote, the main file and the YAML's
+    companion, so an install is all or nothing."""
+    try:
+        driver_class = _driver_class_from(files.path)
+        _enforce_driver_id_match(driver_class, files.driver_id, files.path, companion)
+        register_driver(driver_class)
+    except HTTPException:
+        _remove_files(files.path, companion)
+        raise
+    except Exception as e:
+        _remove_files(files.path, companion)
+        raise _api_error(500, f"Failed to load driver '{files.driver_id}'", e)
 
 
 # A driver id that can also be its file name.
@@ -1006,8 +1068,6 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
     import io
     import re
     import zipfile
-    from pathlib import PurePosixPath
-
     from openavc.drivers.driver_loader import (
         load_driver_file,
         load_python_driver_file,
@@ -1276,16 +1336,108 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     return {"status": "uninstalled", "driver_id": driver_id}
 
 
+def _file_an_update_replaces(driver_repo: Path, driver_id: str) -> Path | None:
+    """The installed file a community update replaces: the first, in folder
+    order, YAML files before Python ones, that is named for the id or is a
+    YAML declaring it. Helpers (a leading ``_``) are passed over, and so is a
+    YAML that cannot be read. A Python file counts by its name only."""
+    for filepath in list(driver_repo.glob("*.avcdriver")) + list(driver_repo.glob("*.py")):
+        if filepath.name.startswith("_"):
+            continue
+        if filepath.stem == driver_id or _yaml_declares(filepath, driver_id):
+            return filepath
+    return None
+
+
+def _yaml_declares(filepath: Path, driver_id: str) -> bool:
+    """Whether a ``.avcdriver`` file declares ``driver_id``; an unreadable one does not."""
+    if filepath.suffix != ".avcdriver":
+        return False
+    import yaml
+
+    try:
+        data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError):
+        return False
+    return isinstance(data, dict) and data.get("id") == driver_id
+
+
+def _remove_if_present(path: Path | None) -> None:
+    if path is not None and path.exists():
+        path.unlink(missing_ok=True)
+
+
+async def _replace_yaml_companion(
+    files: _CatalogFiles, yaml_text: str, old_companion: Path | None
+) -> None:
+    """Swap an updated YAML driver's companion: fetch the one the new YAML
+    names, then drop the old one when the new YAML names another or none. A
+    failed fetch removes the new YAML and the old companion too, so the person
+    is left with neither old nor new but a clear error, the same all or
+    nothing an install gives."""
+    try:
+        new_companion = await files.yaml_companion(yaml_text)
+    except HTTPException:
+        files.path.unlink(missing_ok=True)
+        _remove_if_present(old_companion)
+        raise
+    if old_companion != new_companion:
+        _remove_if_present(old_companion)
+
+
+def _remove_unpublished_companion(stale: Path, driver_id: str) -> None:
+    """A definite 404: this version dropped the companion, so the previous
+    version's copy has to go with it or it outlives its driver forever. Only on
+    a 404: a transport error is not one, so a flaky network can't delete a
+    working simulator."""
+    if stale.is_file():
+        stale.unlink(missing_ok=True)
+        log.info("Removed %s — no longer published for driver '%s'", stale.name, driver_id)
+
+
+def _register_update(files: _CatalogFiles) -> None:
+    """Register the updated driver. A failure leaves the new file in place and
+    the driver unregistered, with the reason."""
+    try:
+        register_driver(_driver_class_from(files.path))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _api_error(500, f"Failed to load updated driver '{files.driver_id}'", e)
+
+
+async def _rebuild_devices(driver_id: str) -> tuple[list[str], list[str]]:
+    """Rebuild the devices running a driver that was just replaced: the ones
+    that came back, and the ones that were running it and did not.
+
+    A device already running the driver was built from the old class and goes
+    on using it until something rebuilds it, so an update only reaches the
+    fleet after this swap. It is the same one the Code editor's hot-reload
+    does, and the same one the two driver-definition writers do.
+
+    Nothing here may fail the request: the new file is written and registered
+    by this point, so an error would report an update that did happen as one
+    that did not, and the caller would press Update again. ``reload_driver``
+    logs each device's own failure and leaves it out of what it returns.
+    """
+    reconnected: list[str] = []
+    using_before: list[str] = []
+    try:
+        engine = _get_engine()
+        using_before = engine.devices.get_devices_using_driver(driver_id)
+        reconnected = await engine.devices.reload_driver(driver_id)
+    except Exception:
+        log.exception(
+            "Driver '%s' was updated, but its devices could not be rebuilt",
+            driver_id,
+        )
+    return reconnected, [d for d in using_before if d not in reconnected]
+
+
 @router.post("/drivers/installed/{driver_id}/update")
 async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     """Update an installed community driver to a newer version."""
     require_mutable_driver(driver_id)
-    import httpx
-    from openavc.drivers.driver_loader import (
-        load_driver_file,
-        load_python_driver_file,
-    )
-    from openavc.drivers.configurable import create_configurable_driver_class
 
     driver_repo = _get_driver_repo_dir()
     if not driver_repo.exists():
@@ -1302,116 +1454,36 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     if min_ver:
         _enforce_min_platform_version(min_ver)
 
-    # Find the existing file
-    old_file = None
-    for filepath in list(driver_repo.glob("*.avcdriver")) + list(driver_repo.glob("*.py")):
-        if filepath.name.startswith("_"):
-            continue
-        if filepath.stem == driver_id:
-            old_file = filepath
-            break
-        try:
-            if filepath.suffix == ".avcdriver":
-                import yaml
-                data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-                if isinstance(data, dict) and data.get("id") == driver_id:
-                    old_file = filepath
-                    break
-        except (yaml.YAMLError, OSError):
-            continue
-
+    old_file = _file_an_update_replaces(driver_repo, driver_id)
     if not old_file:
         raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
 
-    # Validate the new URL the same way install does — the find-old-file
-    # block above was happy to accept any file_url, but the install
-    # endpoint pins the source to the official catalog repo.
+    # Validate the new URL the same way install does — finding the old file
+    # accepts any file_url, but the install endpoint pins the source to the
+    # official catalog repo.
     _require_catalog_url(file_url, what="Driver URL")
-
-    catalog = await _catalog_check(driver_id)
-
-    # Determine file type from URL
-    if file_url.endswith(".avcdriver"):
-        ext = ".avcdriver"
-    elif file_url.endswith(".py"):
-        ext = ".py"
-    else:
-        raise HTTPException(status_code=422, detail="URL must point to a .avcdriver or .py file")
+    files = _CatalogFiles(driver_id, file_url, driver_repo, await _catalog_check(driver_id))
 
     # Resolve the existing companion (if any) before we touch anything,
     # so we know what to clean up after the new install lands.
     old_companion = _installed_yaml_companion(old_file, driver_repo)
 
-    # Download new version
-    safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in driver_id)
-    new_filename = f"{safe_id}{ext}"
-    new_filepath = driver_repo / new_filename
-
-    try:
-        async with internet_client(timeout=15.0) as client:
-            resp = await client.get(file_url)
-            resp.raise_for_status()
-            new_content = resp.text
-            new_bytes = resp.content
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
-    except httpx.RequestError as e:
-        raise _api_error(
-            502,
-            internet_failure(e, "raw.githubusercontent.com")
-            or f"Failed to download driver '{driver_id}'",
-            e,
-        )
-
-    # Check before the swap below unregisters the driver and deletes the old
-    # file: a failed update must leave the working driver in place.
-    await _verify_against_catalog(catalog, file_url, new_bytes)
-    require_mutable_driver_file(new_filename, new_bytes)
-
-    # For YAML drivers, also enforce the version pulled from the file itself
-    # so a caller that omits min_platform_version still can't install an
-    # incompatible driver (A65).
-    if ext == ".avcdriver":
-        yaml_min_version = _peek_min_platform_version(new_content)
-        if yaml_min_version:
-            _enforce_min_platform_version(yaml_min_version)
+    # Checked before the swap below unregisters the driver and deletes the old
+    # file: a failed update must leave the working driver in place. For YAML
+    # drivers that includes the version the file itself declares, so a caller
+    # that omits min_platform_version still can't install an incompatible
+    # driver (A65).
+    new_content, new_bytes = await files.main_file()
+    if files.kind == ".avcdriver":
+        _enforce_declared_floor(_peek_min_platform_version(new_content))
 
     # Unregister old, delete old file, write new
     unregister_driver(driver_id)
-    if old_file != new_filepath:
+    if old_file != files.path:
         old_file.unlink(missing_ok=True)
-    new_filepath.write_bytes(new_bytes)
+    files.path.write_bytes(new_bytes)
 
-    # Fetch the new YAML's sibling companion (if any). If that fails,
-    # roll back the new YAML and remove the old companion — the user
-    # is left with neither old nor new but a clear error, which is the
-    # same atomicity the install endpoint provides.
-    new_companion: Path | None = None
-    if ext == ".avcdriver":
-        relpath = _companion_relpath_from_yaml(new_content)
-        if relpath:
-            try:
-                new_companion = await _download_companion(
-                    yaml_url=file_url,
-                    companion_relpath=relpath,
-                    driver_repo=driver_repo,
-                    driver_id=driver_id,
-                    catalog=catalog,
-                )
-            except HTTPException:
-                new_filepath.unlink(missing_ok=True)
-                if old_companion is not None and old_companion.exists():
-                    old_companion.unlink(missing_ok=True)
-                raise
-
-    # The new YAML may declare a different companion filename than the
-    # old one — drop the orphaned old companion in that case.
-    if (
-        old_companion is not None
-        and old_companion.exists()
-        and (new_companion is None or old_companion != new_companion)
-    ):
-        old_companion.unlink(missing_ok=True)
+    await _replace_yaml_companion(files, new_content, old_companion)
 
     # Refresh a Python driver's convention companions, exactly as install
     # fetches them. Without this the new driver code lands beside the previous
@@ -1419,77 +1491,12 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     # the old protocol while the driver speaks the new one, so a project tested
     # against it passes on a stale answer, and discovery probes with logic that
     # no longer matches the driver.
-    #
-    # Names come from the source URL's stem, the same as install — the main
-    # file is named from `driver_id` instead, so the two only agree while every
-    # catalog driver's filename matches its id. Assert rather than inherit that.
-    if ext == ".py":
-        from pathlib import PurePosixPath
-        from urllib.parse import urlparse as _up
-        src_stem = PurePosixPath(_up(file_url).path).stem
-        if src_stem:
-            for suffix in COMPANION_SUFFIXES:
-                companion_name = f"{src_stem}{suffix}"
-                fetched = await _try_download_python_companion(
-                    main_url=file_url,
-                    companion_filename=companion_name,
-                    driver_repo=driver_repo,
-                    catalog=catalog,
-                )
-                if not fetched.published:
-                    # A definite 404: this version dropped the companion, so the
-                    # previous version's copy has to go with it or it outlives
-                    # its driver forever. Only on a 404 — a transport error
-                    # leaves `published` True precisely so a flaky network can't
-                    # delete a working simulator.
-                    stale = driver_repo / companion_name
-                    if stale.is_file():
-                        stale.unlink(missing_ok=True)
-                        log.info(
-                            "Removed %s — no longer published for driver '%s'",
-                            companion_name, driver_id,
-                        )
+    await files.python_companions(
+        on_unpublished=lambda stale: _remove_unpublished_companion(stale, driver_id)
+    )
 
-    # Load and register new version
-    try:
-        if ext == ".avcdriver":
-            driver_def = load_driver_file(new_filepath)
-            if driver_def is None:
-                raise HTTPException(status_code=422, detail="Invalid driver definition file")
-            driver_class = create_configurable_driver_class(driver_def)
-            register_driver(driver_class)
-        else:
-            driver_class = load_python_driver_file(new_filepath)
-            if driver_class is None:
-                raise HTTPException(status_code=422, detail="No valid driver class found in Python file")
-            register_driver(driver_class)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise _api_error(500, f"Failed to load updated driver '{driver_id}'", e)
-
-    # A device already running this driver was built from the old class and
-    # goes on using it until something rebuilds it, so the update only reaches
-    # the fleet after this swap. It is the same one the Code editor's
-    # hot-reload does, and the same one the two driver-definition writers do.
-    #
-    # Nothing here may fail the request: the new file is written and registered
-    # by this point, so an error would report an update that did happen as one
-    # that did not, and the caller would press Update again. Report which
-    # devices did not come back instead. reload_driver logs each device's own
-    # failure and leaves it out of what it returns.
-    reconnected: list[str] = []
-    using_before: list[str] = []
-    try:
-        engine = _get_engine()
-        using_before = engine.devices.get_devices_using_driver(driver_id)
-        reconnected = await engine.devices.reload_driver(driver_id)
-    except Exception:
-        log.exception(
-            "Driver '%s' was updated, but its devices could not be rebuilt",
-            driver_id,
-        )
-    not_reconnected = [d for d in using_before if d not in reconnected]
+    _register_update(files)
+    reconnected, not_reconnected = await _rebuild_devices(driver_id)
 
     from openavc.api.discovery import refresh_all_device_matches
     await refresh_all_device_matches()
@@ -1498,11 +1505,10 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     return {
         "status": "updated",
         "driver_id": driver_id,
-        "file": new_filename,
+        "file": files.file_name,
         "devices_reconnected": reconnected,
         "devices_not_reconnected": not_reconnected,
     }
-
 
 # --- Driver Definitions ---
 
