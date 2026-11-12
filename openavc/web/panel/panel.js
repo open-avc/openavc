@@ -16,6 +16,10 @@ import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
 import { FaderControl, SliderControl, endFaderDrags } from './modules/level.js';
+import {
+    FrameStatusWatch, drawFrame, fetchExtToken, framePlaceholder, loadPanelElementExtensions,
+    pushToFrames, releaseFrames, releaseFramesIn,
+} from './modules/frames.js';
 
 // --- Programmer session bridge ---------------------------------------------
 // When the panel is embedded as an iframe inside the Programmer IDE (the UI
@@ -291,144 +295,19 @@ class PanelApp {
         // iframe sandbox / allow attributes can apply the plugin's declared
         // permissions instead of always defaulting to allow-scripts only.
         this._pluginExtensions = {};
-        // Frames waiting to hear what their own request answered: absolute url
-        // -> Set of callbacks. See _watchIframeStatuses.
-        this._iframeStatusWaiters = new Map();
-        this._iframeStatusWatch = false;
-        this._watchIframeStatuses();
+        // What each frame's own request answered, for its file check.
+        this._frameStatus = new FrameStatusWatch();
     }
 
-    /** Watch what every iframe's OWN request answered, so nothing has to ask twice.
-     *
-     *  A frame pointed at a missing file has to say so. The server does its own
-     *  half -- api/static_files.py answers a missing page with a small HTML
-     *  document rather than a JSON error, because the body of that response is
-     *  what the room sees -- but that only reaches whoever is looking at the
-     *  frame. The strip out here is what names the FILE, and what tells the
-     *  Builder which element failed (openavc:element-error), which is the half
-     *  an author needs. Finding out used to cost a second request per frame, on
-     *  the one path in the panel that never caches (the ui/ route is no-cache by
-     *  design, so an author saving a file sees it), which meant every custom
-     *  control was two round trips forever.
-     *
-     *  The parent's own resource timeline already carries the answer: it reports
-     *  responseStatus for the frame's navigation even though the frame is
-     *  sandboxed into an opaque origin. The frame's `load` event does NOT --
-     *  it fires for a 404 exactly as it does for a 200, so the status is the
-     *  whole signal and the event is worthless on its own.
-     *
-     *  An observer rather than a read of performance.getEntriesByName(): the
-     *  timeline stops recording at 250 entries, which a wall panel reaches in
-     *  days, and past that the lookup finds nothing while an observer still
-     *  gets delivered. The lookup would have silently stopped working in the
-     *  field, which is the failure this is here to remove. The cost is that the
-     *  observer fires just after `load`, so it has to be the trigger.
-     */
-    _watchIframeStatuses() {
-        // Old WebViews have no responseStatus, and there the second request is
-        // still the only way to know. Detect it rather than assume it.
-        const readable = typeof PerformanceObserver !== 'undefined'
-            && typeof PerformanceResourceTiming !== 'undefined'
-            && 'responseStatus' in PerformanceResourceTiming.prototype;
-        if (!readable) return;
-        try {
-            new PerformanceObserver((list) => {
-                for (const entry of list.getEntries()) {
-                    if (entry.initiatorType !== 'iframe') continue;
-                    const waiting = this._iframeStatusWaiters.get(entry.name);
-                    if (!waiting) continue;
-                    this._iframeStatusWaiters.delete(entry.name);
-                    for (const fn of waiting) {
-                        try { fn(entry.responseStatus); } catch (_) { /* one frame */ }
-                    }
-                }
-            }).observe({ type: 'resource', buffered: true });
-            this._iframeStatusWatch = true;
-        } catch (_) {
-            // Nothing to read -- the fallback in _reportIframeFileFailure asks.
-        }
-    }
-
-    /** Say so in the element's box if the control's file never arrived.
-     *
-     *  Reads the status off the frame's own request where the browser will tell
-     *  us (no extra traffic), and only asks for it where it will not.
-     */
-    _reportIframeFileFailure(el, iframe, opts) {
-        const failed = (status) => this._showIframeFault(
-            el,
-            status
-                ? `${opts.fileLabel} could not be loaded (${status})`
-                : `${opts.fileLabel} could not be loaded`,
-        );
-        // The second request, kept for the cases where the frame's own status
-        // is not knowable. `no-store` because its whole purpose is to find out
-        // what is there right now.
-        const ask = () => {
-            fetch(opts.src, { cache: 'no-store' }).then(res => {
-                if (!res.ok) failed(res.status);
-            }).catch(() => failed(0));
-        };
-
-        if (this._iframeStatusWatch) {
-            // The timeline names resources absolutely; `iframe.src` reflects
-            // the resolved URL, which is the same string.
-            const url = iframe.src;
-            let waiting = this._iframeStatusWaiters.get(url);
-            if (!waiting) {
-                waiting = new Set();
-                this._iframeStatusWaiters.set(url, waiting);
-            }
-            waiting.add((status) => {
-                // A status of 0 is not a verdict -- it is the browser declining
-                // to give one. A request that never got an answer reads that
-                // way, and so does one the browser will not report on. Asking
-                // is right for both: the frame either really is broken, in
-                // which case the round trip is the least of it, or it drew fine
-                // and an accusation would have been wrong.
-                if (status === 0) ask();
-                else if (status >= 400) failed(status);
-            });
-            return;
-        }
-
-        ask();
-    }
-
+    // The plugin panel elements the server lists, read once at start, so a
+    // plugin frame's sandbox and allow attributes take what its plugin declared.
     async _loadPluginExtensions() {
-        try {
-            const res = await fetch(`${basePath()}/api/plugins/extensions`);
-            if (!res.ok) return;
-            const data = await res.json();
-            const elements = (data.extensions || {}).panel_elements || [];
-            for (const ext of elements) {
-                if (!ext.plugin_id || !ext.type) continue;
-                const byType = this._pluginExtensions[ext.plugin_id] || {};
-                byType[ext.type] = ext;
-                this._pluginExtensions[ext.plugin_id] = byType;
-            }
-        } catch (err) {
-            console.warn('[panel] failed to load plugin extensions:', err);
-        }
+        await loadPanelElementExtensions(() => this._pluginExtensions);
     }
 
-    // Fetch a plugin-scoped token for a panel_elements iframe that declared
-    // ext_auth. Uses the patched fetch so the request is authenticated; the
-    // token is forwarded to the iframe via openavc:init so it can reach its
-    // plugin's /api/plugins/<id>/ext/* routes. Returns undefined when the
-    // instance is open (empty token) or on any error.
+    // A plugin-scoped token for a frame that declared ext_auth (modules/frames.js).
     async _fetchPluginExtToken(pluginId) {
-        try {
-            const res = await fetch(
-                `${basePath()}/api/plugins/${encodeURIComponent(pluginId)}/ext-token`
-            );
-            if (!res.ok) return undefined;
-            const data = await res.json();
-            return data && data.token ? data.token : undefined;
-        } catch (err) {
-            console.warn('[panel] failed to fetch plugin ext token:', err);
-            return undefined;
-        }
+        return fetchExtToken(pluginId);
     }
 
     async start() {
@@ -1341,12 +1220,7 @@ class PanelApp {
             // Remove window 'message' listeners registered by plugin iframes in
             // this overlay — otherwise each open/dismiss cycle leaks one stale
             // listener (retaining the removed iframe's closure).
-            overlayEl.querySelectorAll('.panel-plugin, .panel-custom').forEach(el => {
-                if (el._pluginMessageHandler) {
-                    window.removeEventListener('message', el._pluginMessageHandler);
-                    this._pluginMessageHandlers.delete(el._pluginMessageHandler);
-                }
-            });
+            releaseFramesIn(overlayEl, this._pluginMessageHandlers);
             overlayEl.classList.add('dismissing');
             overlayEl.addEventListener('transitionend', () => overlayEl.remove(), { once: true });
             // Fallback in case transitionend doesn't fire (e.g., no transition defined)
@@ -2100,21 +1974,17 @@ class PanelApp {
             this.root.innerHTML = '';
         }
 
-        // Clean up all plugin iframe message handlers
-        for (const handler of this._pluginMessageHandlers) {
-            window.removeEventListener('message', handler);
-        }
-        this._pluginMessageHandlers.clear();
+        // Every frame on the page being replaced stops listening.
+        releaseFrames(this._pluginMessageHandlers);
 
         clearMatrixOverlays();
 
         this.bindings = [];
         this.elementMap = {};
         // Frames from the page being replaced are about to be discarded, so
-        // drop what they were waiting to hear -- a callback held here keeps the
-        // element it draws into alive. Every frame this render builds registers
-        // again below.
-        this._iframeStatusWaiters.clear();
+        // drop what they were waiting to hear. Every frame this render builds
+        // registers again below.
+        this._frameStatus.clear();
 
         // Apply theme
         this.applyTheme(this.uiDef.settings || {});
@@ -4093,12 +3963,9 @@ class PanelApp {
     // --- Iframe elements: plugin panels and custom controls ---
     //
     // Two element types render an author's own web page inside one element's
-    // box, and they are the same machinery: a sandboxed iframe, an init message
-    // carrying config + theme + a scoped state snapshot, live state pushes, and
-    // an action bridge back. What differs is only where the page comes from,
-    // what state it may see, and (for a plugin) an auth token for its own
-    // routes. One renderer, two callers -- a second copy of the bridge is how
-    // one of them quietly loses a guard.
+    // box, drawn and bridged by one frame (modules/frames.js). Each renderer
+    // says only where its page comes from, what it may see on its own, and
+    // (for a plugin) whether it needs an auth token for its own routes.
 
     renderPluginElement(element) {
         const pluginId = element.plugin_id;
@@ -4107,7 +3974,7 @@ class PanelApp {
         // Validate pluginId/pluginType format (alphanumeric, underscores, hyphens only)
         const validIdPattern = /^[a-zA-Z0-9_-]+$/;
         if (!pluginId || !pluginType || !validIdPattern.test(pluginId) || !validIdPattern.test(pluginType)) {
-            return this._renderIframePlaceholder(element, 'plugin', 'Plugin element (unconfigured)');
+            return framePlaceholder(this._frameHost(), element, { styleType: 'plugin', label: 'Plugin element (unconfigured)' });
         }
 
         // Sandbox + allow attributes are 'allow-scripts' / none by default.
@@ -4121,7 +3988,7 @@ class PanelApp {
             if (!sandboxTokens.includes(t)) sandboxTokens.push(t);
         }
 
-        return this._renderIframeElement(element, {
+        return drawFrame(this._frameHost(), element, {
             className: 'panel-plugin',
             styleType: 'plugin',
             src: `${basePath()}/api/plugins/${encodeURIComponent(pluginId)}/panel/${encodeURIComponent(pluginType)}.html`,
@@ -4147,7 +4014,7 @@ class PanelApp {
         // one rather than building a URL out of it.
         const file = String(element.custom_file || '');
         if (!file || file.startsWith('/') || file.includes('..') || file.includes('\\')) {
-            return this._renderIframePlaceholder(element, 'custom', 'Custom control (no file chosen)');
+            return framePlaceholder(this._frameHost(), element, { styleType: 'custom', label: 'Custom control (no file chosen)' });
         }
         const src = file.split('/').map(encodeURIComponent).join('/');
         // The designer re-renders this page whenever the author saves a file
@@ -4156,7 +4023,7 @@ class PanelApp {
         // is none and the URL is the plain one.
         const bust = this._uiFilesVersion ? `?v=${encodeURIComponent(this._uiFilesVersion)}` : '';
 
-        return this._renderIframeElement(element, {
+        return drawFrame(this._frameHost(), element, {
             className: 'panel-custom',
             styleType: 'custom',
             src: `${basePath()}/api/projects/default/ui/${src}${bust}`,
@@ -4189,8 +4056,8 @@ class PanelApp {
      *
      *  The browser is the only thing that can answer: clicking or tapping into
      *  an iframe moves `document.activeElement` to it out here, even though
-     *  nothing about the event itself crosses. That is the whole guard on the
-     *  idle reset above -- a message from a frame the user is not in must not
+     *  nothing about the event itself crosses. That is the whole guard on a
+     *  frame's idle reset (modules/frames.js) -- a message from a frame the user is not in must not
      *  count, or a control left running in a corner keeps a wall panel awake
      *  and unlocked all night. Wrapped because `document.activeElement` is not
      *  guaranteed to exist in every embedding host. */
@@ -4286,373 +4153,23 @@ class PanelApp {
         return this._placeElement(el, null, asElement);
     }
 
-    /** The grant on an element, normalised so the checks below never have to
-     *  ask what shape it is. An element with no grant reaches nothing, which is
-     *  what every element in every project written before grants existed has. */
-    _elementGrant(element) {
-        const g = (element && element.grant) || {};
+    /** What a frame asks of the panel (modules/frames.js), read when it asks:
+     *  tests replace these on the app. */
+    _frameHost() {
+        const app = this;
         return {
-            devices: Array.isArray(g.devices) ? g.devices.map(String) : [],
-            variables: Array.isArray(g.variables) ? g.variables.map(String) : [],
-            macros: g.macros === true,
-            navigate: g.navigate === true,
+            get state() { return app.state; },
+            get editMode() { return app.editMode; },
+            get handlers() { return app._pluginMessageHandlers; },
+            get frameStatus() { return app._frameStatus; },
+            send: (msg) => app.send(msg),
+            touched: (elementId) => { app._lastTouchedElementId = elementId; },
+            noteActivity: (iframe) => { if (app._frameHasFocus(iframe)) app.resetIdleTimer(); },
+            fetchToken: (pluginId) => app._fetchPluginExtToken(pluginId),
+            postToParent: (msg) => app._postToParent(msg),
+            themedStyle: (type, style) => app.getThemedStyle(type, style),
+            register: (id, entry) => { app.elementMap[id] = entry; },
         };
-    }
-
-    /** One rule for what state an iframe element may see, asked by both the
-     *  opening snapshot and every live push. Device grants match on the prefix
-     *  INCLUDING the trailing dot -- a grant on `dsp1` must not also hand over
-     *  `dsp10` -- which is also what makes child entities work: their keys are
-     *  `device.<parent>.<child>.<id>.<prop>`, so the parent's grant covers them
-     *  without the integrator listing keys that only exist at runtime. A
-     *  variable is matched exactly, so `room_volume` is not `room_volume_max`. */
-    _grantAllowsRead(grant, ownNamespace, key) {
-        const k = String(key);
-        if (ownNamespace && k.startsWith(ownNamespace)) return true;
-        for (const id of grant.devices) {
-            if (k.startsWith(`device.${id}.`)) return true;
-        }
-        for (const id of grant.variables) {
-            if (k === `var.${id}`) return true;
-        }
-        return false;
-    }
-
-    /** The box an iframe element draws when it cannot render for real:
-     *  unconfigured, or the design canvas where author code does not run. */
-    _renderIframePlaceholder(element, styleType, label, detail) {
-        const el = document.createElement('div');
-        el.className = `panel-element panel-${styleType}`;
-        el.dataset.elementId = element.id;
-        el.style.display = 'flex';
-        el.style.flexDirection = 'column';
-        el.style.alignItems = 'center';
-        el.style.justifyContent = 'center';
-        el.style.gap = '4px';
-        el.style.color = 'var(--panel-text)';
-        el.style.textAlign = 'center';
-        el.style.padding = '4px';
-        // The sizes go on the text, in em, and never on `el`: it is a
-        // .panel-element, so its own font-size is the panel's text default (or
-        // the author's font_size, applied below) and these are proportions of
-        // that, like every other piece of text inside a control.
-        if (detail === undefined) {
-            // Unconfigured: one line, no border — it is not a stand-in for
-            // something that would otherwise draw.
-            el.style.opacity = '0.5';
-            const line = document.createElement('div');
-            line.textContent = label;
-            line.style.fontSize = '0.8571em';
-            el.appendChild(line);
-            return el;
-        }
-        el.style.border = '1px dashed var(--panel-text, rgba(255,255,255,0.3))';
-        el.style.borderRadius = '4px';
-        el.style.opacity = '0.4';
-        const title = document.createElement('div');
-        title.textContent = label;
-        title.style.fontWeight = '600';
-        title.style.fontSize = '0.7857em';
-        const sub = document.createElement('div');
-        sub.textContent = detail;
-        sub.style.opacity = '0.8';
-        sub.style.fontSize = '0.7143em';
-        el.appendChild(title);
-        el.appendChild(sub);
-        applyStyle(el, this.getThemedStyle(styleType, element.style));
-        return el;
-    }
-
-    /** Say, in the element's own box, that the page in it failed.
-     *
-     *  A control that breaks is otherwise a blank rectangle with the answer in
-     *  a console nobody has open -- and on a wall panel there is no console at
-     *  all. The strip sits over the frame rather than replacing it, so a page
-     *  that half-drew still shows what it managed. */
-    _showIframeFault(el, message) {
-        let strip = el._faultStrip;
-        if (!strip) {
-            strip = document.createElement('div');
-            strip.className = 'panel-iframe-fault';
-            strip.style.cssText = 'position:absolute;left:0;right:0;bottom:0;z-index:2;'
-                + 'padding:3px 5px;font-size:10px;line-height:1.3;text-align:left;'
-                + 'background:var(--panel-danger, #b3261e);color:#fff;'
-                + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-            el.appendChild(strip);
-            el._faultStrip = strip;
-        }
-        strip.textContent = message;
-        strip.title = message;
-        // The designer can put it in front of the author, which the panel
-        // itself cannot: it has no place to show a message that is not a box.
-        this._postToParent({
-            type: 'openavc:element-error',
-            elementId: el.dataset.elementId,
-            message,
-        });
-    }
-
-    _renderIframeElement(element, opts) {
-        // Edit mode: a plugin element stays a placeholder -- it is somebody
-        // else's shipped code and the author is not editing it, so there is
-        // nothing to see and no reason to run it while they drag. A custom
-        // control is the opposite: it is the thing being written.
-        if (this.editMode && !opts.liveInEditMode) {
-            return this._renderIframePlaceholder(
-                element, opts.styleType, opts.placeholderLabel, opts.placeholderDetail,
-            );
-        }
-
-        const el = document.createElement('div');
-        el.className = `panel-element ${opts.className}`;
-        el.dataset.elementId = element.id;
-
-        const iframe = document.createElement('iframe');
-        iframe.src = opts.src;
-        // setAttribute rather than `iframe.sandbox = ...`: identical in a
-        // browser, but the property assignment leaves the attribute unset under
-        // jsdom, and the sandbox attribute is the entire isolation story here —
-        // it has to be assertable.
-        iframe.setAttribute('sandbox', opts.sandboxTokens.join(' '));
-        if (opts.allowFeatures.length) {
-            iframe.setAttribute('allow', opts.allowFeatures.join('; '));
-        }
-        iframe.style.cssText = 'width:100%; height:100%; border:none; border-radius:inherit;';
-        // NOT loading="lazy". A panel page is sized to fill the screen, so
-        // every frame on it is in the viewport already and lazy defers nothing
-        // -- it only delays the fetch behind a layout pass, on the path a
-        // person is waiting at. It also costs the one thing that makes the
-        // second request below unnecessary: Chromium zeroes responseStatus and
-        // transferSize on a lazily-loaded frame's timing entry, so the parent
-        // could no longer tell a 404 from a control that drew perfectly well.
-        el.style.overflow = 'hidden';
-        el.appendChild(iframe);
-
-        // Is the page actually there? Registered before the frame is in the
-        // document, so the answer cannot arrive before something is listening
-        // for it.
-        if (opts.fileLabel) {
-            this._reportIframeFileFailure(el, iframe, opts);
-        }
-
-        // Loading indicator
-        const loadingIndicator = document.createElement('div');
-        loadingIndicator.textContent = opts.loadingText;
-        loadingIndicator.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:0.8571rem;position:absolute;inset:0;z-index:1;';
-        el.style.position = 'relative';
-        el.appendChild(loadingIndicator);
-
-        // Store reference for state updates. Same {el, elementDef} shape as every
-        // other renderer — this one used to store the bare node, which quietly cost
-        // it everything that reads elementDef off an entry (ui.* label overrides,
-        // macro-busy). Anything needing the frame's own bits reads them off entry.el.
-        this.elementMap[element.id] = { el, elementDef: element };
-        el._pluginIframe = iframe;
-        el._pluginId = opts.pluginId;
-        el._pluginConfig = opts.config;
-        // The grant this element was placed with, and the namespace it owns
-        // outright (a plugin's own `plugin.<id>.`, nothing for a custom
-        // control). Both checks below read these off the element rather than
-        // re-deriving them, so the opening snapshot, the live pushes and the
-        // action bridge cannot end up answering differently.
-        el._grant = this._elementGrant(element);
-        el._ownNamespace = opts.ownNamespace;
-        const stateFilter = (key) => this._grantAllowsRead(el._grant, el._ownNamespace, key);
-        el._stateFilter = stateFilter;
-
-        // postMessage API: send initial config + theme + state snapshot when the
-        // iframe loads. Also re-run on demand ('openavc:request-init' from the
-        // frame) so a long-lived plugin iframe can recover a fresh ext token
-        // after its TTL expires — wall panels outlive the token lifetime by
-        // design.
-        const sendInit = async () => {
-            loadingIndicator.remove();
-            const themeVars = {};
-            const root = document.documentElement;
-            for (const prop of ['--panel-bg', '--panel-text', '--panel-accent',
-                '--panel-button-bg', '--panel-button-text', '--panel-button-border',
-                '--panel-surface', '--panel-surface-border',
-                '--panel-danger', '--panel-success', '--panel-warning',
-                '--panel-border-radius']) {
-                themeVars[prop] = getComputedStyle(root).getPropertyValue(prop).trim();
-            }
-            const stateSnapshot = {};
-            for (const [key, value] of Object.entries(this.state || {})) {
-                if (stateFilter(key)) stateSnapshot[key] = value;
-            }
-            // Plugins that call their own /ext/* routes declare ext_auth. Fetch
-            // a plugin-scoped token (our fetch is already authenticated) and pass
-            // it in — the sandboxed iframe can't carry our credentials itself, so
-            // it presents this token instead.
-            let extToken;
-            if (opts.extAuth) {
-                extToken = await this._fetchPluginExtToken(opts.pluginId);
-            }
-            if (!iframe.contentWindow) return;  // element removed during await
-            iframe.contentWindow.postMessage({
-                type: 'openavc:init',
-                config: opts.config,
-                theme: themeVars,
-                state: stateSnapshot,
-                elementId: element.id,
-                ext_token: extToken,
-                // True in the Builder's design canvas: the control is drawing
-                // for its author, with whatever sample state the Builder sent
-                // and no way to reach the room. A control can use this to show
-                // representative content instead of empty readouts.
-                edit: !!this.editMode,
-                // What it was granted, so a control can adapt to it -- hide a
-                // button for a device it cannot command instead of sending a
-                // message that is silently dropped.
-                grant: {
-                    devices: [...el._grant.devices],
-                    variables: [...el._grant.variables],
-                    macros: el._grant.macros,
-                    navigate: el._grant.navigate,
-                },
-            }, '*');  // sandboxed iframe has opaque origin; source check provides security
-        };
-        iframe.addEventListener('load', sendInit);
-
-        // Listen for messages from the iframe
-        const who = opts.pluginId ? `plugin '${opts.pluginId}'` : `custom control '${element.id}'`;
-        const handler = (event) => {
-            if (event.source !== iframe.contentWindow) return;
-            const msg = event.data;
-            if (!msg || !msg.type) return;
-            // Read off the element, not the closure: a re-render replaces the
-            // grant, and a stale copy captured here would keep answering for a
-            // grant the integrator has already taken away.
-            const grant = el._grant || { devices: [], variables: [], macros: false, navigate: false };
-
-            // Somebody using this frame is using the panel. Nothing inside a
-            // cross-origin sandboxed frame reaches the document listeners that
-            // reset the idle timer, so without this a person working a custom
-            // page is invisible to it: the panel navigates to the idle page and
-            // re-shows the lock screen under their hands. Any message from the
-            // frame counts, so a control that already does something needs no
-            // extra line -- but only while the frame HAS FOCUS, which is what
-            // stops a frame nobody is touching from holding a panel unlocked
-            // forever by posting in a loop.
-            if (this._frameHasFocus(iframe)) this.resetIdleTimer();
-
-            switch (msg.type) {
-                case 'openavc:activity':
-                    // Nothing more to do -- the reset above is the whole
-                    // message. It exists for the control that draws rather than
-                    // acts (a room map, a dashboard), which would otherwise
-                    // send nothing at all while somebody stands in front of it.
-                    break;
-                case 'openavc:action': {
-                    // A failure coming back from any of these is about the
-                    // control that asked, the same as a finger on a button --
-                    // none of these frames carries an element, so this is the
-                    // only place that knows which one it was.
-                    this._lastTouchedElementId = el.dataset.elementId;
-                    // This bridge carries the panel's WS authority, so gate it
-                    // against the grant the integrator set when they placed the
-                    // element: a command reaches a device only if that device is
-                    // on the list, a write reaches a variable only if that
-                    // variable is. A plugin's own plugin.<id>.* namespace needs
-                    // no grant -- it is the plugin's own data. Anything else is
-                    // a confused-deputy write and is dropped.
-                    //
-                    // THIS IS THE ENFORCEMENT POINT, AND IT CANNOT BE ANYWHERE
-                    // ELSE. The server's WS handler takes a device_id from any
-                    // authenticated panel socket and has no idea which element
-                    // sent it -- a WS frame carries no element identity, so the
-                    // grant is unenforceable server-side by construction. What
-                    // makes it a real boundary is the iframe: sandboxed with an
-                    // opaque origin, it cannot reach this document's memory or
-                    // its socket, and can only ask the panel to act for it. The
-                    // panel is trusted because it already holds the credential.
-                    // Do not assume the server double-checks. It does not.
-                    if (msg.action === 'device.command' && msg.device && msg.command) {
-                        if (!grant.devices.includes(String(msg.device))) {
-                            console.warn(`[panel] ${who} attempted a command on device '${msg.device}', which it was not granted`);
-                            break;
-                        }
-                        // Through send(), not straight at the socket: send() is the
-                        // one place that refuses to talk to the room while the
-                        // designer is authoring. Reaching past it worked only
-                        // because there is no socket in edit mode, which is luck
-                        // rather than a rule -- and the design canvas is about to
-                        // start running these iframes for real.
-                        this.send({
-                            type: 'command',
-                            device_id: msg.device,
-                            command: msg.command,
-                            params: msg.params || {},
-                        });
-                    } else if (msg.action === 'state.set' && msg.key) {
-                        const key = String(msg.key);
-                        const ownNamespace = !!el._ownNamespace && key.startsWith(el._ownNamespace);
-                        const grantedVariable = grant.variables.some(id => key === `var.${id}`);
-                        if (!ownNamespace && !grantedVariable) {
-                            console.warn(`[panel] ${who} attempted to write '${key}', which it was not granted`);
-                            break;
-                        }
-                        this.send({
-                            type: 'state.set',
-                            key: msg.key,
-                            value: msg.value,
-                        });
-                    } else if (msg.action === 'macro.run' && msg.macro) {
-                        if (!grant.macros) {
-                            console.warn(`[panel] ${who} attempted to run macro '${msg.macro}' without the macro switch`);
-                            break;
-                        }
-                        this.send({
-                            type: 'macro.execute',
-                            macro_id: String(msg.macro),
-                        });
-                    }
-                    break;
-                }
-                case 'openavc:error': {
-                    // The frame is sandboxed with an opaque origin, so nothing
-                    // out here can see a script error inside it. The one line
-                    // the docs give an author (window.onerror -> this message)
-                    // is what makes a broken control say so instead of drawing
-                    // an empty box.
-                    const text = String(msg.message || 'error').slice(0, 200);
-                    console.warn(`[panel] ${who} reported an error: ${text}`);
-                    this._showIframeFault(el, text);
-                    break;
-                }
-                case 'openavc:request-init': {
-                    // Re-send openavc:init (with a freshly-fetched ext token
-                    // when the plugin declares ext_auth). A plugin iframe
-                    // calls this when an /ext/* request starts returning 401
-                    // mid-session — its token expired.
-                    sendInit();
-                    break;
-                }
-                case 'openavc:navigate':
-                    // Ungated until grants existed, so any plugin iframe could
-                    // move the panel out from under whoever was using it.
-                    if (!grant.navigate) {
-                        console.warn(`[panel] ${who} attempted to change pages without the navigation switch`);
-                        break;
-                    }
-                    // Navigation does not go through send(), so it needs its
-                    // own authoring guard: in the designer the author is on the
-                    // page they are editing, and a control must not move them
-                    // off it.
-                    if (this.editMode) break;
-                    if (!msg.page) break;
-                    // Use the same server round trip as a page-nav button:
-                    // emit ui.page.<id>, then navigate once on its reply.
-                    this.send({ type: 'ui.page', page_id: msg.page });
-                    break;
-            }
-        };
-        window.addEventListener('message', handler);
-        el._pluginMessageHandler = handler;
-        this._pluginMessageHandlers.add(handler);
-
-        applyStyle(el, this.getThemedStyle(opts.styleType, element.style));
-        return el;
     }
 
     // ──── Audio Playback (driven by Audio Player plugin state) ────
@@ -4794,22 +4311,7 @@ class PanelApp {
 
     // Send state update to plugin iframes
     _notifyPluginIframes(key, value) {
-        for (const [id, entry] of Object.entries(this.elementMap)) {
-            const el = entry?.el;
-            if (!el?._pluginIframe?.contentWindow) continue;
-            // Scope live updates to what this frame may see, by asking the same
-            // filter the init snapshot used. Broadcasting every key let any
-            // plugin passively observe all device/var/ui/system/other-plugin
-            // state it was never granted, making the scoped init snapshot moot —
-            // and the two must agree, or a frame gets live updates for state its
-            // opening snapshot said it could not see.
-            if (!el._stateFilter || !el._stateFilter(String(key))) continue;
-            el._pluginIframe.contentWindow.postMessage({
-                type: 'openavc:state',
-                key,
-                value,
-            }, '*');  // sandboxed iframe has opaque origin; source check provides security
-        }
+        pushToFrames(this.elementMap, key, value);
     }
 
     // --- Bindings ---
