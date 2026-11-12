@@ -91,7 +91,7 @@ def test_panel_label_rounds_through_the_shared_helper() -> None:
 
 def test_panel_gauge_readout_is_not_hardcoded_to_one_decimal() -> None:
     src = _read(GAUGE_JS)
-    assert "`${Math.round(value * 10) / 10}${unit}`" not in src, (
+    assert "`${Math.round(value * 10) / 10}${this.unit}`" not in src, (
         "the gauge readout must not hard-code one decimal place"
     )
     assert "value.toFixed(this.decimals)" in src, (

@@ -1842,6 +1842,7 @@ const tests = {
             // Two clocks that change every second: one on the overlay, one not.
             const clock = app.renderClock({ id: 'ovc', type: 'clock', format: 'HH:mm:ss' });
             const stays = app.renderClock({ id: 'pgc', type: 'clock', format: 'HH:mm:ss' });
+            app.root.appendChild(stays);
             overlay.appendChild(clock);
             const plug = document.createElement('div');
             plug.className = 'panel-plugin';
@@ -7647,6 +7648,7 @@ Object.assign(tests, {
             const first = app.renderClock({ id: 'a', type: 'clock', format: 'HH:mm:ss' });
             advance(400);
             const second = app.renderClock({ id: 'b', type: 'clock', format: 'HH:mm:ss' });
+            app.root.append(first, second);
             advance(700);
             assert(shown(first) === '14:05:10' && shown(second) === '14:05:10',
                 `both tick on the first clock's second, got ${shown(first)} and ${shown(second)}`);
