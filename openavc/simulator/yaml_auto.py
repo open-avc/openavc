@@ -30,8 +30,11 @@ by base.py's ``_read_device_settings``, as a Python simulator's are. The
 handler a command or a setting is read into is command_handler, a device
 setting's write is read into one by setting_handlers, and a Generic device's
 inline protocol (its merge, its own response patterns, an HTTP one's JSON
-status poll) is inline_device. Construction runs in named stages, each saying
-what it must follow.
+status poll) is inline_device. A stream device's side receiver (the UDP
+server beside it, the port number both share, what a magic packet applies)
+is side_receiver, and which children the device holds is read by
+child_roster. Construction runs in named stages, each saying what it must
+follow.
 """
 
 from __future__ import annotations
