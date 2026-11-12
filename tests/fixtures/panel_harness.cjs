@@ -6060,6 +6060,14 @@ const tests = {
             typography: { text_transform: 'uppercase', letter_spacing: 0.1, line_height: 1.3,
                 white_space: 'pre-wrap', transition_duration: 250, overflow: 'hidden', opacity: 0.4 },
             accents: { accent_color: '#123456', track_color: '#654321' },
+            // Every key at once, so the order they are written in is pinned too.
+            every_key: { bg_color: '#111111', background_gradient: { from: '#ff0000', to: '#0000ff', angle: 90 },
+                background_image: '/x.png', text_color: '#222222', font_size: 1, font_weight: 600,
+                border_radius: 0.5, text_align: 'right', vertical_align: 'top', border_width: 0.1,
+                border_style: 'dotted', border_color: '#333333', box_shadow: 'md', margin: 1,
+                margin_vertical: 0, padding_horizontal: 2, text_transform: 'lowercase', letter_spacing: 0.2,
+                line_height: 1.1, white_space: 'nowrap', transition_duration: 100, overflow: 'auto',
+                opacity: 0.9, accent_color: '#444444', track_color: '#555555' },
         };
         const expected = PAINT_PINS.style;
         const got = {};
@@ -6297,6 +6305,11 @@ const tests = {
             ['offline_suppressed', { type: 'button', label: 'Own', display_mode: 'image', button_image: PIXEL,
                 bindings: { show: { look: states } } }, ['b']],
             ['offline_no_label', { type: 'button', bindings: { show: { look: states } } }, ['a']],
+            ['offline_label_zero', { type: 'button', label: 0, bindings: { show: { look: states } } }, ['a']],
+            ['multi_icon_only_no_icon', { type: 'button', label: 'Own', display_mode: 'icon_only',
+                bindings: { show: { look: states } } }, ['a', 'b']],
+            ['state_label_null', { type: 'button', label: 'Own', bindings: { show: { look: { ...states, states: {
+                ...states.states, d: { label: null, bg_color: '#00ff00' } } } } } }, ['d', 'a']],
             ['offline_retints_a_state_layer', { type: 'button', label: 'Own', image_blend_mode: 'mask',
                 style: { bg_color: '#123456' }, bindings: { show: { look: { ...states, states: {
                     ...states.states, c: { bg_color: '#ff0000', button_image: '/c.png' } } } } } }, ['c']],
@@ -6327,6 +6340,8 @@ const tests = {
                 bindings: toggle({ on_label: 'ON' }) }],
             ['toggle_frameless_picture', { type: 'button', label: 'Own', frameless: true, display_mode: 'image_text',
                 button_image: PIXEL, image_blend_mode: 'mask', bindings: toggle({}) }],
+            ['toggle_image_mode_words', { type: 'button', label: 'Own', display_mode: 'image', button_image: PIXEL,
+                bindings: toggle({ on_label: 'ON', off_label: 'OFF' }) }],
         ];
         for (const [name, def] of toggles) {
             const m = mount({ id: name, ...def }, { 'var.on': false });
@@ -6335,6 +6350,18 @@ const tests = {
             set(m, 'var.on', false); seen.push(face(m.el));
             got[name] = seen;
         }
+        // Plain buttons, as renderButton draws them with no look: each display
+        // mode, with and without an icon, and a tinted picture.
+        const plain = { type: 'button', label: 'Own', button_image: PIXEL, image_blend_mode: 'mask',
+            style: { bg_color: '#123456' } };
+        for (const mode of ['text', 'image', 'image_text', 'icon_only', 'bogus']) {
+            for (const icon of [null, 'stop']) {
+                const def = { id: `plain_${mode}_${icon || 'no_icon'}`, ...plain, display_mode: mode };
+                if (icon) def.icon = icon;
+                got[def.id] = [face(mount(def, {}).el)];
+            }
+        }
+
         // A toggle binding reached directly, with no `_labelBase` on it.
         const m = mount({ id: 'direct', type: 'button', label: 'Own',
             bindings: toggle({ on_label: 'ON' }) }, { 'var.on': false });

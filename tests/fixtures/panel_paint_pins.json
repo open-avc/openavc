@@ -44,7 +44,8 @@
     "padding_horizontal": "padding-left: 3rem; padding-right: 3rem;",
     "padding_both_sides": "padding: 2rem 3rem 2rem 3rem;",
     "typography": "text-transform: uppercase; letter-spacing: 0.1rem; line-height: 1.3; white-space: pre-wrap; transition-duration: 250ms; overflow: hidden; opacity: 0.4;",
-    "accents": "--el-accent: #123456; --el-surface: #654321; --el-surface-border: #654321;"
+    "accents": "--el-accent: #123456; --el-surface: #654321; --el-surface-border: #654321;",
+    "every_key": "background-image: url(\"/x.png\"), linear-gradient(90deg, #ff0000, #0000ff); background-color: rgb(17, 17, 17); background-size: cover, cover; background-repeat: no-repeat; color: rgb(34, 34, 34); font-size: 1rem; font-weight: 600; border-radius: 0.5rem; justify-content: flex-end; text-align: right; align-items: flex-start; border-width: max(1px, 0.1rem); border-style: dotted; border-color: rgb(51, 51, 51); box-shadow: 0 0.2857rem 0.5714rem rgba(0,0,0,0.3); margin: 0rem 1rem; padding-left: 2rem; padding-right: 2rem; text-transform: lowercase; letter-spacing: 0.2rem; line-height: 1.1; white-space: nowrap; transition-duration: 100ms; overflow: auto; opacity: 0.9; --el-accent: #444444; --el-surface: #555555; --el-surface-border: #555555;"
   },
   "faded": {
     "node": "position: absolute;",
@@ -195,6 +196,18 @@
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(255, 0, 0); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null",
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
     ],
+    "offline_label_zero": [
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(255, 0, 0); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
+    ],
+    "multi_icon_only_no_icon": [
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(255, 0, 0); | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; color: rgb(0, 0, 255); background-image: url(\"/b.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "state_label_null": [
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(0, 255, 0); | text=\"null\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(255, 0, 0); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
     "offline_retints_a_state_layer": [
       "background-color: rgb(255, 0, 0); position: relative; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-image: none; isolation: isolate; | text=\"Own\" | div.panel-button-image-layer,svg.[/panel/icons.svg#play|#00ff00] | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(255, 0, 0); mask-image: url(\"/c.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null",
       "background-color: rgb(18, 52, 86); position: relative; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; isolation: isolate; | text=\"Own\" | div.panel-button-image-layer,svg.[/panel/icons.svg#play|#00ff00] | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(18, 52, 86); mask-image: url(\"/c.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button device-offline\" aria-current=null"
@@ -238,6 +251,41 @@
       "border-width: 0px; border-color: transparent; box-shadow: none; position: relative; isolation: isolate; text-shadow: 0 1px 0.2143rem rgba(0,0,0,0.8); left: 5%; top: 5%; width: 20%; height: 10%; background-color: transparent; background-image: none; | text=\"Own\" | div.panel-button-image-layer | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: currentcolor; mask-image: url(\"/p.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null",
       "border-width: 0px; border-color: transparent; box-shadow: none; position: relative; isolation: isolate; text-shadow: 0 1px 0.2143rem rgba(0,0,0,0.8); left: 5%; top: 5%; width: 20%; height: 10%; background-color: transparent; color: rgb(17, 17, 17); background-image: none; | text=\"Own\" | div.panel-button-image-layer | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(33, 150, 243); mask-image: url(\"/p.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button toggle-on\" aria-current=null",
       "border-width: 0px; border-color: transparent; box-shadow: none; position: relative; isolation: isolate; text-shadow: 0 1px 0.2143rem rgba(0,0,0,0.8); left: 5%; top: 5%; width: 20%; height: 10%; background-color: transparent; background-image: none; | text=\"Own\" | div.panel-button-image-layer | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: currentcolor; mask-image: url(\"/p.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "toggle_image_mode_words": [
+      "background-size: cover; background-position: center; background-repeat: no-repeat; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-image: url(\"/p.png\"); | text=\"\" |  | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "background-size: cover; background-position: center; background-repeat: no-repeat; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); background-image: url(\"/p.png\"); | text=\"\" |  | src=null | class=\"panel-element panel-button toggle-on\" aria-current=null",
+      "background-size: cover; background-position: center; background-repeat: no-repeat; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-image: url(\"/p.png\"); | text=\"\" |  | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_text_no_icon": [
+      "background-color: rgb(18, 52, 86); position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"Own\" |  | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_text_stop": [
+      "background-color: rgb(18, 52, 86); gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"Own\" | svg.[/panel/icons.svg#stop|currentColor],span.panel-label-span\"Own\" | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_image_no_icon": [
+      "background-color: rgb(18, 52, 86); background-image: none; position: absolute; isolation: isolate; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"\" | div.panel-button-image-layer | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(18, 52, 86); mask-image: url(\"/p.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_image_stop": [
+      "background-color: rgb(18, 52, 86); gap: 0.4286rem; background-image: none; position: absolute; isolation: isolate; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"\" | div.panel-button-image-layer,svg.[/panel/icons.svg#stop|currentColor],span.panel-label-span\"\" | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(18, 52, 86); mask-image: url(\"/p.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_image_text_no_icon": [
+      "background-color: rgb(18, 52, 86); background-image: none; position: absolute; isolation: isolate; text-shadow: 0 1px 0.2143rem rgba(0,0,0,0.8); left: 5%; top: 5%; width: 20%; height: 10%; | text=\"Own\" | div.panel-button-image-layer | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(18, 52, 86); mask-image: url(\"/p.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_image_text_stop": [
+      "background-color: rgb(18, 52, 86); gap: 0.4286rem; background-image: none; position: absolute; isolation: isolate; text-shadow: 0 1px 0.2143rem rgba(0,0,0,0.8); left: 5%; top: 5%; width: 20%; height: 10%; | text=\"Own\" | div.panel-button-image-layer,svg.[/panel/icons.svg#stop|currentColor],span.panel-label-span\"Own\" | layer: position: absolute; inset: 0; pointer-events: none; z-index: -1; background-color: rgb(18, 52, 86); mask-image: url(\"/p.png\"); mask-size: cover; mask-position: center; mask-repeat: no-repeat; | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_icon_only_no_icon": [
+      "background-color: rgb(18, 52, 86); position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"\" |  | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_icon_only_stop": [
+      "background-color: rgb(18, 52, 86); position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"\" | svg.[/panel/icons.svg#stop|currentColor] | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_bogus_no_icon": [
+      "background-color: rgb(18, 52, 86); position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"Own\" |  | src=null | class=\"panel-element panel-button\" aria-current=null"
+    ],
+    "plain_bogus_stop": [
+      "background-color: rgb(18, 52, 86); gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; | text=\"Own\" | svg.[/panel/icons.svg#stop|currentColor],span.panel-label-span\"Own\" | src=null | class=\"panel-element panel-button\" aria-current=null"
     ],
     "toggle_without_label_base": [
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17); | text=\"ON\" |  | src=\"[\\\"bindings\\\",\\\"do\\\",\\\"press\\\",0,\\\"on_label\\\"]\" | class=\"panel-element panel-button toggle-on\" aria-current=null"
