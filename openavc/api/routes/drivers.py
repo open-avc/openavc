@@ -858,15 +858,7 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     from openavc.api.discovery import refresh_all_device_matches
     await refresh_all_device_matches()
 
-    # Promote any project devices that were orphaned because this driver
-    # wasn't installed yet. Without this the user would have to reload the
-    # project (or restart) to see the device come online.
-    activated: list[str] = []
-    try:
-        engine = _get_engine()
-        activated = await engine.devices.retry_all_orphans()
-    except Exception:
-        log.exception("Failed to retry orphans after install")
+    activated = await _activate_waiting_devices("install")
 
     await announce_drivers_changed(body.driver_id)
     return {
@@ -914,9 +906,8 @@ def _named_for_its_id(filename: str, content: bytes) -> str | None:
 def _remove_other_copies(driver_repo: Path, driver_id: str, kept: Path) -> list[str]:
     """Remove the other files in driver_repo that are this driver, of the
     kept file's kind, now that ``kept`` is the driver. A renamed copy left
-    behind would be found again by the Code view, export and uninstall. A
-    Python copy's simulator and discovery files move to the kept name when it
-    has none of its own. Returns the names removed."""
+    behind would be found again by the Code view, export and uninstall.
+    Returns the names removed."""
     from openavc.drivers.python_modules import forget_module
 
     removed: list[str] = []
@@ -924,12 +915,7 @@ def _remove_other_copies(driver_repo: Path, driver_id: str, kept: Path) -> list[
         if other == kept:
             continue
         if other.suffix == ".py":
-            for companion in driver_companions(other):
-                target = kept.with_name(f"{kept.stem}{companion.name[len(other.stem):]}")
-                if target.exists():
-                    companion.unlink(missing_ok=True)
-                else:
-                    companion.rename(target)
+            _move_companions(other, kept)
             forget_module(other)
         other.unlink(missing_ok=True)
         removed.append(other.name)
@@ -937,29 +923,48 @@ def _remove_other_copies(driver_repo: Path, driver_id: str, kept: Path) -> list[
     return removed
 
 
-@router.post("/drivers/upload")
-async def upload_driver(request: Request) -> dict[str, Any]:
-    """Upload a driver file (.avcdriver or .py) from the user's computer."""
-    from openavc.drivers.driver_loader import (
-        load_driver_file,
-        load_python_driver_file,
-    )
-    from openavc.drivers.configurable import create_configurable_driver_class
+def _move_companions(other: Path, kept: Path) -> None:
+    """A replaced Python copy's simulator and discovery files move to the kept
+    name, unless the kept name has its own, which wins."""
+    for companion in driver_companions(other):
+        target = kept.with_name(f"{kept.stem}{companion.name[len(other.stem):]}")
+        if target.exists():
+            companion.unlink(missing_ok=True)
+        else:
+            companion.rename(target)
 
-    driver_repo = _get_driver_repo_dir()
-    driver_repo.mkdir(parents=True, exist_ok=True)
 
-    # Accept multipart form data with a "file" field
+async def _uploaded_file(request: Request) -> Any:
+    """The file an upload door was sent, in the multipart form's ``file`` field."""
     form = await request.form()
     upload = form.get("file")
     if upload is None:
         raise HTTPException(status_code=422, detail="No file provided. Use 'file' field in multipart form.")
+    return upload
 
-    raw_filename = upload.filename or "unknown"
+
+async def _activate_waiting_devices(after: str) -> list[str]:
+    """Bring up the project devices that were waiting for a driver that has
+    now arrived, and name them. Without this a person would reload the project
+    (or restart) to see the device come online. A failure is logged and never
+    the door's: the driver is in place either way."""
+    try:
+        engine = _get_engine()
+        return await engine.devices.retry_all_orphans()
+    except Exception:
+        log.exception("Failed to retry orphans after %s", after)
+        return []
+
+
+@router.post("/drivers/upload")
+async def upload_driver(request: Request) -> dict[str, Any]:
+    """Upload a driver file (.avcdriver or .py) from the user's computer."""
+    driver_repo = _get_driver_repo_dir()
+    driver_repo.mkdir(parents=True, exist_ok=True)
+
+    upload = await _uploaded_file(request)
     # Sanitize filename: strip directory components to prevent path traversal
-    import re as _re
-    from pathlib import PurePosixPath as _PurePosixPath
-    filename = _PurePosixPath(raw_filename).name
+    filename = PurePosixPath(upload.filename or "unknown").name
     if not filename.endswith((".avcdriver", ".py")):
         raise HTTPException(status_code=422, detail="File must be .avcdriver or .py")
 
@@ -976,70 +981,19 @@ async def upload_driver(request: Request) -> dict[str, Any]:
     named = _named_for_its_id(filename, content)
     if named is not None:
         filename = named
-    elif not _re.match(r'^[a-zA-Z0-9_\-]+\.(avcdriver|py)$', filename):
+    elif not re.match(r'^[a-zA-Z0-9_\-]+\.(avcdriver|py)$', filename):
         raise HTTPException(status_code=422, detail="Invalid filename — use only letters, numbers, hyphens, and underscores")
 
     _enforce_declared_floor(_declared_min_platform_version(filename, content))
 
     filepath = driver_repo / filename
     filepath.write_bytes(content)
-
-    # Register the driver
-    try:
-        if filename.endswith(".avcdriver"):
-            # Companion check: a YAML that declares discovery.python won't
-            # actually function unless the sibling _discovery.py is also
-            # present in driver_repo/. load_driver_file would log + return
-            # None below, but the user gets the generic 'Invalid driver
-            # definition file' message — surface a more useful one here.
-            companion_relpath = _companion_relpath_from_yaml(content)
-            if companion_relpath:
-                companion_filename = _PurePosixPath(companion_relpath).name
-                companion_path = driver_repo / companion_filename
-                if not companion_path.is_file():
-                    filepath.unlink(missing_ok=True)
-                    raise HTTPException(
-                        status_code=422,
-                        detail=(
-                            f"Driver {filename} declares a Python "
-                            f"companion ({companion_relpath!r}) but "
-                            f"{companion_filename!r} is not in the "
-                            "driver library yet. Upload the "
-                            "_discovery.py file first, then re-upload "
-                            "this driver."
-                        ),
-                    )
-            driver_def = load_driver_file(filepath)
-            if driver_def is None:
-                filepath.unlink(missing_ok=True)
-                raise HTTPException(status_code=422, detail="Invalid driver definition file")
-            _reject_unknown_keys(driver_def, filepath)
-            driver_class = create_configurable_driver_class(driver_def)
-            register_driver(driver_class)
-            driver_id = driver_def.get("id", filename)
-        else:
-            driver_class = load_python_driver_file(filepath)
-            if driver_class is None:
-                filepath.unlink(missing_ok=True)
-                raise HTTPException(status_code=422, detail="No valid driver class found in Python file")
-            register_driver(driver_class)
-            driver_id = driver_class.DRIVER_INFO.get("id", filename)
-    except HTTPException:
-        raise
-    except Exception as e:
-        filepath.unlink(missing_ok=True)
-        raise _api_error(500, f"Failed to load uploaded driver '{filename}'", e)
-
+    driver_id = _register_upload(filepath, content, driver_repo)
     _remove_other_copies(driver_repo, driver_id, filepath)
 
     # Promote any project devices waiting on this driver — same flow as
     # /drivers/install so manual uploads behave identically.
-    activated: list[str] = []
-    try:
-        engine = _get_engine()
-        activated = await engine.devices.retry_all_orphans()
-    except Exception:
-        log.exception("Failed to retry orphans after upload")
+    activated = await _activate_waiting_devices("upload")
 
     await announce_drivers_changed(driver_id)
     return {
@@ -1048,6 +1002,72 @@ async def upload_driver(request: Request) -> dict[str, Any]:
         "file": filename,
         "activated_devices": activated,
     }
+
+
+def _register_upload(filepath: Path, content: bytes, driver_repo: Path) -> str:
+    """Register an uploaded driver file and answer its id. A file the loader
+    refuses is removed, with the reason; anything else the load raises is a
+    500, and the file is removed too."""
+    try:
+        if filepath.name.endswith(".avcdriver"):
+            return _register_uploaded_definition(filepath, content, driver_repo)
+        return _register_uploaded_python(filepath)
+    except HTTPException:
+        raise
+    except Exception as e:
+        filepath.unlink(missing_ok=True)
+        raise _api_error(500, f"Failed to load uploaded driver '{filepath.name}'", e)
+
+
+def _register_uploaded_definition(filepath: Path, content: bytes, driver_repo: Path) -> str:
+    """An uploaded YAML driver, held to the import gate (an undeclared key is
+    refused, not warned about) after its companion check."""
+    from openavc.drivers.configurable import create_configurable_driver_class
+    from openavc.drivers.driver_loader import load_driver_file
+
+    _require_companion_here(filepath, content, driver_repo)
+    driver_def = load_driver_file(filepath)
+    if driver_def is None:
+        filepath.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail="Invalid driver definition file")
+    _reject_unknown_keys(driver_def, filepath)
+    register_driver(create_configurable_driver_class(driver_def))
+    return driver_def.get("id", filepath.name)
+
+
+def _require_companion_here(filepath: Path, content: bytes, driver_repo: Path) -> None:
+    """Refuse an uploaded YAML whose declared discovery companion is not in the
+    driver folder yet, removing it. The loader would refuse it too, but with
+    the generic 'Invalid driver definition file'; this says what to upload."""
+    companion_relpath = _companion_relpath_from_yaml(content)
+    if not companion_relpath:
+        return
+    companion_filename = PurePosixPath(companion_relpath).name
+    if (driver_repo / companion_filename).is_file():
+        return
+    filepath.unlink(missing_ok=True)
+    raise HTTPException(
+        status_code=422,
+        detail=(
+            f"Driver {filepath.name} declares a Python "
+            f"companion ({companion_relpath!r}) but "
+            f"{companion_filename!r} is not in the "
+            "driver library yet. Upload the "
+            "_discovery.py file first, then re-upload "
+            "this driver."
+        ),
+    )
+
+
+def _register_uploaded_python(filepath: Path) -> str:
+    from openavc.drivers.driver_loader import load_python_driver_file
+
+    driver_class = load_python_driver_file(filepath)
+    if driver_class is None:
+        filepath.unlink(missing_ok=True)
+        raise HTTPException(status_code=422, detail="No valid driver class found in Python file")
+    register_driver(driver_class)
+    return driver_class.DRIVER_INFO.get("id", filepath.name)
 
 
 @router.post("/drivers/upload-bundle")
@@ -1065,50 +1085,61 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
     names/types, exactly one main), not safety — the same trust model as
     installing any community Python driver.
     """
-    import io
-    import re
-    import zipfile
-    from openavc.drivers.driver_loader import (
-        load_driver_file,
-        load_python_driver_file,
-    )
-    from openavc.drivers.configurable import create_configurable_driver_class
-
     driver_repo = _get_driver_repo_dir()
     driver_repo.mkdir(parents=True, exist_ok=True)
 
-    form = await request.form()
-    upload = form.get("file")
-    if upload is None:
-        raise HTTPException(status_code=422, detail="No file provided. Use 'file' field in multipart form.")
+    upload = await _uploaded_file(request)
     raw_name = upload.filename or "bundle.zip"
     if not raw_name.lower().endswith(".zip"):
         raise HTTPException(status_code=422, detail="Bundle must be a .zip file")
 
-    content = await upload.read()
-    # Zip-bomb guards: generous ceilings (a driver bundle is a few small text
-    # files) that only stop pathological inputs, not legitimate drivers.
-    if len(content) > 25 * 1024 * 1024:
-        raise HTTPException(status_code=422, detail="Bundle is too large (max 25 MB).")
-    try:
-        archive = zipfile.ZipFile(io.BytesIO(content))
-    except zipfile.BadZipFile:
-        raise HTTPException(status_code=422, detail="Not a valid .zip file.")
+    entries = _bundle_entries(await upload.read())
+    main_name = _bundle_main(entries)
+    for name, data in entries.items():
+        require_mutable_driver_file(name, data)
+    entries, main_name = _bundle_named_for_its_id(entries, main_name)
 
-    name_re = re.compile(r'^[a-zA-Z0-9_\-]+\.(py|avcdriver)$')
-    members = [m for m in archive.infolist() if not m.is_dir()]
-    if len(members) > 100:
-        raise HTTPException(status_code=422, detail="Bundle has too many files.")
-    if sum(m.file_size for m in members) > 50 * 1024 * 1024:
-        raise HTTPException(status_code=422, detail="Bundle contents are too large.")
+    # Same gate as the single-file door, and for the same reason — asked
+    # before the write loop so a refused bundle leaves the tree untouched.
+    _enforce_declared_floor(
+        _declared_min_platform_version(main_name, entries[main_name])
+    )
 
-    # Validate every entry up front: basename only (defuses path traversal),
-    # allowed name + type. Reject the whole bundle on any stray file so the
-    # contract is unambiguous.
+    main_path = driver_repo / main_name
+    driver_id = _write_and_register_bundle(entries, main_path, raw_name)
+    _remove_other_copies(driver_repo, driver_id, main_path)
+
+    # Refresh discovery hints + promote any devices waiting on this driver,
+    # matching the single-file upload / community install paths.
+    from openavc.api.discovery import refresh_all_device_matches
+    await refresh_all_device_matches()
+    activated = await _activate_waiting_devices("bundle upload")
+
+    await announce_drivers_changed(driver_id)
+    return {
+        "status": "uploaded",
+        "driver_id": driver_id,
+        "files": sorted(entries.keys()),
+        "activated_devices": activated,
+    }
+
+
+# A file a driver bundle may hold.
+_BUNDLE_FILE_NAME = re.compile(r'^[a-zA-Z0-9_\-]+\.(py|avcdriver)$')
+
+
+def _bundle_entries(content: bytes) -> dict[str, bytes]:
+    """The files a driver bundle holds, by base name, or the 422 saying why it
+    is not one. The size ceilings are zip-bomb guards: generous (a driver
+    bundle is a few small text files), so they only stop pathological inputs.
+    Every entry is checked up front, base name only (which defuses path
+    traversal), and any stray file refuses the whole bundle, so the contract
+    is unambiguous."""
+    archive, members = _bundle_members(content)
     entries: dict[str, bytes] = {}
     for member in members:
         base = PurePosixPath(member.filename).name
-        if not base or not name_re.match(base):
+        if not base or not _BUNDLE_FILE_NAME.match(base):
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -1119,7 +1150,35 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
         entries[base] = archive.read(member)
     if not entries:
         raise HTTPException(status_code=422, detail="Bundle is empty.")
+    return entries
 
+
+def _open_bundle(content: bytes) -> Any:
+    """The bundle's zip, refused over 25 MB or when it is not one."""
+    import io
+    import zipfile
+
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="Bundle is too large (max 25 MB).")
+    try:
+        return zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile:
+        raise HTTPException(status_code=422, detail="Not a valid .zip file.")
+
+
+def _bundle_members(content: bytes) -> tuple[Any, list[Any]]:
+    """The zip and the files in it (folders aside), refused over the ceilings."""
+    archive = _open_bundle(content)
+    members = [m for m in archive.infolist() if not m.is_dir()]
+    if len(members) > 100:
+        raise HTTPException(status_code=422, detail="Bundle has too many files.")
+    if sum(m.file_size for m in members) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="Bundle contents are too large.")
+    return archive, members
+
+
+def _bundle_main(entries: dict[str, bytes]) -> str:
+    """The bundle's one driver file: every other file is a companion."""
     mains = [n for n in entries if not n.endswith(COMPANION_SUFFIXES)]
     if not mains:
         raise HTTPException(
@@ -1134,87 +1193,78 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
                 "A bundle must hold exactly one driver plus its companions."
             ),
         )
-    main_name = mains[0]
-    for name, data in entries.items():
-        require_mutable_driver_file(name, data)
+    return mains[0]
 
-    # The main file and its conventional Python companions are saved under the
-    # driver's declared id, as at the single-file door. A YAML driver's
-    # companion keeps its name: the YAML names it.
+
+def _bundle_named_for_its_id(
+    entries: dict[str, bytes], main_name: str
+) -> tuple[dict[str, bytes], str]:
+    """The bundle's files as they are saved: the main file and its conventional
+    Python companions under the driver's declared id, as at the single-file
+    door. A YAML driver's companion keeps its name: the YAML names it."""
     named = _named_for_its_id(main_name, entries[main_name])
-    if named is not None and named != main_name:
-        main_stem = PurePosixPath(main_name).stem
-        new_stem = PurePosixPath(named).stem
-        renamed: dict[str, bytes] = {}
-        for name, data in entries.items():
-            if name == main_name:
-                name = named
-            elif main_name.endswith(".py") and name.startswith(main_stem) and name[len(main_stem):] in COMPANION_SUFFIXES:
-                name = f"{new_stem}{name[len(main_stem):]}"
-            renamed[name] = data
-        entries, main_name = renamed, named
+    if named is None or named == main_name:
+        return entries, main_name
+    new_stem = PurePosixPath(named).stem
+    renamed: dict[str, bytes] = {}
+    for name, data in entries.items():
+        suffix = _python_companion_suffix(name, main_name)
+        if name == main_name:
+            name = named
+        elif suffix:
+            name = f"{new_stem}{suffix}"
+        renamed[name] = data
+    return renamed, named
 
-    # Same gate as the single-file door, and for the same reason — asked
-    # before the write loop so a refused bundle leaves the tree untouched.
-    _enforce_declared_floor(
-        _declared_min_platform_version(main_name, entries[main_name])
-    )
 
-    # Write everything, then load the main. Roll back only the files this call
-    # created, so re-importing over an existing driver that fails to load
-    # doesn't delete the user's previous good copy.
+def _python_companion_suffix(name: str, main_name: str) -> str | None:
+    """The suffix (``_sim.py``, ``_discovery.py``) that makes ``name`` a Python
+    main file's conventional companion, or None."""
+    main_stem = PurePosixPath(main_name).stem
+    if not main_name.endswith(".py") or not name.startswith(main_stem):
+        return None
+    suffix = name[len(main_stem):]
+    return suffix if suffix in COMPANION_SUFFIXES else None
+
+
+def _write_and_register_bundle(entries: dict[str, bytes], main_path: Path, bundle_name: str) -> str:
+    """Write every file, then load and register the main one; answer its id.
+    Only the files this call created are rolled back, so re-importing over an
+    existing driver that fails to load doesn't delete the user's previous good
+    copy."""
     created: list[Path] = []
     try:
         for name, data in entries.items():
-            filepath = driver_repo / name
+            filepath = main_path.parent / name
             if not filepath.exists():
                 created.append(filepath)
             filepath.write_bytes(data)
-
-        main_path = driver_repo / main_name
-        if main_name.endswith(".avcdriver"):
-            driver_def = load_driver_file(main_path)
-            if driver_def is None:
-                raise HTTPException(status_code=422, detail="Invalid driver definition file in bundle.")
-            _reject_unknown_keys(driver_def)
-            register_driver(create_configurable_driver_class(driver_def))
-            driver_id = driver_def.get("id", main_name)
-        else:
-            driver_class = load_python_driver_file(main_path)
-            if driver_class is None:
-                raise HTTPException(status_code=422, detail="No valid driver class found in the bundle's Python file.")
-            register_driver(driver_class)
-            driver_id = driver_class.DRIVER_INFO.get("id", main_name)
+        return _register_bundle_main(main_path)
     except HTTPException:
-        for fp in created:
-            fp.unlink(missing_ok=True)
+        _remove_files(*created)
         raise
     except Exception as e:
-        for fp in created:
-            fp.unlink(missing_ok=True)
-        raise _api_error(500, f"Failed to load uploaded driver bundle '{raw_name}'", e)
+        _remove_files(*created)
+        raise _api_error(500, f"Failed to load uploaded driver bundle '{bundle_name}'", e)
 
-    _remove_other_copies(driver_repo, driver_id, main_path)
 
-    # Refresh discovery hints + promote any devices waiting on this driver,
-    # matching the single-file upload / community install paths.
-    from openavc.api.discovery import refresh_all_device_matches
-    await refresh_all_device_matches()
-    activated: list[str] = []
-    try:
-        engine = _get_engine()
-        activated = await engine.devices.retry_all_orphans()
-    except Exception:
-        log.exception("Failed to retry orphans after bundle upload")
+def _register_bundle_main(main_path: Path) -> str:
+    """A bundle's main file, held to the import gate; its id."""
+    from openavc.drivers.configurable import create_configurable_driver_class
+    from openavc.drivers.driver_loader import load_driver_file, load_python_driver_file
 
-    await announce_drivers_changed(driver_id)
-    return {
-        "status": "uploaded",
-        "driver_id": driver_id,
-        "files": sorted(entries.keys()),
-        "activated_devices": activated,
-    }
-
+    if main_path.name.endswith(".avcdriver"):
+        driver_def = load_driver_file(main_path)
+        if driver_def is None:
+            raise HTTPException(status_code=422, detail="Invalid driver definition file in bundle.")
+        _reject_unknown_keys(driver_def)
+        register_driver(create_configurable_driver_class(driver_def))
+        return driver_def.get("id", main_path.name)
+    driver_class = load_python_driver_file(main_path)
+    if driver_class is None:
+        raise HTTPException(status_code=422, detail="No valid driver class found in the bundle's Python file.")
+    register_driver(driver_class)
+    return driver_class.DRIVER_INFO.get("id", main_path.name)
 
 @router.get("/drivers/installed")
 async def list_installed_community_drivers() -> dict[str, Any]:
@@ -1282,23 +1332,42 @@ async def list_installed_community_drivers() -> dict[str, Any]:
     return {"drivers": installed}
 
 
+def _refuse_while_in_use(driver_id: str) -> None:
+    """A driver a project device uses is never uninstalled; the 409 names them."""
+    engine = _get_engine()
+    if not engine.project:
+        return
+    using_devices = [d.id for d in engine.project.devices if d.driver == driver_id]
+    if using_devices:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot uninstall: driver is in use by device(s): {', '.join(using_devices)}",
+        )
+
+
+def _remove_installed_file(deleted_file: Path, driver_repo: Path) -> None:
+    """Remove one installed driver file and the companions that travel with it.
+
+    A YAML's declared companion goes too: the install fetches the pair as one
+    unit, and a companion left behind would clutter the Code tab and the
+    Installed Drivers panel with an orphaned probe file. Python drivers carry
+    their companions by naming convention rather than a YAML declaration; the
+    discovery and sim siblings go to match the install side, which fetches them
+    as part of the same install.
+    """
+    companion = _installed_yaml_companion(deleted_file, driver_repo)
+    deleted_file.unlink(missing_ok=True)
+    _remove_files(companion)
+    if deleted_file.suffix == ".py":
+        remove_python_companions(deleted_file)
+
+
 @router.delete("/drivers/installed/{driver_id}")
 async def uninstall_driver(driver_id: str) -> dict[str, Any]:
     """Uninstall a driver from driver_repo/ and unregister from memory."""
     require_mutable_driver(driver_id)
 
-    # Safety check: don't allow uninstalling if devices are using this driver
-    engine = _get_engine()
-    if engine.project:
-        using_devices = [
-            d.id for d in engine.project.devices
-            if d.driver == driver_id
-        ]
-        if using_devices:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Cannot uninstall: driver is in use by device(s): {', '.join(using_devices)}",
-            )
+    _refuse_while_in_use(driver_id)
 
     driver_repo = _get_driver_repo_dir()
     if not driver_repo.exists():
@@ -1314,18 +1383,7 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
 
     for deleted_file in driver_files:
-        # A YAML's declared companion goes too: the install fetches the pair
-        # as one unit, and a companion left behind would clutter the Code tab
-        # and the Installed Drivers panel with an orphaned probe file.
-        companion_to_delete = _installed_yaml_companion(deleted_file, driver_repo)
-        deleted_file.unlink(missing_ok=True)
-        if companion_to_delete is not None:
-            companion_to_delete.unlink(missing_ok=True)
-        # Python drivers carry their companions by naming convention rather than a
-        # YAML declaration; drop the discovery / sim siblings to match the install
-        # side, which fetches them as part of the same install.
-        if deleted_file.suffix == ".py":
-            remove_python_companions(deleted_file)
+        _remove_installed_file(deleted_file, driver_repo)
     unregister_driver(driver_id)
 
     # Refresh discovery engine so stale matches are cleared
@@ -1334,6 +1392,19 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
 
     await announce_drivers_changed(driver_id)
     return {"status": "uninstalled", "driver_id": driver_id}
+
+
+async def _requested_update_url(request: Request) -> str:
+    """The catalog URL an update request names, once the floor the caller
+    sent is met. The file's own floor is checked again after the download."""
+    body = await request.json()
+    file_url = body.get("file_url")
+    if not file_url:
+        raise HTTPException(status_code=422, detail="file_url is required")
+    min_ver = body.get("min_platform_version")
+    if min_ver:
+        _enforce_min_platform_version(min_ver)
+    return file_url
 
 
 def _file_an_update_replaces(driver_repo: Path, driver_id: str) -> Path | None:
@@ -1443,17 +1514,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
     if not driver_repo.exists():
         raise HTTPException(status_code=404, detail="Driver not found")
 
-    body = await request.json()
-    file_url = body.get("file_url")
-    if not file_url:
-        raise HTTPException(status_code=422, detail="file_url is required")
-
-    # Check minimum platform version requirement (caller-supplied; YAML-based
-    # check happens after download below)
-    min_ver = body.get("min_platform_version")
-    if min_ver:
-        _enforce_min_platform_version(min_ver)
-
+    file_url = await _requested_update_url(request)
     old_file = _file_an_update_replaces(driver_repo, driver_id)
     if not old_file:
         raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
