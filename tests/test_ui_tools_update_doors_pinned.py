@@ -101,6 +101,37 @@ async def test_add_elements_a_taken_id_is_refused_for_that_alone_and_left_as_sen
     assert element == sent
 
 
+@pytest.mark.asyncio
+async def test_add_elements_a_master_id_is_refused():
+    """A press reaches the first element with an id, pages before masters, so a
+    page control with a master's id would take the master's presses on its page."""
+    engine = _engine()
+    before = engine.project.model_dump()
+    result = await _call(engine, "add_ui_elements", {"page_id": "other", "elements": [
+        {"id": "m_main", "type": "button", "placement": dict(BOX)},
+    ]})
+    assert result == {
+        "error": "1 element could not be added: Element 'm_main' already exists as a master element",
+        "errors": ["Element 'm_main' already exists as a master element"],
+    }
+    assert engine.project.model_dump() == before
+
+
+@pytest.mark.asyncio
+async def test_add_page_an_inline_control_with_a_master_id_is_refused():
+    engine = _engine()
+    before = engine.project.model_dump()
+    result = await _call(engine, "add_ui_page", {"id": "fresh", "elements": [
+        {"id": "ok", "type": "button", "placement": dict(BOX)},
+        {"id": "m_every", "type": "button", "placement": dict(BOX)},
+    ]})
+    assert result == {
+        "error": "1 element could not be added: Element 'm_every' already exists as a master element",
+        "errors": ["Element 'm_every' already exists as a master element"],
+    }
+    assert engine.project.model_dump() == before
+
+
 # --- update_master_element -------------------------------------------------------
 
 

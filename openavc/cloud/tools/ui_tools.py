@@ -442,9 +442,19 @@ class _NewElements:
     def __init__(self, project: Any) -> None:
         self.project = project
         self.problems: list[str] = []
+        self.masters = {m.id for m in project.ui.master_elements}
 
     def refuse(self, problem: str) -> None:
         self.problems.append(problem)
+
+    def master_holds(self, el_id: Any) -> str | None:
+        """Why a new control cannot have a master's id, or None. A press reaches
+        the first element with its id, pages before masters
+        (``ui_events.find_element``), so the master would stop answering on
+        that page; ``_master_id_taken`` refuses the same clash the other way."""
+        if el_id in self.masters:
+            return f"Element '{el_id}' already exists as a master element"
+        return None
 
     def prepare(self, el_data: dict, build: Any = None) -> tuple[Any, Any] | None:
         """(its box, the control ``build`` made) for one definition, or None
@@ -472,6 +482,10 @@ class _NewElements:
         """
         boxes: dict[str, dict] = {}
         for el_data in elements:
+            taken = isinstance(el_data, dict) and self.master_holds(el_data.get("id"))
+            if taken:
+                self.refuse(taken)
+                continue
             made = self.prepare(el_data) if isinstance(el_data, dict) else None
             if made and made[0] is not None:
                 boxes[el_data.get("id", "?")] = made[0]
@@ -482,7 +496,7 @@ class _NewElements:
 class _NewControls(_NewElements):
     """New controls for a page that already exists, built here and landed together.
 
-    An id must be free on the page and used once in the call. A container must
+    An id must be free on the page, no master's, and used once in the call. A container must
     be a group on the page or one accepted earlier in the same call: a
     container and its children can arrive together, so each control accepted
     becomes a candidate parent for the next (``holders`` grows as they are).
@@ -519,6 +533,9 @@ class _NewControls(_NewElements):
         """Why a new control cannot have this id on this page, or None when it can."""
         if el_id in self.existing:
             return f"Element '{el_id}' already exists on page '{self.page.id}'"
+        held = self.master_holds(el_id)
+        if held:
+            return held
         if el_id in self.seen:
             # Two elements with one id: the second silently replaced the first at
             # render time, and nothing said so.
