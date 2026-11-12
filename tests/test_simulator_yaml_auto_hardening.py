@@ -12,11 +12,9 @@ import pytest
 
 from openavc.simulator.send_templates import send_regex
 from openavc.simulator.base import StateMachine
-from openavc.simulator.validate import (
-    ValidationResult,
-    _check_state_machines,
-)
+from openavc.simulator.validate import ValidationResult
 from openavc.simulator.send_coverage import auto_handler_pattern
+from openavc.simulator.state_machine_checks import check_state_machines
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 
@@ -223,7 +221,7 @@ def test_validator_warns_on_duplicate_trigger_transition():
         },
     }
     result = ValidationResult("x", "x", "yaml")
-    _check_state_machines(result, sim_def, {"power_on": {}})
+    check_state_machines(result, sim_def, {"power_on": {}})
     assert any("unreachable" in w.message for w in result.warnings)
 
     # Distinct triggers for the same from-state stay silent.
@@ -231,7 +229,7 @@ def test_validator_warns_on_duplicate_trigger_transition():
         "from": "off", "trigger": "power_toggle", "to": "on",
     }
     result2 = ValidationResult("x", "x", "yaml")
-    _check_state_machines(result2, sim_def, {"power_on": {}, "power_toggle": {}})
+    check_state_machines(result2, sim_def, {"power_on": {}, "power_toggle": {}})
     assert not any("unreachable" in w.message for w in result2.warnings)
 
 
@@ -251,7 +249,7 @@ def test_validator_flags_malformed_state_machine():
         },
     }
     result = ValidationResult("x", "x", "yaml")
-    _check_state_machines(result, sim, {"power_off": {}})
+    check_state_machines(result, sim, {"power_off": {}})
 
     msgs = " ".join(i.message for i in result.errors)
     assert "needs an 'initial'" in msgs
@@ -263,7 +261,7 @@ def test_validator_flags_malformed_state_machine():
 def test_validator_accepts_valid_state_machine():
     """A well-formed state machine passes cleanly."""
     result = ValidationResult("x", "x", "yaml")
-    _check_state_machines(
+    check_state_machines(
         result,
         _PROJECTOR_DEF["simulator"],
         _PROJECTOR_DEF["commands"],
