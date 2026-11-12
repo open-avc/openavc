@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from openavc.core.connection_fault import classify_connection_fault
 from openavc.core.event_bus import EventBus
 from openavc.core.required_config import missing_required_fields
 from openavc.core.state_store import StateStore
@@ -54,3 +55,29 @@ async def test_the_card_names_only_what_is_missing(config, sentence):
         await driver.connect()
     assert str(caught.value) == sentence
     assert caught.value.fault_code == "auth_failed"
+
+
+async def test_a_product_that_never_answers_is_unreachable_not_dropped(tmp_path, monkeypatch):
+    """The first answer timing out is a product that cannot be reached.
+
+    The request timer gives up with an exception that has no text, which the
+    classifier could only read as a dropped connection: "The connection to
+    the device dropped", for a device that never connected.
+    """
+    monkeypatch.setattr("openavc.drivers.equipment.get_data_dir", lambda: tmp_path)
+
+    async def no_answer(path, payload=None):
+        raise TimeoutError()
+
+    config = {**DEFAULTS, "host": "192.0.2.10", "port": 5197, "username": "engineer", "password": "secret"}
+    driver = EquipmentDriver("equipment", config, StateStore(), EventBus())
+    monkeypatch.setattr(driver, "_request", no_answer)
+    with pytest.raises(ConnectionFaultError) as caught:
+        await driver.connect()
+    assert caught.value.fault_code == "unreachable"
+    fault = classify_connection_fault(
+        last_error="", exc=caught.value, host="192.0.2.10", port=5197, transport="http",
+    )
+    assert fault.code == "unreachable"
+    assert fault.message == "Can't reach 192.0.2.10:5197. Check the IP address and network."
+    assert driver._sdk_http is None

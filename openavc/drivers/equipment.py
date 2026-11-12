@@ -320,6 +320,12 @@ class EquipmentDriver(BaseDriver):
             await self._refresh()
             await self.events.emit(f"device.connected.{self.device_id}")
             self._sdk_poll_task = asyncio.create_task(self._poll())
+        except TimeoutError as exc:
+            # The request timer gives up with no text, which reads as a
+            # dropped connection on a product that never connected. Nothing
+            # answered while connecting: the product cannot be reached.
+            await self.disconnect()
+            raise ConnectionFaultError(code="unreachable") from exc
         except BaseException:
             await self.disconnect()
             raise
