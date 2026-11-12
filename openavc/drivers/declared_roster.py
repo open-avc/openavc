@@ -28,8 +28,8 @@ config field). The rules worth knowing before changing anything here:
 Three readers of an ``instances:`` block, on purpose: this one is the
 runtime roster; ``child_ids.declared_child_ids`` is the authoring
 prediction (no ``count_from_state``, ``None`` rather than an empty roster);
-the simulator's ``_seed_declared_children`` seeds the simulated device from
-config alone. They differ where their jobs do (count 0, ``ids: []``, a
+the simulator's ``child_roster.declared_ids`` seeds the simulated device
+from config alone. They differ where their jobs do (count 0, ``ids: []``, a
 reported count).
 
 ``DeclaredRoster`` is a mixin ``ConfigurableDriver`` inherits, so every name
@@ -50,8 +50,9 @@ from openavc.utils.logger import get_logger
 # is where a device's log view files them.
 log = get_logger("openavc.drivers.configurable")
 
-# The keys that make an ``instances:`` block a counted roster.
-_COUNT_KEYS = ("count", "count_from", "count_from_state")
+#: The keys that make an ``instances:`` block a counted roster; the
+#: simulator's reader (simulator/child_roster.py) reads the same set.
+COUNT_KEYS = ("count", "count_from", "count_from_state")
 
 
 def _count_from_state(tdef: Any) -> str | None:
@@ -244,7 +245,7 @@ class DeclaredRoster:
         id_type = id_format.get("type", "integer")
         if "ids" in inst:
             return self._literal_ids(ctype, inst["ids"], id_type)
-        if any(key in inst for key in _COUNT_KEYS):
+        if any(key in inst for key in COUNT_KEYS):
             return self._counted_ids(ctype, inst, id_type)
         return self._ids_from_config(ctype, inst.get("ids_from"), id_type)
 

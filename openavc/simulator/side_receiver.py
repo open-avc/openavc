@@ -26,8 +26,9 @@ knowing before changing anything here:
   with the send and a real device answers on its control link.
 
 The servers themselves are the simulator's (the TCP, HTTP and datagram
-servers its bases provide); this module only says in which order they are
-asked for a number.
+servers its bases provide); this module says in which order they are asked
+for a number and what a magic packet applies, and yaml_auto runs the rest
+(which datagram is a side-send, the command pipeline, stopping both).
 """
 
 from __future__ import annotations
@@ -73,7 +74,9 @@ async def start_on_one_port(
     the datagram server on the number it bound (``bound_port``, read after
     each start). On a refusal of that number the server that picked it is
     stopped and the side that refused picks next, up to SIDE_PORT_ATTEMPTS
-    times for ``port`` 0 and once for a named number."""
+    times for ``port`` 0 and once for a named number. The roles swap only
+    when ``port`` is 0, so whichever side picks asks for ``port``; letting a
+    named number retry would have the datagram side bind it first."""
     attempts = SIDE_PORT_ATTEMPTS if port == 0 else 1
     picks, joins = stream, datagram
     for attempt in range(attempts):

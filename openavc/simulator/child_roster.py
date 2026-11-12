@@ -30,9 +30,7 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 from openavc.drivers.child_ids import coerce_child_local_id
-
-#: The keys that make an ``instances:`` block a counted roster.
-_COUNT_KEYS = ("count", "count_from", "count_from_state")
+from openavc.drivers.declared_roster import COUNT_KEYS
 
 
 def declared_ids(type_def: Any, config: dict) -> list:
@@ -45,7 +43,7 @@ def declared_ids(type_def: Any, config: dict) -> list:
         return []
     if isinstance(inst.get("ids"), list):
         return _listed_ids(inst["ids"])
-    if any(key in inst for key in _COUNT_KEYS):
+    if any(key in inst for key in COUNT_KEYS):
         return _counted_ids(inst, config)
     if isinstance(inst.get("ids_from"), str):
         return _ids_from_field(config.get(inst["ids_from"], ""))
