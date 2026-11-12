@@ -82,6 +82,9 @@ CASES: dict[str, dict] = {
     "controls_empty_list": _controls(),
     "controls_not_a_list": _sim({"controls": {"type": "power", "key": "power"}}),
     "controls_null": _sim({"controls": None}),
+    "controls_empty_mapping": _sim({"controls": {}}),
+    "controls_empty_text": _sim({"controls": ""}),
+    "controls_false": _sim({"controls": False}),
     "control_not_a_mapping": _controls("power", 5, None),
     "control_unknown_type": _controls({"type": "meter", "key": "power"}),
     "control_without_type": _controls({"key": "power"}),
@@ -244,6 +247,8 @@ CASES: dict[str, dict] = {
     "machines_absent": _sim({}),
     "machines_empty": _machines({}),
     "machines_null": _machines(None),
+    "machines_empty_list": _machines([]),
+    "machines_empty_text": _machines(""),
     "machines_a_list": _machines([{"states": ["a"]}]),
     "machines_text": _machines("pwr"),
     "machine_not_a_mapping": _machines({"pwr": ["off", "on"], "lamp": 5, "ok": {
@@ -383,6 +388,10 @@ CASES: dict[str, dict] = {
         {"set_state": {}, "respond": ""},
         {},
     ),
+    "template_without_a_pattern_carrying_refs": _handlers(
+        {"respond": "P{1}", "set_state": {"nope": "{state.gone}{2}"}},
+        {"match": "", "respond": "{state.nope}"},
+    ),
     "template_match_used_when_receive_blank": _handlers(
         {"receive": "", "match": "PWR (\\d)", "respond": "P{2}"},
         {"match": "LVL (\\d+) (\\d+)", "respond": "L{2}{3}"},
@@ -426,8 +435,10 @@ CASES: dict[str, dict] = {
         {"receive": "LVL (\\d+)", "set_state": {"level": "{state.gone}{1}", "power": "{state.lamp}"}},
         initial_state={"lamp": "off"},
     ),
-    "template_refs_with_nothing_known": _handlers(
-        {"receive": "PWR (\\d)", "set_state": {"pwr": "{1}"}, "respond": "{state.x}{4}"},
+    "template_refs_with_nothing_known": _sim(
+        {"command_handlers": [
+            {"receive": "PWR (\\d)", "set_state": {"pwr": "{1}"}, "respond": "{state.x}{4}"},
+        ]},
         state_variables={},
     ),
     "template_refs_name_a_machine": _sim({
@@ -440,6 +451,9 @@ CASES: dict[str, dict] = {
         {"address": "/ch/1", "respond": "{9}", "set_state": {"nope": "1"}},
         {"address": "/ch/2", "receive": "(", "respond": "{state.nope}"},
         {"address": None, "receive": "PWR", "respond": "{2}"},
+    ),
+    "respond_names_a_boolean_dotted": _handlers(
+        {"receive": "PWR\\?", "respond": "P{state.power.1} {state.power_x} {state.level}"},
     ),
     # ── handlers: the order the two passes report ──
     "handlers_both_passes_in_order": _handlers(
@@ -550,6 +564,8 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                            'select, slider, toggle)')],
  'controls_absent': [],
  'controls_empty_list': [],
+ 'controls_empty_mapping': [('error', 'controls', 'simulator.controls must be a list')],
+ 'controls_empty_text': [('error', 'controls', 'simulator.controls must be a list')],
  'controls_every_type_bare': [('error',
                                'controls',
                                "controls[0] (power): missing required field 'key'"),
@@ -612,6 +628,7 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                                "controls[8] (indicator): missing 'label' — the panel shows "
                                "'undefined'")],
  'controls_every_type_complete': [],
+ 'controls_false': [('error', 'controls', 'simulator.controls must be a list')],
  'controls_not_a_list': [('error', 'controls', 'simulator.controls must be a list')],
  'controls_null': [],
  'group_child_type_a_list': ('raises', 'TypeError', "unhashable type: 'list'"),
@@ -792,6 +809,8 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'machines_a_list': [('error', 'state_machine', 'simulator.state_machines must be a mapping')],
  'machines_absent': [],
  'machines_empty': [],
+ 'machines_empty_list': [],
+ 'machines_empty_text': [],
  'machines_null': [],
  'machines_text': [('error', 'state_machine', 'simulator.state_machines must be a mapping')],
  'matrix_pattern_not_text': [],
@@ -914,6 +933,12 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                               'set_state',
                               "handler 'X': template '{state.nope}' references {state.nope} which "
                               'is not a state key — the placeholder stays literal at runtime')],
+ 'respond_names_a_boolean_dotted': [('warning',
+                                     'set_state',
+                                     "handler 'PWR\\\\?': template 'P{state.power.1} "
+                                     "{state.power_x} {state.level}' references {state.power_x} "
+                                     'which is not a state key — the placeholder stays literal at '
+                                     'runtime')],
  'select_options_empty': [('warning', 'controls', "controls[0] (select): 'options' is empty")],
  'select_options_not_a_list': [('error',
                                 'controls',
@@ -986,21 +1011,11 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                                'TypeError',
                                'first argument must be string or compiled pattern'),
  'template_refs_name_a_machine': [],
- 'template_refs_with_nothing_known': [('warning',
-                                       'set_state',
-                                       "handler 'PWR (\\\\d)': set_state target 'pwr' is not a "
-                                       'state variable or initial_state key — the value will be '
-                                       'written to a key nothing reads'),
-                                      ('error',
+ 'template_refs_with_nothing_known': [('error',
                                        'set_state',
                                        "handler 'PWR (\\\\d)': template '{state.x}{4}' references "
                                        'capture group {4} but the pattern has only 1 group(s) — '
-                                       'the placeholder stays literal at runtime'),
-                                      ('warning',
-                                       'set_state',
-                                       "handler 'PWR (\\\\d)': template '{state.x}{4}' references "
-                                       '{state.x} which is not a state key — the placeholder stays '
-                                       'literal at runtime')],
+                                       'the placeholder stays literal at runtime')],
  'template_respond_empty_not_text': [('error',
                                       'set_state',
                                       "handler 'PWR (\\\\d)': template '{2}' references capture "
@@ -1066,6 +1081,14 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                                  'command_handlers',
                                  'handler with respond:/set_state: has no receive: or match: '
                                  'pattern — it can never fire')],
+ 'template_without_a_pattern_carrying_refs': [('warning',
+                                               'command_handlers',
+                                               'handler with respond:/set_state: has no receive: '
+                                               'or match: pattern — it can never fire'),
+                                              ('warning',
+                                               'command_handlers',
+                                               'handler with respond:/set_state: has no receive: '
+                                               'or match: pattern — it can never fire')],
  'transition_after_seconds': [('error',
                                'state_machine',
                                "state_machine 'pwr' transition 0 'after_seconds' must be a number"),
