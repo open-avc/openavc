@@ -61,7 +61,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 2,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -98,7 +99,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 2,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "ce": [
@@ -108,7 +110,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 2,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "btn_unchanged": [
@@ -174,7 +177,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 3,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_escape": [
@@ -253,7 +257,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 4,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "ce": [
@@ -263,7 +268,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 4,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "btn_tab": [
@@ -352,7 +358,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 5,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "reached the page"
       }
     ],
     "btn_blur": [
@@ -523,7 +530,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 7,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "ce": [
@@ -533,7 +541,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 7,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "m": [
@@ -558,7 +567,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 7,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_shift_enter": [
@@ -647,7 +657,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 8,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_empty_label": [
@@ -714,7 +725,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 9,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "m": [
@@ -777,7 +789,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 9,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_no_label": [
@@ -867,7 +880,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 10,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_number_label": [
@@ -933,7 +947,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 11,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "m": [
@@ -994,7 +1009,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 11,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_icon": [
@@ -1071,7 +1087,8 @@
         "f": null,
         "sel": "",
         "st": 12,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -1104,7 +1121,8 @@
         "f": null,
         "sel": "",
         "st": 12,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_icon_only": [
@@ -1239,7 +1257,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 14,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_look_label": [
@@ -1347,7 +1366,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 15,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "ce": [
@@ -1452,7 +1472,8 @@
         "f": null,
         "sel": "",
         "st": 16,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "f": null,
@@ -1523,7 +1544,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 17,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_override": [
@@ -1611,7 +1633,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 18,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_override_mid_edit": [
@@ -1710,7 +1733,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 19,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "c": {
@@ -1764,7 +1788,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 19,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "btn_override_blank": [
@@ -1869,7 +1894,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 21,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "m": [
@@ -1899,7 +1925,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 21,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "label_lines": [
@@ -1959,7 +1986,8 @@
         "f": null,
         "sel": "Line one",
         "st": 22,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -1984,7 +2012,8 @@
         "f": null,
         "sel": "",
         "st": 22,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "m": [
@@ -2012,7 +2041,8 @@
         "f": null,
         "sel": "",
         "st": 22,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "label_trailing_break": [
@@ -2101,7 +2131,8 @@
         "f": null,
         "sel": "",
         "st": 23,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "reached the page"
       }
     ],
     "label_blocks": [
@@ -2273,7 +2304,8 @@
         "f": null,
         "sel": "",
         "st": 25,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "label_format": [
@@ -2376,7 +2408,8 @@
         "f": null,
         "sel": "",
         "st": 26,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "c": {
@@ -2429,7 +2462,8 @@
         "f": null,
         "sel": "",
         "st": 27,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "label_override": [
@@ -2565,7 +2599,8 @@
         "f": null,
         "sel": "Caption",
         "st": 30,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -2598,7 +2633,8 @@
         "f": null,
         "sel": "",
         "st": 30,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_status_led": [
@@ -2663,7 +2699,8 @@
         "f": null,
         "sel": "Caption",
         "st": 31,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -2696,7 +2733,8 @@
         "f": null,
         "sel": "",
         "st": 31,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_slider": [
@@ -2772,7 +2810,8 @@
         "f": null,
         "sel": "Caption",
         "st": 32,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -2805,7 +2844,8 @@
         "f": null,
         "sel": "",
         "st": 32,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_fader": [
@@ -2912,7 +2952,8 @@
         "f": null,
         "sel": "Caption",
         "st": 33,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -2945,7 +2986,8 @@
         "f": null,
         "sel": "",
         "st": 33,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_level_meter": [
@@ -3070,7 +3112,8 @@
         "f": null,
         "sel": "Caption",
         "st": 34,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -3103,7 +3146,8 @@
         "f": null,
         "sel": "",
         "st": 34,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_gauge": [
@@ -3232,7 +3276,8 @@
         "f": null,
         "sel": "Caption",
         "st": 35,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -3265,7 +3310,8 @@
         "f": null,
         "sel": "",
         "st": 35,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_select": [
@@ -3328,7 +3374,8 @@
         "f": null,
         "sel": "Caption",
         "st": 36,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -3361,7 +3408,8 @@
         "f": null,
         "sel": "",
         "st": 36,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_text_input": [
@@ -3426,7 +3474,8 @@
         "f": null,
         "sel": "Caption",
         "st": 37,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -3459,7 +3508,8 @@
         "f": null,
         "sel": "",
         "st": 37,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_list": [
@@ -3524,7 +3574,8 @@
         "f": null,
         "sel": "Caption",
         "st": 38,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -3557,7 +3608,8 @@
         "f": null,
         "sel": "",
         "st": 38,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_keypad": [
@@ -3693,7 +3745,8 @@
         "f": null,
         "sel": "Caption",
         "st": 39,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       },
       {
         "c": {
@@ -3726,7 +3779,8 @@
         "f": null,
         "sel": "",
         "st": 39,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "caption_none": [
@@ -3837,7 +3891,8 @@
         "f": null,
         "sel": "",
         "st": 40,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "caption_override": [
@@ -3960,7 +4015,8 @@
         "f": "button.panel-element panel-page-nav@n",
         "sel": "",
         "st": 42,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "m": [
@@ -4024,7 +4080,8 @@
         "f": "button.panel-element panel-page-nav@n",
         "sel": "",
         "st": 42,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "nav_no_target": [
@@ -4094,7 +4151,8 @@
         "f": null,
         "sel": "",
         "st": 43,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "nav_labelled": [
@@ -4183,7 +4241,8 @@
         "f": "button.panel-element panel-page-nav@n",
         "sel": "",
         "st": 44,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "not_for_camera_preset": [
@@ -4217,7 +4276,8 @@
         "f": null,
         "sel": "",
         "st": 45,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "not_for_matrix": [
@@ -4264,7 +4324,8 @@
         "f": null,
         "sel": "",
         "st": 46,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "not_for_clock": [
@@ -4300,7 +4361,8 @@
         "f": null,
         "sel": "",
         "st": 47,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "not_for_image": [
@@ -4333,7 +4395,8 @@
         "f": null,
         "sel": "",
         "st": 48,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "unknown_id": [
@@ -4460,7 +4523,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 50,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       },
       {
         "ce": [
@@ -4558,7 +4622,8 @@
         "f": "button.panel-element panel-button@a \"b\" c\\d",
         "sel": "",
         "st": 51,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "number_id": [
@@ -4681,7 +4746,8 @@
         "f": "button.panel-element panel-button@mb",
         "sel": "",
         "st": 52,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "second_open_commits_first": [
@@ -4826,7 +4892,8 @@
         "f": "button.panel-element panel-button@b2",
         "sel": "",
         "st": 53,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "reopen_same": [
@@ -4935,7 +5002,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 54,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "redraw_mid_edit": [
@@ -5070,7 +5138,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 55,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "cancel_message": [
@@ -5218,7 +5287,8 @@
         "f": null,
         "sel": "",
         "st": 56,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "src_not_json": [
@@ -5270,7 +5340,8 @@
         "f": null,
         "sel": "",
         "st": 57,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "src_not_a_list": [
@@ -5322,7 +5393,8 @@
         "f": null,
         "sel": "",
         "st": 58,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ],
     "src_leads_nowhere": [
@@ -5424,7 +5496,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 59,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "src_through_a_value": [
@@ -5526,7 +5599,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 60,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "src_names_a_number": [
@@ -5624,7 +5698,8 @@
         "f": "button.panel-element panel-button@b",
         "sel": "",
         "st": 61,
-        "d": "prevented"
+        "d": "prevented",
+        "b": "stopped"
       }
     ],
     "src_a_number": [
@@ -5676,7 +5751,8 @@
         "f": null,
         "sel": "",
         "st": 62,
-        "d": "default"
+        "d": "default",
+        "b": "reached the page"
       }
     ]
   }

@@ -7841,7 +7841,9 @@ function fromBuilder(data) {
  * (`m`), what changed on the subject element's nodes (`c`), the
  * contentEditable of the element and of the node holding the caret (`ce`),
  * which node has focus (`f`), the selection (`sel`), how many caret
- * stylesheets the document holds (`st`), and what a listener threw (`e`).
+ * stylesheets the document holds (`st`), and what a listener threw (`e`); a
+ * key also notes whether its default was prevented (`d`) and whether it went
+ * on to reach the page (`b`).
  * `decoy` puts a page before this one holding an element of the same id.
  */
 function textEditMount(posted, elements, subject, { state, masters, edit = true, decoy } = {}) {
@@ -7863,6 +7865,9 @@ function textEditMount(posted, elements, subject, { state, masters, edit = true,
     const m = { app, seen: {}, steps: [], errors: [] };
     m.onError = (ev) => { m.errors.push(String(ev.message)); ev.preventDefault(); };
     window.addEventListener('error', m.onError);
+    m.reached = false;
+    m.onPageKey = () => { m.reached = true; };
+    document.addEventListener('keydown', m.onPageKey);
     m.node = () => app.root.querySelector(`[data-element-id="${window.CSS.escape(subject)}"]`)
         || document.querySelector(`[data-element-id="${window.CSS.escape(subject)}"]`);
     m.editing = () => document.querySelector('[data-avc-text-editing]');
@@ -7900,8 +7905,9 @@ function textEditMount(posted, elements, subject, { state, masters, edit = true,
         const target = m.editing() || m.node();
         const ev = new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts });
         if (opts.isComposing) Object.defineProperty(ev, 'isComposing', { value: true });
+        m.reached = false;
         target.dispatchEvent(ev);
-        m.look({ d: ev.defaultPrevented ? 'prevented' : 'default' });
+        m.look({ d: ev.defaultPrevented ? 'prevented' : 'default', b: m.reached ? 'reached the page' : 'stopped' });
     };
     m.type = (text) => { const h = m.editing(); if (h) h.textContent = text; m.look(); };
     m.html = (html) => { const h = m.editing(); if (h) h.innerHTML = html; m.look(); };
@@ -7916,6 +7922,7 @@ function textEditMount(posted, elements, subject, { state, masters, edit = true,
     m.done = () => {
         // Leave nothing open for the next case, and let go of the listener.
         window.removeEventListener('error', m.onError);
+        document.removeEventListener('keydown', m.onPageKey);
         app.renderCurrentPage();
         app.editMode = false;
         posted.length = 0;
