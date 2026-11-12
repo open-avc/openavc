@@ -1,0 +1,1463 @@
+{
+  "choices": {
+    "select_plain": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-select",
+          "r@data-element-id": "x",
+          "r@data-element-type": "select",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "label",
+          "r.0#": "Input",
+          "r.1@": "select",
+          "r.1.0@": "option value",
+          "r.1.0@value": "a",
+          "r.1.0#": "Alpha",
+          "r.1.1@": "option value",
+          "r.1.1@value": "b",
+          "r.1.1#": "Bravo",
+          "r.1.2@": "option value",
+          "r.1.2@value": "c"
+        },
+        "v": "-1|",
+        "bt": [
+          "select_value"
+        ]
+      },
+      {
+        "v": "1|b"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "c": {
+          "r@class": "panel-element panel-select device-offline"
+        },
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "c": {
+          "r@class": "panel-element panel-select"
+        },
+        "v": "0|a"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "s": [
+          "ui.change x \"c\""
+        ],
+        "v": "2|c"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "s": [
+          "ui.change x \"a\""
+        ],
+        "v": "0|a"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "2|c"
+      }
+    ],
+    "select_look": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-select",
+          "r@data-element-id": "x",
+          "r@data-element-type": "select",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "select",
+          "r.0.0@": "option value style",
+          "r.0.0@value": "a",
+          "r.0.0@style": "background-color: rgb(255, 0, 0); color: rgb(255, 255, 255);",
+          "r.0.0#": "Alpha",
+          "r.0.1@": "option value",
+          "r.0.1@value": "b",
+          "r.0.1#": "Bravo",
+          "r.0.2@": "option value style",
+          "r.0.2@value": "c",
+          "r.0.2@style": "background-color: rgb(0, 255, 0);"
+        },
+        "v": "-1|",
+        "bt": [
+          "select_value",
+          "select_look"
+        ]
+      },
+      {
+        "v": "1|b"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "c": {
+          "r@class": "panel-element panel-select device-offline"
+        },
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "c": {
+          "r@class": "panel-element panel-select",
+          "r.0@": "select style",
+          "r.0@style": "background-color: rgb(255, 0, 0); color: rgb(255, 255, 255);"
+        },
+        "v": "0|a"
+      },
+      {
+        "c": {
+          "r.0@style": ""
+        },
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "c": {
+          "r.0@style": "background-color: rgb(255, 0, 0); color: rgb(255, 255, 255);"
+        },
+        "v": "0|a"
+      },
+      {
+        "c": {
+          "r.0@style": ""
+        },
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "s": [
+          "ui.change x \"a\""
+        ],
+        "v": "0|a"
+      }
+    ],
+    "select_look_no_key": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-select",
+          "r@data-element-id": "x",
+          "r@data-element-type": "select",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "select",
+          "r.0.0@": "option value style",
+          "r.0.0@value": "a",
+          "r.0.0@style": "background-color: rgb(255, 0, 0); color: rgb(255, 255, 255);",
+          "r.0.0#": "Alpha",
+          "r.0.1@": "option value",
+          "r.0.1@value": "b",
+          "r.0.1#": "Bravo",
+          "r.0.2@": "option value style",
+          "r.0.2@value": "c",
+          "r.0.2@style": "background-color: rgb(0, 255, 0);"
+        },
+        "v": "0|a",
+        "bt": []
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      }
+    ],
+    "select_look_only": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-select",
+          "r@data-element-id": "x",
+          "r@data-element-type": "select",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "select",
+          "r.0.0@": "option value style",
+          "r.0.0@value": "a",
+          "r.0.0@style": "background-color: rgb(255, 0, 0); color: rgb(255, 255, 255);",
+          "r.0.0#": "Alpha",
+          "r.0.1@": "option value",
+          "r.0.1@value": "b",
+          "r.0.1#": "Bravo",
+          "r.0.2@": "option value style",
+          "r.0.2@value": "c",
+          "r.0.2@style": "background-color: rgb(0, 255, 0);"
+        },
+        "v": "0|a",
+        "bt": [
+          "select_look"
+        ]
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "c": {
+          "r.0@": "select style",
+          "r.0@style": "background-color: rgb(255, 0, 0); color: rgb(255, 255, 255);"
+        },
+        "v": "0|a"
+      },
+      {
+        "c": {
+          "r.0@style": ""
+        },
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "v": "0|a"
+      },
+      {
+        "c": {
+          "r.0@style": "background-color: rgb(0, 255, 0);"
+        },
+        "v": "0|a"
+      }
+    ],
+    "select_empty": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-select",
+          "r@data-element-id": "x",
+          "r@data-element-type": "select",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "select"
+        },
+        "v": "-1|",
+        "bt": [
+          "select_value"
+        ]
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "c": {
+          "r@class": "panel-element panel-select device-offline"
+        },
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "c": {
+          "r@class": "panel-element panel-select"
+        },
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      },
+      {
+        "v": "-1|"
+      }
+    ],
+    "text_plain": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-text-input",
+          "r@data-element-id": "x",
+          "r@data-element-type": "text_input",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "label",
+          "r.0#": "Name",
+          "r.1@": "input type placeholder",
+          "r.1@type": "text",
+          "r.1@placeholder": "Type here"
+        },
+        "p": "",
+        "bt": [
+          "text_input_value"
+        ]
+      },
+      {
+        "p": "b"
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": "zz"
+      },
+      {
+        "p": ""
+      },
+      {
+        "c": {
+          "r@class": "panel-element panel-text-input device-offline"
+        },
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "c": {
+          "r@class": "panel-element panel-text-input"
+        },
+        "p": "a"
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": "0"
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": "a"
+      },
+      {
+        "p": "true"
+      },
+      {
+        "p": "7"
+      },
+      {
+        "p": "hey",
+        "s": [
+          "ui.change x \"hey\""
+        ]
+      },
+      {
+        "p": "x"
+      },
+      {
+        "p": "x",
+        "s": [
+          "ui.change x \"x\""
+        ]
+      },
+      {
+        "p": "7"
+      },
+      {
+        "p": "7"
+      },
+      {
+        "p": "after"
+      }
+    ],
+    "text_bare": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-text-input",
+          "r@data-element-id": "x",
+          "r@data-element-type": "text_input",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "input type placeholder",
+          "r.0@type": "text",
+          "r.0@placeholder": ""
+        },
+        "p": "",
+        "bt": []
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": ""
+      },
+      {
+        "p": "q",
+        "s": [
+          "ui.change x \"q\""
+        ]
+      }
+    ],
+    "list_selectable": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-label",
+          "r.0#": "Rooms",
+          "r.1@": "div class",
+          "r.1@class": "list-scroll",
+          "r.1.0@": "div class style data-value",
+          "r.1.0@class": "list-item",
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
+          "r.1.0@data-value": "a",
+          "r.1.0#": "A",
+          "r.1.1@": "div class style data-value",
+          "r.1.1@class": "list-item",
+          "r.1.1@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
+          "r.1.1@data-value": "",
+          "r.1.1#": "Zero",
+          "r.1.2@": "div class style data-value",
+          "r.1.2@class": "list-item",
+          "r.1.2@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
+          "r.1.2@data-value": "",
+          "r.1.3@": "div class style data-value",
+          "r.1.3@class": "list-item",
+          "r.1.3@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
+          "r.1.3@data-value": "",
+          "r.1.3#": "NoValue",
+          "r.1.4@": "div class style data-value",
+          "r.1.4@class": "list-item",
+          "r.1.4@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
+          "r.1.4@data-value": "7",
+          "r.1.4#": "7"
+        },
+        "bt": [
+          "list_selected"
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list device-offline"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list",
+          "r.1.0@class": "list-item active",
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1.0@class": "list-item",
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {
+        "c": {
+          "r.1.1@class": "list-item active",
+          "r.1.1@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
+          "r.1.2@class": "list-item active",
+          "r.1.2@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
+          "r.1.3@class": "list-item active",
+          "r.1.3@style": "min-height: 2rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {
+        "c": {
+          "r.1.0@class": "list-item active",
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
+          "r.1.1@class": "list-item",
+          "r.1.1@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
+          "r.1.2@class": "list-item",
+          "r.1.2@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
+          "r.1.3@class": "list-item",
+          "r.1.3@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {
+        "c": {
+          "r.1.0@class": "list-item",
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {
+        "c": {
+          "r.1.4@class": "list-item active",
+          "r.1.4@style": "min-height: 2rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {
+        "s": [
+          "ui.select x \"a\""
+        ],
+        "si": [
+          "7|{\"block\":\"nearest\"}"
+        ]
+      },
+      {
+        "s": [
+          "ui.select x 7"
+        ]
+      },
+      {
+        "s": [
+          "ui.select x 0"
+        ]
+      },
+      {
+        "c": {
+          "r.1.0@class": "list-item active",
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
+          "r.1.4@class": "list-item",
+          "r.1.4@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {
+        "s": [
+          "ui.select x \"a\""
+        ],
+        "si": [
+          "A|{\"block\":\"nearest\"}"
+        ]
+      },
+      {}
+    ],
+    "list_multi": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll",
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "a",
+          "r.0.0#": "a",
+          "r.0.1@": "div class style data-value",
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.1@data-value": "b",
+          "r.0.1#": "b",
+          "r.0.2@": "div class style data-value",
+          "r.0.2@class": "list-item",
+          "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.2@data-value": "c",
+          "r.0.2#": "c"
+        },
+        "bt": [
+          "list_selected"
+        ]
+      },
+      {
+        "c": {
+          "r.0.1@class": "list-item active",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list device-offline"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list",
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {},
+      {
+        "s": [
+          "ui.select x \"a\""
+        ]
+      },
+      {
+        "s": [
+          "ui.select x \"b\""
+        ]
+      },
+      {
+        "s": [
+          "ui.select x \"a\""
+        ]
+      },
+      {
+        "c": {
+          "r.0.2@class": "list-item active",
+          "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      }
+    ],
+    "list_static": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll",
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "a",
+          "r.0.0#": "a",
+          "r.0.1@": "div class style data-value",
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.1@data-value": "b",
+          "r.0.1#": "b"
+        },
+        "bt": [
+          "list_selected"
+        ]
+      },
+      {
+        "c": {
+          "r.0.1@class": "list-item active",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list device-offline"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list",
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0.1@class": "list-item active",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      }
+    ],
+    "list_action": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll",
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "go",
+          "r.0.0#": "Go"
+        },
+        "bt": []
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "s": [
+          "ui.select x \"go\""
+        ]
+      },
+      {
+        "s": [
+          "ui.select x \"go\""
+        ]
+      }
+    ],
+    "list_pattern": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll",
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "none",
+          "r.0.0#": "None"
+        },
+        "bt": [
+          "list_items",
+          "list_selected"
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list device-offline"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0.0@data-value": "one",
+          "r.0.0#": "First"
+        }
+      },
+      {
+        "c": {
+          "r.0.1@": "div class style data-value",
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.1@data-value": "two",
+          "r.0.1#": "Second"
+        }
+      },
+      {
+        "c": {
+          "r.0.1@class": "list-item active",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {
+        "s": [
+          "ui.select x \"one\""
+        ],
+        "si": [
+          "Second|{\"block\":\"nearest\"}"
+        ]
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.2@": "div class style data-value",
+          "r.0.2@class": "list-item",
+          "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.2@data-value": "three",
+          "r.0.2#": "Third"
+        },
+        "si": [
+          "First|{\"block\":\"nearest\"}"
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "three",
+          "r.0.0#": "Third",
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1@style": null,
+          "r.0.1@data-value": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@class": null,
+          "r.0.2@style": null,
+          "r.0.2@data-value": null,
+          "r.0.2#": null
+        }
+      }
+    ],
+    "list_action_pattern": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll"
+        },
+        "bt": [
+          "list_items"
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "a",
+          "r.0.0#": "A",
+          "r.0.1@": "div class style data-value",
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.1@data-value": "b",
+          "r.0.1#": "B"
+        }
+      },
+      {
+        "s": [
+          "ui.select x \"a\""
+        ]
+      },
+      {
+        "c": {
+          "r.0.2@": "div class style data-value",
+          "r.0.2@class": "list-item",
+          "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.2@data-value": "c",
+          "r.0.2#": "C"
+        }
+      }
+    ],
+    "list_multi_pattern": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll"
+        },
+        "bt": [
+          "list_items"
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "a",
+          "r.0.0#": "A",
+          "r.0.1@": "div class style data-value",
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.1@data-value": "b",
+          "r.0.1#": "B"
+        }
+      },
+      {
+        "s": [
+          "ui.select x \"a\""
+        ]
+      },
+      {
+        "s": [
+          "ui.select x \"b\""
+        ]
+      },
+      {
+        "s": [
+          "ui.select x \"a\""
+        ]
+      },
+      {
+        "c": {
+          "r.0.1@class": "list-item active",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
+          "r.0.2@": "div class style data-value",
+          "r.0.2@class": "list-item",
+          "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.2@data-value": "c",
+          "r.0.2#": "C"
+        },
+        "si": [
+          "B|{\"block\":\"nearest\"}"
+        ]
+      }
+    ],
+    "list_static_pattern": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll"
+        },
+        "bt": [
+          "list_items",
+          "list_selected"
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list device-offline"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "a",
+          "r.0.0#": "A",
+          "r.0.1@": "div class style data-value",
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.1@data-value": "b",
+          "r.0.1#": "B"
+        }
+      },
+      {}
+    ],
+    "list_static_preselected": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll",
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
+          "r.0.0@data-value": "a",
+          "r.0.0#": "a",
+          "r.0.1@": "div class style data-value",
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.1@data-value": "b",
+          "r.0.1#": "b"
+        },
+        "bt": [
+          "list_selected"
+        ]
+      },
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.1@class": "list-item active",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.1@class": "list-item",
+          "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list device-offline"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r@class": "panel-element panel-list",
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0.0@class": "list-item active",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+        }
+      },
+      {
+        "c": {
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+        }
+      },
+      {}
+    ],
+    "list_exact_pattern": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll"
+        },
+        "bt": [
+          "list_items"
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "Only",
+          "r.0.0#": "Only"
+        }
+      },
+      {
+        "c": {
+          "r.0.0@data-value": "5",
+          "r.0.0#": "5"
+        }
+      }
+    ],
+    "list_items_no_pattern": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll",
+          "r.0.0@": "div class style data-value",
+          "r.0.0@class": "list-item",
+          "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+          "r.0.0@data-value": "a",
+          "r.0.0#": "a"
+        },
+        "bt": [
+          "list_items"
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ],
+    "list_bare": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "x",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "list-scroll"
+        },
+        "bt": []
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ],
+    "themed": [
+      {
+        "r@": "div class data-element-id style",
+        "r@class": "panel-element panel-select",
+        "r@data-element-id": "s",
+        "r@style": "background-color: rgb(1, 2, 3); color: rgb(255, 255, 255);",
+        "r.0@": "select",
+        "r.0.0@": "option value",
+        "r.0.0@value": "a",
+        "r.0.0#": "Alpha",
+        "r.0.1@": "option value",
+        "r.0.1@value": "b",
+        "r.0.1#": "Bravo",
+        "r.0.2@": "option value",
+        "r.0.2@value": "c"
+      },
+      {
+        "r@": "div class data-element-id style",
+        "r@class": "panel-element panel-text-input",
+        "r@data-element-id": "t",
+        "r@style": "font-size: 12rem;",
+        "r.0@": "input type placeholder",
+        "r.0@type": "text",
+        "r.0@placeholder": ""
+      },
+      {
+        "r@": "div class data-element-id style",
+        "r@class": "panel-element panel-list",
+        "r@data-element-id": "l",
+        "r@style": "background-color: rgb(13, 14, 15);",
+        "r.0@": "div class",
+        "r.0@class": "list-scroll",
+        "r.0.0@": "div class style data-value",
+        "r.0.0@class": "list-item",
+        "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(18, 49, 35);",
+        "r.0.0@data-value": "a",
+        "r.0.0#": "Alpha",
+        "r.0.1@": "div class style data-value",
+        "r.0.1@class": "list-item active",
+        "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(10, 11, 12);",
+        "r.0.1@data-value": "b",
+        "r.0.1#": "Bravo",
+        "r.0.2@": "div class style data-value",
+        "r.0.2@class": "list-item",
+        "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(18, 49, 35);",
+        "r.0.2@data-value": "c",
+        "r.0.2#": "c"
+      },
+      {
+        "r@": "div class data-element-id style",
+        "r@class": "panel-element panel-list",
+        "r@data-element-id": "l2",
+        "r@style": "background-color: rgb(13, 14, 15);",
+        "r.0@": "div class",
+        "r.0@class": "list-scroll",
+        "r.0.0@": "div class style data-value",
+        "r.0.0@class": "list-item",
+        "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(7, 8, 9);",
+        "r.0.0@data-value": "a",
+        "r.0.0#": "Alpha",
+        "r.0.1@": "div class style data-value",
+        "r.0.1@class": "list-item",
+        "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(7, 8, 9);",
+        "r.0.1@data-value": "b",
+        "r.0.1#": "Bravo",
+        "r.0.2@": "div class style data-value",
+        "r.0.2@class": "list-item",
+        "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(7, 8, 9);",
+        "r.0.2@data-value": "c",
+        "r.0.2#": "c"
+      }
+    ],
+    "themed_scrolled": [
+      "Bravo|{\"block\":\"nearest\"}"
+    ]
+  }
+}

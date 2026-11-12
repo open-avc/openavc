@@ -134,6 +134,9 @@ SCENARIOS = [
     "frames_custom_control_draws_opens_and_bridges_as_today",
     "frames_plugin_panel_draws_opens_and_bridges_as_today",
     "frames_read_the_status_of_their_own_request_as_today",
+    # A list, a dropdown and a text field drawn, read, picked and typed into,
+    # pinned whole (tests/fixtures/panel_choice_pins.json).
+    "choices_draw_show_and_send_as_today",
     # display_decimals reaches every element that draws a number.
     "label_display_decimals_rounds_a_numeric_value",
     "label_display_decimals_leaves_text_alone",

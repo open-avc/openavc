@@ -6930,6 +6930,158 @@ const tests = {
         }, { throwsOnObserve: true });
         comparePins('frames_status', got, FRAME_PINS.frames_status);
     },
+
+    // The choice pins: a list, a dropdown and a text field drawn on a page,
+    // taken through readings, the device going away and back, a person's
+    // picks and typing, a refused press and a page redraw, compared whole with
+    // panel_choice_pins.json (CHOICE_PINS below says how they were recorded).
+    choices_draw_show_and_send_as_today() {
+        const got = {};
+        const K = CHOICE_KEY;
+        const opts = [{ value: 'a', label: 'Alpha' }, { value: 'b', label: 'Bravo' }, { value: 'c' }];
+        const look = { key: K, style_map: { a: { bg_color: '#ff0000', text_color: '#ffffff' }, c: { bg_color: '#00ff00' }, b: {} } };
+        const pick = (m, value, ms) => {
+            const sel = m.node().querySelector('select');
+            sel.value = value;
+            sel.dispatchEvent(new window.Event('change'));
+            m.advance(ms);
+        };
+        const type = (m, text, ms) => {
+            const input = m.node().querySelector('input');
+            input.value = text;
+            input.dispatchEvent(new window.Event('input'));
+            m.advance(ms);
+        };
+        const tap = (m, index) => {
+            const row = m.node().querySelectorAll('.list-item')[index];
+            if (row) row.click();
+            m.look();
+        };
+        const cases = [
+            ['select_plain', { type: 'select', label: 'Input', options: opts, bindings: { show: { value: { key: K } } } }, (m) => {
+                pick(m, 'b', 50); pick(m, 'c', 100); m.look();
+                pick(m, 'a', 99); m.look(); m.advance(1); m.look();
+                pick(m, 'b', 20); m.app.renderCurrentPage(); m.advance(200); m.look();
+                m.set(K, 'c'); m.app._redrawElement('x'); m.look();
+            }],
+            ['select_look', { type: 'select', options: opts, bindings: { show: { value: { key: K }, look } } }, (m) => {
+                pick(m, 'a', 100); m.look();
+            }],
+            ['select_look_no_key', { type: 'select', options: opts, bindings: { show: { look: { style_map: look.style_map } } } }, () => {}],
+            ['select_look_only', { type: 'select', options: opts, bindings: { show: { look: { key: 'var.scene', style_map: look.style_map } } } }, (m) => {
+                for (const v of ['a', 'b', 'zz', null, 'c']) { m.set('var.scene', v); m.look(); }
+            }],
+            ['select_empty', { type: 'select', bindings: { show: { value: { key: K } } } }, () => {}],
+            ['text_plain', { type: 'text_input', label: 'Name', placeholder: 'Type here', bindings: { show: { value: { key: K } } } }, (m) => {
+                type(m, 'he', 100); type(m, 'hey', 300); m.look();
+                type(m, 'x', 299); m.look(); m.advance(1); m.look();
+                type(m, 'y', 10); m.app.renderCurrentPage(); m.advance(400); m.look();
+                const input = m.node().querySelector('input');
+                input.focus(); m.set(K, 'while typing'); m.look();
+                input.blur(); m.set(K, 'after'); m.look();
+            }],
+            ['text_bare', { type: 'text_input' }, (m) => { type(m, 'q', 300); m.look(); }],
+            ['list_selectable', {
+                type: 'list', label: 'Rooms', item_height: 2,
+                items: [{ value: 'a', label: 'A' }, { value: 0, label: 'Zero' }, { value: '' }, { label: 'NoValue' }, { value: 7 }],
+                bindings: { show: { value: { key: K } } },
+            }, (m) => { tap(m, 0); tap(m, 4); tap(m, 1); m.set(K, 'a'); m.look(); tap(m, 0); m.app._redrawElement('x'); m.look(); }],
+            ['list_multi', {
+                type: 'list', list_style: 'multi_select', items: [{ value: 'a' }, { value: 'b' }, { value: 'c' }],
+                bindings: { show: { value: { key: K } } },
+            }, (m) => { tap(m, 0); tap(m, 1); tap(m, 0); m.set(K, 'c'); m.look(); }],
+            ['list_static', {
+                type: 'list', list_style: 'static', items: [{ value: 'a' }, { value: 'b' }],
+                bindings: { show: { value: { key: K } } },
+            }, (m) => { tap(m, 0); m.set(K, 'b'); m.look(); }],
+            ['list_action', { type: 'list', list_style: 'action', options: [{ value: 'go', label: 'Go' }] }, (m) => { tap(m, 0); tap(m, 0); }],
+            ['list_pattern', {
+                type: 'list', items: [{ value: 'none', label: 'None' }],
+                bindings: { show: { items: { source: 'state', key_pattern: 'var.zone.*' }, value: { key: K } } },
+            }, (m) => {
+                m.set('var.zone.one', 'First'); m.look();
+                m.set('var.zone.two', 'Second'); m.look();
+                m.set(K, 'two'); m.look();
+                tap(m, 0);
+                m.set('var.zone.one', 'First'); m.look();
+                m.app._redrawElement('x'); m.look();
+                m.set(K, 'one'); m.look();
+                m.set('var.zone.one', 'First'); m.look();
+                m.set(K, null); m.set('var.zone.three', 'Third'); m.look();
+                m.set('var.zone.', 'Empty'); m.look();
+                m.set('var.zone.one', undefined); m.set('var.zone.two', undefined); m.look();
+            }],
+            ['list_action_pattern', {
+                type: 'list', list_style: 'action', bindings: { show: { items: { source: 'state', key_pattern: 'var.act.*' } } },
+            }, (m) => { m.set('var.act.a', 'A'); m.set('var.act.b', 'B'); m.look(); tap(m, 0); m.set('var.act.c', 'C'); m.look(); }],
+            ['list_multi_pattern', {
+                type: 'list', list_style: 'multi_select', bindings: { show: { items: { source: 'state', key_pattern: 'var.mm.*' } } },
+            }, (m) => {
+                m.set('var.mm.a', 'A'); m.set('var.mm.b', 'B'); m.look();
+                tap(m, 0); tap(m, 1); tap(m, 0); m.set('var.mm.c', 'C'); m.look();
+            }],
+            ['list_static_pattern', {
+                type: 'list', list_style: 'static',
+                bindings: { show: { items: { source: 'state', key_pattern: 'var.st.*' }, value: { key: K } } },
+            }, (m) => { m.set(K, 'a'); m.look(); m.set('var.st.a', 'A'); m.set('var.st.b', 'B'); m.look(); tap(m, 1); }],
+            ['list_static_preselected', {
+                type: 'list', list_style: 'static', items: [{ value: 'a' }, { value: 'b' }],
+                bindings: { show: { value: { key: K } } },
+            }, () => {}, { [K]: 'a' }],
+            ['list_exact_pattern', {
+                type: 'list', bindings: { show: { items: { source: 'state', key_pattern: 'var.solo' } } },
+            }, (m) => { m.set('var.solo', 'Only'); m.look(); m.set('var.solo', 5); m.look(); }],
+            ['list_items_no_pattern', {
+                type: 'list', items: [{ value: 'a' }], bindings: { show: { items: { key: 'var.list' } } },
+            }, (m) => { m.set('var.list', 'x'); m.look(); }],
+            ['list_bare', { type: 'list' }, (m) => { tap(m, 0); }],
+        ];
+        const scrolled = [];
+        const realScroll = window.Element.prototype.scrollIntoView;
+        window.Element.prototype.scrollIntoView = function (arg) { scrolled.push(`${this.textContent}|${JSON.stringify(arg)}`); };
+        try {
+            for (const [name, def, gestures, mountState] of cases) {
+                withFakeClock((advance) => {
+                    let m;
+                    try {
+                        m = levelMount({ id: 'x', ...def }, { state: { 'device.d.connected': true, ...mountState } });
+                        m.advance = advance;
+                        const look = m.look;
+                        m.look = () => {
+                            look();
+                            const step = m.steps[m.steps.length - 1];
+                            const sel = m.node().querySelector('select');
+                            if (sel) step.v = `${sel.selectedIndex}|${sel.value}`;
+                            if (scrolled.length) step.si = scrolled.splice(0);
+                            if (m.steps.length === 1) step.bt = m.app.bindings.filter((b) => b.elementDef?.id === 'x').map((b) => b.type);
+                        };
+                        choiceReadings(m, K);
+                        gestures(m);
+                    } catch (e) {
+                        (m ? m.steps : []).push({ threw: String(e && e.message) });
+                    }
+                    got[name] = m ? m.steps : [{ threw: 'mount' }];
+                });
+            }
+            // The theme's defaults for each type, on controls drawn on their own.
+            const themed = mkApp();
+            themed.themeElementDefaults = {
+                select: { bg_color: '#010203' }, text_input: { border_color: '#040506' },
+                list: { item_bg: '#070809', item_active_bg: '#0a0b0c', bg_color: '#0d0e0f' },
+            };
+            themed.state = { [K]: 'b' };
+            got.themed = [
+                themed.renderSelect({ id: 's', type: 'select', options: opts, style: { text_color: '#fff' } }),
+                themed.renderTextInput({ id: 't', type: 'text_input', style: { font_size: 12 } }),
+                themed.renderList({ id: 'l', type: 'list', items: opts, style: { item_bg: '#123123' }, bindings: { show: { value: { key: K } } } }),
+                themed.renderList({ id: 'l2', type: 'list', items: opts }),
+            ].map(nodeSnapshot);
+            got.themed_scrolled = scrolled.splice(0);
+        } finally {
+            window.Element.prototype.scrollIntoView = realScroll;
+        }
+        comparePins('choices', got, CHOICE_PINS.choices);
+    },
 };
 
 // --- The frames (custom controls and plugin panels), as a page draws them ---
@@ -7063,6 +7215,25 @@ function frameMount(def, { edit, answer, before, page } = {}) {
         return value;
     };
     return r;
+}
+
+// --- The choices (a list, a dropdown, a text field), as a page draws them ---
+//
+// Each is drawn on a page by levelMount's recorder, taken through
+// choiceReadings and then its own gestures, and compared with
+// panel_choice_pins.json, recorded from the code before they moved.
+const CHOICE_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_choice_pins.json'), 'utf8'));
+const CHOICE_KEY = 'device.d.v';
+
+/** The readings every choice pin case is taken through, the device going away and back. */
+function choiceReadings(m, key) {
+    m.look();
+    for (const value of ['b', null, 'zz', null]) { m.set(key, value); m.look(); }
+    m.set('device.d.connected', false); m.look();
+    m.set(key, 'a'); m.look();
+    m.set('device.d.connected', true); m.look();
+    m.set(key, undefined); m.look();
+    for (const value of [0, '', 'a', true, 7]) { m.set(key, value); m.look(); }
 }
 
 /** Resolves the token fetch a case holds open (token_after_removal). */
