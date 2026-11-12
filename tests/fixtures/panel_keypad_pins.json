@@ -1,0 +1,4297 @@
+{
+  "keypad": {
+    "k_plain": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_plain",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "1234"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_plain \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_plain \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "2345"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_no_label": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_no_label",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-display",
+          "r.1@": "div class",
+          "r.1@class": "keypad-grid",
+          "r.1.0@": "button type class aria-label",
+          "r.1.0@type": "button",
+          "r.1.0@class": "keypad-key",
+          "r.1.0@aria-label": "Key 1",
+          "r.1.0#": "1",
+          "r.1.1@": "button type class aria-label",
+          "r.1.1@type": "button",
+          "r.1.1@class": "keypad-key",
+          "r.1.1@aria-label": "Key 2",
+          "r.1.1#": "2",
+          "r.1.2@": "button type class aria-label",
+          "r.1.2@type": "button",
+          "r.1.2@class": "keypad-key",
+          "r.1.2@aria-label": "Key 3",
+          "r.1.2#": "3",
+          "r.1.3@": "button type class aria-label",
+          "r.1.3@type": "button",
+          "r.1.3@class": "keypad-key",
+          "r.1.3@aria-label": "Key 4",
+          "r.1.3#": "4",
+          "r.1.4@": "button type class aria-label",
+          "r.1.4@type": "button",
+          "r.1.4@class": "keypad-key",
+          "r.1.4@aria-label": "Key 5",
+          "r.1.4#": "5",
+          "r.1.5@": "button type class aria-label",
+          "r.1.5@type": "button",
+          "r.1.5@class": "keypad-key",
+          "r.1.5@aria-label": "Key 6",
+          "r.1.5#": "6",
+          "r.1.6@": "button type class aria-label",
+          "r.1.6@type": "button",
+          "r.1.6@class": "keypad-key",
+          "r.1.6@aria-label": "Key 7",
+          "r.1.6#": "7",
+          "r.1.7@": "button type class aria-label",
+          "r.1.7@type": "button",
+          "r.1.7@class": "keypad-key",
+          "r.1.7@aria-label": "Key 8",
+          "r.1.7#": "8",
+          "r.1.8@": "button type class aria-label",
+          "r.1.8@type": "button",
+          "r.1.8@class": "keypad-key",
+          "r.1.8@aria-label": "Key 9",
+          "r.1.8#": "9",
+          "r.1.9@": "button type class aria-label",
+          "r.1.9@type": "button",
+          "r.1.9@class": "keypad-key keypad-clear",
+          "r.1.9@aria-label": "Clear",
+          "r.1.9#": "C",
+          "r.1.10@": "button type class aria-label",
+          "r.1.10@type": "button",
+          "r.1.10@class": "keypad-key",
+          "r.1.10@aria-label": "Key 0",
+          "r.1.10#": "0",
+          "r.1.11@": "button type class aria-label",
+          "r.1.11@type": "button",
+          "r.1.11@class": "keypad-key keypad-enter",
+          "r.1.11@aria-label": "Enter",
+          "r.1.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.1.11.0@viewBox": "0 0 24 24",
+          "r.1.11.0@fill": "none",
+          "r.1.11.0@stroke": "currentColor",
+          "r.1.11.0@stroke-width": "2",
+          "r.1.11.0@stroke-linecap": "round",
+          "r.1.11.0@stroke-linejoin": "round",
+          "r.1.11.0@style": "flex-shrink: 0;",
+          "r.1.11.0.0@": "use href href",
+          "r.1.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "1234"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": null
+        },
+        "s": [
+          "ui.submit k_no_label \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.0#": null
+        },
+        "s": [
+          "ui.submit k_no_label \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "2345"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {
+        "c": {
+          "r.0#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {
+        "c": {
+          "r.0#": "8"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_phone": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_phone",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key",
+          "r.2.9@aria-label": "Star",
+          "r.2.9#": "*",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key",
+          "r.2.11@aria-label": "Hash",
+          "r.2.11#": "#"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "1234"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "2345"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ],
+    "k_style_odd": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_style_odd",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "1234"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_style_odd \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_style_odd \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "2345"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_masked": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_masked",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_masked \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_masked \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022\u2022"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_mask_truthy": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_mask_truthy",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "1234"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_mask_truthy \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_mask_truthy \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "2345"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_no_display": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_no_display",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-grid",
+          "r.1.0@": "button type class aria-label",
+          "r.1.0@type": "button",
+          "r.1.0@class": "keypad-key",
+          "r.1.0@aria-label": "Key 1",
+          "r.1.0#": "1",
+          "r.1.1@": "button type class aria-label",
+          "r.1.1@type": "button",
+          "r.1.1@class": "keypad-key",
+          "r.1.1@aria-label": "Key 2",
+          "r.1.1#": "2",
+          "r.1.2@": "button type class aria-label",
+          "r.1.2@type": "button",
+          "r.1.2@class": "keypad-key",
+          "r.1.2@aria-label": "Key 3",
+          "r.1.2#": "3",
+          "r.1.3@": "button type class aria-label",
+          "r.1.3@type": "button",
+          "r.1.3@class": "keypad-key",
+          "r.1.3@aria-label": "Key 4",
+          "r.1.3#": "4",
+          "r.1.4@": "button type class aria-label",
+          "r.1.4@type": "button",
+          "r.1.4@class": "keypad-key",
+          "r.1.4@aria-label": "Key 5",
+          "r.1.4#": "5",
+          "r.1.5@": "button type class aria-label",
+          "r.1.5@type": "button",
+          "r.1.5@class": "keypad-key",
+          "r.1.5@aria-label": "Key 6",
+          "r.1.5#": "6",
+          "r.1.6@": "button type class aria-label",
+          "r.1.6@type": "button",
+          "r.1.6@class": "keypad-key",
+          "r.1.6@aria-label": "Key 7",
+          "r.1.6#": "7",
+          "r.1.7@": "button type class aria-label",
+          "r.1.7@type": "button",
+          "r.1.7@class": "keypad-key",
+          "r.1.7@aria-label": "Key 8",
+          "r.1.7#": "8",
+          "r.1.8@": "button type class aria-label",
+          "r.1.8@type": "button",
+          "r.1.8@class": "keypad-key",
+          "r.1.8@aria-label": "Key 9",
+          "r.1.8#": "9",
+          "r.1.9@": "button type class aria-label",
+          "r.1.9@type": "button",
+          "r.1.9@class": "keypad-key keypad-clear",
+          "r.1.9@aria-label": "Clear",
+          "r.1.9#": "C",
+          "r.1.10@": "button type class aria-label",
+          "r.1.10@type": "button",
+          "r.1.10@class": "keypad-key",
+          "r.1.10@aria-label": "Key 0",
+          "r.1.10#": "0",
+          "r.1.11@": "button type class aria-label",
+          "r.1.11@type": "button",
+          "r.1.11@class": "keypad-key keypad-enter",
+          "r.1.11@aria-label": "Enter",
+          "r.1.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.1.11.0@viewBox": "0 0 24 24",
+          "r.1.11.0@fill": "none",
+          "r.1.11.0@stroke": "currentColor",
+          "r.1.11.0@stroke-width": "2",
+          "r.1.11.0@stroke-linecap": "round",
+          "r.1.11.0@stroke-linejoin": "round",
+          "r.1.11.0@style": "flex-shrink: 0;",
+          "r.1.11.0.0@": "use href href",
+          "r.1.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "s": [
+          "ui.submit k_no_display \"1234\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "s": [
+          "ui.submit k_no_display \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ],
+    "k_display_falsy": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_display_falsy",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "1234"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_display_falsy \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_display_falsy \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "2345"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_auto": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_auto",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto \"1234\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "5"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto \"5\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto \"89\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "0"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto \"0\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto \"2345\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto \"6\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto \"12\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto \"8\""
+        ]
+      }
+    ],
+    "k_auto_short": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_auto_short",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"12\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"34\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "5"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"5\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"89\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "0"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"0\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"23\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "4"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"45\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"6\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"1\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"2\""
+        ]
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"7\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"8\""
+        ]
+      },
+      {}
+    ],
+    "k_auto_phone": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_auto_phone",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key",
+          "r.2.9@aria-label": "Star",
+          "r.2.9#": "*",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key",
+          "r.2.11@aria-label": "Hash",
+          "r.2.11#": "#"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"123\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "4"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "45"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"45\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"7\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"89\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "0"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "0*"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"0*#\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"234\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "5"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "56"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"56\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"12\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "78"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"78\""
+        ]
+      }
+    ],
+    "k_auto_zero_delay": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_auto_zero_delay",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"12\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"3\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "4"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "45"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"45\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"89\""
+        ]
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "0"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"0\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"6\""
+        ]
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"2345\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"6\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"1\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"2\""
+        ]
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"7\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"8\""
+        ]
+      },
+      {}
+    ],
+    "k_auto_null": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_auto_null",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "1234"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_null \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_null \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "2345"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_digits_text": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_digits_text",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_digits_text \"123\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_digits_text \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_digits_zero": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_digits_zero",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ],
+    "k_digits_six": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_digits_six",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_digits_six \"12345\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_digits_six \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022\u2022\u2022\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_style": [
+      {
+        "c": {
+          "r@": "div class data-element-id style data-element-type",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_style",
+          "r@style": "background-color: rgb(16, 16, 16); color: rgb(250, 250, 250); font-size: 22rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r@data-element-type": "keypad",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "1234"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_style \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_style \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "2345"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_themed": [
+      {
+        "c": {
+          "r@": "div class data-element-id style data-element-type",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_themed",
+          "r@style": "background-color: rgb(32, 32, 32); border-radius: 9rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r@data-element-type": "keypad",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "1234"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_themed \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_themed \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "2345"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {}
+    ],
+    "k_design": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_design",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class data-avc-text-host",
+          "r.0@class": "keypad-label",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  }
+}

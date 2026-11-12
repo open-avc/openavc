@@ -7669,6 +7669,88 @@ Object.assign(tests, {
     },
 });
 
+// --- The keypad, as a page draws it ------------------------------------------
+//
+// Each keypad drawn on a page by levelMount's recorder, on the panel's own
+// clock, then pressed: digits past its limit, Enter, Clear with a send
+// pending, the pauses an auto send waits for, the phone keys, and a page
+// redraw while a send is pending; every press and pause looked at, with the
+// frames sent. Compared with panel_keypad_pins.json, recorded from the code
+// before it moved.
+
+const KEYPAD_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_keypad_pins.json'), 'utf8'));
+
+function keypadPresses(m, advance) {
+    // `d`: a press whose click default was not prevented; `e`: what a key's
+    // handler threw (reported to the window, never to the press).
+    const errors = [];
+    const onError = (ev) => { errors.push(String(ev.message)); ev.preventDefault(); };
+    const press = (label) => {
+        const key = [...m.node().querySelectorAll('.keypad-key')].find((b) => b.getAttribute('aria-label') === label);
+        const ev = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+        if (key) key.dispatchEvent(ev);
+        m.look();
+        const step = m.steps[m.steps.length - 1];
+        if (key && !ev.defaultPrevented) step.d = 'not prevented';
+        if (errors.length) step.e = errors.splice(0);
+    };
+    const wait = (ms) => { advance(ms); m.look(); };
+    window.addEventListener('error', onError);
+    try {
+        m.look();
+        press('Key 1'); press('Key 2'); wait(1000); press('Key 3'); wait(299); press('Key 4'); press('Key 5');
+        press('Enter'); wait(2000);
+        press('Key 7'); press('Clear'); wait(2000);
+        press('Key 8'); press('Key 9'); wait(1499); wait(1); wait(200);
+        press('Key 0'); press('Enter'); press('Enter');
+        press('Star'); press('Hash'); press('Key 6'); wait(10);
+        m.app.renderCurrentPage(); m.look(); wait(2000);
+        press('Key 2'); press('Key 3'); press('Key 4'); press('Key 5'); press('Key 6'); wait(1600);
+        press('Clear'); press('Clear'); press('Enter'); wait(3000);
+        // A pause shorter than the send delay between two keys, and a Clear
+        // between them: only the last key's wait sends.
+        press('Key 1'); wait(1000); press('Key 2'); wait(600); wait(1000);
+        press('Clear'); press('Key 7'); wait(1000); press('Clear'); press('Key 8'); wait(600); wait(1000);
+    } finally {
+        window.removeEventListener('error', onError);
+    }
+}
+
+Object.assign(tests, {
+    keypad_draws_and_sends_as_today() {
+        const got = {};
+        const keypad = (id, extra) => ({ id, type: 'keypad', label: 'PIN', ...extra });
+        const cases = [
+            [keypad('k_plain')], [keypad('k_no_label', { label: undefined })], [keypad('k_phone', { keypad_style: 'phone' })],
+            [keypad('k_style_odd', { keypad_style: 'PHONE' })], [keypad('k_masked', { mask_display: true })],
+            [keypad('k_mask_truthy', { mask_display: 'yes' })], [keypad('k_no_display', { show_display: false })],
+            [keypad('k_display_falsy', { show_display: 0 })],
+            [keypad('k_auto', { auto_send: true })], [keypad('k_auto_short', { auto_send: true, digits: 2, auto_send_delay_ms: 300 })],
+            [keypad('k_auto_phone', { auto_send: true, keypad_style: 'phone', digits: 3 })],
+            [keypad('k_auto_zero_delay', { auto_send: true, auto_send_delay_ms: 0 })],
+            [keypad('k_auto_null', { auto_send: null, digits: null, auto_send_delay_ms: null })],
+            [keypad('k_digits_text', { digits: '3' })], [keypad('k_digits_zero', { digits: 0 })],
+            [keypad('k_digits_six', { digits: 6, mask_display: true })],
+            [keypad('k_style', { style: { bg_color: '#101010', text_color: '#fafafa', font_size: 22 } })],
+            [keypad('k_themed'), { before: (app) => { app.themeElementDefaults = { keypad: { bg_color: '#202020', border_radius: 9 } }; } }],
+            [keypad('k_design', { auto_send: true }), { edit: true }],
+        ];
+        for (const [def, opts] of cases) {
+            withFakeTime((advance) => {
+                let m;
+                try {
+                    m = levelMount(def, { state: { 'device.d.connected': true }, ...opts });
+                    keypadPresses(m, advance);
+                } catch (e) {
+                    (m ? m.steps : []).push({ threw: String(e && e.message) });
+                }
+                got[def.id] = m ? m.steps : [{ threw: 'mount' }];
+            });
+        }
+        comparePins('keypad', got, KEYPAD_PINS.keypad);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

@@ -327,6 +327,9 @@ SCENARIOS = [
     # time zones and redraws, pinned whole (tests/fixtures/panel_clock_pins.json).
     "clock_draws_and_ticks_as_today",
     "clocks_share_one_interval_and_an_overlay_stops_its_own",
+    # A keypad in every style pressed, auto-sent, cleared and redrawn, pinned
+    # whole (tests/fixtures/panel_keypad_pins.json).
+    "keypad_draws_and_sends_as_today",
 ]
 
 
