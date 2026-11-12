@@ -241,6 +241,7 @@ SCENARIOS = [
     "access_a_check_in_with_no_usable_answer_is_null",
     "access_after_a_refusal_it_keeps_asking_at_its_own_pace",
     "access_the_waiting_screen_fills_in_what_the_answer_left_out",
+    "access_the_screen_takes_the_loading_text_and_gives_it_back_before_a_first_draw",
     "access_the_admin_password_refusals_say_what_happened",
     "remote_session_ended_is_drawn_once_and_ends_the_holds",
     "hold_repeat_presses_until_let_go_and_stops_when_the_release_cannot_come",

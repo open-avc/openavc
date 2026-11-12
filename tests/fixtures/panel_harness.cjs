@@ -4822,6 +4822,29 @@ const tests = {
         }
     },
 
+    // The screen covers the loading text, and gives it back when it goes only
+    // while nothing has been drawn: a panel that has its page keeps it.
+    access_the_screen_takes_the_loading_text_and_gives_it_back_before_a_first_draw() {
+        clearAccessOverlay();
+        const loading = document.getElementById('loading-state');
+        const before = loading.style.display;
+        try {
+            for (const [drawn, after] of [[false, 'flex'], [true, 'none']]) {
+                const app = mkApp();
+                app.snapshotReceived = drawn;
+                loading.style.display = 'flex';
+                app._showWaitingScreen(PENDING_ANSWER);
+                assert(loading.style.display === 'none', 'the loading text goes under the screen');
+                app._hideWaitingScreen();
+                assert(loading.style.display === after,
+                    `${drawn ? 'drawn' : 'not drawn yet'}: the loading text is ${loading.style.display}, want ${after}`);
+            }
+        } finally {
+            loading.style.display = before;
+            clearAccessOverlay();
+        }
+    },
+
     // What the panel says when the admin password does not approve it: the
     // server's own sentence where it gave one, else a plain one, and a
     // separate one when the system cannot be reached. One submit, one try.
