@@ -2494,6 +2494,57 @@
         "t": 0
       }
     ],
+    "idle_after_a_definition_with_no_pages": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[\"main\"]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov1 h[\"main\"]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov1 h[\"main\"]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ],
     "idle_already_home": [
       {
         "f": null,
@@ -2741,6 +2792,42 @@
         "pg": "main ov0 h[]",
         "fx": [
           "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_timeout_zero_text": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
           "GET /api/themes/dark-default"
         ],
         "t": 0

@@ -8357,10 +8357,15 @@ Object.assign(tests, {
         await run('idle_home_with_an_overlay', {}, async (m) => {
             m.snapshot(); m.definition({ idle_timeout_seconds: 1, idle_page: 'main' }); m.wait(1000); m.go('pop'); m.activity('mousedown'); m.wait(1000);
         });
+        // A definition with no pages draws nothing, so only idle closes the overlay left open.
+        await run('idle_after_a_definition_with_no_pages', {}, async (m) => {
+            m.snapshot(); m.definition({}); m.wait(1000); m.go('details'); m.go('pop');
+            m.definition({ idle_timeout_seconds: 1 }, []); m.wait(1000);
+        });
         await run('idle_already_home', {}, async (m) => {
             m.snapshot(); m.definition({ idle_timeout_seconds: 1, idle_page: 'main' }); m.wait(1000); m.wait(1000);
         });
-        for (const [label, timeout] of [['zero', 0], ['negative', -5], ['text', '2'], ['null', null], ['nan', 'x'], ['fraction', 0.5]]) {
+        for (const [label, timeout] of [['zero', 0], ['negative', -5], ['text', '2'], ['null', null], ['nan', 'x'], ['fraction', 0.5], ['zero_text', '0']]) {
             await run(`idle_timeout_${label}`, {}, async (m) => {
                 m.snapshot(); m.definition({ idle_timeout_seconds: timeout }); m.go('details'); m.wait(2000);
             });
