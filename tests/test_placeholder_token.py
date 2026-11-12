@@ -22,14 +22,14 @@ from openavc.drivers import (
     substitution_checks,
 )
 from openavc.simulator import send_templates
-from openavc.simulator import validate as sim_validate
+from openavc.simulator import osc_coverage
 
 
 def test_every_reader_takes_the_token_from_spec() -> None:
     assert substitution_checks.placeholder_names is spec.placeholder_names
     assert configurable.placeholder_names is spec.placeholder_names
     assert command_checks.PLACEHOLDER is spec.PLACEHOLDER
-    assert sim_validate.PLACEHOLDER is spec.PLACEHOLDER
+    assert osc_coverage.PLACEHOLDER is spec.PLACEHOLDER
 
 
 def test_the_send_template_readers_copy_is_the_same_token() -> None:

@@ -15,9 +15,9 @@ import copy
 import pytest
 import yaml
 
+from openavc.simulator.osc_coverage import OscAddresses, check_osc_read_back_coverage
 from openavc.simulator.validate import (
     ValidationResult,
-    _check_osc_read_back_coverage,
     _check_reply_framing,
     validate_yaml_driver,
 )
@@ -444,13 +444,13 @@ def test_osc_read_back_reads_each_query_line():
     definition = {"transport": "osc", "default_config": {"unit": "u2"}}
     responses = [{"address": "/gain/get"}, {"address": "/mute*"}]
     result = ValidationResult("x.avcdriver", "acme_widget", "yaml")
-    _check_osc_read_back_coverage(result, commands, [], responses, definition)
+    check_osc_read_back_coverage(result, commands, OscAddresses([], responses, definition))
     assert _lines(result) == OSC_READ_BACK
 
 
 def test_osc_read_back_with_no_commands_says_nothing():
     result = ValidationResult("x.avcdriver", "acme_widget", "yaml")
-    _check_osc_read_back_coverage(result, None, [], [], {"transport": "osc"})
+    check_osc_read_back_coverage(result, None, OscAddresses([], [], {"transport": "osc"}))
     assert _lines(result) == []
 
 

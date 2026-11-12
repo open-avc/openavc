@@ -57,7 +57,6 @@ from __future__ import annotations
 import argparse
 import ast
 import dataclasses
-import fnmatch
 import logging
 import re
 import sys
@@ -70,11 +69,15 @@ import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.simulator.capacity import capacity_problems
-from openavc.simulator.osc_addresses import SYSTEM_ADDRESSES, SYSTEM_PREFIXES
+from openavc.simulator.osc_coverage import (
+    OscAddresses,
+    check_osc_command_coverage,
+    check_osc_poll_coverage,
+    check_osc_read_back_coverage,
+)
 from openavc.simulator.single_client import single_client_problems
-from openavc.drivers.compiled_protocol import safe_substitute, state_var_default
+from openavc.drivers.compiled_protocol import state_var_default
 from openavc.simulator.driver_sends import (
-    command_sample,
     effective_config,
     probed_lines,
 )
@@ -83,13 +86,11 @@ from openavc.simulator.reply_reading import (
     ReplyRules,
     frame_delimiter,
 )
-from openavc.simulator.reread_queries import read_back_query_lines
 from openavc.simulator.send_coverage import (
     check_command_coverage,
     check_poll_coverage,
     query_answering_handlers,
 )
-from openavc.drivers.spec import PLACEHOLDER
 
 
 # ── YAML driver validation ──
@@ -127,9 +128,10 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
         # OSC commands send an address (+ args), not a text line, and the
         # simulator matches them against handler address patterns, response
         # addresses, and its built-in system addresses.
-        _check_osc_command_coverage(result, commands, sim_handlers, responses, driver_def)
-        _check_osc_poll_coverage(result, queries, commands, sim_handlers, responses, driver_def)
-        _check_osc_read_back_coverage(result, commands, sim_handlers, responses, driver_def)
+        addresses = OscAddresses(sim_handlers, responses, driver_def)
+        check_osc_command_coverage(result, commands, addresses, driver_def)
+        check_osc_poll_coverage(result, queries, commands, addresses)
+        check_osc_read_back_coverage(result, commands, addresses)
     else:
         # ── Check 2: Command handler coverage ──
         check_command_coverage(result, commands, sim_handlers, driver_def)
@@ -784,177 +786,6 @@ def _check_type_consistency(
 _SIMULATOR_SERVED_TRANSPORTS = frozenset(
     {"tcp", "http", "udp", "osc", "mqtt", "websocket", "snmp"}
 )
-
-
-# ── OSC coverage (address-based) ──
-
-def _collect_osc_patterns(sim_handlers: list, responses: list) -> list[str]:
-    """Address patterns (fnmatch) the OSC simulator matches against: script
-    handlers with address:, plus response entries with address: (the sim
-    auto-answers those with current state)."""
-    patterns = []
-    for h in sim_handlers:
-        if isinstance(h, dict) and h.get("address"):
-            patterns.append(str(h["address"]))
-    for resp in responses:
-        if isinstance(resp, dict) and resp.get("address"):
-            patterns.append(str(resp["address"]))
-    return patterns
-
-
-def _osc_address_covered(address: str, patterns: list[str]) -> bool:
-    # The console's own addresses, which the simulator answers before any
-    # rule (osc_addresses.system_reply).
-    if address in SYSTEM_ADDRESSES or address.startswith(SYSTEM_PREFIXES):
-        return True
-    return any(fnmatch.fnmatch(address, p) for p in patterns)
-
-
-# Marker for param placeholders while building a template regex; plain ASCII
-# so re.escape leaves it alone, unusual enough not to appear in addresses.
-_PARAM_MARKER = "Q0PARAMQ0"
-
-
-def _osc_template_regex(template: str, params: dict) -> re.Pattern | None:
-    """Regex matching every address the template can produce (params match
-    any single address segment)."""
-    pat = template
-    for param_name in params:
-        pat = re.sub(r"\{" + re.escape(param_name) + r"(:[^}]*)?\}", _PARAM_MARKER, pat)
-    if "{" in pat:
-        return None  # unresolved config placeholders — can't model statically
-    escaped = re.escape(pat).replace(_PARAM_MARKER, "[^/]+")
-    try:
-        return re.compile(f"^{escaped}$")
-    except re.error:
-        return None
-
-
-def _osc_template_covered(template: str, params: dict, patterns: list[str]) -> bool:
-    """Check whether the set of addresses a parameterized command template can
-    produce overlaps the simulator's address surface.
-
-    A command like /mtx/{mtx}/mix/on with a string param is covered by literal
-    response addresses /mtx/01/mix/on … /mtx/06/mix/on even though no single
-    sample value proves it. Wildcard handler patterns are probed with their
-    * / ? / [...] parts collapsed to a plain segment token.
-    """
-    rx = _osc_template_regex(template, params)
-    if rx is None:
-        return False
-    for pattern in patterns:
-        if any(ch in pattern for ch in "*?["):
-            probe = re.sub(r"\[[^\]]*\]", "x", pattern)
-            probe = re.sub(r"[*?]+", "x", probe)
-        else:
-            probe = pattern
-        if rx.match(probe):
-            return True
-    return False
-
-
-def _check_osc_command_coverage(
-    result: ValidationResult,
-    commands: dict,
-    sim_handlers: list,
-    responses: list,
-    driver_def: dict,
-) -> None:
-    """Check every OSC command's address is answered by the simulator."""
-    patterns = _collect_osc_patterns(sim_handlers, responses)
-    config = effective_config(driver_def)
-
-    for cmd_name, cmd_def in commands.items():
-        address_template = cmd_def.get("address", "")
-        if not address_template:
-            continue
-
-        params = cmd_def.get("params", {})
-        sample = command_sample(address_template, params, driver_def)
-        if sample is not None and _osc_address_covered(sample, patterns):
-            continue
-        # A string param's sample value may miss literal response addresses
-        # that do cover the command (e.g. /mtx/{mtx}/mix/on vs /mtx/01/mix/on),
-        # so fall back to matching the template's address shape.
-        if _osc_template_covered(
-            _substitute_config(address_template, config), params, patterns
-        ):
-            continue
-        if sample is None:
-            result.warning(
-                "command_coverage",
-                f"Could not generate sample address for command '{cmd_name}' "
-                f"(address: {address_template!r})"
-            )
-            continue
-        result.error(
-            "command_coverage",
-            f"No simulator handler matches OSC command '{cmd_name}' "
-            f"(sample address: {sample!r}) — add a command_handlers entry "
-            f"with a matching address: pattern or a responses entry for it"
-        )
-
-
-def _check_osc_poll_coverage(
-    result: ValidationResult,
-    queries: list,
-    commands: dict,
-    sim_handlers: list,
-    responses: list,
-    driver_def: dict,
-) -> None:
-    """Check every OSC polling query is answered by the simulator.
-
-    OSC poll queries are either command names (run as that command — covered
-    by command coverage) or raw addresses.
-    """
-    patterns = _collect_osc_patterns(sim_handlers, responses)
-    config = effective_config(driver_def)
-
-    for query in queries:
-        if isinstance(query, dict):
-            query_text = str(query.get("send", ""))
-        else:
-            query_text = str(query)
-        if not query_text:
-            continue
-
-        if query_text in commands:
-            continue  # runs as that command; command coverage checks it
-
-        sample = _substitute_config(query_text, config)
-        sample = sample.replace("{child_id}", "1")
-        if not _osc_address_covered(sample, patterns):
-            result.error(
-                "poll_coverage",
-                f"No simulator handler matches OSC polling query: {sample!r}"
-            )
-
-
-def _check_osc_read_back_coverage(
-    result: ValidationResult,
-    commands: dict,
-    sim_handlers: list,
-    responses: list,
-    driver_def: dict,
-) -> None:
-    """Check every OSC address a command's ``read_back`` sends is answered
-    by the simulator. ``true`` sends the command's own address, which
-    command coverage checks; a read-back naming a command is that
-    command's. A parameter in the address takes a sample value."""
-    patterns = _collect_osc_patterns(sim_handlers, responses)
-    config = effective_config(driver_def)
-    for cmd_def in (commands or {}).values():
-        if not isinstance(cmd_def, dict):
-            continue
-        for line in read_back_query_lines(cmd_def, commands):
-            sample = _substitute_config(line, config)
-            sample = PLACEHOLDER.sub("1", sample)
-            if not _osc_address_covered(sample, patterns):
-                result.error(
-                    "poll_coverage",
-                    f"No simulator handler matches OSC read_back query: {sample!r}"
-                )
 
 
 # How many unframed replies the finding quotes. The count is always exact; the
@@ -1882,11 +1713,6 @@ def _extract_simulator_info(sim_path: Path) -> dict | None:
 
 
 # ── Helper functions ──
-
-
-def _substitute_config(template: str, config: dict) -> str:
-    """Substitute config variables in a template string (shared runtime rules)."""
-    return safe_substitute(template, config)
 
 
 def _reply_rules(responses: list, driver_def: dict) -> ReplyRules:

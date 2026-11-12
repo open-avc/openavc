@@ -45,6 +45,7 @@ from openavc.drivers.avcdriver_semantic import (
     validate_substitutions,
 )
 from openavc.drivers.configurable import ConfigurableDriver
+from openavc.simulator import osc_coverage
 from openavc.simulator import validate as sim_validate
 from openavc.simulator.send_templates import (
     declared_placeholders,
@@ -593,8 +594,9 @@ def _token_readings(template: str) -> dict[str, Any]:
     finally:
         log.removeHandler(handler)
     result = sim_validate.ValidationResult("x.avcdriver", "acme_widget", "yaml")
-    sim_validate._check_osc_read_back_coverage(
-        result, {"t": {"address": "/t", "read_back": template}}, [], [], {"id": "acme"},
+    osc_coverage.check_osc_read_back_coverage(
+        result, {"t": {"address": "/t", "read_back": template}},
+        osc_coverage.OscAddresses([], [], {"id": "acme"}),
     )
     return {
         "validator": validate_substitutions(definition),
