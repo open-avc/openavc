@@ -1594,6 +1594,29 @@ async def test_delete_ui_elements_names_the_ids_that_were_not_there(handler, moc
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("element_ids, refusal", [
+    ([None, "btn_on", "m_both"],
+     "element_ids must be a list of element id strings; item 1 is NoneType"),
+    (["btn_on", 7], "element_ids must be a list of element id strings; item 2 is int"),
+    (["btn_on", {"id": "x"}], "element_ids must be a list of element id strings; item 2 is dict"),
+    ("btn_on", "element_ids must be a list of element id strings, got str"),
+])
+async def test_delete_ui_elements_refuses_an_id_that_is_not_a_string_before_deleting(
+    handler, mock_engine, element_ids, refusal,
+):
+    """A malformed id is refused at the door, so nothing is deleted and the
+    reply can never fail after a delete landed."""
+    before = [el.id for el in _page(mock_engine).elements]
+    with patch.object(handler, "_get_engine", return_value=mock_engine):
+        with patch("openavc.core.project_loader.save_project") as save:
+            result = await handler._delete_ui_elements({"element_ids": element_ids})
+
+    assert result == {"error": refusal}
+    assert [el.id for el in _page(mock_engine).elements] == before
+    save.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_add_ui_page_with_inline_placements_and_a_variant(handler, mock_engine):
     with patch.object(handler, "_get_engine", return_value=mock_engine):
         with patch("openavc.core.project_loader.save_project"):

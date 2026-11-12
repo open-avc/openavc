@@ -371,6 +371,19 @@ def _delete_elements(project: Any, ids: set) -> list[str]:
     return deleted
 
 
+def _element_ids_refusal(element_ids: Any) -> str | None:
+    """Why a delete's ``element_ids`` cannot be used, or None. Checked before
+    the edit: an id that is not a string can match nothing, and the reply that
+    sorts the ids not found must not fail after the delete has landed."""
+    if not isinstance(element_ids, list):
+        return f"element_ids must be a list of element id strings, got {type(element_ids).__name__}"
+    for n, el_id in enumerate(element_ids, 1):
+        if not isinstance(el_id, str):
+            return (f"element_ids must be a list of element id strings; "
+                    f"item {n} is {type(el_id).__name__}")
+    return None
+
+
 def _deleted_reply(ids: set, deleted: list[str]) -> dict:
     """What a delete says back: the ids it deleted, and each one it did not find.
 
@@ -951,6 +964,9 @@ class UIToolsMixin:
         element_ids = input.get("element_ids", [])
         if not element_ids:
             return {"error": "No element_ids provided"}
+        refusal = _element_ids_refusal(element_ids)
+        if refusal:
+            return {"error": refusal}
 
         ids_set = set(element_ids)
         deleted: list[str] = []
