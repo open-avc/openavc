@@ -120,6 +120,9 @@ CASES: dict[str, dict] = {
     "parsing_bare_return_reads_nothing": _polled(
         {"receive": "STATUS\\?", "handler": "return\nrespond('NOPE\\r\\n')\n"},
     ),
+    "parsing_two_digit_capture_ref_is_unresolved": _polled(
+        {"receive": "STATUS\\?", "respond": "LVL {12}\r\n"},
+    ),
     "parsing_state_ref_used_twice": _with(
         simulator={
             "initial_state": {"name": "a"},
@@ -166,6 +169,12 @@ CASES: dict[str, dict] = {
     ),
     "notifications_no_known_keys": _notifying(
         {"anything": "PWR 1\r\n"}, state_variables={},
+    ),
+    "notifications_pattern_filled_from_config_derived": _notifying(
+        {"power": "Z1:PWR 1\r\n"},
+        default_config={"zone": "1"},
+        config_derived={"prefix": "Z{zone}:"},
+        responses=[{"match": "^{prefix}PWR (\\d)$", "set": {"power": "$1"}}],
     ),
     "notifications_other_state_value": _notifying(
         {"power": "NOPE {state.level}\r\n"}, initial_state={"level": 5, "power": False},
@@ -294,6 +303,10 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
                                       'notifications',
                                       "notification 'power' emits 'NOPE 5\\r\\n' which matches no "
                                       'driver response pattern — the driver will ignore it')],
+ 'notifications_pattern_filled_from_config_derived': [('info',
+                                                       'reply_framing',
+                                                       '1 simulator reply checked, all terminated '
+                                                       "with '\\\\r\\\\n'.")],
  'parsing_bare_return_reads_nothing': [('info',
                                         'reply_framing',
                                         '1 simulator reply checked, all terminated with '
@@ -423,4 +436,8 @@ EXPECTED: dict = {'framing_exactly_three_trailing_replies': [('info',
                                       ('info',
                                        'reply_framing',
                                        '2 simulator replies checked, all terminated with '
-                                       "'\\\\r\\\\n'.")]}
+                                       "'\\\\r\\\\n'.")],
+ 'parsing_two_digit_capture_ref_is_unresolved': [('info',
+                                                  'reply_framing',
+                                                  '2 simulator replies checked, all terminated '
+                                                  "with '\\\\r\\\\n'.")]}
