@@ -1,11 +1,14 @@
 """Whether the simulator answers each line a text driver sends, for the validator.
 
-The auto-generated simulator (``yaml_auto``) answers a line with the first
-hand-written ``command_handlers`` entry whose ``receive:`` (or ``match:``)
-matches it, else with a handler it builds from a command's ``send:``
-template, read backwards by the same inversion (``send_templates.send_regex``).
-``SimulatorAnswers`` is that order, once; the checks differ only in which
-built handlers may answer:
+The auto-generated simulator (``yaml_auto``) answers a line from its
+hand-written ``command_handlers`` entries (each ``receive:`` or ``match:``),
+the inline protocol's and child queries' handlers, the handlers it builds
+from each command's ``send:`` template (read backwards by the same
+inversion, ``send_templates.send_regex``) and its query handlers, in the
+order its ``_HANDLER_CHAIN`` gives. ``SimulatorAnswers`` is the validator's
+simpler model of that, once: the hand-written entries in list order (where
+the simulator tries every ``respond:`` entry before any ``handler:`` entry),
+then a built one. The checks differ only in which built handlers may answer:
 
 * ``check_command_coverage``: a command's sample, by a hand-written handler
   or the one built from that command.
@@ -50,8 +53,9 @@ def auto_handler_pattern(template: str, params: dict) -> re.Pattern | None:
 
 
 class SimulatorAnswers:
-    """Who in the simulator answers a line: its hand-written handlers, then
-    the ones it builds from the driver's commands."""
+    """Who in the simulator answers a line, as the validator models it: its
+    hand-written handlers in list order, then the ones it builds from the
+    driver's commands."""
 
     def __init__(self, sim_handlers: list, commands: dict):
         self._handlers = _compile_handler_patterns(sim_handlers)

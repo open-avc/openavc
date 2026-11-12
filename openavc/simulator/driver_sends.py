@@ -13,7 +13,8 @@ Three checks read a driver's queries, and each reads its own set, side by
 side below: poll coverage (``polled_queries``), the query-answer list the
 response check leans on (``asked_queries``) and the framing probes
 (``probed_lines``). Each says which sources it reads and which it leaves
-out, so a new kind of query is a decision for each of the three, made here.
+out, so for a text driver a new kind of query is a decision for each of the
+three, made here; an OSC driver's checks each read their own source.
 
 An OSC driver's addresses are read by ``osc_coverage``, which takes its
 samples and config from here; its child-id sample is its own (the
