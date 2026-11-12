@@ -143,9 +143,19 @@ def _take_placement(el_data: dict, what: str) -> dict | None:
     Geometry moved off the element and onto the page's layouts in 0.8.0 -- the
     same control can sit in two different places in the landscape and portrait
     arrangements without being duplicated. Callers still describe an element and
-    its box in one breath, so the tools split them back apart here.
+    its box in one breath, so the tools split them back apart here. A hide lives
+    on an arrangement too, and a create names none, so ``hidden: true`` is
+    refused (the update door takes it with a ``layout_id``) and a false one,
+    which changes nothing, is dropped rather than stored on the control.
     """
     _refuse_bad_definition(el_data, what)
+    if el_data.get("hidden"):
+        raise ToolEditError({
+            "error": f"{what}: 'hidden' is not set on a new control, since a hide belongs "
+                     f"to an arrangement. Create it, then send update_ui_element with "
+                     f"hidden: true (and a layout_id for an arrangement other than the primary)."
+        })
+    el_data.pop("hidden", None)
     place = el_data.pop("placement", None)
     if place is None:
         return None

@@ -132,6 +132,47 @@ async def test_add_page_an_inline_control_with_a_master_id_is_refused():
     assert engine.project.model_dump() == before
 
 
+HIDE_REFUSAL = (
+    "Element 'h1': 'hidden' is not set on a new control, since a hide belongs to an "
+    "arrangement. Create it, then send update_ui_element with hidden: true (and a "
+    "layout_id for an arrangement other than the primary)."
+)
+
+
+@pytest.mark.asyncio
+async def test_add_elements_a_hidden_flag_is_refused_before_anything_lands():
+    engine = _engine()
+    before = engine.project.model_dump()
+    result = await _call(engine, "add_ui_elements", {"page_id": "other", "elements": [
+        {"id": "h1", "type": "button", "hidden": True, "placement": dict(BOX)},
+    ]})
+    assert result == {"error": f"1 element could not be added: {HIDE_REFUSAL}", "errors": [HIDE_REFUSAL]}
+    assert engine.project.model_dump() == before
+
+
+@pytest.mark.asyncio
+async def test_add_page_an_inline_hidden_flag_is_refused():
+    engine = _engine()
+    before = engine.project.model_dump()
+    result = await _call(engine, "add_ui_page", {"id": "fresh", "elements": [
+        {"id": "h1", "type": "button", "hidden": True, "placement": dict(BOX)},
+    ]})
+    assert result == {"error": f"1 element could not be added: {HIDE_REFUSAL}", "errors": [HIDE_REFUSAL]}
+    assert engine.project.model_dump() == before
+
+
+@pytest.mark.asyncio
+async def test_add_elements_hidden_false_is_taken_and_not_kept_on_the_control():
+    engine = _engine()
+    result = await _call(engine, "add_ui_elements", {"page_id": "other", "elements": [
+        {"id": "h1", "type": "button", "hidden": False, "placement": dict(BOX)},
+    ]})
+    assert result["status"] == "created"
+    page = next(p for p in engine.project.ui.pages if p.id == "other")
+    control = next(el for el in page.elements if el.id == "h1")
+    assert "hidden" not in control.model_dump()
+
+
 # --- update_master_element -------------------------------------------------------
 
 
