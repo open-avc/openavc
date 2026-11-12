@@ -22,6 +22,7 @@ skips it); they record today's behaviour, they do not endorse it.
 from __future__ import annotations
 
 import copy
+import re
 import textwrap
 from pathlib import Path
 
@@ -660,6 +661,19 @@ CLI_CASES: dict[str, tuple[dict[str, str], list[str]]] = {
 }
 
 
+# A path under the temporary folder, once that folder reads ``<tmp>``: it runs
+# to the next space or closing bracket.
+_UNDER_TMP = re.compile(r"<tmp>[^\s)]*")
+
+
+def _printed(text: str, tmp_path: Path) -> list[str]:
+    """What the command printed, the temporary folder as ``<tmp>`` and each
+    path under it with forward slashes, as Windows prints backslashes. Any
+    other backslash (a delimiter quoted as ``\\r\\n``) is left as printed."""
+    text = text.replace(str(tmp_path), "<tmp>")
+    return _UNDER_TMP.sub(lambda m: m.group(0).replace("\\", "/"), text).splitlines()
+
+
 def _cli(tmp_path: Path, name: str, capsys) -> dict:
     files, argv = CLI_CASES[name]
     for relative, text in files.items():
@@ -672,8 +686,8 @@ def _cli(tmp_path: Path, name: str, capsys) -> dict:
     captured = capsys.readouterr()
     return {
         "code": exit_info.value.code,
-        "out": captured.out.replace(str(tmp_path), "<tmp>").splitlines(),
-        "err": captured.err.replace(str(tmp_path), "<tmp>").splitlines(),
+        "out": _printed(captured.out, tmp_path),
+        "err": _printed(captured.err, tmp_path),
     }
 
 
