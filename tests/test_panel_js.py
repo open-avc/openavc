@@ -237,6 +237,9 @@ SCENARIOS = [
     # The screens a refused or turned-off connection shows, the check-in's
     # pace and its unusable answers, the admin password's refusals, and every
     # server address under the path the panel was opened at.
+    "remote_session_the_systems_json_with_a_charset_is_its_own_answer",
+    "reconnect_backs_off_counts_its_attempts_and_starts_over",
+    "access_requests_ask_the_server_not_a_cache",
     "access_a_4013_or_4014_close_says_why_and_offers_try_again",
     "access_a_check_in_with_no_usable_answer_is_null",
     "access_after_a_refusal_it_keeps_asking_at_its_own_pace",

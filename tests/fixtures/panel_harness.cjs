@@ -4605,6 +4605,113 @@ const tests = {
         }
     },
 
+    // The system's own answer is JSON whatever else its content type says
+    // (a charset), and never reads as the cloud ending the session.
+    async remote_session_the_systems_json_with_a_charset_is_its_own_answer() {
+        const app = mkApp();
+        await atPath('/tunnel/t1/panel/', async () => {
+            for (const status of [401, 403, 404]) {
+                const res = reply(status, REMOTE_ACCESS_ENDED);
+                res.headers = new window.Headers({ 'content-type': 'application/json; charset=utf-8' });
+                assert(!(await app.access.isEndedRemoteSession(res)), `${status} JSON with a charset stands`);
+            }
+        });
+    },
+
+    // A dropped socket reconnects a little later each time, up to 30 s, and
+    // says which attempt it is on; an opened socket and a refusal (4010) each
+    // start the count again.
+    async reconnect_backs_off_counts_its_attempts_and_starts_over() {
+        clearAccessOverlay();
+        const rig = remoteRig(reply(200, '{"access":"open"}', true));
+        const info = document.createElement('div');
+        info.id = 'reconnect-info';
+        document.body.appendChild(info);
+        const realSetTimeout = window.setTimeout;
+        const scheduled = [];
+        window.setTimeout = (fn, ms) => { scheduled.push({ fn, ms }); return 0; };
+        const app = mkApp();
+        const drop = (code) => {
+            scheduled.length = 0;
+            app.ws.onclose({ code });
+            return scheduled.map((t) => t.ms);
+        };
+        try {
+            app.connect();
+            const delays = [];
+            for (let i = 0; i < 12; i++) {
+                delays.push(...drop(1006));
+                scheduled[0].fn();
+            }
+            assert(JSON.stringify(delays) === JSON.stringify([1000, 1500, 2250, 3375, 5062.5, 7593.75,
+                11390.625, 17085.9375, 25628.90625, 30000, 30000, 30000]),
+            `each retry half as long again, up to 30 s, got ${JSON.stringify(delays)}`);
+            assert(info.textContent === 'Reconnecting (attempt 12)...', `got "${info.textContent}"`);
+            assert(rig.sockets === 13, `each retry opens a socket, got ${rig.sockets}`);
+
+            app.ws.onopen();
+            assert(info.textContent === '', 'an opened socket clears the attempt line');
+            assert(JSON.stringify(drop(1006)) === '[1000]' && info.textContent === 'Reconnecting (attempt 1)...',
+                `an opened socket starts the count again, got "${info.textContent}"`);
+
+            drop(1006); drop(1006);
+            assert(JSON.stringify(drop(4010)) === '[]', 'a refusal schedules no retry');
+            await rig.settle();
+            assert(rig.sockets === 14, `the refused page connects once admitted, got ${rig.sockets}`);
+            assert(JSON.stringify(drop(1006)) === '[1000]' && info.textContent === 'Reconnecting (attempt 1)...',
+                `a refusal starts the count again, got "${info.textContent}"`);
+        } finally {
+            window.setTimeout = realSetTimeout;
+            info.remove();
+            resetAfterDrop(app);
+            rig.restore();
+        }
+    },
+
+    // The check-in, the Remote Access probe and the admin password ask the
+    // server every time, never a cache, and the password asks for JSON back.
+    async access_requests_ask_the_server_not_a_cache() {
+        clearAccessOverlay();
+        const rig = accessRig([PENDING_ANSWER]);
+        try {
+            const app = mkApp();
+            app.start();
+            await rig.settle();
+            const checkIn = rig.calls.find((c) => c.url && c.url.includes('/api/panel/access'));
+            assert(checkIn && checkIn.init.cache === 'no-store', `the check-in, got ${JSON.stringify(checkIn)}`);
+            const form = document.querySelector('.panel-access-claim');
+            form.querySelector('input[name="password"]').value = 'x';
+            form.dispatchEvent(new window.Event('submit', { cancelable: true }));
+            await rig.settle();
+            const claim = rig.calls.find((c) => c.url && c.url.endsWith('/api/panel/access/claim'));
+            assert(claim && claim.init.cache === 'no-store' && claim.init.method === 'POST'
+                && claim.init.headers.Accept === 'application/json',
+            `the admin password, got ${JSON.stringify(claim && claim.init)}`);
+        } finally {
+            clearAccessOverlay();
+            rig.restore();
+        }
+        const probes = [];
+        const savedFetch = window.fetch;
+        const savedWS = window.WebSocket;
+        window.fetch = async (u, init) => { probes.push({ u: String(u), init }); return reply(502, 'away'); };
+        window.WebSocket = FakeWS;
+        const app = mkApp();
+        try {
+            await atPath('/tunnel/t1/panel/', async () => {
+                app.connect();
+                dropSocket(app, 1006);
+                await Promise.resolve();
+            });
+            assert(probes.length === 1 && probes[0].init && probes[0].init.cache === 'no-store',
+                `the Remote Access probe, got ${JSON.stringify(probes)}`);
+        } finally {
+            window.fetch = savedFetch;
+            window.WebSocket = savedWS;
+            resetAfterDrop(app);
+        }
+    },
+
     // A socket the server closes with 4013 (this interface is turned off) or
     // 4014 (Preview without a Programmer session) puts the reason in place of
     // the panel with a way to try again, and does not reconnect or ask
@@ -4715,7 +4822,8 @@ const tests = {
     async access_after_a_refusal_it_keeps_asking_at_its_own_pace() {
         clearAccessOverlay();
         const rig = accessRig([null, { access: 'approved', status: 'denied' },
-            { access: 'approved', status: 'unavailable' }, PENDING_ANSWER, APPROVED_ANSWER]);
+            { access: 'approved', status: 'unavailable' }, { access: 'approved', status: 'something-new' },
+            PENDING_ANSWER, APPROVED_ANSWER]);
         const realSetTimeout = window.setTimeout;
         const waits = [];
         window.setTimeout = (fn, ms) => { waits.push(ms); return 0; };
@@ -4727,16 +4835,18 @@ const tests = {
             let done = false;
             first.then(() => { done = true; });
             const statuses = [];
-            for (let i = 0; i < 4; i++) {
+            for (let i = 0; i < 5; i++) {
                 await rig.settle();
                 const overlay = document.getElementById('panel-access-overlay');
                 statuses.push(overlay ? overlay.dataset.status : null);
                 app.access.wake();
             }
             await rig.settle();
-            assert(JSON.stringify(waits) === JSON.stringify([3000, 60000, 60000, 3000]),
-                `no answer and pending wait 3 s, denied and full 60 s, got ${JSON.stringify(waits)}`);
-            assert(JSON.stringify(statuses) === JSON.stringify([null, 'denied', 'unavailable', 'pending']),
+            // A status the panel does not know is drawn as waiting and asked
+            // again a minute apart: the pace follows what the server said.
+            assert(JSON.stringify(waits) === JSON.stringify([3000, 60000, 60000, 60000, 3000]),
+                `no answer and pending wait 3 s, denied, full and unknown 60 s, got ${JSON.stringify(waits)}`);
+            assert(JSON.stringify(statuses) === JSON.stringify([null, 'denied', 'unavailable', 'pending', 'pending']),
                 `the screen follows each answer, got ${JSON.stringify(statuses)}`);
             assert(done, 'approval ends the wait');
             assert(!document.getElementById('panel-access-overlay'), 'and takes the screen down');
