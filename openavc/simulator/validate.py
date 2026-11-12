@@ -987,6 +987,28 @@ def _contract_issues(contract) -> list[Issue]:
 
 
 def main(argv: list[str] | None = None):
+    args = _parse_args(argv)
+    path = Path(args.path)
+    if not path.exists():
+        print(f"Error: {path} does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    drivers = find_drivers(path)
+    if not drivers:
+        print(f"No drivers found at {path}", file=sys.stderr)
+        sys.exit(1)
+
+    results = [_validate_file(driver_path, driver_type) for driver_path, driver_type in drivers]
+    for r in results:
+        if args.summary:
+            print(_summary_line(r))
+        else:
+            _print_issues(r)
+    total_errors = _print_totals(results)
+    sys.exit(1 if total_errors > 0 else 0)
+
+
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="simulator-validate",
         description="Validate driver simulator compatibility",
@@ -1008,91 +1030,75 @@ def main(argv: list[str] | None = None):
         action="store_true",
         help="Show only pass/fail counts, not individual issues",
     )
-    args = parser.parse_args(argv)
+    return parser.parse_args(argv)
 
-    path = Path(args.path)
-    if not path.exists():
-        print(f"Error: {path} does not exist", file=sys.stderr)
-        sys.exit(1)
 
-    drivers = find_drivers(path)
-    if not drivers:
-        print(f"No drivers found at {path}", file=sys.stderr)
-        sys.exit(1)
+def _validate_file(driver_path: Path, driver_type: str) -> ValidationResult:
+    """One driver file: the contract, then the parity checks, its findings first.
 
-    results: list[ValidationResult] = []
-    for driver_path, driver_type in drivers:
-        # The contract runs first, not merely prints first. Everything below
-        # reads the definition as though it were well formed, so a file that
-        # fails the contract takes the parity analysis down with a traceback
-        # instead of the error that explains it — a parameter YAML turned
-        # into a boolean (`on:`) used to end the run that way.
-        contract = check_driver_file(driver_path)
-        if contract.errors:
-            result = ValidationResult(str(driver_path), driver_path.stem, driver_type)
-            result.issues.extend(_contract_issues(contract))
-            results.append(result)
-            continue
-        if driver_type == "yaml":
-            result = validate_yaml_driver(driver_path)
-        else:
-            result = validate_python_driver(driver_path)
-        result.issues[:0] = _contract_issues(contract)
-        results.append(result)
+    The contract runs first, not merely prints first. Everything after it
+    reads the definition as though it were well formed, so a file that fails
+    the contract takes the parity analysis down with a traceback instead of
+    the error that explains it — a parameter YAML turned into a boolean
+    (`on:`) used to end the run that way.
+    """
+    contract = check_driver_file(driver_path)
+    if contract.errors:
+        result = ValidationResult(str(driver_path), driver_path.stem, driver_type)
+        result.issues.extend(_contract_issues(contract))
+        return result
+    if driver_type == "yaml":
+        result = validate_yaml_driver(driver_path)
+    else:
+        result = validate_python_driver(driver_path)
+    result.issues[:0] = _contract_issues(contract)
+    return result
 
-    # Print results
-    total_errors = 0
-    total_warnings = 0
-    total_infos = 0
-    passed = 0
-    failed = 0
 
-    for r in results:
-        if args.summary:
-            status = "PASS" if r.passed else "FAIL"
-            parts = []
-            if r.errors:
-                parts.append(f"{len(r.errors)} errors")
-            if r.warnings:
-                parts.append(f"{len(r.warnings)} warnings")
-            if r.infos:
-                parts.append(f"{len(r.infos)} infos")
-            issue_str = f" ({', '.join(parts)})" if parts else ""
-            print(f"{status} {r.driver_id} [{r.driver_type}]{issue_str}")
-        else:
-            if r.errors:
-                status = "FAIL"
-            elif r.warnings:
-                status = "WARN"
-            elif r.infos:
-                status = "PASS"  # info-only is still a pass
-            else:
-                status = "PASS"
-            if r.issues:
-                print(f"\n{status}: {r.driver_id} [{r.driver_type}] ({r.driver_path})")
-                for issue in r.issues:
-                    print(str(issue))
-            else:
-                print(f"\nPASS: {r.driver_id} [{r.driver_type}]")
+def _summary_line(r: ValidationResult) -> str:
+    """``--summary``'s line for one driver: its verdict and how many of each."""
+    counts = [
+        f"{len(found)} {word}"
+        for word, found in (("errors", r.errors), ("warnings", r.warnings), ("infos", r.infos))
+        if found
+    ]
+    issue_str = f" ({', '.join(counts)})" if counts else ""
+    return f"{'PASS' if r.passed else 'FAIL'} {r.driver_id} [{r.driver_type}]{issue_str}"
 
-        total_errors += len(r.errors)
-        total_warnings += len(r.warnings)
-        total_infos += len(r.infos)
-        if r.passed:
-            passed += 1
-        else:
-            failed += 1
 
-    # Summary line
+def _print_issues(r: ValidationResult) -> None:
+    """One driver's verdict and every issue, or one line when it has none."""
+    if not r.issues:
+        print(f"\nPASS: {r.driver_id} [{r.driver_type}]")
+        return
+    print(f"\n{_verdict(r)}: {r.driver_id} [{r.driver_type}] ({r.driver_path})")
+    for issue in r.issues:
+        print(str(issue))
+
+
+def _verdict(r: ValidationResult) -> str:
+    """FAIL on an error, WARN on a warning; a driver with only infos passes."""
+    if r.errors:
+        return "FAIL"
+    if r.warnings:
+        return "WARN"
+    return "PASS"
+
+
+def _print_totals(results: list[ValidationResult]) -> int:
+    """The closing line's counts; returns how many errors there were."""
+    passed = sum(1 for r in results if r.passed)
+    total_errors = sum(len(r.errors) for r in results)
+    total_warnings = sum(len(r.warnings) for r in results)
+    total_infos = sum(len(r.infos) for r in results)
     print(f"\n{'='*60}")
     print(
         f"{len(results)} drivers validated: "
-        f"{passed} passed, {failed} failed, "
+        f"{passed} passed, {len(results) - passed} failed, "
         f"{total_errors} errors, {total_warnings} warnings, "
         f"{total_infos} infos"
     )
-
-    sys.exit(1 if total_errors > 0 else 0)
+    return total_errors
 
 
 if __name__ == "__main__":
