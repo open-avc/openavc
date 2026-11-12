@@ -120,6 +120,150 @@ const sanitizeValue = (value) => paint().sanitizeCssValue(value);
 const sanitizeUrl = (url) => paint().sanitizeCssUrl(url);
 const assetUrl = (ref) => panelModule('base_path.js').assetUrl(ref);
 
+// --- The level controls (slider and fader), as a page draws them -----------
+//
+// The scenarios below drive the nodes a slider or fader drew and the value
+// binding it registered, so they say what the control does, not how its code
+// is laid out. The step snap is reached through `snapToStep`.
+const snapToStep = (value, step) => mkApp()._snapToStep(value, step);
+
+/** A slider or fader drawn by the panel, and the value binding it registered. */
+function drawnLevel(app, def) {
+    const node = app.renderElement(def);
+    return { node, b: app.bindings.find((x) => x.elementDef === def) };
+}
+
+/**
+ * The level pins: what each slider and fader drew and sent, step by step, in
+ * panel_level_pins.json, recorded the way the paint pins are.
+ */
+const LEVEL_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_level_pins.json'), 'utf8'));
+
+/** The live sender's clock: performance.now and the timers, moved by hand. */
+function withFakeClock(run) {
+    const perf = window.performance;
+    const real = { set: window.setTimeout, clear: window.clearTimeout };
+    let now = 1000;
+    let seq = 0;
+    const timers = new Map();
+    perf.now = () => now;
+    window.setTimeout = (fn, ms) => {
+        seq += 1;
+        timers.set(seq, { at: now + (Number(ms) || 0), fn });
+        return seq;
+    };
+    window.clearTimeout = (id) => { timers.delete(id); };
+    const advance = (ms) => {
+        const until = now + ms;
+        for (;;) {
+            const due = [...timers].filter(([, t]) => t.at <= until)
+                .sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
+            if (!due) break;
+            timers.delete(due[0]);
+            now = due[1].at;
+            due[1].fn();
+        }
+        now = until;
+    };
+    try {
+        return run(advance);
+    } finally {
+        delete perf.now;
+        window.setTimeout = real.set;
+        window.clearTimeout = real.clear;
+    }
+}
+
+/**
+ * Every node under `node`, by position (`r`, then child indexes): its tag and
+ * attribute names in order (`@`), each attribute (`@name`) and its own text (`#`).
+ */
+function nodeSnapshot(node) {
+    const out = {};
+    const walk = (n, at) => {
+        out[`${at}@`] = [n.tagName.toLowerCase(), ...[...n.attributes].map((a) => a.name)].join(' ');
+        for (const a of n.attributes) out[`${at}@${a.name}`] = a.value;
+        const text = [...n.childNodes].filter((c) => c.nodeType === 3).map((c) => c.data).join('');
+        if (text) out[`${at}#`] = text;
+        [...n.children].forEach((c, i) => walk(c, `${at}.${i}`));
+    };
+    walk(node, 'r');
+    return out;
+}
+
+/** A frame the panel sent, as one line. */
+const frameLine = ({ type, element_id: id, value, ...rest }) =>
+    `${type} ${id} ${JSON.stringify(value)}${Object.keys(rest).length ? ` ${JSON.stringify(rest)}` : ''}`;
+
+/**
+ * A level control on a page of its own, live unless `edit`, with a recorder:
+ * `look()` notes what changed on its nodes since the last look (`c`:
+ * everything, the first time), the range input's position (`p`), and every
+ * frame sent since (`s`).
+ */
+function levelMount(def, { state, edit } = {}) {
+    const app = mkApp();
+    app.editMode = !!edit;
+    const sent = [];
+    app.send = (frame) => sent.push(frame);
+    renderProject(app, project({
+        elements: [def], placements: { [def.id]: { x: 5, y: 5, w: 30, h: 30 } },
+    }));
+    app.state = { ...(state || {}) };
+    app.evaluateAllBindings(Object.keys(app.state));
+    const m = { app, sent, seen: {}, steps: [] };
+    m.node = () => app.root.querySelector(`[data-element-id="${def.id}"]`);
+    m.set = (key, value) => {
+        if (value === undefined) delete app.state[key];
+        else app.state[key] = value;
+        app.evaluateAllBindings([key]);
+    };
+    m.look = () => {
+        const now = nodeSnapshot(m.node());
+        const changed = {};
+        for (const k of new Set([...Object.keys(m.seen), ...Object.keys(now)])) {
+            if (m.seen[k] !== now[k]) changed[k] = now[k] ?? null;
+        }
+        m.seen = now;
+        const step = {};
+        if (Object.keys(changed).length) step.c = changed;
+        const input = m.node().querySelector('input');
+        if (input) step.p = input.value;
+        if (sent.length) step.s = sent.splice(0).map(frameLine);
+        m.steps.push(step);
+    };
+    return m;
+}
+
+/** The readings every level pin case is taken through, the device going away and back. */
+function levelReadings(m, key) {
+    m.look();
+    for (const value of [60, 250, -5, null]) { m.set(key, value); m.look(); }
+    m.set('device.d.connected', false); m.look();
+    m.set(key, 30); m.look();
+    m.set('device.d.connected', true); m.look();
+    m.set(key, undefined); m.look();
+    m.set(key, '55'); m.look();
+}
+
+/** One pin case: mounted, taken through the readings, then `gestures`; a throw is pinned as its last step. */
+function levelCase(got, def, opts, gestures) {
+    let m;
+    try {
+        m = levelMount(def, opts);
+        levelReadings(m, LEVEL_KEY);
+        gestures(m);
+    } catch (e) {
+        (m ? m.steps : []).push({ threw: String(e && e.message) });
+    }
+    got[def.id] = m ? m.steps : [{ threw: 'mount' }];
+}
+
+const LEVEL_KEY = 'device.d.v';
+const levelDef = (type) => (id, extra) => ({ id, type, bindings: { show: { value: { key: LEVEL_KEY } } }, ...extra });
+const LIVE_WITH_READING = { state: { 'device.d.connected': true, [LEVEL_KEY]: 40 } };
+const LIVE_NO_READING = { state: { 'device.d.connected': true } };
+
 /**
  * The paint pins: what each case drew when it was pinned, in
  * panel_paint_pins.json. Compared whole, so a value, a missing write or a
@@ -638,17 +782,11 @@ const tests = {
         // binding carries the display range + the position/format closures the
         // real renderSlider builds. For a linear 0..100 step-1 slider, position
         // equals value, so the assertions below read as plain values.
-        const min = 0, max = 100, step = 1, steps = 100;
-        const input = document.createElement('input');
-        input.type = 'range'; input.min = '0'; input.max = String(steps); input.step = '1';
-        const valueToPos = (v) => Math.max(0, Math.min(steps, Math.round(((v - min) / (max - min)) * steps)));
-        const fmtValue = (v) => String(v);
-        const b = {
-            element: input, elementDef: { min, max, step }, binding: { key: 'var.vol' },
-            fill: null, valueDisplay: null, isVertical: false,
-            outputMin: null, outputMax: null, scaleToFull: true,
-            steps, valueToPos, fmtValue,
-        };
+        const { node, b } = drawnLevel(app, {
+            id: 's', type: 'slider', min: 0, max: 100, step: 1,
+            bindings: { show: { value: { key: 'var.vol' } } },
+        });
+        const input = node.querySelector('input[type=range]');
         app.state = { 'var.vol': 75 };
         app.evaluateSliderValue(b);
         assert(Number(input.value) === 75, `slider set to 75, got ${input.value}`);
@@ -698,8 +836,11 @@ const tests = {
 
     h002_fader_reset() {
         const app = mkApp();
-        const handle = document.createElement('div');
-        const b = { binding: { key: 'var.f' }, _fader: { handle, valueDisplay: null, min: 0, max: 100, unit: '%', horizontal: false, outputMin: null, outputMax: null, scaleToFull: true } };
+        const { node, b } = drawnLevel(app, {
+            id: 'f', type: 'fader', min: 0, max: 100, unit: '%',
+            bindings: { show: { value: { key: 'var.f' } } },
+        });
+        const handle = node.querySelector('.fader-handle');
         app.state = { 'var.f': 50 };
         app.evaluateFaderValue(b);
         assert(handle.style.bottom === '50%', `fader at 50%, got ${handle.style.bottom}`);
@@ -714,17 +855,17 @@ const tests = {
     // fractional-step sliders/faders must not leak binary float noise
     // onto the wire (Math.round(v/step)*step yields e.g. 0.30000000000000004).
     slider_fader_step_no_float_noise() {
-        const app = mkApp();
         // The shared snapper both controls now route their outgoing value through.
-        assert(app._snapToStep(0.3, 0.1) === 0.3, `0.1-step snap clean, got ${app._snapToStep(0.3, 0.1)}`);
-        assert(app._snapToStep(0.30000000000000004, 0.1) === 0.3, 'pre-noised value cleaned');
-        assert(app._snapToStep(2.5500000000001, 0.05) === 2.55, `0.05-step snap, got ${app._snapToStep(2.5500000000001, 0.05)}`);
-        assert(app._snapToStep(-6.0000000001, 0.5) === -6, `negative snap, got ${app._snapToStep(-6.0000000001, 0.5)}`);
-        assert(app._snapToStep(7.4, 1) === 7, 'integer step rounds to whole');
-        assert(app._snapToStep(3.14159, 0) === 3.14159, 'no step returns value as-is');
+        assert(snapToStep(0.3, 0.1) === 0.3, `0.1-step snap clean, got ${snapToStep(0.3, 0.1)}`);
+        assert(snapToStep(0.30000000000000004, 0.1) === 0.3, 'pre-noised value cleaned');
+        assert(snapToStep(2.5500000000001, 0.05) === 2.55, `0.05-step snap, got ${snapToStep(2.5500000000001, 0.05)}`);
+        assert(snapToStep(-6.0000000001, 0.5) === -6, `negative snap, got ${snapToStep(-6.0000000001, 0.5)}`);
+        assert(snapToStep(7.4, 1) === 7, 'integer step rounds to whole');
+        assert(snapToStep(3.14159, 0) === 3.14159, 'no step returns value as-is');
 
         // End-to-end: a rendered fractional-step slider must send a clean value,
         // proving the snapper is wired into the real render path (not just callable).
+        const app = mkApp();
         const sent = [];
         app.send = (m) => sent.push(m);
         const el = app.renderSlider({
@@ -2690,15 +2831,13 @@ const tests = {
         const offline = () => { app.state['device.d.connected'] = false; };
 
         // Slider
-        const input = document.createElement('input'); input.type = 'range';
-        const fill = document.createElement('div');
-        const sliderOut = document.createElement('div');
-        const sb = {
-            type: 'slider_value', element: input, elementDef: { id: 's', min: 0, max: 100 },
-            binding: { key: 'device.d.v' }, fill, valueDisplay: sliderOut,
-            isVertical: false, outputMin: null, outputMax: null, scaleToFull: true,
-            steps: 100, unit: '%', valueToPos: (v) => v, fmtValue: (v) => `${v} %`,
-        };
+        const { node: sliderNode, b: sb } = drawnLevel(app, {
+            id: 's', type: 'slider', min: 0, max: 100, unit: '%', style: { show_value: true },
+            bindings: { show: { value: { key: 'device.d.v' } } },
+        });
+        const input = sliderNode.querySelector('input[type=range]');
+        const fill = sliderNode.querySelector('.slider-fill');
+        const sliderOut = sliderNode.querySelector('.slider-value');
         app.evaluateSliderValue(sb);
         assert(sliderOut.textContent === '42 %', `slider connected, got ${sliderOut.textContent}`);
         offline();
@@ -2955,30 +3094,25 @@ const tests = {
         app.state = { 'device.d.connected': true, 'device.d.v': null };
 
         // Fader: no handle, no aria value, "-- dB".
-        const handle = document.createElement('div');
-        const faderOut = document.createElement('div');
-        const fb = {
-            type: 'fader_value', element: document.createElement('div'),
-            elementDef: { id: 'f' }, binding: { key: 'device.d.v' },
-            _fader: { handle, valueDisplay: faderOut, min: -80, max: 0, unit: 'dB',
-                horizontal: false, outputMin: null, outputMax: null, scaleToFull: true,
-                response: null, responseDbRange: null, fmt: (v) => `${v.toFixed(1)} dB` },
-        };
+        const { node: faderNode, b: fb } = drawnLevel(app, {
+            id: 'f', type: 'fader', min: -80, max: 0, unit: 'dB',
+            bindings: { show: { value: { key: 'device.d.v' } } },
+        });
+        const handle = faderNode.querySelector('.fader-handle');
+        const faderOut = faderNode.querySelector('.fader-value');
         app.evaluateFaderValue(fb);
         assert(faderOut.textContent === '-- dB', `fader unreported, got ${faderOut.textContent}`);
         assert(handle.classList.contains('no-reading'), 'fader handle hidden while unreported');
         assert(!handle.hasAttribute('aria-valuenow'), 'fader announces no value while unreported');
 
         // Slider: empty travel, hidden thumb, "-- %".
-        const input = document.createElement('input'); input.type = 'range';
-        const fill = document.createElement('div');
-        const sliderOut = document.createElement('div');
-        const sb = {
-            type: 'slider_value', element: input, elementDef: { id: 's', min: 0, max: 100 },
-            binding: { key: 'device.d.v' }, fill, valueDisplay: sliderOut,
-            isVertical: false, outputMin: null, outputMax: null, scaleToFull: true,
-            steps: 100, unit: '%', valueToPos: (v) => v, fmtValue: (v) => `${v} %`,
-        };
+        const { node: sliderNode, b: sb } = drawnLevel(app, {
+            id: 's', type: 'slider', min: 0, max: 100, unit: '%', style: { show_value: true },
+            bindings: { show: { value: { key: 'device.d.v' } } },
+        });
+        const input = sliderNode.querySelector('input[type=range]');
+        const fill = sliderNode.querySelector('.slider-fill');
+        const sliderOut = sliderNode.querySelector('.slider-value');
         app.evaluateSliderValue(sb);
         assert(sliderOut.textContent === '-- %', `slider unreported, got ${sliderOut.textContent}`);
         assert(input.classList.contains('no-reading'), 'slider thumb hidden while unreported');
@@ -3038,17 +3172,12 @@ const tests = {
     // which is exactly the distinction being drawn here.
     q172_an_unreported_reading_is_not_the_unavailable_mark() {
         const app = mkApp();
-        const el = document.createElement('div');
-        const handle = document.createElement('div');
-        const out = document.createElement('div');
-        app.elementMap = { f: { el } };
-        const b = {
-            type: 'fader_value', element: el, elementDef: { id: 'f' },
-            binding: { key: 'device.d.v' },
-            _fader: { handle, valueDisplay: out, min: -80, max: 0, unit: 'dB',
-                horizontal: false, outputMin: null, outputMax: null, scaleToFull: true,
-                response: null, responseDbRange: null, fmt: (v) => `${v.toFixed(1)} dB` },
-        };
+        const { node: el, b } = drawnLevel(app, {
+            id: 'f', type: 'fader', min: -80, max: 0, unit: 'dB',
+            bindings: { show: { value: { key: 'device.d.v' } } },
+        });
+        const handle = el.querySelector('.fader-handle');
+        const out = el.querySelector('.fader-value');
 
         // Live device, nothing reported: no value, no mark.
         app.state = { 'device.d.connected': true, 'device.d.v': null };
@@ -6416,6 +6545,182 @@ const tests = {
         }
         assert(down, 'unused');
         comparePins('face', got, PAINT_PINS.face);
+    },
+
+    // What a slider draws, follows and sends, across its settings: the scale
+    // (range, step, response, output range and dead space), the readout, the
+    // design sample, the unknown form, the drag and the rate it streams at.
+    level_slider_draws_follows_and_sends_as_today() {
+        const S = levelDef('slider');
+        const cases = [
+            [S('plain'), LIVE_WITH_READING],
+            [S('vertical_log', {
+                orientation: 'vertical', response: 'logarithmic', response_db_range: 40,
+                min: -80, max: 0, step: 0.5, unit: 'dB', display_decimals: 2, thumb_size: 3,
+                label: 'Gain', style: { show_value: true },
+            }), LIVE_WITH_READING],
+            [S('log_default_range', { response: 'logarithmic', response_db_range: 0, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('scaled', { output_min: 0, output_max: 255, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('scaled_flat_output', { output_min: 7, output_max: 7, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('dead_space', { output_min: 20, output_max: 80, scale_to_full: false, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('dead_space_log', {
+                output_min: -60, output_max: -10, scale_to_full: false, min: -80, max: 0,
+                response: 'logarithmic', style: { show_value: true },
+            }), LIVE_WITH_READING],
+            [S('dead_space_design', { output_min: 20, output_max: 80, scale_to_full: false, style: { show_value: true } }), { edit: true }],
+            [S('sample_design', { min: -10, max: 30, unit: 'V', style: { show_value: true } }), { edit: true }],
+            [S('unreported', { unit: '%', style: { show_value: true } }), LIVE_NO_READING],
+            [S('fraction', { min: 0, max: 1, step: 0.1, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('no_step', { min: 0, max: 1, step: 0, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('on_release', { send_on_release: true, send_throttle_ms: 0 }), LIVE_WITH_READING],
+            [S('every_move', { send_throttle_ms: 0 }), LIVE_WITH_READING],
+            [S('rate_text', { send_throttle_ms: '30' }), LIVE_WITH_READING],
+            [S('backwards', { min: 100, max: 0, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('flat', { min: 5, max: 5, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('text_range', { min: '10', max: '20', style: { show_value: true } }), LIVE_WITH_READING],
+            [S('decimals_text', { display_decimals: '3', unit: '%', style: { show_value: true } }), LIVE_WITH_READING],
+            [S('unbound', { bindings: {}, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('unbound_design', { bindings: {}, style: { show_value: true } }), { edit: true }],
+            [S('nonsense_range', { min: 'low', style: { show_value: true } }), LIVE_WITH_READING],
+            [S('unbound_range', { bindings: {}, min: -40, max: 40, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('nothing_in_state', { min: -40, max: 40, style: { show_value: true } }), {}],
+            [S('text_range_scaled', { min: '10', max: '20', output_min: 0, output_max: 100, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('text_range_design', { min: '10', max: '20', style: { show_value: true } }), { edit: true }],
+            [S('log_vanishing_range', { response: 'logarithmic', response_db_range: 1e-300, style: { show_value: true } }), LIVE_WITH_READING],
+        ];
+        const got = {};
+        for (const [def, opts] of cases) {
+            withFakeClock((advance) => levelCase(got, def, opts, (m) => {
+                const input = m.node().querySelector('input');
+                const steps = Number(input.max);
+                const put = (pos, type) => {
+                    input.value = String(pos);
+                    input.dispatchEvent(new window.Event(type));
+                };
+                // A drag: three moves inside the rate, an echo mid-drag, the rate passing, the release.
+                input.dispatchEvent(new window.Event('pointerdown'));
+                put(steps * 0.25, 'input'); m.look(); advance(10);
+                put(steps * 0.5, 'input'); m.look(); advance(10);
+                m.set(LEVEL_KEY, 10); m.look();
+                put(steps * 0.75, 'input'); m.look();
+                advance(500); m.look();
+                put(steps * 0.75, 'change');
+                input.dispatchEvent(new window.Event('pointerup'));
+                m.look();
+                m.set(LEVEL_KEY, 12); m.look();
+                // Two moves 60 ms apart: inside the slider's default rate, outside the fader's.
+                put(steps * 0.4, 'input'); advance(60);
+                put(steps * 0.6, 'input'); m.look();
+                advance(500); put(steps * 0.6, 'change'); m.look();
+                // A tap, and a release that differs from what the stream sent.
+                put(1, 'input'); put(1, 'change'); m.look();
+                put(2, 'input'); put(3, 'change'); m.look();
+                // Travel to both ends, past any output limit.
+                put(0, 'input'); advance(500); put(steps, 'input'); advance(500); m.look();
+                // Each way a drag ends lets a reading through again.
+                ['pointercancel', 'blur', 'touchend', 'touchcancel'].forEach((end, i) => {
+                    input.dispatchEvent(new window.Event('pointerdown'));
+                    m.set(LEVEL_KEY, 20 + 2 * i);
+                    input.dispatchEvent(new window.Event(end));
+                    m.set(LEVEL_KEY, 21 + 2 * i);
+                    m.look();
+                });
+            }));
+        }
+        comparePins('level_slider', got, LEVEL_PINS.level_slider);
+    },
+
+    // What a fader draws, follows and sends, the same way, plus its scale
+    // marks, its dead-space bands, the drag by mouse and touch, the arrow keys,
+    // a drag on an unreachable device and a page redrawn mid-drag.
+    level_fader_draws_follows_and_sends_as_today() {
+        const F = levelDef('fader');
+        const cases = [
+            [F('plain'), LIVE_WITH_READING],
+            [F('db_log', {
+                min: -80, max: 0, step: 0.5, unit: 'dB', response: 'logarithmic',
+                response_db_range: 40, label: 'Gain',
+            }), LIVE_WITH_READING],
+            [F('log_default_range', { response: 'logarithmic', response_db_range: -3 }), LIVE_WITH_READING],
+            [F('horizontal', { orientation: 'horizontal', display_decimals: 0, unit: '%' }), LIVE_WITH_READING],
+            [F('scaled', { output_min: 0, output_max: 255 }), LIVE_WITH_READING],
+            [F('scaled_flat_output', { output_min: 7, output_max: 7 }), LIVE_WITH_READING],
+            [F('dead_space', { output_min: 20, output_max: 80, scale_to_full: false }), LIVE_WITH_READING],
+            [F('dead_space_horizontal', {
+                orientation: 'horizontal', output_min: 20, output_max: 80, scale_to_full: false,
+            }), LIVE_WITH_READING],
+            [F('dead_space_log', {
+                output_min: -60, output_max: -10, scale_to_full: false, min: -80, max: 0,
+                response: 'logarithmic',
+            }), LIVE_WITH_READING],
+            [F('dead_space_top_only', { output_min: 0, output_max: 60, scale_to_full: false }), LIVE_WITH_READING],
+            [F('dead_space_design', { output_min: 20, output_max: 80, scale_to_full: false }), { edit: true }],
+            [F('sample_design', { min: -10, max: 30, unit: 'V' }), { edit: true }],
+            [F('unreported', { unit: 'dB', min: -80, max: 0 }), LIVE_NO_READING],
+            [F('fraction', { min: 0, max: 1, step: 0.1 }), LIVE_WITH_READING],
+            [F('no_step', { min: 0, max: 1, step: 0 }), LIVE_WITH_READING],
+            [F('on_release', { send_on_release: true, send_throttle_ms: 0 }), LIVE_WITH_READING],
+            [F('every_move', { send_throttle_ms: 0 }), LIVE_WITH_READING],
+            [F('backwards', { min: 100, max: 0 }), LIVE_WITH_READING],
+            [F('flat', { min: 5, max: 5 }), LIVE_WITH_READING],
+            [F('text_range', { min: '-20', max: '20' }), LIVE_WITH_READING],
+            [F('no_value_no_scale', { style: { show_value: false, show_scale: false } }), LIVE_WITH_READING],
+            [F('unbound', { bindings: {} }), LIVE_WITH_READING],
+            [F('odd_range', { min: -73, max: 7 }), LIVE_WITH_READING],
+            [F('wide_db', { min: -120, max: 0, unit: 'dB' }), LIVE_WITH_READING],
+            [F('off_step_range', { min: 0.3, max: 10.3, step: 1 }), LIVE_WITH_READING],
+            [F('nothing_in_state', { min: -40, max: 40 }), {}],
+            [F('nonsense_range', { min: 'low' }), LIVE_WITH_READING],
+            [F('log_vanishing_range', { response: 'logarithmic', response_db_range: 1e-300 }), LIVE_WITH_READING],
+        ];
+        const got = {};
+        for (const [def, opts] of cases) {
+            withFakeClock((advance) => levelCase(got, def, opts, (m) => {
+                const wrap = m.node().querySelector('.fader-track-wrap');
+                const handle = m.node().querySelector('.fader-handle');
+                wrap.getBoundingClientRect = () => ({ left: 10, top: 20, width: 200, height: 100, right: 210, bottom: 120 });
+                const mouse = (target, type, x, y) => target.dispatchEvent(new window.MouseEvent(type,
+                    { clientX: x, clientY: y, bubbles: true, cancelable: true }));
+                const touch = (target, type, x, y) => {
+                    const e = new window.Event(type, { bubbles: true, cancelable: true });
+                    if (x !== undefined) e.touches = [{ clientX: x, clientY: y }];
+                    target.dispatchEvent(e);
+                };
+                const key = (k) => handle.dispatchEvent(new window.KeyboardEvent('keydown', { key: k, cancelable: true }));
+                // An arrow key with no reading starts from the bottom of the range.
+                m.set(LEVEL_KEY, null); key('ArrowUp'); m.look(); advance(100);
+                // A mouse drag: moves inside the rate, an echo mid-drag, past the track, the release.
+                mouse(wrap, 'mousedown', 60, 45); m.look(); advance(10);
+                mouse(document, 'mousemove', 110, 70); m.look(); advance(10);
+                m.set(LEVEL_KEY, -3); m.look();
+                mouse(document, 'mousemove', 300, 0); m.look();
+                advance(500); m.look();
+                mouse(document, 'mousemove', 300, 200); m.look(); advance(500);
+                mouse(document, 'mouseup', 300, 200); m.look();
+                mouse(document, 'mousemove', 50, 50); m.look();
+                m.set(LEVEL_KEY, 12); m.look();
+                // A touch drag to the far corner.
+                touch(wrap, 'touchstart', 20, 110); m.look(); advance(5);
+                touch(document, 'touchmove', 150, 30); m.look(); advance(500);
+                touch(document, 'touchend'); m.look();
+                // The arrow keys, then a run to the top and back down past the floor.
+                for (const k of ['ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft', 'Enter']) { key(k); m.look(); advance(100); }
+                for (let i = 0; i < 40; i++) key('ArrowUp');
+                advance(1000); m.look();
+                for (let i = 0; i < 300; i++) key('ArrowDown');
+                advance(1000); m.look();
+                // A drag on a device that has gone away puts the readout back to unknown.
+                m.set('device.d.connected', false);
+                mouse(wrap, 'mousedown', 100, 60); mouse(document, 'mouseup', 100, 60); m.look();
+                m.set('device.d.connected', true);
+                // The page redrawn mid-drag: the release goes out, the old drag listens no more.
+                mouse(wrap, 'mousedown', 150, 40);
+                m.app.renderCurrentPage();
+                mouse(document, 'mousemove', 30, 30); mouse(document, 'mouseup', 30, 30);
+                m.steps.push({ s: m.sent.splice(0).map(frameLine) });
+            }));
+        }
+        comparePins('level_fader', got, LEVEL_PINS.level_fader);
     },
 };
 

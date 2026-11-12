@@ -126,6 +126,8 @@ SCENARIOS = [
     "select_look_applies_matching_option_style",
     "select_look_registered_and_dispatched",
     "slider_fader_step_no_float_noise",
+    "level_slider_draws_follows_and_sends_as_today",
+    "level_fader_draws_follows_and_sends_as_today",
     # display_decimals reaches every element that draws a number.
     "label_display_decimals_rounds_a_numeric_value",
     "label_display_decimals_leaves_text_alone",
