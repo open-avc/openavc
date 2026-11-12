@@ -709,6 +709,15 @@ function aspectOf(picture: HTMLImageElement): number | null {
   return Math.round((picture.naturalWidth / picture.naturalHeight) * 10000) / 10000;
 }
 
+/** Enter and Escape both leave the field, whose blur commits; Escape first
+ *  calls `cancel`, so the blur throws the typed text away. */
+function leaveOnEnterOrEscape(e: React.KeyboardEvent<HTMLInputElement>, cancel: () => void) {
+  if (e.key !== "Enter" && e.key !== "Escape") return;
+  e.preventDefault();
+  if (e.key === "Escape") cancel();
+  (e.target as HTMLInputElement).blur();
+}
+
 function ElementIdField({
   id,
   onRename,
@@ -754,17 +763,12 @@ function ElementIdField({
         setFocused(false);
         commit();
       }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          (e.target as HTMLInputElement).blur();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
+      onKeyDown={(e) =>
+        leaveOnEnterOrEscape(e, () => {
           cancelled.current = true;
           setDraft(id);
-          (e.target as HTMLInputElement).blur();
-        }
-      }}
+        })
+      }
       readOnly={!onRename}
       title={onRename ? "Rename element (Enter to commit, Esc to cancel)" : "Element ID"}
       style={{
