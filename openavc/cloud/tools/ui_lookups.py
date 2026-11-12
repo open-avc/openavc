@@ -34,13 +34,6 @@ from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-#: Device properties the property check never calls undeclared: the ones the
-#: platform writes for every device, which no driver declares
-#: (core/device_info.py), and five names this check has always stayed silent
-#: on although nothing writes them for every device.
-_SILENT_WITHOUT_A_WRITER = frozenset({"host", "online", "status", "last_seen", "error"})
-_PLATFORM_DEVICE_PROPERTIES = PLATFORM_DEVICE_KEYS | _SILENT_WITHOUT_A_WRITER
-
 
 @dataclass(frozen=True)
 class ChildKey:
@@ -147,7 +140,9 @@ def undeclared_state_property(devices: Any, device_ids: list[str], key: Any) -> 
     """
     try:
         bound = bound_key(devices, device_ids, key)
-        if bound is None or bound.rest in _PLATFORM_DEVICE_PROPERTIES:
+        # The keys the platform writes for every device: no driver declares them
+        # (core/device_info.py), so a binding to one is never called undeclared.
+        if bound is None or bound.rest in PLATFORM_DEVICE_KEYS:
             return None
         child = bound.child()
         if child is None:

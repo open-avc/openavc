@@ -574,7 +574,7 @@ async def test_a_typod_property_is_caught_like_a_typod_device(
 async def test_a_platform_property_no_driver_declares_stays_quiet(
     handler, mock_engine, mock_agent,
 ):
-    """`device.<id>.online` is the commonest binding on any panel.
+    """`device.<id>.connected` is the commonest binding on any panel.
 
     It appears in no DRIVER_INFO anywhere, so a property check that did not
     know the platform-set keys would fire on the most correct page there is.
@@ -584,11 +584,27 @@ async def test_a_platform_property_no_driver_declares_stays_quiet(
         "elements": [{
             "id": "online_led", "type": "status_led", "label": "Online",
             "placement": {"x": 0, "y": 0, "w": 5, "h": 8},
-            "bindings": {"show": {"look": {"key": "device.amp.online"}}},
+            "bindings": {"show": {"look": {"key": "device.amp.connected"}}},
         }],
     }))
     warnings = " | ".join(result.get("warnings", []))
     assert "does not declare" not in warnings, warnings
+
+
+@pytest.mark.asyncio
+async def test_a_device_online_key_nothing_writes_is_named(handler, mock_engine, mock_agent):
+    """Nothing writes `device.<id>.online`, so a binding to it shows nothing
+    unless the driver declares it."""
+    result = _result(await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
+        "page_id": "main",
+        "elements": [{
+            "id": "online_led", "type": "status_led", "label": "Online",
+            "placement": {"x": 0, "y": 0, "w": 5, "h": 8},
+            "bindings": {"show": {"look": {"key": "device.amp.online"}}},
+        }],
+    }))
+    warnings = " | ".join(result.get("warnings", []))
+    assert "device.amp.online" in warnings and "does not declare" in warnings, warnings
 
 
 @pytest.mark.asyncio

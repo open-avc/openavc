@@ -106,7 +106,14 @@ ROSTER = {"1", "2", "3", "4"}
 CASES = [
     ("device.amp.level", None, None, LEVEL, ["amp"]),
     ("device.amp.levl", FLAT, None, None, ["amp"]),
-    ("device.amp.online", None, None, None, ["amp"]),
+    # Nothing writes these for every device, so a driver that declares state
+    # and not them is told so.
+    ("device.amp.online", FLAT, None, None, ["amp"]),
+    ("device.amp.status", FLAT, None, None, ["amp"]),
+    ("device.amp.last_seen", FLAT, None, None, ["amp"]),
+    ("device.amp.error", FLAT, None, None, ["amp"]),
+    ("device.amp.host", FLAT, None, None, ["amp"]),
+    ("device.amp.connected", None, None, None, ["amp"]),
     # The platform writes it for every device once its web page is found.
     ("device.amp.web_ui_url", None, None, None, ["amp"]),
     ("device.amp.label", None, None, None, ["amp"]),
