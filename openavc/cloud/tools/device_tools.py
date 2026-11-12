@@ -228,41 +228,45 @@ async def _reassign_product_hardware(engine: Any, device_id: str, input: dict) -
     return {"status": "updated", "device_id": device_id}
 
 
-def _merge_sent_config(project: Any, existing: Any, driver_id: str, sent: dict | None) -> dict:
-    """``update_device``'s config, merged into what the device has.
+def _merge_sent_config(existing: Any, row: dict, driver_id: str, sent: dict | None) -> tuple[dict, dict]:
+    """``update_device``'s config, merged into what the device has: the
+    protocol config and the connections row (``row``, the device's own).
 
-    Both halves merge (connection fields into ``project.connections``, the rest
-    into the protocol config, as ``split_connection_fields`` places them), and
-    a field sent as null is removed, back to the driver's default. The REST
-    editor replaces the protocol half because the IDE always sends the whole
-    config; a generator sends the field it means to change, and replacing
-    would read ``{"host": ...}`` as "and drop every other setting". Writes the
-    connections row; answers the protocol config.
+    Both halves merge (connection fields into the row, the rest into the
+    protocol config, as ``split_connection_fields`` places them), and a field
+    sent as null is removed, back to the driver's default. The REST editor
+    replaces the protocol half because the IDE always sends the whole config;
+    a generator sends the field it means to change, and replacing would read
+    ``{"host": ...}`` as "and drop every other setting". Nothing is written.
     """
-    device_id = existing.id
     raw_config = sent or {}
     _refuse_logins([driver_id, existing.driver], [str(k) for k in raw_config], adding=False)
     protocol_sent, connection_sent = split_connection_fields(raw_config)
     protocol = {**existing.config, **protocol_sent}
-    connection = {**project.connections.get(device_id, {}), **connection_sent}
-    connection = {k: v for k, v in connection.items() if v is not None}
-    if connection:
-        project.connections[device_id] = connection
-    else:
-        project.connections.pop(device_id, None)
-    return {k: v for k, v in protocol.items() if v is not None}
+    connection = {**row, **connection_sent}
+    return (
+        {k: v for k, v in protocol.items() if v is not None},
+        {k: v for k, v in connection.items() if v is not None},
+    )
 
 
-def _settle_on_driver(
-    project: Any, device_id: str, driver_id: str, config: dict, before: dict | None,
-) -> dict:
-    """``config`` and the connections row with the required fields of
-    ``driver_id`` settled (``_settle_required_fields``)."""
-    config = dict(config)
-    connection = dict(project.connections.get(device_id, {}))
+def _settle_on_driver(project: Any, existing: Any, driver_id: str, input: dict) -> dict:
+    """The config an edit to the settings or the driver leaves, its
+    connections row written, with the required fields of ``driver_id``
+    settled (``_settle_required_fields``): on the device's own driver only a
+    gap the edit makes is refused, judged against the config it had before."""
+    row = dict(project.connections.get(existing.id, {}))
+    before = None
+    if driver_id == existing.driver:
+        before = merged_device_config(existing.driver, existing.config, row)
+    config, connection = dict(existing.config), row
+    if "config" in input:
+        config, connection = _merge_sent_config(existing, row, driver_id, input.get("config"))
     _settle_required_fields(driver_id, config, connection, before)
     if connection:
-        project.connections[device_id] = connection
+        project.connections[existing.id] = connection
+    else:
+        project.connections.pop(existing.id, None)
     return config
 
 
@@ -294,17 +298,9 @@ def _edit_device(project: Any, device_id: str, input: dict) -> None:
     driver_id = input.get("driver", existing.driver)
     if "driver" in input and input["driver"] != existing.driver:
         _warn_not_installed("update_device", input["driver"])
-    # Taken before the merge, which rewrites the connections row.
-    before = None
-    if driver_id == existing.driver:
-        before = merged_device_config(
-            existing.driver, existing.config, dict(project.connections.get(device_id, {})),
-        )
     config = existing.config
-    if "config" in input:
-        config = _merge_sent_config(project, existing, driver_id, input.get("config"))
     if "config" in input or "driver" in input:
-        config = _settle_on_driver(project, device_id, driver_id, config, before)
+        config = _settle_on_driver(project, existing, driver_id, input)
     project.devices[index] = _edited_record(existing, input, driver_id, config)
 
 

@@ -77,18 +77,24 @@ def _shape_of(field: str) -> str | None:
     return FIELD_SHAPES.get(field)
 
 
+#: The Python type each shape is, and each array's item type.
+_TYPE_OF = {STRING: str, OBJECT: dict, STRINGS: list, OBJECTS: list}
+_ITEM_TYPE_OF = {STRINGS: str, OBJECTS: dict}
+
+
+def _item_problem(field: str, shape: str, items: list) -> str | None:
+    item_type = _ITEM_TYPE_OF[shape]
+    for position, item in enumerate(items, start=1):
+        if not isinstance(item, item_type):
+            return f"{field} must be {shape}: item {position} is {json_kind(item)}."
+    return None
+
+
 def _field_problem(field: str, shape: str, value: Any) -> str | None:
-    if shape == STRING and not isinstance(value, str):
-        return f"{field} must be a string, not {json_kind(value)}."
-    if shape == OBJECT and not isinstance(value, dict):
-        return f"{field} must be an object, not {json_kind(value)}."
-    if shape in (STRINGS, OBJECTS):
-        if not isinstance(value, list):
-            return f"{field} must be {shape}, not {json_kind(value)}."
-        item_type = str if shape == STRINGS else dict
-        for position, item in enumerate(value, start=1):
-            if not isinstance(item, item_type):
-                return f"{field} must be {shape}: item {position} is {json_kind(item)}."
+    if not isinstance(value, _TYPE_OF[shape]):
+        return f"{field} must be {shape}, not {json_kind(value)}."
+    if shape in _ITEM_TYPE_OF:
+        return _item_problem(field, shape, value)
     return None
 
 

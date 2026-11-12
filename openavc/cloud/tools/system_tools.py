@@ -43,6 +43,21 @@ def _coerce_number(
     return int(number) if integer else number
 
 
+async def _await_scan(discovery_engine: Any, timeout: Any) -> str | None:
+    """Poll until the running scan stops, for at most ``timeout`` seconds
+    (5 to 180, 120 when not sent); the refusal when it is not a number."""
+    wait_timeout = _coerce_number(timeout, default=120, lo=5, hi=180)
+    if wait_timeout is None:
+        return "timeout must be a number of seconds"
+    elapsed, poll_interval = 0.0, 3.0
+    while elapsed < wait_timeout:
+        if discovery_engine.get_status()["status"] not in ("running", "scanning"):
+            break
+        await asyncio.sleep(poll_interval)
+        elapsed += poll_interval
+    return None
+
+
 # Which config keys hold credentials, and how a credential VALUE is masked out
 # of log text, both live in openavc/utils/log_redaction.py — the same rule the
 # transport TX/RX formatter and the log filter use. This module was where that
@@ -241,18 +256,9 @@ class SystemToolsMixin:
         category = input.get("category")
 
         # If wait=True, poll until scan completes (or timeout)
-        if wait:
-            wait_timeout = _coerce_number(input.get("timeout", 120), default=120, lo=5, hi=180)
-            if wait_timeout is None:
-                return {"error": "timeout must be a number of seconds"}
-            elapsed = 0.0
-            poll_interval = 3.0
-            while elapsed < wait_timeout:
-                status = discovery_engine.get_status()
-                if status["status"] not in ("running", "scanning"):
-                    break
-                await asyncio.sleep(poll_interval)
-                elapsed += poll_interval
+        refused = await _await_scan(discovery_engine, input.get("timeout")) if wait else None
+        if refused:
+            return {"error": refused}
 
         devices = discovery_engine.get_results()
         if category:

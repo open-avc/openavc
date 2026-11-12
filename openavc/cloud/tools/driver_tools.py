@@ -44,6 +44,21 @@ def _unescaped(value: str, field: str) -> bytes:
         }) from e
 
 
+def _timeout_seconds(input: dict) -> float:
+    """The raw command's response timeout: 5 when not sent, and a number sent
+    as text ("5") read as one, as the scan's timeout is. Anything else is a
+    ToolEditError, raised before anything is dialed."""
+    value = input.get("timeout")
+    if value is None:
+        return 5.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        raise ToolEditError({
+            "success": False, "error": "timeout must be a number of seconds", "response": None,
+        }) from None
+
+
 def _installed_yaml_entry(filepath: Path) -> dict | None:
     """An ``.avcdriver`` in the driver folder as the listing names it: by its
     own id and name, by the file name when it does not parse, and None for a
@@ -279,13 +294,9 @@ class DriverToolsMixin:
         delimiter = input.get("delimiter", "\\r\\n")
         if not host or not command_string:
             return {"success": False, "error": "host and command_string are required", "response": None}
-        # A number sent as text ("5") is read as one, as the scan's timeout is.
-        try:
-            timeout = float(input["timeout"]) if input.get("timeout") is not None else 5.0
-        except (TypeError, ValueError):
-            return {"success": False, "error": "timeout must be a number of seconds", "response": None}
 
         try:
+            timeout = _timeout_seconds(input)
             delimiter_bytes = _unescaped(delimiter, "delimiter")
             cmd_data = _unescaped(command_string, "command_string")
         except ToolEditError as refused:
