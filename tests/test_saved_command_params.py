@@ -446,3 +446,20 @@ async def test_a_group_member_whose_driver_does_not_mark_it_secret_is_refused(en
     monkeypatch.setattr(driver, "DRIVER_INFO", info)
     await engine.macros.execute("start")
     assert _AcmeStreamer.sent == [("enc1", "set_stream_key", {"channel": 3, "key": KEY})]
+
+
+async def test_testing_an_unsaved_action_fills_in_its_saved_key(engine):
+    """The UI Builder's Test sends the action through the device's command
+    door, naming the params that hold a saved value."""
+    saved = engine.save_param_value(KEY)
+    body = {"command": "set_stream_key", "params": {"channel": 1, "key": saved}}
+    async with _client() as http:
+        refused = await http.post("/api/devices/enc1/command", json=body)
+        sent = await http.post("/api/devices/enc1/command", json={**body, "saved": ["key"]})
+        plain = await http.post("/api/devices/enc1/command",
+                                json={"command": "set_label", "params": {"text": saved}, "saved": ["text"]})
+    assert refused.status_code == 400 and "Stream Key is not saved on this system" in refused.text
+    assert sent.status_code == 200, sent.text
+    assert plain.status_code == 400
+    assert _AcmeStreamer.sent == [("enc1", "set_stream_key", {"channel": 1, "key": KEY})]
+    _nowhere(sent.text)

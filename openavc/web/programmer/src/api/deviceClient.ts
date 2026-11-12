@@ -19,14 +19,18 @@ export async function getDevice(id: string): Promise<DeviceInfo> {
   return request(`/devices/${id}`);
 }
 
+/** `saved` names the params that hold a value saved on this system in the
+ *  step or action being tested; the server fills each one in where the
+ *  driver marks it secret (components/shared/savedParams.ts). */
 export async function sendCommand(
   deviceId: string,
   command: string,
-  params: Record<string, unknown> = {}
+  params: Record<string, unknown> = {},
+  saved?: string[],
 ): Promise<{ success: boolean; result: unknown }> {
   return request(`/devices/${deviceId}/command`, {
     method: "POST",
-    body: JSON.stringify({ command, params }),
+    body: JSON.stringify(saved?.length ? { command, params, saved } : { command, params }),
   });
 }
 

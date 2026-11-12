@@ -27,6 +27,7 @@ import {
   resolveTestParams,
   testBlockedMessage,
 } from "../ui-builder/BindingEditor/testActionParams";
+import { isSavedParam } from "./savedParams";
 
 /** Can this action be fired from the properties pane as it stands? */
 export function isTestableAction(action: Record<string, unknown> | null | undefined): boolean {
@@ -56,7 +57,9 @@ async function runTestAction(action: Record<string, unknown>) {
         showError(testBlockedMessage(result, paramLabel(result.param, command?.params?.[result.param])));
         return;
       }
-      await api.sendCommand(String(action.device), String(action.command), result.params);
+      // A value the action saved on this system is filled in by the server.
+      const saved = Object.keys(result.params).filter((name) => isSavedParam(result.params[name]));
+      await api.sendCommand(String(action.device), String(action.command), result.params, saved);
       showSuccess("Command sent");
     } else if (action.action === "macro" && action.macro) {
       await api.executeMacro(String(action.macro));

@@ -646,9 +646,10 @@ def command_failure(device_id: str, command: str, exc: Exception) -> HTTPExcepti
 async def send_command(device_id: str, body: CommandRequest) -> dict[str, Any]:
     """Send a command to a device."""
     engine = _get_engine()
+    saved = {"saved": frozenset(body.saved)} if body.saved else {}
     try:
         result = await engine.devices.send_command(
-            device_id, body.command, body.params
+            device_id, body.command, body.params, **saved
         )
         return {"success": True, "result": result}
     except Exception as e:

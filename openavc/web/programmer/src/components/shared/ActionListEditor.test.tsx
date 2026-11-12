@@ -73,4 +73,17 @@ describe("the Test button on an action", () => {
     expect(showSuccess).toHaveBeenCalledWith("Command sent");
     expect(showError).not.toHaveBeenCalled();
   });
+
+  it("names a value saved on this system, so the server fills it in", async () => {
+    vi.mocked(api.sendCommand).mockResolvedValue({ success: true } as never);
+    const marker = "<saved on this system #0123456789abcdef>";
+    const keyed = { action: "device.command", device: "enc1", command: "set_key",
+                    params: { channel: 1, key: marker } };
+
+    render(<ActionTestButton action={keyed} />);
+    await userEvent.click(screen.getByRole("button", { name: /Test/ }));
+
+    expect(api.sendCommand).toHaveBeenCalledWith("enc1", "set_key", { channel: 1, key: marker }, ["key"]);
+    expect(showSuccess).toHaveBeenCalledWith("Command sent");
+  });
 });

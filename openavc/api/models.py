@@ -13,6 +13,11 @@ from openavc.utils.paths import is_safe_script_filename
 class CommandRequest(BaseModel):
     command: str
     params: dict[str, Any] = {}
+    #: The params holding a value saved on this system in the caller's own
+    #: action (the UI Builder's Test of an action): filled where the driver
+    #: marks the param secret, as the action's own press fills them
+    #: (core/saved_params.py).
+    saved: list[str] = []
 
 
 class CommandFileBeginRequest(BaseModel):
