@@ -145,7 +145,7 @@ Order matters here. Build them in the order they appear:
 - **HTTP**: method, path, body, headers, query params. Every field supports `{placeholders}`.
 - **OSC**: address + a typed argument list (`f`/`i`/`s`/`h`/`d`/`T`/`F`/`N`).
 
-Renaming a command's ID carries every place the driver names it: another command's wake command and read-back queries, actions and quick actions, start-up and poll lines, a response's follow-up queries, the routing command, and push registration.
+Renaming a command's ID carries every place the driver names it: another command's wake command and read-back queries, actions and quick actions, start-up and poll lines, a response's follow-up queries, the routing command, and push registration. Removing a command that any of those still name asks first: the Builder lists each one, and Remove takes them out with the command (a response rule keeps everything but the follow-up query, and another command keeps everything but the field that named it). A command nothing else names is removed at once.
 
 **Parameters** for each command let users fill in what to send. Each parameter has a type, optional required flag, label, help, default, and (numeric) min/max bounds and scale/offset, (enum) allowed values, or (free text) a `pattern` regex the value must match. Renaming a parameter also renames its `{placeholder}` in that command's send string, path, body, headers, OSC address and arguments, and Sets State rows.
 

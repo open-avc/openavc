@@ -2,7 +2,14 @@ import { useState } from "react";
 import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import type { DriverCommandDef, DriverDefinition } from "../../api/types";
 import { IdRenameInput, type RenameResult } from "./IdRenameInput";
-import { draftCommandRenamed, newCommand, renamePlaceholder, type CommandUpdate } from "./commandEdits";
+import {
+  draftCommandRemoved,
+  draftCommandRenamed,
+  newCommand,
+  renamePlaceholder,
+  type CommandUpdate,
+} from "./commandEdits";
+import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { OfflineFlag, RestartWindowField, SleepsDeviceField } from "./CommandAwayFields";
 import { CommandConfirmField } from "./CommandConfirmField";
 import { ReadBackField, readBackForm } from "./ReadBackField";
@@ -62,6 +69,7 @@ function CommandHeader({
         {label}
       </span>
       <button
+        aria-label="Remove command"
         onClick={(e) => {
           e.stopPropagation();
           onRemove();
@@ -190,8 +198,49 @@ function CommandCard({
 
 /** The Commands section of the Driver Builder: the driver's commands as a
  *  list, at most one open, each written back into the draft whole. */
+/** A command's removal: its id, the entries that go with it and the update. */
+type Removal = { name: string } & ReturnType<typeof draftCommandRemoved>;
+
+/** The question a removal asks when other entries still name the command:
+ *  each one, and that they go with it. */
+function RemoveCommandDialog({
+  name,
+  uses,
+  onConfirm,
+  onCancel,
+}: {
+  name: string;
+  uses: string[];
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <ConfirmDialog
+      title={`Remove "${name}"?`}
+      message={
+        <>
+          <p style={{ marginBottom: "var(--space-sm)" }}>
+            These still use it and are removed with it:
+          </p>
+          <ul style={{ paddingLeft: "var(--space-lg)" }}>
+            {uses.map((use, i) => (
+              <li key={i}>{use}</li>
+            ))}
+          </ul>
+        </>
+      }
+      confirmLabel="Remove"
+      destructive
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    />
+  );
+}
+
 export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
   const [expanded, setExpanded] = useState<string | null>(null);
+  // A removal waiting on its question: the command and what goes with it.
+  const [removing, setRemoving] = useState<Removal | null>(null);
   const commands = draft.commands;
   const commandNames = Object.keys(commands);
 
@@ -203,11 +252,16 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
     setExpanded(name);
   };
 
+  const applyRemoval = (removal: Removal) => {
+    onUpdate(removal.update);
+    if (expanded === removal.name) setExpanded(null);
+  };
+
+  // A command nothing else names goes at once; one still named asks first.
   const removeCommand = (name: string) => {
-    const next = { ...commands };
-    delete next[name];
-    onUpdate({ commands: next });
-    if (expanded === name) setExpanded(null);
+    const removal = { name, ...draftCommandRemoved(draft, name) };
+    if (removal.uses.length === 0) applyRemoval(removal);
+    else setRemoving(removal);
   };
 
   const updateCommand = (name: string, partial: Partial<DriverCommandDef>) => {
@@ -297,6 +351,18 @@ export function CommandBuilder({ draft, onUpdate }: CommandBuilderProps) {
       >
         <Plus size={14} /> Add Command
       </button>
+
+      {removing && (
+        <RemoveCommandDialog
+          name={removing.name}
+          uses={removing.uses}
+          onConfirm={() => {
+            applyRemoval(removing);
+            setRemoving(null);
+          }}
+          onCancel={() => setRemoving(null)}
+        />
+      )}
     </div>
   );
 }
