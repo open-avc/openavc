@@ -15,7 +15,11 @@ import copy
 import pytest
 import yaml
 
-from openavc.simulator.validate import validate_yaml_driver
+from openavc.simulator.validate import (
+    ValidationResult,
+    _check_reply_framing,
+    validate_yaml_driver,
+)
 
 
 _BASE: dict = {
@@ -73,10 +77,12 @@ _OSC_TYPED: dict = {
     "int_default": {"address": "/a/{v}", "params": {"v": {"type": "integer", "default": 7}}},
     "int_min": {"address": "/b/{v}", "params": {"v": {"type": "integer", "min": 3}}},
     "int_bare": {"address": "/c/{v}", "params": {"v": {"type": "integer"}}},
+    "int_both": {"address": "/c2/{v}", "params": {"v": {"type": "integer", "default": 5, "min": 2}}},
     "child": {"address": "/d/{v:02d}", "params": {"v": {"type": "child_id"}}},
     "num_default": {"address": "/e/{v}", "params": {"v": {"type": "number", "default": 2.5}}},
     "num_min": {"address": "/f/{v}", "params": {"v": {"type": "number", "min": -1}}},
     "num_bare": {"address": "/g/{v:.2f}", "params": {"v": {"type": "number"}}},
+    "num_both": {"address": "/g2/{v}", "params": {"v": {"type": "number", "default": 0.5, "min": 0.1}}},
     "flag": {"address": "/h/{v:02d}", "params": {"v": {"type": "boolean"}}},
     "enum_plain": {"address": "/i/{v}", "params": {"v": {"type": "enum", "values": ["x1", "x2"]}}},
     "enum_pair": {
@@ -146,6 +152,11 @@ CASES: dict[str, dict] = {
         command_prefix="@",
         commands={"power_on": {"send": "PWR 1\\r\\n", "raw": True}},
     ),
+    "command_raw_with_config_skips_the_prefix": _with(
+        command_prefix="@",
+        default_config={"zone": "3"},
+        commands={"zone_on": {"send": "Z{zone} ON\\r\\n", "raw": True}},
+    ),
     "command_already_prefixed": _with(
         command_prefix="@", commands={"power_on": {"send": "@PWR 1\\r\\n"}},
     ),
@@ -169,6 +180,11 @@ CASES: dict[str, dict] = {
     "poll_query_unanswered": _polling("STATUS?\\r\\n"),
     "poll_query_equal_to_a_plain_send": _polling("PWR?\\r\\n"),
     "poll_query_matching_a_parameterised_command": _polling("LVL 5"),
+    "poll_query_equal_to_a_send_with_config": _polling(
+        "Z{zone}?",
+        default_config={"zone": "7"},
+        commands=_commands(ask_zone={"send": "Z{zone}?"}),
+    ),
     "poll_query_naming_a_command": _polling("ask_power", "set_level"),
     "poll_query_declared_by_query_for": _polling({"send": "XYZ?", "query_for": "power"}),
     "poll_query_query_for_blank_still_checked": _polling({"send": "XYZ?", "query_for": ""}),
@@ -195,6 +211,13 @@ CASES: dict[str, dict] = {
         {"match": "^CHANGED$", "then_query": ["WHAT?\\r\\n", "PWR?\\r\\n"]},
         {"match": "^PWR (\\d)$", "set": {"power": "$1"}},
     ]),
+    "answering_passes_over_an_address_entry": _handled(
+        [{"receive": "STATUS\\?", "respond": "HUH\r\n"}, {"receive": "INFO\\?", "respond": "EH\r\n"}],
+        on_connect=[
+            {"address": "/x", "send": "STATUS?", "query_for": "power"},
+            {"send": "INFO?", "query_for": "power"},
+        ],
+    ),
     "read_back_unanswered": _with(commands=_commands(
         power_off={"send": "PWR 0\\r\\n", "read_back": "POWER?\\r\\n"},
     )),
@@ -225,6 +248,10 @@ CASES: dict[str, dict] = {
         ]},
         responses=["^not osc$", {"address": ""}],
     ),
+    "osc_command_covered_by_a_one_character_wildcard": _osc(
+        commands={"mix": {"address": "/bus/{b}/on", "params": {"b": {"type": "string"}}}},
+        simulator={"command_handlers": [{"address": "/bus/?/on", "handler": "pass"}]},
+    ),
     "osc_command_shape_with_a_config_hole": _osc(
         commands={"mix": {"address": "/{alias}/{b}/on", "params": {"b": {"type": "string"}}}},
         responses=[{"address": "/x/01/on", "set": {"level": "$1"}}],
@@ -248,7 +275,7 @@ CASES: dict[str, dict] = {
 }
 
 #: The checks these cases exercise; the other checks' lines are not pinned here.
-_CHECKS = frozenset({"command_coverage", "poll_coverage"})
+_CHECKS = frozenset({"command_coverage", "poll_coverage", "response_parsing"})
 
 
 def _issues(tmp_path, name: str) -> list[tuple[str, str, str]] | tuple[str, str, str]:
@@ -271,10 +298,64 @@ def test_every_case_has_an_expectation():
     assert sorted(EXPECTED) == sorted(CASES)
 
 
-EXPECTED: dict = {'command_all_covered_by_the_built_in_handlers': [],
+def test_framing_probes_in_the_order_the_driver_sends_them():
+    """Liveness, then the poll, then each command whose sample fills; an
+    unfillable command sends nothing."""
+    definition = {
+        "id": "acme_widget", "transport": "tcp", "delimiter": "\\r\\n",
+        "liveness": {"send": "PING\\r\\n"},
+        "config_schema": {"alias": {"type": "string"}},
+        "commands": {
+            "alias": {"send": "NAME {alias}\\r\\n"},
+            "power_on": {"send": "PWR 1\\r\\n"},
+        },
+        "polling": {"queries": ["LVL?"]},
+        "simulator": {"command_handlers": [
+            {"receive": "PING", "respond": "PONG"},
+            {"receive": "LVL\\?", "respond": "L"},
+            {"receive": "PWR 1", "respond": "P"},
+            {"receive": "", "respond": "EMPTY"},
+            {"receive": "NAME .*", "respond": "N"},
+        ]},
+    }
+    result = ValidationResult("x.avcdriver", "acme_widget", "yaml")
+    _check_reply_framing(result, definition["commands"], ["LVL?"], definition)
+    assert [(i.severity, i.check, i.message) for i in result.issues] == FRAMING_ORDER
+
+
+FRAMING_ORDER: list = [('error',
+  'reply_framing',
+  "3 of 3 simulator replies come back without the '\\\\r\\\\n' this driver splits incoming bytes "
+  "on, so the driver never completes a frame and reads nothing they carry: 'PING' -> b'PONG'; "
+  "'LVL?' -> b'L'; 'PWR 1' -> b'P'. A reply written by hand — a respond: template or a respond() "
+  'call in a handler — is sent verbatim, so end it with the delimiter; only the handlers the '
+  'simulator generates are terminated for you.')]
+
+
+EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
+                                             'response_parsing',
+                                             'Simulator answers a query this driver polls with a '
+                                             "reply no response rule matches: handler='INFO\\\\?', "
+                                             "response='EH'. Nothing reads that answer, so the "
+                                             'state behind the query never updates.'),
+                                            ('info',
+                                             'response_parsing',
+                                             '1 simulator reply/replies match no driver response '
+                                             'rule, none of them the only answer to a polled query '
+                                             '— the shape of a write acknowledgement, which '
+                                             "carries no state: 'HUH'. A polled query whose answer "
+                                             'nothing parses warns instead.')],
+ 'command_all_covered_by_the_built_in_handlers': [],
  'command_already_prefixed': [],
  'command_enum_pair': [],
- 'command_handler_regex_that_does_not_compile': [],
+ 'command_handler_regex_that_does_not_compile': [('info',
+                                                  'response_parsing',
+                                                  '2 simulator reply/replies match no driver '
+                                                  'response rule, none of them the only answer to '
+                                                  'a polled query — the shape of a write '
+                                                  "acknowledgement, which carries no state: 'x', "
+                                                  "'y'. A polled query whose answer nothing parses "
+                                                  'warns instead.')],
  'command_handler_that_is_not_a_mapping': [],
  'command_matched_by_an_explicit_handler': [],
  'command_matched_with_the_prefix': [],
@@ -282,6 +363,10 @@ EXPECTED: dict = {'command_all_covered_by_the_built_in_handlers': [],
  'command_passthrough_skipped': [],
  'command_protocol_braces': [],
  'command_raw_skips_the_prefix': [],
+ 'command_raw_with_config_skips_the_prefix': [('error',
+                                               'command_coverage',
+                                               "No simulator handler matches command 'zone_on' "
+                                               "(sample: 'Z3 ON')")],
  'command_sample_filled_from_config': [('error',
                                         'command_coverage',
                                         "No simulator handler matches command 'zone' (sample: 'Z3 "
@@ -296,6 +381,7 @@ EXPECTED: dict = {'command_all_covered_by_the_built_in_handlers': [],
                                 "{alias}\\\\r\\\\n')")],
  'command_without_send_skipped': [],
  'osc_command_covered_by_a_handler_address': [],
+ 'osc_command_covered_by_a_one_character_wildcard': [],
  'osc_command_covered_by_a_response_address': [],
  'osc_command_covered_by_a_system_address': [],
  'osc_command_covered_by_a_wildcard_shape': [],
@@ -332,6 +418,11 @@ EXPECTED: dict = {'command_all_covered_by_the_built_in_handlers': [],
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
+                                    "No simulator handler matches OSC command 'int_both' (sample "
+                                    "address: '/c2/5') — add a command_handlers entry with a "
+                                    'matching address: pattern or a responses entry for it'),
+                                   ('error',
+                                    'command_coverage',
                                     "No simulator handler matches OSC command 'child' (sample "
                                     "address: '/d/01') — add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
@@ -349,6 +440,11 @@ EXPECTED: dict = {'command_all_covered_by_the_built_in_handlers': [],
                                     'command_coverage',
                                     "No simulator handler matches OSC command 'num_bare' (sample "
                                     "address: '/g/1.00') — add a command_handlers entry with a "
+                                    'matching address: pattern or a responses entry for it'),
+                                   ('error',
+                                    'command_coverage',
+                                    "No simulator handler matches OSC command 'num_both' (sample "
+                                    "address: '/g2/0.5') — add a command_handlers entry with a "
                                     'matching address: pattern or a responses entry for it'),
                                    ('error',
                                     'command_coverage',
@@ -415,6 +511,10 @@ EXPECTED: dict = {'command_all_covered_by_the_built_in_handlers': [],
                             "No simulator handler matches polling query: 'CH1?'")],
  'poll_query_empty': [],
  'poll_query_equal_to_a_plain_send': [],
+ 'poll_query_equal_to_a_send_with_config': [('error',
+                                             'command_coverage',
+                                             "No simulator handler matches command 'ask_zone' "
+                                             "(sample: 'Z7?')")],
  'poll_query_http_raw_path': [('error',
                                'poll_coverage',
                                "No simulator handler matches polling query: 'GET /api/status'")],
