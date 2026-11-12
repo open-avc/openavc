@@ -341,6 +341,15 @@ CASES: dict[str, dict] = {
         {"from": "off", "to": "on", "after_seconds": 1},
         {"from": "off", "to": "on", "after_seconds": 2},
     ),
+    "transition_duplicates_per_machine": _machines({
+        "pwr": {"states": ["off", "on"], "initial": "off", "transitions": [
+            {"from": "off", "to": "on", "trigger": "power_on"},
+        ]},
+        "lamp": {"states": ["off", "on"], "initial": "off", "transitions": [
+            {"from": "off", "to": "on", "trigger": "power_on"},
+            {"from": "off", "to": "off", "trigger": "power_on"},
+        ]},
+    }),
     "transition_everything_wrong": _machine(
         {"from": "warm", "to": "cold", "after_seconds": "x", "trigger": "nope"},
         {"from": "warm", "to": "cold", "after_seconds": "x", "trigger": "nope"},
@@ -455,6 +464,13 @@ CASES: dict[str, dict] = {
     "respond_names_a_boolean_dotted": _handlers(
         {"receive": "PWR\\?", "respond": "P{state.power.1} {state.power_x} {state.level}"},
     ),
+    "respond_names_a_dotted_boolean": _sim(
+        {"command_handlers": [{"receive": "AB\\?", "respond": "A{state.a.b} {state.power}"}]},
+        state_variables={
+            "power": {"type": "boolean", "label": "Power"},
+            "a.b": {"type": "boolean", "label": "A B"},
+        },
+    ),
     # ── handlers: the order the two passes report ──
     "handlers_both_passes_in_order": _handlers(
         {"receive": "A", "handler": "x = (", "respond": "R"},
@@ -499,6 +515,40 @@ def test_the_simulator_section_says_what_it_said(tmp_path, name):
 
 def test_every_case_has_an_expectation():
     assert sorted(EXPECTED) == sorted(CASES)
+
+
+def _nested_groups(depth: int, leaf: str) -> str:
+    """A driver whose one control is a group nested ``depth`` deep around
+    ``leaf``, written with YAML anchors (plain nesting that deep is more than
+    the YAML loader takes)."""
+    lines = [
+        "id: acme_widget",
+        "transport: tcp",
+        "state_variables:",
+        "  power: {type: boolean, label: Power}",
+        "groups:",
+        f"  g0: &g0 {leaf}",
+    ]
+    lines += [
+        f"  g{i}: &g{i} {{type: group, label: G, controls: [*g{i - 1}]}}"
+        for i in range(1, depth + 1)
+    ]
+    lines += ["simulator:", "  controls:", f"  - *g{depth}"]
+    return "\n".join(lines) + "\n"
+
+
+def test_a_group_nested_four_hundred_deep_is_checked_to_its_leaf(tmp_path):
+    """Each level of a group costs the check one call, as it always has, so a
+    deep group is read to its leaf rather than ending the run."""
+    path = tmp_path / "acme_widget.avcdriver"
+    path.write_text(_nested_groups(400, "{type: power, key: nope}"), encoding="utf-8")
+    found = [(i.severity, i.message) for i in validate_yaml_driver(path).issues if i.check == "controls"]
+    where = "controls[0]" + ".controls[0]" * 400
+    assert found == [(
+        "warning",
+        f"{where} (power): key 'nope' is not a state variable or initial_state key — the "
+        f"control shows nothing and writes to a key nothing reads",
+    )]
 
 
 EXPECTED: dict = {'control_key_not_a_string': [],
@@ -940,6 +990,12 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                                      "{state.power_x} {state.level}' references {state.power_x} "
                                      'which is not a state key — the placeholder stays literal at '
                                      'runtime')],
+ 'respond_names_a_dotted_boolean': [('error',
+                                     'type_consistency',
+                                     "Handler uses {state.power} in respond: template, but 'power' "
+                                     "is boolean. Python's str(True) produces 'True' not 'true'. "
+                                     'Use a script handler with str(state["power"]).lower() '
+                                     'instead.')],
  'select_options_empty': [('warning', 'controls', "controls[0] (select): 'options' is empty")],
  'select_options_not_a_list': [('error',
                                 'controls',
@@ -1133,6 +1189,11 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                             "state_machine 'pwr' transition 8 duplicates an earlier transition for "
                             "from 'off' trigger 'None' — the first listed wins, this one is "
                             'unreachable')],
+ 'transition_duplicates_per_machine': [('warning',
+                                        'state_machine',
+                                        "state_machine 'lamp' transition 1 duplicates an earlier "
+                                        "transition for from 'off' trigger 'power_on' — the first "
+                                        'listed wins, this one is unreachable')],
  'transition_everything_wrong': [('error',
                                   'state_machine',
                                   "state_machine 'pwr' transition 0 'from' state 'warm' is not one "
