@@ -33,6 +33,16 @@ if [ "$APP" = "/Applications/OpenAVC.app" ]; then
 else
     DAEMON_PLIST="${OPENAVC_DAEMON_PLIST:-}"
 fi
+# The launchctl that restarts the menu bar after a swap. The same rule: a
+# sandbox run restarts nothing unless it names its own (the update tests pass a
+# stand-in), so running the tests never touches the menu bar of the Mac they
+# run on.
+if [ "$APP" = "/Applications/OpenAVC.app" ]; then
+    LAUNCHCTL="${OPENAVC_LAUNCHCTL:-/bin/launchctl}"
+else
+    LAUNCHCTL="${OPENAVC_LAUNCHCTL:-}"
+fi
+MENUBAR_LABEL="com.openavc.menubar"
 
 # launchd always runs this as root. A non-root run against the real installed
 # bundle therefore means a person started it by hand, or an old alias did —
@@ -120,6 +130,50 @@ verify_artifact_signature() {
     return 1
 }
 
+# The menu bar (a LaunchAgent in the signed-in user's session) keeps running the
+# code it started with: a swap replaces the bundle under it and nothing else
+# tells it, so it would run the old version, from deleted files, until the next
+# login. After a swap that applied, restart it into the bundle now in place,
+# the way the .pkg's postinstall does. Only one that is running: "Quit Menu Bar
+# App" stops the process and leaves the job loaded, and that choice stays. No one
+# signed in at the screen, nothing to restart.
+console_uid() {
+    if [ -n "${OPENAVC_CONSOLE_UID+x}" ]; then
+        echo "$OPENAVC_CONSOLE_UID"
+    else
+        stat -f %u /dev/console 2>/dev/null
+    fi
+}
+
+restart_menu_bar() {
+    local uid
+    uid=$(console_uid)
+    case "$uid" in ''|0|*[!0-9]*) return 0 ;; esac
+    "$LAUNCHCTL" print "gui/$uid/$MENUBAR_LABEL" 2>/dev/null |
+        grep -Eq '^[[:space:]]state = running$' || return 0
+    # kickstart -k replaces the running process in one step, as the app's own
+    # launcher (openavc-menubar-launch.sh) does when someone opens the app.
+    if "$LAUNCHCTL" kickstart -k "gui/$uid/$MENUBAR_LABEL" >/dev/null 2>&1; then
+        echo "$LOG_TAG: restarted the menu bar so it runs the new version"
+    else
+        echo "$LOG_TAG: could not restart the menu bar; it runs the new version from the next login"
+    fi
+}
+
+# Nothing here may hold up the server: the restart gets five seconds, then the
+# server starts whether it has finished or not.
+restart_menu_bar_after_swap() {
+    [ -n "$LAUNCHCTL" ] || return 0
+    restart_menu_bar &
+    local pid=$! waited=0
+    while kill -0 "$pid" 2>/dev/null && [ "$waited" -lt 50 ]; do
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+    kill -0 "$pid" 2>/dev/null || wait "$pid" 2>/dev/null
+    return 0
+}
+
 handle_update() {
     ARTIFACT=$("$PYTHON" -c "import json,sys; print(json.load(open(sys.argv[1]))['artifact'])" "$UPDATE_FILE" 2>/dev/null)
     TO_VER=$("$PYTHON" -c "import json,sys; print(json.load(open(sys.argv[1]))['to_version'])" "$UPDATE_FILE" 2>/dev/null)
@@ -203,6 +257,7 @@ handle_update() {
     rm -rf "$STAGING"
     rm -f "$UPDATE_FILE"
     echo "$LOG_TAG: update to v$TO_VER applied"
+    restart_menu_bar_after_swap
 }
 
 handle_rollback() {
@@ -233,6 +288,7 @@ handle_rollback() {
     rm -rf "$FAILED"
     rm -f "$ROLLBACK_FILE"
     echo "$LOG_TAG: rollback complete"
+    restart_menu_bar_after_swap
 }
 
 # Who can connect is Settings > Network > Accept connections from, and

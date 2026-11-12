@@ -37,6 +37,8 @@ Do not close the browser or power off the system during this process. After the 
 
 On Windows, the OpenAVC icon by the clock closes while the installer runs and comes back when the update is done. If the icon had been quit before the update, it stays closed. This holds for an update onto v0.40.0 or later. After a rollback to an earlier version, the icon comes back at the next sign-in, or from Start menu > **OpenAVC Tray**.
 
+On macOS, the OpenAVC menu bar item restarts on the new version when an update or rollback is applied. If it had been quit, it stays closed. This holds for an update from a version later than v0.40.0; after an update from v0.40.0 or earlier, the menu bar item runs the new version from the next sign-in, or after quitting it and opening OpenAVC from Applications.
+
 ### If an update cannot be installed right now
 
 On Linux, the Raspberry Pi image and appliance hardware, an update is applied by a privileged step that runs just before the server starts. Part of that step downloads the new version's Python dependencies, which needs internet access at that moment. If it cannot get them, or the Python environment cannot be rebuilt, the system is put back exactly as it was and keeps running the version it was on.
