@@ -61,7 +61,7 @@ from openavc.drivers.compiled_protocol import (
     state_var_default,
     value_to_wire,
 )
-from openavc.drivers.child_ids import coerce_child_local_id
+from openavc.simulator.child_roster import declared_ids, project_ids, seeded_children
 from openavc.simulator.command_handler import CommandHandler
 from openavc.simulator.command_names import infer_state_var, name_switch
 from openavc.simulator.http_simulator import HTTPServerMixin
@@ -312,11 +312,11 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
         Per-child state lives in the flat state dict under dotted keys
         "<type>.<id>.<prop>" (the simulator's mirror of the runtime's
-        device.<id>.<type>.<id>.<prop>). The roster unions three sources:
-        the declared instances: blocks resolved against this instance's
-        config, the dotted keys the section seeds, and the project's
-        children, which the manager delivers through set_child_entities()
-        after construction.
+        device.<id>.<type>.<id>.<prop>). The roster unions three sources,
+        each read by child_roster.py: the declared instances: blocks
+        resolved against this instance's config, the dotted keys the section
+        seeds, and the project's children, which the manager delivers
+        through set_child_entities() after construction.
         """
         self._child_roster: dict[str, list[str]] = {}
         self._child_state_responses: dict[tuple[str, str], ChildStateResponse] = (
@@ -1153,38 +1153,21 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
             cid = str(local_id)
             if cid not in roster:
                 roster.append(cid)
-            for var, var_def in cvars.items():
-                key = f"{ctype}.{cid}.{var}"
-                if key not in self._state:
-                    self._state[key] = self._default_child_value(var_def)
+            self._seed_child_defaults(ctype, cid, cvars)
+
+    def _seed_child_defaults(self, ctype: str, cid: str, cvars: dict[str, dict]) -> None:
+        """Each of a child's variables at its default, where nothing is held."""
+        for var, var_def in cvars.items():
+            key = f"{ctype}.{cid}.{var}"
+            if key not in self._state:
+                self._state[key] = self._default_child_value(var_def)
 
     def _seed_declared_children(self) -> None:
-        """Resolve each child type's ``instances:`` roster against this
-        instance's config — the sim-side twin of the driver's
-        _register_declared_children (count_from_state is skipped: the sim IS
-        the device, there is no reported count to read yet)."""
-        merged = self._instance_config()
+        """Each child type's ``instances:`` roster, read against this
+        instance's config (child_roster.declared_ids)."""
+        config = self._instance_config()
         for ctype, tdef in self._child_types().items():
-            if not isinstance(tdef, dict):
-                continue
-            inst = tdef.get("instances")
-            if not isinstance(inst, dict):
-                continue
-            ids: list[Any] = []
-            if isinstance(inst.get("ids"), list):
-                ids = [i for i in inst["ids"] if isinstance(i, (str, int)) and not isinstance(i, bool)]
-            elif "count" in inst or "count_from" in inst or "count_from_state" in inst:
-                raw = inst.get("count")
-                if raw is None and inst.get("count_from"):
-                    raw = merged.get(inst.get("count_from"), "")
-                try:
-                    n = int(str(raw).strip()) if str(raw).strip() != "" else 0
-                except (TypeError, ValueError):
-                    n = 0
-                ids = list(range(1, n + 1))
-            elif isinstance(inst.get("ids_from"), str):
-                raw_list = str(merged.get(inst["ids_from"], "") or "")
-                ids = [t.strip() for t in raw_list.split(",") if t.strip()]
+            ids = declared_ids(tdef, config)
             if ids:
                 self._register_sim_children(ctype, ids)
 
@@ -1192,38 +1175,25 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         """A simulator: section that seeds dotted child keys
         ("output.2.input: 5") implies those children exist — adopt them into
         the roster so their queries answer even with default config counts."""
-        child_types = self._child_types()
-        if not child_types:
-            return
-        for key in list(self._state):
-            parts = key.split(".")
-            if len(parts) != 3:
-                continue
-            ctype, cid, prop = parts
-            if ctype in child_types and prop in self._child_vars(ctype):
-                self._register_sim_children(ctype, [cid])
+        for ctype, cid in seeded_children(
+            list(self._state), self._child_types(), self._child_vars
+        ):
+            self._register_sim_children(ctype, [cid])
 
     def set_child_entities(self, child_entities: dict[str, dict[str, dict]]) -> None:
         """Project children extend the roster (labels ride along for the UI).
 
         The manager calls this after construction with the padded ids the
-        platform uses in state keys; the roster stores the unpadded wire form.
+        platform uses in state keys; the roster stores the unpadded wire form
+        (child_roster.project_ids).
         """
         super().set_child_entities(child_entities)
         for ctype, entries in (child_entities or {}).items():
             if ctype not in self._child_types() or not isinstance(entries, dict):
                 continue
-            tdef = self._child_types().get(ctype)
-            ids = []
-            for padded in entries:
-                # The shared rule returns None for "can't be that kind of id",
-                # leaving each caller its own failure. Here an id the driver
-                # couldn't route still names a child in the roster, so keep
-                # the raw text rather than dropping it. `is not None` and not
-                # `or`: local id 0 is a real id and falsy.
-                local = coerce_child_local_id(tdef, padded)
-                ids.append(local if local is not None else str(padded))
-            self._register_sim_children(ctype, ids)
+            self._register_sim_children(
+                ctype, project_ids(self._child_types().get(ctype), entries)
+            )
         self._build_child_query_handlers()
 
     def to_info_dict(self) -> dict:
