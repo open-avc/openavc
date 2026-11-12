@@ -457,6 +457,20 @@ async def test_install_of_a_python_driver_fetches_its_companions_after_registeri
 
 
 @pytest.mark.asyncio
+async def test_install_under_an_empty_id_is_refused_for_the_id_it_declares(world):
+    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml()
+    refusal = await _refused(install_community_driver(CommunityDriverInstallRequest(
+        driver_id="", file_url=CATALOG + "acme_widget.avcdriver",
+    )))
+    assert (refusal.status_code, refusal.detail) == (
+        422,
+        "Downloaded driver declares id 'acme_widget', not the requested ''. "
+        "Install it under id 'acme_widget'.",
+    )
+    assert _tree(world.repo) == {}
+
+
+@pytest.mark.asyncio
 async def test_install_whose_orphan_retry_fails_still_installs(world):
     world.retry_fails = True
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml()
@@ -742,6 +756,17 @@ async def test_update_of_a_python_driver_refreshes_its_companions_before_registe
         ("get", "acme_widget_sim.py"),
         ("register", DRIVER_ID),
     ]
+
+
+@pytest.mark.asyncio
+async def test_update_says_it_removed_only_an_unpublished_companion_it_had(world, caplog):
+    (world.repo / "acme_widget.py").write_bytes(_python(mark="old"))
+    (world.repo / "acme_widget_sim.py").write_bytes(b"OLD_SIM = 1\n")
+    world.catalog.pages[CATALOG + "acme_widget.py"] = _python(mark="new")
+    with caplog.at_level("INFO", logger="openavc.api.routes.drivers"):
+        await _update("acme_widget.py")
+    removed = [r.getMessage() for r in caplog.records if r.getMessage().startswith("Removed ")]
+    assert removed == ["Removed acme_widget_sim.py — no longer published for driver 'acme_widget'"]
 
 
 @pytest.mark.asyncio
