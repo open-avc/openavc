@@ -8970,6 +8970,23 @@ Object.assign(tests, {
             m.app.handleMessage({ type: 'ui.definition', ui }); m.look(); await m.wait(10);
             m.app.handleMessage({ type: 'ui.definition', ui }); m.look(); await m.wait(10);
         });
+        // The page defaults read the variables the page is drawn with: the
+        // two settings included, and only a reference that is the whole value.
+        const readsSettings = themeFixture('rs', {
+            variables: { panel_bg: '#121212', accent: '#00aa00', hero: '/h.png' },
+            page_defaults: { background_color: 'var(accent)', background_image: 'var(font_family)' },
+        });
+        const loose = themeFixture('loose', {
+            variables: { panel_bg: '#121212', hero: '/h.png' },
+            page_defaults: { background_color: ' var(panel_bg)', background_image: 'see var(hero) here' },
+        });
+        await run('page_defaults_read_what_is_applied', { answers: { rs: readsSettings, loose } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 'rs' }); await m.wait(10);
+            m.definition({ theme_id: 'rs', accent_color: '#0000aa', font_family: '/f.png' }); await m.wait(10);
+            m.definition({ theme_id: 'rs', theme_overrides: { font_family: '/o.png' } }); await m.wait(10);
+            m.definition({ theme_id: 'loose' }); await m.wait(10);
+            m.definition({ theme_id: 'loose' }); await m.wait(10);
+        });
         // An overlay's box takes the same rule.
         await run('overlay_backgrounds', { answers: { pic: pictureTheme, t1 } }, async (m) => {
             m.snapshot(); m.definition({ theme_id: 'pic' }, { overlay: null }); await m.wait(10);
@@ -9021,6 +9038,21 @@ Object.assign(tests, {
             m.point('mousemove', m.node('b1')); m.lookPicker();
             m.app.editMode = false; m.app.renderCurrentPage(); m.lookPicker();
             m.point('mousemove', m.node('b1')); m.lookPicker();
+        });
+        // The name it shows for every kind of control.
+        await themeStudioCase(got, 'studio_names_every_kind', async (m) => {
+            const kinds = ['button', 'label', 'slider', 'fader', 'select', 'text_input', 'status_led', 'gauge',
+                'level_meter', 'list', 'matrix', 'group', 'image', 'clock', 'page_nav', 'camera_preset', 'keypad', 'custom'];
+            m.init({ theme_id: 't1' }, t1, { elements: kinds.map((type) => ({ id: `k_${type}`, type, label: type })) });
+            const names = [];
+            for (const type of kinds) {
+                const node = m.node(`k_${type}`);
+                if (!node) { names.push(`${type}: not drawn`); continue; }
+                m.point('mousemove', node);
+                const tips = [...document.body.children].filter((n) => n.style && n.style.zIndex === '9999' && n.style.display === 'block');
+                names.push(`${type}: ${tips.map((t) => t.textContent).join('|')}`);
+            }
+            m.look({ names });
         });
         comparePins('theme', got, THEME_PINS.theme);
     },

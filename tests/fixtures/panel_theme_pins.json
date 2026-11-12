@@ -1940,6 +1940,202 @@
         "t": 0
       }
     ],
+    "page_defaults_read_what_is_applied": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/rs"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 170, 0);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #121212; --panel-accent: #0000aa;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 0, 170);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/f.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #121212; --panel-accent: #0000aa;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 0, 170);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/f.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 170, 0);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/o.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 170, 0);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/o.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 170, 0);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/o.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 4,
+        "fx": [
+          "/api/themes/loose"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 170, 0);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/o.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: var(panel_bg);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"see%20var%28hero%29%20here\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: var(panel_bg);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"see%20var%28hero%29%20here\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0
+      }
+    ],
     "overlay_backgrounds": [
       {
         "r": "",
@@ -2891,6 +3087,65 @@
         ],
         "o": {},
         "m": []
+      }
+    ],
+    "studio_names_every_kind": [
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [],
+        "nb": 0,
+        "n": 2,
+        "t": 1,
+        "m": [
+          "openavc:editor-text-defaults",
+          "openavc:editor-text-defaults",
+          "openavc:editor-ready"
+        ]
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [],
+        "nb": 0,
+        "n": 2,
+        "t": 3,
+        "names": [
+          "button: Button",
+          "label: Label",
+          "slider: Slider",
+          "fader: Fader",
+          "select: Select",
+          "text_input: Text Input",
+          "status_led: Status LED",
+          "gauge: Gauge",
+          "level_meter: Level Meter",
+          "list: List",
+          "matrix: Matrix",
+          "group: Group",
+          "image: Image",
+          "clock: Clock",
+          "page_nav: Page Nav",
+          "camera_preset: Camera Preset",
+          "keypad: Keypad",
+          "custom: custom"
+        ]
       }
     ]
   }
