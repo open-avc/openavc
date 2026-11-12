@@ -8,9 +8,11 @@
  * reached shows nothing at all, never the last value or the first option.
  *
  * The panel draws each control's element and caption and registers its
- * bindings; what is drawn here takes plain values, never a definition, so
- * nothing here is credited to either control by the page review's renderer
- * scan (tests/test_ui_page_review_mirrors.py).
+ * bindings; what is drawn here takes plain values, never a definition. The
+ * page review's renderer scan (tests/test_ui_page_review_mirrors.py) still
+ * credits all of this text to both controls, since both renderers hand it
+ * values read off their element, so a definition is never read here: a
+ * property only one of them reads stays in its renderer in panel.js.
  */
 
 const SELECT_QUIET_MS = 100;
