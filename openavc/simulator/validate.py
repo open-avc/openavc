@@ -69,6 +69,7 @@ import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.simulator.capacity import capacity_problems
+from openavc.simulator.control_checks import check_controls
 from openavc.simulator.osc_coverage import (
     OscAddresses,
     check_osc_command_coverage,
@@ -161,7 +162,7 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
     _check_notifications(result, sim, driver_def, known_keys)
 
     # ── Check 10: Declarative controls schema ──
-    _check_controls(result, sim, known_keys)
+    check_controls(result, sim, known_keys)
 
     # ── Check 11: Child entity simulation gap ──
     _check_child_entities(result, driver_def, sim)
@@ -1004,7 +1005,7 @@ def _report_trailing_text(
     )
 
 
-# ── Simulator-section checks (handlers, notifications, controls, children) ──
+# ── Simulator-section checks (handlers, notifications, children) ──
 
 
 def _check_handler_syntax(result: ValidationResult, sim_handlers: list) -> None:
@@ -1312,162 +1313,6 @@ class _NotificationCheck:
                 f"notification '{key}' emits {message!r} which matches no "
                 f"driver response pattern — the driver will ignore it"
             )
-
-
-# Required fields per control type, beyond the always-required "type".
-# "label" requirements are warned, not errored (the panel renders, just ugly).
-_CONTROL_REQUIRED: dict[str, tuple[str, ...]] = {
-    "power": ("key",),
-    "select": ("key", "options"),
-    "slider": ("key", "min", "max"),
-    "toggle": ("key",),
-    "matrix": ("inputs", "outputs", "state_pattern"),
-    "meters": ("channels", "key_pattern"),
-    "presets": ("key",),
-    "group": ("controls",),
-    "indicator": ("key",),
-}
-_CONTROL_LABEL_REQUIRED = ("toggle", "indicator", "group")
-
-
-def _check_controls(result: ValidationResult, sim: dict, known_keys: set[str]) -> None:
-    """Validate the explicit simulator.controls schema.
-
-    Explicit controls replace the auto-generated set, so a typo'd type or a
-    missing per-type field silently yields a blank or broken panel.
-    """
-    controls = sim.get("controls")
-    if controls is None:
-        return
-    if not isinstance(controls, list):
-        result.error("controls", "simulator.controls must be a list")
-        return
-    for i, control in enumerate(controls):
-        _check_one_control(result, control, f"controls[{i}]", known_keys)
-
-
-def _check_one_control(
-    result: ValidationResult, control: Any, where: str, known_keys: set[str]
-) -> None:
-    if not isinstance(control, dict):
-        result.error("controls", f"{where}: must be a mapping, got: {control!r}")
-        return
-
-    ctype = control.get("type")
-    if ctype not in _CONTROL_REQUIRED:
-        valid = ", ".join(sorted(_CONTROL_REQUIRED))
-        result.error(
-            "controls",
-            f"{where}: unknown control type {ctype!r} — the panel renders "
-            f"nothing for it (valid types: {valid})"
-        )
-        return
-
-    for field in _CONTROL_REQUIRED[ctype]:
-        if field not in control:
-            result.error(
-                "controls",
-                f"{where} ({ctype}): missing required field '{field}'"
-            )
-    if ctype in _CONTROL_LABEL_REQUIRED and "label" not in control:
-        result.warning(
-            "controls",
-            f"{where} ({ctype}): missing 'label' — the panel shows 'undefined'"
-        )
-
-    def _warn_unknown_key(key: Any, field: str) -> None:
-        if isinstance(key, str) and known_keys and key not in known_keys:
-            result.warning(
-                "controls",
-                f"{where} ({ctype}): {field} '{key}' is not a state variable or "
-                f"initial_state key — the control shows nothing and writes to a "
-                f"key nothing reads"
-            )
-
-    if ctype in ("power", "select", "slider", "toggle", "presets", "indicator"):
-        _warn_unknown_key(control.get("key"), "key")
-
-    if ctype == "select":
-        options = control.get("options")
-        if options is not None and not isinstance(options, list):
-            result.error("controls", f"{where} (select): 'options' must be a list")
-        elif isinstance(options, list) and not options:
-            result.warning("controls", f"{where} (select): 'options' is empty")
-
-    if ctype == "slider":
-        for field in ("min", "max"):
-            value = control.get(field)
-            if value is not None and not isinstance(value, (int, float)):
-                result.error(
-                    "controls",
-                    f"{where} (slider): '{field}' must be a number, got: {value!r}"
-                )
-
-    if ctype == "matrix":
-        for field in ("inputs", "outputs"):
-            value = control.get(field)
-            if value is not None and (not isinstance(value, int) or value <= 0):
-                result.error(
-                    "controls",
-                    f"{where} (matrix): '{field}' must be a positive integer, "
-                    f"got: {value!r}"
-                )
-        pattern = control.get("state_pattern")
-        if isinstance(pattern, str):
-            if "{output}" not in pattern:
-                result.warning(
-                    "controls",
-                    f"{where} (matrix): state_pattern {pattern!r} has no "
-                    f"{{output}} placeholder — every output binds the same key"
-                )
-            else:
-                _warn_unknown_key(pattern.replace("{output}", "1"), "state_pattern")
-
-    if ctype == "meters":
-        channels = control.get("channels")
-        if channels is not None and (not isinstance(channels, int) or channels <= 0):
-            result.error(
-                "controls",
-                f"{where} (meters): 'channels' must be a positive integer, "
-                f"got: {channels!r}"
-            )
-        for field in ("key_pattern", "mute_pattern"):
-            pattern = control.get(field)
-            if isinstance(pattern, str):
-                if "{ch}" not in pattern:
-                    result.warning(
-                        "controls",
-                        f"{where} (meters): {field} {pattern!r} has no {{ch}} "
-                        f"placeholder — every channel binds the same key"
-                    )
-                else:
-                    _warn_unknown_key(pattern.replace("{ch}", "1"), field)
-
-    if ctype == "presets":
-        if "count" not in control and "names" not in control:
-            result.warning(
-                "controls",
-                f"{where} (presets): neither 'count' nor 'names' given — the "
-                f"panel renders no preset buttons"
-            )
-        count = control.get("count")
-        if count is not None and not isinstance(count, int):
-            result.error(
-                "controls", f"{where} (presets): 'count' must be an integer"
-            )
-        names = control.get("names")
-        if names is not None and not isinstance(names, list):
-            result.error(
-                "controls", f"{where} (presets): 'names' must be a list"
-            )
-
-    if ctype == "group":
-        children = control.get("controls")
-        if isinstance(children, list):
-            for i, child in enumerate(children):
-                _check_one_control(result, child, f"{where}.controls[{i}]", known_keys)
-        elif children is not None:
-            result.error("controls", f"{where} (group): 'controls' must be a list")
 
 
 def _check_child_entities(result: ValidationResult, driver_def: dict, sim: dict) -> None:
