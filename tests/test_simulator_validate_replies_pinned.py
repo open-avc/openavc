@@ -263,6 +263,29 @@ CASES: dict[str, dict] = {
         delimiter="",
         simulator={"command_handlers": [{"receive": "PWR 1", "respond": "R"}]},
     ),
+    # ── the breaks nothing caught at first ──
+    "notification_unknown_state_ref": _notifying({"level": "LVL {state.missing}"}),
+    "notification_json_rules_only": _notifying(
+        {"level": "LEVEL={value}"}, responses=_JSON_RULES[:3],
+    ),
+    "notification_boolean_formatted": _notifying(
+        {"power": {"true": "POWER {value:d}", "false": "PWR {value:d}"}},
+    ),
+    "notifications_a_string": _notifying("PWR 1"),
+    "notification_json_set_by_path": _notifying(
+        {"level": '{"meter": {"level": 1}}'},
+        responses=[{"json": True, "set": {"level": {"path": "meter.level"}}}, {"match": "^X$"}],
+    ),
+    "notification_not_json_rule_keys": _notifying(
+        {"level": '{"quality": 1}'},
+        responses=[{"match": "^X$", "set": {"level": {"key": "quality"}}}],
+    ),
+    "parsing_serial_own_terminator": _with(
+        transport="serial",
+        delimiter=">",
+        polling={"queries": ["PWR?"]},
+        simulator={"command_handlers": [{"receive": "PWR\\?", "respond": "PWR 1>PWR 0>"}]},
+    ),
     # ── what raises today ──
     "rule_not_a_mapping": _notifying({"level": "LVL {value}"}, responses=["^LVL$"]),
     "json_set_not_a_mapping": _notifying(
@@ -504,6 +527,14 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
  'json_set_not_a_mapping': ('raises',
                             'AttributeError',
                             "'list' object has no attribute 'values'"),
+ 'notification_boolean_formatted': [('info',
+                                     'reply_framing',
+                                     '2 simulator replies checked, all terminated with '
+                                     "'\\\\r\\\\n'."),
+                                    ('warning',
+                                     'notifications',
+                                     "notification 'power' emits 'POWER 1' which matches no "
+                                     'driver response pattern — the driver will ignore it')],
  'notification_boolean_key_capitalised': [('info',
                                            'reply_framing',
                                            '2 simulator replies checked, all terminated with '
@@ -565,8 +596,22 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                           'which matches no driver response pattern — the '
                                           'driver will ignore it')],
  'notification_json_reads': [],
+ 'notification_json_rules_only': [('warning',
+                                   'notifications',
+                                   "notification 'level' emits 'LEVEL=3' which matches no "
+                                   'driver response pattern — the driver will ignore it')],
+ 'notification_json_set_by_path': [],
  'notification_json_set_shorthand': [],
  'notification_no_rules': [],
+ 'notification_not_json_rule_keys': [('info',
+                                      'reply_framing',
+                                      '1 simulator reply checked, all terminated with '
+                                      "'\\\\r\\\\n'."),
+                                     ('warning',
+                                      'notifications',
+                                      'notification \'level\' emits \'{"quality": 1}\' which '
+                                      'matches no driver response pattern — the driver will '
+                                      'ignore it')],
  'notification_own_terminator': [('info',
                                   'reply_framing',
                                   "2 simulator replies checked, all terminated with '>'.")],
@@ -618,6 +663,10 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                'notifications',
                                "notification 'volume' emits 'VOL ' which matches no driver "
                                'response pattern — the driver will ignore it')],
+ 'notification_unknown_state_ref': [('info',
+                                     'reply_framing',
+                                     '2 simulator replies checked, all terminated with '
+                                     "'\\\\r\\\\n'.")],
  'notification_unresolved_placeholder': [('info',
                                           'reply_framing',
                                           '2 simulator replies checked, all terminated with '
@@ -634,6 +683,9 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                                    'reply_framing',
                                    '2 simulator replies checked, all terminated with '
                                    "'\\\\r\\\\n'.")],
+ 'notifications_a_string': [('error',
+                             'notifications',
+                             'simulator.notifications must be a mapping')],
  'notifications_empty': [('info',
                           'reply_framing',
                           "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
@@ -737,6 +789,9 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
                              'respond() call in a handler — is sent verbatim, so end it with '
                              'the delimiter; only the handlers the simulator generates are '
                              'terminated for you.')],
+ 'parsing_serial_own_terminator': [('info',
+                                    'reply_framing',
+                                    "3 simulator replies checked, all terminated with '>'.")],
  'parsing_state_ref_resolved': [('warning',
                                  'response_parsing',
                                  'Simulator answers a query this driver polls with a reply no '
