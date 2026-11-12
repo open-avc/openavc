@@ -8,6 +8,10 @@ identification and the generic driver demotes to a trailing alternative.
 These tests pin the cross-vendor demotion contract:
 
 - Generic + vendor soft candidate -> vendor primary, generic alternative.
+- Generic + a vendor candidate whose own fingerprint the device did not
+  answer -> generic primary, the vendor driver next.
+- Generic + a candidate for another kind of equipment than the device
+  reported -> never primary.
 - Generic alone -> generic primary, no alternatives (regression guard).
 - Vendor-specific strong match -> stands alone, soft signals ignored.
 - Filtered ONVIF (txt_match) is vendor-specific by construction.
@@ -15,8 +19,11 @@ These tests pin the cross-vendor demotion contract:
 
 from __future__ import annotations
 
-from openavc.discovery.result import DeviceState
+from itertools import permutations
+
+from openavc.discovery.result import DeviceState, Evidence
 from openavc.discovery.tier_matcher import (
+    DriverProfile,
     SignalIndex,
     SignalRule,
     TierMatcher,
@@ -598,11 +605,12 @@ def test_a_peers_maker_hint_outranks_a_third_drivers_open_port() -> None:
         assert result.source == "oui:00:30:13"
 
 
-def test_the_protocols_own_open_port_tied_with_a_peers_oui_keeps_the_anchor() -> None:
+def test_the_protocols_own_open_port_does_not_keep_the_anchor_over_a_peers_oui() -> None:
     """The cross-vendor protocol's own declared port is open (it answered
-    there) and the MAC prefix names one vendor-specific driver: each names
-    one driver, and the port names only the protocol's, so the protocol
-    driver keeps the identification.
+    there) and the MAC prefix names one vendor-specific driver with no
+    fingerprint of its own. The port names only the protocol's driver
+    because the protocol runs there, which says nothing the probe did not:
+    the vendor's driver leads and the protocol's follows.
     """
     idx = SignalIndex()
     idx.add_rule(SignalRule.for_active_probe(
@@ -612,16 +620,45 @@ def test_the_protocols_own_open_port_tied_with_a_peers_oui_keeps_the_anchor() ->
     idx.add_rule(SignalRule.for_oui("acme_projector", "00:30:13"))
     matcher = TierMatcher(idx)
 
-    result = matcher.match([
+    log = [
         evidence_active_probe("custom_acme_open_protocol_tcp"),
         evidence_open_port(4352),
         evidence_oui("00:30:13:11:22:33"),
-    ])
+    ]
+    for order in permutations(log):
+        result = matcher.match(list(order))
+        assert result.state == DeviceState.IDENTIFIED
+        assert result.driver_id == "acme_projector"
+        assert result.alternatives == ["acme_open_protocol"]
+        assert result.source == "oui:00:30:13"
 
-    assert result.state == DeviceState.IDENTIFIED
-    assert result.driver_id == "acme_open_protocol"
-    assert result.alternatives == []
-    assert result.source == "probe:custom_acme_open_protocol_tcp"
+
+def test_a_maker_hint_naming_only_the_anchor_still_keeps_it_beside_its_own_port() -> None:
+    """The protocol's own open port no longer corroborates the anchor, but a
+    hint about the maker that names only the anchor still does: the MAC
+    prefix and a manufacturer string each name one driver and disagree, so
+    the probe's driver keeps the identification.
+    """
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_open_protocol", "custom_acme_open_protocol_tcp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_open_port("acme_open_protocol", 4352))
+    idx.add_rule(SignalRule.for_oui("acme_open_protocol", "00:30:13"))
+    idx.add_rule(SignalRule.for_vendor_string("acme_projector", "Acme"))
+    matcher = TierMatcher(idx)
+
+    log = [
+        evidence_active_probe("custom_acme_open_protocol_tcp", {"manufacturer": "Acme"}),
+        evidence_open_port(4352),
+        evidence_oui("00:30:13:11:22:33"),
+        evidence_vendor_string("Acme", source_probe_id="custom_acme_open_protocol_tcp"),
+    ]
+    for order in permutations(log):
+        result = matcher.match(list(order))
+        assert result.driver_id == "acme_open_protocol"
+        assert result.alternatives == []
+        assert result.source == "probe:custom_acme_open_protocol_tcp"
 
 
 def test_equally_narrow_maker_hints_that_disagree_keep_the_anchor() -> None:
@@ -648,3 +685,182 @@ def test_equally_narrow_maker_hints_that_disagree_keep_the_anchor() -> None:
     assert result.driver_id == "acme_camera"
     assert result.alternatives == []
     assert result.source == "probe:custom_acme_camera_tls"
+
+
+# ---------------------------------------------------------------------------
+# A shared protocol's answer and the maker's drivers a hint names
+# ---------------------------------------------------------------------------
+#
+# Only a shared protocol's fingerprint matched, its answer reports a
+# projector and names the maker, and its own port is open. Where each driver
+# the maker hint names goes depends on that driver:
+#
+# - no fingerprint of its own, same kind (or kind unknown): ahead of the
+#   protocol's driver;
+# - a fingerprint of its own the device did not answer: behind it;
+# - another kind of equipment than the device reported: behind it.
+
+
+def _shared_protocol(**makers: DriverProfile) -> SignalIndex:
+    """The protocol's cross-vendor probe and its own port, and every driver
+    in ``makers`` declaring the manufacturer alias "Acme", in that order."""
+    idx = SignalIndex()
+    idx.add_rule(SignalRule.for_active_probe(
+        "acme_open_protocol", "custom_acme_open_protocol_tcp", generic=True,
+    ))
+    idx.add_rule(SignalRule.for_open_port("acme_open_protocol", 4352))
+    for driver_id in makers:
+        idx.add_rule(SignalRule.for_vendor_string(driver_id, "Acme"))
+    return idx
+
+
+def _with_check(idx: SignalIndex, driver_id: str) -> SignalIndex:
+    """Give ``driver_id`` a fingerprint of its own the device will not answer."""
+    idx.add_rule(SignalRule.for_active_probe(driver_id, f"custom_{driver_id}_tcp"))
+    return idx
+
+
+def _answer(category: str | None = "projector", model: str = "AP-160") -> list[Evidence]:
+    """The protocol's answer naming the maker (and the kind, when given), its
+    open port, and the manufacturer string the engine lifts from it."""
+    response = {"manufacturer": "Acme", "model": model}
+    if category:
+        response["category"] = category
+    return [
+        evidence_active_probe("custom_acme_open_protocol_tcp", response, port=4352),
+        evidence_open_port(4352),
+        evidence_vendor_string("Acme", source_probe_id="custom_acme_open_protocol_tcp"),
+    ]
+
+
+def _offered(matcher: TierMatcher, log: list[Evidence]) -> tuple[list[str], str]:
+    """The drivers offered, first one first, and the source, the same for
+    every order the evidence could arrive in."""
+    results = {
+        (r.driver_id, tuple(r.alternatives), r.source)
+        for r in (matcher.match(list(order)) for order in permutations(log))
+    }
+    assert len(results) == 1, results
+    driver_id, alternatives, source = results.pop()
+    return [driver_id, *alternatives], source
+
+
+def test_a_makers_driver_with_no_check_of_its_own_leads() -> None:
+    profiles = {"acme_projector": DriverProfile(category="projector")}
+    matcher = TierMatcher(_shared_protocol(**profiles), profiles=profiles)
+
+    offered, source = _offered(matcher, _answer())
+
+    assert offered == ["acme_projector", "acme_open_protocol"]
+    assert source == "vendor_string:acme"
+
+
+def test_a_makers_driver_whose_check_went_unanswered_follows_the_protocol() -> None:
+    profiles = {"acme_projector": DriverProfile(category="projector")}
+    idx = _with_check(_shared_protocol(**profiles), "acme_projector")
+    matcher = TierMatcher(idx, profiles=profiles)
+
+    offered, source = _offered(matcher, _answer())
+
+    assert offered == ["acme_open_protocol", "acme_projector"]
+    assert source == "probe:custom_acme_open_protocol_tcp"
+
+
+def test_the_protocol_still_leads_when_its_port_is_not_in_the_evidence() -> None:
+    """Without the open-port record, the unanswered check alone keeps the
+    protocol first: the rule is not a side effect of the port."""
+    profiles = {"acme_projector": DriverProfile(category="projector")}
+    idx = _with_check(_shared_protocol(**profiles), "acme_projector")
+    matcher = TierMatcher(idx, profiles=profiles)
+    log = [ev for ev in _answer() if ev.data.get("kind") != "open_port"]
+
+    offered, _source = _offered(matcher, log)
+
+    assert offered == ["acme_open_protocol", "acme_projector"]
+
+
+def test_the_alternatives_record_the_hint_that_named_them() -> None:
+    profiles = {"acme_projector": DriverProfile(category="projector")}
+    idx = _with_check(_shared_protocol(**profiles), "acme_projector")
+    matcher = TierMatcher(idx, profiles=profiles)
+
+    result = matcher.match(_answer())
+
+    assert any(ev.data.get("kind") == "vendor_string" for ev in result.evidence)
+
+
+def test_a_makers_driver_of_another_kind_is_never_first() -> None:
+    profiles = {"acme_camera": DriverProfile(category="camera")}
+    matcher = TierMatcher(_shared_protocol(**profiles), profiles=profiles)
+
+    offered, source = _offered(matcher, _answer())
+
+    assert offered == ["acme_open_protocol", "acme_camera"]
+    assert source == "probe:custom_acme_open_protocol_tcp"
+
+
+def test_a_makers_driver_of_another_kind_is_never_first_without_the_port() -> None:
+    profiles = {"acme_camera": DriverProfile(category="camera")}
+    matcher = TierMatcher(_shared_protocol(**profiles), profiles=profiles)
+    log = [ev for ev in _answer() if ev.data.get("kind") != "open_port"]
+
+    offered, _source = _offered(matcher, log)
+
+    assert offered == ["acme_open_protocol", "acme_camera"]
+
+
+def test_kind_is_not_judged_when_the_device_reported_none() -> None:
+    profiles = {"acme_camera": DriverProfile(category="camera")}
+    matcher = TierMatcher(_shared_protocol(**profiles), profiles=profiles)
+
+    offered, _source = _offered(matcher, _answer(category=None))
+
+    assert offered == ["acme_camera", "acme_open_protocol"]
+
+
+def test_a_brand_naming_every_kind_puts_its_projector_driver_first() -> None:
+    """A manufacturer string names every driver of that maker. The projector
+    driver with no check leads; behind the protocol, the same kind's driver
+    whose check went unanswered, then the other kinds, in the index's order."""
+    profiles = {
+        "acme_camera": DriverProfile(category="camera"),
+        "acme_display": DriverProfile(category="display"),
+        "acme_projector_pro": DriverProfile(category="projector"),
+        "acme_projector": DriverProfile(category="projector"),
+    }
+    idx = _with_check(_shared_protocol(**profiles), "acme_projector_pro")
+    _with_check(idx, "acme_display")
+    matcher = TierMatcher(idx, profiles=profiles)
+
+    offered, source = _offered(matcher, _answer())
+
+    assert offered == [
+        "acme_projector", "acme_open_protocol",
+        "acme_projector_pro", "acme_camera", "acme_display",
+    ]
+    assert source == "vendor_string:acme"
+
+
+def test_a_brand_whose_projector_driver_has_a_check_reads_the_protocol_first() -> None:
+    profiles = {
+        "acme_camera": DriverProfile(category="camera"),
+        "acme_projector": DriverProfile(category="projector"),
+    }
+    idx = _with_check(_shared_protocol(**profiles), "acme_projector")
+    matcher = TierMatcher(idx, profiles=profiles)
+
+    offered, _source = _offered(matcher, _answer())
+
+    assert offered == ["acme_open_protocol", "acme_projector", "acme_camera"]
+
+
+def test_among_leading_drivers_the_one_listing_the_reported_model_is_first() -> None:
+    profiles = {
+        "acme_projector_a": DriverProfile(category="projector"),
+        "acme_projector_b": DriverProfile(category="projector", models=frozenset({"ap160"})),
+    }
+    matcher = TierMatcher(_shared_protocol(**profiles), profiles=profiles)
+
+    offered, _source = _offered(matcher, _answer(model="AP-160"))
+
+    assert offered == ["acme_projector_b", "acme_projector_a", "acme_open_protocol"]

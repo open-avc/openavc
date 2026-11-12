@@ -1042,10 +1042,12 @@ function AdvancedSection() {
         Toggle <strong>cross-vendor</strong> on a fingerprint when the
         same wire signal is emitted by more than one vendor's devices:
         PJLink projectors from any manufacturer, Crestron family
-        devices on CIP, ONVIF-compliant cameras. The matcher treats
-        this driver as a fallback: if a peer driver claims the same
-        device through a manufacturer alias, OUI, or hostname hint,
-        this entry demotes to <em>alternative</em>.
+        devices on CIP, ONVIF-compliant cameras. When only cross-vendor
+        fingerprints match, a peer driver that claims the same device
+        through a manufacturer alias, OUI, or hostname hint is offered
+        too. It comes first, with this driver as an <em>alternative</em>,
+        when it has no fingerprint of its own and is for the kind of
+        equipment the device reported; otherwise it follows this driver.
       </div>
       <label style={LABEL}>Manual-only devices</label>
       <div style={INTRO}>
@@ -1112,7 +1114,7 @@ function CrossVendorToggle({
 }) {
   return (
     <label
-      title="Cross-vendor: signal shared by multiple manufacturers; demote this driver when a peer claims via a vendor-specific hint."
+      title="Cross-vendor: signal shared by multiple manufacturers; a peer driver that a vendor-specific hint names is offered too, and may come first."
       style={{
         display: "inline-flex",
         alignItems: "center",

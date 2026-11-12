@@ -344,6 +344,8 @@ class SignalIndex:
         self._rules: dict[tuple[str, str], list[SignalRule]] = {}
         # Compiled hostname regex cache.
         self._hostname_rules: list[tuple[re.Pattern, SignalRule]] = []
+        # Every driver that declares a fingerprint (a strong-signal rule).
+        self._fingerprinted: set[str] = set()
 
     def add_rule(self, rule: SignalRule) -> None:
         """Register a rule. Raises ValueError on disallowed collisions.
@@ -415,10 +417,16 @@ class SignalIndex:
                 )
 
         bucket.append(rule)
+        self._fingerprinted.add(rule.driver_id)
 
     def add_rules(self, rules: Iterable[SignalRule]) -> None:
         for rule in rules:
             self.add_rule(rule)
+
+    def has_fingerprint(self, driver_id: str) -> bool:
+        """Whether ``driver_id`` declares a fingerprint of its own (any
+        strong-signal rule, cross-vendor or not), answered or not."""
+        return driver_id in self._fingerprinted
 
     def find_strong(
         self,
@@ -667,6 +675,23 @@ def _reported_by_device(evidence_log: list[Evidence]) -> tuple[set[str], set[str
     return categories, models
 
 
+def _fit(profile: DriverProfile | None, categories: set[str], models: set[str]) -> int:
+    """How well a driver fits what the device reported (``_reported_by_device``):
+    2 when it lists a model the device gave, 1 when it is for a category the
+    device gave, else 0."""
+    if profile is None:
+        return 0
+    if models & profile.models:
+        return 2
+    return 1 if profile.category and profile.category in categories else 0
+
+
+def _another_kind(profile: DriverProfile | None, categories: set[str]) -> bool:
+    """Whether a driver is for another kind of equipment than the device
+    reported. Never when either side names no category."""
+    return bool(profile and profile.category and categories and profile.category not in categories)
+
+
 # The strong tiers in the order they are trusted. A match from an earlier
 # tier ranks ahead of one from a later tier of the same kind (vendor-specific
 # or cross-vendor); every tier is read.
@@ -763,22 +788,15 @@ class TierMatcher:
         """
         categories, models = _reported_by_device(evidence_log)
 
-        def fit(driver_id: str) -> int:
-            profile = self.profiles.get(driver_id)
-            if profile is None:
-                return 0
-            if models & profile.models:
-                return 2
-            return 1 if profile.category and profile.category in categories else 0
-
         ranked: list[tuple[bool, int, int, int, str, str, SignalRule, Evidence]] = []
         for ev in evidence_log:
             if ev.tier not in _STRONG_TIERS:
                 continue
             tier = _STRONG_TIERS.index(ev.tier)
             for position, rule in enumerate(strong_rules(ev, self.index)):
+                fit = _fit(self.profiles.get(rule.driver_id), categories, models)
                 ranked.append(
-                    (rule.generic, tier, position, -fit(rule.driver_id),
+                    (rule.generic, tier, position, -fit,
                      rule.driver_id, ev.source, rule, ev),
                 )
         ranked.sort(key=lambda hit: hit[:6])
@@ -804,10 +822,10 @@ class TierMatcher:
         identification and every other hit is an alternative; enrichment
         signals are not consulted, since a fingerprint already said which
         driver. When only cross-vendor rules (``cross_vendor: true``)
-        matched, they identify a protocol class: if an enrichment signal
-        produced a vendor-specific candidate, that vendor driver becomes the
-        primary "best fit" and the cross-vendor drivers trail as
-        alternatives.
+        matched, they identify a protocol class, and the drivers an
+        enrichment signal names (``_pick_demotion_target``) are offered
+        around them (``_place_peers``): ahead of the cross-vendor drivers
+        when one may lead, as the "best fit", and behind them otherwise.
         """
         strong_evidence = _distinct_records([ev for _, ev in hits])
         best = hits[0][0]
@@ -838,13 +856,15 @@ class TierMatcher:
                 evidence=strong_evidence,
             )
 
+        lead, trail = self._place_peers(peers, evidence_log)
+        offered = [*lead, *matched, *trail]
         soft_evidence = [
             e for e in evidence_log if e.tier == SignalTier.ENRICHMENT
         ]
         return IdentificationMatch.identified(
-            driver_id=peers[0],
-            source=soft_source or best_source,
-            alternatives=peers[1:] + matched,
+            driver_id=offered[0],
+            source=soft_source if lead else best_source,
+            alternatives=offered[1:],
             evidence=[*strong_evidence, *soft_evidence],
         )
 
@@ -872,7 +892,7 @@ class TierMatcher:
     def _pick_demotion_target(
         self, evidence_log: list[Evidence], *, anchors: set[str],
     ) -> tuple[list[str], str]:
-        """Choose vendor-specific peers to promote ahead of the cross-vendor anchors.
+        """Choose the vendor-specific peers to offer beside the cross-vendor anchors.
 
         ``anchors`` are the drivers whose cross-vendor rules matched. Walks
         soft signals in narrowness order (``_demotion_order``: smallest hit
@@ -880,7 +900,13 @@ class TierMatcher:
         the source label as the deterministic tiebreak). The narrowest
         signal decides: if it names a driver that is not an anchor, it is
         the demotion source — that signal's peers come first, then any peer
-        surfaced by broader signals as alternatives.
+        surfaced by broader signals. Whether each is offered ahead of the
+        anchors or behind them is ``_place_peers``'s call.
+
+        An open port that only anchors declare is left out: the protocol
+        runs there, so the port says nothing the probe that answered on it
+        did not (a multi-vendor projector protocol's own port, open on every
+        projector that answered it).
 
         Returns ``([], "")`` to signal "no demotion, an anchor wins" in two
         cases:
@@ -898,13 +924,41 @@ class TierMatcher:
           to whichever signal sorts first.
         - No soft signal names any driver at all.
         """
-        results = sorted(self._collect_soft_signal_results(evidence_log), key=_demotion_order)
+        results = sorted(
+            (r for r in self._collect_soft_signal_results(evidence_log)
+             if not _is_the_protocols_own_port(r, anchors)),
+            key=_demotion_order,
+        )
         if not results or _corroborates_an_anchor(results, anchors):
             return [], ""
         # The narrowest signal's peers first, then any peer a broader signal
         # names, each once, in the order found.
         peers = [d for _src, hits in results for d in hits if d not in anchors]
         return list(dict.fromkeys(peers)), results[0][0]
+
+    def _place_peers(
+        self, peers: list[str], evidence_log: list[Evidence],
+    ) -> tuple[list[str], list[str]]:
+        """Split the peers a hint named into those offered ahead of the
+        cross-vendor anchors and those offered behind them.
+
+        Only a shared protocol answered, so a peer that declares a
+        fingerprint of its own was checked and did not answer it: the
+        protocol's driver is the better suggestion, and the peer follows it.
+        A peer for another kind of equipment than the device reported
+        (``_another_kind``) follows it too. The rest, with no check of their
+        own, lead. Each side goes by how well the driver fits what the device
+        reported (``_fit``: a listed model, then the category), then in the
+        order the hints named them.
+        """
+        categories, models = _reported_by_device(evidence_log)
+        ranked = sorted(peers, key=lambda d: -_fit(self.profiles.get(d), categories, models))
+        lead = [
+            d for d in ranked
+            if not self.index.has_fingerprint(d)
+            and not _another_kind(self.profiles.get(d), categories)
+        ]
+        return lead, [d for d in ranked if d not in lead]
 
     def _gather_soft_candidates(
         self, evidence_log: list[Evidence],
@@ -936,6 +990,13 @@ class TierMatcher:
         first = [d for d in ordered if d in narrow_set]
         rest = [d for d in ordered if d not in narrow_set]
         return first + rest, source
+
+
+def _is_the_protocols_own_port(result: tuple[str, list[str]], anchors: set[str]) -> bool:
+    """Whether one soft signal is an open port that only cross-vendor anchors
+    declare: their protocol's own port, which corroborates nothing."""
+    source, hits = result
+    return source.startswith(f"{KIND_OPEN_PORT}:") and set(hits) <= anchors
 
 
 def _corroborates_an_anchor(results: list[tuple[str, list[str]]], anchors: set[str]) -> bool:
