@@ -56,6 +56,7 @@ import yaml
 from openavc.drivers.compiled_protocol import (
     apply_send_frame,
     build_send_frame,
+    coerce_osc_value,
     conversion_of,
     decode_delimiter,
     reading_from_wire,
@@ -1530,43 +1531,18 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return value_to_wire(value, conversion_of(self._var_def_for_key(state_key)))
 
     def _coerce_value(self, state_key: str, value: Any) -> Any:
-        """Coerce a value to the state variable's declared type and clamp to range."""
-        var_def = self._var_def_for_key(state_key)
-        var_type = var_def.get("type", "string")
+        """``value`` as its variable's declared type, read by the driver
+        runtime's own reader, so the device holds what the driver would store:
+        ``float`` is a number, a boolean is read by its token (``01`` and
+        ``2`` are true), and a number that will not convert is kept as it came.
 
-        if var_type == "integer":
-            try:
-                result = int(value)
-            except (ValueError, TypeError):
-                # Parity with ConfigurableDriver._coerce_value: a non-integer
-                # value is returned raw (so bindings/conditions see what the
-                # real device would send) rather than silently coerced to 0.
-                return value
-            v_min = _as_number(var_def.get("min"))
-            v_max = _as_number(var_def.get("max"))
-            if v_min is not None:
-                result = max(math.ceil(v_min), result)
-            if v_max is not None:
-                result = min(math.floor(v_max), result)
-            return result
-        elif var_type == "number":
-            try:
-                result = float(value)
-            except (ValueError, TypeError):
-                return value
-            v_min = _as_number(var_def.get("min"))
-            v_max = _as_number(var_def.get("max"))
-            if v_min is not None:
-                result = max(v_min, result)
-            if v_max is not None:
-                result = min(v_max, result)
-            return result
-        elif var_type == "boolean":
-            if isinstance(value, bool):
-                return value
-            return str(value).lower() in ("true", "1", "on", "yes")
-        else:
-            return str(value)
+        The reader is the one for a value that may arrive typed (an OSC
+        argument, a declared literal, a converted number) or as text (a
+        capture), which it reads as the capture reader does, without the
+        warning. The declared bounds are ``set_state``'s, applied to every
+        value stored."""
+        var_type = self._var_def_for_key(state_key).get("type", "string")
+        return coerce_osc_value(value, var_type)
 
     def _resolve_template(self, template: str, match: re.Match | None = None) -> str:
         """Resolve {1}, {2}, {state.key} placeholders in a template.

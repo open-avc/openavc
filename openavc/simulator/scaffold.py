@@ -340,7 +340,7 @@ def _default_for_type(var_type: str) -> str:
     """Return a Python literal default value for a type."""
     if var_type == "integer":
         return "0"
-    elif var_type == "number":
+    elif var_type in ("number", "float"):
         return "0.0"
     elif var_type == "boolean":
         return "False"
