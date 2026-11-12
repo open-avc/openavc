@@ -68,7 +68,7 @@ async def simulate_ui_action(engine: Any, state: Any, input: dict) -> dict:
         # control with nothing behind it.
         "dispatched": dispatched or [],
         "state_changes": capture.changes,
-        **_nothing_ran_note(engine, element_id, action, dispatched),
+        **_nothing_ran_note(engine, element_id, effective, dispatched),
     }
 
 
@@ -143,7 +143,10 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: Any
     ``{"success": true, "state_changes": []}`` is what a working device command
     looks like AND what a button with no binding at all looks like. The
     dispatched records separate those two; the silence that is left is worth a
-    sentence, about the element the event actually reached.
+    sentence, about the element the event actually reached and the event it was
+    sent as: a toggle pressed while on is sent as ``toggle_off``, which runs a
+    ``do.toggle_off`` binding, else the off_action inside the press action
+    (``ui_events.handle``), so that is what the sentence names.
     """
     if dispatched:
         return {}
@@ -155,8 +158,27 @@ def _nothing_ran_note(engine: Any, element_id: str, action: str, dispatched: Any
         }
     bindings = element.bindings if isinstance(element.bindings, dict) else {}
     do_map = bindings.get("do") if isinstance(bindings.get("do"), dict) else {}
+    if action == "toggle_off" and not do_map.get("toggle_off"):
+        return {"note": _off_branch_note(element_id, do_map.get("press"))}
     if not do_map.get(action):
         slots = sorted(slot for slot, actions in do_map.items() if actions)
         has = f" It has: {', '.join(slots)}." if slots else " It has no do bindings at all."
         return {"note": f"'{element_id}' has nothing bound to {action}.{has}"}
     return {"note": f"'{element_id}' has a do.{action} binding, but no action in it ran."}
+
+
+def _off_branch_note(element_id: str, press_actions: Any) -> str:
+    """Why a toggle pressed while on ran nothing: its press action has no
+    off_action, or the one it has dispatched nothing. Read the way the runtime
+    finds it: the press binding as one action or a list, the first with one."""
+    actions = press_actions if isinstance(press_actions, list) else [press_actions]
+    if any(isinstance(act, dict) and "off_action" in act for act in actions):
+        return (
+            f"'{element_id}' is toggled on, so this press dispatched the off_action "
+            f"in its press action, but no action in it ran."
+        )
+    return (
+        f"'{element_id}' is toggled on, so this press dispatched off_action, and its "
+        f"press action has no off_action: nothing ran. Add one to the press action "
+        f"to turn it off."
+    )

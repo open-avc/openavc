@@ -293,8 +293,11 @@ async def test_a_toggle_press_reply_in_full_and_in_order():
     assert result["dry_run"] is True
     assert result["dispatched"] == []
     assert result["state_changes"] == []
-    # The note names the action asked for, not the branch the toggle took.
-    assert result["note"] == "'toggle' has a do.press binding, but no action in it ran."
+    # The note names the branch the toggle took, not the action asked for.
+    assert result["note"] == (
+        "'toggle' is toggled on, so this press dispatched the off_action in its "
+        "press action, but no action in it ran."
+    )
 
 
 @pytest.mark.asyncio
@@ -318,7 +321,51 @@ async def test_a_master_toggle_is_resolved_like_a_page_one():
     )
     assert rec.calls == [("handle_ui_event", ("toggle_off", "m_toggle"), {"dry_run": False})]
     assert result["dispatched_as"] == "toggle_off"
-    assert result["note"] == "'m_toggle' has a do.press binding, but no action in it ran."
+    assert result["note"] == (
+        "'m_toggle' is toggled on, so this press dispatched the off_action in its "
+        "press action, but no action in it ran."
+    )
+
+
+def _without_off_action(project: dict) -> dict:
+    """The page's toggle with its press action's off_action taken out."""
+    toggle = next(e for e in project["ui"]["pages"][0]["elements"] if e["id"] == "toggle")
+    toggle["bindings"]["do"]["press"] = [
+        {k: v for k, v in TOGGLE_PRESS[0].items() if k != "off_action"},
+    ]
+    return project
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dry_run", [False, True])
+async def test_a_toggle_pressed_while_on_with_no_off_action_says_so(dry_run):
+    store = StateStore()
+    store.set("device.amp.power", "on", source="device.amp")
+    rec = _Recorder(store, returns=[])
+    result, _, _ = await _simulate(
+        {"action": "press", "element_id": "toggle", "dry_run": dry_run},
+        store=store, engine=_engine(rec, _without_off_action(_project())),
+    )
+    assert rec.calls == [("handle_ui_event", ("toggle_off", "toggle"), {"dry_run": dry_run})]
+    assert result["dispatched_as"] == "toggle_off"
+    assert result["note"] == (
+        "'toggle' is toggled on, so this press dispatched off_action, and its press "
+        "action has no off_action: nothing ran. Add one to the press action to turn it off."
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_toggle_off_binding_of_its_own_is_named_when_nothing_in_it_ran():
+    project = _without_off_action(_project())
+    toggle = next(e for e in project["ui"]["pages"][0]["elements"] if e["id"] == "toggle")
+    toggle["bindings"]["do"]["toggle_off"] = [{"action": "ui.navigate", "page": "other"}]
+    store = StateStore()
+    store.set("device.amp.power", "on", source="device.amp")
+    rec = _Recorder(store, returns=[])
+    result, _, _ = await _simulate(
+        {"action": "press", "element_id": "toggle"}, store=store, engine=_engine(rec, project),
+    )
+    assert result["note"] == "'toggle' has a do.toggle_off binding, but no action in it ran."
 
 
 @pytest.mark.asyncio
