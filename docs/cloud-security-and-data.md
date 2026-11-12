@@ -12,7 +12,7 @@ covered by the [privacy policy](https://openavc.com/privacy), and the AI assista
 
 | | |
 |---|---|
-| Hosting | DigitalOcean, one region: REGION |
+| Hosting | DigitalOcean, one region: New York |
 | Application | A DigitalOcean server behind HTTPS (TLS certificates from Let's Encrypt) |
 | Database | DigitalOcean Managed PostgreSQL, encrypted at rest and in transit |
 | Cache | DigitalOcean Managed Valkey |
