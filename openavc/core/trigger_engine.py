@@ -14,6 +14,10 @@ from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
+from openavc.core.macro_engine import (
+    _QUEUE_MAX_WAIT_SECONDS,
+    _QUEUE_POLL_SECONDS as _QUEUE_POLL_INTERVAL,
+)
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -36,10 +40,9 @@ _MAX_OVERLAP_ALLOW_DEPTH = 25
 # suspend) and schedules may need catch-up.
 _CRON_POLL_INTERVAL = 30
 
-# overlap="queue" wait: poll this often for the running macro to finish, and
-# give up after this long so a wedged macro can't pin a queued fire forever.
-_QUEUE_POLL_INTERVAL = 1.0
-_QUEUE_MAX_WAIT_SECONDS = 300.0
+# overlap="queue" wait: _QUEUE_POLL_INTERVAL and _QUEUE_MAX_WAIT_SECONDS,
+# imported above, are the macro engine's own, so a queued trigger fire and a
+# queued macro start wait alike and both give up at the same ceiling.
 
 # How long stop() waits for cancelled pre-fire tasks to unwind — matches the
 # macro engine's cancel grace so the two teardown paths behave alike.

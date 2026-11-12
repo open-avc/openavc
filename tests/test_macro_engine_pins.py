@@ -1,7 +1,7 @@
 """What the macro engine does today on paths no other test runs.
 
 Each test records current behaviour so a restructure of the engine can be
-checked against it: the queue wait that gives up and starts anyway, a start
+checked against it: the queue wait that gives up and skips the start, a start
 made with no current task, a wait_until run outside any macro, the wording a
 failed step is logged with, and the sentence each step is announced with.
 """
@@ -55,37 +55,52 @@ def _record(events: EventBus, pattern: str) -> list[tuple[str, dict[str, Any]]]:
     return seen
 
 
-# --- overlap: queue gives up and starts anyway ---------------------------------
+# --- overlap: queue gives up and skips the start --------------------------------
 
 
-async def test_a_queued_start_gives_up_and_runs_beside_the_first(
+async def test_a_queued_start_gives_up_and_is_skipped(
     engine: MacroEngine, events: EventBus, monkeypatch, caplog,
 ) -> None:
+    """Past the wait's ceiling the queued start is refused, never run beside
+    the run it queued behind: both would send to the equipment, which is what
+    overlap=queue exists to prevent. A trigger's queued fire is dropped the
+    same way."""
     monkeypatch.setattr(macro_engine, "_QUEUE_POLL_SECONDS", 0.02)
     monkeypatch.setattr(macro_engine, "_QUEUE_MAX_WAIT_SECONDS", 0.06)
     started = _record(events, "macro.started.*")
+    skipped = _record(events, "macro.skipped.*")
     engine.load_macros([{
-        "id": "slow", "name": "Slow", "overlap": "queue",
+        "id": "slow", "name": "Slow", "overlap": "queue", "cooldown_seconds": 0.01,
         "steps": [{"action": "delay", "seconds": 0.5}],
     }])
 
     first = asyncio.create_task(engine.execute("slow"))
     await asyncio.sleep(0.02)
     with caplog.at_level(logging.WARNING, logger="openavc.core.macro_engine"):
-        second = asyncio.create_task(engine.execute("slow"))
-        await asyncio.sleep(0.2)
-        # The second gave up waiting and started while the first still runs.
-        assert len(started) == 2
-        assert not first.done()
-        assert len(engine._running["slow"]) == 2
+        assert await engine.execute("slow") == "skipped"
+    # The first still runs, alone.
+    assert len(started) == 1
+    assert not first.done()
+    assert len(engine._running["slow"]) == 1
+    assert skipped == [("macro.skipped.slow", {
+        "macro_id": "slow", "name": "Slow",
+        "reason": "overlap=queue and the running instance did not finish within 0.06s",
+    })]
     assert any(
         "overlap=queue: gave up after" in r.getMessage()
-        and "starting anyway" in r.getMessage()
+        and "skipping this start" in r.getMessage()
         and r.name == "openavc.core.macro_engine"
         for r in caplog.records
     )
-    assert await asyncio.gather(first, second) == ["completed", "completed"]
+    assert await first == "completed"
     assert engine.is_macro_running("slow") is False
+
+
+async def test_the_trigger_engine_waits_by_the_macro_engines_numbers() -> None:
+    import openavc.core.trigger_engine as trigger_engine
+
+    assert trigger_engine._QUEUE_MAX_WAIT_SECONDS is macro_engine._QUEUE_MAX_WAIT_SECONDS
+    assert trigger_engine._QUEUE_POLL_INTERVAL is macro_engine._QUEUE_POLL_SECONDS
 
 
 # --- a start with no current task -----------------------------------------------

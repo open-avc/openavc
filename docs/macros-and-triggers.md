@@ -253,7 +253,7 @@ You can also cancel a running macro manually by clicking the **Cancel** button i
 
 A macro can guard against being run too often, or being run again while it's still busy, right from its header, next to the cancel group.
 
-- **Overlap** decides what happens when the macro is fired again while a previous run is still going. **Allow** (the default) lets them run at the same time. **Skip** ignores the new run until the current one finishes. **Queue** holds the new run and starts it once the current one is done.
+- **Overlap** decides what happens when the macro is fired again while a previous run is still going. **Allow** (the default) lets them run at the same time. **Skip** ignores the new run until the current one finishes. **Queue** holds the new run and starts it once the current one is done. If the current run is still going after five minutes, the held run is dropped and reported as skipped.
 - **Cooldown** sets a minimum number of seconds between starts. A start that arrives inside the window is dropped. Leave it at `0` for no cooldown.
 
 The important part is *where* these apply. A trigger has its own overlap and cooldown settings, but those only cover fires from that one trigger. The macro's own overlap and cooldown are enforced on the macro itself, so they hold no matter what starts it: a schedule, a panel button, a script loop, an automation, the AI assistant, or another macro. That closes the gap where a macro you carefully protected on its trigger could still be hammered from a script or a button.
@@ -386,7 +386,7 @@ Trigger safety features prevent runaway automation:
 - **Delay + re-check.** Wait, then verify the condition is still true before executing.
 - **Cooldown.** Minimum interval between executions.
 - **Guard conditions.** Additional state conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases.
-- **Overlap policy.** Choose what happens when a trigger fires while its macro is still running: `skip` (ignore the new fire, the default), `queue` (run it once the current one finishes), or `allow` (run them concurrently).
+- **Overlap policy.** Choose what happens when a trigger fires while its macro is still running: `skip` (ignore the new fire, the default), `queue` (run it once the current one finishes, or drop the fire if that takes more than five minutes), or `allow` (run them concurrently).
 - **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if a step fails (default is to continue). If a sub-macro stops on an error, its **Run Macro** step fails in the caller. The caller then follows its own Stop on Error setting. Enable it on both macros when later steps depend on the sub-macro succeeding. A sub-macro set to Continue on Error completes its remaining steps and returns normally, and the caller carries on — but the caller's own run still reports as failed, because a step it asked for did not do what it asked.
 
 Example: A "projector auto-off" trigger watches `device.projector_main.power` for `"on"`, with a guard condition that `var.room_active` equals No. This shuts down a projector that someone turned on manually without using the panel, but only if the room is not in active use.

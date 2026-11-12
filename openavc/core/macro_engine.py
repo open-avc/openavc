@@ -50,9 +50,9 @@ _CANCEL_GRACE_SECONDS = 5.0
 
 # A macro's optional overlap="queue" guard waits for the in-flight
 # invocation to finish before starting. Poll this often for it to clear,
-# and give up after the ceiling so a queued call can't wait forever. The
-# same two numbers as the trigger engine's queue wait, but at the ceiling a
-# trigger drops its fire and a macro starts anyway.
+# and give up after the ceiling so a queued call can't wait forever: the
+# start is then skipped. The trigger engine's queue wait reads these two
+# numbers from here, and at the ceiling drops its fire the same way.
 _QUEUE_POLL_SECONDS = 1.0
 _QUEUE_MAX_WAIT_SECONDS = 300.0
 
@@ -455,32 +455,39 @@ class MacroEngine(MacroSteps):
             _active_call_chain.reset(_chain_token)
             self._release(macro_id, task)
 
-    async def _wait_for_slot(self, macro_id: str, name: str) -> None:
+    async def _wait_for_slot(self, macro_id: str, name: str) -> str | None:
         """overlap=queue: hold this start until any in-flight invocation of the
         same macro finishes, then let it go on to claim the slot.
 
         The recursion guard already stops a macro queueing behind itself; this
         waits on independent concurrent invocations. Bounded so a wedged run
-        can't make a queued call wait forever: past the ceiling it starts
-        anyway, beside the run it was waiting for.
+        can't make a queued call wait forever: past the ceiling it returns the
+        reason this start is skipped. Starting it beside the run it waited for
+        would send both to the equipment, which is what the setting exists to
+        prevent.
         """
         waited = 0.0
         while self.is_macro_running(macro_id):
             if waited >= _QUEUE_MAX_WAIT_SECONDS:
                 log.warning(
                     f"Macro '{name}' overlap=queue: gave up after "
-                    f"{_QUEUE_MAX_WAIT_SECONDS:.0f}s waiting for the running "
-                    f"invocation to finish; starting anyway"
+                    f"{_QUEUE_MAX_WAIT_SECONDS:g}s waiting for the running "
+                    f"invocation to finish; skipping this start"
                 )
-                return
+                return (
+                    "overlap=queue and the running instance did not finish "
+                    f"within {_QUEUE_MAX_WAIT_SECONDS:g}s"
+                )
             await asyncio.sleep(_QUEUE_POLL_SECONDS)
             waited += _QUEUE_POLL_SECONDS
+        return None
 
     async def _claim_start(
         self, macro_id: str, name: str, task: asyncio.Task | None, guards: _StartGuards,
     ) -> tuple[str | None, list[tuple[str, asyncio.Task]]]:
         """Take this run's slot, or say why it may not start. Under
-        overlap=queue it first waits for the running invocation (``_wait_for_slot``).
+        overlap=queue it first waits for the running invocation
+        (``_wait_for_slot``), and a wait that reaches its ceiling is a refusal.
 
         Returns ``(reason, [])`` for a start the macro's own guard refuses,
         else ``(None, preempted)``: the cancel_group members it cancelled.
@@ -496,7 +503,9 @@ class MacroEngine(MacroSteps):
         register: the throttle and the preemption still apply, without the lock.
         """
         if guards.overlap == "queue":
-            await self._wait_for_slot(macro_id, name)
+            gave_up = await self._wait_for_slot(macro_id, name)
+            if gave_up is not None:
+                return gave_up, []
         if task is None:
             return self._claim(macro_id, None, guards)
         async with self._start_lock:
