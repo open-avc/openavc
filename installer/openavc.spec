@@ -207,6 +207,7 @@ hiddenimports = [
     'openavc.api.routes.auth',
     'openavc.api.routes.cloud',
     'openavc.api.routes.devices',
+    'openavc.api.routes.driver_definitions',
     'openavc.api.routes.driver_test',
     'openavc.api.routes.drivers',
     'openavc.api.routes.host',

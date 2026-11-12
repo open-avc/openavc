@@ -1,4 +1,4 @@
-"""Duplicate driver-id precedence through the definition API (routes/drivers.py).
+"""Duplicate driver-id precedence through the definition API (routes/driver_definitions.py).
 
 A user copy in driver_repo overrides a same-id built-in — the loader, the
 listing, and the editing endpoints all agree on that. These tests pin the
@@ -21,8 +21,8 @@ import yaml
 
 import openavc.system_config as system_config
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes import drivers as drivers_routes
-from openavc.api.routes.drivers import (
+from openavc.api.routes import driver_definitions as definition_routes
+from openavc.api.routes.driver_definitions import (
     delete_driver_definition_endpoint,
     list_driver_definitions as list_definitions_endpoint,
     patch_driver_definition,
@@ -67,7 +67,7 @@ def driver_dirs(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     builtin_dir.mkdir()
     repo_dir.mkdir()
     monkeypatch.setattr(
-        drivers_routes, "_get_driver_dirs", lambda: [builtin_dir, repo_dir]
+        definition_routes, "_get_driver_dirs", lambda: [builtin_dir, repo_dir]
     )
     # Built-ins are recognized by living under the bundled definitions tree;
     # treat this test's definitions dir as that tree.
@@ -77,7 +77,7 @@ def driver_dirs(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
         return 0
 
     monkeypatch.setattr(
-        drivers_routes,
+        definition_routes,
         "_get_engine",
         lambda: SimpleNamespace(devices=SimpleNamespace(reload_driver=_reload_driver)),
     )

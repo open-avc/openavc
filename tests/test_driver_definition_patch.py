@@ -1,4 +1,4 @@
-"""Regression tests for PATCH /api/driver-definitions/{id} (routes/drivers.py).
+"""Regression tests for PATCH /api/driver-definitions/{id} (routes/driver_definitions.py).
 
 The handler merged the body over the current definition with a SHALLOW
 top-level spread, so a partial update of one nested entry (one command, one
@@ -21,9 +21,9 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
-from openavc.api.routes import drivers as drivers_routes
+from openavc.api.routes import driver_definitions as definition_routes
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes.drivers import (
+from openavc.api.routes.driver_definitions import (
     _merge_patch,
     create_driver_definition,
     patch_driver_definition,
@@ -90,14 +90,14 @@ def driver_dirs(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     builtin_dir.mkdir()
     repo_dir.mkdir()
     monkeypatch.setattr(
-        drivers_routes, "_get_driver_dirs", lambda: (builtin_dir, repo_dir)
+        definition_routes, "_get_driver_dirs", lambda: (builtin_dir, repo_dir)
     )
 
     async def _reload_driver(driver_id: str) -> int:
         return 0
 
     monkeypatch.setattr(
-        drivers_routes,
+        definition_routes,
         "_get_engine",
         lambda: SimpleNamespace(devices=SimpleNamespace(reload_driver=_reload_driver)),
     )

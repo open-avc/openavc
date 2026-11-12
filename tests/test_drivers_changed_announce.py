@@ -15,13 +15,13 @@ import pytest
 
 from openavc.api import _engine as engine_slot
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes import drivers as drivers_routes
-from openavc.api.routes.drivers import (
-    announce_drivers_changed,
+from openavc.api.routes import driver_definitions as definition_routes
+from openavc.api.routes.driver_definitions import (
     create_driver_definition,
     delete_driver_definition_endpoint,
     patch_driver_definition,
 )
+from openavc.api.routes.drivers import announce_drivers_changed
 
 
 class _Hub:
@@ -43,7 +43,7 @@ def hub(monkeypatch) -> _Hub:
         ws=hub, devices=SimpleNamespace(reload_driver=_reload_driver),
     )
     monkeypatch.setattr(engine_slot, "get_engine_optional", lambda: fake)
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: fake)
+    monkeypatch.setattr(definition_routes, "_get_engine", lambda: fake)
     return hub
 
 
@@ -54,7 +54,7 @@ def driver_dirs(tmp_path: Path, monkeypatch) -> Path:
     builtin_dir.mkdir()
     repo_dir.mkdir()
     monkeypatch.setattr(
-        drivers_routes, "_get_driver_dirs", lambda: (builtin_dir, repo_dir)
+        definition_routes, "_get_driver_dirs", lambda: (builtin_dir, repo_dir)
     )
     return repo_dir
 

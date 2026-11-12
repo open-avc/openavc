@@ -32,8 +32,8 @@ from typing import Any
 
 import pytest
 
-from openavc.api.routes import drivers as drivers_routes
-from openavc.api.routes.drivers import (
+from openavc.api.routes import driver_definitions as definition_routes
+from openavc.api.routes.driver_definitions import (
     create_driver_definition,
     validate_driver_definition_draft,
 )
@@ -565,14 +565,14 @@ def driver_dirs(tmp_path: Path, monkeypatch) -> tuple[Path, Path]:
     builtin_dir.mkdir()
     repo_dir.mkdir()
     monkeypatch.setattr(
-        drivers_routes, "_get_driver_dirs", lambda: (builtin_dir, repo_dir)
+        definition_routes, "_get_driver_dirs", lambda: (builtin_dir, repo_dir)
     )
 
     async def _reload_driver(driver_id: str) -> int:
         return 0
 
     monkeypatch.setattr(
-        drivers_routes,
+        definition_routes,
         "_get_engine",
         lambda: SimpleNamespace(devices=SimpleNamespace(reload_driver=_reload_driver)),
     )

@@ -26,7 +26,7 @@ from fastapi import HTTPException
 import openavc.drivers.driver_loader as driver_loader
 import openavc.system_config as system_config
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes import drivers as ROUTES
+from openavc.api.routes import driver_definitions as ROUTES
 from openavc.api.routes import drivers as INSTALL_ROUTES
 from openavc.drivers.driver_loader import save_driver_definition
 

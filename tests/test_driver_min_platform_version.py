@@ -27,16 +27,19 @@ import yaml
 
 from fastapi import HTTPException
 
+from openavc.api.routes import driver_definitions as definition_routes
 from openavc.api.routes import drivers as drivers_routes
 from openavc.api.models import DriverDefinitionRequest
+from openavc.api.routes.driver_definitions import (
+    create_driver_definition,
+    patch_driver_definition,
+    update_driver_definition,
+)
 from openavc.api.routes.drivers import (
     _declared_min_platform_version,
     _enforce_min_platform_version,
     _parse_semver,
     _peek_min_platform_version,
-    create_driver_definition,
-    patch_driver_definition,
-    update_driver_definition,
     upload_driver,
     upload_driver_bundle,
 )
@@ -319,15 +322,15 @@ def driver_dirs(tmp_path, monkeypatch):
     repo_dir = tmp_path / "driver_repo"
     builtin_dir.mkdir()
     repo_dir.mkdir()
-    monkeypatch.setattr(drivers_routes, "_get_driver_dirs", lambda: (builtin_dir, repo_dir))
-    monkeypatch.setattr(drivers_routes, "register_driver", lambda cls: None)
+    monkeypatch.setattr(definition_routes, "_get_driver_dirs", lambda: (builtin_dir, repo_dir))
+    monkeypatch.setattr(definition_routes, "register_driver", lambda cls: None)
 
     async def _reload_driver(driver_id: str) -> int:
         return 0
 
     fake_engine = MagicMock()
     fake_engine.devices.reload_driver = _reload_driver
-    monkeypatch.setattr(drivers_routes, "_get_engine", lambda: fake_engine)
+    monkeypatch.setattr(definition_routes, "_get_engine", lambda: fake_engine)
     return builtin_dir, repo_dir
 
 

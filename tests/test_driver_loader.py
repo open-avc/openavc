@@ -1435,7 +1435,7 @@ def test_listing_reports_the_comment_count(tmp_path):
 def test_the_comment_count_is_stripped_before_a_save(tmp_path):
     """It is bookkeeping the server added, not a driver-format key. The save
     doors are strict about undeclared keys, so it has to come back off."""
-    from openavc.api.routes.drivers import _strip_listing_decorations
+    from openavc.api.routes.driver_definitions import _strip_listing_decorations
 
     _write(tmp_path, COMMENTED_DRIVER)
     listed = list_driver_definitions([tmp_path])

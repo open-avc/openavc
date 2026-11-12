@@ -16,8 +16,8 @@ import pytest
 import yaml
 
 from openavc.api.models import DriverDefinitionRequest
-from openavc.api.routes import drivers as drivers_routes
-from openavc.api.routes.drivers import create_driver_definition, update_driver_definition
+from openavc.api.routes import driver_definitions as definition_routes
+from openavc.api.routes.driver_definitions import create_driver_definition, update_driver_definition
 from openavc.drivers.driver_loader import save_driver_definition
 
 from fastapi import HTTPException
@@ -39,13 +39,13 @@ def repo_dir(tmp_path: Path, monkeypatch) -> Path:
     repo = tmp_path / "driver_repo"
     builtin_dir.mkdir()
     repo.mkdir()
-    monkeypatch.setattr(drivers_routes, "_get_driver_dirs", lambda: (builtin_dir, repo))
+    monkeypatch.setattr(definition_routes, "_get_driver_dirs", lambda: (builtin_dir, repo))
 
     async def _reload_driver(driver_id: str) -> int:
         return 0
 
     monkeypatch.setattr(
-        drivers_routes,
+        definition_routes,
         "_get_engine",
         lambda: SimpleNamespace(devices=SimpleNamespace(reload_driver=_reload_driver)),
     )
