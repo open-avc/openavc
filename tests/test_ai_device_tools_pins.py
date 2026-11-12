@@ -7,8 +7,9 @@ write or a log line fails here:
   installed (warned and saved), product hardware selected under another id
   (refused with a connection, reassigned without one), every connection field
   sent as null (the connections row goes), the required-field check asked only
-  when the settings or the driver change, and an edit that leaves the device's
-  other settings and its connections row alone.
+  when the settings or the driver change and then only for a gap the edit
+  makes (an older device's blank field rides back on the answer), and an edit
+  that leaves the device's other settings and its connections row alone.
 - ``add_device``: no project, no id, an id already in use, a driver that is
   not installed, the name defaulting to the id, the address landing in the
   connections table, nothing written there for a device sent no address.
@@ -252,23 +253,61 @@ async def test_update_device_with_a_null_config_keeps_everything(setup):
     assert _device(on_disk, "dev1").config == {"mode": "eco"}
 
 
+_ZONE_STILL_BLANK = {
+    "missing_config": ["zone"],
+    "missing_config_note": "Still blank: Zone, which its driver requires. Ask for it and send it in config.",
+}
+
+
 async def test_update_device_rename_alone_never_asks_for_a_required_field(setup):
     handler, engine = setup
 
     answer = await handler._update_device({"device_id": "old1", "name": "Old One"})
 
-    assert answer == {"status": "updated", "device_id": "old1"}
+    assert answer == {"status": "updated", "device_id": "old1", **_ZONE_STILL_BLANK}
     assert _device(_on_disk(engine), "old1").name == "Old One"
 
 
-async def test_update_device_settings_on_an_older_device_ask_for_the_required_field(setup):
+async def test_update_device_settings_on_an_older_device_save_as_edit_device_saves_them(setup):
+    """PATCH /api/devices/{id} refuses only a gap its own edit makes; so does this."""
     handler, engine = setup
-    before = engine.project_path.read_text(encoding="utf-8")
 
     answer = await handler._update_device({"device_id": "old1", "config": {"host": "192.0.2.30"}})
 
+    assert answer == {"status": "updated", "device_id": "old1", **_ZONE_STILL_BLANK}
+    on_disk = _on_disk(engine)
+    assert on_disk.connections["old1"] == {"host": "192.0.2.30"}
+    assert _device(on_disk, "old1").config == {}
+
+
+async def test_update_device_onto_the_same_driver_on_an_older_device_saves(setup):
+    handler, engine = setup
+
+    answer = await handler._update_device({"device_id": "old1", "driver": "acme_strict", "name": "Old One"})
+
+    assert answer == {"status": "updated", "device_id": "old1", **_ZONE_STILL_BLANK}
+    assert _device(_on_disk(engine), "old1").name == "Old One"
+
+
+async def test_update_device_blanking_a_required_field_is_refused(setup):
+    handler, engine = setup
+    assert (await handler._add_device(
+        {"id": "zoned", "driver": "acme_strict", "config": {"zone": "north"}},
+    ))["status"] == "created"
+    before = engine.project_path.read_text(encoding="utf-8")
+
+    answer = await handler._update_device({"device_id": "zoned", "config": {"zone": None, "host": "192.0.2.31"}})
+
     assert answer == {"error": "Zone is required.", "missing_config": ["zone"]}
     assert engine.project_path.read_text(encoding="utf-8") == before
+
+
+async def test_update_device_with_every_required_field_filled_says_nothing_more(setup):
+    handler, _engine = setup
+
+    answer = await handler._update_device({"device_id": "old1", "config": {"zone": "south"}})
+
+    assert answer == {"status": "updated", "device_id": "old1"}
 
 
 async def test_update_device_onto_a_stricter_driver_asks_for_its_required_field(setup):
@@ -820,3 +859,21 @@ async def test_update_device_onto_a_driver_needing_a_login_leaves_it_waiting_in_
     assert answer["needs_login"] == ["password"]
     assert on_disk.connections["dev2"] == {"host": "192.0.2.11", "password": SAVED_LOGIN}
     assert "password" not in _device(on_disk, "dev2").config
+
+
+async def test_update_device_settings_on_an_older_device_needing_a_login_leave_it_waiting(setup):
+    handler, engine = setup
+    register_driver(_AcmeLocked)
+    try:
+        # Saved before its driver required a password: an older device.
+        engine.project.devices.append(DeviceConfig(id="lock2", driver="acme_locked", name="Lock 2", config={}))
+        save_project(str(engine.project_path), engine.project)
+        answer = await handler._update_device({"device_id": "lock2", "config": {"host": "192.0.2.71"}})
+        on_disk = _on_disk(engine)
+    finally:
+        unregister_driver("acme_locked")
+
+    assert answer["status"] == "updated"
+    assert answer["needs_login"] == ["password"]
+    assert "missing_config" not in answer
+    assert on_disk.connections["lock2"] == {"host": "192.0.2.71", "password": SAVED_LOGIN}

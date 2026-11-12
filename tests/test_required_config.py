@@ -2,9 +2,10 @@
 
 ``PATCH /api/devices/{id}`` and the AI's add/update device tools refuse a
 ``required: true`` field the device would run without, naming it by its label,
-the way the Add and Edit Device dialogs do. A whole-project save and a project
-load never refuse over it: one older device with the gap must not block every
-other edit or stop a project opening.
+the way the Add and Edit Device dialogs do; the two edit doors only when the
+edit made the gap. A whole-project save and a project load never refuse over
+it: one older device with the gap must not block every other edit or stop a
+project opening.
 
 The device here is an invented camera: IP address and Model required (Model
 with no default), a required password the driver gives no default, and a
@@ -306,15 +307,27 @@ async def test_patch_renaming_or_disabling_an_older_device_is_not_refused(camera
     assert saved.enabled is False
 
 
-async def test_ai_update_device_refuses_with_the_label_and_the_key(camera_engine):
+_MODEL_STILL_BLANK = {
+    "missing_config": ["model"],
+    "missing_config_note": "Still blank: Model, which its driver requires. Ask for it and send it in config.",
+}
+
+
+async def test_ai_update_device_refuses_only_a_gap_its_edit_makes(camera_engine):
+    """As PATCH does: the older device's blank Model does not stop a new port,
+    and the answer names it; the edit that blanks Model again is refused."""
     _client, engine = camera_engine
     handler = AIToolHandler(MagicMock(), engine.devices, MagicMock())
     result = await handler._update_device({"device_id": "cam1", "config": {"port": 5501}})
-    assert result == {"error": "Model is required.", "missing_config": ["model"]}
-    assert _saved_device(engine).config == {}
+    assert result == {"status": "updated", "device_id": "cam1", **_MODEL_STILL_BLANK}
+    assert load_project(engine.project_path).connections["cam1"]["port"] == 5501
 
     result = await handler._update_device({"device_id": "cam1", "config": {"model": "w12"}})
     assert result == {"status": "updated", "device_id": "cam1"}
+    assert _saved_device(engine).config == {"model": "w12"}
+
+    result = await handler._update_device({"device_id": "cam1", "config": {"model": None}})
+    assert result == {"error": "Model is required.", "missing_config": ["model"]}
     assert _saved_device(engine).config == {"model": "w12"}
 
 
@@ -322,7 +335,7 @@ async def test_ai_update_device_rename_is_not_refused(camera_engine):
     _client, engine = camera_engine
     handler = AIToolHandler(MagicMock(), engine.devices, MagicMock())
     result = await handler._update_device({"device_id": "cam1", "name": "Lectern Camera"})
-    assert result == {"status": "updated", "device_id": "cam1"}
+    assert result == {"status": "updated", "device_id": "cam1", **_MODEL_STILL_BLANK}
 
 
 async def test_ai_add_device_refuses_a_blank_required_field(camera_engine):

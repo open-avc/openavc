@@ -11,9 +11,12 @@ because a generator sends only the field it means to change.
 
 These tools never take a device login (see "device logins" below). A
 driver's required field left blank is refused as the Add and Edit Device
-dialogs refuse it, asked only when the settings or the driver change, and
-then for every blank one: ``PATCH /api/devices/{id}`` refuses only a gap its
-own edit makes (``required_config.gaps_an_edit_makes``).
+dialogs refuse it: ``add_device`` refuses every blank one, and
+``update_device`` asks only when the settings or the driver change, and then
+only for a gap the edit makes (``required_config.gaps_an_edit_makes``), as
+``PATCH /api/devices/{id}`` does. An older device saved before its driver
+required a field still takes a new address; its answer names each required
+field still blank, so the model can ask for it.
 """
 
 from typing import Any
@@ -24,6 +27,7 @@ from openavc.core.device_logins import SAVED_LOGIN, login_fields, login_settings
 from openavc.core.device_config import split_connection_fields
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.required_config import (
+    gaps_an_edit_makes,
     merged_device_config,
     missing_for_driver,
     required_sentence,
@@ -38,13 +42,18 @@ from openavc.drivers.spec import is_secret_setting
 from openavc.utils.logger import get_logger
 
 
-def _refuse_missing_required(driver_id: str, merged: dict) -> None:
+def _refuse_missing_required(driver_id: str, merged: dict, before: dict | None = None) -> None:
     """Refuse a device whose driver requires a field ``merged`` leaves blank.
 
-    The sentence is the one the Add and Edit Device dialogs show; the keys are
-    what to send back in ``config``. See core/required_config.py.
+    With ``before`` (the device's merged config ahead of an edit on the same
+    driver), only when the edit made one of those gaps. The sentence is the
+    one the Add and Edit Device dialogs show; the keys are what to send back
+    in ``config``. See core/required_config.py.
     """
-    missing = missing_for_driver(driver_id, merged)
+    if before is None:
+        missing = missing_for_driver(driver_id, merged)
+    else:
+        missing = gaps_an_edit_makes(driver_id, before, merged)
     if missing:
         raise ToolEditError({
             "error": required_sentence([label for _key, label in missing]),
@@ -151,12 +160,40 @@ def _warn_not_installed(tool: str, driver_id: str) -> None:
         )
 
 
-def _settle_required_fields(driver_id: str, protocol: dict, connection: dict) -> None:
+def _settle_required_fields(
+    driver_id: str, protocol: dict, connection: dict, before: dict | None = None,
+) -> None:
     """A login ``driver_id`` requires is left waiting (the marker, written into
     ``protocol`` or ``connection``); any other required field left blank is
-    refused with the Add and Edit Device dialogs' sentence."""
+    refused with the Add and Edit Device dialogs' sentence, only when the edit
+    made a gap if ``before`` is given (``_refuse_missing_required``)."""
     _wait_for_required_logins(driver_id, protocol, connection)
-    _refuse_missing_required(driver_id, merged_device_config(driver_id, protocol, connection))
+    _refuse_missing_required(driver_id, merged_device_config(driver_id, protocol, connection), before)
+
+
+def _still_blank(engine: Any, device_id: str) -> dict[str, Any]:
+    """The required fields the device still leaves blank after a saved edit
+    (an older device saved before its driver required them), and what to do
+    about them. Empty otherwise."""
+    project = getattr(engine, "project", None)
+    device = next((d for d in getattr(project, "devices", None) or [] if d.id == device_id), None)
+    if device is None:
+        return {}
+    missing = missing_for_driver(
+        device.driver,
+        merged_device_config(device.driver, device.config, project.connections.get(device_id, {})),
+    )
+    if not missing:
+        return {}
+    one = len(missing) == 1
+    it = "it" if one else "them"
+    return {
+        "missing_config": [key for key, _label in missing],
+        "missing_config_note": (
+            f"Still blank: {_joined([label for _key, label in missing])}, which its driver "
+            f"requires. Ask for {it} and send {it} in config."
+        ),
+    }
 
 
 def _has_device(project: Any, device_id: str) -> bool:
@@ -216,12 +253,14 @@ def _merge_sent_config(project: Any, existing: Any, driver_id: str, sent: dict |
     return {k: v for k, v in protocol.items() if v is not None}
 
 
-def _settle_on_driver(project: Any, device_id: str, driver_id: str, config: dict) -> dict:
+def _settle_on_driver(
+    project: Any, device_id: str, driver_id: str, config: dict, before: dict | None,
+) -> dict:
     """``config`` and the connections row with the required fields of
     ``driver_id`` settled (``_settle_required_fields``)."""
     config = dict(config)
     connection = dict(project.connections.get(device_id, {}))
-    _settle_required_fields(driver_id, config, connection)
+    _settle_required_fields(driver_id, config, connection, before)
     if connection:
         project.connections[device_id] = connection
     return config
@@ -247,17 +286,25 @@ def _edited_record(existing: Any, input: dict, driver_id: str, config: dict) -> 
 def _edit_device(project: Any, device_id: str, input: dict) -> None:
     """Apply an ``update_device`` edit to ``project`` (a copy), or raise
     ToolEditError. The required fields are asked only when the settings or
-    the driver change: a rename never stops on an older device's blank field."""
+    the driver change, and then only for a gap the edit makes, as PATCH
+    /api/devices/{id} asks: an older device's blank field stops neither a
+    rename nor a new address. Every gap is the edit's on a new driver."""
     index = _device_index(project, device_id)
     existing = project.devices[index]
     driver_id = input.get("driver", existing.driver)
     if "driver" in input and input["driver"] != existing.driver:
         _warn_not_installed("update_device", input["driver"])
+    # Taken before the merge, which rewrites the connections row.
+    before = None
+    if driver_id == existing.driver:
+        before = merged_device_config(
+            existing.driver, existing.config, dict(project.connections.get(device_id, {})),
+        )
     config = existing.config
     if "config" in input:
         config = _merge_sent_config(project, existing, driver_id, input.get("config"))
     if "config" in input or "driver" in input:
-        config = _settle_on_driver(project, device_id, driver_id, config)
+        config = _settle_on_driver(project, device_id, driver_id, config, before)
     project.devices[index] = _edited_record(existing, input, driver_id, config)
 
 
@@ -384,7 +431,10 @@ class DeviceToolsMixin:
         err = await apply_tool_edit(engine, lambda project: _edit_device(project, device_id, input))
         if err:
             return err
-        return {"status": "updated", "device_id": device_id, **_needs_login(engine, device_id)}
+        return {
+            "status": "updated", "device_id": device_id,
+            **_needs_login(engine, device_id), **_still_blank(engine, device_id),
+        }
 
     async def _delete_device(self, input: dict) -> Any:
         engine = self._get_engine()

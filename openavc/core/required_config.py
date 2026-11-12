@@ -12,10 +12,11 @@ A whole-project save, a project load and the whole-table connection routes
 (``PUT /api/connections``, the import) never ask. One older device with a
 blank field must not block every other edit or stop a project opening; that
 device fails to connect and says why on its card, as before. For the same
-reason ``PATCH /api/devices/{id}`` refuses only a gap the edit makes
-(``gaps_an_edit_makes``): the device page's editors send the whole config
-back, and an older device's preset or IR code saves from there while its
-blank Model waits for Edit Device.
+reason ``PATCH /api/devices/{id}`` and the AI's ``update_device`` refuse only
+a gap the edit makes (``gaps_an_edit_makes``): the device page's editors send
+the whole config back, and an older device's preset or IR code saves from
+there while its blank Model waits for Edit Device; the AI changes its address
+and is told the Model is still blank.
 
 What counts:
 
