@@ -163,7 +163,9 @@ def _evaluator_reach(evaluator: str, bodies: dict[str, str]) -> str:
     writes itself: the button's evaluator gives its words and its icon to
     helpers it shares with the toggle and the page nav. Followed by the same
     rule as the property table below (``_reachable``): a helper not given the
-    element cannot draw on it.
+    element cannot draw on it. A body here runs from one method's signature to
+    the next, so it carries the next method's doc comment: the scans below look
+    for a CALL, never a bare name, or a comment would satisfy them.
     """
     return "\n".join(bodies[name] for name in sorted(_reachable(evaluator, bodies)))
 
@@ -201,7 +203,7 @@ def test_only_the_state_text_types_can_draw_a_state_label(
     evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
     derived = frozenset(
         el_type for el_type, bind_type in look_binding_type.items()
-        if "_setLabelText" in _evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies)
+        if "this._setLabelText(" in _evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies)
     )
     assert derived == STATE_LABEL_TYPES
 
@@ -234,7 +236,7 @@ def test_only_the_state_icon_types_can_draw_a_state_icon(
     evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
     derived = frozenset(
         el_type for el_type, bind_type in look_binding_type.items()
-        if "renderElementContent" in _evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies)
+        if "this.renderElementContent(" in _evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies)
     )
     assert derived == STATE_ICON_TYPES
 

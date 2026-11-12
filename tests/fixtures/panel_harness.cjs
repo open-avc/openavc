@@ -6192,6 +6192,15 @@ const tests = {
             got[`clear_${name}`] = node.getAttribute('style');
         }
         clearColours({}, {});   // something with no style is left alone
+
+        // A gradient the node no longer has is not drawn under a later picture.
+        node = document.createElement('button');
+        paintStyle(node, { background_gradient: { from: '#ff0000', to: '#0000ff' } });
+        paintStyle(node, { bg_color: '#222222' });
+        paintPicture(node, '/p.png', {});
+        got.gradient_gone_then_picture = node.getAttribute('style');
+        paintPicture(node, '/p.png', { blend: 'mask' });
+        got.gradient_gone_then_layer = node.getAttribute('style');
         comparePins('frameless', got, PAINT_PINS.frameless);
     },
 
@@ -6298,6 +6307,9 @@ const tests = {
                 bindings: { show: { look: legacy({}) } } }, ['on', 'off']],
             ['legacy_style_label_rest', { type: 'button', label: 'Own', style: { label: 'Rest' },
                 bindings: { show: { look: legacy({}) } } }, ['off', 'on']],
+            ['legacy_style_label_empty_and_zero', { type: 'button', label: 'Own',
+                bindings: { show: { look: legacy({ style_active: { label: '' }, style_inactive: { label: 0 } }) } } },
+                ['on', 'off']],
             ['legacy_suppressed', { type: 'button', label: 'Own', display_mode: 'image', button_image: PIXEL,
                 image_blend_mode: 'multiply', bindings: { show: { look: legacy({ label_active: 'On!' }) } } }, ['on', 'off']],
             ['offline_full', { type: 'button', label: 'Own', icon: 'stop', frameless: true, button_image: PIXEL,
@@ -6342,6 +6354,7 @@ const tests = {
                 button_image: PIXEL, image_blend_mode: 'mask', bindings: toggle({}) }],
             ['toggle_image_mode_words', { type: 'button', label: 'Own', display_mode: 'image', button_image: PIXEL,
                 bindings: toggle({ on_label: 'ON', off_label: 'OFF' }) }],
+            ['toggle_own_label_zero', { type: 'button', label: 0, bindings: toggle({ on_label: 'ON', off_label: '' }) }],
         ];
         for (const [name, def] of toggles) {
             const m = mount({ id: name, ...def }, { 'var.on': false });
@@ -6361,6 +6374,32 @@ const tests = {
                 got[def.id] = [face(mount(def, {}).el)];
             }
         }
+
+        // A theme value CSS ignores: what a state or a toggle drew is dropped
+        // against the button's own style, so it does not outlive the state.
+        const badTheme = { button: { text_color: 'not-a-colour', bg_color: 'nope', opacity: 'x' } };
+        const themed = (def, state) => {
+            const app = mkApp();
+            renderProject(app, project({
+                elements: [def], placements: { [def.id]: { x: 5, y: 5, w: 20, h: 10 } },
+            }));
+            app.themeElementDefaults = badTheme;
+            app.state = state;
+            app.evaluateAllBindings(Object.keys(state));
+            return { app, el: app.root.querySelector(`[data-element-id="${def.id}"]`) };
+        };
+        let t = themed({ id: 'offline_ignored_theme_colour', type: 'button', label: 'Own', bindings: { show: { look: {
+            key: 'device.d1.mode', default_state: 'a',
+            states: { a: { text_color: '#ff0000', bg_color: '#00ff00', opacity: 0.5 } } } } } },
+            { ...up, 'device.d1.mode': 'a' });
+        got.offline_ignored_theme_colour = [face(t.el)];
+        set(t, 'device.d1.connected', false);
+        got.offline_ignored_theme_colour.push(face(t.el));
+        t = themed({ id: 'toggle_ignored_theme_colour', type: 'button', label: 'Own', bindings: toggle({}) },
+            { 'var.on': false });
+        got.toggle_ignored_theme_colour = [face(t.el)];
+        set(t, 'var.on', true); got.toggle_ignored_theme_colour.push(face(t.el));
+        set(t, 'var.on', false); got.toggle_ignored_theme_colour.push(face(t.el));
 
         // A toggle binding reached directly, with no `_labelBase` on it.
         const m = mount({ id: 'direct', type: 'button', label: 'Own',
