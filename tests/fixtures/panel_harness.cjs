@@ -8881,6 +8881,12 @@ Object.assign(tests, {
         await run('theme_answers_late', { answers: { t1: { after: 2500, answer: t1 } } }, async (m) => {
             m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(1000); await m.wait(1500); await m.wait(1000);
         });
+        // A page shown by a navigation before any state has arrived: its theme
+        // lands later and does not draw the page again.
+        await run('navigated_before_state', { answers: { t1: { after: 200, answer: t1 } } }, async (m) => {
+            m.definition({ theme_id: 't1' }); m.app.handleMessage({ type: 'ui.navigate', page_id: 'main' }); m.look();
+            await m.wait(200); await m.wait(1000); m.snapshot(); await m.wait(10);
+        });
         // A second definition while the first waits for its theme.
         await run('second_definition_while_waiting', { answers: { t1: { after: 400, answer: t1 }, t2 } }, async (m) => {
             m.snapshot(); m.definition({ theme_id: 't1' }); m.definition({ theme_id: 't2' }); await m.wait(400); await m.wait(1000);

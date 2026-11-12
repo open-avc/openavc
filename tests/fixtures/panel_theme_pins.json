@@ -287,6 +287,110 @@
         "t": 0
       }
     ],
+    "navigated_before_state": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      }
+    ],
     "second_definition_while_waiting": [
       {
         "r": "",
