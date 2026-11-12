@@ -1,6 +1,6 @@
 """The round-trip check tells a missing response rule from an acknowledgement.
 
-``_check_response_parsing`` compares what the simulator answers against what
+``check_response_parsing`` compares what the simulator answers against what
 the driver's response rules can read, and used to warn on every mismatch.
 On any protocol that acknowledges writes — ``<cmd> ACK`` / ``<cmd> NAK
 <code>``, which most AV serial and TCP protocols do — that is one warning per
@@ -16,11 +16,8 @@ pin both halves, including the one that must keep firing.
 
 from __future__ import annotations
 
-from openavc.simulator.validate import (
-    ValidationResult,
-    _check_response_parsing,
-    _extract_respond_calls,
-)
+from openavc.simulator.handler_replies import _extract_respond_calls, check_response_parsing
+from openavc.simulator.validate import ValidationResult
 
 
 def _result() -> ValidationResult:
@@ -30,11 +27,9 @@ def _result() -> ValidationResult:
 def _run(driver_def: dict) -> ValidationResult:
     result = _result()
     sim = driver_def.get("simulator", {})
-    _check_response_parsing(
+    check_response_parsing(
         result,
-        driver_def.get("commands", {}),
         sim.get("command_handlers", []),
-        driver_def.get("responses", []),
         sim.get("initial_state", {}),
         driver_def,
     )
