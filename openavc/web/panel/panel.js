@@ -20,6 +20,10 @@ import {
     FrameStatusWatch, drawFrame, fetchExtToken, framePlaceholder, loadPanelElementExtensions,
     pushToFrames, releaseFrames, releaseFramesIn,
 } from './modules/frames.js';
+import { ListControl, rowsFromState, showListSelection } from './modules/list.js';
+import {
+    drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
+} from './modules/fields.js';
 
 // --- Programmer session bridge ---------------------------------------------
 // When the panel is embedded as an iframe inside the Programmer IDE (the UI
@@ -2752,38 +2756,10 @@ class PanelApp {
             el.appendChild(label);
         }
 
-        const select = document.createElement('select');
-        const options = element.options || [];
-        // Per-option styling (show.look.style_map, authored in the UI
-        // Builder's Appearance card). Option colors show in the open list
-        // where the browser supports styling native options.
+        // Per-option colours from show.look.style_map (the Builder's Appearance card).
         const lookBinding = element.bindings?.show?.look;
         const styleMap = lookBinding && lookBinding.style_map ? lookBinding.style_map : null;
-        for (const opt of options) {
-            const option = document.createElement('option');
-            option.value = opt.value;
-            option.textContent = opt.label;
-            const optStyle = styleMap && styleMap[opt.value];
-            if (optStyle) {
-                if (optStyle.bg_color) option.style.backgroundColor = optStyle.bg_color;
-                if (optStyle.text_color) option.style.color = optStyle.text_color;
-            }
-            select.appendChild(option);
-        }
-
-        let changeTimeout = null;
-        select.addEventListener('change', () => {
-            if (changeTimeout) clearTimeout(changeTimeout);
-            changeTimeout = setTimeout(() => {
-                this.send({
-                    type: 'ui.change',
-                    element_id: element.id,
-                    value: select.value,
-                });
-            }, 100);
-            this.debounceTimers.push(changeTimeout);
-        });
-
+        const select = drawSelect(this._choiceHost(), element.id, element.options || [], styleMap);
         el.appendChild(select);
         applyStyle(el, this.getThemedStyle(element.type, element.style));
 
@@ -2825,23 +2801,7 @@ class PanelApp {
             el.appendChild(label);
         }
 
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.placeholder = element.placeholder || '';
-
-        let changeTimeout = null;
-        input.addEventListener('input', () => {
-            if (changeTimeout) clearTimeout(changeTimeout);
-            changeTimeout = setTimeout(() => {
-                this.send({
-                    type: 'ui.change',
-                    element_id: element.id,
-                    value: input.value,
-                });
-            }, 300);
-            this.debounceTimers.push(changeTimeout);
-        });
-
+        const input = drawTextInput(this._choiceHost(), element.id, element.placeholder || '');
         el.appendChild(input);
         applyStyle(el, this.getThemedStyle(element.type, element.style));
 
@@ -3008,16 +2968,11 @@ class PanelApp {
         el.className = 'panel-element panel-list';
         el.dataset.elementId = element.id;
 
-        const listStyle = element.list_style || 'selectable';
-        const itemHeight = element.item_height || 44 / REM_BASE_PX;
         // Merge theme element_defaults so `item_bg` / `item_active_bg` from
         // the theme actually drive list row colors. Reading raw element.style
         // here was a long-standing bug — theme edits looked dead because
         // only per-element overrides won.
         const style = this.getThemedStyle('list', element.style);
-        const itemBg = style.item_bg || '#2a2a4e';
-        const itemActiveBg = style.item_active_bg || '#42a5f5';
-
         applyStyle(el, style);
 
         if (element.label) {
@@ -3028,81 +2983,7 @@ class PanelApp {
             el.appendChild(label);
         }
 
-        const scrollArea = document.createElement('div');
-        scrollArea.className = 'list-scroll';
-        el.appendChild(scrollArea);
-
-        // Track selected state
-        const selectedValues = new Set();
-
-        let _lastItemsJson = '';
-        let _lastSelVal = undefined;
-        const renderItems = (items) => {
-            // Skip full re-render if items and selection haven't changed
-            const selBinding = element.bindings?.show?.value;
-            const selKey = selBinding?.key;
-            const currentSelVal = selKey ? this.state[selKey] : undefined;
-            const itemsJson = JSON.stringify(items);
-            if (itemsJson === _lastItemsJson && currentSelVal === _lastSelVal) return;
-            _lastItemsJson = itemsJson;
-            _lastSelVal = currentSelVal;
-            scrollArea.innerHTML = '';
-            // Read selected value from state
-            const selVal = selKey ? this.state[selKey] : undefined;
-            if (selVal !== undefined && selVal !== null) {
-                selectedValues.clear();
-                selectedValues.add(String(selVal));
-            }
-
-            for (const item of items) {
-                const row = document.createElement('div');
-                row.className = 'list-item';
-                row.style.minHeight = itemHeight + 'rem';
-                row.style.backgroundColor = itemBg;
-                row.textContent = item.label || item.value || '';
-                row.dataset.value = item.value || '';
-
-                const isActive = selectedValues.has(String(item.value));
-                if (isActive && listStyle !== 'static') {
-                    row.style.backgroundColor = itemActiveBg;
-                    row.classList.add('active');
-                }
-
-                if (listStyle !== 'static') {
-                    row.addEventListener('click', () => {
-                        if (listStyle === 'selectable') {
-                            selectedValues.clear();
-                            selectedValues.add(String(item.value));
-                        } else if (listStyle === 'multi_select') {
-                            if (selectedValues.has(String(item.value))) {
-                                selectedValues.delete(String(item.value));
-                            } else {
-                                selectedValues.add(String(item.value));
-                            }
-                        }
-                        // The list's action binding slot is `select` (see the UI
-                        // Builder). Emit ui.select so that authored action fires.
-                        // Previously selectable/multi_select sent ui.change and
-                        // action sent ui.press, neither of which the engine maps
-                        // to the `select` binding, so the configured action was a
-                        // silent no-op on the end-user panel.
-                        this.send({ type: 'ui.select', element_id: element.id, value: item.value });
-                        // Re-render items to update selection visuals
-                        renderItems(items);
-                    });
-                }
-
-                scrollArea.appendChild(row);
-            }
-            // Scroll selected item into view
-            const activeRow = scrollArea.querySelector('.list-item.active');
-            if (activeRow) activeRow.scrollIntoView({ block: 'nearest' });
-        };
-
-        // Initial items from static list
-        const staticItems = element.items || element.options || [];
-        renderItems(staticItems);
-
+        const list = new ListControl(this._choiceHost(), element, el, style);
 
         // State-driven items binding
         const itemsBinding = element.bindings?.show?.items;
@@ -3112,7 +2993,7 @@ class PanelApp {
                 element: el,
                 elementDef: element,
                 binding: itemsBinding,
-                _list: { renderItems, scrollArea, staticItems, itemBg, itemActiveBg, listStyle, selectedValues },
+                _list: list,
             });
         }
 
@@ -3124,7 +3005,7 @@ class PanelApp {
                 element: el,
                 elementDef: element,
                 binding: selBinding,
-                _list: { scrollArea, itemBg, itemActiveBg, selectedValues },
+                _list: list,
             });
         }
 
@@ -3133,60 +3014,21 @@ class PanelApp {
 
     evaluateListItems(b) {
         const { renderItems, staticItems } = b._list;
-        const binding = b.binding;
-        const keyPattern = binding.key_pattern || '';
-
-        if (keyPattern) {
-            // Collect items from state matching pattern (glob with *). Every
-            // other character is literal: escaped first, so a bracket or a
-            // plus in the pattern neither throws nor matches as a regex.
-            const escaped = keyPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const regex = new RegExp('^' + escaped.replace(/\\\*/g, '(.+)') + '$');
-            const items = [];
-            for (const [key, val] of Object.entries(this.state)) {
-                const match = key.match(regex);
-                if (match) {
-                    items.push({ label: String(val), value: match[1] || String(val) });
-                }
-            }
-            if (items.length > 0) {
-                const hash = JSON.stringify(items);
-                if (b._lastItemsHash === hash) return;
-                b._lastItemsHash = hash;
-                renderItems(items);
-                return;
-            }
-        }
-        // Fallback to static items
-        const hash = JSON.stringify(staticItems);
+        const keyPattern = b.binding.key_pattern || '';
+        const found = keyPattern ? rowsFromState(this.state, keyPattern) : [];
+        // The list's own items when the pattern finds nothing.
+        const items = found.length > 0 ? found : staticItems;
+        const hash = JSON.stringify(items);
         if (b._lastItemsHash === hash) return;
         b._lastItemsHash = hash;
-        renderItems(staticItems);
+        renderItems(items);
     }
 
     evaluateListSelected(b) {
-        const { scrollArea, itemBg, itemActiveBg, selectedValues } = b._list;
         const value = this.state[b.binding.key];
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
-        const paint = () => scrollArea.querySelectorAll('.list-item').forEach(item => {
-            const isActive = selectedValues.has(item.dataset.value);
-            item.style.backgroundColor = isActive ? itemActiveBg : itemBg;
-            item.classList.toggle('active', isActive);
-        });
-        if (offline) {
-            // Nothing is selected while the device is unreachable. Left alone
-            // this is the quietest of the wrong answers: the row stays lit and
-            // nothing about it says the selection is a memory.
-            selectedValues.clear();
-            paint();
-            return;
-        }
-        if (value !== undefined && value !== null) {
-            selectedValues.clear();
-            selectedValues.add(String(value));
-            paint();
-        }
+        showListSelection(b._list, value, offline);
     }
 
     // --- Matrix ---
@@ -4151,6 +3993,19 @@ class PanelApp {
         // every element carries would clip the author's own page.
         el.classList.add('panel-custom-page');
         return this._placeElement(el, null, asElement);
+    }
+
+    /** What a list, a dropdown or a text field asks of the panel (modules/list.js,
+     *  modules/fields.js), read when it asks: tests replace `send` on the app,
+     *  and a page redraw replaces the timers' list. */
+    _choiceHost() {
+        const app = this;
+        return {
+            get state() { return app.state; },
+            send: (msg) => app.send(msg),
+            keepTimer: (timer) => app.debounceTimers.push(timer),
+            remBasePx: REM_BASE_PX,
+        };
     }
 
     /** What a frame asks of the panel (modules/frames.js), read when it asks:
@@ -5484,52 +5339,29 @@ class PanelApp {
     }
 
     evaluateSelectValue(b) {
-        const { element, binding } = b;
-        const value = this.state[binding.key];
+        const value = this.state[b.binding.key];
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
-        if (offline || value === undefined || value === null) {
-            // No selection at all rather than a stale one or the first option:
-            // a dropdown reading "HDMI 2" for a switcher nobody can reach is
-            // the same confident wrong answer a fader gives, and so is one
-            // reading "HDMI 1" for a switcher that has not said yet.
-            element.selectedIndex = -1;
-            return;
-        }
-        element.value = String(value);
+        showSelectValue(b.element, value, offline);
     }
 
     // Select appearance (show.look.style_map): the control takes the colors
-    // configured for the option matching the bound key's current value, and
-    // returns to the themed look when nothing matches. Both properties are
-    // written on every pass so a previous match never lingers.
+    // configured for the option matching the bound key's current value.
     evaluateSelectLook(b) {
-        const { select, binding } = b;
-        const stateValue = this.state[binding.key];
-        const styleMap = binding.style_map || {};
+        const stateValue = this.state[b.binding.key];
+        const styleMap = b.binding.style_map || {};
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
-        const matched = offline || stateValue === undefined || stateValue === null
-            ? undefined
-            : styleMap[String(stateValue)];
-        select.style.backgroundColor = (matched && matched.bg_color) || '';
-        select.style.color = (matched && matched.text_color) || '';
+        showSelectLook(b.select, styleMap, stateValue, offline);
     }
 
     evaluateTextInputValue(b) {
-        const { element, binding } = b;
         // Don't overwrite if user is actively editing (prevents cursor loss)
-        if (document.activeElement === element) return;
-        const value = this.state[binding.key];
+        if (document.activeElement === b.element) return;
+        const value = this.state[b.binding.key];
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
-        if (offline || value === undefined || value === null) {
-            // Key deleted, or the device is unreachable — clear rather than
-            // keeping a value that is no longer coming from anywhere.
-            element.value = '';
-            return;
-        }
-        element.value = String(value);
+        showTextValue(b.element, value, offline);
     }
 
     // --- Lock Screen ---
