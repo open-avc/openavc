@@ -179,13 +179,13 @@ def test_both_driver_formats_run_the_same_function():
         + source.count("def _check_initial_state_types(")
         for source in sources.values()
     ) == 1
-    callers = sorted(
-        name for name, source in sources.items()
+    calls = {
+        name: source.count("check_initial_state_types(result")
+        for name, source in sources.items()
         if "check_initial_state_types(result" in source
-    )
-    assert callers == ["validate.py"]
+    }
     # Once from the YAML path, once from the Python path.
-    assert sources["validate.py"].count("check_initial_state_types(result") == 2
+    assert calls == {"validate.py": 1, "python_parity.py": 1}
 
 
 # ── Command coverage ──

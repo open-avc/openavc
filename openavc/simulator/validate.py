@@ -43,13 +43,22 @@ Checks performed:
    11. Child entities   — drivers with child_entity_types get a heads-up that
                           per-child state is modelled only where the command /
                           poll pairing is declared
+   12. Settings         — a declared capacity and single_client the simulator
+                          would take (settings_checks, as for a Python driver)
 
-  Python drivers (.py + _sim.py):
+  Python drivers (.py + _sim.py), in python_parity:
     1. SIMULATOR_INFO   — required fields present (driver_id, name, initial_state)
-    2. State coverage   — how much of the device the simulator seeds against
+    2. Settings         — as for a YAML driver (settings_checks)
+    3. driver_id match  — DRIVER_INFO.id == SIMULATOR_INFO.driver_id
+    4. State coverage   — how much of the device the simulator seeds against
                           how much the driver reads (a count: the two are
                           different namespaces, so the names rarely line up)
-    3. driver_id match  — DRIVER_INFO.id == SIMULATOR_INFO.driver_id
+    5. Type consistency — each seed against its declared type, as for YAML
+    6. Transport match  — the same transport, or TCP standing in for one the
+                          simulator has no server for
+    7. Command names    — each command's name appears in the simulator's
+                          source (a heads-up: a binary simulator never
+                          writes one)
 """
 
 from __future__ import annotations
@@ -75,6 +84,7 @@ from openavc.simulator.handler_checks import (
     check_templates,
 )
 from openavc.simulator.settings_checks import check_declared_settings, check_initial_state_types
+from openavc.simulator.python_parity import validate_python_driver
 from openavc.simulator.osc_coverage import (
     OscAddresses,
     check_osc_command_coverage,
@@ -230,84 +240,6 @@ def _check_state_coverage(
                 f"'{var_name}' will use auto-gen default {default!r}. "
                 f"Add to simulator.initial_state to override."
             )
-
-
-# How many unseeded variable names the grouped state-coverage line lists.
-_STATE_EXAMPLES = 6
-
-
-def _check_python_state_coverage(
-    result: ValidationResult,
-    driver_state_vars: dict,
-    sim_initial: dict,
-) -> None:
-    """Compare a Python driver's state variables against its simulator's seeds.
-
-    Reported as one counted line, not as a warning per name, because the two
-    sides are **different namespaces** — the same reason
-    ``settings_checks.check_initial_state_types`` reports at info, and the
-    same reason the YAML half of this check was downgraded years earlier.
-
-    ``SIMULATOR_INFO.initial_state`` seeds what the device puts on the wire.
-    ``DRIVER_INFO.state_variables`` are what the driver publishes after
-    reading it, and a driver that does any work at all between the two has
-    names that cannot match. Measured over the shipped corpus on 2026-07-31,
-    this check produced 268 warnings and every one inspected was that:
-
-      viewsonic_cde   sim seeds power_code / mute_code / freeze_code /
-                      hub_temp; driver publishes power / mute / freeze /
-                      amb_temperature_c. 21 warnings, 21 correct pairs.
-      pjlink_class1   sim answers the lamp query from one lamp_hours key;
-                      the driver fans it into lamp1_hours..lamp8_hours plus
-                      six error_* flags. 17 warnings, nothing to seed.
-      epson_escvp     sim seeds the ESC/VP command tokens themselves (PWR,
-                      LAMP, ERR); driver publishes power_state, lamp_hours,
-                      error_status. 11 warnings, zero name overlap, correct.
-
-    Telling those apart from a simulator that genuinely models nothing needs
-    the driver's parsing code, which is not readable here — and every
-    threshold that looked promising (name overlap, seeds-per-variable ratio)
-    put pjlink_class1 on the wrong side of it. So the numbers are stated and
-    the judgement is left with the author, which is the honest shape: a
-    simulator seeding 3 keys against 33 state variables is visible in the
-    line without the tool having to assert what it cannot know.
-
-    The one case worth a finding needs no threshold: a simulator that seeds
-    nothing at all while the driver declares state. There is no naming
-    convention under which that models the device.
-    """
-    unseeded = [
-        name
-        for name in driver_state_vars
-        if isinstance(name, str) and name not in sim_initial
-    ]
-    if not unseeded:
-        return
-
-    if not sim_initial:
-        result.warning(
-            "state_coverage",
-            f"SIMULATOR_INFO seeds no initial_state at all, but the driver "
-            f"declares {len(driver_state_vars)} state variable(s) — the "
-            f"simulator models none of this device, so nothing it answers "
-            f"can exercise the driver's parsing."
-        )
-        return
-
-    shown = ", ".join(unseeded[:_STATE_EXAMPLES])
-    rest = len(unseeded) - _STATE_EXAMPLES
-    if rest > 0:
-        shown += f" (+{rest} more)"
-    result.info(
-        "state_coverage",
-        f"SIMULATOR_INFO seeds {len(sim_initial)} state key(s); "
-        f"{len(unseeded)} of the driver's {len(driver_state_vars)} state "
-        f"variable(s) are not among them BY NAME: {shown}. Usually correct — "
-        f"the simulator seeds what goes on the wire and the driver publishes "
-        f"what it computes from that, so the names differ. Worth a look only "
-        f"if the counts say the simulator models far less than the driver "
-        f"reads."
-    )
 
 
 # How many distinct acknowledgement-shaped responses the grouped info names
@@ -502,24 +434,6 @@ def _report_acknowledgements(result: ValidationResult, acknowledgements: list[st
     )
 
 
-# Transports the simulator serves with a server of its own — one module each
-# under openavc/simulator/ (tcp_simulator, http_simulator, udp_simulator, osc_simulator,
-# mqtt_simulator, websocket_simulator, snmp_simulator). Anything else is a raw byte pipe with no
-# simulator server, so it is simulated over TCP instead. That substitution is
-# the platform's own: SimulationManager._apply_sim_redirect flips a serial
-# device's transport to tcp for the duration of a simulation run precisely
-# because "the simulator has no serial server"
-# (openavc/core/simulation.py::_driver_transport_is_serial). A driver declaring
-# `serial` or `ssh` beside a `tcp` simulator is therefore correct, and erroring
-# on it asks the author to break a working simulator to satisfy a string
-# comparison.
-_SIMULATOR_SERVED_TRANSPORTS = frozenset(
-    {"tcp", "http", "udp", "osc", "mqtt", "websocket", "snmp"}
-)
-
-
-# How many unframed replies the finding quotes. The count is always exact; the
-# examples are there to recognise the shape, not to enumerate it.
 _FRAMING_EXAMPLES = 3
 
 
@@ -964,213 +878,6 @@ def _check_child_entities(result: ValidationResult, driver_def: dict, sim: dict)
             f"each_child poll query needs query_for:. Anything without one "
                 f"needs its own command_handlers entry."
         )
-
-
-# ── Python driver validation ──
-
-
-def validate_python_driver(driver_path: Path) -> ValidationResult:
-    """Validate a Python driver and its companion _sim.py simulator."""
-    from openavc.drivers.python_info import ExtractError
-    from openavc.simulator.scaffold import extract_driver_info
-
-    # The reader refuses a file it cannot honestly read — a syntax error, or a
-    # DRIVER_INFO that is not a class attribute (the runtime loads it off a
-    # BaseDriver subclass, so a module-level dict of that name is a driver
-    # that will never load). Report that as a finding rather than letting it
-    # come out of a validator as a traceback.
-    try:
-        driver_info = extract_driver_info(driver_path)
-    except ExtractError as exc:
-        result = ValidationResult(str(driver_path), driver_path.stem, "python")
-        result.error("driver_info", str(exc))
-        return result
-    except SyntaxError as exc:
-        result = ValidationResult(str(driver_path), driver_path.stem, "python")
-        result.error("driver_info", f"{driver_path.name} does not parse: {exc}")
-        return result
-
-    driver_id = driver_info.get("id", driver_path.stem) if driver_info else driver_path.stem
-    if not isinstance(driver_id, str):
-        driver_id = driver_path.stem
-    result = ValidationResult(str(driver_path), driver_id, "python")
-
-    if not driver_info:
-        result.error("driver_info", "Could not extract DRIVER_INFO from driver file")
-        return result
-
-    # Find companion simulator file
-    sim_path = driver_path.parent / f"{driver_path.stem}_sim.py"
-    if not sim_path.exists():
-        result.warning("simulator_file", f"No simulator file found at {sim_path.name}")
-        return result
-
-    # Extract SIMULATOR_INFO from the simulator file
-    sim_info = _extract_simulator_info(sim_path)
-    if not sim_info:
-        result.error("simulator_info", "Could not extract SIMULATOR_INFO from simulator file")
-        return result
-
-    # Check required SIMULATOR_INFO fields
-    for field in ("driver_id", "name", "initial_state"):
-        if field not in sim_info:
-            result.error("simulator_info", f"SIMULATOR_INFO missing required field: '{field}'")
-
-    check_declared_settings(
-        result, sim_info, 'SIMULATOR_INFO["{}"]', driver_info.get("transport"),
-    )
-
-    # Check driver_id match
-    if driver_info.get("id") and sim_info.get("driver_id"):
-        if driver_info["id"] != sim_info["driver_id"]:
-            result.error(
-                "driver_id_match",
-                f"DRIVER_INFO id ({driver_info['id']!r}) != "
-                f"SIMULATOR_INFO driver_id ({sim_info['driver_id']!r})"
-            )
-
-    # Check state variable coverage. A value the reader could not resolve
-    # statically arrives as the UNEVALUATED marker rather than a dict, and it
-    # is named rather than skipped — the old reader's regex fallback always
-    # produced *something*, so a computed block used to be checked against an
-    # invention instead of reported as unreadable.
-    driver_state_vars = driver_info.get("state_variables", {})
-    sim_initial = sim_info.get("initial_state", {})
-    sim_initial_readable = isinstance(sim_initial, dict)
-    if not sim_initial_readable:
-        # The mirror of the driver-side note below, which this side was
-        # missing: a seed block built from a module constant
-        # (`dict(DEFAULT_DISPLAY)`) collapsed silently to {} here, and an
-        # unreadable block then looked exactly like an empty one.
-        result.info(
-            "state_coverage",
-            "SIMULATOR_INFO initial_state is computed, so state coverage and "
-            "initial-state types could not be checked.",
-        )
-        sim_initial = {}
-
-    if not isinstance(driver_state_vars, dict):
-        result.info(
-            "state_coverage",
-            "DRIVER_INFO state_variables are computed, so state coverage and "
-            "initial-state types could not be checked.",
-        )
-        driver_state_vars = {}
-
-    if sim_initial_readable:
-        _check_python_state_coverage(result, driver_state_vars, sim_initial)
-
-    # Check type consistency for initial state — the same function the YAML
-    # path calls, so a Python driver is held to the same rules.
-    check_initial_state_types(result, driver_state_vars, sim_initial)
-
-    # Check transport match
-    driver_transport = driver_info.get("transport", "tcp")
-    sim_transport = sim_info.get("transport", "tcp")
-    if driver_transport != sim_transport:
-        if driver_transport not in _SIMULATOR_SERVED_TRANSPORTS and sim_transport == "tcp":
-            # Not a mismatch — the only way to simulate this device. See
-            # _SIMULATOR_SERVED_TRANSPORTS.
-            result.info(
-                "transport_match",
-                f"Driver transport {driver_transport!r} has no simulator server, "
-                f"so it is simulated over TCP. That is the supported "
-                f"substitution, not a mismatch."
-            )
-        else:
-            result.error(
-                "transport_match",
-                f"DRIVER_INFO transport ({driver_transport!r}) != "
-                f"SIMULATOR_INFO transport ({sim_transport!r})"
-            )
-
-    # Command coverage. A Python simulator's dispatch cannot be proven
-    # statically — a binary protocol answers raw bytes and never writes a
-    # logical command name anywhere — so this is a heads-up, not a finding,
-    # and it reports at ``info``.
-    #
-    # It used to be a single warning gated on ``not exact_mentions``: one
-    # command name appearing anywhere in the file silenced the check for
-    # every other command. ``verillon_beacon`` validated with zero warnings
-    # because the string ``set_bitrate`` occurred inside ``"stream.set_bitrate"``
-    # and its other three commands were never looked at. Reporting which
-    # names were not found is the same evidence without the cliff.
-    sim_source = sim_path.read_text(encoding="utf-8")
-    driver_commands = driver_info.get("commands", {})
-    if not isinstance(driver_commands, dict):
-        result.info(
-            "command_coverage",
-            "DRIVER_INFO commands are computed, so command coverage could not "
-            "be checked.",
-        )
-        return result
-
-    command_names = [name for name in driver_commands if isinstance(name, str)]
-    unmentioned = [
-        name
-        for name in command_names
-        # Standalone token so prefixes like ``power`` do not satisfy ``power_on``.
-        if not re.search(
-            rf"(?<![A-Za-z0-9_]){re.escape(name)}(?![A-Za-z0-9_])", sim_source
-        )
-    ]
-
-    if unmentioned:
-        preview = ", ".join(repr(name) for name in unmentioned[:5])
-        if len(unmentioned) > 5:
-            preview += f", … (+{len(unmentioned) - 5} more)"
-        result.info(
-            "command_coverage",
-            f"{len(unmentioned)} of {len(command_names)} DRIVER_INFO command "
-            f"name(s) do not appear in the simulator source: {preview}. A "
-            "simulator that dispatches on raw protocol bytes will never "
-            "mention them, so this is only worth checking when the simulator "
-            "does dispatch by name."
-        )
-
-    return result
-
-
-def _extract_simulator_info(sim_path: Path) -> dict | None:
-    """Extract SIMULATOR_INFO from a Python simulator file.
-
-    Reads the source rather than importing it, through the same lenient
-    evaluator the driver side uses. It used to be a ``literal_eval`` with a
-    regex fallback, and that fallback's worst habit was line 1458's: a value
-    it could not evaluate was stored as **its own source text**. So a
-    simulator seeding ``"volume": _DEFAULT_VOLUME`` handed the type check the
-    string ``"_DEFAULT_VOLUME"``, which then reported that an integer state
-    variable held a str — a finding about the reader, printed as a finding
-    about the driver. 16 of the 59 shipped simulators take that path.
-
-    A value that genuinely cannot be resolved now comes back as the
-    UNEVALUATED marker, which the checks skip and name instead of comparing.
-    """
-    import ast
-
-    from openavc.drivers.python_info import lenient_ast_value
-
-    try:
-        tree = ast.parse(sim_path.read_text(encoding="utf-8"))
-    except SyntaxError:
-        return None
-
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.ClassDef):
-            continue
-        for item in node.body:
-            targets = []
-            if isinstance(item, ast.Assign):
-                targets = item.targets
-            elif isinstance(item, ast.AnnAssign) and item.value is not None:
-                targets = [item.target]
-            for target in targets:
-                if isinstance(target, ast.Name) and target.id == "SIMULATOR_INFO":
-                    value = lenient_ast_value(
-                        item.value, "SIMULATOR_INFO", [],
-                    )
-                    return value if isinstance(value, dict) else None
-    return None
 
 
 # ── Helper functions ──
