@@ -351,6 +351,11 @@ SCENARIOS = [
     # on every kind of control, over a look and a visible_when, before a draw
     # and through a redraw, pinned whole (tests/fixtures/panel_override_pins.json).
     "ui_overrides_apply_and_clear_as_today",
+    # The project's own CSS: css_class tokens on a control, the project
+    # stylesheet put in once, rewritten only when it changes, its declarations
+    # raised to !important past quotes, parentheses and @keyframes, pinned whole
+    # (tests/fixtures/panel_stylesheet_pins.json).
+    "project_stylesheet_applies_as_today",
 ]
 
 

@@ -9234,6 +9234,157 @@ Object.assign(tests, {
     },
 });
 
+// --- The project's own CSS: css_class and the project stylesheet --------------
+//
+// A control's css_class becomes its class attribute, token by token; the
+// project stylesheet (ui.custom_css) goes in one style node after the panel's
+// own, every declaration in it raised to !important except inside @keyframes,
+// rewritten only when its text changes. Each case draws pages the way a
+// definition does and records, step by step, the style nodes in the document
+// (how many, which one, its text), the rules the browser parsed from it, each
+// control's classes and the warnings logged, in panel_stylesheet_pins.json,
+// recorded from the code before it moved.
+
+const STYLESHEET_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_stylesheet_pins.json'), 'utf8'));
+
+/** Every rule in a sheet as the browser serialises it, nested rules indented. */
+function sheetRules(rules, depth = 0) {
+    const out = [];
+    for (const rule of rules || []) {
+        if (rule.cssRules && rule.type !== 1) {
+            out.push(`${' '.repeat(depth)}@${rule.type} ${rule.conditionText || rule.name || rule.media?.mediaText || ''}`);
+            out.push(...sheetRules(rule.cssRules, depth + 1));
+        } else {
+            out.push(' '.repeat(depth) + rule.cssText);
+        }
+    }
+    return out;
+}
+
+function stylesheetCase(got, name, script) {
+    for (const n of document.querySelectorAll('#panel-custom-css')) n.remove();
+    const app = mkApp();
+    app.send = () => {};
+    const m = { app, steps: [], w: [], seen: 0 };
+    const warn = console.warn;
+    console.warn = (...args) => { m.w.push(args.map(String).join(' ')); };
+    m.look = (extra) => {
+        const step = {};
+        const nodes = [...document.querySelectorAll('#panel-custom-css')];
+        step.nodes = nodes.map((n) => {
+            if (!n.__pinned) { m.seen += 1; n.__pinned = m.seen; }
+            return `#${n.__pinned} in ${n.parentNode ? n.parentNode.nodeName : 'nothing'} last=${n === document.head.lastElementChild}`;
+        });
+        const node = nodes[0];
+        if (node) {
+            step.text = node.textContent;
+            try { step.rules = sheetRules(node.sheet && node.sheet.cssRules); } catch (e) { step.rules = `unreadable: ${e.message}`; }
+        }
+        const classes = {};
+        for (const el of app.root.querySelectorAll('[data-element-id]')) classes[el.dataset.elementId] = el.className;
+        step.cls = classes;
+        if (m.w.length) step.w = m.w.splice(0);
+        if (extra) Object.assign(step, extra);
+        m.steps.push(step);
+    };
+    m.draw = (custom_css, elements = []) => {
+        const placements = {};
+        elements.forEach((e, i) => { placements[e.id] = { x: 2 + i * 10, y: 2, w: 9, h: 9 }; });
+        const proj = project({ elements, placements });
+        if (custom_css !== undefined) proj.ui.custom_css = custom_css;
+        renderProject(app, proj);
+        m.look();
+    };
+    try {
+        script(m);
+    } catch (e) {
+        m.steps.push({ threw: String(e && e.message) });
+    } finally {
+        console.warn = warn;
+        for (const n of document.querySelectorAll('#panel-custom-css')) n.remove();
+    }
+    got[name] = m.steps;
+}
+
+Object.assign(tests, {
+    project_stylesheet_applies_as_today() {
+        const got = {};
+        const run = (name, script) => stylesheetCase(got, name, script);
+        const SHEET = [
+            '.brand { background: #8AB493; color: white }',
+            '.quoted { font-family: "A;B", serif; background-image: url("data:image/png;base64,AA;BB") }',
+            '.paren { background-image: url(data:image/png;base64,CC;DD); color: rgb(1, 2, 3) }',
+            '.already { color: red !important; border-color: blue ! important; opacity: 0.5 }',
+            '.vars { --brand: #8AB493; background: var(--brand); border: 1px solid var(--brand) }',
+            '.escaped { font-family: "a\\";b", sans-serif; width: 10px }',
+            '.empty { }',
+            '@media (min-width: 1px) { .wide { color: blue; margin: 0 } @media (max-width: 9999px) { .deep { padding: 1px } } }',
+            '@supports (display: grid) { .grid { display: grid } }',
+            '@keyframes pulse { from { opacity: 0 } to { opacity: 1 } }',
+            '.after-frames { color: green }',
+        ].join('\n');
+
+        // A sheet drawn, drawn again unchanged, changed, emptied, and drawn again.
+        run('sheet_lifecycle', (m) => {
+            m.draw(SHEET);
+            m.draw(SHEET);
+            m.draw('.only { color: teal }');
+            m.draw('');
+            m.draw(SHEET);
+            m.draw(undefined);
+            m.draw(5);
+            m.draw('.back { color: navy }');
+            m.draw(null);
+        });
+        // The node taken out from under the panel, or put there by somebody else first.
+        run('sheet_node_moved', (m) => {
+            m.draw('.one { color: red }');
+            document.getElementById('panel-custom-css').remove(); m.look();
+            m.draw('.one { color: red }');
+            m.draw('.two { color: blue }');
+            const theirs = document.createElement('style');
+            theirs.id = 'panel-custom-css';
+            theirs.textContent = '.two { color: blue }';
+            document.getElementById('panel-custom-css').replaceWith(theirs); m.look();
+            m.draw('.two { color: blue }');
+            m.draw('.three { color: green }');
+            const other = mkApp(); other.send = () => {};
+            renderProject(other, Object.assign(project({}), { ui: { ...project({}).ui, custom_css: '.four { color: black }' } }));
+            m.look();
+            m.draw('.three { color: green }');
+        });
+        // Declarations the splitter has to read past.
+        for (const [name, text] of [
+            ['semicolon_in_quotes', '.a { font-family: "x;y;z", serif; color: red }'],
+            ['semicolon_in_parens', '.a { background: url(a;b.png) no-repeat; color: red }'],
+            ['nested_parens', '.a { width: calc(100% - (2 * 3px)); color: red }'],
+            ['unbalanced_close', '.a { color: red; } .b { width: calc(1px)) }'],
+            ['single_quotes', ".a { font-family: 'q;r'; color: red }"],
+            ['backslash', '.a { font-family: "s\\\\;t"; color: red }'],
+            ['important_spacing', '.a { color: red !IMPORTANT; width: 1px!important }'],
+            ['custom_property_only', '.a { --x: 1; --y: (a;b) }'],
+            ['trailing_backslash', '.a { width: 1px; font-family: x\\ }'],
+            ['unparseable', '.a { color: red; --r: "unterminated }'],
+        ]) {
+            run(`split_${name}`, (m) => { m.draw(text); });
+        }
+        // css_class: tokens on any whitespace, and nothing for what is not a string.
+        run('css_classes', (m) => {
+            m.draw('', [
+                { id: 'a', type: 'button', label: 'A', css_class: '  big  red ' },
+                { id: 'b', type: 'button', label: 'B', css_class: 'tab\tline\nbreak' },
+                { id: 'c', type: 'button', label: 'C', css_class: 5 },
+                { id: 'd', type: 'button', label: 'D', css_class: ['x'] },
+                { id: 'e', type: 'button', label: 'E', css_class: '' },
+                { id: 'f', type: 'label', text: 'F', css_class: 'panel-element odd one' },
+                { id: 'g', type: 'slider', label: 'G', css_class: 'brand' },
+                { id: 'h', type: 'group', label: 'H', css_class: 'boxed', children: [{ id: 'h1', type: 'button', label: 'In', css_class: 'inner' }] },
+            ]);
+        });
+        comparePins('stylesheet', got, STYLESHEET_PINS.stylesheet);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

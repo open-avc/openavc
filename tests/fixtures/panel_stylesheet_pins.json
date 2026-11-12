@@ -1,0 +1,340 @@
+{
+  "stylesheet": {
+    "sheet_lifecycle": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".brand { background: #8AB493; color: white }\n.quoted { font-family: \"A;B\", serif; background-image: url(\"data:image/png;base64,AA;BB\") }\n.paren { background-image: url(data:image/png;base64,CC;DD); color: rgb(1, 2, 3) }\n.already { color: red !important; border-color: blue ! important; opacity: 0.5 }\n.vars { --brand: #8AB493; background: var(--brand); border: 1px solid var(--brand) }\n.escaped { font-family: \"a\\\";b\", sans-serif; width: 10px }\n.empty { }\n@media (min-width: 1px) { .wide { color: blue; margin: 0 } @media (max-width: 9999px) { .deep { padding: 1px } } }\n@supports (display: grid) { .grid { display: grid } }\n@keyframes pulse { from { opacity: 0 } to { opacity: 1 } }\n.after-frames { color: green }",
+        "rules": [
+          ".brand {background: #8AB493 !important; color: white !important;}",
+          ".quoted {font-family: \"A;B\", serif !important; background-image: url(\"data:image/png;base64,AA;BB\") !important;}",
+          ".paren {background-image: url(data:image/png;base64,CC;DD) !important; color: rgb(1, 2, 3) !important;}",
+          ".already {color: red !important; border-color: blue ! important; opacity: 0.5 !important;}",
+          ".vars {--brand: #8AB493 !important; background: var(--brand) !important; border: 1px solid var(--brand) !important;}",
+          ".escaped {font-family: \"a\\\";b\", sans-serif !important; width: 10px !important;}",
+          ".empty {}",
+          "@4 (min-width: 1px)",
+          " .wide {color: blue !important; margin: 0 !important;}",
+          " @4 (max-width: 9999px)",
+          "  .deep {padding: 1px !important;}",
+          "@12 (display: grid)",
+          " .grid {display: grid !important;}",
+          "@7 pulse",
+          " from {opacity: 0;} ",
+          " to {opacity: 1;} ",
+          ".after-frames {color: green !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".brand { background: #8AB493; color: white }\n.quoted { font-family: \"A;B\", serif; background-image: url(\"data:image/png;base64,AA;BB\") }\n.paren { background-image: url(data:image/png;base64,CC;DD); color: rgb(1, 2, 3) }\n.already { color: red !important; border-color: blue ! important; opacity: 0.5 }\n.vars { --brand: #8AB493; background: var(--brand); border: 1px solid var(--brand) }\n.escaped { font-family: \"a\\\";b\", sans-serif; width: 10px }\n.empty { }\n@media (min-width: 1px) { .wide { color: blue; margin: 0 } @media (max-width: 9999px) { .deep { padding: 1px } } }\n@supports (display: grid) { .grid { display: grid } }\n@keyframes pulse { from { opacity: 0 } to { opacity: 1 } }\n.after-frames { color: green }",
+        "rules": [
+          ".brand {background: #8AB493 !important; color: white !important;}",
+          ".quoted {font-family: \"A;B\", serif !important; background-image: url(\"data:image/png;base64,AA;BB\") !important;}",
+          ".paren {background-image: url(data:image/png;base64,CC;DD) !important; color: rgb(1, 2, 3) !important;}",
+          ".already {color: red !important; border-color: blue ! important; opacity: 0.5 !important;}",
+          ".vars {--brand: #8AB493 !important; background: var(--brand) !important; border: 1px solid var(--brand) !important;}",
+          ".escaped {font-family: \"a\\\";b\", sans-serif !important; width: 10px !important;}",
+          ".empty {}",
+          "@4 (min-width: 1px)",
+          " .wide {color: blue !important; margin: 0 !important;}",
+          " @4 (max-width: 9999px)",
+          "  .deep {padding: 1px !important;}",
+          "@12 (display: grid)",
+          " .grid {display: grid !important;}",
+          "@7 pulse",
+          " from {opacity: 0;} ",
+          " to {opacity: 1;} ",
+          ".after-frames {color: green !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".only { color: teal }",
+        "rules": [
+          ".only {color: teal !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#2 in HEAD last=true"
+        ],
+        "text": ".brand { background: #8AB493; color: white }\n.quoted { font-family: \"A;B\", serif; background-image: url(\"data:image/png;base64,AA;BB\") }\n.paren { background-image: url(data:image/png;base64,CC;DD); color: rgb(1, 2, 3) }\n.already { color: red !important; border-color: blue ! important; opacity: 0.5 }\n.vars { --brand: #8AB493; background: var(--brand); border: 1px solid var(--brand) }\n.escaped { font-family: \"a\\\";b\", sans-serif; width: 10px }\n.empty { }\n@media (min-width: 1px) { .wide { color: blue; margin: 0 } @media (max-width: 9999px) { .deep { padding: 1px } } }\n@supports (display: grid) { .grid { display: grid } }\n@keyframes pulse { from { opacity: 0 } to { opacity: 1 } }\n.after-frames { color: green }",
+        "rules": [
+          ".brand {background: #8AB493 !important; color: white !important;}",
+          ".quoted {font-family: \"A;B\", serif !important; background-image: url(\"data:image/png;base64,AA;BB\") !important;}",
+          ".paren {background-image: url(data:image/png;base64,CC;DD) !important; color: rgb(1, 2, 3) !important;}",
+          ".already {color: red !important; border-color: blue ! important; opacity: 0.5 !important;}",
+          ".vars {--brand: #8AB493 !important; background: var(--brand) !important; border: 1px solid var(--brand) !important;}",
+          ".escaped {font-family: \"a\\\";b\", sans-serif !important; width: 10px !important;}",
+          ".empty {}",
+          "@4 (min-width: 1px)",
+          " .wide {color: blue !important; margin: 0 !important;}",
+          " @4 (max-width: 9999px)",
+          "  .deep {padding: 1px !important;}",
+          "@12 (display: grid)",
+          " .grid {display: grid !important;}",
+          "@7 pulse",
+          " from {opacity: 0;} ",
+          " to {opacity: 1;} ",
+          ".after-frames {color: green !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [],
+        "cls": {}
+      },
+      {
+        "nodes": [],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#3 in HEAD last=true"
+        ],
+        "text": ".back { color: navy }",
+        "rules": [
+          ".back {color: navy !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [],
+        "cls": {}
+      }
+    ],
+    "sheet_node_moved": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".one { color: red }",
+        "rules": [
+          ".one {color: red !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#2 in HEAD last=true"
+        ],
+        "text": ".one { color: red }",
+        "rules": [
+          ".one {color: red !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#2 in HEAD last=true"
+        ],
+        "text": ".two { color: blue }",
+        "rules": [
+          ".two {color: blue !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#3 in HEAD last=true"
+        ],
+        "text": ".two { color: blue }",
+        "rules": [
+          ".two {color: blue;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#3 in HEAD last=true"
+        ],
+        "text": ".two { color: blue }",
+        "rules": [
+          ".two {color: blue;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#3 in HEAD last=true"
+        ],
+        "text": ".three { color: green }",
+        "rules": [
+          ".three {color: green !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#3 in HEAD last=true"
+        ],
+        "text": ".four { color: black }",
+        "rules": [
+          ".four {color: black !important;}"
+        ],
+        "cls": {}
+      },
+      {
+        "nodes": [
+          "#3 in HEAD last=true"
+        ],
+        "text": ".three { color: green }",
+        "rules": [
+          ".three {color: green !important;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_semicolon_in_quotes": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { font-family: \"x;y;z\", serif; color: red }",
+        "rules": [
+          ".a {font-family: \"x;y;z\", serif !important; color: red !important;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_semicolon_in_parens": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { background: url(a;b.png) no-repeat; color: red }",
+        "rules": [
+          ".a {background: url(a;b.png) no-repeat !important; color: red !important;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_nested_parens": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { width: calc(100% - (2 * 3px)); color: red }",
+        "rules": [
+          ".a {width: calc(100% - (2 * 3px)) !important; color: red !important;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_unbalanced_close": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { color: red; } .b { width: calc(1px)) }",
+        "rules": [
+          ".a {color: red !important;}",
+          ".b {width: calc(1px)) !important;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_single_quotes": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { font-family: 'q;r'; color: red }",
+        "rules": [
+          ".a {font-family: 'q;r' !important; color: red !important;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_backslash": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { font-family: \"s\\\\;t\"; color: red }",
+        "rules": [
+          ".a {font-family: \"s\\\\;t\" !important; color: red !important;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_important_spacing": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { color: red !IMPORTANT; width: 1px!important }",
+        "rules": [
+          ".a {color: red !IMPORTANT; width: 1px !important;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_custom_property_only": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { --x: 1; --y: (a;b) }",
+        "rules": [
+          ".a {--x: 1 !important; --y: (a;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_trailing_backslash": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { width: 1px; font-family: x\\ }",
+        "rules": [
+          ".a {width: 1px !important; font-family: x\\;}"
+        ],
+        "cls": {}
+      }
+    ],
+    "split_unparseable": [
+      {
+        "nodes": [
+          "#1 in HEAD last=true"
+        ],
+        "text": ".a { color: red; --r: \"unterminated }",
+        "rules": [],
+        "cls": {}
+      }
+    ],
+    "css_classes": [
+      {
+        "nodes": [],
+        "cls": {
+          "a": "panel-element panel-button big red",
+          "b": "panel-element panel-button tab line break",
+          "c": "panel-element panel-button",
+          "d": "panel-element panel-button",
+          "e": "panel-element panel-button",
+          "f": "panel-element panel-label odd one",
+          "g": "panel-element panel-slider brand",
+          "h": "panel-element panel-group boxed"
+        }
+      }
+    ]
+  }
+}
