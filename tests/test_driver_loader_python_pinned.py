@@ -776,3 +776,14 @@ def test_a_python_file_with_an_empty_id_is_the_driver_its_name_says(tmp_path):
         "class A:\n    DRIVER_INFO = {'id': ''}\n", encoding="utf-8"
     )
     assert driver_files_for(tmp_path, "pin_blank", ".py") == [tmp_path / "pin_blank.py"]
+
+
+def test_loading_python_drivers_keeps_one_copy_of_an_id(tmp_path, isolated, caplog):
+    (tmp_path / "pin_ld_dup.py").write_text(_driver("DupDriver", "pin_ld_dup", "Named"), encoding="utf-8")
+    (tmp_path / "pin_ld_dup_z.py").write_text(_driver("DupDriver", "pin_ld_dup", "Copy"), encoding="utf-8")
+    with caplog.at_level(logging.DEBUG, logger=LOGGER):
+        assert load_python_drivers([tmp_path]) == 1
+    assert registry._DRIVER_REGISTRY["pin_ld_dup"].DRIVER_INFO["name"] == "Named"
+    assert _records(caplog)[-1] == (
+        LOGGER, "WARNING", "Driver 'pin_ld_dup' is in both pin_ld_dup.py and pin_ld_dup_z.py; pin_ld_dup.py is used"
+    )
