@@ -72,78 +72,24 @@ from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.simulator.capacity import capacity_problems
 from openavc.simulator.osc_addresses import SYSTEM_ADDRESSES, SYSTEM_PREFIXES
 from openavc.simulator.single_client import single_client_problems
-from openavc.drivers.compiled_protocol import (
-    derive_config,
-    safe_substitute,
-    state_var_default,
+from openavc.drivers.compiled_protocol import safe_substitute, state_var_default
+from openavc.simulator.driver_sends import (
+    asked_queries,
+    command_sample,
+    effective_config,
+    entry_text,
+    polled_queries,
+    probed_lines,
+    query_line,
 )
+from openavc.simulator.validation_result import Issue, ValidationResult
 from openavc.simulator.reply_reading import (
     ReplyRules,
     frame_delimiter,
 )
-from openavc.simulator.reread_queries import (
-    follow_up_queries,
-    read_back_queries,
-    read_back_query_lines,
-)
+from openavc.simulator.reread_queries import read_back_query_lines
 from openavc.simulator.send_templates import is_passthrough_send, send_regex
 from openavc.drivers.spec import PLACEHOLDER
-
-
-# ── Result types ──
-
-
-class Issue:
-    """A single validation issue."""
-
-    def __init__(self, severity: str, check: str, message: str):
-        self.severity = severity  # "error" | "warning" | "info"
-        self.check = check  # e.g., "state_coverage", "command_coverage"
-        self.message = message
-
-    def __str__(self) -> str:
-        if self.severity == "error":
-            icon = "ERROR"
-        elif self.severity == "warning":
-            icon = "WARN "
-        else:
-            icon = "INFO "
-        return f"  {icon} [{self.check}] {self.message}"
-
-
-class ValidationResult:
-    """Validation result for a single driver."""
-
-    def __init__(self, driver_path: str, driver_id: str, driver_type: str):
-        self.driver_path = driver_path
-        self.driver_id = driver_id
-        self.driver_type = driver_type  # "yaml" or "python"
-        self.issues: list[Issue] = []
-
-    @property
-    def errors(self) -> list[Issue]:
-        return [i for i in self.issues if i.severity == "error"]
-
-    @property
-    def warnings(self) -> list[Issue]:
-        return [i for i in self.issues if i.severity == "warning"]
-
-    @property
-    def infos(self) -> list[Issue]:
-        return [i for i in self.issues if i.severity == "info"]
-
-    @property
-    def passed(self) -> bool:
-        return len(self.errors) == 0
-
-    def error(self, check: str, message: str) -> None:
-        self.issues.append(Issue("error", check, message))
-
-    def warning(self, check: str, message: str) -> None:
-        self.issues.append(Issue("warning", check, message))
-
-    def info(self, check: str, message: str) -> None:
-        self.issues.append(Issue("info", check, message))
 
 
 # ── YAML driver validation ──
@@ -191,18 +137,9 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
         # ── Check 3: Response parsing (round-trip) ──
         _check_response_parsing(result, commands, sim_handlers, responses, sim_initial, driver_def)
 
-        # ── Check 4: Poll query coverage ──
-        _check_poll_coverage(result, queries, sim_handlers, driver_def)
-        # The response rules' follow-up queries go on the wire the same way.
-        _check_poll_coverage(
-            result, follow_up_queries(driver_def), sim_handlers, driver_def,
-            label="then_query entry",
-        )
-        # And so do the commands' read-back queries.
-        _check_poll_coverage(
-            result, read_back_queries(driver_def), sim_handlers, driver_def,
-            label="read_back entry",
-        )
+        # ── Check 4: Poll query coverage: the poll, then_query, read_back ──
+        for label, entries in polled_queries(driver_def, queries):
+            _check_poll_coverage(result, entries, sim_handlers, driver_def, label=label)
 
         # ── Check 4b: every reply ends where the driver splits the stream ──
         _check_reply_framing(result, commands, queries, driver_def)
@@ -533,7 +470,7 @@ def _check_command_coverage(
             continue
 
         # Generate a sample command string with test values
-        sample = _generate_sample_command(send_template, params, driver_def)
+        sample = command_sample(send_template, params, driver_def)
         if sample is None:
             result.warning(
                 "command_coverage",
@@ -761,27 +698,16 @@ def _query_answering_handlers(sim_handlers: list, driver_def: dict) -> set[int]:
     should match.
     """
     handler_patterns = _compile_handler_patterns(sim_handlers)
-    config = _effective_config(driver_def)
+    config = effective_config(driver_def)
     transport = driver_def.get("transport", "tcp")
     commands = driver_def.get("commands", {})
-    polling = driver_def.get("polling") or {}
 
     answering: set[int] = set()
-    entries = list(polling.get("queries") or [])
-    entries += follow_up_queries(driver_def)
-    entries += [
-        entry
-        for entry in (driver_def.get("on_connect") or [])
-        if isinstance(entry, dict) and entry.get("query_for")
-    ]
-    for entry in entries:
-        if isinstance(entry, dict):
-            if "address" in entry:
-                # OSC bring-up message; the OSC path has its own checks.
-                continue
-            query_text = entry.get("send", "")
-        else:
-            query_text = str(entry)
+    for entry in asked_queries(driver_def):
+        if isinstance(entry, dict) and "address" in entry:
+            # OSC bring-up message; the OSC path has its own checks.
+            continue
+        query_text = entry_text(entry)
         if not query_text:
             continue
         # An http/udp query may name a command instead of typing its wire
@@ -792,35 +718,12 @@ def _query_answering_handlers(sim_handlers: list, driver_def: dict) -> set[int]:
             if not query_text:
                 continue
         handler = _find_matching_handler(
-            _normalize_query_sample(query_text, config, transport),
+            query_line(query_text, config, transport),
             handler_patterns,
         )
         if handler is not None:
             answering.add(id(handler))
     return answering
-
-
-def _normalize_query_sample(
-    query_text: str, config: dict, transport: str
-) -> str:
-    """A query string as it reaches the simulator's dispatcher.
-
-    Config substituted, an each_child template given a sample child id, the
-    line terminator stripped (the simulator frames by lines), and an HTTP raw
-    path expanded to the ``GET /path`` line the HTTP simulator dispatches —
-    without that last one every raw-path poll looks unanswered.
-    """
-    sample = _substitute_config(query_text, config)
-    sample = re.sub(
-        r"\{child_id(?::([^{}]*))?\}",
-        lambda m: format(1, m.group(1)) if m.group(1) else "1",
-        sample,
-    )
-    sample = sample.strip().replace("\\n", "").replace("\\r", "")
-    sample = sample.rstrip("\r\n").strip()
-    if transport == "http" and sample.startswith("/"):
-        sample = f"GET {sample}"
-    return sample
 
 
 def _check_poll_coverage(
@@ -833,7 +736,7 @@ def _check_poll_coverage(
     """Check every polling query (or the queries ``label`` names) has a
     matching simulator handler."""
     handler_patterns = _compile_handler_patterns(sim_handlers)
-    config = _effective_config(driver_def)
+    config = effective_config(driver_def)
     commands = driver_def.get("commands", {})
     transport = driver_def.get("transport", "tcp")
 
@@ -865,7 +768,7 @@ def _check_poll_coverage(
         # sample child id (the runtime expands them per registered child).
         # Shared with the round-trip check, which has to normalize a query the
         # same way to tell a query's answer from a write's acknowledgement.
-        sample = _normalize_query_sample(query_text, config, transport)
+        sample = query_line(query_text, config, transport)
 
         matched = _find_matching_handler(sample, handler_patterns)
         if not matched:
@@ -1129,7 +1032,7 @@ def _check_osc_command_coverage(
 ) -> None:
     """Check every OSC command's address is answered by the simulator."""
     patterns = _collect_osc_patterns(sim_handlers, responses)
-    config = _effective_config(driver_def)
+    config = effective_config(driver_def)
 
     for cmd_name, cmd_def in commands.items():
         address_template = cmd_def.get("address", "")
@@ -1137,7 +1040,7 @@ def _check_osc_command_coverage(
             continue
 
         params = cmd_def.get("params", {})
-        sample = _generate_sample_command(address_template, params, driver_def)
+        sample = command_sample(address_template, params, driver_def)
         if sample is not None and _osc_address_covered(sample, patterns):
             continue
         # A string param's sample value may miss literal response addresses
@@ -1176,7 +1079,7 @@ def _check_osc_poll_coverage(
     by command coverage) or raw addresses.
     """
     patterns = _collect_osc_patterns(sim_handlers, responses)
-    config = _effective_config(driver_def)
+    config = effective_config(driver_def)
 
     for query in queries:
         if isinstance(query, dict):
@@ -1210,7 +1113,7 @@ def _check_osc_read_back_coverage(
     command coverage checks; a read-back naming a command is that
     command's. A parameter in the address takes a sample value."""
     patterns = _collect_osc_patterns(sim_handlers, responses)
-    config = _effective_config(driver_def)
+    config = effective_config(driver_def)
     for cmd_def in (commands or {}).values():
         if not isinstance(cmd_def, dict):
             continue
@@ -1277,7 +1180,7 @@ def _check_reply_framing(
     except Exception:  # pragma: no cover - the simulator package is shipped
         return
 
-    probes = _framing_probes(commands, queries, driver_def)
+    probes = probed_lines(commands, queries, driver_def)
     if not probes:
         return
     heard = _ask_the_simulator(
@@ -1289,53 +1192,6 @@ def _check_reply_framing(
     )
     if heard is not None:
         _report_framing(result, heard, raw_delimiter, driver_def)
-
-
-def _framing_probes(commands: dict, queries: list, driver_def: dict) -> list[str]:
-    """What the driver sends, in order: its liveness probe, its poll queries
-    and a sample of each command.
-
-    Normalized the same way the poll checks do it, so an each_child template
-    is probed with a sample child id rather than a literal {child_id} — which
-    the simulator answers "does not exist", and an example nobody recognises
-    is a finding an author reads past.
-    """
-    config = _effective_config(driver_def)
-    transport = driver_def.get("transport", "tcp")
-    probes = _liveness_probe(driver_def.get("liveness"), config, transport)
-    probes += _query_probes(queries, config, transport)
-    probes += _command_probes(commands, driver_def)
-    return probes
-
-
-def _liveness_probe(liveness: Any, config: dict, transport: Any) -> list[str]:
-    if isinstance(liveness, dict) and isinstance(liveness.get("send"), str):
-        return [_normalize_query_sample(liveness["send"], config, transport)]
-    return []
-
-
-def _query_probes(queries: list, config: dict, transport: Any) -> list[str]:
-    probes: list[str] = []
-    for query in queries or []:
-        query_text = query.get("send", "") if isinstance(query, dict) else str(query)
-        if isinstance(query_text, str) and query_text:
-            probes.append(_normalize_query_sample(query_text, config, transport))
-    return probes
-
-
-def _command_probes(commands: dict, driver_def: dict) -> list[str]:
-    """A sample of each command whose ``send`` is text."""
-    probes: list[str] = []
-    for cmd_def in commands.values():
-        send_template = cmd_def.get("send") if isinstance(cmd_def, dict) else None
-        if not isinstance(send_template, str) or not send_template:
-            continue
-        sample = _generate_sample_command(
-            send_template, cmd_def.get("params", {}), driver_def
-        )
-        if sample is not None:
-            probes.append(sample)
-    return probes
 
 
 @dataclasses.dataclass
@@ -1454,7 +1310,7 @@ def _report_trailing_text(
     to the start of the next one.
     """
     rules = ReplyRules.regex_only(
-        driver_def.get("responses") or [], _effective_config(driver_def)
+        driver_def.get("responses") or [], effective_config(driver_def)
     )
     shown = "; ".join(example for example, _, _ in trailing[:_FRAMING_EXAMPLES])
     more = len(trailing) - _FRAMING_EXAMPLES
@@ -2224,89 +2080,15 @@ def _find_matching_handler(
     return None
 
 
-def _generate_sample_command(
-    template: str, params: dict, driver_def: dict
-) -> str | None:
-    """Generate a sample command string from a send template.
-
-    Substitutes config variables with default values and parameters
-    with type-appropriate test values.
-    """
-    config = _effective_config(driver_def)
-    result = template
-
-    # Substitute config variables first
-    result = _substitute_config(result, config)
-
-    # Substitute parameters with test values. The shared substitution
-    # applies any {name:spec} format spec exactly the way the runtime
-    # send path does (numeric strings coerce before formatting).
-    test_values: dict[str, str] = {}
-    for param_name, param_def in params.items():
-        param_type = param_def.get("type", "string")
-        if param_type in ("integer", "child_id"):
-            test_val = str(param_def.get("default", param_def.get("min", 1)))
-        elif param_type == "number":
-            test_val = str(param_def.get("default", param_def.get("min", 1.0)))
-        elif param_type == "boolean":
-            # "1", not "true": a boolean is commonly written with a numeric
-            # format spec ({flag:02d}) so a fixed-width protocol gets its
-            # 01/00 flag byte, and the word cannot be formatted that way —
-            # it would be left as a literal placeholder and reported as a
-            # command no handler matches.
-            test_val = "1"
-        elif param_type == "enum":
-            values = param_def.get("values") or ["test"]
-            first = values[0]
-            # An enum entry is a plain wire value or a {value, label} pair.
-            # The value is what goes on the wire; the label only names it in
-            # the picker. Stringifying the pair whole put a Python dict in
-            # the sample and reported the command as one no handler matches.
-            test_val = str(first.get("value", "") if isinstance(first, dict) else first)
-        else:
-            test_val = str(param_def.get("default", "test"))
-        test_values[param_name] = test_val
-    result = safe_substitute(result, test_values)
-
-    # Strip line endings (literal \n in YAML becomes part of the string).
-    # The final strip mirrors the simulator's dispatch, which strips each
-    # incoming line before matching — without it a template with trailing
-    # whitespace before its \r false-fails handler patterns.
-    result = result.strip()
-    result = result.replace("\\n", "").replace("\\r", "")
-    result = result.rstrip("\r\n").strip()
-
-    # Check for unresolved placeholders: a token of the template still in
-    # braces (a config field with no default). The protocol's own braces
-    # around a substituted value ({{name}} sends {test}) are not one.
-    for token in re.finditer(r"\{([a-z_]+)(?::[^{}]*)?\}", template):
-        if re.search(r"\{" + token.group(1) + r"(?::[^{}]*)?\}", result):
-            return None
-
-    return result
-
-
 def _substitute_config(template: str, config: dict) -> str:
     """Substitute config variables in a template string (shared runtime rules)."""
     return safe_substitute(template, config)
 
 
-def _effective_config(driver_def: dict) -> dict:
-    """default_config plus config_derived values.
-
-    Uses the same shared derivation the runtime runs, so a derived template
-    whose referenced fields are all non-empty is substituted; otherwise the
-    derived value is "" (so an optional prefix segment simply disappears).
-    """
-    config = dict(driver_def.get("default_config", {}))
-    derive_config(config, driver_def.get("config_derived"))
-    return config
-
-
 def _reply_rules(responses: list, driver_def: dict) -> ReplyRules:
     """The driver's reply rules, with the config the runtime would fill into
     their patterns."""
-    return ReplyRules.of(responses, _effective_config(driver_def), driver_def)
+    return ReplyRules.of(responses, effective_config(driver_def), driver_def)
 
 
 def _build_auto_pattern(template: str, params: dict) -> re.Pattern | None:
