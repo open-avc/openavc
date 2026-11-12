@@ -92,7 +92,7 @@ def _compile_handler_patterns(handlers: list) -> list[tuple[re.Pattern, dict]]:
     patterns = []
     for h in handlers:
         if not isinstance(h, dict):
-            continue  # _check_handler_syntax reports the malformed entry
+            continue  # handler_checks.check_handler_code reports the malformed entry
         pattern_str = h.get("receive") or h.get("match", "")
         if not pattern_str:
             continue

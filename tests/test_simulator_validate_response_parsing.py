@@ -241,7 +241,7 @@ def test_plain_literals_are_read_and_flagged_readable():
 def test_code_the_simulator_would_refuse_reads_as_unreadable():
     """A bare `return` parses but does not compile, and the simulator drops
     the whole handler when it does not compile — so there is nothing here to
-    have an opinion about. _check_handler_syntax is what reports it."""
+    have an opinion about. handler_checks.check_handler_code is what reports it."""
     literals, unreadable = _extract_respond_calls("return respond('X')\n")
     assert literals == []
     assert unreadable is True

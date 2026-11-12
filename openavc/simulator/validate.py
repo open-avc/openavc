@@ -70,6 +70,7 @@ import yaml
 from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.simulator.capacity import capacity_problems
 from openavc.simulator.control_checks import check_controls
+from openavc.simulator.handler_checks import STATE_REF, check_handler_code, check_templates
 from openavc.simulator.osc_coverage import (
     OscAddresses,
     check_osc_command_coverage,
@@ -154,10 +155,10 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
     check_state_machines(result, sim, commands)
 
     # ── Check 7: Handler code syntax ──
-    _check_handler_syntax(result, sim_handlers)
+    check_handler_code(result, sim_handlers)
 
     # ── Check 8: Explicit handler set_state / capture references ──
-    _check_explicit_handlers(result, sim_handlers, known_keys)
+    check_templates(result, sim_handlers, known_keys)
 
     # ── Check 9: Notification templates ──
     _check_notifications(result, sim, driver_def, known_keys)
@@ -413,7 +414,7 @@ def _check_response_parsing(
 def _text_handlers(sim_handlers: list) -> Iterator[dict]:
     """The handlers that answer with text lines: OSC handlers (``address:``)
     respond with (address, args) tuples, and a malformed entry is
-    ``handler_syntax``'s to report."""
+    ``handler_checks.check_handler_code``'s to report."""
     for handler_def in sim_handlers:
         if isinstance(handler_def, dict) and "address" not in handler_def:
             yield handler_def
@@ -664,7 +665,7 @@ def _check_type_consistency(
         if not respond:
             continue
         # Find {state.X} references where X is a boolean variable
-        for match in re.finditer(r"\{state\.(\w+)\}", respond):
+        for match in STATE_REF.finditer(respond):
             ref_name = match.group(1)
             if ref_name in state_vars:
                 if state_vars[ref_name].get("type") == "boolean":
@@ -909,116 +910,7 @@ def _report_trailing_text(
     )
 
 
-# ── Simulator-section checks (handlers, notifications, children) ──
-
-
-def _check_handler_syntax(result: ValidationResult, sim_handlers: list) -> None:
-    """Check inline handler: Python bodies compile.
-
-    The simulator skips a handler whose code has a syntax error (with only a
-    server-side log line), so a typo silently kills the handler at runtime.
-    """
-    for h in sim_handlers:
-        if not isinstance(h, dict):
-            result.error("command_handlers", f"command_handlers entries must be mappings, got: {h!r}")
-            continue
-        code = h.get("handler")
-        if code is None:
-            continue
-        label = h.get("address") or h.get("receive") or h.get("match") or "?"
-        try:
-            compile(str(code), "<handler>", "exec")
-        except SyntaxError as e:
-            result.error(
-                "handler_syntax",
-                f"handler for {label!r} has a Python syntax error "
-                f"(line {e.lineno}): {e.msg} — the simulator will skip this handler"
-            )
-
-
-def _check_explicit_handlers(
-    result: ValidationResult,
-    sim_handlers: list,
-    known_keys: set[str],
-) -> None:
-    """Check template-based handlers (receive: + respond:/set_state:).
-
-    Catches set_state: targets that aren't state keys (the sim would write a
-    junk key), {N} capture references beyond what the receive: pattern
-    captures (left as literal text at runtime), and {state.X} references to
-    unknown keys (also left literal).
-    """
-    capture_ref = re.compile(r"\{(\d+)\}")
-    state_ref = re.compile(r"\{state\.(\w+)\}")
-
-    for h in sim_handlers:
-        if not isinstance(h, dict) or "address" in h:
-            continue  # OSC handlers have no receive:/set_state: surface
-
-        pattern_str = h.get("receive") or h.get("match", "")
-        set_state = h.get("set_state")
-        respond = h.get("respond")
-
-        if "handler" in h:
-            if set_state or respond:
-                result.warning(
-                    "command_handlers",
-                    f"handler {pattern_str!r}: set_state:/respond: are ignored "
-                    f"when handler: is present — move that logic into the handler code"
-                )
-            continue
-
-        if not pattern_str:
-            if set_state or respond:
-                result.warning(
-                    "command_handlers",
-                    "handler with respond:/set_state: has no receive: or match: "
-                    "pattern — it can never fire"
-                )
-            continue
-
-        try:
-            group_count = re.compile(pattern_str).groups
-        except re.error as e:
-            result.error(
-                "command_handlers",
-                f"invalid regex in handler pattern {pattern_str!r}: {e} — "
-                f"the simulator will skip this handler"
-            )
-            continue
-
-        templates: list[str] = []
-        if isinstance(set_state, dict):
-            for key, value in set_state.items():
-                if known_keys and key not in known_keys:
-                    result.warning(
-                        "set_state",
-                        f"handler {pattern_str!r}: set_state target '{key}' is not "
-                        f"a state variable or initial_state key — the value will be "
-                        f"written to a key nothing reads"
-                    )
-                templates.append(str(value))
-        if isinstance(respond, str):
-            templates.append(respond)
-
-        for template in templates:
-            for m in capture_ref.finditer(template):
-                n = int(m.group(1))
-                if n > group_count:
-                    result.error(
-                        "set_state",
-                        f"handler {pattern_str!r}: template {template!r} references "
-                        f"capture group {{{n}}} but the pattern has only "
-                        f"{group_count} group(s) — the placeholder stays literal at runtime"
-                    )
-            for m in state_ref.finditer(template):
-                if known_keys and m.group(1) not in known_keys:
-                    result.warning(
-                        "set_state",
-                        f"handler {pattern_str!r}: template {template!r} references "
-                        f"{{state.{m.group(1)}}} which is not a state key — the "
-                        f"placeholder stays literal at runtime"
-                    )
+# ── Simulator-section checks (notifications, children) ──
 
 
 def _default_for_type(var_def: dict) -> Any:
@@ -1498,7 +1390,7 @@ def _extract_respond_calls(handler_code: str) -> tuple[list[str], bool]:
     try:
         # compile(), not ast.parse(): a bare `return` parses but does not
         # compile, and the simulator skips the whole handler when it does not
-        # compile. _check_handler_syntax is what reports that; here it just
+        # compile. handler_checks.check_handler_code is what reports that; here it just
         # means nothing can be read, which is not the same as nothing being
         # answered.
         compile(code, "<handler>", "exec")
