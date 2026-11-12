@@ -1,0 +1,710 @@
+{
+  "sound": {
+    "plays_at_master_volume": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/chime.mp3",
+          "0 volume 0.4",
+          "0 play"
+        ]
+      },
+      {},
+      {},
+      {
+        "a": [
+          "1 new /api/plugins/audio_player/files/sounds/bell.mp3",
+          "1 volume 0.8",
+          "1 play"
+        ]
+      },
+      {}
+    ],
+    "one_request_plays_once": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {},
+      {
+        "a": [
+          "1 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      },
+      {
+        "a": [
+          "2 new /api/plugins/audio_player/files/sounds/no%20id.mp3",
+          "2 volume 1",
+          "2 play"
+        ]
+      },
+      {
+        "a": [
+          "3 new /api/plugins/audio_player/files/sounds/no%20id.mp3",
+          "3 volume 1",
+          "3 play"
+        ]
+      },
+      {
+        "a": [
+          "4 new /api/plugins/audio_player/files/sounds/blank%20id.mp3",
+          "4 volume 1",
+          "4 play"
+        ]
+      },
+      {
+        "a": [
+          "5 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "5 volume 1",
+          "5 play"
+        ]
+      }
+    ],
+    "a_null_id": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {
+        "a": [
+          "1 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      }
+    ],
+    "a_snapshot_without_an_id": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {},
+      {}
+    ],
+    "a_reconnect_does_not_replay": [
+      {},
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {},
+      {}
+    ],
+    "snapshot_garbled": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {}
+    ],
+    "snapshot_no_id": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {
+        "a": [
+          "1 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      }
+    ],
+    "snapshot_empty": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {}
+    ],
+    "snapshot_number": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/x.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {}
+    ],
+    "stop_request": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {
+        "a": [
+          "1 new /api/plugins/audio_player/files/sounds/b.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      },
+      {},
+      {
+        "a": [
+          "1 pause",
+          "1 time 0"
+        ]
+      },
+      {},
+      {},
+      {
+        "a": [
+          "2 new /api/plugins/audio_player/files/sounds/d.mp3",
+          "2 volume 1",
+          "2 play"
+        ]
+      }
+    ],
+    "muted": [
+      {},
+      {},
+      {},
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {},
+      {
+        "a": [
+          "0 pause",
+          "0 time 0"
+        ]
+      },
+      {}
+    ],
+    "volume_master_text": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 0.5",
+          "0 play"
+        ]
+      }
+    ],
+    "volume_master_null": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 0.25",
+          "0 play"
+        ]
+      }
+    ],
+    "volume_loud": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      }
+    ],
+    "volume_silent_master": [
+      {},
+      {}
+    ],
+    "volume_negative": [
+      {},
+      {}
+    ],
+    "volume_volume_text": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      }
+    ],
+    "volume_volume_numeric_text": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 0.25",
+          "0 play"
+        ]
+      }
+    ],
+    "volume_tiny": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 0.000001",
+          "0 play"
+        ]
+      }
+    ],
+    "volume_unset": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      }
+    ],
+    "volume_zero_and_blank": [
+      {},
+      {},
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {}
+    ],
+    "addresses_under_a_base_path": [
+      {},
+      {
+        "a": [
+          "0 new sounds/rel.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {
+        "a": [
+          "1 new /tunnel/abc/api/x.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      },
+      {
+        "a": [
+          "2 new https://far/y.mp3",
+          "2 volume 1",
+          "2 play"
+        ]
+      },
+      {
+        "a": [
+          "3 new /tunnel/abc/abs.mp3",
+          "3 volume 1",
+          "3 play"
+        ]
+      },
+      {
+        "a": [
+          "4 new /tunnel/abc/api/plugins/audio_player/files/sounds/chime%201.mp3",
+          "4 volume 1",
+          "4 play"
+        ]
+      },
+      {
+        "a": [
+          "5 new /tunnel/abc/api/projects/default/assets/a%20b.mp3",
+          "5 volume 1",
+          "5 play"
+        ]
+      }
+    ],
+    "addresses": [
+      {},
+      {
+        "a": [
+          "0 new http://elsewhere/x.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {
+        "a": [
+          "1 new https://elsewhere/y.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      },
+      {
+        "a": [
+          "2 new /api/x.mp3",
+          "2 volume 1",
+          "2 play"
+        ]
+      },
+      {
+        "a": [
+          "3 new sounds/rel.mp3",
+          "3 volume 1",
+          "3 play"
+        ]
+      },
+      {},
+      {
+        "a": [
+          "4 new /api/plugins/audio_player/files/sounds/fallback.mp3",
+          "4 volume 1",
+          "4 play"
+        ]
+      },
+      {
+        "a": [
+          "5 new /api/projects/default/assets/chime%20one.mp3",
+          "5 volume 1",
+          "5 play"
+        ]
+      },
+      {
+        "a": [
+          "6 new https://cdn/z.mp3",
+          "6 volume 1",
+          "6 play"
+        ]
+      },
+      {
+        "a": [
+          "7 new /abs.mp3",
+          "7 volume 1",
+          "7 play"
+        ]
+      },
+      {
+        "a": [
+          "0 pause",
+          "8 new /api/plugins/audio_player/files/sounds/chime%201.mp3",
+          "8 volume 1",
+          "8 play"
+        ]
+      },
+      {
+        "a": [
+          "1 pause",
+          "9 new /api/plugins/audio_player/files/sounds/a%2Fb%3Fc.mp3",
+          "9 volume 1",
+          "9 play"
+        ]
+      },
+      {},
+      {},
+      {}
+    ],
+    "not_a_request": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ],
+    "eight_at_once": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/s0.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {
+        "a": [
+          "1 new /api/plugins/audio_player/files/sounds/s1.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      },
+      {
+        "a": [
+          "2 new /api/plugins/audio_player/files/sounds/s2.mp3",
+          "2 volume 1",
+          "2 play"
+        ]
+      },
+      {
+        "a": [
+          "3 new /api/plugins/audio_player/files/sounds/s3.mp3",
+          "3 volume 1",
+          "3 play"
+        ]
+      },
+      {
+        "a": [
+          "4 new /api/plugins/audio_player/files/sounds/s4.mp3",
+          "4 volume 1",
+          "4 play"
+        ]
+      },
+      {
+        "a": [
+          "5 new /api/plugins/audio_player/files/sounds/s5.mp3",
+          "5 volume 1",
+          "5 play"
+        ]
+      },
+      {
+        "a": [
+          "6 new /api/plugins/audio_player/files/sounds/s6.mp3",
+          "6 volume 1",
+          "6 play"
+        ]
+      },
+      {
+        "a": [
+          "7 new /api/plugins/audio_player/files/sounds/s7.mp3",
+          "7 volume 1",
+          "7 play"
+        ]
+      },
+      {
+        "a": [
+          "0 pause",
+          "8 new /api/plugins/audio_player/files/sounds/s8.mp3",
+          "8 volume 1",
+          "8 play"
+        ]
+      },
+      {
+        "a": [
+          "1 pause",
+          "9 new /api/plugins/audio_player/files/sounds/s9.mp3",
+          "9 volume 1",
+          "9 play"
+        ]
+      },
+      {},
+      {},
+      {
+        "a": [
+          "10 new /api/plugins/audio_player/files/sounds/q.mp3",
+          "10 volume 1",
+          "10 play"
+        ]
+      },
+      {
+        "a": [
+          "11 new /api/plugins/audio_player/files/sounds/q.mp3",
+          "11 volume 1",
+          "11 play"
+        ]
+      },
+      {
+        "a": [
+          "2 pause",
+          "12 new /api/plugins/audio_player/files/sounds/q.mp3",
+          "12 volume 1",
+          "12 play"
+        ]
+      },
+      {
+        "a": [
+          "4 pause",
+          "13 new /api/plugins/audio_player/files/sounds/q.mp3",
+          "13 volume 1",
+          "13 play"
+        ]
+      },
+      {},
+      {},
+      {
+        "a": [
+          "14 new /api/plugins/audio_player/files/sounds/q.mp3",
+          "14 volume 1",
+          "14 play"
+        ]
+      },
+      {
+        "a": [
+          "15 new /api/plugins/audio_player/files/sounds/q.mp3",
+          "15 volume 1",
+          "15 play"
+        ]
+      },
+      {
+        "a": [
+          "6 pause",
+          "16 new /api/plugins/audio_player/files/sounds/q.mp3",
+          "16 volume 1",
+          "16 play"
+        ]
+      }
+    ],
+    "a_sound_that_fails": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {
+        "w": [
+          "[panel-audio] failed to load: /api/plugins/audio_player/files/sounds/a.mp3"
+        ]
+      },
+      {
+        "a": [
+          "1 new /api/plugins/audio_player/files/sounds/b.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      },
+      {
+        "a": [
+          "1 pause",
+          "1 time 0"
+        ]
+      }
+    ],
+    "refused_by_the_browser": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {
+        "w": [
+          "[panel-audio] play() rejected for /api/plugins/audio_player/files/sounds/a.mp3: not allowed"
+        ]
+      },
+      {},
+      {
+        "a": [
+          "1 new /api/plugins/audio_player/files/sounds/b.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      },
+      {}
+    ],
+    "a_dropped_socket_stops_them_all": [
+      {},
+      {
+        "a": [
+          "0 new /api/plugins/audio_player/files/sounds/a.mp3",
+          "0 volume 1",
+          "0 play"
+        ]
+      },
+      {
+        "a": [
+          "1 new /api/plugins/audio_player/files/sounds/b.mp3",
+          "1 volume 1",
+          "1 play"
+        ]
+      },
+      {
+        "a": [
+          "0 pause",
+          "0 time 0",
+          "1 pause",
+          "1 time 0"
+        ]
+      },
+      {},
+      {
+        "a": [
+          "2 new /api/plugins/audio_player/files/sounds/c.mp3",
+          "2 volume 1",
+          "2 play"
+        ]
+      },
+      {
+        "a": [
+          "2 pause",
+          "2 time 0"
+        ]
+      }
+    ],
+    "first_touch_allows_sound": [
+      {},
+      {
+        "a": [
+          "0 new data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+          "0 volume 0",
+          "0 play",
+          "1 new data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+          "1 volume 0",
+          "1 play"
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {}
+    ],
+    "touches_until_one_is_allowed": [
+      {},
+      {
+        "a": [
+          "0 new data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+          "0 volume 0",
+          "0 play"
+        ]
+      },
+      {},
+      {
+        "a": [
+          "1 new data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+          "1 volume 0",
+          "1 play"
+        ]
+      },
+      {},
+      {
+        "a": [
+          "2 new data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+          "2 volume 0",
+          "2 play"
+        ]
+      },
+      {},
+      {},
+      {}
+    ]
+  }
+}

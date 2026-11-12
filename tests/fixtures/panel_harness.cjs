@@ -1816,11 +1816,24 @@ const tests = {
         }
     },
 
-    // _activeAudio is capped so it can't grow unbounded.
+    // At most eight sounds play at once, so they cannot pile up.
     l009_audio_cap() {
         const app = mkApp();
-        for (let i = 0; i < 12; i++) app._playSound(`http://x/${i}.mp3`, 1);
-        assert(app._activeAudio.size <= 8, `audio set capped, size=${app._activeAudio.size}`);
+        const rec = soundRecorder();
+        const saved = window.Audio;
+        window.Audio = rec.Audio;
+        try {
+            for (let i = 0; i < 12; i++) {
+                app.handleMessage({ type: 'state.update', changes: {
+                    [PLAY]: JSON.stringify({ id: `cap${i}`, url: `http://x/${i}.mp3`, volume: 1 }),
+                } });
+            }
+        } finally {
+            window.Audio = saved;
+        }
+        const stopped = new Set(rec.log.filter((l) => l.endsWith(' pause')).map((l) => l.split(' ')[0]));
+        const playing = rec.made.length - stopped.size;
+        assert(playing <= 8, `audio set capped, size=${playing}`);
     },
 
     // meeting timer baseline survives a re-render (doesn't restart).
@@ -5362,8 +5375,8 @@ const tests = {
             app.applyTheme({ theme_id: 'slate blue' });
             await app.access.probeRemoteSession();
             const built = [
-                app._resolveAbsoluteUrl('/api/x.mp3'),
-                app._resolveSoundUrl('chime 1'),
+                soundAddress(app, { url: '/api/x.mp3' }),
+                soundAddress(app, { sound: 'chime 1' }),
                 assetUrl('assets://a b.png'),
                 app.renderIcon('play').querySelector('use').getAttribute('href'),
                 app.renderCustomElement({ id: 'c', type: 'custom', custom_file: 'map/index.html' })
@@ -8407,6 +8420,216 @@ Object.assign(tests, {
             m.snapshot(); m.definition(LOCKED); m.type('12'); m.click(); await m.settle(); m.look(); m.hidden(true); m.hidden(false);
         });
         comparePins('lock', got, LOCK_PINS.lock);
+    },
+});
+
+// --- Sound, as the audio player plugin drives it ----------------------------
+//
+// The plugin asks a panel to play a sound by writing a request into
+// `plugin.audio_player.play_request`; the panel plays it at the plugin's master
+// volume, skips a request it has already heard, stops everything on a stop
+// request or a dropped socket, and keeps at most eight sounds going. Browsers
+// refuse sound until somebody touches the page, so a started panel plays a
+// silent one on the first touch. Each case records what was done to every
+// sound the panel made (`a`), the warnings logged (`w`) and the addresses
+// asked for, in panel_sound_pins.json, recorded from the code before it moved.
+
+const SOUND_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_sound_pins.json'), 'utf8'));
+
+/** A stand-in for the browser's Audio: everything done to each one, in order. */
+function soundRecorder() {
+    const rec = { log: [], made: [], refuse: false };
+    class RecordedAudio {
+        constructor(url) {
+            this.n = rec.made.length;
+            this.ended = false;
+            this.on = {};
+            rec.made.push(this);
+            rec.log.push(`${this.n} new ${url}`);
+        }
+        set volume(v) { rec.log.push(`${this.n} volume ${v}`); }
+        set currentTime(t) { rec.log.push(`${this.n} time ${t}`); }
+        play() {
+            rec.log.push(`${this.n} play`);
+            return rec.refuse ? Promise.reject(new Error('not allowed')) : Promise.resolve();
+        }
+        pause() { rec.log.push(`${this.n} pause`); }
+        addEventListener(type, fn) { (this.on[type] = this.on[type] || []).push(fn); }
+        fire(type) {
+            if (type === 'ended') this.ended = true;
+            for (const fn of this.on[type] || []) fn();
+        }
+    }
+    rec.Audio = RecordedAudio;
+    return rec;
+}
+
+const PLAY = 'plugin.audio_player.play_request';
+
+/** The address the panel plays a request from, asked through the plugin's state. */
+let soundAsks = 0;
+function soundAddress(app, req) {
+    const rec = soundRecorder();
+    const saved = window.Audio;
+    window.Audio = rec.Audio;
+    try {
+        soundAsks += 1;
+        app.handleMessage({ type: 'state.update', changes: { [PLAY]: JSON.stringify({ id: `address-${soundAsks}`, ...req }) } });
+    } finally {
+        window.Audio = saved;
+    }
+    return rec.made.length ? rec.log[0].replace(/^0 new /, '') : null;
+}
+
+/** One sound pin case: a panel, the recorder in place of Audio, `script` run. */
+async function soundCase(got, name, { start = false } = {}, script) {
+    const rec = soundRecorder();
+    const saved = { Audio: window.Audio, warn: window.console.warn, fetch: window.fetch };
+    const warnings = [];
+    const steps = [];
+    window.Audio = rec.Audio;
+    window.console.warn = (...args) => { warnings.push(args.map(String).join(' ')); };
+    window.fetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
+    const app = mkApp();
+    app.send = () => {};
+    const look = (extra) => {
+        const step = {};
+        if (rec.log.length) step.a = rec.log.splice(0);
+        if (warnings.length) step.w = warnings.splice(0);
+        if (extra) Object.assign(step, extra);
+        steps.push(step);
+    };
+    const s = {
+        app, rec,
+        settle: async () => { for (let i = 0; i < 10; i++) await null; look(); },
+        snapshot: (state) => { app.handleMessage({ type: 'state.snapshot', state }); look(); },
+        update: (changes) => { app.handleMessage({ type: 'state.update', changes }); look(); },
+        play: (req) => s.update({ [PLAY]: typeof req === 'string' ? req : JSON.stringify(req) }),
+        fire: (n, type) => { rec.made[n].fire(type); look(); },
+        // A looping or streamed sound can finish without saying so.
+        endQuietly: (n) => { rec.made[n].ended = true; look(); },
+        connection: (up) => { app.setConnectionStatus(up); look(); },
+        gesture: (type) => { document.dispatchEvent(new window.Event(type)); look(); },
+    };
+    try {
+        if (start) {
+            app.embedded = true;
+            await app.start();
+            look();
+        }
+        await script(s);
+    } catch (e) {
+        steps.push({ threw: String(e && e.message) });
+    } finally {
+        Object.assign(window, { Audio: saved.Audio, fetch: saved.fetch });
+        window.console.warn = saved.warn;
+        app.embedded = false;
+        got[name] = steps;
+    }
+}
+
+Object.assign(tests, {
+    async sound_plays_and_stops_as_today() {
+        const got = {};
+        const run = (name, opts, script) => soundCase(got, name, opts, script);
+        await run('plays_at_master_volume', {}, async (s) => {
+            s.snapshot({ 'plugin.audio_player.master_volume': 0.8 });
+            s.play({ id: 'a', url: '/api/plugins/audio_player/files/sounds/chime.mp3', volume: 0.5 }); await s.settle();
+            s.fire(0, 'ended'); s.play({ id: 'b', sound: 'bell' }); await s.settle();
+        });
+        await run('one_request_plays_once', {}, async (s) => {
+            s.snapshot({}); s.play({ id: 'a', sound: 'x' }); s.play({ id: 'a', sound: 'x' }); s.play({ id: 'b', sound: 'x' });
+            s.play({ sound: 'no id' }); s.play({ sound: 'no id' }); s.play({ id: '', sound: 'blank id' }); s.play({ id: 'a', sound: 'x' });
+        });
+        await run('a_null_id', {}, async (s) => { s.snapshot({}); s.play({ id: null, sound: 'x' }); s.play({ id: null, sound: 'x' }); });
+        await run('a_snapshot_without_an_id', {}, async (s) => {
+            s.snapshot({}); s.play({ id: 'x', sound: 'a' }); s.snapshot({ [PLAY]: JSON.stringify({ sound: 'a' }) }); s.play({ id: 'x', sound: 'a' });
+        });
+        await run('a_reconnect_does_not_replay', {}, async (s) => {
+            s.snapshot({ [PLAY]: JSON.stringify({ id: 'seen', sound: 'x' }) }); s.play({ id: 'seen', sound: 'x' }); s.play({ id: 'next', sound: 'x' });
+            s.snapshot({ [PLAY]: JSON.stringify({ id: 'next', sound: 'x' }) }); s.play({ id: 'next', sound: 'x' });
+        });
+        for (const [label, raw] of [['garbled', 'not json'], ['no_id', JSON.stringify({ sound: 'x' })], ['empty', ''], ['number', '5']]) {
+            await run(`snapshot_${label}`, {}, async (s) => { s.snapshot({ [PLAY]: raw }); s.play({ id: 'z', sound: 'x' }); s.play(raw); });
+        }
+        await run('stop_request', {}, async (s) => {
+            s.snapshot({}); s.play({ id: '1', sound: 'a' }); s.play({ id: '2', sound: 'b' }); s.fire(0, 'ended');
+            s.play({ id: '3', stop: true }); s.play({ id: '3', stop: true }); s.play({ id: '4', stop: true, sound: 'c' });
+            s.play({ id: '5', sound: 'd' });
+        });
+        await run('muted', {}, async (s) => {
+            s.snapshot({ 'plugin.audio_player.muted': true }); s.play({ id: '1', sound: 'a' });
+            s.update({ 'plugin.audio_player.muted': false }); s.play({ id: '1', sound: 'a' }); s.play({ id: '2', sound: 'a' });
+            s.update({ 'plugin.audio_player.muted': 'yes' }); s.play({ id: '3', stop: true }); s.play({ id: '4', sound: 'a' });
+        });
+        for (const [label, master, volume] of [
+            ['master_text', 'x', 0.5], ['master_null', null, 0.25], ['loud', 2, 3], ['silent_master', 0, 1],
+            ['negative', 1, -1], ['volume_text', 1, 'half'], ['volume_numeric_text', '0.5', '0.5'], ['tiny', 0.001, 0.001],
+        ]) {
+            await run(`volume_${label}`, {}, async (s) => {
+                s.snapshot({ 'plugin.audio_player.master_volume': master }); s.play({ id: '1', sound: 'a', volume });
+            });
+        }
+        await run('volume_unset', {}, async (s) => { s.snapshot({}); s.play({ id: '1', sound: 'a' }); });
+        await run('volume_zero_and_blank', {}, async (s) => {
+            s.snapshot({}); s.play({ id: '1', sound: 'a', volume: 0 }); s.play({ id: '2', sound: 'a', volume: '' });
+            s.play({ id: '3', sound: 'a', volume: null }); s.play({ id: '4', sound: 'a', volume: false });
+        });
+        await run('addresses_under_a_base_path', {}, async (s) => {
+            const previousUrl = window.location.href;
+            window.history.replaceState({}, '', '/tunnel/abc/panel/');
+            try {
+                s.snapshot({});
+                [{ url: 'sounds/rel.mp3' }, { url: '/api/x.mp3' }, { url: 'https://far/y.mp3' }, { sound: '/abs.mp3' },
+                    { sound: 'chime 1' }, { sound: 'assets://a b.mp3' }].forEach((req, i) => s.play({ id: `b${i}`, ...req }));
+            } finally {
+                window.history.replaceState({}, '', previousUrl);
+            }
+        });
+        await run('addresses', {}, async (s) => {
+            s.snapshot({});
+            const asks = [
+                { url: 'http://elsewhere/x.mp3' }, { url: 'https://elsewhere/y.mp3' }, { url: '/api/x.mp3' }, { url: 'sounds/rel.mp3' },
+                { url: 5 }, { url: '', sound: 'fallback' }, { sound: 'assets://chime one.mp3' }, { sound: 'https://cdn/z.mp3' },
+                { sound: '/abs.mp3' }, { sound: 'chime 1' }, { sound: 'a/b?c' }, { sound: '' }, { sound: 7 }, {},
+            ];
+            asks.forEach((req, i) => s.play({ id: `r${i}`, ...req }));
+        });
+        await run('not_a_request', {}, async (s) => {
+            s.snapshot({});
+            for (const raw of ['null', '[]', '"text"', 'true', '{"id":"q"}']) s.play(raw);
+            s.update({ [PLAY]: null }); s.update({ [PLAY]: 0 });
+        });
+        await run('eight_at_once', {}, async (s) => {
+            s.snapshot({});
+            for (let i = 0; i < 10; i++) s.play({ id: `p${i}`, sound: `s${i}` });
+            s.fire(3, 'ended'); s.fire(5, 'ended'); s.play({ id: 'q1', sound: 'q' }); s.play({ id: 'q2', sound: 'q' });
+            s.play({ id: 'q3', sound: 'q' }); s.play({ id: 'q4', sound: 'q' });
+            s.endQuietly(8); s.endQuietly(10); s.play({ id: 'q5', sound: 'q' }); s.play({ id: 'q6', sound: 'q' });
+            s.play({ id: 'q7', sound: 'q' });
+        });
+        await run('a_sound_that_fails', {}, async (s) => {
+            s.snapshot({}); s.play({ id: '1', sound: 'a' }); s.fire(0, 'error'); s.play({ id: '2', sound: 'b' });
+            s.play({ id: '3', stop: true });
+        });
+        await run('refused_by_the_browser', {}, async (s) => {
+            s.snapshot({}); s.rec.refuse = true; s.play({ id: '1', sound: 'a' }); await s.settle();
+            s.play({ id: '2', stop: true }); s.rec.refuse = false; s.play({ id: '3', sound: 'b' }); await s.settle();
+        });
+        await run('a_dropped_socket_stops_them_all', {}, async (s) => {
+            s.snapshot({}); s.play({ id: '1', sound: 'a' }); s.play({ id: '2', sound: 'b' });
+            s.connection(false); s.connection(true); s.play({ id: '3', sound: 'c' }); s.connection(false);
+        });
+        // Browsers allow sound after somebody touches the page.
+        await run('first_touch_allows_sound', { start: true }, async (s) => {
+            s.gesture('pointerdown'); await s.settle(); s.gesture('keydown'); s.gesture('touchstart'); s.gesture('click');
+            s.gesture('pointerdown');
+        });
+        await run('touches_until_one_is_allowed', { start: true }, async (s) => {
+            s.rec.refuse = true; s.gesture('keydown'); await s.settle(); s.gesture('touchstart'); await s.settle();
+            s.rec.refuse = false; s.gesture('pointerdown'); await s.settle(); s.gesture('pointerdown'); await s.settle();
+        });
+        comparePins('sound', got, SOUND_PINS.sound);
     },
 });
 

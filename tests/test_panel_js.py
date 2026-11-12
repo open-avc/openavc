@@ -338,6 +338,10 @@ SCENARIOS = [
     # once a session, back to the idle page and locked again, stopped while
     # offline, pinned whole (tests/fixtures/panel_lock_pins.json).
     "lock_and_idle_as_today",
+    # Sound the audio player plugin asks for: played at the master volume,
+    # once a request, stopped, capped at eight, allowed by the first touch,
+    # pinned whole (tests/fixtures/panel_sound_pins.json).
+    "sound_plays_and_stops_as_today",
 ]
 
 
