@@ -6814,6 +6814,13 @@ const tests = {
         await frameCase(got, 'one_feature', pluginDef('pl'), {
             before: (app) => { app._pluginExtensions = { p1: { panel: { allow_features: ['fullscreen'] } } }; },
         });
+        // The token is asked of the panel, so whatever answers there is what the frame gets.
+        await frameCase(got, 'token_from_the_panel', pluginDef('pl'), {
+            before: (app) => {
+                app._pluginExtensions = PLUGIN_EXTENSIONS;
+                app._fetchPluginExtToken = async (id) => `panel-token-${id}`;
+            },
+        });
         await frameCase(got, 'token_refused', pluginDef('pl'), withExt(() => ({ ok: false, status: 401, json: async () => ({}) })));
         await frameCase(got, 'token_unreachable', pluginDef('pl'), withExt(() => { throw new Error('offline'); }));
         await frameCase(got, 'token_empty', pluginDef('pl'), withExt(() => ({ ok: true, status: 200, json: async () => ({ token: '' }) })));
@@ -6832,6 +6839,21 @@ const tests = {
         for (const [i, ids] of [{ plugin_id: 'p 1' }, { plugin_type: 'pa/nel' }, { plugin_id: '' }, { plugin_type: null }].entries()) {
             await frameCase(got, `unconfigured_${i}`, pluginDef('pl', { ...ids, style: { bg_color: '#222' } }));
         }
+        // The theme's defaults for each type reach the frame and its placeholders.
+        const themed = mkApp();
+        themed.themeElementDefaults = {
+            custom: { bg_color: '#0a0b0c', border_radius: 3 }, plugin: { bg_color: '#0d0e0f', opacity: 0.9 },
+        };
+        const designer = () => {
+            themed.editMode = true;
+            try { return themed.renderPluginElement(pluginDef('p2', { style: { text_color: '#fff' } })); } finally { themed.editMode = false; }
+        };
+        got.themed = [
+            themed.renderCustomElement(customDef('c1', { style: { text_color: '#fff' } })),
+            themed.renderCustomElement(customDef('c2', { custom_file: '' })),
+            themed.renderPluginElement(pluginDef('p1')),
+            designer(),
+        ].map(nodeSnapshot);
         // The extension table loaded at start: which entries it keeps, and a
         // failed load leaving what was there.
         const app = mkApp();
