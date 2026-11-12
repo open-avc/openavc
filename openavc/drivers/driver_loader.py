@@ -106,23 +106,29 @@ def driver_companions(main_path: Path) -> list[Path]:
     discovery companion. Only files beside the installed driver travel with it.
     """
     if main_path.suffix == DRIVER_EXTENSION:
-        try:
-            definition = yaml.safe_load(main_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError, yaml.YAMLError):
-            return []
-        relpath = companion_relpath_from_def(definition) if isinstance(definition, dict) else None
-        if not relpath:
-            return []
-        relative = Path(relpath)
-        if relative.is_absolute() or relative.parent != Path("."):
-            return []
-        candidates = [main_path.with_name(relative.name)]
+        candidates = _declared_companion(main_path)
     else:
         candidates = [
             main_path.with_name(f"{main_path.stem}{suffix}")
             for suffix in COMPANION_SUFFIXES
         ]
     return [path for path in candidates if path.is_file()]
+
+
+def _declared_companion(main_path: Path) -> list[Path]:
+    """The discovery companion a YAML driver names, when it names a file
+    beside itself; nothing when it names none, or a path elsewhere."""
+    try:
+        definition = yaml.safe_load(main_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, yaml.YAMLError):
+        return []
+    relpath = companion_relpath_from_def(definition) if isinstance(definition, dict) else None
+    if not relpath:
+        return []
+    relative = Path(relpath)
+    if relative.is_absolute() or relative.parent != Path("."):
+        return []
+    return [main_path.with_name(relative.name)]
 
 
 def _is_driver_file(filepath: Path) -> bool:
@@ -433,19 +439,26 @@ def find_driver_file_by_id(
     """
     found: Path | None = None
     for directory in directories:
-        dir_path = Path(directory)
-        if not dir_path.is_dir():
-            continue
-        # The file named for the id first, as everywhere (driver_files_for).
-        candidates = sorted(
-            dir_path.glob(f"*{DRIVER_EXTENSION}"),
-            key=lambda path: (path.stem != driver_id, path.name),
-        )
-        for filepath in candidates:
-            if driver_id_from_file(filepath) == driver_id:
-                found = filepath
-                break  # first match within a directory; a later dir may override
+        match = _definition_in(Path(directory), driver_id)
+        if match is not None:
+            found = match  # a later directory overrides
     return found
+
+
+def _definition_in(dir_path: Path, driver_id: str) -> Path | None:
+    """The ``.avcdriver`` in one directory that declares ``driver_id``: the
+    file named for the id first, as everywhere (``driver_files_for``), then
+    by name."""
+    if not dir_path.is_dir():
+        return None
+    candidates = sorted(
+        dir_path.glob(f"*{DRIVER_EXTENSION}"),
+        key=lambda path: (path.stem != driver_id, path.name),
+    )
+    return next(
+        (filepath for filepath in candidates if driver_id_from_file(filepath) == driver_id),
+        None,
+    )
 
 
 def _library_files(
@@ -462,6 +475,16 @@ def _library_files(
         if not dir_path.exists():
             continue
         for filepath in sorted(dir_path.glob(pattern)):
+            yield dir_index, filepath
+
+
+def _python_driver_files(
+    directories: Sequence[Path | str],
+) -> Iterator[tuple[int, Path]]:
+    """The ``.py`` files in the library that are drivers, in library order:
+    companions and underscore helpers are passed over (``_is_driver_file``)."""
+    for dir_index, filepath in _library_files(directories, "*.py"):
+        if _is_driver_file(filepath):
             yield dir_index, filepath
 
 
@@ -544,9 +567,7 @@ def load_python_drivers(directories: Sequence[Path | str]) -> int:
     """
     # driver_id -> (index of the dir it loaded from, the file it loaded from)
     registered: dict[str, tuple[int, Path]] = {}
-    for dir_index, filepath in _library_files(directories, "*.py"):
-        if not _is_driver_file(filepath):
-            continue
+    for dir_index, filepath in _python_driver_files(directories):
         driver_class = load_python_driver_file(filepath)
         if driver_class is None:
             continue
@@ -704,15 +725,18 @@ def _definitions_declaring(
     """
     for dir_path in directories:
         dir_path = Path(dir_path)
-        if not dir_path.exists():
+        if dir_path.exists():
+            yield from _declaring_in(dir_path, driver_id)
+
+
+def _declaring_in(dir_path: Path, driver_id: str) -> Iterator[Path]:
+    for filepath in dir_path.glob(f"*{DRIVER_EXTENSION}"):
+        try:
+            data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
             continue
-        for filepath in dir_path.glob(f"*{DRIVER_EXTENSION}"):
-            try:
-                data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-            except (OSError, yaml.YAMLError):
-                continue
-            if isinstance(data, dict) and data.get("id") == driver_id:
-                yield filepath
+        if isinstance(data, dict) and data.get("id") == driver_id:
+            yield filepath
 
 
 def restore_driver_registration(
@@ -836,9 +860,7 @@ def list_python_drivers(directories: Sequence[Path | str]) -> list[dict[str, Any
     """
     drivers: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
-    for _dir_index, filepath in _library_files(directories, "*.py"):
-        if not _is_driver_file(filepath):
-            continue
+    for _dir_index, filepath in _python_driver_files(directories):
         entry = _listed_entry(filepath)
         driver_id = entry["id"]
         if driver_id in seen_ids:
