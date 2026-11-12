@@ -356,6 +356,35 @@ def test_a_read_back_on_osc_and_http_names_an_address_and_a_path() -> None:
     assert _sends(http, "set_level", {"level": 1}, {"level": "A"}) == [("http GL\r", ("http", "GL\r"))]
 
 
+
+async def test_an_osc_command_fills_its_address_as_its_read_back_does() -> None:
+    """The read-back reads exactly the address the command wrote, push
+    values included, as every other send form fills them."""
+    from openavc.transport.osc import OSCTransport
+    from openavc.transport.osc_codec import osc_encode_message
+
+    class Osc(OSCTransport):
+        def __init__(self) -> None:  # no socket
+            self.sent: list[bytes] = []
+
+        @property
+        def connected(self) -> bool:
+            return True
+
+        async def send(self, data: bytes) -> None:
+            self.sent.append(data)
+
+    unit = _with(LINE_UNIT, transport="osc")
+    unit["commands"]["watch"] = {
+        "label": "Watch", "address": "/acme/{push_session}/watch", "read_back": True,
+    }
+    link = Osc()
+    drv = _driver(unit, link)
+    drv._push_session = "S9"
+    await drv._send_osc_command("watch", unit["commands"]["watch"], {})
+    assert link.sent == [osc_encode_message("/acme/S9/watch", [])]
+    assert _sends(drv, "watch") == [("osc /acme/S9/watch", ("osc", "/acme/S9/watch"))]
+
 def test_a_read_back_naming_a_command_gives_it_the_callers_shared_values() -> None:
     unit = _with(LINE_UNIT)
     unit["commands"]["set_level"]["read_back"] = ["get_level", "set_level"]

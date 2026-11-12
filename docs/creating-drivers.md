@@ -695,7 +695,7 @@ write:
   send: 'SET HOSTNAME {value}\r'
 ```
 
-The `{value}` placeholder is replaced with the new setting value at runtime. Config values like `{host}` are also available.
+The `{value}` placeholder is replaced with the new setting value at runtime. Config values like `{host}` are also available, and so are the push tokens a command can use (`{push_callback_url}`, `{push_session}`). A placeholder that names none of these is sent as written, and the log names it, as it does for a command.
 
 A `boolean` setting arrives as a real true/false, and `integer` / `number` as a real number, so use a Python format spec to shape the wire form:
 

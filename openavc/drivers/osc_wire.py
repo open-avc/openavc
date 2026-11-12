@@ -13,6 +13,9 @@ anything here:
   loader rejects it, and a message one arg short is worse than a missing one.
 * An OSC command never goes out on a socket that is not OSC: a command
   declared with an ``address`` on another transport is refused and logged.
+* A command's address and args fill from the device's config, the platform's
+  push values and the call's wire values, as every other send form does, so
+  its ``read_back: true`` reads exactly the address it wrote.
 * A ``child_set:`` entry names its child by an address segment or a literal,
   and a rule routing to children throttles per concrete address, since the
   wildcard pattern serves every child.
@@ -22,7 +25,8 @@ on the driver object. From its host it needs ``device_id``, ``config``,
 ``transport``, the compiled ``_osc_responses`` table, the message counters
 (``_framed_messages``, ``_parsed_messages``, ``_last_unread``),
 ``_rule_applies``, ``_throttle_hold``, ``_apply_writes``,
-``_substitute_for_wire``, ``_observe`` and what ``ReplyValues`` provides.
+``_substitute_for_wire``, ``_push_params``, ``_observe`` and what
+``ReplyValues`` provides.
 """
 
 from __future__ import annotations
@@ -147,6 +151,7 @@ class OscWire:
     _throttle_hold: Callable[..., bool]
     _apply_writes: Callable[..., None]
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
+    _push_params: Callable[[], dict[str, Any]]
     _observe: Callable[..., None]
     _place_child: Callable[..., Any]
     _convert_declared: Callable[[Any, str], Any]
@@ -176,7 +181,7 @@ class OscWire:
             )
             return None
 
-        all_params = {**self.config, **params}
+        all_params = {**self.config, **self._push_params(), **params}
         address = self._substitute_for_wire(
             f"commands.{command}.address", cmd_def.get("address", ""), all_params
         )

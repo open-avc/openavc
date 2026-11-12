@@ -6,15 +6,19 @@ The rules worth knowing before changing anything here:
   word for a value (ON for true) and is written as declared. Otherwise the
   setting writes its state variable's real value (``state_key``, else the
   setting's own key), turned back into the device's own number by that
-  variable's ``scale`` / ``offset``. ``{value}`` and any config field fill
-  the write; an unknown placeholder is left in place without the warning a
-  command's send gives.
+  variable's ``scale`` / ``offset``. ``{value}``, any config field and the
+  platform's push values fill the write as they fill a command's send, and a
+  placeholder nothing fills goes out as written with the warning a command's
+  send gives.
 * **Three write forms**, chosen by the keys the ``write`` block has, in this
   order: ``address`` is an OSC message (refused unless connected, and on an
   OSC transport); ``path`` or ``method`` an HTTP request (refused unless the
   transport is HTTP); ``send`` a line of the device's protocol (refused unless
-  connected; inside the ``send_frame`` header on every link, UDP included:
-  ``send_framing`` says where each origin's framing differs).
+  connected; inside the ``send_frame`` header on every link, UDP included,
+  as a command's ``send`` is: ``send_framing`` says where each origin's
+  framing differs). An HTTP write is built by a command's own request builder
+  (``http_commands._http_request``) and posts when it names no method; the
+  contract does not let a write declare ``query_params``.
   A block with none of them is refused before anything is sent.
 * **What each returns.** True for an OSC message or a line, the HTTP answer
   for a request. A body that parses as JSON goes as JSON and its answer is
@@ -34,7 +38,6 @@ from typing import Any, Callable
 
 from openavc.drivers import compiled_protocol
 from openavc.drivers.base import UnknownDeviceSettingError
-from openavc.drivers.http_commands import body_parts
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -52,19 +55,23 @@ class SettingWrites:
     transport: Any
     _definition: dict[str, Any]
     on_data_received: Callable[[bytes], Any]
-    _safe_substitute: Callable[[str, dict[str, Any]], str]
+    _push_params: Callable[[], dict[str, Any]]
+    _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
     _build_osc_args: Callable[[list[Any], dict[str, Any]], list[Any]]
-    _build_http_headers: Callable[[Any, dict[str, Any]], dict[str, str] | None]
+    _http_request: Callable[..., Any]
     _line_bytes: Callable[[str], bytes]
 
     async def set_device_setting(self, key: str, value: Any) -> Any:
         """Write one device setting through its declared ``write`` block."""
         setting_def, write_def = self._setting_write_block(key)
-        params = {**self.config, "value": self._setting_wire_value(key, setting_def, value)}
+        params = {
+            **self.config, **self._push_params(),
+            "value": self._setting_wire_value(key, setting_def, value),
+        }
         writer = self._setting_writer(write_def)
         if writer is None:
             raise NotImplementedError(
-                f"Device setting '{key}' write definition has no path or send"
+                f"Device setting '{key}' write definition has no address, path or send"
             )
         return await writer(key, value, write_def, params)
 
@@ -122,7 +129,9 @@ class SettingWrites:
                 f"[{self.device_id}] Setting '{key}' uses OSC write "
                 f"but transport is not OSC"
             )
-        address = self._safe_substitute(write_def.get("address", ""), params)
+        address = self._substitute_for_wire(
+            f"device_settings.{key}.write.address", write_def.get("address", ""), params,
+        )
         args = self._build_osc_args(write_def.get("args", []), params)
         await self.transport.send(osc_encode_message(address, args))
         self._setting_written(key, value)
@@ -138,31 +147,24 @@ class SettingWrites:
                 f"[{self.device_id}] Setting '{key}' uses HTTP write "
                 f"but transport is not HTTP"
             )
-        method = write_def.get("method", "POST").upper()
-        headers = self._build_http_headers(write_def.get("headers"), params)
-        path = self._safe_substitute(write_def.get("path", "/"), params)
-        json_body, content = self._setting_body(write_def.get("body"), params)
-        # A body that is not JSON goes as raw content; either way the answer
-        # is read below, often the cheapest read of the new value.
-        body = {"content": content} if content is not None else {"json_body": json_body}
-        response = await self.transport.request(method, path, **body, headers=headers)
+        # A write posts when it names no method.
+        response = await self._http_request(
+            key, f"device_settings.{key}.write", {"method": "POST", **write_def}, params,
+        )
+        # Whatever the body was, the answer is read: often the cheapest read
+        # of the new value.
         if hasattr(response, "text") and response.text:
             await self.on_data_received(response.text.encode("utf-8"))
         self._setting_written(key, value)
         return response
 
-    def _setting_body(self, raw_body: Any, params: dict[str, Any]) -> tuple[Any, bytes | None]:
-        """An HTTP write's body as (JSON, raw content): the JSON when it
-        parses, else the text as raw content; neither with no body."""
-        if not raw_body:
-            return None, None
-        return body_parts(self._safe_substitute(raw_body, params))
-
     async def _write_setting_line(
         self, key: str, value: Any, write_def: dict[str, Any], params: dict[str, Any],
     ) -> bool:
         self._require_connected()
-        formatted = self._safe_substitute(write_def["send"], params)
+        formatted = self._substitute_for_wire(
+            f"device_settings.{key}.write.send", write_def["send"], params,
+        )
         await self.transport.send(self._line_bytes(formatted))
         self._setting_written(key, value)
         return True

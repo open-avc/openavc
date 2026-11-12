@@ -121,7 +121,7 @@ async def test_a_write_block_with_nothing_to_send_is_refused(write: dict[str, An
     driver = _driver(_definition("tcp", {"gain": {"write": write}}), transport)
     with pytest.raises(
         NotImplementedError,
-        match="^Device setting 'gain' write definition has no path or send$",
+        match="^Device setting 'gain' write definition has no address, path or send$",
     ):
         await driver.set_device_setting("gain", 1)
     assert transport.sent == []
@@ -241,7 +241,10 @@ async def test_an_http_json_write_posts_the_body_and_reads_the_answer() -> None:
     response = await driver.set_device_setting("gain", 2)
     assert transport.requests == [(
         ("POST", "/api/Z1/gain"),
-        {"json_body": {"gain": 20}, "headers": {"X-Zone": "Z1", "X-Retry": "2"}},
+        {
+            "params": None, "json_body": {"gain": 20}, "content": None,
+            "headers": {"X-Zone": "Z1", "X-Retry": "2"},
+        },
     )]
     assert response.status_code == 200
     assert driver.get_state("level") == 7
@@ -253,7 +256,7 @@ async def test_an_http_write_with_no_body_sends_none_and_its_own_method() -> Non
     driver = _driver(_definition("http", settings), transport)
     await driver.set_device_setting("mute", False)
     assert transport.requests == [
-        (("PUT", "/mute/False"), {"json_body": None, "headers": None}),
+        (("PUT", "/mute/False"), {"params": None, "json_body": None, "content": None, "headers": None}),
     ]
 
 
@@ -263,7 +266,7 @@ async def test_an_http_method_alone_makes_an_http_write_to_the_root() -> None:
     driver = _driver(_definition("http", settings), transport)
     await driver.set_device_setting("mute", True)
     assert transport.requests == [
-        (("DELETE", "/"), {"json_body": None, "headers": None}),
+        (("DELETE", "/"), {"params": None, "json_body": None, "content": None, "headers": None}),
     ]
 
 
@@ -279,7 +282,9 @@ async def test_an_http_body_that_is_not_json_goes_as_content_and_its_answer_is_r
     with caplog.at_level("DEBUG", logger="openavc.drivers.configurable"):
         response = await driver.set_device_setting("gain", 2)
     assert transport.requests == [
-        (("POST", "/gain"), {"content": b"<gain>20</gain>", "headers": None}),
+        (("POST", "/gain"), {
+            "params": None, "json_body": None, "content": b"<gain>20</gain>", "headers": None,
+        }),
     ]
     assert response.text == "LEVEL=7"
     assert driver.get_state("level") == 7
@@ -311,3 +316,52 @@ async def test_an_http_answer_with_no_text_is_returned_unread() -> None:
     response = await driver.set_device_setting("gain", 2)
     assert response.status_code == 204
     assert driver.get_state("level") is None
+
+
+# ── Filled as a command's send is filled ──
+
+
+async def test_an_http_write_takes_push_values_as_a_command_does() -> None:
+    settings = {"gain": {"write": {
+        "path": "/api/{push_session}/gain",
+        "body": '{"gain": {value}, "cb": "{push_callback_url}"}',
+    }}}
+    transport = FakeHttp()
+    driver = _driver(_definition("http", settings), transport)
+    driver._push_session = "S9"
+    driver._push_callback_url = "http://192.0.2.1/cb"
+    await driver.set_device_setting("gain", 2)
+    assert transport.requests == [(
+        ("POST", "/api/S9/gain"),
+        {
+            "params": None, "json_body": {"gain": 20, "cb": "http://192.0.2.1/cb"},
+            "content": None, "headers": None,
+        },
+    )]
+
+
+async def test_a_line_write_takes_push_values_as_a_command_does() -> None:
+    settings = {"gain": {"write": {"send": "GAIN {value} {push_callback_url}\r"}}}
+    transport = LineTransport()
+    driver = _driver(_definition("tcp", settings), transport)
+    driver._push_callback_url = "http://192.0.2.1/cb"
+    await driver.set_device_setting("gain", 2)
+    assert transport.sent == [b"GAIN 20 http://192.0.2.1/cb\r"]
+
+
+@pytest.mark.parametrize("transport_type, write, where", [
+    ("http", {"path": "/gain/{zonee}"}, "path"),
+    ("http", {"path": "/gain", "body": '{"z": "{zonee}"}'}, "body"),
+    ("tcp", {"send": "GAIN {zonee} {value}\r"}, "send"),
+    ("osc", {"address": "/gain/{zonee}"}, "address"),
+])
+async def test_a_placeholder_nothing_fills_is_warned_about_as_a_commands_is(
+    transport_type: str, write: dict[str, Any], where: str, caplog: pytest.LogCaptureFixture,
+) -> None:
+    transport = {"http": FakeHttp, "tcp": LineTransport, "osc": FakeOsc}[transport_type]()
+    driver = _driver(_definition(transport_type, {"gain": {"write": write}}), transport)
+    with caplog.at_level("WARNING", logger="openavc.drivers.configurable"):
+        await driver.set_device_setting("gain", 2)
+    assert (
+        f"[dev1] device_settings.gain.write.{where}: '{{zonee}}' was not substituted"
+    ) in caplog.text

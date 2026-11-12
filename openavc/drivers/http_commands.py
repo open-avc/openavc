@@ -11,9 +11,12 @@ The rules worth knowing before changing anything here:
   fills (``_substitute_for_wire``); a query value or a header does not. A
   query value that is not text goes as it is, a header as its text.
 * **A body that parses as JSON goes as JSON; anything else** (XML, form text,
-  a bare token) goes as raw content (``body_parts``, which a device setting's
-  HTTP write uses too). Use a ``Content-Type`` header for a body that is not
-  JSON.
+  a bare token) goes as raw content (``body_parts``). Use a ``Content-Type``
+  header for a body that is not JSON.
+* **A device setting's HTTP write** is built by the same request builder
+  (``_http_request``), so it fills and warns as a command does; only its
+  default method (POST) and what becomes of its answer are its own
+  (``setting_writes``).
 * **The answer** goes to the reply rules as a line of text and is returned,
   whatever its status. A command with HTTP fields on another transport sends
   nothing, logs an error and returns None.
@@ -75,33 +78,40 @@ class HttpCommands:
             return None
 
         all_params = {**self.config, **self._push_params(), **params}
-        method = cmd_def.get("method", "GET").upper()
-        headers = self._build_http_headers(cmd_def.get("headers"), all_params)
-        path = self._substitute_for_wire(
-            f"commands.{command}.path", cmd_def.get("path", "/"), all_params
-        )
-        json_body, content = self._http_body(command, cmd_def.get("body"), all_params)
-        query_params = self._http_query(cmd_def.get("query_params"), all_params)
-
-        response = await self.transport.request(
-            method, path, params=query_params, json_body=json_body,
-            content=content, headers=headers,
-        )
+        response = await self._http_request(command, f"commands.{command}", cmd_def, all_params)
         return await self._process_http_response(command, response)
 
+    async def _http_request(
+        self, name: str, where: str, req_def: dict[str, Any], all_params: dict[str, Any],
+    ) -> Any:
+        """Send the request ``req_def`` declares, a command's or a device
+        setting's ``write``, filled from ``all_params``; the answer, unread.
+
+        GET when ``req_def`` names no method; ``where`` names its fields in a
+        warning and ``name`` names it in the log.
+        """
+        headers = self._build_http_headers(req_def.get("headers"), all_params)
+        path = self._substitute_for_wire(f"{where}.path", req_def.get("path", "/"), all_params)
+        json_body, content = self._http_body(name, where, req_def.get("body"), all_params)
+        query_params = self._http_query(req_def.get("query_params"), all_params)
+        return await self.transport.request(
+            req_def.get("method", "GET").upper(), path, params=query_params,
+            json_body=json_body, content=content, headers=headers,
+        )
+
     def _http_body(
-        self, command: str, raw_body: Any, params: dict[str, Any]
+        self, name: str, where: str, raw_body: Any, params: dict[str, Any]
     ) -> tuple[Any, bytes | None]:
-        """The command's body, filled in, as (JSON, raw content); neither
+        """The request's body, filled in, as (JSON, raw content); neither
         with no body."""
         if not raw_body:
             return None, None
         json_body, content = body_parts(
-            self._substitute_for_wire(f"commands.{command}.body", raw_body, params)
+            self._substitute_for_wire(f"{where}.body", raw_body, params)
         )
         if content is not None:
             log.debug(
-                f"[{self.device_id}] Body for '{command}' is not JSON, "
+                f"[{self.device_id}] Body for '{name}' is not JSON, "
                 f"sending as raw content"
             )
         return json_body, content

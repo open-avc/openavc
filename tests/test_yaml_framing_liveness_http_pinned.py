@@ -237,7 +237,9 @@ async def test_an_empty_setting_body_sends_no_body() -> None:
     drv = _driver(unit, http)
     response = await drv.set_device_setting("lvl", 5)
     assert response.text == "LEVEL=5"
-    assert http.requests == [("PUT", "/l", {"json_body": None, "headers": None})]
+    assert http.requests == [
+        ("PUT", "/l", {"params": None, "json_body": None, "content": None, "headers": None}),
+    ]
     assert drv.get_state("level") == 5
 
 
