@@ -611,3 +611,13 @@ def test_a_padded_project_id_of_zero_is_the_wire_id_zero():
     sim.set_child_entities({"output": {"000": {}, "007": {}}})
     assert sim._child_roster["output"] == ["0", "7"]
     assert "output.0.route" in sim._state and "output.000.route" not in sim._state
+
+
+def test_seeded_children_are_adopted_in_the_order_the_section_seeds_them():
+    """Neither sorted nor reversed: the order the seeds were written."""
+    sim = _roster_sim(
+        _output({"ids": []}),
+        simulator={"initial_state": {"output.5.mute": True, "output.2.route": 3,
+                                     "output.8.route": 1}},
+    )
+    assert sim._child_roster["output"] == ["5", "2", "8"]
