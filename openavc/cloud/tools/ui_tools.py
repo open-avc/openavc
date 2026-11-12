@@ -452,19 +452,42 @@ class _NewElements:
     def __init__(self, project: Any) -> None:
         self.project = project
         self.problems: list[str] = []
+        self.page_of: dict = {}
+        for page in project.ui.pages:
+            for el in page.elements:
+                self.page_of.setdefault(el.id, page.id)
         self.masters = {m.id for m in project.ui.master_elements}
+        self.seen: set = set()
 
     def refuse(self, problem: str) -> None:
         self.problems.append(problem)
 
-    def master_holds(self, el_id: Any) -> str | None:
-        """Why a new control cannot have a master's id, or None. A press reaches
-        the first element with its id, pages before masters
-        (``ui_events.find_element``), so the master would stop answering on
-        that page; ``_master_id_taken`` refuses the same clash the other way."""
+    def taken(self, el_id: Any) -> str | None:
+        """Why a new control cannot have this id, or None when it can.
+
+        An id is unique across every page and master, as the Builder's own id
+        check has it: a press reaches the first element with its id, pages in
+        order and then masters (``ui_events.find_element``), so a second
+        control with it would run the first one's actions.
+        ``_master_id_taken`` refuses the same clash for a new master."""
+        if el_id in self.page_of:
+            return f"Element '{el_id}' already exists on page '{self.page_of[el_id]}'"
         if el_id in self.masters:
             return f"Element '{el_id}' already exists as a master element"
+        if el_id in self.seen:
+            # Two elements with one id: the second silently replaced the first at
+            # render time, and nothing said so.
+            return f"Element '{el_id}' appears twice in this batch"
         return None
+
+    def claim(self, el_id: Any) -> bool:
+        """Take the id for this call, or refuse it (the refusal kept); True when taken."""
+        taken = self.taken(el_id)
+        if taken:
+            self.refuse(taken)
+            return False
+        self.seen.add(el_id)
+        return True
 
     def prepare(self, el_data: dict, build: Any = None) -> tuple[Any, Any] | None:
         """(its box, the control ``build`` made) for one definition, or None
@@ -492,9 +515,7 @@ class _NewElements:
         """
         boxes: dict[str, dict] = {}
         for el_data in elements:
-            taken = isinstance(el_data, dict) and self.master_holds(el_data.get("id"))
-            if taken:
-                self.refuse(taken)
+            if isinstance(el_data, dict) and not self.claim(el_data.get("id")):
                 continue
             made = self.prepare(el_data) if isinstance(el_data, dict) else None
             if made and made[0] is not None:
@@ -506,18 +527,17 @@ class _NewElements:
 class _NewControls(_NewElements):
     """New controls for a page that already exists, built here and landed together.
 
-    An id must be free on the page, no master's, and used once in the call. A container must
-    be a group on the page or one accepted earlier in the same call: a
-    container and its children can arrive together, so each control accepted
-    becomes a candidate parent for the next (``holders`` grows as they are).
+    An id must be free on every page and master, and used once in the call
+    (``taken``). A container must be a group on the page or one accepted
+    earlier in the same call: a container and its children can arrive
+    together, so each control accepted becomes a candidate parent for the next
+    (``holders`` grows as they are).
     """
 
     def __init__(self, project: Any, page: Any) -> None:
         super().__init__(project)
         self.page = page
         self.holders = {el.id: el for el in page.elements}
-        self.existing = set(self.holders)
-        self.seen: set = set()
         self.accepted: list[tuple[Any, dict | None]] = []
 
     def accept(self, elements: list) -> None:
@@ -527,30 +547,13 @@ class _NewControls(_NewElements):
         self.check()
 
     def _take(self, el_data: dict) -> None:
-        el_id = el_data.get("id", "?")
-        taken = self._taken(el_id)
-        if taken:
-            self.refuse(taken)
+        if not self.claim(el_data.get("id", "?")):
             return
-        self.seen.add(el_id)
         made = self.prepare(el_data, self._build)
         if made is not None:
             place, element = made
             self.accepted.append((element, place))
             self.holders[element.id] = element
-
-    def _taken(self, el_id: Any) -> str | None:
-        """Why a new control cannot have this id on this page, or None when it can."""
-        if el_id in self.existing:
-            return f"Element '{el_id}' already exists on page '{self.page.id}'"
-        held = self.master_holds(el_id)
-        if held:
-            return held
-        if el_id in self.seen:
-            # Two elements with one id: the second silently replaced the first at
-            # render time, and nothing said so.
-            return f"Element '{el_id}' appears twice in this batch"
-        return None
 
     def _build(self, el_data: dict) -> Any:
         from openavc.core.project_loader import UIElement

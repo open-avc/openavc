@@ -132,6 +132,38 @@ async def test_add_page_an_inline_control_with_a_master_id_is_refused():
     assert engine.project.model_dump() == before
 
 
+@pytest.mark.asyncio
+async def test_add_elements_an_id_another_page_holds_is_refused():
+    """A press reaches the first page holding an id, so a second control with
+    it would run the first one's actions."""
+    engine = _engine()
+    before = engine.project.model_dump()
+    result = await _call(engine, "add_ui_elements", {"page_id": "other", "elements": [
+        {"id": "btn", "type": "button", "placement": dict(BOX)},
+    ]})
+    assert result == {
+        "error": "1 element could not be added: Element 'btn' already exists on page 'main'",
+        "errors": ["Element 'btn' already exists on page 'main'"],
+    }
+    assert engine.project.model_dump() == before
+
+
+@pytest.mark.asyncio
+async def test_add_page_an_inline_id_another_page_holds_or_used_twice_is_refused():
+    engine = _engine()
+    before = engine.project.model_dump()
+    result = await _call(engine, "add_ui_page", {"id": "fresh", "elements": [
+        {"id": "btn", "type": "button", "placement": dict(BOX)},
+        {"id": "twin", "type": "button", "placement": dict(BOX)},
+        {"id": "twin", "type": "label", "placement": dict(BOX)},
+    ]})
+    assert result["errors"] == [
+        "Element 'btn' already exists on page 'main'",
+        "Element 'twin' appears twice in this batch",
+    ]
+    assert engine.project.model_dump() == before
+
+
 HIDE_REFUSAL = (
     "Element 'h1': 'hidden' is not set on a new control, since a hide belongs to an "
     "arrangement. Create it, then send update_ui_element with hidden: true (and a "
