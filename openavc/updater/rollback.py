@@ -340,6 +340,9 @@ def confirm_startup(data_dir: Path) -> None:
     logged as a success. A marker that survived a *failed* apply (e.g. the
     helper aborted, version unchanged) must not log "confirmed successful"
     against the target it never reached.
+
+    On Windows a confirmed update is also when the installer cache is trimmed
+    to what a rollback can use (``prune_installer_cache``).
     """
     from openavc.version import __version__
 
@@ -361,12 +364,96 @@ def confirm_startup(data_dir: Path) -> None:
             "Update confirmed successful after startup (v%s -> v%s)",
             from_version, __version__,
         )
+        _trim_installer_cache_on_windows(data_dir, from_version)
     else:
         log.warning(
             "Update to v%s did not take effect (still running v%s); "
             "cleared stale pending-update marker",
             to_version, __version__,
         )
+
+
+def prune_installer_cache(data_dir: Path, from_version: str) -> list[str]:
+    """Windows: delete the cached installers no rollback can use; return their names.
+
+    Every in-app update downloads its installer into ``update-cache``, and
+    every installer copies itself there as well (``CacheInstallerForRollback``
+    in setup.iss). Nothing else ever deleted one, so a PC updated a dozen times
+    held a dozen installers and hundreds of MB. A rollback needs two: the
+    running version's own (the target of a rollback after the next update) and
+    the one it would restore now, the version this update came from. Those
+    stay and the rest go, so Rollback offers ``from_version`` afterwards.
+
+    When ``from_version`` has no installer here, the newest other one stays,
+    which is what Rollback offered already. A file whose name does not carry a
+    version is not one of ours and is left alone. Called once an update is
+    confirmed (``confirm_startup``), when no update or rollback is running.
+    Nothing here can stop the server starting: every failure is logged and the
+    list comes back short.
+    """
+    try:
+        installers = _cached_installers(data_dir / "update-cache")
+    except OSError:
+        log.warning("Could not read the installer cache; leaving it as it is", exc_info=True)
+        return []
+    removed = _remove_installers(_installers_no_rollback_uses(installers, from_version))
+    if removed:
+        log.info(
+            "Removed %d cached installer(s) no rollback uses: %s",
+            len(removed), ", ".join(removed),
+        )
+    return removed
+
+
+def _trim_installer_cache_on_windows(data_dir: Path, from_version: str) -> None:
+    """``prune_installer_cache`` after a confirmed update, on Windows only.
+
+    A failure in it never reaches startup, whatever the cache holds.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        prune_installer_cache(data_dir, from_version)
+    except Exception:
+        log.exception("Could not trim the installer cache")
+
+
+def _cached_installers(cache_dir: Path) -> list[Path]:
+    """The installers in the cache whose names carry a version, oldest first."""
+    from openavc.updater.checker import is_valid_semver
+    return sorted(
+        (inst for inst in cache_dir.glob("OpenAVC-Setup-*.exe")
+         if is_valid_semver(inst.stem.removeprefix("OpenAVC-Setup-"))),
+        key=_installer_version,
+    )
+
+
+def _installers_no_rollback_uses(installers: list[Path], from_version: str) -> list[Path]:
+    """All but the running version's installer and the one a rollback restores:
+    ``from_version``'s, else the newest other one."""
+    from openavc.updater.checker import parse_semver
+    from openavc.version import __version__
+
+    running = parse_semver(__version__)
+    others = [inst for inst in installers if _installer_version(inst) != running]
+    wanted = parse_semver(from_version) if from_version else None
+    previous = [inst for inst in others if _installer_version(inst) == wanted]
+    keep = (previous or others)[-1:]
+    return [inst for inst in others if inst not in keep]
+
+
+def _remove_installers(installers: list[Path]) -> list[str]:
+    """Delete each one; return the names that went. One that cannot be
+    deleted (an installer still running holds its file open) is logged and kept."""
+    removed = []
+    for inst in installers:
+        try:
+            inst.unlink()
+        except OSError as e:
+            log.warning("Could not remove cached installer %s: %s", inst.name, e)
+        else:
+            removed.append(inst.name)
+    return removed
 
 
 def check_rollback_needed(data_dir: Path) -> bool:

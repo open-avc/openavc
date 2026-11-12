@@ -89,7 +89,7 @@ Override with the `OPENAVC_DATA_DIR` environment variable.
 ├── logs/              # Log files (rotated)
 ├── status/            # The ports the server listens on, and why it last failed to start
 ├── system.json        # System configuration
-└── update-cache/      # Downloaded update packages (temp)
+└── update-cache/      # Downloaded update packages; on Windows, the installers rollback uses
 ```
 
 On Windows, the installer restricts the data directory to the service and
