@@ -12,12 +12,21 @@ skipped, with only a line in the simulator's log.
 Two passes over the entries, all of the first before any of the second:
 whether each ``handler:`` compiles (``check_handler_code``), then each
 template's surface (``check_templates``): whether it can fire, its
-``set_state:`` targets, and the placeholders its text names. This validator
-reads a template with patterns of its own (``STATE_REF``, ``_CAPTURE_REF``),
-which are not the simulator's: ``STATE_REF`` takes a key of word characters
-only, where the simulator fills any key without a brace, so a child's
-``{state.output.2.input}`` goes unchecked; and every entry with an
-``address`` is passed over, with a ``handler`` or without.
+``set_state:`` targets, and the placeholders its text names.
+
+This validator reads an entry in ways the simulator does not, and so passes
+some the simulator then skips or reads differently:
+
+- ``STATE_REF`` takes a key of word characters only, where the simulator's
+  ``template_handler.STATE_REF`` fills any key without a brace, so a child's
+  ``{state.output.2.input}`` goes unchecked.
+- Every entry with an ``address`` is passed over by ``check_templates``,
+  where the simulator reads one with no ``handler`` as a line handler.
+- A pattern is compiled as written, where the simulator compiles
+  ``^<pattern>$``, so one that compiles only as written (an inline flag such
+  as ``(?i)``, which must come first) passes here and the simulator skips it.
+- A ``handler:`` that is not text is compiled as its text here, where the
+  simulator hands the value to ``compile`` as it is.
 """
 
 from __future__ import annotations
@@ -27,7 +36,9 @@ import re
 from openavc.simulator.validation_result import ValidationResult
 
 #: A ``{state.key}`` reference in a template's text, as this validator reads
-#: one (word characters only). The type check's boolean rule reads with it too.
+#: one (word characters only; not ``template_handler.STATE_REF``, the
+#: simulator's, which takes any key without a brace). The type check's boolean
+#: rule in ``validate`` reads with it too.
 STATE_REF = re.compile(r"\{state\.(\w+)\}")
 #: A ``{N}`` capture group reference in a template's text.
 _CAPTURE_REF = re.compile(r"\{(\d+)\}")

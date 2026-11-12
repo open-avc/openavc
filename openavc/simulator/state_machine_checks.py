@@ -5,12 +5,23 @@ a machine that is not a mapping or lacks ``states``, ``initial`` or
 ``transitions``, and stores the machine's current state under its name. On a
 command, the transition from the current state that names the command wins,
 else the first ``"*"`` one; among those naming the same trigger the first
-listed wins. A ``reject`` transition answers nothing and goes nowhere, and an
-``after_seconds`` one fires on its own. This module checks a declaration
-against that before the simulator starts: an error for a machine left out, a
-state the machine does not list or a delay that is not a number, a warning for
-a transition that can never fire. A change to how a transition is chosen
-changes ``StateMachine._match`` and ``_Transitions`` together.
+listed wins. A ``reject`` transition answers nothing and goes nowhere. Entering
+a state arms every ``after_seconds`` transition from it, and the first to fire
+wins.
+
+This module checks a declaration against that before the simulator starts. It
+is an error when a machine or a transition is not a mapping, a machine's
+``states`` are missing or empty, it has no ``initial`` state or no
+``transitions`` list, a transition lacks a ``from`` (or a ``to``, unless it
+rejects), names a state the machine does not list, or gives a delay that is not
+a number. It is a warning when a transition repeats an earlier one's ``from``
+and ``trigger`` (said to be unreachable, which is so for a command but not for
+an ``after_seconds`` one, which is still armed), has neither a trigger nor a
+delay, or names a trigger no command has. It says nothing of a ``reject``
+transition with a delay and no ``to``, which raises in the runtime as soon as
+the machine enters that transition's ``from`` state and arms it. A change
+to how a transition is chosen changes ``StateMachine._match`` and
+``_Transitions`` together.
 """
 
 from __future__ import annotations
