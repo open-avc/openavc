@@ -105,4 +105,5 @@ is a conversation, not a purchase.
 ## Related
 
 - [Programmer Overview](programmer-overview.md) for what the assistant can reach
+- [AI Assistant: What Is Sent and Kept](ai-assistant-data.md) for what goes to Anthropic and what OpenAVC keeps
 - [Getting Started](getting-started.md) for pairing a system to the cloud

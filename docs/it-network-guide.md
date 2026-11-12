@@ -527,7 +527,8 @@ Failed authentication attempts are throttled at the strict (10/min) rate on ever
 
 | Data | Location | Sensitive? |
 |------|----------|-----------|
-| Project configuration (devices, macros, UI layouts) | `project.avc` (JSON) | Low to medium. Contains device IP addresses and connection parameters, any device passwords entered for them, and the inter-system key as-is when ISC is set up. |
+| Project configuration (devices, macros, UI layouts) | `project.avc` (JSON) | Low to medium. Contains device IP addresses and connection parameters. Logins are not in it: each holds a placeholder that names the saved login. Until a device's driver or a plugin is installed, some of its logins can stay in the project. |
+| Saved logins | `device_logins.json`, with its key in `device_logins.key` | High. Device and plugin logins, the inter-system key, and any stream key, password or PIN saved in a macro step or a control's action, encrypted with the key beside it. On Linux and macOS both files are readable only by the account the service runs as; on Windows the data folder is restricted as for `system.json`. |
 | System configuration | `system.json` | Medium. The admin password and API key are stored as salted hashes, not as typed. The cloud key is stored as-is, because the instance has to present it. On Linux and macOS the file is readable only by the account the service runs as. On Windows the installer restricts the whole data folder to the service and administrators at every install and update; see [Protect the data folder](hardened-deployment.md#protect-the-data-folder). |
 | Persistent variables | `state.json` | Low. Key-value pairs for automation state. |
 | Approved panels | `panel_devices.json` | Medium. One record per approved panel: its name, the kind of device, its address, when it was approved and by whom, and a salted hash of its secret, never the secret itself. Readable only by the account the service runs as; carried by the pre-update backup. Devices still waiting, and denied ones, are held in memory only. |
@@ -538,7 +539,7 @@ Failed authentication attempts are throttled at the strict (10/min) rate on ever
 
 - No user credentials for the web interface are stored in a database (the password is a single config value)
 - No personal data, user accounts, or usage analytics
-- No device credentials beyond what is configured in the project file (e.g., PJLink passwords). A stream key, password or PIN saved in a macro step or a control's action is kept with the system's device logins, not in the project file, and is never sent to a touch panel.
+- No device credentials outside the saved logins file, apart from those of a driver or plugin not yet installed. A device or plugin login is never sent to a touch panel or the Programmer.
 - No data is written outside the application's data directory
 
 ### Filesystem permissions
@@ -756,7 +757,7 @@ OpenAVC does not use UPnP port mapping, NAT traversal, or any technique that mod
 | Discovery scans | On-demand only | Never automatic. Started by an integrator (or an authenticated cloud request). A scan performs a ping sweep, a ~55-port TCP scan of responding hosts, SNMP and NetBIOS queries, multicast queries and directed-broadcast probes. See Discovery scan intensity and How a discovery scan looks to network monitoring. |
 | Device audits | On-demand only | Started by an integrator in the Programmer, aimed at one device: a port scan of that host, its web pages, SNMP, the drivers' identification probes, then a driver test against it. See Device audit. |
 | Background multicast/broadcast | mDNS advertising only | mDNS on 5353, on by default, re-announcing every 60 s (disable with `discovery.advertise: false`). ISC UDP broadcast on 19872 is off unless ISC is enabled in the project. |
-| Data exfiltration risk | Low | No data leaves the site unless cloud is explicitly paired, or someone presses Send to OpenAVC on one report about one device. When paired: automatic telemetry plus on-demand config pulls (both itemized above). |
+| Data exfiltration risk | Low | No data leaves the site unless cloud is explicitly paired, or someone presses Send to OpenAVC on one report about one device. When paired: automatic telemetry, a daily project copy and on-demand pulls, all itemized above. Device logins stay on the system (OpenAVC 0.40.0 and later). |
 
 ---
 
