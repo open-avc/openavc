@@ -754,7 +754,7 @@ def _driver_class_from(path: Path) -> Any:
     from openavc.drivers.configurable import create_configurable_driver_class
     from openavc.drivers.driver_loader import load_driver_file, load_python_driver_file
 
-    if path.suffix == ".avcdriver":
+    if path.name.endswith(".avcdriver"):
         driver_def = load_driver_file(path)
         if driver_def is None:
             raise HTTPException(status_code=422, detail="Invalid driver definition file")
@@ -891,6 +891,9 @@ def _register_install(files: _CatalogFiles, companion: Path | None) -> None:
 # A driver id that can also be its file name.
 _FILE_NAME_ID = re.compile(r'^[a-zA-Z0-9_\-]+$')
 
+# A driver file name an upload may keep, and a bundle may hold.
+_DRIVER_FILE_NAME = re.compile(r'^[a-zA-Z0-9_\-]+\.(avcdriver|py)$')
+
 
 def _named_for_its_id(filename: str, content: bytes) -> str | None:
     """The file name an uploaded driver is saved under: its declared id plus
@@ -984,7 +987,7 @@ async def upload_driver(request: Request) -> dict[str, Any]:
     named = _named_for_its_id(filename, content)
     if named is not None:
         filename = named
-    elif not re.match(r'^[a-zA-Z0-9_\-]+\.(avcdriver|py)$', filename):
+    elif not _DRIVER_FILE_NAME.match(filename):
         raise HTTPException(status_code=422, detail="Invalid filename — use only letters, numbers, hyphens, and underscores")
 
     _enforce_declared_floor(_declared_min_platform_version(filename, content))
@@ -1127,10 +1130,6 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
     }
 
 
-# A file a driver bundle may hold.
-_BUNDLE_FILE_NAME = re.compile(r'^[a-zA-Z0-9_\-]+\.(py|avcdriver)$')
-
-
 def _bundle_entries(content: bytes) -> dict[str, bytes]:
     """The files a driver bundle holds, by base name, or the 422 saying why it
     is not one. The size ceilings are zip-bomb guards: generous (a driver
@@ -1142,7 +1141,7 @@ def _bundle_entries(content: bytes) -> dict[str, bytes]:
     entries: dict[str, bytes] = {}
     for member in members:
         base = PurePosixPath(member.filename).name
-        if not base or not _BUNDLE_FILE_NAME.match(base):
+        if not base or not _DRIVER_FILE_NAME.match(base):
             raise HTTPException(
                 status_code=422,
                 detail=(
@@ -1437,6 +1436,9 @@ def _yaml_declares(filepath: Path, driver_id: str) -> bool:
 
 
 def _remove_if_present(path: Path | None) -> None:
+    """Remove a file the update found before it changed anything, if it is
+    still there. Unlike ``_remove_files`` (what a door itself wrote), a link
+    left dangling since is left as it was."""
     if path is not None and path.exists():
         path.unlink(missing_ok=True)
 
