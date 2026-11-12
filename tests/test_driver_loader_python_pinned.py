@@ -44,7 +44,7 @@ from openavc.drivers.driver_loader import (
 LOGGER = "openavc.drivers.driver_loader"
 
 # The module whose globals the hot reload looks its collaborators up in.
-RELOAD_HOME = "openavc.drivers.driver_loader"
+RELOAD_HOME = "openavc.drivers.python_modules"
 
 HEADER = "from openavc.drivers.base import BaseDriver\n"
 

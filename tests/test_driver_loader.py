@@ -882,7 +882,7 @@ def test_reload_step3_failure_preserves_old_driver(tmp_path, monkeypatch):
 
     # Simulate the canonical re-import failing after Step-1 validation passed
     # (a TOCTOU edit/delete of the file between validation and reload).
-    import openavc.drivers.driver_loader as dl
+    import openavc.drivers.python_modules as dl
 
     monkeypatch.setattr(dl, "load_python_driver_file", lambda fp: None)
 

@@ -16,10 +16,7 @@ Each valid driver is registered in the global driver registry.
 from __future__ import annotations
 
 import ast
-import importlib.util
-import inspect
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import Sequence, Any
@@ -31,8 +28,12 @@ from openavc.drivers.avcdriver_semantic import (
     validate_driver_definition as _validate_definition_rules,
     validate_driver_issues as _validate_definition_issues,
 )
-from openavc.drivers.python_info import (
-    python_driver_info_issues as _python_driver_info_issues,
+from openavc.drivers.python_modules import (
+    is_imported as _is_imported,
+    load_python_driver_file as load_python_driver_file,
+    python_source_syntax_error as python_source_syntax_error,
+    reload_python_driver as reload_python_driver,
+    syntax_error_report as syntax_error_report,
 )
 from openavc.drivers.registry import (
     is_driver_registered,
@@ -510,101 +511,6 @@ def load_driver_files(directories: Sequence[Path | str]) -> int:
     return len(registered)
 
 
-def load_python_driver_file(filepath: Path) -> type | None:
-    """
-    Load a Python driver module from a .py file and return the BaseDriver subclass.
-
-    Uses importlib to dynamically load the module, then scans it for classes
-    that are subclasses of BaseDriver (but not BaseDriver itself).
-
-    Returns the driver class, or None if no valid driver was found.
-    """
-    from openavc.drivers.base import BaseDriver
-
-    module_name = f"openavc_driver_{filepath.stem}"
-
-    try:
-        spec = importlib.util.spec_from_file_location(module_name, filepath)
-        if spec is None or spec.loader is None:
-            log.warning(f"Could not create module spec for {filepath}")
-            return None
-
-        module = importlib.util.module_from_spec(spec)
-        # Add to sys.modules so relative imports within the driver work
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
-    except ModuleNotFoundError as exc:
-        # A driver installed before the platform moved under `openavc` still
-        # says `from server.…` / `from simulator.…`, and those names are gone.
-        # It survives an upgrade untouched in driver_repo/, so this is what a
-        # user actually hits: the driver simply stops registering and its
-        # devices stop resolving. A raw ImportError says nothing about the fix,
-        # so name it — updating the driver from Browse Drivers replaces the file.
-        if (exc.name or "").split(".")[0] in ("server", "simulator"):
-            log.error(
-                f"Driver {filepath.name} was written for an older OpenAVC and "
-                f"imports '{exc.name}', which no longer exists. Update it from "
-                f"Browse Drivers (or re-install it) to get the current version."
-            )
-        else:
-            log.exception(f"Failed to load Python driver from {filepath}")
-        sys.modules.pop(module_name, None)
-        return None
-    except Exception:  # Catch-all: exec_module runs arbitrary driver code
-        log.exception(f"Failed to load Python driver from {filepath}")
-        # Drop the half-initialized module: leaving it resident for the process
-        # lifetime leaks state, defeats the "module not loaded" health check in
-        # list_python_drivers (so the panel shows no load error), and makes a
-        # later hot-reload see an inconsistent sys.modules.
-        sys.modules.pop(module_name, None)
-        return None
-
-    # Find BaseDriver subclasses defined in this module
-    driver_class = None
-    for _name, obj in inspect.getmembers(module, inspect.isclass):
-        if (
-            issubclass(obj, BaseDriver)
-            and obj is not BaseDriver
-            and obj.__module__ == module_name
-        ):
-            if hasattr(obj, "DRIVER_INFO") and obj.DRIVER_INFO.get("id"):
-                driver_class = obj
-                break  # Take the first valid one
-
-    if driver_class is None:
-        log.warning(f"No BaseDriver subclass with DRIVER_INFO found in {filepath}")
-    else:
-        _warn_python_driver_info_issues(driver_class)
-
-    return driver_class
-
-
-def _warn_python_driver_info_issues(driver_class: type) -> None:
-    """Structural sanity warnings for a Python driver's DRIVER_INFO.
-
-    Warn-only, never rejects — a driver written for a newer platform must not
-    vanish at load and take its devices offline. The rules themselves live in
-    ``python_info``, so ``python -m openavc.drivers.check`` and the community
-    catalog reach the same verdict from the source text; this door adds the two
-    facts only the loaded class knows.
-    """
-    from openavc.drivers.base import BaseDriver
-
-    info = getattr(driver_class, "DRIVER_INFO", {}) or {}
-    driver_id = info.get("id", driver_class.__name__)
-
-    for msg in _python_driver_info_issues(
-        info,
-        overrides_run_setup_action=(
-            driver_class.run_setup_action is not BaseDriver.run_setup_action
-        ),
-        overrides_set_device_setting=(
-            driver_class.set_device_setting is not BaseDriver.set_device_setting
-        ),
-    ):
-        log.warning(f"Python driver '{driver_id}': {msg}")
-
-
 def load_python_drivers(directories: Sequence[Path | str]) -> int:
     """
     Scan directories for .py driver files, load them, and register.
@@ -983,8 +889,7 @@ def list_python_drivers(directories: Sequence[Path | str]) -> list[dict[str, Any
                 #     class registered under a different id.
                 #   - module absent → it never loaded (failed import, or the
                 #     startup scan hasn't run for this file).
-                module_name = f"openavc_driver_{filepath.stem}"
-                if module_name in sys.modules:
+                if _is_imported(filepath):
                     entry["load_error"] = (
                         "Imported but not registered — duplicate driver ID "
                         "or a failed last reload"
@@ -1009,164 +914,3 @@ def _ast_dict_to_simple(node: Any) -> dict[str, str | int | float | bool]:
             if isinstance(value, ast.Constant) and isinstance(value.value, (str, int, float, bool)):
                 result[key.value] = value.value
     return result
-
-
-def syntax_error_report(exc: SyntaxError, filename: str) -> dict[str, Any]:
-    """Render a SyntaxError the way the Code view already knows how to show it.
-
-    ``{"error": "SyntaxError: <msg> (<file>, line N)", "line": N}`` — the line
-    is a separate field because the editor turns it into a clickable marker on
-    the offending line, so a formatter that folds it into the prose would break
-    the link. Shared by :func:`reload_python_driver` (which gets its
-    SyntaxError from importing the file) and the save door (which gets one from
-    parsing source that is not on disk yet), so a driver that will not parse is
-    described in exactly the same words wherever the author meets it.
-    """
-    return {
-        "error": f"SyntaxError: {exc.msg} ({filename}, line {exc.lineno})",
-        "line": exc.lineno,
-    }
-
-
-def python_source_syntax_error(source: str, filename: str) -> dict[str, Any] | None:
-    """Report why ``source`` will not parse, or None when it parses.
-
-    Deliberately a *parse*, not an import: the caller is a save door deciding
-    whether bytes may be written, and importing would both run the module's
-    top-level code and fail on a dependency the driver legitimately imports.
-    A file that parses but cannot import is work in progress; a file that does
-    not parse cannot load on any future startup.
-    """
-    try:
-        ast.parse(source, filename=filename)
-    except SyntaxError as e:
-        return syntax_error_report(e, filename)
-    return None
-
-
-def reload_python_driver(
-    filepath: Path,
-) -> dict[str, Any]:
-    """
-    Hot-reload a Python driver from disk.
-
-    Safety: validates the new code by importing into a temporary module first.
-    If the new code fails to import, the old driver stays active.
-
-    Returns a dict with status, driver_id, and any errors.
-    Does NOT handle device reconnection — that's the caller's responsibility.
-    """
-    from openavc.drivers.base import BaseDriver
-
-    stem = filepath.stem
-    module_name = f"openavc_driver_{stem}"
-    temp_module_name = f"_openavc_driver_validate_{stem}"
-
-    # --- Step 1: Validate new code by importing into a temp module ---
-    new_driver_class = None
-    try:
-        spec = importlib.util.spec_from_file_location(temp_module_name, filepath)
-        if spec is None or spec.loader is None:
-            return {"status": "error", "error": f"Could not create module spec for {filepath}"}
-
-        temp_module = importlib.util.module_from_spec(spec)
-        sys.modules[temp_module_name] = temp_module
-        spec.loader.exec_module(temp_module)
-
-        # Find BaseDriver subclass
-        for _name, obj in inspect.getmembers(temp_module, inspect.isclass):
-            if (
-                issubclass(obj, BaseDriver)
-                and obj is not BaseDriver
-                and obj.__module__ == temp_module_name
-            ):
-                if hasattr(obj, "DRIVER_INFO") and obj.DRIVER_INFO.get("id"):
-                    new_driver_class = obj
-                    break
-    except SyntaxError as e:
-        return {
-            "status": "error",
-            **syntax_error_report(e, filepath.name),
-            "old_driver_preserved": True,
-        }
-    except Exception as e:
-        # Try to extract line number from traceback
-        import traceback
-        tb_lines = traceback.format_exception(type(e), e, e.__traceback__)
-        line_num = None
-        for tb_line in tb_lines:
-            import re as _re
-            match = _re.search(r'line (\d+)', tb_line)
-            if match and str(filepath) in tb_line:
-                line_num = int(match.group(1))
-        return {
-            "status": "error",
-            "error": f"{type(e).__name__}: {e}",
-            "line": line_num,
-            "old_driver_preserved": True,
-        }
-    finally:
-        # Clean up temp module
-        sys.modules.pop(temp_module_name, None)
-
-    if new_driver_class is None:
-        return {
-            "status": "error",
-            "error": "No BaseDriver subclass with DRIVER_INFO found",
-            "old_driver_preserved": True,
-        }
-
-    new_driver_id = new_driver_class.DRIVER_INFO["id"]
-
-    # --- Step 2: Find old driver ID from this file (may differ if ID changed) ---
-    old_driver_id = None
-    if module_name in sys.modules:
-        old_module = sys.modules[module_name]
-        for _name, obj in inspect.getmembers(old_module, inspect.isclass):
-            if (
-                issubclass(obj, BaseDriver)
-                and obj is not BaseDriver
-                and obj.__module__ == module_name
-            ):
-                if hasattr(obj, "DRIVER_INFO") and obj.DRIVER_INFO.get("id"):
-                    old_driver_id = obj.DRIVER_INFO["id"]
-                    break
-
-    # --- Step 3: Remove old module and load properly ---
-    # Keep a handle on the old module so we can restore it if the canonical
-    # re-import fails after Step-1 validation already passed (a TOCTOU edit /
-    # delete of the file between validation and here, or an environment error).
-    # Without the restore, sys.modules would be left empty while the old class
-    # stays registered — registry and sys.modules disagreeing, with no repair.
-    old_module = sys.modules.get(module_name)
-    sys.modules.pop(module_name, None)
-
-    final_class = load_python_driver_file(filepath)
-    if final_class is None:
-        # Reload failed after validation passed. The old class is still
-        # registered (Step 4 hasn't run), so restore its module to keep
-        # sys.modules consistent and report that it is still serving devices —
-        # matching the old_driver_preserved contract of the Step-1 error paths.
-        if old_module is not None:
-            sys.modules[module_name] = old_module
-        return {
-            "status": "error",
-            "error": (
-                "Failed to reload driver after validation passed; the "
-                "previously loaded driver is still active"
-            ),
-            "old_driver_preserved": True,
-        }
-
-    # --- Step 4: Unregister old and register new ---
-    if old_driver_id and old_driver_id != new_driver_id:
-        unregister_driver(old_driver_id)
-    register_driver(final_class)
-
-    log.info(f"Hot-reloaded Python driver: {new_driver_id} from {filepath.name}")
-
-    return {
-        "status": "reloaded",
-        "driver_id": new_driver_id,
-        "old_driver_id": old_driver_id,
-    }

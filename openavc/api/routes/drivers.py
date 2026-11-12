@@ -835,7 +835,7 @@ def _remove_other_copies(driver_repo: Path, driver_id: str, kept: Path) -> list[
     behind would be found again by the Code view, export and uninstall. A
     Python copy's simulator and discovery files move to the kept name when it
     has none of its own. Returns the names removed."""
-    import sys
+    from openavc.drivers.python_modules import forget_module
 
     removed: list[str] = []
     for other in driver_files_for(driver_repo, driver_id, kept.suffix):
@@ -848,7 +848,7 @@ def _remove_other_copies(driver_repo: Path, driver_id: str, kept: Path) -> list[
                     companion.unlink(missing_ok=True)
                 else:
                     companion.rename(target)
-            sys.modules.pop(f"openavc_driver_{other.stem}", None)
+            forget_module(other)
         other.unlink(missing_ok=True)
         removed.append(other.name)
         log.info(f"Driver '{driver_id}': removed {other.name}, replaced by {kept.name}")

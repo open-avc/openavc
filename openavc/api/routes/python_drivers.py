@@ -271,12 +271,13 @@ async def delete_python_driver(driver_id: str) -> dict:
 
     # Remove each file + its sibling companions (discovery / sim), so deleting
     # a driver that was imported or installed as a bundle doesn't leave orphans.
-    import sys
+    from openavc.drivers.python_modules import forget_module
+
     removed_companions: list[str] = []
     for filepath in files:
         filepath.unlink()
         removed_companions.extend(remove_python_companions(filepath))
-        sys.modules.pop(f"openavc_driver_{filepath.stem}", None)
+        forget_module(filepath)
 
     # Unregister from driver registry
     unregister_driver(driver_id)
