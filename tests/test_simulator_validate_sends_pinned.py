@@ -218,6 +218,59 @@ CASES: dict[str, dict] = {
             {"send": "INFO?", "query_for": "power"},
         ],
     ),
+    # ── which queries each check reads ──
+    # Poll coverage: the poll, then_query and read_back, passing over a
+    # query_for entry and a command's name. The query-answer list: the
+    # poll, then_query and an on_connect entry with query_for. The framing
+    # probes: the liveness, the poll as written and each command's sample.
+    "which_queries_each_check_reads": _handled(
+        [
+            {"receive": "ask_power", "respond": "A1"},
+            {"receive": "Q1\\?", "respond": "A2"},
+            {"receive": "OC\\?", "respond": "A3"},
+            {"receive": "OCW", "respond": "A4"},
+            {"receive": "TQ\\?", "respond": "A5"},
+            {"receive": "RB\\?", "respond": "A6"},
+            {"receive": "LIVE\\?", "respond": "A7"},
+        ],
+        polling={"interval": 5, "queries": [
+            "ask_power", {"send": "Q1?", "query_for": "power"}, {"send": "QF?", "query_for": "power"},
+        ]},
+        on_connect=[{"send": "OC?", "query_for": "power"}, {"send": "OCW"}, {"send": "OCX?"}],
+        liveness={"send": "LIVE?\\r\\n"},
+        responses=[
+            {"match": "^CHANGED$", "then_query": ["TQ?"]},
+            {"match": "^PWR (\\d)$", "set": {"power": "$1"}},
+        ],
+        commands=_commands(power_off={"send": "PWR 0\\r\\n", "read_back": "RB?"}),
+    ),
+    # ── malformed shapes: what each says or raises today ──
+    "malformed_command_not_a_mapping": _with(commands=_commands(bad="PWR 9")),
+    "malformed_param_not_a_mapping": _with(commands={
+        "set_level": {"send": "LVL {level}\\r\\n", "params": {"level": "integer"}},
+    }),
+    "malformed_params_not_a_mapping": _with(commands={
+        "set_level": {"send": "LVL {level}\\r\\n", "params": ["level"]},
+    }),
+    "malformed_send_not_text": _with(commands={"odd": {"send": 7}}),
+    "malformed_poll_entries": _polling(7, None, {"send": 7}, {"send": None}, ["X?"]),
+    "malformed_polling_null": _with(polling=None) | {"polling": None},
+    "malformed_polling_queries_null": _with(polling={"queries": None}),
+    "malformed_commands_null": _with() | {"commands": None},
+    "malformed_handlers_not_a_list": _with(simulator={"command_handlers": {"receive": "X"}}),
+    "malformed_default_config_list": _with(default_config=["zone"]),
+    "malformed_default_config_list_no_commands": _with(default_config=["zone"], commands={}),
+    "malformed_config_derived_text": _with(config_derived="Z{zone}"),
+    "malformed_config_derived_text_no_commands": _with(config_derived="Z{zone}", commands={}),
+    "malformed_then_query_text": _with(responses=[{"match": "^X$", "then_query": "TQ?"}]),
+    "malformed_read_back_number": _with(commands=_commands(off={"send": "OFF\\r\\n", "read_back": 5})),
+    "malformed_liveness_text": _with(liveness="PING"),
+    "malformed_on_connect_text": _with(on_connect="PWR?"),
+    "osc_malformed_command_not_a_mapping": _osc(commands={"bad": "/x"}),
+    "osc_malformed_param_not_a_mapping": _osc(commands={"m": {"address": "/a/{v}", "params": {"v": "int"}}}),
+    "osc_malformed_poll_entries": _osc(polling={"queries": [7, None, {"send": 7}]}),
+    "osc_malformed_handlers_not_a_list": _osc(simulator={"command_handlers": {"address": "/x"}}),
+    "osc_malformed_default_config_list": _osc(default_config=["port"], commands={"m": {"address": "/a"}}),
     "read_back_unanswered": _with(commands=_commands(
         power_off={"send": "PWR 0\\r\\n", "read_back": "POWER?\\r\\n"},
     )),
@@ -275,7 +328,7 @@ CASES: dict[str, dict] = {
 }
 
 #: The checks these cases exercise; the other checks' lines are not pinned here.
-_CHECKS = frozenset({"command_coverage", "poll_coverage", "response_parsing"})
+_CHECKS = frozenset({"command_coverage", "poll_coverage", "response_parsing", "reply_framing"})
 
 
 def _issues(tmp_path, name: str) -> list[tuple[str, str, str]] | tuple[str, str, str]:
@@ -344,9 +397,18 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                              'rule, none of them the only answer to a polled query '
                                              '— the shape of a write acknowledgement, which '
                                              "carries no state: 'HUH'. A polled query whose answer "
-                                             'nothing parses warns instead.')],
- 'command_all_covered_by_the_built_in_handlers': [],
- 'command_already_prefixed': [],
+                                             'nothing parses warns instead.'),
+                                            ('info',
+                                             'reply_framing',
+                                             '2 simulator replies checked, all terminated with '
+                                             "'\\\\r\\\\n'.")],
+ 'command_all_covered_by_the_built_in_handlers': [('info',
+                                                   'reply_framing',
+                                                   '2 simulator replies checked, all terminated '
+                                                   "with '\\\\r\\\\n'.")],
+ 'command_already_prefixed': [('info',
+                               'reply_framing',
+                               "1 simulator reply checked, all terminated with '\\\\r\\\\n'.")],
  'command_enum_pair': [],
  'command_handler_regex_that_does_not_compile': [('info',
                                                   'response_parsing',
@@ -355,14 +417,40 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                                   'a polled query — the shape of a write '
                                                   "acknowledgement, which carries no state: 'x', "
                                                   "'y'. A polled query whose answer nothing parses "
-                                                  'warns instead.')],
+                                                  'warns instead.'),
+                                                 ('info',
+                                                  'reply_framing',
+                                                  '2 simulator replies checked, all terminated '
+                                                  "with '\\\\r\\\\n'.")],
  'command_handler_that_is_not_a_mapping': [],
- 'command_matched_by_an_explicit_handler': [],
+ 'command_matched_by_an_explicit_handler': [('error',
+                                             'reply_framing',
+                                             '1 of 2 simulator replies come back without the '
+                                             "'\\\\r\\\\n' this driver splits incoming bytes on, "
+                                             'so the driver never completes a frame and reads '
+                                             "nothing they carry: 'PWR 1' -> b'PWR 1\\\\r\\\\n'. A "
+                                             'reply written by hand — a respond: template or a '
+                                             'respond() call in a handler — is sent verbatim, so '
+                                             'end it with the delimiter; only the handlers the '
+                                             'simulator generates are terminated for you.')],
  'command_matched_with_the_prefix': [],
  'command_number_with_a_spec': [],
- 'command_passthrough_skipped': [],
- 'command_protocol_braces': [],
- 'command_raw_skips_the_prefix': [],
+ 'command_passthrough_skipped': [('info',
+                                  'reply_framing',
+                                  '2 simulator replies checked, all terminated with '
+                                  "'\\\\r\\\\n'.")],
+ 'command_protocol_braces': [('info',
+                              'reply_framing',
+                              "1 simulator reply checked, all terminated with '\\\\r\\\\n'.")],
+ 'command_raw_skips_the_prefix': [('error',
+                                   'reply_framing',
+                                   "1 of 1 simulator replies come back without the '\\\\r\\\\n' "
+                                   'this driver splits incoming bytes on, so the driver never '
+                                   "completes a frame and reads nothing they carry: 'PWR 1' -> "
+                                   "b'PWR 1\\\\r\\\\n'. A reply written by hand — a respond: "
+                                   'template or a respond() call in a handler — is sent verbatim, '
+                                   'so end it with the delimiter; only the handlers the simulator '
+                                   'generates are terminated for you.')],
  'command_raw_with_config_skips_the_prefix': [('error',
                                                'command_coverage',
                                                "No simulator handler matches command 'zone_on' "
@@ -370,16 +458,72 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
  'command_sample_filled_from_config': [('error',
                                         'command_coverage',
                                         "No simulator handler matches command 'zone' (sample: 'Z3 "
-                                        "ON')")],
+                                        "ON')"),
+                                       ('info',
+                                        'reply_framing',
+                                        '2 simulator replies checked, all terminated with '
+                                        "'\\\\r\\\\n'.")],
  'command_sample_filled_from_derived_config': [('error',
                                                 'command_coverage',
                                                 "No simulator handler matches command 'zone' "
-                                                "(sample: 'Z3 ON')")],
+                                                "(sample: 'Z3 ON')"),
+                                               ('info',
+                                                'reply_framing',
+                                                '2 simulator replies checked, all terminated with '
+                                                "'\\\\r\\\\n'.")],
  'command_sample_unfillable': [('warning',
                                 'command_coverage',
                                 "Could not generate sample for command 'alias' (send: 'NAME "
-                                "{alias}\\\\r\\\\n')")],
- 'command_without_send_skipped': [],
+                                "{alias}\\\\r\\\\n')"),
+                               ('info',
+                                'reply_framing',
+                                "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
+ 'command_without_send_skipped': [('info',
+                                   'reply_framing',
+                                   '2 simulator replies checked, all terminated with '
+                                   "'\\\\r\\\\n'.")],
+ 'malformed_command_not_a_mapping': ('raises',
+                                     'AttributeError',
+                                     "'str' object has no attribute 'get'"),
+ 'malformed_commands_null': ('raises',
+                             'AttributeError',
+                             "'NoneType' object has no attribute 'items'"),
+ 'malformed_config_derived_text': [('info',
+                                    'reply_framing',
+                                    '2 simulator replies checked, all terminated with '
+                                    "'\\\\r\\\\n'.")],
+ 'malformed_config_derived_text_no_commands': [],
+ 'malformed_default_config_list': ('raises',
+                                   'ValueError',
+                                   'dictionary update sequence element #0 has length 4; 2 is '
+                                   'required'),
+ 'malformed_default_config_list_no_commands': ('raises',
+                                               'ValueError',
+                                               'dictionary update sequence element #0 has length '
+                                               '4; 2 is required'),
+ 'malformed_handlers_not_a_list': [],
+ 'malformed_liveness_text': [('info',
+                              'reply_framing',
+                              "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
+ 'malformed_on_connect_text': [('info',
+                                'reply_framing',
+                                "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
+ 'malformed_param_not_a_mapping': ('raises',
+                                   'AttributeError',
+                                   "'str' object has no attribute 'get'"),
+ 'malformed_params_not_a_mapping': ('raises',
+                                    'AttributeError',
+                                    "'list' object has no attribute 'items'"),
+ 'malformed_poll_entries': ('raises',
+                            'TypeError',
+                            "expected string or bytes-like object, got 'int'"),
+ 'malformed_polling_null': ('raises', 'AttributeError', "'NoneType' object has no attribute 'get'"),
+ 'malformed_polling_queries_null': ('raises', 'TypeError', "'NoneType' object is not iterable"),
+ 'malformed_read_back_number': [('info',
+                                 'reply_framing',
+                                 "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
+ 'malformed_send_not_text': ('raises', 'AttributeError', "'int' object has no attribute 'strip'"),
+ 'malformed_then_query_text': [],
  'osc_command_covered_by_a_handler_address': [],
  'osc_command_covered_by_a_one_character_wildcard': [],
  'osc_command_covered_by_a_response_address': [],
@@ -392,6 +536,26 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                            "Could not generate sample address for command 'mix' "
                                            "(address: '/{alias}/{b}/on')")],
  'osc_command_without_address_skipped': [],
+ 'osc_malformed_command_not_a_mapping': ('raises',
+                                         'AttributeError',
+                                         "'str' object has no attribute 'get'"),
+ 'osc_malformed_default_config_list': ('raises',
+                                       'ValueError',
+                                       'dictionary update sequence element #0 has length 4; 2 is '
+                                       'required'),
+ 'osc_malformed_handlers_not_a_list': [],
+ 'osc_malformed_param_not_a_mapping': ('raises',
+                                       'AttributeError',
+                                       "'str' object has no attribute 'get'"),
+ 'osc_malformed_poll_entries': [('error',
+                                 'poll_coverage',
+                                 "No simulator handler matches OSC polling query: '7'"),
+                                ('error',
+                                 'poll_coverage',
+                                 "No simulator handler matches OSC polling query: 'None'"),
+                                ('error',
+                                 'poll_coverage',
+                                 "No simulator handler matches OSC polling query: '7'")],
  'osc_poll_queries': [('error',
                        'poll_coverage',
                        "No simulator handler matches OSC polling query: '/ch/2/mute'"),
@@ -498,48 +662,141 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                     'it')],
  'poll_query_config_filled': [('error',
                                'poll_coverage',
-                               "No simulator handler matches polling query: 'Z7?'")],
- 'poll_query_declared_by_query_for': [],
+                               "No simulator handler matches polling query: 'Z7?'"),
+                              ('info',
+                               'reply_framing',
+                               "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
+ 'poll_query_declared_by_query_for': [('info',
+                                       'reply_framing',
+                                       '3 simulator replies checked, all terminated with '
+                                       "'\\\\r\\\\n'.")],
  'poll_query_dict_unanswered': [('error',
                                  'poll_coverage',
-                                 "No simulator handler matches polling query: 'INFO?'")],
+                                 "No simulator handler matches polling query: 'INFO?'"),
+                                ('info',
+                                 'reply_framing',
+                                 "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
  'poll_query_each_child': [('error',
                             'poll_coverage',
                             "No simulator handler matches polling query: 'CH01?'"),
                            ('error',
                             'poll_coverage',
-                            "No simulator handler matches polling query: 'CH1?'")],
- 'poll_query_empty': [],
- 'poll_query_equal_to_a_plain_send': [],
+                            "No simulator handler matches polling query: 'CH1?'"),
+                           ('info',
+                            'reply_framing',
+                            "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
+ 'poll_query_empty': [('info',
+                       'reply_framing',
+                       "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
+ 'poll_query_equal_to_a_plain_send': [('info',
+                                       'reply_framing',
+                                       '2 simulator replies checked, all terminated with '
+                                       "'\\\\r\\\\n'.")],
  'poll_query_equal_to_a_send_with_config': [('error',
                                              'command_coverage',
                                              "No simulator handler matches command 'ask_zone' "
-                                             "(sample: 'Z7?')")],
+                                             "(sample: 'Z7?')"),
+                                            ('info',
+                                             'reply_framing',
+                                             '2 simulator replies checked, all terminated with '
+                                             "'\\\\r\\\\n'.")],
  'poll_query_http_raw_path': [('error',
                                'poll_coverage',
                                "No simulator handler matches polling query: 'GET /api/status'")],
- 'poll_query_matched_by_a_handler': [],
- 'poll_query_matching_a_parameterised_command': [],
- 'poll_query_naming_a_command': [],
+ 'poll_query_matched_by_a_handler': [('error',
+                                      'reply_framing',
+                                      "1 of 3 simulator replies come back without the '\\\\r\\\\n' "
+                                      'this driver splits incoming bytes on, so the driver never '
+                                      "completes a frame and reads nothing they carry: 'STATUS?' "
+                                      "-> b'PWR 1\\\\r\\\\n'. A reply written by hand — a respond: "
+                                      'template or a respond() call in a handler — is sent '
+                                      'verbatim, so end it with the delimiter; only the handlers '
+                                      'the simulator generates are terminated for you.')],
+ 'poll_query_matching_a_parameterised_command': [('info',
+                                                  'reply_framing',
+                                                  '3 simulator replies checked, all terminated '
+                                                  "with '\\\\r\\\\n'.")],
+ 'poll_query_naming_a_command': [('info',
+                                  'reply_framing',
+                                  '2 simulator replies checked, all terminated with '
+                                  "'\\\\r\\\\n'.")],
  'poll_query_query_for_blank_still_checked': [('error',
                                                'poll_coverage',
                                                'No simulator handler matches polling query: '
-                                               "'XYZ?'")],
+                                               "'XYZ?'"),
+                                              ('info',
+                                               'reply_framing',
+                                               '2 simulator replies checked, all terminated with '
+                                               "'\\\\r\\\\n'.")],
  'poll_query_skips_a_command_without_send': [('error',
                                               'poll_coverage',
                                               'No simulator handler matches polling query: '
-                                              "'WAKE?'")],
+                                              "'WAKE?'"),
+                                             ('info',
+                                              'reply_framing',
+                                              '2 simulator replies checked, all terminated with '
+                                              "'\\\\r\\\\n'.")],
  'poll_query_unanswered': [('error',
                             'poll_coverage',
-                            "No simulator handler matches polling query: 'STATUS?'")],
+                            "No simulator handler matches polling query: 'STATUS?'"),
+                           ('info',
+                            'reply_framing',
+                            "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
  'poll_query_whitespace_and_terminators': [('error',
                                             'poll_coverage',
                                             'No simulator handler matches polling query: '
-                                            "'STATUS?'")],
- 'read_back_naming_a_command': [],
+                                            "'STATUS?'"),
+                                           ('info',
+                                            'reply_framing',
+                                            '2 simulator replies checked, all terminated with '
+                                            "'\\\\r\\\\n'.")],
+ 'read_back_naming_a_command': [('info',
+                                 'reply_framing',
+                                 "3 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
  'read_back_unanswered': [('error',
                            'poll_coverage',
-                           "No simulator handler matches read_back entry: 'POWER?'")],
+                           "No simulator handler matches read_back entry: 'POWER?'"),
+                          ('info',
+                           'reply_framing',
+                           "3 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
  'then_query_unanswered': [('error',
                             'poll_coverage',
-                            "No simulator handler matches then_query entry: 'WHAT?'")]}
+                            "No simulator handler matches then_query entry: 'WHAT?'"),
+                           ('info',
+                            'reply_framing',
+                            "1 simulator reply checked, all terminated with '\\\\r\\\\n'.")],
+ 'which_queries_each_check_reads': [('warning',
+                                     'response_parsing',
+                                     'Simulator answers a query this driver polls with a reply no '
+                                     "response rule matches: handler='Q1\\\\?', response='A2'. "
+                                     'Nothing reads that answer, so the state behind the query '
+                                     'never updates.'),
+                                    ('warning',
+                                     'response_parsing',
+                                     'Simulator answers a query this driver polls with a reply no '
+                                     "response rule matches: handler='OC\\\\?', response='A3'. "
+                                     'Nothing reads that answer, so the state behind the query '
+                                     'never updates.'),
+                                    ('warning',
+                                     'response_parsing',
+                                     'Simulator answers a query this driver polls with a reply no '
+                                     "response rule matches: handler='TQ\\\\?', response='A5'. "
+                                     'Nothing reads that answer, so the state behind the query '
+                                     'never updates.'),
+                                    ('info',
+                                     'response_parsing',
+                                     '4 simulator reply/replies match no driver response rule, '
+                                     'none of them the only answer to a polled query — the shape '
+                                     "of a write acknowledgement, which carries no state: 'A1', "
+                                     "'A4', 'A6', 'A7'. A polled query whose answer nothing parses "
+                                     'warns instead.'),
+                                    ('error',
+                                     'reply_framing',
+                                     "3 of 6 simulator replies come back without the '\\\\r\\\\n' "
+                                     'this driver splits incoming bytes on, so the driver never '
+                                     "completes a frame and reads nothing they carry: 'LIVE?' -> "
+                                     "b'A7'; 'ask_power' -> b'A1'; 'Q1?' -> b'A2'. A reply written "
+                                     'by hand — a respond: template or a respond() call in a '
+                                     'handler — is sent verbatim, so end it with the delimiter; '
+                                     'only the handlers the simulator generates are terminated for '
+                                     'you.')]}
