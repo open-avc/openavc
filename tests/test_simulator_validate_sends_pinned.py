@@ -15,9 +15,9 @@ import copy
 import pytest
 import yaml
 
+from openavc.simulator.reply_framing import check_reply_framing
 from openavc.simulator.validate import (
     ValidationResult,
-    _check_reply_framing,
     validate_yaml_driver,
 )
 
@@ -390,7 +390,7 @@ def test_framing_probes_in_the_order_the_driver_sends_them():
         ]},
     }
     result = ValidationResult("x.avcdriver", "acme_widget", "yaml")
-    _check_reply_framing(result, definition["commands"], ["LVL?"], definition)
+    check_reply_framing(result, definition["commands"], ["LVL?"], definition)
     assert [(i.severity, i.check, i.message) for i in result.issues] == FRAMING_ORDER
 
 

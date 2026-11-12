@@ -24,12 +24,13 @@ read one reply late, and is a warning.
 
 from __future__ import annotations
 
-from openavc.simulator.validate import ValidationResult, _check_reply_framing
+from openavc.simulator.reply_framing import check_reply_framing
+from openavc.simulator.validate import ValidationResult
 
 
 def _run(driver_def: dict) -> ValidationResult:
     result = ValidationResult(driver_path="x", driver_id=driver_def["id"], driver_type="yaml")
-    _check_reply_framing(
+    check_reply_framing(
         result,
         driver_def.get("commands", {}),
         (driver_def.get("polling") or {}).get("queries", []),

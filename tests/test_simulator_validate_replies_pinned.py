@@ -16,9 +16,9 @@ import pytest
 import yaml
 
 from openavc.simulator.osc_coverage import OscAddresses, check_osc_read_back_coverage
+from openavc.simulator.reply_framing import check_reply_framing
 from openavc.simulator.validate import (
     ValidationResult,
-    _check_reply_framing,
     validate_yaml_driver,
 )
 
@@ -332,7 +332,7 @@ _FRAMED = {"transport": "tcp", "delimiter": "\\r\\n", "id": "acme_widget"}
 
 def _framing(commands, queries, **definition) -> list[tuple[str, str, str]]:
     result = ValidationResult("x.avcdriver", "acme_widget", "yaml")
-    _check_reply_framing(result, commands, queries, dict(_FRAMED, commands=commands, **definition))
+    check_reply_framing(result, commands, queries, dict(_FRAMED, commands=commands, **definition))
     return _lines(result)
 
 
