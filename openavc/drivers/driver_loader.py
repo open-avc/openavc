@@ -19,7 +19,7 @@ import ast
 import os
 import tempfile
 from pathlib import Path
-from typing import Sequence, Any
+from typing import Any, Iterator, Sequence
 
 import yaml
 
@@ -439,6 +439,23 @@ def find_driver_file_by_id(
     return found
 
 
+def _library_files(
+    directories: Sequence[Path | str], pattern: str
+) -> Iterator[tuple[int, Path]]:
+    """Each file matching ``pattern`` in the directories that exist, with its
+    directory's index: directories in the order given, files by name.
+
+    The order the loaders and the listings read the library in, so a later
+    directory's copy of an id is met after an earlier one's (``_takes_the_id``).
+    """
+    for dir_index, dir_path in enumerate(directories):
+        dir_path = Path(dir_path)
+        if not dir_path.exists():
+            continue
+        for filepath in sorted(dir_path.glob(pattern)):
+            yield dir_index, filepath
+
+
 def _takes_the_id(
     loaded: tuple[int, Path] | None, dir_index: int, filepath: Path, driver_id: str
 ) -> bool:
@@ -487,26 +504,21 @@ def load_driver_files(directories: Sequence[Path | str]) -> int:
 
     # driver_id -> (index of the dir it loaded from, the file it loaded from)
     registered: dict[str, tuple[int, Path]] = {}
-    for dir_index, dir_path in enumerate(directories):
-        dir_path = Path(dir_path)
-        if not dir_path.exists():
+    for dir_index, filepath in _library_files(directories, f"*{DRIVER_EXTENSION}"):
+        driver_def = load_driver_file(filepath)
+        if driver_def is None:
             continue
 
-        for filepath in sorted(dir_path.glob(f"*{DRIVER_EXTENSION}")):
-            driver_def = load_driver_file(filepath)
-            if driver_def is None:
-                continue
-
-            driver_id = driver_def.get("id", "")
-            if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
-                continue
-            try:
-                driver_class = create_configurable_driver_class(driver_def)
-                register_driver(driver_class)
-                registered[driver_id] = (dir_index, filepath)
-                log.info(f"Loaded driver: {driver_id} from {filepath.name}")
-            except Exception:  # Catch-all: YAML parsing/validation can fail in many ways
-                log.exception(f"Failed to create driver class from {filepath}")
+        driver_id = driver_def.get("id", "")
+        if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
+            continue
+        try:
+            driver_class = create_configurable_driver_class(driver_def)
+            register_driver(driver_class)
+            registered[driver_id] = (dir_index, filepath)
+            log.info(f"Loaded driver: {driver_id} from {filepath.name}")
+        except Exception:  # Catch-all: YAML parsing/validation can fail in many ways
+            log.exception(f"Failed to create driver class from {filepath}")
 
     return len(registered)
 
@@ -523,28 +535,22 @@ def load_python_drivers(directories: Sequence[Path | str]) -> int:
     """
     # driver_id -> (index of the dir it loaded from, the file it loaded from)
     registered: dict[str, tuple[int, Path]] = {}
-    for dir_index, dir_path in enumerate(directories):
-        dir_path = Path(dir_path)
-        if not dir_path.exists():
+    for dir_index, filepath in _library_files(directories, "*.py"):
+        if not _is_driver_file(filepath):
+            continue
+        driver_class = load_python_driver_file(filepath)
+        if driver_class is None:
             continue
 
-        for filepath in sorted(dir_path.glob("*.py")):
-            if not _is_driver_file(filepath):
-                continue
-
-            driver_class = load_python_driver_file(filepath)
-            if driver_class is None:
-                continue
-
-            driver_id = driver_class.DRIVER_INFO.get("id", "")
-            if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
-                continue
-            try:
-                register_driver(driver_class)
-                registered[driver_id] = (dir_index, filepath)
-                log.info(f"Loaded Python driver: {driver_id} from {filepath.name}")
-            except Exception:
-                log.exception(f"Failed to register Python driver from {filepath}")
+        driver_id = driver_class.DRIVER_INFO.get("id", "")
+        if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
+            continue
+        try:
+            register_driver(driver_class)
+            registered[driver_id] = (dir_index, filepath)
+            log.info(f"Loaded Python driver: {driver_id} from {filepath.name}")
+        except Exception:
+            log.exception(f"Failed to register Python driver from {filepath}")
 
     return len(registered)
 
@@ -780,28 +786,21 @@ def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str,
     # driver_id -> (index of the dir it came from, position in definitions)
     slots: dict[str, tuple[int, int]] = {}
 
-    for dir_index, dir_path in enumerate(directories):
-        dir_path = Path(dir_path)
-        if not dir_path.exists():
+    for dir_index, filepath in _library_files(directories, f"*{DRIVER_EXTENSION}"):
+        driver_def = load_driver_file(filepath)
+        if driver_def is None:
             continue
-
-        for filepath in sorted(dir_path.glob(f"*{DRIVER_EXTENSION}")):
-            driver_def = load_driver_file(filepath)
-            if driver_def is None:
-                continue
-            driver_id = driver_def.get("id", "")
-            # Add source info
-            driver_def["_source_file"] = str(filepath)
-            driver_def["_comment_lines"] = count_comment_lines(filepath)
-            if driver_id in slots:
-                prev_dir, position = slots[driver_id]
-                if prev_dir == dir_index:
-                    continue  # duplicate within one directory — first file wins
-                definitions[position] = driver_def  # later directory overrides
-                slots[driver_id] = (dir_index, position)
-                continue
+        driver_id = driver_def.get("id", "")
+        driver_def["_source_file"] = str(filepath)
+        driver_def["_comment_lines"] = count_comment_lines(filepath)
+        slot = slots.get(driver_id)
+        if slot is None:
             slots[driver_id] = (dir_index, len(definitions))
             definitions.append(driver_def)
+        elif slot[0] != dir_index:  # a later directory replaces it in place
+            definitions[slot[1]] = driver_def
+            slots[driver_id] = (dir_index, slot[1])
+        # else a duplicate within one directory: its first file stays
 
     return definitions
 
@@ -813,99 +812,98 @@ def list_python_drivers(directories: Sequence[Path | str]) -> list[dict[str, Any
     Returns metadata for each file without doing a full import — uses AST
     parsing to extract DRIVER_INFO safely.
     """
-    import ast
-
     drivers: list[dict[str, Any]] = []
     seen_ids: set[str] = set()
-
-    for dir_path in directories:
-        dir_path = Path(dir_path)
-        if not dir_path.exists():
+    for _dir_index, filepath in _library_files(directories, "*.py"):
+        if not _is_driver_file(filepath):
             continue
-
-        for filepath in sorted(dir_path.glob("*.py")):
-            if not _is_driver_file(filepath):
+        entry = _listed_entry(filepath)
+        driver_id = entry["id"]
+        if driver_id in seen_ids:
+            # The file named for the id is the one that loads
+            # (load_python_drivers), so it is the one listed.
+            if filepath.stem != driver_id:
                 continue
-
-            entry: dict[str, Any] = {
-                "id": filepath.stem,
-                "filename": filepath.name,
-                "name": filepath.stem,
-                "manufacturer": "",
-                "category": "",
-                "loaded": False,
-                "load_error": None,
-                "devices_using": [],
-            }
-
-            # Try AST extraction for DRIVER_INFO metadata
-            try:
-                source = filepath.read_text(encoding="utf-8")
-                tree = ast.parse(source)
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.ClassDef):
-                        for item in node.body:
-                            if (
-                                isinstance(item, ast.Assign)
-                                and len(item.targets) == 1
-                                and isinstance(item.targets[0], ast.Name)
-                                and item.targets[0].id == "DRIVER_INFO"
-                                and isinstance(item.value, ast.Dict)
-                            ):
-                                info = _ast_dict_to_simple(item.value)
-                                if info.get("id"):
-                                    entry["id"] = info["id"]
-                                if info.get("name"):
-                                    entry["name"] = info["name"]
-                                if info.get("manufacturer"):
-                                    entry["manufacturer"] = info["manufacturer"]
-                                if info.get("category"):
-                                    entry["category"] = info["category"]
-                                break
-                        break  # Only check first class
-            except Exception:
-                pass  # Fall back to filename-based defaults
-
-            driver_id = entry["id"]
-            if driver_id in seen_ids:
-                # The file named for the id is the one that loads
-                # (load_python_drivers), so it is the one listed.
-                if filepath.stem != driver_id:
-                    continue
-                drivers[:] = [d for d in drivers if d["id"] != driver_id]
-            seen_ids.add(driver_id)
-
-            # Check if loaded in registry
-            if is_driver_registered(driver_id):
-                entry["loaded"] = True
-            else:
-                # Not registered under this file's id. Distinguish the two
-                # failure modes so the Code tab / Installed Drivers panel can
-                # tell the integrator WHY the driver isn't usable instead of
-                # showing it as cleanly loaded with no error:
-                #   - module present in sys.modules but not registered under
-                #     this id → it imported but registration was rejected
-                #     (duplicate driver id) or a last hot-reload left a stale
-                #     class registered under a different id.
-                #   - module absent → it never loaded (failed import, or the
-                #     startup scan hasn't run for this file).
-                if _is_imported(filepath):
-                    entry["load_error"] = (
-                        "Imported but not registered — duplicate driver ID "
-                        "or a failed last reload"
-                    )
-                else:
-                    entry["load_error"] = "Not loaded"
-
-            drivers.append(entry)
-
+            drivers[:] = [d for d in drivers if d["id"] != driver_id]
+        seen_ids.add(driver_id)
+        entry["loaded"], entry["load_error"] = _load_status(driver_id, filepath)
+        drivers.append(entry)
     return drivers
+
+
+_LISTED_FIELDS = ("id", "name", "manufacturer", "category")
+
+
+def _listed_entry(filepath: Path) -> dict[str, Any]:
+    """A file's row in the Code view's list, before its load status: the
+    fields its source declares, else its file name and blanks."""
+    entry: dict[str, Any] = {
+        "id": filepath.stem,
+        "filename": filepath.name,
+        "name": filepath.stem,
+        "manufacturer": "",
+        "category": "",
+        "loaded": False,
+        "load_error": None,
+        "devices_using": [],
+    }
+    try:
+        info = _first_class_driver_info(filepath)
+    except Exception:
+        info = {}  # unreadable source keeps the file-name defaults
+    for field in _LISTED_FIELDS:
+        if info.get(field):
+            entry[field] = info[field]
+    return entry
+
+
+def _first_class_driver_info(filepath: Path) -> dict[str, str | int | float | bool]:
+    """The literal values of the first class's ``DRIVER_INFO = {...}``.
+
+    Only the file's first class is read, and only a plain assignment in its
+    body, so a helper class written first leaves the defaults. Loading and
+    ``driver_id_from_file`` read a file's id by other rules.
+    """
+    tree = ast.parse(filepath.read_text(encoding="utf-8"))
+    first_class = next(
+        (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)), None
+    )
+    if first_class is None:
+        return {}
+    for item in first_class.body:
+        if _is_plain_driver_info(item):
+            return _ast_dict_to_simple(item.value)
+    return {}
+
+
+def _is_plain_driver_info(node: ast.stmt) -> bool:
+    """``DRIVER_INFO = {...}``: one name, a dict literal."""
+    if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+        return False
+    target = node.targets[0]
+    return isinstance(target, ast.Name) and target.id == "DRIVER_INFO" and isinstance(node.value, ast.Dict)
+
+
+def _load_status(driver_id: str, filepath: Path) -> tuple[bool, str | None]:
+    """``(loaded, load_error)`` for a listed file.
+
+    Registered under its id: loaded. Otherwise the Code view says why: its
+    module is in ``sys.modules`` but nothing is registered under this id (a
+    duplicate id, a class it could not find, or a last reload that left
+    another id registered), or it never imported.
+    """
+    if is_driver_registered(driver_id):
+        return True, None
+    if _is_imported(filepath):
+        return False, (
+            "Imported but not registered — duplicate driver ID "
+            "or a failed last reload"
+        )
+    return False, "Not loaded"
 
 
 def _ast_dict_to_simple(node: Any) -> dict[str, str | int | float | bool]:
     """Extract simple key-value pairs from an AST Dict node."""
-    import ast
-
     result: dict[str, str | int | float | bool] = {}
     if not isinstance(node, ast.Dict):
         return result
