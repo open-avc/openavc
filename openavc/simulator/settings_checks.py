@@ -5,9 +5,12 @@ A Python simulator's ``SIMULATOR_INFO`` and a YAML driver's ``simulator:``
 section are read by one reader, ``BaseSimulator._read_device_settings``: the
 seeds (``initial_state``), then the declared ``capacity`` and connection mode
 (``single_client``). The validator reaches them through two doors,
-``validate.validate_yaml_driver`` and ``python_validate.validate_python_driver``,
+``validate.validate_yaml_driver`` and ``python_parity.validate_python_driver``,
 and both call these, so a rule written here holds for both and a setting the
-reader learns is one ``_SETTINGS`` row.
+reader learns is one ``_SETTINGS`` row. ``_SETTINGS`` holds the settings this
+validator checks, not every one the reader takes: ``error_modes`` and
+``delays`` go unchecked, and ``state_machines`` are ``state_machine_checks``',
+for a ``simulator:`` section only.
 
 - ``check_initial_state_types``: each declared variable's type against the
   value it is seeded with, one ``_SeedRule`` per declared type (an ``enum`` is
@@ -143,15 +146,15 @@ def _check_enum_seed(result: ValidationResult, seed: _Seed) -> None:
         )
 
 
-def _single_client_transport(transport: Any) -> str | None:
+def _single_client_transport(where: str, transport: Any) -> str | None:
     """A connection mode is a TCP device's; any other transport answers its
     one connection whatever the mode says."""
     if transport in (None, "tcp", UNEVALUATED):
         return None
-    return f"applies to a TCP device; a {transport} device answers its one connection"
+    return f"{where} applies to a TCP device; a {transport} device answers its one connection"
 
 
-def _no_transport_rule(transport: Any) -> None:
+def _no_transport_rule(where: str, transport: Any) -> None:
     return None
 
 
@@ -162,7 +165,7 @@ class _Setting:
 
     key: str
     problems: Callable[[Any], list[str]]
-    transport_warning: Callable[[Any], str | None] = _no_transport_rule
+    transport_warning: Callable[[str, Any], str | None] = _no_transport_rule
 
 
 _SETTINGS: tuple[_Setting, ...] = (
@@ -200,6 +203,6 @@ class _Declared:
             return
         for problem in setting.problems(value):
             self.result.error(setting.key, f"{where}: {problem}")
-        warning = setting.transport_warning(self.transport)
+        warning = setting.transport_warning(where, self.transport)
         if warning:
-            self.result.warning(setting.key, f"{where} {warning}")
+            self.result.warning(setting.key, warning)

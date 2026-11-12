@@ -202,26 +202,26 @@ def _check_state(result: ValidationResult, driver_info: dict, sim_info: dict) ->
     as unreadable.
     """
     sim_initial = _readable(
-        result, sim_info.get("initial_state", {}), "SIMULATOR_INFO initial_state is",
+        result, sim_info.get("initial_state", {}),
+        "SIMULATOR_INFO initial_state is computed, so state coverage and "
+        "initial-state types could not be checked.",
     )
     driver_state_vars = _readable(
-        result, driver_info.get("state_variables", {}), "DRIVER_INFO state_variables are",
+        result, driver_info.get("state_variables", {}),
+        "DRIVER_INFO state_variables are computed, so state coverage and "
+        "initial-state types could not be checked.",
     )
     if sim_initial is not None:
         check_state_coverage(result, driver_state_vars or {}, sim_initial)
     check_initial_state_types(result, driver_state_vars or {}, sim_initial or {})
 
 
-def _readable(result: ValidationResult, value: Any, subject: str) -> dict | None:
-    """``value`` when it is a mapping; otherwise None, and a line saying the
-    state checks could not read it."""
+def _readable(result: ValidationResult, value: Any, unreadable: str) -> dict | None:
+    """``value`` when it is a mapping; otherwise None, and the ``unreadable``
+    line."""
     if isinstance(value, dict):
         return value
-    result.info(
-        "state_coverage",
-        f"{subject} computed, so state coverage and initial-state types could not "
-        f"be checked.",
-    )
+    result.info("state_coverage", unreadable)
     return None
 
 
@@ -288,7 +288,7 @@ def check_state_coverage(
         f"SIMULATOR_INFO seeds {len(sim_initial)} state key(s); "
         f"{len(unseeded)} of the driver's {len(driver_state_vars)} state "
         f"variable(s) are not among them BY NAME: "
-        f"{_examples(unseeded, _STATE_EXAMPLES, str, ' (+{} more)')}. Usually correct — "
+        f"{_examples(unseeded, _STATE_EXAMPLES, ' (+{} more)')}. Usually correct — "
         f"the simulator seeds what goes on the wire and the driver publishes "
         f"what it computes from that, so the names differ. Worth a look only "
         f"if the counts say the simulator models far less than the driver "
@@ -296,13 +296,14 @@ def check_state_coverage(
     )
 
 
-def _examples(names: list[str], limit: int, show, more: str) -> str:
-    """The first ``limit`` names, then ``more`` with the count left out."""
-    shown = ", ".join(show(name) for name in names[:limit])
-    rest = len(names) - limit
+def _examples(shown: list[str], limit: int, more: str) -> str:
+    """The first ``limit`` of ``shown``, then ``more`` with how many were left
+    out."""
+    text = ", ".join(shown[:limit])
+    rest = len(shown) - limit
     if rest > 0:
-        shown += more.format(rest)
-    return shown
+        text += more.format(rest)
+    return text
 
 
 def _check_transports(result: ValidationResult, driver_transport: Any, sim_transport: Any) -> None:
@@ -350,11 +351,12 @@ def _check_command_names(result: ValidationResult, sim_source: str, driver_comma
     command_names = [name for name in driver_commands if isinstance(name, str)]
     unmentioned = [name for name in command_names if not _mentioned(name, sim_source)]
     if unmentioned:
+        names = [repr(name) for name in unmentioned]
         result.info(
             "command_coverage",
             f"{len(unmentioned)} of {len(command_names)} DRIVER_INFO command "
             f"name(s) do not appear in the simulator source: "
-            f"{_examples(unmentioned, _COMMAND_EXAMPLES, repr, ', … (+{} more)')}. A "
+            f"{_examples(names, _COMMAND_EXAMPLES, ', … (+{} more)')}. A "
             "simulator that dispatches on raw protocol bytes will never "
             "mention them, so this is only worth checking when the simulator "
             "does dispatch by name."
