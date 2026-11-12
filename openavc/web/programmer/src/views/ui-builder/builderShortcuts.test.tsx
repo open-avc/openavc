@@ -2,6 +2,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { UIPage } from "../../api/types";
 import { ShortcutsPanel } from "../../components/shared/ShortcutsPanel";
+import { useUIBuilderStore } from "../../store/uiBuilderStore";
 import { BUILDER_SHORTCUTS, handleBuilderKey, type BuilderKeys } from "./builderShortcuts";
 
 // The shortcuts reference (Ctrl+/) lists the UI Builder's keys from the rows
@@ -90,5 +91,46 @@ describe("the UI Builder's rows in the shortcuts reference", () => {
     expect([...builderRows].map((k) => k.textContent)).toEqual(BUILDER_SHORTCUTS.map((row) => row.keys));
     const globalRows = sections[0].parentElement!.querySelectorAll("kbd");
     expect([...globalRows].map((k) => k.textContent)).toEqual(["Ctrl+/"]);
+  });
+});
+
+/** The keys a browser reports with Caps Lock on: a letter as its capital,
+ *  with Shift not held. */
+function capsLockPress(key: string, k: BuilderKeys, shift = false): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", {
+    key, ctrlKey: true, shiftKey: shift, bubbles: true, cancelable: true,
+  });
+  const target = document.createElement("div");
+  document.body.append(target);
+  target.addEventListener("keydown", (e) => handleBuilderKey(e, k));
+  target.dispatchEvent(event);
+  target.remove();
+  return event;
+}
+
+describe("the UI Builder's toggles with Caps Lock on", () => {
+  afterEach(() => useUIBuilderStore.getState().setPreviewMode(false));
+
+  it("Ctrl+P switches preview on", () => {
+    const event = capsLockPress("P", builder());
+    expect(event.defaultPrevented).toBe(true);
+    expect(useUIBuilderStore.getState().previewMode).toBe(true);
+  });
+
+  it("Ctrl+E shows or hides the palette", () => {
+    const k = builder();
+    const event = capsLockPress("E", k);
+    expect(event.defaultPrevented).toBe(true);
+    expect(k.togglePalette).toHaveBeenCalledTimes(1);
+  });
+
+  it("Ctrl+Shift+P and Ctrl+Shift+E are not toggles, with Caps Lock on or off", () => {
+    for (const key of ["P", "E", "p", "e"]) {
+      const k = builder();
+      const event = capsLockPress(key, k, true);
+      expect([key, event.defaultPrevented]).toEqual([key, false]);
+      expect(k.togglePalette).not.toHaveBeenCalled();
+      expect(useUIBuilderStore.getState().previewMode).toBe(false);
+    }
   });
 });

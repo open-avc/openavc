@@ -143,14 +143,16 @@ function typingInField(e: KeyboardEvent): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
-/** Ctrl+P (preview) and Ctrl+E (the palette), which work in preview too. */
+/** Ctrl+P (preview) and Ctrl+E (the palette), which work in preview too.
+ *  Read on the chord's letter, so they work with Caps Lock on; with Shift
+ *  held they are not toggles. */
 const TOGGLES = new Map<string, (k: BuilderKeys) => void>([
   ["p", (k) => store().setPreviewMode(!k.previewMode)],
   ["e", (k) => k.togglePalette()],
 ]);
 
 function toggleKey(e: KeyboardEvent, k: BuilderKeys): boolean {
-  const toggle = commandKey(e) ? TOGGLES.get(e.key) : undefined;
+  const toggle = commandKey(e) && !e.shiftKey ? TOGGLES.get(chordLetter(e)) : undefined;
   if (!toggle) return false;
   e.preventDefault();
   toggle(k);
