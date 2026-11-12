@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { RefreshCw, Download, RotateCcw, CheckCircle, XCircle, Loader, CloudDownload, AlertTriangle } from "lucide-react";
+import { RefreshCw, Download, RotateCcw, CheckCircle, XCircle, Loader, CloudDownload } from "lucide-react";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Modal } from "../components/shared/Modal";
@@ -10,6 +10,7 @@ import type { UpdateStatus, UpdateCheckResult, UpdateHistoryEntry } from "../api
 import { updateCompletionOutcome, healthProbeOutcome, historyEntryDisplay } from "./updatesHelpers";
 import { cardStyle, sectionTitle } from "./updatesStyles";
 import { PanelSoftwareSection } from "./PanelSoftwareSection";
+import { UpdateWarnings, hasUpdateWarning } from "./UpdateWarnings";
 import { healthProbeUrl } from "../components/shared/restartPollHelpers";
 import { parseApiError } from "../api/errors";
 
@@ -285,14 +286,7 @@ export function UpdatesView() {
   const changelog = checkResult?.changelog ?? "";
   const hasUpdate = !!updateAvailable;
   const hasStaged = !!stagedVersion;
-  // An update the pre-start helper could not apply. The install still works and
-  // every other signal on this page reads healthy, so without this the box looks
-  // fine while running the version somebody was trying to leave.
-  const deferredVersion = status?.deferred_version ?? "";
-  const deferredAttempts = status?.deferred_attempts ?? 0;
-  const deferredReason = status?.deferred_reason ?? "";
-  const deferredFinal = status?.deferred_final ?? false;
-  const hasDeferred = !!deferredVersion;
+  const hasWarning = hasUpdateWarning(status);
   // apply_update consumes a cloud-staged update before checking GitHub, so
   // the staged version is what an Install actually installs.
   const installTarget = stagedVersion || updateAvailable;
@@ -355,25 +349,12 @@ export function UpdatesView() {
           </div>
         )}
 
-        {/* An update the pre-start helper could not apply */}
-        {hasDeferred && (
-          <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", borderColor: "var(--color-warning)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
-            <AlertTriangle size={20} style={{ color: "var(--color-warning)", flexShrink: 0 }} />
-            <div>
-              <div style={{ fontWeight: 500, fontSize: "var(--font-size-sm)" }}>{"Update to v" + deferredVersion + " has not been installed"}</div>
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                {deferredFinal
-                  ? "It has stopped " + deferredAttempts + " times, most recently because it " + deferredReason + ". Nothing will try again on its own, so install it again once that is sorted out."
-                  : "The last attempt stopped because it " + deferredReason + ". It will try again the next time this system restarts."}
-              </div>
-            </div>
-          </div>
-        )}
+        <UpdateWarnings status={status} currentVersion={currentVersion} />
 
         {/* Up to date message. A failed check disqualifies it the same way an
             update error does: the status still reads "no update available",
             but nothing has confirmed that, so the card below says so instead. */}
-        {status && !firmwareManaged && !hasUpdate && !hasStaged && !hasDeferred && updateStatus === "idle" && !updateError && !checkResult?.error && (
+        {status && !firmwareManaged && !hasUpdate && !hasStaged && !hasWarning && updateStatus === "idle" && !updateError && !checkResult?.error && (
           <div style={{ ...cardStyle, marginBottom: "var(--space-xl)", display: "flex", alignItems: "center", gap: "var(--space-md)" }}>
             <CheckCircle size={20} style={{ color: "var(--color-success)", flexShrink: 0 }} />
             <div>

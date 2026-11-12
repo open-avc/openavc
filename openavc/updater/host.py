@@ -48,6 +48,7 @@ class FirmwareHost:
             "staged_version": "", "deferred_version": "", "deferred_attempts": 0,
             "deferred_reason": "", "deferred_final": False,
             "rollback_available": False, "rollback_version": "",
+            "last_update_version": "",
         }
 
 

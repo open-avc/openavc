@@ -91,6 +91,8 @@ export interface UpdateStatus {
   deferred_final?: boolean;
   rollback_available: boolean;
   rollback_version: string;
+  /** The version the last update installed, while an older one is running ("" otherwise). */
+  last_update_version?: string;
 }
 
 export interface UpdateCheckResult {

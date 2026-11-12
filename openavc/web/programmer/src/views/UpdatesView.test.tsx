@@ -236,6 +236,36 @@ describe("UpdatesView deferred update", () => {
   });
 });
 
+describe("UpdatesView older than the last update", () => {
+  beforeEach(() => {
+    liveState["system.update_status"] = "idle";
+    stubHealth("0.24.1");
+  });
+
+  it("names the running version and the one the last update installed", async () => {
+    statusWith({ last_update_version: "0.40.0-rc1" });
+
+    render(<UpdatesView />);
+
+    expect(
+      await screen.findByText(
+        "This system is running v0.24.1, but its last update installed v0.40.0-rc1",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/clears after the next update/)).toBeInTheDocument();
+    expect(screen.queryByText("You're up to date")).not.toBeInTheDocument();
+  });
+
+  it("says nothing when the version is the one the updater left", async () => {
+    statusWith({ last_update_version: "" });
+
+    render(<UpdatesView />);
+
+    expect(await screen.findByText("You're up to date")).toBeInTheDocument();
+    expect(screen.queryByText(/its last update installed/)).not.toBeInTheDocument();
+  });
+});
+
 // A check that cannot reach GitHub answers 200 with an error rather than
 // failing, so the stored status still reads "no update available" -- which is
 // not the same claim as being current. handleCheck has always drawn that line

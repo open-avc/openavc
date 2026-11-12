@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from openavc.updater.checker import ReleaseInfo, UpdateChecker
+from openavc.updater.history import note_an_older_version
 from openavc.updater.platform import (
     DeploymentType,
     detect_deployment_type,
@@ -37,6 +38,10 @@ class UpdateManager:
     Provides the high-level API used by REST endpoints and the cloud agent.
     Updates state keys via the state_store for real-time UI feedback.
     """
+
+    #: The version the last update installed, while an older one is running
+    #: ("" otherwise); set once at startup (updater/history.py).
+    _older_than_last_update = ""
 
     @property
     def _firmware_host(self):
@@ -82,6 +87,7 @@ class UpdateManager:
 
         # Load update history
         self._load_history()
+        self._older_than_last_update = note_an_older_version(self._history, __version__)
 
         # Re-surface a cloud-staged update across restarts. The staged record
         # persists on disk, but state keys don't — without this the IDE would
@@ -145,6 +151,8 @@ class UpdateManager:
             )
             if applied:
                 self._history[0]["status"] = "success"
+                # What actually ran, which a release tag may not name.
+                self._history[0]["running_version"] = __version__
                 if expected and __version__ != expected:
                     self._history[0]["note"] = (
                         f"Applied; running v{__version__} (release tag v{expected})"
@@ -1102,6 +1110,7 @@ class UpdateManager:
             "deferred_final": deferred["final"] if deferred else False,
             "rollback_available": has_rollback,
             "rollback_version": rollback_version,
+            "last_update_version": self._older_than_last_update,
         }
 
     def get_history(self) -> list[dict[str, Any]]:
