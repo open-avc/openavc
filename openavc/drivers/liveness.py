@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from openavc.core.connection_fault import (
@@ -122,6 +123,10 @@ class LivenessWatch:
         self._hold_next_connect = False
         self._held = False
         self._answer_waiter: asyncio.Future[bool] | None = None
+        # Seconds left in a restart one of this device's own commands
+        # declared (restarts_device_for), asked of the DeviceManager that
+        # holds the window (core/device_away.py); None without a manager.
+        self._restart_window: Callable[[], int | None] | None = None
 
     # --- The probe (opt-in) ---
 
@@ -332,9 +337,10 @@ class LivenessWatch:
         # A held device is already shown offline: its misses are
         # expected, and a device that stays down for hours would
         # otherwise warn twice on every retry.
-        (log.debug if self._held else log.warning)(
+        say, restarting = (log.debug, "") if self._held else self._silence_log()
+        say(
             f"[{self.device_id}] Liveness probe failed "
-            f"({self._health_failures}/{probe.max_failures}): {why}"
+            f"({self._health_failures}/{probe.max_failures}): {why}{restarting}"
         )
         if self._health_failures < probe.max_failures:
             return False
@@ -352,9 +358,10 @@ class LivenessWatch:
                 f"try again"
             )
         else:
-            log.warning(
+            say, restarting = self._silence_log()
+            say(
                 f"[{self.device_id}] Device stopped answering "
-                f"liveness probes; disconnecting"
+                f"liveness probes; disconnecting{restarting}"
             )
         self._dropped_for_silence = True
         self._force_disconnect(
@@ -370,6 +377,16 @@ class LivenessWatch:
         return self._unread_replies_explain() or self.HEALTH_FAULT_MESSAGE
 
     # --- What a poll and a probe share ---
+
+    def _silence_log(self) -> tuple[Callable[..., None], str]:
+        """How a missed poll or probe, and the drop it leads to, is logged,
+        and what the line adds: a warning, except inside a restart one of the
+        device's own commands declared, where it is expected to go quiet and
+        its card already says it is restarting. Then it is info, and says so."""
+        left = self._restart_window() if self._restart_window is not None else None
+        if left is None:
+            return log.warning, ""
+        return log.info, f"; the device is restarting ({left} s left)"
 
     def _refused_credential(self, exc: BaseException) -> ConnectionFault | None:
         """The typed ``auth_failed`` fault ``exc`` carries, or None.

@@ -217,6 +217,7 @@ class DeviceManager(
         self._device_configs[device_id] = device_config
 
         self._attach_bridge_router(driver, config)
+        self._attach_restart_window(device_id, driver)
 
         # Set device name in state
         self.state.set(

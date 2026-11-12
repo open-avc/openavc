@@ -24,6 +24,7 @@ manager's name, which is how the log view files a line as the device's.
 
 from __future__ import annotations
 
+import functools
 import time
 from dataclasses import dataclass
 from typing import Any, TYPE_CHECKING
@@ -257,6 +258,12 @@ class DeviceAwayMixin:
             "[%s] %s restarts the device; holding the offline fault for %.0fs",
             device_id, command, seconds,
         )
+
+    def _attach_restart_window(self, device_id: str, driver: BaseDriver) -> None:
+        """Let the driver ask this device's commanded-restart window, so the
+        polls and probes it misses inside one log as expected, not as a fault
+        (drivers/liveness.py, _silence_log)."""
+        driver._restart_window = functools.partial(self.restart_seconds_left, device_id)
 
     def restart_seconds_left(self, device_id: str) -> int | None:
         """Seconds remaining in this device's commanded-restart window.

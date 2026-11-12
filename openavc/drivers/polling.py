@@ -325,15 +325,13 @@ class PollLoop:
         except (ConnectionError, TimeoutError, OSError) as exc:
             if self._poll_refused_credential(exc):
                 return True
-            log.warning(
-                f"[{self.device_id}] Poll failed (connection): {exc}"
-            )
+            say, restarting = self._silence_log()
+            say(f"[{self.device_id}] Poll failed (connection): {exc}{restarting}")
             watch.dry_polls += 1
             watch.last_exc = exc
         except httpx_errors as exc:
-            log.warning(
-                f"[{self.device_id}] Poll failed (HTTP): {exc}"
-            )
+            say, restarting = self._silence_log()
+            say(f"[{self.device_id}] Poll failed (HTTP): {exc}{restarting}")
             watch.dry_polls += 1
             watch.last_exc = exc
         except Exception as exc:
@@ -422,9 +420,10 @@ class PollLoop:
 
     def _drop_for_failed_polls(self, watch: _PollWatch) -> None:
         """Drop the connection after ``max_missed_polls`` failed polls in a row."""
-        log.warning(
+        say, restarting = self._silence_log()
+        say(
             f"[{self.device_id}] No response for "
-            f"{watch.dry_polls} poll cycles — marking disconnected"
+            f"{watch.dry_polls} poll cycles — marking disconnected{restarting}"
         )
         fault = self._failed_polls_fault(watch.dry_polls, watch.last_exc)
         self._last_fault = fault
@@ -572,10 +571,11 @@ class PollLoop:
                 f"connection to try again"
             )
         else:
-            log.warning(
+            say, restarting = self._silence_log()
+            say(
                 f"[{self.device_id}] Nothing came back from "
                 f"{cycles} poll cycles in a row; marking "
-                f"disconnected"
+                f"disconnected{restarting}"
             )
         self._last_fault = self._silence_fault(cycles)
         self._silence_verdict = self._last_fault

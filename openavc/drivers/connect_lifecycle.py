@@ -712,7 +712,8 @@ class ConnectLifecycle:
         if self._held:
             log.info(f"[{self.device_id}] Connection closed before the device answered")
         else:
-            log.warning(f"[{self.device_id}] Connection lost")
+            say, restarting = self._silence_log()
+            say(f"[{self.device_id}] Connection lost{restarting}")
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
