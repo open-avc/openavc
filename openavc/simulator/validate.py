@@ -79,7 +79,6 @@ from openavc.drivers.compiled_protocol import (
 )
 from openavc.simulator.reply_reading import (
     ReplyRules,
-    compile_response_patterns,
     frame_delimiter,
 )
 from openavc.simulator.reread_queries import (
@@ -88,7 +87,7 @@ from openavc.simulator.reread_queries import (
     read_back_query_lines,
 )
 from openavc.simulator.send_templates import is_passthrough_send, send_regex
-from openavc.drivers.spec import PLACEHOLDER, PUSH_TYPE_KEYS
+from openavc.drivers.spec import PLACEHOLDER
 
 
 # ── Result types ──
@@ -610,7 +609,7 @@ def _check_response_parsing(
     if not responses:
         return
 
-    rules = ReplyRules.of(responses, _effective_config(driver_def), driver_def)
+    rules = _reply_rules(responses, driver_def)
     answering = _query_answering_handlers(sim_handlers, driver_def)
     acknowledgements: list[str] = []
 
@@ -1286,7 +1285,7 @@ def _check_reply_framing(
             driver_def.get("id", result.driver_id), {}, driver_def=driver_def
         ),
         probes,
-        delimiter.encode(),
+        delimiter,
     )
     if heard is not None:
         _report_framing(result, heard, raw_delimiter, driver_def)
@@ -1368,7 +1367,7 @@ class _Heard:
 
 
 def _ask_the_simulator(
-    build: Callable[[], Any], probes: list[str], terminator: bytes,
+    build: Callable[[], Any], probes: list[str], delimiter: str,
 ) -> _Heard | None:
     """Each probe's reply from a simulator ``build`` makes, or None when it
     cannot be built (an unbuildable simulator is the other checks' finding).
@@ -1386,6 +1385,7 @@ def _ask_the_simulator(
             sim = build()
         except Exception:
             return None
+        terminator = delimiter.encode()
         heard = _Heard()
         for probe in probes:
             try:
@@ -1453,7 +1453,7 @@ def _report_trailing_text(
     is a reply line that lost its delimiter: it is read one reply late, joined
     to the start of the next one.
     """
-    patterns = compile_response_patterns(
+    rules = ReplyRules.regex_only(
         driver_def.get("responses") or [], _effective_config(driver_def)
     )
     shown = "; ".join(example for example, _, _ in trailing[:_FRAMING_EXAMPLES])
@@ -1464,7 +1464,7 @@ def _report_trailing_text(
 
     def read_alone(text: bytes) -> bool:
         line = text.decode("utf-8", errors="replace").strip()
-        return any(p.search(line) for p in patterns)
+        return rules.matches_a_pattern(line)
 
     if all(opens and read_alone(text) for _, text, opens in trailing):
         result.info(
@@ -1644,18 +1644,16 @@ def _check_notifications(
         state_vars=driver_def.get("state_variables", {}),
         sim_initial=sim.get("initial_state", {}),
         known_keys=known_keys,
-        rules=ReplyRules.of(
-            driver_def.get("responses", []), _effective_config(driver_def), driver_def
-        ),
+        rules=_reply_rules(driver_def.get("responses", []), driver_def),
     )
     for key, value_map in notifications.items():
         check.entry(key, value_map)
 
 
-# The push channels a notification goes out on whatever the control transport:
-# every push: type the contract declares but sse, whose stream rides the
-# control session and so needs HTTP.
-_PUSH_ON_ANY_TRANSPORT = tuple(kind for kind in PUSH_TYPE_KEYS if kind != "sse")
+# The push channels the simulator sends a notification on whatever the control
+# transport (push_channels._PUSH_CHANNELS); sse is not among them, because its
+# stream rides the control session and so needs HTTP.
+_PUSH_ON_ANY_TRANSPORT = ("multicast", "tcp_listener", "http_listener", "udp_listener")
 
 # Transports whose simulator pushes on the control link itself: TCP and serial
 # to every connected client, a UDP device to the last peer it heard from. HTTP
@@ -2303,6 +2301,12 @@ def _effective_config(driver_def: dict) -> dict:
     config = dict(driver_def.get("default_config", {}))
     derive_config(config, driver_def.get("config_derived"))
     return config
+
+
+def _reply_rules(responses: list, driver_def: dict) -> ReplyRules:
+    """The driver's reply rules, with the config the runtime would fill into
+    their patterns."""
+    return ReplyRules.of(responses, _effective_config(driver_def), driver_def)
 
 
 def _build_auto_pattern(template: str, params: dict) -> re.Pattern | None:

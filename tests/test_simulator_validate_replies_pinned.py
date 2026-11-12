@@ -385,6 +385,12 @@ def test_framing_says_nothing_when_the_simulator_cannot_be_built(monkeypatch):
     assert _framing({"ok": {"send": "OK\\r\\n"}}, []) == []
 
 
+def test_framing_says_nothing_when_the_delimiter_cannot_be_sent():
+    # The simulator cannot be built on a delimiter that does not encode, and
+    # the check says nothing rather than raising.
+    assert _framing({"ok": {"send": "OK\\r\\n"}}, [], delimiter="\ud800") == []
+
+
 def test_framing_passes_over_a_probe_the_simulator_raises_on(monkeypatch):
     from openavc.simulator import yaml_auto
 

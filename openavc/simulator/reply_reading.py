@@ -13,7 +13,8 @@ its own way, so each is its own reader and none is a variant of another:
 * a notification is read whole (stripped) and line by line by the regex
   rules, and whole by the JSON rules (``reads_pushed``);
 * the text a reply trails after its last delimiter is read by the regex rules
-  alone (``compile_response_patterns``, without the JSON keys).
+  alone (``matches_a_pattern`` on ``ReplyRules.regex_only``, which reads no
+  JSON keys and no delimiter).
 
 These are the validator's own readings of the rules. The runtime reads replies
 in ``openavc.drivers.text_replies`` and ``openavc.drivers.json_replies``; a JSON
@@ -188,6 +189,12 @@ class ReplyRules:
         json_keys = json_rule_keys(responses)
         return cls(patterns, json_keys, frame_delimiter(driver_def))
 
+    @classmethod
+    def regex_only(cls, responses: list, config: dict) -> ReplyRules:
+        """The regex rules alone, ``config`` filled into their patterns: no
+        JSON keys and no delimiter are read."""
+        return cls(compile_response_patterns(responses, config), set(), None)
+
     @property
     def any(self) -> bool:
         """Whether there is a rule of either kind to read a reply with."""
@@ -197,13 +204,14 @@ class ReplyRules:
         """``text`` split into the messages the driver reads one at a time."""
         return response_lines(text, self.delimiter)
 
-    def _searched(self, text: str) -> bool:
+    def matches_a_pattern(self, text: str) -> bool:
+        """Whether a regex rule finds a match in ``text``."""
         return any(p.search(text) for p in self.patterns)
 
     def reads(self, line: str) -> bool:
         """Whether a regex rule reads this line, or it is a JSON body a JSON
         rule reads."""
-        return self._searched(line) or matches_json_rules(line, self.json_keys)
+        return self.matches_a_pattern(line) or matches_json_rules(line, self.json_keys)
 
     def reads_pushed(self, message: str) -> bool:
         """Whether the driver reads a pushed message: a regex rule reads the
@@ -211,6 +219,6 @@ class ReplyRules:
         the whole message. Pushed data is split on line endings and the
         driver's own delimiter, and stripped, before it is matched."""
         candidates = [message.strip()] + self.lines(message)
-        return any(self._searched(c) for c in candidates) or matches_json_rules(
+        return any(self.matches_a_pattern(c) for c in candidates) or matches_json_rules(
             message, self.json_keys
         )
