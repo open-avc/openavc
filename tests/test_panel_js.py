@@ -323,6 +323,9 @@ SCENARIOS = [
     # A gauge and a level meter drawn, read, peak-held and redrawn, pinned
     # whole (tests/fixtures/panel_meter_pins.json).
     "meters_draw_and_show_readings_as_today",
+    # A clock in every mode drawn and ticked through seconds, hours, midnight,
+    # time zones and redraws, pinned whole (tests/fixtures/panel_clock_pins.json).
+    "clock_draws_and_ticks_as_today",
 ]
 
 

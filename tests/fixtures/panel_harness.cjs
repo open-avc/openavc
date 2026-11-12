@@ -1631,20 +1631,20 @@ const tests = {
     // countdown prefers a live state key over target_time and
     // ignores unparseable dates.
     m001_l003_countdown() {
-        const app = mkApp();
-        const near = new Date(Date.now() + 5000).toISOString();
-        const el = app.renderClock({ id: 'cd', type: 'clock', clock_mode: 'countdown', target_time: '2099-01-01T00:00:00Z', bindings: { show: { value: { key: 'var.cd' } } } });
-        if (app._clockInterval) { window.clearInterval(app._clockInterval); app._clockInterval = null; }
-        app.state = { 'var.cd': near };
-        el._clockUpdate();
-        const txt = el.querySelector('.clock-display').textContent;
-        assert(txt.length <= 5, `state key wins over target_time (short countdown), got "${txt}"`);
-        // an unparseable value renders the placeholder, not NaN.
-        app.state = { 'var.cd': 'not-a-date' };
-        const el2 = app.renderClock({ id: 'cd2', type: 'clock', clock_mode: 'countdown', bindings: { show: { value: { key: 'var.cd' } } } });
-        if (app._clockInterval) { window.clearInterval(app._clockInterval); app._clockInterval = null; }
-        const txt2 = el2.querySelector('.clock-display').textContent;
-        assert(txt2 === '--:--:--', `invalid date -> placeholder, got "${txt2}"`);
+        withFakeTime((advance) => {
+            const app = mkApp();
+            const near = new window.Date(window.Date.now() + 5000).toISOString();
+            const el = app.renderClock({ id: 'cd', type: 'clock', clock_mode: 'countdown', target_time: '2099-01-01T00:00:00Z', bindings: { show: { value: { key: 'var.cd' } } } });
+            app.state = { 'var.cd': near };
+            advance(1000);
+            const txt = el.querySelector('.clock-display').textContent;
+            assert(txt.length <= 5, `state key wins over target_time (short countdown), got "${txt}"`);
+            // an unparseable value renders the placeholder, not NaN.
+            app.state = { 'var.cd': 'not-a-date' };
+            const el2 = app.renderClock({ id: 'cd2', type: 'clock', clock_mode: 'countdown', bindings: { show: { value: { key: 'var.cd' } } } });
+            const txt2 = el2.querySelector('.clock-display').textContent;
+            assert(txt2 === '--:--:--', `invalid date -> placeholder, got "${txt2}"`);
+        });
     },
 
     // conditional text uses a normalized compare (numeric 1 matches '1').
@@ -1792,14 +1792,15 @@ const tests = {
 
     // meeting timer baseline survives a re-render (doesn't restart).
     m006_meeting_baseline_persists() {
-        const app = mkApp();
-        app.renderClock({ id: 'mt', type: 'clock', clock_mode: 'meeting', duration_minutes: 60 });
-        if (app._clockInterval) { window.clearInterval(app._clockInterval); app._clockInterval = null; }
-        const first = app._meetingStartTimes.mt;
-        assert(first, 'meeting start anchored on first render');
-        app.renderClock({ id: 'mt', type: 'clock', clock_mode: 'meeting', duration_minutes: 60 });
-        if (app._clockInterval) { window.clearInterval(app._clockInterval); app._clockInterval = null; }
-        assert(app._meetingStartTimes.mt === first, 'meeting start unchanged across re-render');
+        withFakeTime((advance) => {
+            const app = mkApp();
+            const def = { id: 'mt', type: 'clock', clock_mode: 'meeting', duration_minutes: 60 };
+            const first = app.renderClock(def).querySelector('.clock-display').textContent;
+            assert(first === '1:00:00', `meeting start anchored on first render, got ${first}`);
+            advance(10 * 60 * 1000);
+            const again = app.renderClock(def).querySelector('.clock-display').textContent;
+            assert(again === '50:00', `meeting start unchanged across re-render, got ${again}`);
+        });
     },
 
     // a ui.* override reverts to the rendered base when its key is deleted.
@@ -1833,28 +1834,33 @@ const tests = {
     // dismissing an overlay unregisters its clock update
     // closures and removes its plugin iframe message listeners.
     m002_m003_overlay_cleanup() {
-        const app = mkApp();
-        const overlay = document.createElement('div');
-        overlay.className = 'panel-overlay';
-        overlay.dataset.pageId = 'ov1';
-        const clock = document.createElement('div');
-        clock.className = 'panel-clock';
-        const clockFn = () => {};
-        clock._clockUpdate = clockFn;
-        app._clockElements.push(clockFn);
-        overlay.appendChild(clock);
-        const plug = document.createElement('div');
-        plug.className = 'panel-plugin';
-        const handler = () => {};
-        plug._pluginMessageHandler = handler;
-        app._pluginMessageHandlers.add(handler);
-        overlay.appendChild(plug);
-        document.body.appendChild(overlay);
-        app.overlayStack = ['ov1'];
+        withFakeTime((advance) => {
+            const app = mkApp();
+            const overlay = document.createElement('div');
+            overlay.className = 'panel-overlay';
+            overlay.dataset.pageId = 'ov1';
+            // Two clocks that change every second: one on the overlay, one not.
+            const clock = app.renderClock({ id: 'ovc', type: 'clock', format: 'HH:mm:ss' });
+            const stays = app.renderClock({ id: 'pgc', type: 'clock', format: 'HH:mm:ss' });
+            overlay.appendChild(clock);
+            const plug = document.createElement('div');
+            plug.className = 'panel-plugin';
+            const handler = () => {};
+            plug._pluginMessageHandler = handler;
+            app._pluginMessageHandlers.add(handler);
+            overlay.appendChild(plug);
+            document.body.appendChild(overlay);
+            app.overlayStack = ['ov1'];
+            const shown = (node) => node.querySelector('.clock-display').textContent;
+            advance(1000);
+            const before = [shown(clock), shown(stays)];
 
-        app.dismissOverlay();
-        assert(!app._clockElements.includes(clockFn), 'overlay clock closure unregistered on dismiss');
-        assert(!app._pluginMessageHandlers.has(handler), 'overlay plugin listener removed on dismiss');
+            app.dismissOverlay();
+            advance(3000);
+            assert(shown(clock) === before[0], 'overlay clock closure unregistered on dismiss');
+            assert(shown(stays) !== before[1], 'a clock outside the overlay keeps ticking');
+            assert(!app._pluginMessageHandlers.has(handler), 'overlay plugin listener removed on dismiss');
+        });
     },
 
     // going offline clears the idle timer and disables open
@@ -7530,6 +7536,99 @@ Object.assign(tests, {
             });
         }
         comparePins('meters', got, METER_PINS.meters);
+    },
+});
+
+// --- The clock, as a page draws it -------------------------------------------
+//
+// Each clock drawn on a page by levelMount's recorder at a fixed instant, in a
+// fixed time zone, then taken through the seconds, a minute, its state keys
+// changing, a page redraw (a meeting keeps its start) and the hours; the
+// local-time cases again across Sunday midnight and noon and in a zone that
+// is not UTC. No case reads a named zone at midnight, whose hour Intl has written as
+// 24 in some versions. Compared with panel_clock_pins.json, recorded from the
+// code before it moved.
+
+const CLOCK_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_clock_pins.json'), 'utf8'));
+
+function clockCases(at) {
+    const iso = (ms) => new window.Date(at + ms).toISOString();
+    const clock = (id, extra) => ({ id, type: 'clock', ...extra });
+    return [
+        clock('t_default'), clock('t_time', { clock_mode: 'time' }), clock('t_date', { clock_mode: 'date' }),
+        clock('t_datetime', { clock_mode: 'datetime' }), clock('t_12', { format: '12' }), clock('t_24', { format: '24' }),
+        clock('t_tokens', { format: 'dddd ddd HH H hh h mm ss A a YYYY MMMM MMM MM M DD D' }),
+        clock('t_literal', { format: 'Doors at h:mm a, Meeting MM' }),
+        clock('t_empty_format', { format: '' }), clock('t_unknown_mode', { clock_mode: 'current_time' }),
+        clock('t_ny', { timezone: 'America/New_York', format: 'ddd h:mm:ss A' }),
+        clock('t_kolkata', { timezone: 'Asia/Kolkata', format: 'YYYY-MM-DD HH:mm dddd' }),
+        clock('t_bad_zone', { timezone: 'Invalid/Zone', format: 'HH:mm:ss' }),
+        clock('d_kolkata', { clock_mode: 'date', timezone: 'Asia/Kolkata' }),
+        clock('dt_ny', { clock_mode: 'datetime', timezone: 'America/New_York' }),
+        clock('cd_target', { clock_mode: 'countdown', target_time: iso(3 * 3600000 + 125600) }),
+        clock('cd_key', { clock_mode: 'countdown', target_time: iso(7200000), bindings: { show: { value: { key: 'var.end' } } } }),
+        clock('cd_start_key', { clock_mode: 'countdown', start_key: 'var.end' }),
+        clock('cd_past', { clock_mode: 'countdown', target_time: iso(-5000) }),
+        clock('cd_none', { clock_mode: 'countdown' }), clock('cd_garbage', { clock_mode: 'countdown', target_time: 'soon' }),
+        clock('el_start', { clock_mode: 'elapsed', start_key: 'var.t0' }), clock('el_none', { clock_mode: 'elapsed' }),
+        clock('el_key_only', { clock_mode: 'elapsed', bindings: { show: { value: { key: 'var.t0' } } } }),
+        clock('mt_default', { clock_mode: 'meeting' }), clock('mt_one', { clock_mode: 'meeting', duration_minutes: 1 }),
+        clock('mt_zero', { clock_mode: 'meeting', duration_minutes: 0 }), clock('mt_text', { clock_mode: 'meeting', duration_minutes: '2' }),
+        clock('c_style', { style: { text_color: '#ff0000', font_size: 30, bg_color: '#000000' } }),
+        clock('c_themed', { clock_mode: 'date' }), clock('c_design', { clock_mode: 'meeting', duration_minutes: 5 }),
+    ];
+}
+
+function clockTicks(m, at, advance) {
+    const iso = (ms) => new window.Date(at + ms).toISOString();
+    m.look();
+    advance(1000); m.look();
+    advance(59000); m.look();
+    m.set('var.end', iso(90000)); m.set('var.t0', iso(-3725000)); advance(1000); m.look();
+    m.set('var.end', ''); advance(1000); m.look();
+    m.set('var.end', 'later'); m.set('var.t0', 'garbage'); advance(1000); m.look();
+    m.set('var.end', null); m.set('var.t0', iso(600000)); advance(1000); m.look();
+    // A redraw between two ticks: the new clocks tick from it, and the old
+    // ones (`o`, what the node drawn before shows afterwards) never again.
+    advance(400);
+    const before = m.node();
+    m.app.renderCurrentPage(); m.look();
+    advance(700); m.look();
+    advance(29300); m.look();
+    m.steps.push({ o: before.textContent });
+    advance(3600000); m.look();
+    advance(10800000); m.look();
+}
+
+Object.assign(tests, {
+    clock_draws_and_ticks_as_today() {
+        const got = {};
+        // Each case on a clock of its own, from the same instant.
+        const run = (pass, start, tz, keep) => {
+            const ids = clockCases(start).map((d) => d.id).filter((id) => !keep || keep.includes(id));
+            for (const id of ids) withFakeTime((advance) => {
+                const def = clockCases(start).find((d) => d.id === id);
+                let m;
+                try {
+                    m = levelMount(def, {
+                        state: { 'device.d.connected': true },
+                        edit: def.id === 'c_design',
+                        before: def.id === 'c_themed' ? (app) => { app.themeElementDefaults = { clock: { text_color: '#00ff00', font_size: 12 } }; } : undefined,
+                    });
+                    clockTicks(m, start, advance);
+                } catch (e) {
+                    (m ? m.steps : []).push({ threw: String(e && e.message) });
+                }
+                got[`${pass}:${def.id}`] = m ? m.steps : [{ threw: 'mount' }];
+            }, { start, tz });
+        };
+        const afternoon = Date.UTC(2026, 0, 15, 14, 5, 9, 250);
+        run('utc', afternoon, 'UTC');
+        const local = ['t_default', 't_date', 't_datetime', 't_12', 't_24', 't_tokens', 't_literal', 'mt_one', 'd_kolkata', 'dt_ny'];
+        run('kolkata', afternoon, 'Asia/Kolkata', local);
+        run('midnight', Date.UTC(2026, 0, 18, 23, 59, 58, 500), 'UTC', local);
+        run('noon', Date.UTC(2026, 6, 4, 11, 59, 58, 500), 'UTC', local);
+        comparePins('clock', got, CLOCK_PINS.clock);
     },
 });
 

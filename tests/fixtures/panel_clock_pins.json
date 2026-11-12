@@ -1,0 +1,2740 @@
+{
+  "clock": {
+    "utc:t_default": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_default",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "2:05 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "2:06 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "2:06 PM"
+      },
+      {
+        "c": {
+          "r.0#": "3:06 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "6:06 PM"
+        }
+      }
+    ],
+    "utc:t_time": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_time",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "2:05 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "2:06 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "2:06 PM"
+      },
+      {
+        "c": {
+          "r.0#": "3:06 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "6:06 PM"
+        }
+      }
+    ],
+    "utc:t_date": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_date",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 15, 2026"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 15, 2026"
+      },
+      {},
+      {}
+    ],
+    "utc:t_datetime": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_datetime",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 15, 2026 2:05 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 2:06 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 15, 2026 2:06 PM"
+      },
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 3:06 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 6:06 PM"
+        }
+      }
+    ],
+    "utc:t_12": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_12",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "2:05 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "2:06 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "2:06 PM"
+      },
+      {
+        "c": {
+          "r.0#": "3:06 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "6:06 PM"
+        }
+      }
+    ],
+    "utc:t_24": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_24",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "14:05"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "14:06"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "14:06"
+      },
+      {
+        "c": {
+          "r.0#": "15:06"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "18:06"
+        }
+      }
+    ],
+    "utc:t_tokens": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_tokens",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Thursday Thu 14 14 02 2 05 09 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 14 14 02 2 05 10 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 14 14 02 2 06 09 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 14 14 02 2 06 10 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 14 14 02 2 06 11 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 14 14 02 2 06 12 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 14 14 02 2 06 13 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "Thursday Thu 14 14 02 2 06 43 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "o": "Thursday Thu 14 14 02 2 06 13 PM pm 2026 January Jan 01 1 15 15"
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 15 15 03 3 06 43 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 18 18 06 6 06 43 PM pm 2026 January Jan 01 1 15 15"
+        }
+      }
+    ],
+    "utc:t_literal": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_literal",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Doors at 2:05 pm, Meeting 01"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Doors at 2:06 pm, Meeting 01"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Doors at 2:06 pm, Meeting 01"
+      },
+      {
+        "c": {
+          "r.0#": "Doors at 3:06 pm, Meeting 01"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Doors at 6:06 pm, Meeting 01"
+        }
+      }
+    ],
+    "utc:t_empty_format": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_empty_format",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "2:05 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "2:06 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "2:06 PM"
+      },
+      {
+        "c": {
+          "r.0#": "3:06 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "6:06 PM"
+        }
+      }
+    ],
+    "utc:t_unknown_mode": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_unknown_mode",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "2:05 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "2:06 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "2:06 PM"
+      },
+      {
+        "c": {
+          "r.0#": "3:06 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "6:06 PM"
+        }
+      }
+    ],
+    "utc:t_ny": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_ny",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Thu 9:05:09 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thu 9:05:10 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thu 9:06:09 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thu 9:06:10 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thu 9:06:11 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thu 9:06:12 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thu 9:06:13 AM"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "Thu 9:06:43 AM"
+        }
+      },
+      {
+        "o": "Thu 9:06:13 AM"
+      },
+      {
+        "c": {
+          "r.0#": "Thu 10:06:43 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thu 1:06:43 PM"
+        }
+      }
+    ],
+    "utc:t_kolkata": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_kolkata",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "2026-01-15 19:35 Thursday"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "2026-01-15 19:36 Thursday"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "2026-01-15 19:36 Thursday"
+      },
+      {
+        "c": {
+          "r.0#": "2026-01-15 20:36 Thursday"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "2026-01-15 23:36 Thursday"
+        }
+      }
+    ],
+    "utc:t_bad_zone": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_bad_zone",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "14:05:09"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "14:05:10"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "14:06:09"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "14:06:10"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "14:06:11"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "14:06:12"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "14:06:13"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "14:06:43"
+        }
+      },
+      {
+        "o": "14:06:13"
+      },
+      {
+        "c": {
+          "r.0#": "15:06:43"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "18:06:43"
+        }
+      }
+    ],
+    "utc:d_kolkata": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "d_kolkata",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 15, 2026"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 15, 2026"
+      },
+      {},
+      {}
+    ],
+    "utc:dt_ny": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "dt_ny",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 15, 2026 9:05 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 9:06 AM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 15, 2026 9:06 AM"
+      },
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 10:06 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 1:06 PM"
+        }
+      }
+    ],
+    "utc:cd_target": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "cd_target",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "3:02:05"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "3:02:04"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "3:01:05"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "3:01:04"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "3:01:03"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "3:01:02"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "3:01:01"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "3:00:31"
+        }
+      },
+      {
+        "o": "3:01:01"
+      },
+      {
+        "c": {
+          "r.0#": "2:00:31"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:00"
+        }
+      }
+    ],
+    "utc:cd_key": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "cd_key",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "2:00:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "1:59:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "1:59:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:29"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "1:58:58"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "--:--:--"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "1:58:56"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "1:58:55"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "1:58:25"
+        }
+      },
+      {
+        "o": "1:58:56"
+      },
+      {
+        "c": {
+          "r.0#": "58:25"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:00"
+        }
+      }
+    ],
+    "utc:cd_start_key": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "cd_start_key",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "--:--:--"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "00:29"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "--:--:--"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "--:--:--"
+      },
+      {},
+      {}
+    ],
+    "utc:cd_past": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "cd_past",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "00:00"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "00:00"
+      },
+      {},
+      {}
+    ],
+    "utc:cd_none": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "cd_none",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "--:--:--"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "--:--:--"
+      },
+      {},
+      {}
+    ],
+    "utc:cd_garbage": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "cd_garbage",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "--:--:--"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "--:--:--"
+      },
+      {},
+      {}
+    ],
+    "utc:el_start": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "el_start",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "00:00:00"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "1:03:06"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "1:03:07"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:00:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:00"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "o": "00:00"
+      },
+      {
+        "c": {
+          "r.0#": "51:34"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "3:51:34"
+        }
+      }
+    ],
+    "utc:el_none": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "el_none",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "00:00:00"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "00:00:00"
+      },
+      {},
+      {}
+    ],
+    "utc:el_key_only": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "el_key_only",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "00:00:00"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "00:00:00"
+      },
+      {},
+      {}
+    ],
+    "utc:mt_default": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "mt_default",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "1:00:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "59:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "59:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:58"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:57"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:56"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:55"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "58:25"
+        }
+      },
+      {
+        "o": "58:56"
+      },
+      {
+        "c": {
+          "r.0#": "-01:34"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-3:01:34"
+        }
+      }
+    ],
+    "utc:mt_one": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "mt_one",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "01:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:01"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:02"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:03"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:04"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "-00:34"
+        }
+      },
+      {
+        "o": "-00:04"
+      },
+      {
+        "c": {
+          "r.0#": "-1:00:34"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-4:00:34"
+        }
+      }
+    ],
+    "utc:mt_zero": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "mt_zero",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "1:00:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "59:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "59:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:58"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:57"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:56"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "58:55"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "58:25"
+        }
+      },
+      {
+        "o": "58:56"
+      },
+      {
+        "c": {
+          "r.0#": "-01:34"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-3:01:34"
+        }
+      }
+    ],
+    "utc:mt_text": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "mt_text",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "02:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "01:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "01:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:58"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:57"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:56"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:55"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "00:25"
+        }
+      },
+      {
+        "o": "00:56"
+      },
+      {
+        "c": {
+          "r.0#": "-59:34"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-3:59:34"
+        }
+      }
+    ],
+    "utc:c_style": [
+      {
+        "c": {
+          "r@": "div class data-element-id style data-element-type",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "c_style",
+          "r@style": "background-color: rgb(0, 0, 0); color: rgb(255, 0, 0); font-size: 30rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r@data-element-type": "clock",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "2:05 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "2:06 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "2:06 PM"
+      },
+      {
+        "c": {
+          "r.0#": "3:06 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "6:06 PM"
+        }
+      }
+    ],
+    "utc:c_themed": [
+      {
+        "c": {
+          "r@": "div class data-element-id style data-element-type",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "c_themed",
+          "r@style": "color: rgb(0, 255, 0); font-size: 12rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r@data-element-type": "clock",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 15, 2026"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 15, 2026"
+      },
+      {},
+      {}
+    ],
+    "utc:c_design": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "c_design",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "05:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "04:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "04:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "03:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "03:58"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "03:57"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "03:56"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "03:55"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "03:25"
+        }
+      },
+      {
+        "o": "03:56"
+      },
+      {
+        "c": {
+          "r.0#": "-56:34"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-3:56:34"
+        }
+      }
+    ],
+    "kolkata:t_default": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_default",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "7:35 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "7:36 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "7:36 PM"
+      },
+      {
+        "c": {
+          "r.0#": "8:36 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "11:36 PM"
+        }
+      }
+    ],
+    "kolkata:t_date": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_date",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 15, 2026"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 15, 2026"
+      },
+      {},
+      {}
+    ],
+    "kolkata:t_datetime": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_datetime",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 15, 2026 7:35 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 7:36 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 15, 2026 7:36 PM"
+      },
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 8:36 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 11:36 PM"
+        }
+      }
+    ],
+    "kolkata:t_12": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_12",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "7:35 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "7:36 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "7:36 PM"
+      },
+      {
+        "c": {
+          "r.0#": "8:36 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "11:36 PM"
+        }
+      }
+    ],
+    "kolkata:t_24": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_24",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "19:35"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "19:36"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "19:36"
+      },
+      {
+        "c": {
+          "r.0#": "20:36"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "23:36"
+        }
+      }
+    ],
+    "kolkata:t_tokens": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_tokens",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Thursday Thu 19 19 07 7 35 09 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 19 19 07 7 35 10 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 19 19 07 7 36 09 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 19 19 07 7 36 10 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 19 19 07 7 36 11 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 19 19 07 7 36 12 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 19 19 07 7 36 13 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "Thursday Thu 19 19 07 7 36 43 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "o": "Thursday Thu 19 19 07 7 36 13 PM pm 2026 January Jan 01 1 15 15"
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 20 20 08 8 36 43 PM pm 2026 January Jan 01 1 15 15"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Thursday Thu 23 23 11 11 36 43 PM pm 2026 January Jan 01 1 15 15"
+        }
+      }
+    ],
+    "kolkata:t_literal": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_literal",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Doors at 7:35 pm, Meeting 01"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Doors at 7:36 pm, Meeting 01"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Doors at 7:36 pm, Meeting 01"
+      },
+      {
+        "c": {
+          "r.0#": "Doors at 8:36 pm, Meeting 01"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Doors at 11:36 pm, Meeting 01"
+        }
+      }
+    ],
+    "kolkata:d_kolkata": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "d_kolkata",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 15, 2026"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 15, 2026"
+      },
+      {},
+      {}
+    ],
+    "kolkata:dt_ny": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "dt_ny",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 15, 2026 9:05 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 9:06 AM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 15, 2026 9:06 AM"
+      },
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 10:06 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Jan 15, 2026 1:06 PM"
+        }
+      }
+    ],
+    "kolkata:mt_one": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "mt_one",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "01:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:01"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:02"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:03"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:04"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "-00:34"
+        }
+      },
+      {
+        "o": "-00:04"
+      },
+      {
+        "c": {
+          "r.0#": "-1:00:34"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-4:00:34"
+        }
+      }
+    ],
+    "midnight:t_default": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_default",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "11:59 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:00 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:01 AM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "12:01 AM"
+      },
+      {
+        "c": {
+          "r.0#": "1:01 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "4:01 AM"
+        }
+      }
+    ],
+    "midnight:t_date": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_date",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 18, 2026"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jan 19, 2026"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 19, 2026"
+      },
+      {},
+      {}
+    ],
+    "midnight:t_datetime": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_datetime",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 18, 2026 11:59 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jan 19, 2026 12:00 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jan 19, 2026 12:01 AM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 19, 2026 12:01 AM"
+      },
+      {
+        "c": {
+          "r.0#": "Jan 19, 2026 1:01 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Jan 19, 2026 4:01 AM"
+        }
+      }
+    ],
+    "midnight:t_12": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_12",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "11:59 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:00 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:01 AM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "12:01 AM"
+      },
+      {
+        "c": {
+          "r.0#": "1:01 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "4:01 AM"
+        }
+      }
+    ],
+    "midnight:t_24": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_24",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "23:59"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "00:00"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "00:01"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "00:01"
+      },
+      {
+        "c": {
+          "r.0#": "01:01"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "04:01"
+        }
+      }
+    ],
+    "midnight:t_tokens": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_tokens",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Sunday Sun 23 23 11 11 59 58 PM pm 2026 January Jan 01 1 18 18"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Sunday Sun 23 23 11 11 59 59 PM pm 2026 January Jan 01 1 18 18"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Monday Mon 00 0 12 12 00 58 AM am 2026 January Jan 01 1 19 19"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Monday Mon 00 0 12 12 00 59 AM am 2026 January Jan 01 1 19 19"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Monday Mon 00 0 12 12 01 00 AM am 2026 January Jan 01 1 19 19"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Monday Mon 00 0 12 12 01 01 AM am 2026 January Jan 01 1 19 19"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Monday Mon 00 0 12 12 01 02 AM am 2026 January Jan 01 1 19 19"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "Monday Mon 00 0 12 12 01 32 AM am 2026 January Jan 01 1 19 19"
+        }
+      },
+      {
+        "o": "Monday Mon 00 0 12 12 01 02 AM am 2026 January Jan 01 1 19 19"
+      },
+      {
+        "c": {
+          "r.0#": "Monday Mon 01 1 01 1 01 32 AM am 2026 January Jan 01 1 19 19"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Monday Mon 04 4 04 4 01 32 AM am 2026 January Jan 01 1 19 19"
+        }
+      }
+    ],
+    "midnight:t_literal": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_literal",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Doors at 11:59 pm, Meeting 01"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Doors at 12:00 am, Meeting 01"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Doors at 12:01 am, Meeting 01"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Doors at 12:01 am, Meeting 01"
+      },
+      {
+        "c": {
+          "r.0#": "Doors at 1:01 am, Meeting 01"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Doors at 4:01 am, Meeting 01"
+        }
+      }
+    ],
+    "midnight:d_kolkata": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "d_kolkata",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 19, 2026"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 19, 2026"
+      },
+      {},
+      {}
+    ],
+    "midnight:dt_ny": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "dt_ny",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jan 18, 2026 6:59 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jan 18, 2026 7:00 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jan 18, 2026 7:01 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jan 18, 2026 7:01 PM"
+      },
+      {
+        "c": {
+          "r.0#": "Jan 18, 2026 8:01 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Jan 18, 2026 11:01 PM"
+        }
+      }
+    ],
+    "midnight:mt_one": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "mt_one",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "01:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:01"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:02"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:03"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:04"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "-00:34"
+        }
+      },
+      {
+        "o": "-00:04"
+      },
+      {
+        "c": {
+          "r.0#": "-1:00:34"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-4:00:34"
+        }
+      }
+    ],
+    "noon:t_default": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_default",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "11:59 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:00 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:01 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "12:01 PM"
+      },
+      {
+        "c": {
+          "r.0#": "1:01 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "4:01 PM"
+        }
+      }
+    ],
+    "noon:t_date": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_date",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jul 4, 2026"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jul 4, 2026"
+      },
+      {},
+      {}
+    ],
+    "noon:t_datetime": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_datetime",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jul 4, 2026 11:59 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jul 4, 2026 12:00 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jul 4, 2026 12:01 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jul 4, 2026 12:01 PM"
+      },
+      {
+        "c": {
+          "r.0#": "Jul 4, 2026 1:01 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Jul 4, 2026 4:01 PM"
+        }
+      }
+    ],
+    "noon:t_12": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_12",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "11:59 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:00 PM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:01 PM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "12:01 PM"
+      },
+      {
+        "c": {
+          "r.0#": "1:01 PM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "4:01 PM"
+        }
+      }
+    ],
+    "noon:t_24": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_24",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "11:59"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:00"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12:01"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "12:01"
+      },
+      {
+        "c": {
+          "r.0#": "13:01"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "16:01"
+        }
+      }
+    ],
+    "noon:t_tokens": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_tokens",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Saturday Sat 11 11 11 11 59 58 AM am 2026 July Jul 07 7 04 4"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Saturday Sat 11 11 11 11 59 59 AM am 2026 July Jul 07 7 04 4"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Saturday Sat 12 12 12 12 00 58 PM pm 2026 July Jul 07 7 04 4"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Saturday Sat 12 12 12 12 00 59 PM pm 2026 July Jul 07 7 04 4"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Saturday Sat 12 12 12 12 01 00 PM pm 2026 July Jul 07 7 04 4"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Saturday Sat 12 12 12 12 01 01 PM pm 2026 July Jul 07 7 04 4"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Saturday Sat 12 12 12 12 01 02 PM pm 2026 July Jul 07 7 04 4"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "Saturday Sat 12 12 12 12 01 32 PM pm 2026 July Jul 07 7 04 4"
+        }
+      },
+      {
+        "o": "Saturday Sat 12 12 12 12 01 02 PM pm 2026 July Jul 07 7 04 4"
+      },
+      {
+        "c": {
+          "r.0#": "Saturday Sat 13 13 01 1 01 32 PM pm 2026 July Jul 07 7 04 4"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Saturday Sat 16 16 04 4 01 32 PM pm 2026 July Jul 07 7 04 4"
+        }
+      }
+    ],
+    "noon:t_literal": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "t_literal",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Doors at 11:59 am, Meeting 07"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Doors at 12:00 pm, Meeting 07"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Doors at 12:01 pm, Meeting 07"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Doors at 12:01 pm, Meeting 07"
+      },
+      {
+        "c": {
+          "r.0#": "Doors at 1:01 pm, Meeting 07"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Doors at 4:01 pm, Meeting 07"
+        }
+      }
+    ],
+    "noon:d_kolkata": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "d_kolkata",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jul 4, 2026"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jul 4, 2026"
+      },
+      {},
+      {}
+    ],
+    "noon:dt_ny": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "dt_ny",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "Jul 4, 2026 7:59 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jul 4, 2026 8:00 AM"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "Jul 4, 2026 8:01 AM"
+        }
+      },
+      {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "o": "Jul 4, 2026 8:01 AM"
+      },
+      {
+        "c": {
+          "r.0#": "Jul 4, 2026 9:01 AM"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "Jul 4, 2026 12:01 PM"
+        }
+      }
+    ],
+    "noon:mt_one": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "mt_one",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "01:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "00:59"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:00"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:01"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:02"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:03"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-00:04"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "-00:34"
+        }
+      },
+      {
+        "o": "-00:04"
+      },
+      {
+        "c": {
+          "r.0#": "-1:00:34"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "-4:00:34"
+        }
+      }
+    ]
+  }
+}
