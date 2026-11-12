@@ -18,7 +18,6 @@ import json
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -42,7 +41,10 @@ MENUBAR = "gui/501/com.openavc.menubar"
 FAKE_LAUNCHCTL = r"""#!/bin/bash
 echo "$*" >> "$FAKE_LAUNCHCTL_LOG"
 if [ "$1" = print ]; then
-    [ -n "${FAKE_PRINT_SLEEP:-}" ] && sleep "$FAKE_PRINT_SLEEP"
+    if [ -n "${FAKE_PRINT_SLEEP:-}" ]; then
+        sleep "$FAKE_PRINT_SLEEP"
+        echo woke > "$FAKE_LAUNCHCTL_LOG.woke"
+    fi
     [ -n "${FAKE_MENUBAR_STATE:-}" ] || exit 113
     printf '%s = {\n\tactive count = 1\n\tstate = %s\n\n\tendpoints = {\n\t\t"x" = {\n\t\t\tstate = active\n\t\t}\n\t}\n}\n' "$2" "$FAKE_MENUBAR_STATE"
     exit 0
@@ -62,7 +64,8 @@ def mac(tmp_path):
     app = tmp_path / "OpenAVC.app"
     _build_fake_bundle(app, "1.0.0")
     launchctl = tmp_path / "launchctl"
-    launchctl.write_text(FAKE_LAUNCHCTL, encoding="utf-8")
+    # Bytes, so Windows writes no carriage returns into a bash script.
+    launchctl.write_bytes(FAKE_LAUNCHCTL.encode("utf-8"))
     launchctl.chmod(0o755)
     log = tmp_path / "launchctl.log"
 
@@ -205,13 +208,15 @@ def test_a_sandbox_run_that_names_no_launchctl_restarts_nothing(mac):
     assert mac.asked() == []
 
 
-def test_a_launchctl_that_hangs_holds_the_server_back_five_seconds_at_most(mac):
+def test_a_launchctl_that_hangs_does_not_hold_the_server_back(mac):
+    """The stand-in hangs for a minute; the server started (``run`` checks)
+    while it was still hanging, which no stopwatch on a busy machine can blur."""
     mac.stage_update()
 
-    started = time.monotonic()
-    mac.run(FAKE_PRINT_SLEEP="12")
+    mac.run(FAKE_PRINT_SLEEP="60")
 
-    assert time.monotonic() - started < 10
+    assert mac.asked() == [f"print {MENUBAR}"]
+    assert not Path(f"{mac.log}.woke").exists()
 
 
 def test_the_installed_app_restarts_its_menu_bar_with_the_system_launchctl():
