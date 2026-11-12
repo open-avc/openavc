@@ -573,19 +573,19 @@ The OpenAVC Cloud platform provides remote monitoring, fleet management, and AI-
 
 ### Authentication
 
-The cloud connection uses a multi-step challenge-response handshake. The system's secret key never crosses the network.
+The cloud connection uses a multi-step challenge-response handshake. After pairing, the system's secret key never crosses the network.
 
 1. Device sends a `hello` message identifying itself (system ID, software version, OS, hardware, deployment type)
 2. Cloud responds with a random 32-byte challenge nonce
 3. Device computes an HMAC-SHA256 proof using a locally-derived authentication key (HKDF-SHA256 from the system key) and sends it back
-4. Cloud independently derives the same key from the stored key hash and verifies the proof
+4. Cloud derives the same key from its stored, encrypted copy of the system key and verifies the proof
 5. On success, cloud issues a session with a unique signing key
 
 All subsequent messages are signed with HMAC-SHA256 using the session-specific signing key. Messages with invalid or missing signatures are rejected.
 
 **Key derivation:** HKDF-SHA256 (RFC 5869), stdlib-only implementation (no external crypto libraries)
 **Message signing:** HMAC-SHA256 with constant-time verification
-**System key:** 64 bytes, cryptographically random, generated locally, never transmitted. Cloud stores only the SHA-256 hash.
+**System key:** 64 bytes, cryptographically random, made by the cloud when the system is paired and sent to it once, over TLS, in the answer to the pairing request. The cloud stores its SHA-256 hash and an encrypted copy, which it needs to check each handshake.
 
 ### What data is sent to the cloud
 
@@ -597,11 +597,11 @@ When cloud is enabled, the agent streams a small amount of telemetry automatical
 | State changes | Batched (2 s for active device state; slower tiers for lower-priority keys) | Device, variable, system, UI, and plugin state key-value changes (e.g., `device.projector1.power: "on"`). Internal cloud/ISC keys are excluded. An address that carries a login, such as a camera stream address with **Login in Stream Address** turned on, is sent with its password shown as `***`. |
 | Alerts | As they occur (throttled) | Alert ID, severity, category, and message, plus the rule and device that fired it and the state key/value that tripped the threshold (an address's password shown as `***`, as above) |
 
-This automatic telemetry is runtime state and metrics only. It never contains the project file, device connection settings, or any credential.
+This telemetry is runtime state and metrics only. It never contains the project file, device connection settings, or any credential.
 
-**On-demand pulls.** Separately, an operator working in the cloud console can request specific data from a paired instance. Most significantly, the cloud can pull the **full project file** — which contains device IP addresses, connection parameters, and any device passwords stored in it (for example PJLink or SSH credentials) — along with the device/command list and recent logs. These are returned only in response to an authenticated console action, not streamed continuously. If your policy is that device configuration must never leave the site, do not pair the instance with the cloud.
+**Project copies.** The cloud also asks a paired system for its project file: once a day for Project Backups, before each change pushed from the portal, when someone presses **Back up now**, captures a template or uses the AI assistant, and during a support session the customer grants. The AI assistant can also read the device and command list and recent log lines. The project file holds device names, IP addresses and connection settings. On OpenAVC 0.40.0 and later it holds no device logins: they stay in an encrypted file on the system, and the copy holds a placeholder in place of each one. A system on an earlier version includes them. The cloud stores every copy encrypted and deletes older ones on a schedule ([OpenAVC Cloud Security and Data Handling](cloud-security-and-data.md)). If your policy is that device configuration must never leave the site, do not pair the instance with the cloud.
 
-**Never sent, under any circumstance:** the system's cloud key or derived signing keys, the web-interface admin password or API key, and data from other systems on the network.
+**Never sent, under any circumstance:** the system's cloud key or derived signing keys, the web-interface admin password or API key, device logins saved on the system (OpenAVC 0.40.0 and later), and data from other systems on the network.
 
 ### What the cloud can do
 
