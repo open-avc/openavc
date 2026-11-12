@@ -382,7 +382,10 @@ export class SliderControl extends LevelControl {
 
     /** The input position (0..steps) that shows display value `value`. */
     positionOf(value) {
-        const travel = this.scale.span !== 0 ? this.scale.travelOf(value) : 0;
+        // A flat range is the start of the curve, not travel 0: the curve
+        // backwards is not 0 there when its dB span overflows.
+        const share = this.scale.span !== 0 ? (value - this.scale.min) / this.scale.span : 0;
+        const travel = responseCurveInverse(share, this.scale.response, this.scale.dbRange);
         return clamp(Math.round(travel * this.steps), 0, this.steps);
     }
 
