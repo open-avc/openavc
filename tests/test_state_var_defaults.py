@@ -24,7 +24,7 @@ import math
 
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.compiled_protocol import state_var_default
-from openavc.simulator.validate import _default_for_type
+from openavc.simulator.notification_checks import _default_for_type
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 
