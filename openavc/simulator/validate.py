@@ -81,14 +81,10 @@ from openavc.drivers.compiled_protocol import (
 from openavc.simulator.reply_reading import (
     ReplyRules,
     compile_response_patterns,
-    frame_delimiter,
-    json_rule_keys,
-    matches_json_rules,
-    response_lines,
 )
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 from openavc.simulator.send_templates import is_passthrough_send, send_regex
-from openavc.drivers.spec import PLACEHOLDER
+from openavc.drivers.spec import PLACEHOLDER, PUSH_TYPE_KEYS
 
 
 # ── Result types ──
@@ -221,9 +217,7 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
     _check_explicit_handlers(result, sim_handlers, known_keys)
 
     # ── Check 9: Notification templates ──
-    _check_notifications(
-        result, sim, state_vars, sim_initial, responses, driver_def, known_keys, transport
-    )
+    _check_notifications(result, sim, driver_def, known_keys)
 
     # ── Check 10: Declarative controls schema ──
     _check_controls(result, sim, known_keys)
@@ -1564,14 +1558,7 @@ def _default_for_type(var_def: dict) -> Any:
 
 
 def _check_notifications(
-    result: ValidationResult,
-    sim: dict,
-    state_vars: dict,
-    sim_initial: dict,
-    responses: list,
-    driver_def: dict,
-    known_keys: set[str],
-    transport: str,
+    result: ValidationResult, sim: dict, driver_def: dict, known_keys: set[str],
 ) -> None:
     """Validate the notifications: section (unsolicited push messages).
 
@@ -1589,20 +1576,8 @@ def _check_notifications(
     if not notifications:
         return
 
-    # A driver with a push channel emits its notifications there instead of
-    # the control connection — multicast, tcp_listener (dial-back),
-    # http_listener (webhooks) and udp_listener (packets to a port set on the
-    # device) are valid on any transport; SSE needs HTTP (the subscription
-    # rides the control session).
-    push_def = driver_def.get("push")
-    has_push_channel = isinstance(push_def, dict) and (
-        push_def.get("type")
-        in ("multicast", "tcp_listener", "http_listener", "udp_listener")
-        or (push_def.get("type") == "sse" and transport == "http")
-    )
-    # TCP/serial push to every connected client; a UDP device pushes to the
-    # last peer it heard from. HTTP and OSC have no control-link push.
-    if transport not in ("tcp", "serial", "udp") and not has_push_channel:
+    transport = driver_def.get("transport", "tcp")
+    if not _notifications_reach_driver(driver_def, transport):
         result.warning(
             "notifications",
             f"notifications: has no effect for transport '{transport}' — only "
@@ -1611,102 +1586,164 @@ def _check_notifications(
             f"TCP dial-back, or HTTP-listener push: block)"
         )
 
-    response_patterns = compile_response_patterns(responses, _effective_config(driver_def))
-    json_keys = json_rule_keys(responses)
-    delimiter = frame_delimiter(driver_def)
-
+    check = _NotificationCheck(
+        result=result,
+        state_vars=driver_def.get("state_variables", {}),
+        sim_initial=sim.get("initial_state", {}),
+        known_keys=known_keys,
+        rules=ReplyRules.of(
+            driver_def.get("responses", []), _effective_config(driver_def), driver_def
+        ),
+    )
     for key, value_map in notifications.items():
-        if known_keys and key not in known_keys:
-            result.warning(
+        check.entry(key, value_map)
+
+
+# The push channels a notification goes out on whatever the control transport:
+# every push: type the contract declares but sse, whose stream rides the
+# control session and so needs HTTP.
+_PUSH_ON_ANY_TRANSPORT = tuple(kind for kind in PUSH_TYPE_KEYS if kind != "sse")
+
+# Transports whose simulator pushes on the control link itself: TCP and serial
+# to every connected client, a UDP device to the last peer it heard from. HTTP
+# and OSC have no control-link push.
+_CONTROL_LINK_PUSH = ("tcp", "serial", "udp")
+
+
+def _push_carries_notifications(driver_def: dict, transport: Any) -> bool:
+    """Whether the driver declares a push channel the simulator emits its
+    notifications on instead of the control connection."""
+    push_def = driver_def.get("push")
+    if not isinstance(push_def, dict):
+        return False
+    kind = push_def.get("type")
+    return kind in _PUSH_ON_ANY_TRANSPORT or (kind == "sse" and transport == "http")
+
+
+def _notifications_reach_driver(driver_def: dict, transport: Any) -> bool:
+    """Whether a ``notifications:`` message can reach the driver at all: on a
+    declared push channel, or on a transport that pushes on its control link."""
+    return _push_carries_notifications(driver_def, transport) or (
+        transport in _CONTROL_LINK_PUSH
+    )
+
+
+def _is_boolean_word(value: Any) -> bool:
+    """The lookup's 'true' / 'false', which a boolean renders as the runtime's bool."""
+    return isinstance(value, str) and value in ("true", "false")
+
+
+# A placeholder the renderer left in a message, which cannot be validated
+# statically. A brace followed by a quote is JSON, not a placeholder, so a
+# rendered JSON notification is still read below.
+_UNRESOLVED_PLACEHOLDER = re.compile(r"\{[a-zA-Z_][\w.]*(:[^}]*)?\}")
+
+
+@dataclasses.dataclass
+class _NotificationCheck:
+    """One ``notifications:`` section's entries: each key and its value map,
+    each template's value key, and whether the driver reads the message a
+    template renders."""
+
+    result: ValidationResult
+    state_vars: dict
+    sim_initial: dict
+    known_keys: set[str]
+    rules: ReplyRules
+
+    def entry(self, key: Any, value_map: Any) -> None:
+        """One state key's notification: a template string (for any value)
+        or a value -> template mapping."""
+        if self.known_keys and key not in self.known_keys:
+            self.result.warning(
                 "notifications",
                 f"notification key '{key}' is not a state variable or "
                 f"initial_state key — it only fires if a handler writes that key"
             )
 
-        var_type = state_vars.get(key, {}).get("type", "string")
+        var_type = self.state_vars.get(key, {}).get("type", "string")
 
         if isinstance(value_map, str):
             value_map = {"*": value_map}
         elif not isinstance(value_map, dict):
-            result.error(
+            self.result.error(
                 "notifications",
                 f"notification '{key}' must be a template string or a "
                 f"value → template mapping, got: {value_map!r}"
             )
-            continue
+            return
 
         for trigger_value, template in value_map.items():
-            trigger = str(trigger_value)
-            template = str(template)
+            self._template(key, var_type, str(trigger_value), str(template))
 
-            if var_type == "boolean" and trigger not in ("true", "false", "*"):
-                result.error(
-                    "notifications",
-                    f"notification '{key}' value key {trigger!r} never matches — "
-                    f"boolean lookups use lowercase 'true'/'false' (quote the keys "
-                    f"in YAML so they stay strings)"
-                )
-            if var_type == "enum" and trigger != "*":
-                valid = [str(v) for v in state_vars[key].get("values", [])]
-                if valid and trigger not in valid:
-                    result.warning(
-                        "notifications",
-                        f"notification '{key}' value key {trigger!r} is not one of "
-                        f"the enum values {valid}"
-                    )
-
-            if var_type == "boolean" and "{value}" in template:
-                result.error(
-                    "notifications",
-                    f"notification '{key}' template uses {{value}} but '{key}' is "
-                    f"boolean — Python's str(True) produces 'True' not 'true'. Use "
-                    f"per-value templates ('true': ..., 'false': ...) instead."
-                )
-                continue
-
-            if not response_patterns and not json_keys:
-                continue
-
-            # Round-trip: the emitted message should parse via responses:
-            if trigger == "*":
-                if key in sim_initial:
-                    sample_value = sim_initial[key]
-                else:
-                    sample_value = _default_for_type(state_vars.get(key, {}))
-            else:
-                sample_value = trigger
-            # Render with the runtime's own template renderer so format specs
-            # ({value:d} on a boolean) validate the way they will emit. A
-            # boolean var's per-value trigger key is the runtime bool, not the
-            # 'true'/'false' lookup string.
-            if var_type == "boolean" and isinstance(sample_value, str) and (
-                sample_value in ("true", "false")
-            ):
-                sample_value = sample_value == "true"
-            from openavc.simulator.yaml_auto import YAMLAutoSimulator
-
-            message = YAMLAutoSimulator._render_notification(
-                str(template), key, sample_value, state=sim_initial
+    def _template(self, key: Any, var_type: Any, trigger: str, template: str) -> None:
+        """One template, under the value key that selects it (``*`` for any)."""
+        self._value_key(key, var_type, trigger)
+        if var_type == "boolean" and "{value}" in template:
+            self.result.error(
+                "notifications",
+                f"notification '{key}' template uses {{value}} but '{key}' is "
+                f"boolean — Python's str(True) produces 'True' not 'true'. Use "
+                f"per-value templates ('true': ..., 'false': ...) instead."
             )
-            # Unresolved {placeholder} tokens can't be validated statically.
-            # A brace followed by a quote is JSON, not a placeholder — a
-            # rendered JSON notification must still round-trip below.
-            if re.search(r"\{[a-zA-Z_][\w.]*(:[^}]*)?\}", message):
-                continue
-            # Mirror runtime dispatch: pushed data is split on line endings
-            # and the driver's own delimiter, and stripped before matching, so
-            # a template wrapped in CR/LF (dial-back containers embed the
-            # payload as "\r\n<response>\r\n") or ending in ">" still
-            # round-trips.
-            candidates = [message.strip()] + response_lines(message, delimiter)
-            if not any(
-                p.search(c) for c in candidates for p in response_patterns
-            ) and not matches_json_rules(message, json_keys):
-                result.warning(
+            return
+        if self.rules.any:
+            self._round_trip(key, var_type, trigger, template)
+
+    def _value_key(self, key: Any, var_type: Any, trigger: str) -> None:
+        """A value key the lookup can never select."""
+        if var_type == "boolean" and trigger not in ("true", "false", "*"):
+            self.result.error(
+                "notifications",
+                f"notification '{key}' value key {trigger!r} never matches — "
+                f"boolean lookups use lowercase 'true'/'false' (quote the keys "
+                f"in YAML so they stay strings)"
+            )
+        if var_type == "enum" and trigger != "*":
+            valid = [str(v) for v in self.state_vars[key].get("values", [])]
+            if valid and trigger not in valid:
+                self.result.warning(
                     "notifications",
-                    f"notification '{key}' emits {message!r} which matches no "
-                    f"driver response pattern — the driver will ignore it"
+                    f"notification '{key}' value key {trigger!r} is not one of "
+                    f"the enum values {valid}"
                 )
+
+    def _sample_value(self, key: Any, var_type: Any, trigger: str) -> Any:
+        """The value a template is rendered with: under ``*``, the key's
+        initial state (or the type's starting value); else the value key, a
+        boolean's 'true'/'false' as the runtime's bool."""
+        if trigger == "*":
+            if key in self.sim_initial:
+                sample_value = self.sim_initial[key]
+            else:
+                sample_value = _default_for_type(self.state_vars.get(key, {}))
+        else:
+            sample_value = trigger
+        if var_type == "boolean" and _is_boolean_word(sample_value):
+            return sample_value == "true"
+        return sample_value
+
+    def _round_trip(self, key: Any, var_type: Any, trigger: str, template: str) -> None:
+        """Render the template with the runtime's own renderer, so format specs
+        ({value:d} on a boolean) validate the way they will emit, and warn
+        when no response rule reads the message."""
+        sample_value = self._sample_value(key, var_type, trigger)
+        from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+        message = YAMLAutoSimulator._render_notification(
+            template, key, sample_value, state=self.sim_initial
+        )
+        if _UNRESOLVED_PLACEHOLDER.search(message):
+            return
+        # A template wrapped in CR/LF (dial-back containers embed the payload
+        # as "\r\n<response>\r\n") or ending in the driver's own ">" is
+        # read the way the runtime dispatches pushed data.
+        if not self.rules.reads_pushed(message):
+            self.result.warning(
+                "notifications",
+                f"notification '{key}' emits {message!r} which matches no "
+                f"driver response pattern — the driver will ignore it"
+            )
 
 
 # Required fields per control type, beyond the always-required "type".
