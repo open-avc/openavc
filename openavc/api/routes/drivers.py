@@ -40,6 +40,7 @@ from openavc.api.models import (
 from openavc.api.routes.python_drivers import remove_python_companions
 from openavc.drivers.driver_loader import (
     COMPANION_SUFFIXES,
+    companion_relpath_from_def,
     declared_driver_info,
     driver_companions,
     driver_files_for,
@@ -437,16 +438,16 @@ def _reject_unknown_keys(driver_def: dict[str, Any], cleanup: Path | None = None
     )
 
 
-def _companion_relpath_from_yaml(yaml_text: str) -> str | None:
-    """Return the raw ``discovery.python.file`` string if declared.
+def _companion_relpath_from_yaml(yaml_text: str | bytes) -> str | None:
+    """The discovery companion a YAML driver's text names, as written.
 
-    Used by install / update / uninstall to locate the sibling Python
-    companion that goes with a YAML driver. Drivers like ``crestron_cip``
-    and ``onvif_camera`` declare e.g. ``python: ./crestron_cip_discovery.py``
-    in their ``discovery:`` block; the runtime can't function without
-    that file present in ``driver_repo/`` next to the YAML.
+    Install, update, upload and uninstall use it to find the sibling Python
+    file that goes with a YAML driver (``python: ./<id>_discovery.py`` in its
+    ``discovery:`` block); the loader refuses the driver without that file
+    beside it. What counts as a declaration is the loader's rule
+    (``companion_relpath_from_def``); this only reads the text first.
 
-    Returns ``None`` if the YAML can't be parsed or has no companion;
+    ``None`` when the text does not parse to a mapping or names no companion;
     the caller decides what that means in context.
     """
     import yaml as _yaml
@@ -454,18 +455,37 @@ def _companion_relpath_from_yaml(yaml_text: str) -> str | None:
         parsed = _yaml.safe_load(yaml_text)
     except _yaml.YAMLError:
         return None
-    if not isinstance(parsed, dict):
+    return companion_relpath_from_def(parsed) if isinstance(parsed, dict) else None
+
+
+def _installed_yaml_companion(main_file: Path, driver_repo: Path) -> Path | None:
+    """The companion file an installed YAML driver owns: the one the uninstall
+    removes with it and an update replaces.
+
+    Only a ``_discovery.py`` file in the driver folder itself, found by the
+    base name of what the YAML names. A name that resolves outside the folder
+    (a link, ``..``), or any other ``.py``, is the user's own and is never
+    touched. ``None`` for a Python driver too, whose companions go by name
+    (``remove_python_companions``), and for a YAML that cannot be read.
+    """
+    if main_file.suffix != ".avcdriver":
         return None
-    discovery = parsed.get("discovery") or {}
-    if not isinstance(discovery, dict):
+    try:
+        yaml_text = main_file.read_text(encoding="utf-8")
+    except OSError:
         return None
-    block = discovery.get("python")
-    if isinstance(block, str):
-        return block or None
-    if isinstance(block, dict):
-        path = block.get("file")
-        if isinstance(path, str) and path:
-            return path
+    relpath = _companion_relpath_from_yaml(yaml_text)
+    if not relpath:
+        return None
+    from pathlib import PurePosixPath
+
+    candidate = driver_repo / PurePosixPath(relpath).name
+    try:
+        candidate.resolve().relative_to(driver_repo.resolve())
+    except ValueError:
+        return None
+    if candidate.exists() and candidate.name.endswith("_discovery.py"):
+        return candidate
     return None
 
 
@@ -910,30 +930,23 @@ async def upload_driver(request: Request) -> dict[str, Any]:
             # present in driver_repo/. load_driver_file would log + return
             # None below, but the user gets the generic 'Invalid driver
             # definition file' message — surface a more useful one here.
-            import yaml as _yaml_peek
-            from openavc.drivers.driver_loader import companion_relpath_from_def
-            try:
-                _peek = _yaml_peek.safe_load(content)
-            except _yaml_peek.YAMLError:
-                _peek = None
-            if isinstance(_peek, dict):
-                companion_relpath = companion_relpath_from_def(_peek)
-                if companion_relpath:
-                    companion_filename = _PurePosixPath(companion_relpath).name
-                    companion_path = driver_repo / companion_filename
-                    if not companion_path.is_file():
-                        filepath.unlink(missing_ok=True)
-                        raise HTTPException(
-                            status_code=422,
-                            detail=(
-                                f"Driver {filename} declares a Python "
-                                f"companion ({companion_relpath!r}) but "
-                                f"{companion_filename!r} is not in the "
-                                "driver library yet. Upload the "
-                                "_discovery.py file first, then re-upload "
-                                "this driver."
-                            ),
-                        )
+            companion_relpath = _companion_relpath_from_yaml(content)
+            if companion_relpath:
+                companion_filename = _PurePosixPath(companion_relpath).name
+                companion_path = driver_repo / companion_filename
+                if not companion_path.is_file():
+                    filepath.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            f"Driver {filename} declares a Python "
+                            f"companion ({companion_relpath!r}) but "
+                            f"{companion_filename!r} is not in the "
+                            "driver library yet. Upload the "
+                            "_discovery.py file first, then re-upload "
+                            "this driver."
+                        ),
+                    )
             driver_def = load_driver_file(filepath)
             if driver_def is None:
                 filepath.unlink(missing_ok=True)
@@ -1241,33 +1254,10 @@ async def uninstall_driver(driver_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found in driver_repo")
 
     for deleted_file in driver_files:
-        # If the YAML declared a Python companion, delete it too — the
-        # install endpoint fetches the pair as one unit, and leaving the
-        # companion behind would clutter the Code tab and the Installed
-        # Drivers panel with an orphaned probe file.
-        companion_to_delete: Path | None = None
-        if deleted_file.suffix == ".avcdriver":
-            try:
-                yaml_text = deleted_file.read_text(encoding="utf-8")
-            except OSError:
-                yaml_text = ""
-            if yaml_text:
-                relpath = _companion_relpath_from_yaml(yaml_text)
-                if relpath:
-                    from pathlib import PurePosixPath
-                    companion_filename = PurePosixPath(relpath).name
-                    candidate: Path | None = driver_repo / companion_filename
-                    # Only remove if it actually lives in driver_repo (so a
-                    # stray "../foo.py" path can't escape) and the companion
-                    # follows the documented `_discovery.py` suffix — anything
-                    # else is the user's own .py and shouldn't be touched.
-                    try:
-                        candidate.resolve().relative_to(driver_repo.resolve())
-                    except ValueError:
-                        candidate = None
-                    if candidate and candidate.exists() and candidate.name.endswith("_discovery.py"):
-                        companion_to_delete = candidate
-
+        # A YAML's declared companion goes too: the install fetches the pair
+        # as one unit, and a companion left behind would clutter the Code tab
+        # and the Installed Drivers panel with an orphaned probe file.
+        companion_to_delete = _installed_yaml_companion(deleted_file, driver_repo)
         deleted_file.unlink(missing_ok=True)
         if companion_to_delete is not None:
             companion_to_delete.unlink(missing_ok=True)
@@ -1350,28 +1340,7 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
 
     # Resolve the existing companion (if any) before we touch anything,
     # so we know what to clean up after the new install lands.
-    old_companion: Path | None = None
-    if old_file.suffix == ".avcdriver":
-        try:
-            old_yaml_text = old_file.read_text(encoding="utf-8")
-        except OSError:
-            old_yaml_text = ""
-        if old_yaml_text:
-            old_relpath = _companion_relpath_from_yaml(old_yaml_text)
-            if old_relpath:
-                from pathlib import PurePosixPath
-                old_companion_name = PurePosixPath(old_relpath).name
-                candidate = driver_repo / old_companion_name
-                try:
-                    candidate.resolve().relative_to(driver_repo.resolve())
-                except ValueError:
-                    candidate = None
-                if (
-                    candidate
-                    and candidate.exists()
-                    and candidate.name.endswith("_discovery.py")
-                ):
-                    old_companion = candidate
+    old_companion = _installed_yaml_companion(old_file, driver_repo)
 
     # Download new version
     safe_id = "".join(c if c.isalnum() or c in "-_" else "_" for c in driver_id)
