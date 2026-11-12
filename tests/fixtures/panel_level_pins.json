@@ -26,7 +26,8 @@
       {"c": {"r.0.0.0@style": "width: 21%;", "r.0.1@aria-valuetext": "21"}, "p": "21"},
       {"c": {"r.0.0.0@style": "width: 23%;", "r.0.1@aria-valuetext": "23"}, "p": "23"},
       {"c": {"r.0.0.0@style": "width: 25%;", "r.0.1@aria-valuetext": "25"}, "p": "25"},
-      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27"}, "p": "27"}
+      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27"}, "p": "27"},
+      {"s": ["ui.change plain 30"]}
     ],
     "vertical_log": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider panel-slider-vertical", "r@data-element-id": "vertical_log", "r@style": "--thumb-size: 3rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "label", "r.0#": "Gain", "r.1@": "div class", "r.1@class": "slider-track-wrapper", "r.1.0@": "div class", "r.1.0@class": "slider-track", "r.1.0.0@": "div class style", "r.1.0.0@class": "slider-fill", "r.1.0.0@style": "height: 100%;", "r.1.1@": "input type aria-label min max step class aria-valuetext", "r.1.1@type": "range", "r.1.1@aria-label": "Gain", "r.1.1@min": "0", "r.1.1@max": "200", "r.1.1@step": "1", "r.1.1@class": "", "r.1.1@aria-valuetext": "40.00 dB", "r.2@": "div class", "r.2@class": "slider-value", "r.2#": "40.00 dB"}, "p": "200"},
@@ -54,7 +55,8 @@
       {"c": {"r.1.1@aria-valuetext": "21.00 dB", "r.2#": "21.00 dB"}, "p": "200"},
       {"c": {"r.1.1@aria-valuetext": "23.00 dB", "r.2#": "23.00 dB"}, "p": "200"},
       {"c": {"r.1.1@aria-valuetext": "25.00 dB", "r.2#": "25.00 dB"}, "p": "200"},
-      {"c": {"r.1.1@aria-valuetext": "27.00 dB", "r.2#": "27.00 dB"}, "p": "200"}
+      {"c": {"r.1.1@aria-valuetext": "27.00 dB", "r.2#": "27.00 dB"}, "p": "200"},
+      {"s": ["ui.change vertical_log -77.5"]}
     ],
     "log_default_range": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "log_default_range", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 87%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "log_default_range", "r.0.1@min": "0", "r.0.1@max": "200", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40"}, "p": "174"},
@@ -82,7 +84,8 @@
       {"c": {"r.0.0.0@style": "width: 77.5%;", "r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "155"},
       {"c": {"r.0.0.0@style": "width: 79%;", "r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "158"},
       {"c": {"r.0.0.0@style": "width: 80%;", "r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "160"},
-      {"c": {"r.0.0.0@style": "width: 81%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "162"}
+      {"c": {"r.0.0.0@style": "width: 81%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "162"},
+      {"s": ["ui.change log_default_range 1"]}
     ],
     "scaled": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "scaled", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 16%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "scaled", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "16", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "16"}, "p": "16"},
@@ -110,7 +113,8 @@
       {"c": {"r.0.0.0@style": "width: 8%;", "r.0.1@aria-valuetext": "8", "r.1#": "8"}, "p": "8"},
       {"c": {"r.0.0.0@style": "width: 9%;", "r.0.1@aria-valuetext": "9", "r.1#": "9"}, "p": "9"},
       {"c": {"r.0.0.0@style": "width: 10%;", "r.0.1@aria-valuetext": "10", "r.1#": "10"}, "p": "10"},
-      {"c": {"r.0.0.0@style": "width: 11%;", "r.0.1@aria-valuetext": "11", "r.1#": "11"}, "p": "11"}
+      {"c": {"r.0.0.0@style": "width: 11%;", "r.0.1@aria-valuetext": "11", "r.1#": "11"}, "p": "11"},
+      {"s": ["ui.change scaled 30"]}
     ],
     "scaled_flat_output": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "scaled_flat_output", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 0%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "scaled_flat_output", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "0", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "0"}, "p": "0"},
@@ -138,7 +142,8 @@
       {"c": {"r.0.0.0@style": "width: 0%;", "r.0.1@aria-valuetext": "0", "r.1#": "0"}, "p": "0"},
       {"p": "0"},
       {"p": "0"},
-      {"p": "0"}
+      {"p": "0"},
+      {"s": ["ui.change scaled_flat_output 30"]}
     ],
     "dead_space": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "dead_space", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 40%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "dead_space", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40"}, "p": "40"},
@@ -166,7 +171,8 @@
       {"c": {"r.0.0.0@style": "width: 21%;", "r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "21"},
       {"c": {"r.0.0.0@style": "width: 23%;", "r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "23"},
       {"c": {"r.0.0.0@style": "width: 25%;", "r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "25"},
-      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "27"}
+      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "27"},
+      {"s": ["ui.change dead_space 30"]}
     ],
     "dead_space_log": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "dead_space_log", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 100%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "dead_space_log", "r.0.1@min": "0", "r.0.1@max": "200", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40"}, "p": "200"},
@@ -194,7 +200,8 @@
       {"c": {"r.0.0.0@style": "width: 100%;", "r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "200"},
       {"c": {"r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "200"},
       {"c": {"r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "200"},
-      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "200"}
+      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "200"},
+      {"s": ["ui.change dead_space_log -60"]}
     ],
     "dead_space_design": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "dead_space_design", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 50%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "dead_space_design", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@aria-valuetext": "50", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "50"}, "p": "50"},
@@ -222,7 +229,8 @@
       {"c": {"r.0.0.0@style": "width: 21%;", "r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "21"},
       {"c": {"r.0.0.0@style": "width: 23%;", "r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "23"},
       {"c": {"r.0.0.0@style": "width: 25%;", "r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "25"},
-      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "27"}
+      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "27"},
+      {"s": ["ui.change dead_space_design 30"]}
     ],
     "sample_design": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "sample_design", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 50%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "sample_design", "r.0.1@min": "0", "r.0.1@max": "40", "r.0.1@step": "1", "r.0.1@aria-valuetext": "10 V", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "10 V"}, "p": "20"},
@@ -250,7 +258,8 @@
       {"c": {"r.0.0.0@style": "width: 77.5%;", "r.0.1@aria-valuetext": "21 V", "r.1#": "21 V"}, "p": "31"},
       {"c": {"r.0.0.0@style": "width: 82.5%;", "r.0.1@aria-valuetext": "23 V", "r.1#": "23 V"}, "p": "33"},
       {"c": {"r.0.0.0@style": "width: 87.5%;", "r.0.1@aria-valuetext": "25 V", "r.1#": "25 V"}, "p": "35"},
-      {"c": {"r.0.0.0@style": "width: 92.5%;", "r.0.1@aria-valuetext": "27 V", "r.1#": "27 V"}, "p": "37"}
+      {"c": {"r.0.0.0@style": "width: 92.5%;", "r.0.1@aria-valuetext": "27 V", "r.1#": "27 V"}, "p": "37"},
+      {"s": ["ui.change sample_design 2"]}
     ],
     "unreported": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "unreported", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 0%;", "r.0.1@": "input type aria-label min max step class", "r.0.1@type": "range", "r.0.1@aria-label": "unreported", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@class": "no-reading", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "-- %"}, "p": "0"},
@@ -278,7 +287,8 @@
       {"c": {"r.0.0.0@style": "width: 21%;", "r.0.1@aria-valuetext": "21 %", "r.1#": "21 %"}, "p": "21"},
       {"c": {"r.0.0.0@style": "width: 23%;", "r.0.1@aria-valuetext": "23 %", "r.1#": "23 %"}, "p": "23"},
       {"c": {"r.0.0.0@style": "width: 25%;", "r.0.1@aria-valuetext": "25 %", "r.1#": "25 %"}, "p": "25"},
-      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27 %", "r.1#": "27 %"}, "p": "27"}
+      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27 %", "r.1#": "27 %"}, "p": "27"},
+      {"s": ["ui.change unreported 30"]}
     ],
     "fraction": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "fraction", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 100%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "fraction", "r.0.1@min": "0", "r.0.1@max": "10", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40.0", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40.0"}, "p": "10"},
@@ -306,7 +316,8 @@
       {"c": {"r.0.1@aria-valuetext": "21.0", "r.1#": "21.0"}, "p": "10"},
       {"c": {"r.0.1@aria-valuetext": "23.0", "r.1#": "23.0"}, "p": "10"},
       {"c": {"r.0.1@aria-valuetext": "25.0", "r.1#": "25.0"}, "p": "10"},
-      {"c": {"r.0.1@aria-valuetext": "27.0", "r.1#": "27.0"}, "p": "10"}
+      {"c": {"r.0.1@aria-valuetext": "27.0", "r.1#": "27.0"}, "p": "10"},
+      {"s": ["ui.change fraction 0.3"]}
     ],
     "no_step": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "no_step", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 100%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "no_step", "r.0.1@min": "0", "r.0.1@max": "1", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40.0", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40.0"}, "p": "1"},
@@ -334,7 +345,8 @@
       {"c": {"r.0.1@aria-valuetext": "21.0", "r.1#": "21.0"}, "p": "1"},
       {"c": {"r.0.1@aria-valuetext": "23.0", "r.1#": "23.0"}, "p": "1"},
       {"c": {"r.0.1@aria-valuetext": "25.0", "r.1#": "25.0"}, "p": "1"},
-      {"c": {"r.0.1@aria-valuetext": "27.0", "r.1#": "27.0"}, "p": "1"}
+      {"c": {"r.0.1@aria-valuetext": "27.0", "r.1#": "27.0"}, "p": "1"},
+      {"s": ["ui.change no_step 0.3"]}
     ],
     "on_release": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "on_release", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 40%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "on_release", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40"}, "p": "40"},
@@ -362,7 +374,8 @@
       {"c": {"r.0.0.0@style": "width: 21%;", "r.0.1@aria-valuetext": "21"}, "p": "21"},
       {"c": {"r.0.0.0@style": "width: 23%;", "r.0.1@aria-valuetext": "23"}, "p": "23"},
       {"c": {"r.0.0.0@style": "width: 25%;", "r.0.1@aria-valuetext": "25"}, "p": "25"},
-      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27"}, "p": "27"}
+      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27"}, "p": "27"},
+      {"s": []}
     ],
     "every_move": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "every_move", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 40%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "every_move", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40"}, "p": "40"},
@@ -390,7 +403,8 @@
       {"c": {"r.0.0.0@style": "width: 21%;", "r.0.1@aria-valuetext": "21"}, "p": "21"},
       {"c": {"r.0.0.0@style": "width: 23%;", "r.0.1@aria-valuetext": "23"}, "p": "23"},
       {"c": {"r.0.0.0@style": "width: 25%;", "r.0.1@aria-valuetext": "25"}, "p": "25"},
-      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27"}, "p": "27"}
+      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27"}, "p": "27"},
+      {"s": ["ui.change every_move 30", "ui.change every_move 70"]}
     ],
     "rate_text": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "rate_text", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 40%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "rate_text", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40"}, "p": "40"},
@@ -418,7 +432,8 @@
       {"c": {"r.0.0.0@style": "width: 21%;", "r.0.1@aria-valuetext": "21"}, "p": "21"},
       {"c": {"r.0.0.0@style": "width: 23%;", "r.0.1@aria-valuetext": "23"}, "p": "23"},
       {"c": {"r.0.0.0@style": "width: 25%;", "r.0.1@aria-valuetext": "25"}, "p": "25"},
-      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27"}, "p": "27"}
+      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27"}, "p": "27"},
+      {"s": ["ui.change rate_text 30"]}
     ],
     "backwards": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "backwards", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 100%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "backwards", "r.0.1@min": "0", "r.0.1@max": "1", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40"}, "p": "1"},
@@ -446,7 +461,8 @@
       {"c": {"r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "1"},
       {"c": {"r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "1"},
       {"c": {"r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "1"},
-      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "1"}
+      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "1"},
+      {"s": ["ui.change backwards 100"]}
     ],
     "flat": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "flat", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 0%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "flat", "r.0.1@min": "0", "r.0.1@max": "1", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40"}, "p": "0"},
@@ -474,7 +490,8 @@
       {"c": {"r.0.0.0@style": "width: 0%;", "r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "0"},
       {"c": {"r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "0"},
       {"c": {"r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "0"},
-      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "0"}
+      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "0"},
+      {"s": ["ui.change flat 5"]}
     ],
     "text_range": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "text_range", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 100%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "text_range", "r.0.1@min": "0", "r.0.1@max": "10", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40"}, "p": "10"},
@@ -502,7 +519,8 @@
       {"c": {"r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "10"},
       {"c": {"r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "10"},
       {"c": {"r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "10"},
-      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "10"}
+      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "10"},
+      {"s": ["ui.change text_range 20"]}
     ],
     "decimals_text": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "decimals_text", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 40%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "decimals_text", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40.000 %", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40.000 %"}, "p": "40"},
@@ -530,7 +548,8 @@
       {"c": {"r.0.0.0@style": "width: 21%;", "r.0.1@aria-valuetext": "21.000 %", "r.1#": "21.000 %"}, "p": "21"},
       {"c": {"r.0.0.0@style": "width: 23%;", "r.0.1@aria-valuetext": "23.000 %", "r.1#": "23.000 %"}, "p": "23"},
       {"c": {"r.0.0.0@style": "width: 25%;", "r.0.1@aria-valuetext": "25.000 %", "r.1#": "25.000 %"}, "p": "25"},
-      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27.000 %", "r.1#": "27.000 %"}, "p": "27"}
+      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27.000 %", "r.1#": "27.000 %"}, "p": "27"},
+      {"s": ["ui.change decimals_text 30"]}
     ],
     "unbound": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "unbound", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 0%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "unbound", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@aria-valuetext": "0", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "0"}, "p": "0"},
@@ -558,7 +577,8 @@
       {"p": "100"},
       {"p": "100"},
       {"p": "100"},
-      {"p": "100"}
+      {"p": "100"},
+      {"s": ["ui.change unbound 30"]}
     ],
     "unbound_design": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "unbound_design", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 50%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "unbound_design", "r.0.1@min": "0", "r.0.1@max": "100", "r.0.1@step": "1", "r.0.1@aria-valuetext": "50", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "50"}, "p": "50"},
@@ -586,7 +606,8 @@
       {"p": "100"},
       {"p": "100"},
       {"p": "100"},
-      {"p": "100"}
+      {"p": "100"},
+      {"s": ["ui.change unbound_design 30"]}
     ],
     "nonsense_range": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "nonsense_range", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 0%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "nonsense_range", "r.0.1@min": "0", "r.0.1@max": "NaN", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40"}, "p": "50"},
@@ -614,7 +635,8 @@
       {"c": {"r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "50"},
       {"c": {"r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "50"},
       {"c": {"r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "50"},
-      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "50"}
+      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "50"},
+      {"s": ["ui.change nonsense_range null"]}
     ],
     "unbound_range": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "unbound_range", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 0%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "unbound_range", "r.0.1@min": "0", "r.0.1@max": "80", "r.0.1@step": "1", "r.0.1@aria-valuetext": "-40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "-40"}, "p": "0"},
@@ -642,7 +664,8 @@
       {"p": "80"},
       {"p": "80"},
       {"p": "80"},
-      {"p": "80"}
+      {"p": "80"},
+      {"s": ["ui.change unbound_range -16"]}
     ],
     "nothing_in_state": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "nothing_in_state", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 0%;", "r.0.1@": "input type aria-label min max step class", "r.0.1@type": "range", "r.0.1@aria-label": "nothing_in_state", "r.0.1@min": "0", "r.0.1@max": "80", "r.0.1@step": "1", "r.0.1@class": "no-reading", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "--"}, "p": "0"},
@@ -670,7 +693,8 @@
       {"c": {"r.0.0.0@style": "width: 76.25%;", "r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "61"},
       {"c": {"r.0.0.0@style": "width: 78.75%;", "r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "63"},
       {"c": {"r.0.0.0@style": "width: 81.25%;", "r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "65"},
-      {"c": {"r.0.0.0@style": "width: 83.75%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "67"}
+      {"c": {"r.0.0.0@style": "width: 83.75%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "67"},
+      {"s": ["ui.change nothing_in_state -16"]}
     ],
     "text_range_scaled": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "text_range_scaled", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 40%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "text_range_scaled", "r.0.1@min": "0", "r.0.1@max": "10", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "14", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "14"}, "p": "4"},
@@ -698,7 +722,8 @@
       {"c": {"r.0.0.0@style": "width: 20%;", "r.0.1@aria-valuetext": "12", "r.1#": "12"}, "p": "2"},
       {"p": "2"},
       {"c": {"r.0.0.0@style": "width: 30%;", "r.0.1@aria-valuetext": "13", "r.1#": "13"}, "p": "3"},
-      {"p": "3"}
+      {"p": "3"},
+      {"s": ["ui.change text_range_scaled 20"]}
     ],
     "text_range_design": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "text_range_design", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 50%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "text_range_design", "r.0.1@min": "0", "r.0.1@max": "10", "r.0.1@step": "1", "r.0.1@aria-valuetext": "15", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "15"}, "p": "5"},
@@ -726,7 +751,8 @@
       {"c": {"r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "10"},
       {"c": {"r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "10"},
       {"c": {"r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "10"},
-      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "10"}
+      {"c": {"r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "10"},
+      {"s": ["ui.change text_range_design 20"]}
     ],
     "log_vanishing_range": [
       {"c": {"r@": "div class data-element-id style data-element-type", "r@class": "panel-element panel-slider", "r@data-element-id": "log_vanishing_range", "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;", "r@data-element-type": "slider", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 40%;", "r.0.1@": "input type aria-label min max step class aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "log_vanishing_range", "r.0.1@min": "0", "r.0.1@max": "200", "r.0.1@step": "1", "r.0.1@class": "", "r.0.1@aria-valuetext": "40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "40"}, "p": "80"},
@@ -754,8 +780,23 @@
       {"c": {"r.0.0.0@style": "width: 21%;", "r.0.1@aria-valuetext": "21", "r.1#": "21"}, "p": "42"},
       {"c": {"r.0.0.0@style": "width: 23%;", "r.0.1@aria-valuetext": "23", "r.1#": "23"}, "p": "46"},
       {"c": {"r.0.0.0@style": "width: 25%;", "r.0.1@aria-valuetext": "25", "r.1#": "25"}, "p": "50"},
-      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "54"}
+      {"c": {"r.0.0.0@style": "width: 27%;", "r.0.1@aria-valuetext": "27", "r.1#": "27"}, "p": "54"},
+      {"s": ["ui.change log_vanishing_range 30"]}
     ]
+  },
+  "level_first_draw": {
+    "slider_scaled/reading": {"c": {"r@": "div class data-element-id style", "r@class": "panel-element panel-slider", "r@data-element-id": "slider_scaled", "r@style": "--thumb-size: 3.142857142857143rem;", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 11.25%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "slider_scaled", "r.0.1@min": "0", "r.0.1@max": "80", "r.0.1@step": "1", "r.0.1@aria-valuetext": "-31", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "-31"}, "p": "9"},
+    "slider_scaled/none": {"c": {"r@": "div class data-element-id style", "r@class": "panel-element panel-slider", "r@data-element-id": "slider_scaled", "r@style": "--thumb-size: 3.142857142857143rem;", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 0%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "slider_scaled", "r.0.1@min": "0", "r.0.1@max": "80", "r.0.1@step": "1", "r.0.1@aria-valuetext": "-40", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "-40"}, "p": "0"},
+    "slider_scaled/design": {"c": {"r@": "div class data-element-id style", "r@class": "panel-element panel-slider", "r@data-element-id": "slider_scaled", "r@style": "--thumb-size: 3.142857142857143rem;", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 50%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "slider_scaled", "r.0.1@min": "0", "r.0.1@max": "80", "r.0.1@step": "1", "r.0.1@aria-valuetext": "0", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "0"}, "p": "40"},
+    "slider_text_range/reading": {"c": {"r@": "div class data-element-id style", "r@class": "panel-element panel-slider", "r@data-element-id": "slider_text_range", "r@style": "--thumb-size: 3.142857142857143rem;", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 100%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "slider_text_range", "r.0.1@min": "0", "r.0.1@max": "10", "r.0.1@step": "1", "r.0.1@aria-valuetext": "20", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "20"}, "p": "10"},
+    "slider_text_range/none": {"c": {"r@": "div class data-element-id style", "r@class": "panel-element panel-slider", "r@data-element-id": "slider_text_range", "r@style": "--thumb-size: 3.142857142857143rem;", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 0%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "slider_text_range", "r.0.1@min": "0", "r.0.1@max": "10", "r.0.1@step": "1", "r.0.1@aria-valuetext": "20", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "20"}, "p": "0"},
+    "slider_text_range/design": {"c": {"r@": "div class data-element-id style", "r@class": "panel-element panel-slider", "r@data-element-id": "slider_text_range", "r@style": "--thumb-size: 3.142857142857143rem;", "r.0@": "div class", "r.0@class": "slider-track-wrapper", "r.0.0@": "div class", "r.0.0@class": "slider-track", "r.0.0.0@": "div class style", "r.0.0.0@class": "slider-fill", "r.0.0.0@style": "width: 100%;", "r.0.1@": "input type aria-label min max step aria-valuetext", "r.0.1@type": "range", "r.0.1@aria-label": "slider_text_range", "r.0.1@min": "0", "r.0.1@max": "10", "r.0.1@step": "1", "r.0.1@aria-valuetext": "20", "r.1@": "div class", "r.1@class": "slider-value", "r.1#": "20"}, "p": "10"},
+    "fader_scaled/reading": {"c": {"r@": "div class data-element-id", "r@class": "panel-element panel-fader vertical", "r@data-element-id": "fader_scaled", "r.0@": "div class", "r.0@class": "fader-body", "r.0.0@": "div class", "r.0.0@class": "fader-scale", "r.0.0.0@": "div class style", "r.0.0.0@class": "fader-mark", "r.0.0.0@style": "bottom: 0%;", "r.0.0.0#": "-80", "r.0.0.1@": "div class style", "r.0.0.1@class": "fader-mark", "r.0.0.1@style": "bottom: 25%;", "r.0.0.1#": "-60", "r.0.0.2@": "div class style", "r.0.0.2@class": "fader-mark", "r.0.0.2@style": "bottom: 50%;", "r.0.0.2#": "-40", "r.0.0.3@": "div class style", "r.0.0.3@class": "fader-mark", "r.0.0.3@style": "bottom: 75%;", "r.0.0.3#": "-20", "r.0.0.4@": "div class style", "r.0.0.4@class": "fader-mark", "r.0.0.4@style": "bottom: 100%;", "r.0.0.4#": "0", "r.0.1@": "div class", "r.0.1@class": "fader-track-wrap", "r.0.1.0@": "div class", "r.0.1.0@class": "fader-track", "r.0.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow", "r.0.1.1@class": "fader-handle", "r.0.1.1@role": "slider", "r.0.1.1@aria-label": "Fader fader_scaled", "r.0.1.1@aria-valuemin": "-80", "r.0.1.1@aria-valuemax": "0", "r.0.1.1@tabindex": "0", "r.0.1.1@style": "bottom: 30%;", "r.0.1.1@aria-valuenow": "-56", "r.1@": "div class", "r.1@class": "fader-value", "r.1#": "-56.0 dB"}, "p": null},
+    "fader_scaled/none": {"c": {"r@": "div class data-element-id", "r@class": "panel-element panel-fader vertical", "r@data-element-id": "fader_scaled", "r.0@": "div class", "r.0@class": "fader-body", "r.0.0@": "div class", "r.0.0@class": "fader-scale", "r.0.0.0@": "div class style", "r.0.0.0@class": "fader-mark", "r.0.0.0@style": "bottom: 0%;", "r.0.0.0#": "-80", "r.0.0.1@": "div class style", "r.0.0.1@class": "fader-mark", "r.0.0.1@style": "bottom: 25%;", "r.0.0.1#": "-60", "r.0.0.2@": "div class style", "r.0.0.2@class": "fader-mark", "r.0.0.2@style": "bottom: 50%;", "r.0.0.2#": "-40", "r.0.0.3@": "div class style", "r.0.0.3@class": "fader-mark", "r.0.0.3@style": "bottom: 75%;", "r.0.0.3#": "-20", "r.0.0.4@": "div class style", "r.0.0.4@class": "fader-mark", "r.0.0.4@style": "bottom: 100%;", "r.0.0.4#": "0", "r.0.1@": "div class", "r.0.1@class": "fader-track-wrap", "r.0.1.0@": "div class", "r.0.1.0@class": "fader-track", "r.0.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow", "r.0.1.1@class": "fader-handle", "r.0.1.1@role": "slider", "r.0.1.1@aria-label": "Fader fader_scaled", "r.0.1.1@aria-valuemin": "-80", "r.0.1.1@aria-valuemax": "0", "r.0.1.1@tabindex": "0", "r.0.1.1@style": "bottom: 100%;", "r.0.1.1@aria-valuenow": "0", "r.1@": "div class", "r.1@class": "fader-value", "r.1#": "0.0 dB"}, "p": null},
+    "fader_scaled/design": {"c": {"r@": "div class data-element-id", "r@class": "panel-element panel-fader vertical", "r@data-element-id": "fader_scaled", "r.0@": "div class", "r.0@class": "fader-body", "r.0.0@": "div class", "r.0.0@class": "fader-scale", "r.0.0.0@": "div class style", "r.0.0.0@class": "fader-mark", "r.0.0.0@style": "bottom: 0%;", "r.0.0.0#": "-80", "r.0.0.1@": "div class style", "r.0.0.1@class": "fader-mark", "r.0.0.1@style": "bottom: 25%;", "r.0.0.1#": "-60", "r.0.0.2@": "div class style", "r.0.0.2@class": "fader-mark", "r.0.0.2@style": "bottom: 50%;", "r.0.0.2#": "-40", "r.0.0.3@": "div class style", "r.0.0.3@class": "fader-mark", "r.0.0.3@style": "bottom: 75%;", "r.0.0.3#": "-20", "r.0.0.4@": "div class style", "r.0.0.4@class": "fader-mark", "r.0.0.4@style": "bottom: 100%;", "r.0.0.4#": "0", "r.0.1@": "div class", "r.0.1@class": "fader-track-wrap", "r.0.1.0@": "div class", "r.0.1.0@class": "fader-track", "r.0.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow", "r.0.1.1@class": "fader-handle", "r.0.1.1@role": "slider", "r.0.1.1@aria-label": "Fader fader_scaled", "r.0.1.1@aria-valuemin": "-80", "r.0.1.1@aria-valuemax": "0", "r.0.1.1@tabindex": "0", "r.0.1.1@style": "bottom: 50%;", "r.0.1.1@aria-valuenow": "-40", "r.1@": "div class", "r.1@class": "fader-value", "r.1#": "-40.0 dB"}, "p": null},
+    "fader_dead_space/reading": {"c": {"r@": "div class data-element-id", "r@class": "panel-element panel-fader vertical", "r@data-element-id": "fader_dead_space", "r.0@": "div class", "r.0@class": "fader-body", "r.0.0@": "div class", "r.0.0@class": "fader-scale", "r.0.0.0@": "div class style", "r.0.0.0@class": "fader-mark", "r.0.0.0@style": "bottom: 0%;", "r.0.0.0#": "0", "r.0.0.1@": "div class style", "r.0.0.1@class": "fader-mark", "r.0.0.1@style": "bottom: 20%;", "r.0.0.1#": "20", "r.0.0.2@": "div class style", "r.0.0.2@class": "fader-mark", "r.0.0.2@style": "bottom: 40%;", "r.0.0.2#": "40", "r.0.0.3@": "div class style", "r.0.0.3@class": "fader-mark", "r.0.0.3@style": "bottom: 60%;", "r.0.0.3#": "60", "r.0.0.4@": "div class style", "r.0.0.4@class": "fader-mark", "r.0.0.4@style": "bottom: 80%;", "r.0.0.4#": "80", "r.0.0.5@": "div class style", "r.0.0.5@class": "fader-mark", "r.0.0.5@style": "bottom: 100%;", "r.0.0.5#": "100", "r.0.1@": "div class", "r.0.1@class": "fader-track-wrap", "r.0.1.0@": "div class", "r.0.1.0@class": "fader-track", "r.0.1.1@": "div class style", "r.0.1.1@class": "fader-dead-space", "r.0.1.1@style": "bottom: 80%; top: 0px; left: 0px; right: 0px;", "r.0.1.2@": "div class style", "r.0.1.2@class": "fader-dead-space", "r.0.1.2@style": "bottom: 0px; top: 80%; left: 0px; right: 0px;", "r.0.1.3@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow", "r.0.1.3@class": "fader-handle", "r.0.1.3@role": "slider", "r.0.1.3@aria-label": "Fader fader_dead_space", "r.0.1.3@aria-valuemin": "0", "r.0.1.3@aria-valuemax": "100", "r.0.1.3@tabindex": "0", "r.0.1.3@style": "bottom: 30%;", "r.0.1.3@aria-valuenow": "30", "r.1@": "div class", "r.1@class": "fader-value", "r.1#": "30.0"}, "p": null},
+    "fader_dead_space/none": {"c": {"r@": "div class data-element-id", "r@class": "panel-element panel-fader vertical", "r@data-element-id": "fader_dead_space", "r.0@": "div class", "r.0@class": "fader-body", "r.0.0@": "div class", "r.0.0@class": "fader-scale", "r.0.0.0@": "div class style", "r.0.0.0@class": "fader-mark", "r.0.0.0@style": "bottom: 0%;", "r.0.0.0#": "0", "r.0.0.1@": "div class style", "r.0.0.1@class": "fader-mark", "r.0.0.1@style": "bottom: 20%;", "r.0.0.1#": "20", "r.0.0.2@": "div class style", "r.0.0.2@class": "fader-mark", "r.0.0.2@style": "bottom: 40%;", "r.0.0.2#": "40", "r.0.0.3@": "div class style", "r.0.0.3@class": "fader-mark", "r.0.0.3@style": "bottom: 60%;", "r.0.0.3#": "60", "r.0.0.4@": "div class style", "r.0.0.4@class": "fader-mark", "r.0.0.4@style": "bottom: 80%;", "r.0.0.4#": "80", "r.0.0.5@": "div class style", "r.0.0.5@class": "fader-mark", "r.0.0.5@style": "bottom: 100%;", "r.0.0.5#": "100", "r.0.1@": "div class", "r.0.1@class": "fader-track-wrap", "r.0.1.0@": "div class", "r.0.1.0@class": "fader-track", "r.0.1.1@": "div class style", "r.0.1.1@class": "fader-dead-space", "r.0.1.1@style": "bottom: 80%; top: 0px; left: 0px; right: 0px;", "r.0.1.2@": "div class style", "r.0.1.2@class": "fader-dead-space", "r.0.1.2@style": "bottom: 0px; top: 80%; left: 0px; right: 0px;", "r.0.1.3@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow", "r.0.1.3@class": "fader-handle", "r.0.1.3@role": "slider", "r.0.1.3@aria-label": "Fader fader_dead_space", "r.0.1.3@aria-valuemin": "0", "r.0.1.3@aria-valuemax": "100", "r.0.1.3@tabindex": "0", "r.0.1.3@style": "bottom: 0%;", "r.0.1.3@aria-valuenow": "0", "r.1@": "div class", "r.1@class": "fader-value", "r.1#": "0.0"}, "p": null},
+    "fader_dead_space/design": {"c": {"r@": "div class data-element-id", "r@class": "panel-element panel-fader vertical", "r@data-element-id": "fader_dead_space", "r.0@": "div class", "r.0@class": "fader-body", "r.0.0@": "div class", "r.0.0@class": "fader-scale", "r.0.0.0@": "div class style", "r.0.0.0@class": "fader-mark", "r.0.0.0@style": "bottom: 0%;", "r.0.0.0#": "0", "r.0.0.1@": "div class style", "r.0.0.1@class": "fader-mark", "r.0.0.1@style": "bottom: 20%;", "r.0.0.1#": "20", "r.0.0.2@": "div class style", "r.0.0.2@class": "fader-mark", "r.0.0.2@style": "bottom: 40%;", "r.0.0.2#": "40", "r.0.0.3@": "div class style", "r.0.0.3@class": "fader-mark", "r.0.0.3@style": "bottom: 60%;", "r.0.0.3#": "60", "r.0.0.4@": "div class style", "r.0.0.4@class": "fader-mark", "r.0.0.4@style": "bottom: 80%;", "r.0.0.4#": "80", "r.0.0.5@": "div class style", "r.0.0.5@class": "fader-mark", "r.0.0.5@style": "bottom: 100%;", "r.0.0.5#": "100", "r.0.1@": "div class", "r.0.1@class": "fader-track-wrap", "r.0.1.0@": "div class", "r.0.1.0@class": "fader-track", "r.0.1.1@": "div class style", "r.0.1.1@class": "fader-dead-space", "r.0.1.1@style": "bottom: 80%; top: 0px; left: 0px; right: 0px;", "r.0.1.2@": "div class style", "r.0.1.2@class": "fader-dead-space", "r.0.1.2@style": "bottom: 0px; top: 80%; left: 0px; right: 0px;", "r.0.1.3@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow", "r.0.1.3@class": "fader-handle", "r.0.1.3@role": "slider", "r.0.1.3@aria-label": "Fader fader_dead_space", "r.0.1.3@aria-valuemin": "0", "r.0.1.3@aria-valuemax": "100", "r.0.1.3@tabindex": "0", "r.0.1.3@style": "bottom: 50%;", "r.0.1.3@aria-valuenow": "50", "r.1@": "div class", "r.1@class": "fader-value", "r.1#": "50.0"}, "p": null}
   },
   "level_fader": {
     "plain": [

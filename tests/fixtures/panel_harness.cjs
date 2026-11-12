@@ -6625,9 +6625,41 @@ const tests = {
                     m.set(LEVEL_KEY, 21 + 2 * i);
                     m.look();
                 });
+                // A page redrawn while a move is held: the held move never goes out.
+                advance(500);
+                put(steps * 0.3, 'input'); advance(5);
+                put(steps * 0.7, 'input');
+                m.app.renderCurrentPage();
+                advance(500);
+                m.steps.push({ s: m.sent.splice(0).map(frameLine) });
             }));
         }
         comparePins('level_slider', got, LEVEL_PINS.level_slider);
+    },
+
+    // The reading a slider or fader is first drawn with, before any binding
+    // has been evaluated: its device's, the design sample, or none.
+    level_controls_draw_their_first_reading_as_today() {
+        const got = {};
+        const defs = [
+            levelDef('slider')('slider_scaled', { min: -40, max: 40, output_min: 0, output_max: 255, style: { show_value: true } }),
+            levelDef('slider')('slider_text_range', { min: '10', max: '20', style: { show_value: true } }),
+            levelDef('fader')('fader_scaled', { min: -80, max: 0, unit: 'dB', output_min: 0, output_max: 100 }),
+            levelDef('fader')('fader_dead_space', { output_min: 20, output_max: 80, scale_to_full: false }),
+        ];
+        for (const def of defs) {
+            for (const [name, state, edit] of [
+                ['reading', { [LEVEL_KEY]: 30 }, false], ['none', {}, false], ['design', {}, true],
+            ]) {
+                const app = mkApp();
+                app.editMode = edit;
+                app.state = state;
+                const { node } = drawnLevel(app, def);
+                const input = node.querySelector('input');
+                got[`${def.id}/${name}`] = { c: nodeSnapshot(node), p: input ? input.value : null };
+            }
+        }
+        comparePins('level_first_draw', got, LEVEL_PINS.level_first_draw);
     },
 
     // What a fader draws, follows and sends, the same way, plus its scale
