@@ -1836,7 +1836,7 @@ def _content_supplied(element: Mapping[str, Any], prop: str, slot: str | None) -
 #: ``auto_send_delay_ms ?? 1500``). The delay is also the review's threshold:
 #: nobody has measured how long a person takes between two keys on a panel, so
 #: the one number with a claim to it is the platform's own default.
-#: tests/test_ui_page_review_mirrors.py holds both to renderKeypad and to the
+#: tests/test_ui_page_review_mirrors.py holds both to the panel's keypad and to the
 #: Builder's copies, which its keypad properties also show.
 KEYPAD_DIGITS_DEFAULT = 4
 KEYPAD_SEND_DELAY_DEFAULT_MS = 1500
@@ -1844,7 +1844,7 @@ KEYPAD_SEND_DELAY_DEFAULT_MS = 1500
 
 @dataclass(frozen=True)
 class _Keypad:
-    """How a keypad sends, with the panel's defaults filled in the way renderKeypad fills them."""
+    """How a keypad sends, with the panel's defaults filled in the way the panel's keypad fills them."""
 
     el_id: str
     phone: bool

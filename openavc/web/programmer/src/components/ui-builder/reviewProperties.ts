@@ -167,7 +167,7 @@ export function propertyFindings(el: UIElement): ReviewFinding[] {
 }
 
 /**
- * The keypad's defaults, as panel.js renderKeypad reads them. The delay is also
+ * The keypad's defaults, as the panel's keypad (modules/keypad.js) reads them. The delay is also
  * the review's threshold: nobody has measured how long a person takes between
  * two keys on a panel, so the one number with a claim to it is the default.
  * Hand-mirrored from page_review.py; the keypad's own properties show the same
@@ -176,7 +176,7 @@ export function propertyFindings(el: UIElement): ReviewFinding[] {
 export const KEYPAD_DIGITS_DEFAULT = 4;
 export const KEYPAD_SEND_DELAY_DEFAULT_MS = 1500;
 
-/** How a keypad sends, with the panel's defaults filled in the way renderKeypad fills them. */
+/** How a keypad sends, with the panel's defaults filled in the way the panel's keypad fills them. */
 interface Keypad {
   id: string;
   /** The Phone style, which has no Enter key. */

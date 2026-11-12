@@ -99,8 +99,9 @@ export class GaugeControl {
 
     /** The colour of the first zone a value falls in, else the gauge's own. */
     _colourAt(value) {
-        if (!this.zones || !this.zones.length) return this.colour;
-        for (const z of this.zones) {
+        const zones = this.zones;
+        if (!zones || !zones.length) return this.colour;
+        for (const z of zones) {
             if (value >= z.from && value <= z.to) return z.color;
         }
         return this.colour;
