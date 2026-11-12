@@ -115,7 +115,7 @@ def test_editor_routes_test_send_through_resolver() -> None:
     source = ACTION_LIST_TSX.read_text(encoding="utf-8")
     assert "resolveTestParams(" in source
     assert "testBlockedMessage(" in source
-    assert "sendCommand(String(action.device), String(action.command), result.params)" in source
+    assert "sendCommand(String(action.device), String(action.command), result.params, saved)" in source
 
 
 def test_no_binding_editor_sends_unresolved_params() -> None:
