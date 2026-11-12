@@ -15,6 +15,10 @@ these are the other doors that dial a device:
 - the AI's ``test_driver_command`` (``cloud/tools/driver_tools.py``), which
   sends raw text to an address: a held port is refused, naming the device.
 
+A device connected to the simulator holds nothing at its own address, so
+every door dials that address (``DeviceManager.network_connections``); Test
+Connection still answers the simulated device itself from its connection.
+
 The device is an invented Acme Widget whose driver really connects, through
 a real ``DeviceManager``, to a loopback port that counts the connections it
 accepts and keeps them open, the way a single-session display would.
@@ -418,5 +422,91 @@ class TestRawCommand:
         # The loopback port never answers, so the send times out; it was dialed.
         assert free.accepted == 1
         assert held.accepted == 1
+        assert result["error"] == "Timeout waiting for response"
+        assert "in_use_by" not in result
+
+
+# ---------------------------------------------------------------------------
+# A simulated device holds nothing at its own address
+# ---------------------------------------------------------------------------
+
+
+async def _simulated(manager: DeviceManager, simulator: int, equipment: int) -> None:
+    """Lobby Widget as a running simulation leaves it: its driver connected to
+    the simulator's port, its record naming the equipment's own address, and
+    the manager told it is redirected (``Engine`` wires that to the
+    simulation)."""
+    await _connect(manager, _device("lobby_widget", "Lobby Widget", simulator))
+    manager._device_configs["lobby_widget"]["config"] = {"host": HOST, "port": equipment}
+    manager.redirected_to_simulator = lambda device_id: device_id == "lobby_widget"
+
+
+class TestASimulatedDevice:
+    """Someone checking real equipment while the space runs in simulation, at
+    an address a simulated device also names: every door dials it."""
+
+    async def test_test_connection_dials_the_address(self, manager):
+        async with _Port() as simulator, _Port() as equipment:
+            await _simulated(manager, simulator.port, equipment.port)
+            spare = DeviceConfig(
+                id="spare_widget", driver="acme_widget", name="Spare Widget",
+                enabled=False, config={"host": HOST, "port": equipment.port},
+            )
+            lobby = _device("lobby_widget", "Lobby Widget", equipment.port)
+
+            result = await run_connection_test(spare, _engine(manager, lobby, spare))
+            await _settle()
+
+        assert equipment.accepted == 1
+        assert result["success"] is True
+        assert "in_use_by" not in result
+
+    async def test_the_simulated_device_itself_is_still_answered_from_its_connection(
+        self, manager,
+    ):
+        async with _Port() as simulator, _Port() as equipment:
+            await _simulated(manager, simulator.port, equipment.port)
+            lobby = _device("lobby_widget", "Lobby Widget", equipment.port)
+
+            result = await run_connection_test(lobby, _engine(manager, lobby))
+            await _settle()
+
+        assert simulator.accepted == 1
+        assert equipment.accepted == 0
+        assert result["in_use_by"] == "Lobby Widget"
+
+    async def test_tcp_check_dials_the_address(self, manager):
+        async with _Port() as simulator, _Port() as equipment:
+            await _simulated(manager, simulator.port, equipment.port)
+
+            result = await _diagnostic(manager, "tcp_check", HOST, {"port": equipment.port})
+            await _settle()
+
+        assert equipment.accepted == 1
+        assert result == {"open": True, "host": HOST, "port": equipment.port}
+
+    async def test_port_scan_dials_the_address(self, manager):
+        async with _Port() as simulator, _Port() as equipment:
+            await _simulated(manager, simulator.port, equipment.port)
+
+            result = await _diagnostic(manager, "port_scan", HOST, {"ports": [equipment.port]})
+            await _settle()
+
+        assert equipment.accepted == 1
+        assert result == {"host": HOST, "scanned": 1, "open": [equipment.port]}
+
+    async def test_the_raw_command_is_sent(self, manager):
+        async with _Port() as simulator, _Port() as equipment:
+            await _simulated(manager, simulator.port, equipment.port)
+            tools = DriverToolsMixin()
+            tools._get_engine = lambda: _engine(manager)
+
+            result = await tools._test_driver_command({
+                "host": HOST, "port": equipment.port, "command_string": "PWR?", "timeout": 1,
+            })
+            await _settle()
+
+        # The loopback port never answers, so the send times out; it was dialed.
+        assert equipment.accepted == 1
         assert result["error"] == "Timeout waiting for response"
         assert "in_use_by" not in result

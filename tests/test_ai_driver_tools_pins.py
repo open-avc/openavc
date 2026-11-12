@@ -653,8 +653,11 @@ async def test_raw_command_needs_a_host_and_text(tcp, sent):
 
 
 class _Devices:
-    def __init__(self, live: Any) -> None:
-        self.live_connections = live
+    """A device manager whose ``network_connections`` (the ports held on the
+    network, which the raw command asks) is ``connections``."""
+
+    def __init__(self, connections: Any) -> None:
+        self.network_connections = connections
 
 
 class _Engine:

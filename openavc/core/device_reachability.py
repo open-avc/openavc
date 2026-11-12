@@ -25,14 +25,16 @@ mean the device there speaks the driver's protocol: whether it answers is the
 device's ``connected`` and ``offline_reason`` state.
 
 A test that would open a connection never opens one to a port a connected
-project device's driver holds (``DeviceManager.live_connections``, looked up
-by address through ``discovery/port_guard.held_ports``, the list a Discovery
+project device's driver holds (``DeviceManager.network_connections``, looked
+up by address through ``discovery/port_guard.held_ports``, the list a Discovery
 scan leaves alone). Many displays and projectors serve one control connection
 at a time and give the port to the newest, so a test of a working device would
 take it from its own driver. A device that is connected is answered from that
-connection: success, no latency, ``in_use_by`` naming it and a ``note``. A port
-another project device holds (the bridge an IR device sends through, say) is
-answered the same way, naming that device. UDP and serial tests run as before:
+connection (``live_connections``, which keeps a simulated device too): success,
+no latency, ``in_use_by`` naming it and a ``note``. A port another project
+device holds (the bridge an IR device sends through, say) is answered the same
+way, naming that device; a device connected to the simulator holds nothing at
+its own address, so that address is dialed. UDP and serial tests run as before:
 pointing a UDP socket sends nothing, and the list holds no serial port.
 
 A failure the operating system reports (host down, refused, no route) is
@@ -105,13 +107,13 @@ async def run_connection_test(device: Any, engine: Any) -> dict[str, Any]:
     and nothing is dialed; neither is a port another connected device holds.
     """
     resolved = resolve_device_config(device, engine.project)
-    live = _live_connections(engine)
+    live = _connections(engine, "live_connections")
     own = next((c for c in live if c.device_id == device.id), None)
     simulation = getattr(engine, "simulation", None)
     redirect = simulation.redirect_of(device.id) if simulation is not None else None
     if own is not None and _opens_connection(resolved):
         return _connected_now(own, resolved, redirect)
-    held, _unresolved = await held_ports(live)
+    held, _unresolved = await held_ports(_connections(engine, "network_connections"))
     if not redirect:
         return await check_reachability(resolved, engine.project, held=held)
     simulated = {**resolved, "config": {**(resolved.get("config") or {}), **redirect}}
@@ -126,15 +128,17 @@ async def run_connection_test(device: Any, engine: Any) -> dict[str, Any]:
     return result
 
 
-def _live_connections(engine: Any) -> list[Any]:
-    """Where each connected project device's driver is connected now, or
-    nothing when the engine has no device manager to ask."""
+def _connections(engine: Any, which: str) -> list[Any]:
+    """The device manager's ``live_connections`` (every connected project
+    device, a simulated one too) or ``network_connections`` (those holding a
+    port on the network), or nothing when the engine has no device manager
+    to ask."""
     devices = getattr(engine, "devices", None)
-    live = getattr(devices, "live_connections", None)
-    if live is None:
+    read = getattr(devices, which, None)
+    if read is None:
         return []
     try:
-        return list(live())
+        return list(read())
     except Exception:
         log.exception("Could not read the project's connected devices")
         return []

@@ -315,7 +315,8 @@ class DriverToolsMixin:
     async def _raw_port_holder(self, host: str, port: Any) -> str | None:
         """The connected project device whose driver holds ``host:port``, or
         None. The same list a Discovery scan and Test Connection leave alone
-        (``port_guard.held_ports`` over ``DeviceManager.live_connections``)."""
+        (``port_guard.held_ports`` over ``DeviceManager.network_connections``:
+        a device connected to the simulator holds nothing at its own address)."""
         from openavc.discovery.network_scanner import resolve_address
         from openavc.discovery.port_guard import held_ports
 
@@ -324,11 +325,11 @@ class DriverToolsMixin:
         except (TypeError, ValueError):
             return None
         engine = self._get_engine()
-        live = getattr(getattr(engine, "devices", None), "live_connections", None)
-        if live is None:
+        connections = getattr(getattr(engine, "devices", None), "network_connections", None)
+        if connections is None:
             return None
         try:
-            held, _unresolved = await held_ports(live())
+            held, _unresolved = await held_ports(connections())
         except Exception:
             get_logger(__name__).exception("Could not read the project's connected devices")
             return None

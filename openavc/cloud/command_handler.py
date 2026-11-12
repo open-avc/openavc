@@ -329,14 +329,16 @@ class CommandHandler:
         """The ports connected project devices' drivers hold, which
         ``tcp_check`` and ``port_scan`` report as in use without connecting
         (``discovery/port_guard.py``): a device that serves one connection at
-        a time gives its port to the newest one."""
+        a time gives its port to the newest one. A device connected to the
+        simulator holds nothing at its own address
+        (``DeviceManager.network_connections``)."""
         from openavc.discovery.port_guard import PortGuard, held_ports
 
-        live = getattr(self._devices, "live_connections", None)
-        if live is None:
+        connections = getattr(self._devices, "network_connections", None)
+        if connections is None:
             return PortGuard()
         try:
-            held, _unresolved = await held_ports(live())
+            held, _unresolved = await held_ports(connections())
         except Exception:
             log.exception("Could not read the project's connected devices")
             return PortGuard()
