@@ -121,7 +121,7 @@ def _path_and_query(request: Request) -> str:
     """The path and query the client asked for, read from the scope.
 
     Never from ``request.url``: Starlette rebuilds that from the Host header,
-    and a release before 0.47 keeps a path written there, so
+    and a release before 1.1 keeps a path written there, so
     ``Host: evil.example/steal`` would put ``/steal`` in front of the path.
     """
     suffix = request.scope.get("path") or "/"

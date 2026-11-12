@@ -619,7 +619,7 @@ def test_a_host_header_carrying_a_path_falls_back_to_the_server_address():
 
 def test_the_target_never_comes_from_starlettes_request_url(monkeypatch):
     """Starlette rebuilds the request URL from the Host header, and a release
-    before 0.47 keeps a path written there: ``Host: evil.example/steal`` reads
+    before 1.1 keeps a path written there: ``Host: evil.example/steal`` reads
     as host evil.example and path /steal/x. Which Starlette is installed is not
     pinned, so the redirect reads the host fallback, the path and the query
     from the request itself."""
