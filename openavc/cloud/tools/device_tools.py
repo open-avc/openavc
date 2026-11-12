@@ -174,15 +174,21 @@ def _settle_required_fields(
 def _still_blank(engine: Any, device_id: str) -> dict[str, Any]:
     """The required fields the device still leaves blank after a saved edit
     (an older device saved before its driver required them), and what to do
-    about them. Empty otherwise."""
+    about them. Empty otherwise. A login is never among them: it is entered on
+    the device's page, never sent in config (see "device logins" above)."""
     project = getattr(engine, "project", None)
     device = next((d for d in getattr(project, "devices", None) or [] if d.id == device_id), None)
     if device is None:
         return {}
-    missing = missing_for_driver(
-        device.driver,
-        merged_device_config(device.driver, device.config, project.connections.get(device_id, {})),
-    )
+    logins = login_fields(device.driver)
+    missing = [
+        (key, label)
+        for key, label in missing_for_driver(
+            device.driver,
+            merged_device_config(device.driver, device.config, project.connections.get(device_id, {})),
+        )
+        if key not in logins
+    ]
     if not missing:
         return {}
     one = len(missing) == 1

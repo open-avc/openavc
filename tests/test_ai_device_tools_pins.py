@@ -861,6 +861,22 @@ async def test_update_device_onto_a_driver_needing_a_login_leaves_it_waiting_in_
     assert "password" not in _device(on_disk, "dev2").config
 
 
+async def test_a_rename_never_asks_the_assistant_for_a_login(setup):
+    """A login the driver requires and nobody entered is the device page's to
+    ask for; the answer never tells the assistant to send it in config."""
+    handler, engine = setup
+    register_driver(_AcmeLocked)
+    try:
+        # Saved before its driver required a password: an older device.
+        engine.project.devices.append(DeviceConfig(id="lock3", driver="acme_locked", name="Lock 3", config={}))
+        save_project(str(engine.project_path), engine.project)
+        answer = await handler._update_device({"device_id": "lock3", "name": "Lock Three"})
+    finally:
+        unregister_driver("acme_locked")
+
+    assert answer == {"status": "updated", "device_id": "lock3"}
+
+
 async def test_update_device_settings_on_an_older_device_needing_a_login_leave_it_waiting(setup):
     handler, engine = setup
     register_driver(_AcmeLocked)
