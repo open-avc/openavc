@@ -168,6 +168,15 @@ def _is_query_line(line: Any, commands: dict[str, Any]) -> bool:
     return line not in commands
 
 
+def read_back_query_lines(cmd_def: dict[str, Any], commands: dict[str, Any]) -> Iterator[str]:
+    """A command's ``read_back`` entries that are queries of their own, as
+    written, in order: text, not the name of one of ``commands`` (``true``
+    and a command's name send what the simulator answers already)."""
+    for line in _read_back_lines(cmd_def):
+        if _is_query_line(line, commands):
+            yield line
+
+
 def _fills_one_child_id(used: list[str], pdef: Any) -> bool:
     """A line whose every placeholder is the same ``child_id`` parameter."""
     return len(set(used)) == 1 and isinstance(pdef, dict) and pdef.get("type") == "child_id"
@@ -229,9 +238,8 @@ def _command_read_backs(cmd_def: dict[str, Any], scope: _ReadBackScope) -> Itera
         params=_dict_or_empty(cmd_def.get("params")),
         set_vars=list(sets) if isinstance(sets, dict) else [],
     )
-    for line in _read_back_lines(cmd_def):
-        query = _is_query_line(line, scope.commands)
-        entry = _read_back_entry(line, command, scope) if query else None
+    for line in read_back_query_lines(cmd_def, scope.commands):
+        entry = _read_back_entry(line, command, scope)
         if entry is not None:
             yield entry
 

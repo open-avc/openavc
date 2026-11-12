@@ -82,7 +82,11 @@ from openavc.simulator.reply_reading import (
     compile_response_patterns,
     frame_delimiter,
 )
-from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
+from openavc.simulator.reread_queries import (
+    follow_up_queries,
+    read_back_queries,
+    read_back_query_lines,
+)
 from openavc.simulator.send_templates import is_passthrough_send, send_regex
 from openavc.drivers.spec import PLACEHOLDER, PUSH_TYPE_KEYS
 
@@ -1211,11 +1215,7 @@ def _check_osc_read_back_coverage(
     for cmd_def in (commands or {}).values():
         if not isinstance(cmd_def, dict):
             continue
-        raw = cmd_def.get("read_back")
-        lines = [raw] if isinstance(raw, str) else raw if isinstance(raw, list) else []
-        for line in lines:
-            if not isinstance(line, str) or not line or line in commands:
-                continue
+        for line in read_back_query_lines(cmd_def, commands):
             sample = _substitute_config(line, config)
             sample = PLACEHOLDER.sub("1", sample)
             if not _osc_address_covered(sample, patterns):
