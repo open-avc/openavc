@@ -244,6 +244,7 @@ function levelReadings(m, key) {
     m.set('device.d.connected', true); m.look();
     m.set(key, undefined); m.look();
     m.set(key, '55'); m.look();
+    for (const value of [true, false, '', 'abc', 42]) { m.set(key, value); m.look(); }
 }
 
 /** One pin case: mounted, taken through the readings, then `gestures`; a throw is pinned as its last step. */
@@ -6577,6 +6578,9 @@ const tests = {
             [S('rate_text', { send_throttle_ms: '30' }), LIVE_WITH_READING],
             [S('backwards', { min: 100, max: 0, style: { show_value: true } }), LIVE_WITH_READING],
             [S('flat', { min: 5, max: 5, style: { show_value: true } }), LIVE_WITH_READING],
+            [S('flat_log_overflow', {
+                min: 5, max: 5, response: 'logarithmic', response_db_range: 10000, style: { show_value: true },
+            }), LIVE_WITH_READING],
             [S('text_range', { min: '10', max: '20', style: { show_value: true } }), LIVE_WITH_READING],
             [S('decimals_text', { display_decimals: '3', unit: '%', style: { show_value: true } }), LIVE_WITH_READING],
             [S('unbound', { bindings: {}, style: { show_value: true } }), LIVE_WITH_READING],
@@ -6602,6 +6606,8 @@ const tests = {
                 put(steps * 0.25, 'input'); m.look(); advance(10);
                 put(steps * 0.5, 'input'); m.look(); advance(10);
                 m.set(LEVEL_KEY, 10); m.look();
+                m.set('device.d.connected', false); m.look();
+                m.set('device.d.connected', true); m.look();
                 put(steps * 0.75, 'input'); m.look();
                 advance(500); m.look();
                 put(steps * 0.75, 'change');
@@ -6741,6 +6747,11 @@ const tests = {
                 advance(1000); m.look();
                 for (let i = 0; i < 300; i++) key('ArrowDown');
                 advance(1000); m.look();
+                // The device going away and back while the handle is held draws nothing under the finger.
+                mouse(wrap, 'mousedown', 80, 50); m.look();
+                m.set('device.d.connected', false); m.look();
+                m.set('device.d.connected', true); m.look();
+                mouse(document, 'mouseup', 80, 50); m.look();
                 // A drag on a device that has gone away puts the readout back to unknown.
                 m.set('device.d.connected', false);
                 mouse(wrap, 'mousedown', 100, 60); mouse(document, 'mouseup', 100, 60); m.look();
@@ -6749,6 +6760,9 @@ const tests = {
                 mouse(wrap, 'mousedown', 150, 40);
                 m.app.renderCurrentPage();
                 mouse(document, 'mousemove', 30, 30); mouse(document, 'mouseup', 30, 30);
+                m.steps.push({ s: m.sent.splice(0).map(frameLine) });
+                // A page redrawn with no drag in progress sends nothing.
+                m.app.renderCurrentPage();
                 m.steps.push({ s: m.sent.splice(0).map(frameLine) });
             }));
         }
