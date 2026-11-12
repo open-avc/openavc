@@ -129,6 +129,7 @@ YAML_CASES: dict[str, dict] = {
     "types_float_given_list": _seeded({"type": "float"}, [1]),
     "types_string_given_int": _seeded({"type": "string"}, 7),
     "types_type_missing_given_int": _seeded({"label": "V"}, 7),
+    "types_type_missing_given_text": _seeded({"label": "V"}, "x"),
     "types_enum_value_listed": _seeded({"type": "enum", "values": ["a", "b"]}, "b"),
     "types_enum_value_unlisted": _seeded({"type": "enum", "values": ["a", "b"]}, "c"),
     "types_enum_value_listed_as_text": _seeded({"type": "enum", "values": [1, 2]}, "2"),
@@ -351,6 +352,12 @@ PYTHON_CASES: dict[str, tuple[str, str | None]] = {
     "sim_info_annotated_without_value": _raw(
         _GOOD_DRIVER, "class S:\n    SIMULATOR_INFO: dict\n",
     ),
+    "sim_info_annotated_then_assigned": _raw(
+        _GOOD_DRIVER,
+        "class S:\n    SIMULATOR_INFO: dict\n    SIMULATOR_INFO = {'driver_id': 'acme_widget',"
+        " 'name': 'S', 'initial_state': {'power': False, 'level': 0}}\n"
+        "    def h(self):\n        return 'power_on set_level'\n",
+    ),
     "sim_info_chained_assignment": _raw(
         _GOOD_DRIVER,
         "class S:\n    INFO = SIMULATOR_INFO = {'driver_id': 'acme_widget', 'name': 'S',"
@@ -459,6 +466,10 @@ PYTHON_CASES: dict[str, tuple[str, str | None]] = {
     "commands_none_mentioned": _pair(body="    pass\n"),
     "commands_prefix_is_not_a_mention": _pair(
         {"commands": {"power": {}, "power_on": {}}},
+        body="    def h(self):\n        return 'power_on'\n",
+    ),
+    "commands_name_after_an_underscore": _pair(
+        {"commands": {"on": {}, "power_on": {}}},
         body="    def h(self):\n        return 'power_on'\n",
     ),
     "commands_inside_a_dotted_name": _pair(
@@ -1027,6 +1038,7 @@ YAML_EXPECTED: dict = {'bool_ref_after_the_seed_types': [('info',
                                       'back.')],
  'types_string_given_int': [],
  'types_type_missing_given_int': [],
+ 'types_type_missing_given_text': [],
  'types_unknown_type': [],
  'types_variable_name_a_number': [],
  'types_variable_not_a_mapping': []}
@@ -1104,6 +1116,15 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                         'dispatches on raw protocol bytes will never mention them, '
                                         'so this is only worth checking when the simulator does '
                                         'dispatch by name.')]},
+ 'commands_name_after_an_underscore': {'driver_id': 'acme_widget',
+                                       'issues': [('info',
+                                                   'command_coverage',
+                                                   '1 of 2 DRIVER_INFO command name(s) do not '
+                                                   "appear in the simulator source: 'on'. A "
+                                                   'simulator that dispatches on raw protocol '
+                                                   'bytes will never mention them, so this is only '
+                                                   'worth checking when the simulator does '
+                                                   'dispatch by name.')]},
  'commands_none_mentioned': {'driver_id': 'acme_widget',
                              'issues': [('info',
                                          'command_coverage',
@@ -1263,6 +1284,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                        'simulator_info',
                                        "SIMULATOR_INFO missing required field: 'name'")]},
  'sim_info_annotated': {'driver_id': 'acme_widget', 'issues': []},
+ 'sim_info_annotated_then_assigned': {'driver_id': 'acme_widget', 'issues': []},
  'sim_info_annotated_without_value': {'driver_id': 'acme_widget',
                                       'issues': [('error',
                                                   'simulator_info',
