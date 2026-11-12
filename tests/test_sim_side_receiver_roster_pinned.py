@@ -593,3 +593,21 @@ def test_project_children_rebuild_the_per_child_reads_for_the_new_roster():
         ("output", "4", "route")
     ]
     assert sim.handle_command(b"ROUTE? 4\r") == b"ROUTE 4 0\r"
+
+
+def test_a_count_key_makes_a_counted_roster_even_when_only_the_device_could_count_it():
+    """``count_from_state`` alone is a counted roster the simulated device
+    cannot size, so an ``ids_from`` beside it is never read."""
+    sim = _roster_sim(
+        _output({"count_from_state": "outputs", "ids_from": "names"}), {"names": "a,b"},
+    )
+    assert "output" not in sim._child_roster
+
+
+def test_a_padded_project_id_of_zero_is_the_wire_id_zero():
+    """Local id 0 is a real id: ``000`` joins as ``0``, not as its padded
+    text."""
+    sim = _roster_sim(_typed({"type": "integer", "pad": 3}))
+    sim.set_child_entities({"output": {"000": {}, "007": {}}})
+    assert sim._child_roster["output"] == ["0", "7"]
+    assert "output.0.route" in sim._state and "output.000.route" not in sim._state
