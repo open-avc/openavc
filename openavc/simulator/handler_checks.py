@@ -9,8 +9,10 @@ one a template, whose ``respond:`` and ``set_state:`` text
 value the device holds). An entry whose pattern or code does not compile is
 skipped, with only a line in the simulator's log.
 
-Two passes over the entries, all of the first before any of the second:
-whether each ``handler:`` compiles (``check_handler_code``), then each
+Three passes over the entries, all of one before any of the next: a
+``{state.X}`` naming a boolean in a ``respond:`` template, which the simulator
+fills as Python's ``True`` (``check_boolean_refs``, run with the type checks);
+whether each ``handler:`` compiles (``check_handler_code``); then each
 template's surface (``check_templates``): whether it can fire, its
 ``set_state:`` targets, and the placeholders its text names.
 
@@ -40,11 +42,39 @@ from openavc.simulator.validation_result import ValidationResult
 
 #: A ``{state.key}`` reference in a template's text, as this validator reads
 #: one (word characters only; not ``template_handler.STATE_REF``, the
-#: simulator's, which takes any key without a brace). The type check's boolean
-#: rule in ``validate`` reads with it too.
+#: simulator's, which takes any key without a brace). ``check_boolean_refs``
+#: and ``check_templates`` both read with it.
 STATE_REF = re.compile(r"\{state\.(\w+)\}")
 #: A ``{N}`` capture group reference in a template's text.
 _CAPTURE_REF = re.compile(r"\{(\d+)\}")
+
+
+def check_boolean_refs(result: ValidationResult, sim_handlers: list, state_vars: dict) -> None:
+    """Each ``{state.X}`` in a ``respond:`` template that names a boolean
+    variable: the simulator fills it with ``str()`` of the value, so the
+    driver reads ``True`` / ``False``, never ``true`` / ``false``. Reported
+    under ``type_consistency``, in template order."""
+    for respond in _respond_texts(sim_handlers):
+        for match in STATE_REF.finditer(respond):
+            ref_name = match.group(1)
+            if ref_name in state_vars and state_vars[ref_name].get("type") == "boolean":
+                result.error(
+                    "type_consistency",
+                    f"Handler uses {{state.{ref_name}}} in respond: template, "
+                    f"but '{ref_name}' is boolean. Python's str(True) produces "
+                    f"'True' not 'true'. Use a script handler with "
+                    f"str(state[\"{ref_name}\"]).lower() instead."
+                )
+
+
+def _respond_texts(sim_handlers: list):
+    """Each entry's ``respond:`` text, the entries that are mappings and
+    respond with something."""
+    for handler_def in sim_handlers:
+        if isinstance(handler_def, dict):
+            respond = handler_def.get("respond", "")
+            if respond:
+                yield respond
 
 
 def check_handler_code(result: ValidationResult, sim_handlers: list) -> None:

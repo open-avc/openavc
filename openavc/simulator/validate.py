@@ -69,7 +69,11 @@ import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
 from openavc.simulator.control_checks import check_controls
-from openavc.simulator.handler_checks import STATE_REF, check_handler_code, check_templates
+from openavc.simulator.handler_checks import (
+    check_boolean_refs,
+    check_handler_code,
+    check_templates,
+)
 from openavc.simulator.settings_checks import check_declared_settings, check_initial_state_types
 from openavc.simulator.osc_coverage import (
     OscAddresses,
@@ -147,8 +151,9 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
         # ── Check 4b: every reply ends where the driver splits the stream ──
         _check_reply_framing(result, commands, queries, driver_def)
 
-    # ── Check 5: Type consistency ──
-    _check_type_consistency(result, state_vars, sim_initial, sim_handlers)
+    # ── Check 5: Type consistency: each seed, then a boolean in a respond: ──
+    check_initial_state_types(result, state_vars, sim_initial)
+    check_boolean_refs(result, sim_handlers, state_vars)
 
     # ── Check 6: State machine structure ──
     check_state_machines(result, sim, commands)
@@ -495,45 +500,6 @@ def _report_acknowledgements(result: ValidationResult, acknowledgements: list[st
         f"{shown}. A polled query whose answer nothing parses warns "
         f"instead."
     )
-
-
-def _check_type_consistency(
-    result: ValidationResult,
-    state_vars: dict,
-    sim_initial: dict,
-    sim_handlers: list,
-) -> None:
-    """Check for common type consistency issues.
-
-    One implementation for both driver formats. There used to be two — this
-    one for YAML and a second inside the Python path — and they had drifted:
-    the Python copy checked ``boolean`` and ``enum`` only, so a string sitting
-    in an ``integer`` state variable went unreported for every Python driver
-    while the same mistake was caught in a YAML one. Neither copy covered
-    ``number`` or ``float``, which are both declarable types.
-    """
-    check_initial_state_types(result, state_vars, sim_initial)
-
-    # Check for boolean state refs in respond: templates that might produce
-    # capitalized Python booleans (True/False instead of true/false)
-    for handler_def in sim_handlers:
-        if not isinstance(handler_def, dict):
-            continue
-        respond = handler_def.get("respond", "")
-        if not respond:
-            continue
-        # Find {state.X} references where X is a boolean variable
-        for match in STATE_REF.finditer(respond):
-            ref_name = match.group(1)
-            if ref_name in state_vars:
-                if state_vars[ref_name].get("type") == "boolean":
-                    result.error(
-                        "type_consistency",
-                        f"Handler uses {{state.{ref_name}}} in respond: template, "
-                        f"but '{ref_name}' is boolean. Python's str(True) produces "
-                        f"'True' not 'true'. Use a script handler with "
-                        f"str(state[\"{ref_name}\"]).lower() instead."
-                    )
 
 
 # Transports the simulator serves with a server of its own — one module each
