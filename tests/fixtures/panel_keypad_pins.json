@@ -1,5 +1,263 @@
 {
   "keypad": {
+    "7": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "7",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-display",
+          "r.1@": "div class",
+          "r.1@class": "keypad-grid",
+          "r.1.0@": "button type class aria-label",
+          "r.1.0@type": "button",
+          "r.1.0@class": "keypad-key",
+          "r.1.0@aria-label": "Key 1",
+          "r.1.0#": "1",
+          "r.1.1@": "button type class aria-label",
+          "r.1.1@type": "button",
+          "r.1.1@class": "keypad-key",
+          "r.1.1@aria-label": "Key 2",
+          "r.1.1#": "2",
+          "r.1.2@": "button type class aria-label",
+          "r.1.2@type": "button",
+          "r.1.2@class": "keypad-key",
+          "r.1.2@aria-label": "Key 3",
+          "r.1.2#": "3",
+          "r.1.3@": "button type class aria-label",
+          "r.1.3@type": "button",
+          "r.1.3@class": "keypad-key",
+          "r.1.3@aria-label": "Key 4",
+          "r.1.3#": "4",
+          "r.1.4@": "button type class aria-label",
+          "r.1.4@type": "button",
+          "r.1.4@class": "keypad-key",
+          "r.1.4@aria-label": "Key 5",
+          "r.1.4#": "5",
+          "r.1.5@": "button type class aria-label",
+          "r.1.5@type": "button",
+          "r.1.5@class": "keypad-key",
+          "r.1.5@aria-label": "Key 6",
+          "r.1.5#": "6",
+          "r.1.6@": "button type class aria-label",
+          "r.1.6@type": "button",
+          "r.1.6@class": "keypad-key",
+          "r.1.6@aria-label": "Key 7",
+          "r.1.6#": "7",
+          "r.1.7@": "button type class aria-label",
+          "r.1.7@type": "button",
+          "r.1.7@class": "keypad-key",
+          "r.1.7@aria-label": "Key 8",
+          "r.1.7#": "8",
+          "r.1.8@": "button type class aria-label",
+          "r.1.8@type": "button",
+          "r.1.8@class": "keypad-key",
+          "r.1.8@aria-label": "Key 9",
+          "r.1.8#": "9",
+          "r.1.9@": "button type class aria-label",
+          "r.1.9@type": "button",
+          "r.1.9@class": "keypad-key keypad-clear",
+          "r.1.9@aria-label": "Clear",
+          "r.1.9#": "C",
+          "r.1.10@": "button type class aria-label",
+          "r.1.10@type": "button",
+          "r.1.10@class": "keypad-key",
+          "r.1.10@aria-label": "Key 0",
+          "r.1.10#": "0",
+          "r.1.11@": "button type class aria-label",
+          "r.1.11@type": "button",
+          "r.1.11@class": "keypad-key keypad-enter",
+          "r.1.11@aria-label": "Enter",
+          "r.1.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.1.11.0@viewBox": "0 0 24 24",
+          "r.1.11.0@fill": "none",
+          "r.1.11.0@stroke": "currentColor",
+          "r.1.11.0@stroke-width": "2",
+          "r.1.11.0@stroke-linecap": "round",
+          "r.1.11.0@stroke-linejoin": "round",
+          "r.1.11.0@style": "flex-shrink: 0;",
+          "r.1.11.0.0@": "use href href",
+          "r.1.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "123"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "1234"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": null
+        },
+        "s": [
+          "ui.submit 7 \"1234\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "89"
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "890"
+        }
+      },
+      {
+        "c": {
+          "r.0#": null
+        },
+        "s": [
+          "ui.submit 7 \"890\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "234"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "2345"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": "12"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {
+        "c": {
+          "r.0#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {
+        "c": {
+          "r.0#": "8"
+        }
+      },
+      {},
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {
+        "c": {
+          "r.0#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.0#": null
+        },
+        "s": [
+          "ui.submit 7 \"31\" {\"late\":true}"
+        ]
+      },
+      {}
+    ],
     "k_plain": [
       {
         "c": {
@@ -235,6 +493,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_plain \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_no_label": [
@@ -469,6 +751,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.0#": null
+        }
+      },
+      {
+        "c": {
+          "r.0#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.0#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.0#": null
+        },
+        "s": [
+          "ui.submit k_no_label \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_phone": [
@@ -614,6 +920,11 @@
           "r.1#": "2345"
         }
       },
+      {},
+      {},
+      {},
+      {},
+      {},
       {},
       {},
       {},
@@ -868,6 +1179,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_style_odd \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_masked": [
@@ -1105,6 +1440,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_masked \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_mask_truthy": [
@@ -1342,6 +1701,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_mask_truthy \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_no_display": [
@@ -1483,6 +1866,15 @@
       {},
       {},
       {},
+      {},
+      {},
+      {},
+      {},
+      {
+        "s": [
+          "ui.submit k_no_display \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_display_falsy": [
@@ -1720,6 +2112,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_display_falsy \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_auto": [
@@ -1991,7 +2407,27 @@
         "s": [
           "ui.submit k_auto \"8\""
         ]
-      }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto \"31\" {\"late\":true}"
+        ]
+      },
+      {}
     ],
     "k_auto_short": [
       {
@@ -2274,6 +2710,22 @@
           "ui.submit k_auto_short \"8\""
         ]
       },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_short \"31\" {\"late\":true}"
+        ]
+      },
+      {},
       {}
     ],
     "k_auto_phone": [
@@ -2538,6 +2990,26 @@
         },
         "s": [
           "ui.submit k_auto_phone \"78\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_phone \"31\" {\"late\":true}"
         ]
       }
     ],
@@ -2834,6 +3306,26 @@
           "ui.submit k_auto_zero_delay \"8\""
         ]
       },
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_zero_delay \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_auto_null": [
@@ -3071,6 +3563,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_null \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_digits_text": [
@@ -3300,6 +3816,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_digits_text \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_digits_zero": [
@@ -3388,6 +3928,11 @@
           "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
         }
       },
+      {},
+      {},
+      {},
+      {},
+      {},
       {},
       {},
       {},
@@ -3680,6 +4225,612 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "\u2022\u2022"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_digits_six \"31\" {\"late\":true}"
+        ]
+      },
+      {}
+    ],
+    "k_auto_digits_text": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_auto_digits_text",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_text \"123\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "4"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "45"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_text \"45\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_text \"89\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "0"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_text \"0\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_text \"234\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "5"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "56"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_text \"56\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_text \"12\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_text \"8\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_text \"31\" {\"late\":true}"
+        ]
+      },
+      {}
+    ],
+    "k_auto_digits_fraction": [
+      {
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "k_auto_digits_fraction",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 5%; top: 5%; width: 30%; height: 30%;",
+          "r.0@": "div class",
+          "r.0@class": "keypad-label",
+          "r.0#": "PIN",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_fraction \"123\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "4"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "45"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_fraction \"45\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "89"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_fraction \"89\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "0"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_fraction \"0\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "6"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "2"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "23"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_fraction \"234\""
+        ]
+      },
+      {
+        "c": {
+          "r.1#": "5"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "56"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_fraction \"56\""
+        ]
+      },
+      {},
+      {},
+      {},
+      {},
+      {
+        "c": {
+          "r.1#": "1"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "12"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_fraction \"12\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "7"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "8"
+        }
+      },
+      {},
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_fraction \"8\""
+        ]
+      },
+      {},
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_auto_digits_fraction \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_style": [
@@ -3917,6 +5068,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_style \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_themed": [
@@ -4154,6 +5329,30 @@
         }
       },
       {},
+      {},
+      {
+        "c": {
+          "r.1#": null
+        }
+      },
+      {
+        "c": {
+          "r.1#": "3"
+        }
+      },
+      {
+        "c": {
+          "r.1#": "31"
+        }
+      },
+      {
+        "c": {
+          "r.1#": null
+        },
+        "s": [
+          "ui.submit k_themed \"31\" {\"late\":true}"
+        ]
+      },
       {}
     ],
     "k_design": [
@@ -4244,6 +5443,11 @@
           "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
         }
       },
+      {},
+      {},
+      {},
+      {},
+      {},
       {},
       {},
       {},

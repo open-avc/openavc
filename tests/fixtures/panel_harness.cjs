@@ -7711,6 +7711,9 @@ function keypadPresses(m, advance) {
         // between them: only the last key's wait sends.
         press('Key 1'); wait(1000); press('Key 2'); wait(600); wait(1000);
         press('Clear'); press('Key 7'); wait(1000); press('Clear'); press('Key 8'); wait(600); wait(1000);
+        // The panel's send is the one in place when a key is pressed.
+        m.app.send = (frame) => m.sent.push({ ...frame, late: true });
+        press('Clear'); press('Key 3'); press('Key 1'); press('Enter'); wait(3000);
     } finally {
         window.removeEventListener('error', onError);
     }
@@ -7731,6 +7734,9 @@ Object.assign(tests, {
             [keypad('k_auto_null', { auto_send: null, digits: null, auto_send_delay_ms: null })],
             [keypad('k_digits_text', { digits: '3' })], [keypad('k_digits_zero', { digits: 0 })],
             [keypad('k_digits_six', { digits: 6, mask_display: true })],
+            [keypad('k_auto_digits_text', { auto_send: true, digits: '3' })],
+            [keypad('k_auto_digits_fraction', { auto_send: true, digits: 2.5 })],
+            [{ id: 7, type: 'keypad' }],
             [keypad('k_style', { style: { bg_color: '#101010', text_color: '#fafafa', font_size: 22 } })],
             [keypad('k_themed'), { before: (app) => { app.themeElementDefaults = { keypad: { bg_color: '#202020', border_radius: 9 } }; } }],
             [keypad('k_design', { auto_send: true }), { edit: true }],
