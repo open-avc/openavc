@@ -185,6 +185,12 @@ YAML_CASES: dict[str, dict] = {
         {"power": {"type": ["boolean"]}},
         {"command_handlers": [{"receive": "P\\?", "respond": "{state.power}"}]},
     ),
+    "bool_ref_untyped_variable": _yaml(
+        {"power": {"type": "boolean"}, "mode": {"label": "Mode"}},
+        {"initial_state": {"mode": "a"}, "command_handlers": [
+            {"receive": "M\\?", "respond": "{state.mode}"},
+        ]},
+    ),
     "bool_ref_unknown_name": _yaml(simulator={"command_handlers": [
         {"receive": "P\\?", "respond": "{state.nope}"},
     ]}),
@@ -589,6 +595,15 @@ CLI_CASES: dict[str, tuple[dict[str, str], list[str]]] = {
         {"acme_widget.avcdriver": _cli_yaml(commands={"power_on": {"labl": "x", "send": "P"}})},
         ["{tmp}/acme_widget.avcdriver"],
     ),
+    "one_python_failing_the_contract": (
+        {
+            "acme_widget.py": _driver_source({
+                **_DRIVER_INFO, "commands": {"power_on": {"labl": "Power On"}},
+            }),
+            "acme_widget_sim.py": _GOOD_SIM,
+        },
+        ["{tmp}/acme_widget.py"],
+    ),
     "one_python_pair": (
         {"acme_widget.py": _GOOD_DRIVER, "acme_widget_sim.py": _GOOD_SIM},
         ["{tmp}/acme_widget.py"],
@@ -667,6 +682,23 @@ def test_the_command_line_says_what_it_said(tmp_path, name, capsys):
     assert _cli(tmp_path, name, capsys) == CLI_EXPECTED[name]
 
 
+def test_a_driver_that_stops_the_run_stops_it_before_anything_prints(tmp_path, capsys):
+    """Every file is validated before any is printed, so a later driver whose
+    parity check raises (an initial_state written as a list of pairs, which
+    the contract check passes) ends the run with nothing on standard output,
+    the earlier driver's lines included."""
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "acme_widget.avcdriver").write_text(_cli_yaml(), encoding="utf-8")
+    (tmp_path / "b").mkdir()
+    (tmp_path / "b" / "acme_other.avcdriver").write_text(
+        _cli_yaml(id="acme_other", simulator={"initial_state": [["power", False]]}),
+        encoding="utf-8",
+    )
+    with pytest.raises(TypeError, match="unhashable type: 'list'"):
+        main([str(tmp_path)])
+    assert capsys.readouterr().out == ""
+
+
 def test_every_case_has_an_expectation():
     assert sorted(YAML_EXPECTED) == sorted(YAML_CASES)
     assert sorted(PYTHON_EXPECTED) == sorted(PYTHON_CASES)
@@ -739,6 +771,10 @@ YAML_EXPECTED: dict = {'bool_ref_after_the_seed_types': [('info',
                             'state_coverage',
                             "'power' will use auto-gen default False. Add to "
                             'simulator.initial_state to override.')],
+ 'bool_ref_untyped_variable': [('info',
+                                'state_coverage',
+                                "'power' will use auto-gen default False. Add to "
+                                'simulator.initial_state to override.')],
  'bool_ref_variable_not_a_mapping': ('raises',
                                      'AttributeError',
                                      "'str' object has no attribute 'get'"),
@@ -1630,6 +1666,16 @@ CLI_EXPECTED: dict = {'a_folder_of_drivers': {'code': 1,
                             '============================================================',
                             '1 drivers validated: 1 passed, 0 failed, 0 errors, 1 warnings, 1 '
                             'infos']},
+ 'one_python_failing_the_contract': {'code': 1,
+                                     'err': [],
+                                     'out': ['',
+                                             'FAIL: acme_widget [python] (<tmp>/acme_widget.py)',
+                                             '  ERROR [contract] commands.power_on: unknown key '
+                                             "'labl' (did you mean 'label'?)",
+                                             '',
+                                             '============================================================',
+                                             '1 drivers validated: 0 passed, 1 failed, 1 errors, 0 '
+                                             'warnings, 0 infos']},
  'one_python_pair': {'code': 0,
                      'err': [],
                      'out': ['',
