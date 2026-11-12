@@ -24,7 +24,7 @@ from typing import Any
 from openavc.simulator.validation_result import ValidationResult
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class _Control:
     """One declared control of a known type: what it says, where it sits,
     and the result its findings go to, each worded "<where> (<type>): ..."."""
@@ -64,6 +64,13 @@ class _ControlType:
     has_key: bool = True
     #: The type's own rules, after the required fields, label and key.
     own_rules: Callable[[_Control], None] | None = None
+    #: Whether its ``controls`` are controls of its own, each checked after it.
+    holds_controls: bool = False
+
+    def children(self, fields: dict) -> list:
+        """The controls this one holds, when it holds a list of them."""
+        children = fields.get("controls") if self.holds_controls else None
+        return children if isinstance(children, list) else []
 
 
 def _positive_integer(control: _Control, field: str) -> None:
@@ -132,13 +139,10 @@ def _presets(control: _Control) -> None:
         control.error("'names' must be a list")
 
 
-def _group_children(control: _Control) -> None:
-    """A group's controls, each checked as a control of its own."""
+def _group_controls(control: _Control) -> None:
+    """A group's controls are a list (each is checked after the group)."""
     children = control.fields.get("controls")
-    if isinstance(children, list):
-        for i, child in enumerate(children):
-            _check_control(control.result, child, f"{control.where}.controls[{i}]", control.known_keys)
-    elif children is not None:
+    if children is not None and not isinstance(children, list):
         control.error("'controls' must be a list")
 
 
@@ -150,7 +154,9 @@ _TYPES: dict[str, _ControlType] = {
     "matrix": _ControlType(("inputs", "outputs", "state_pattern"), has_key=False, own_rules=_matrix),
     "meters": _ControlType(("channels", "key_pattern"), has_key=False, own_rules=_meters),
     "presets": _ControlType(("key",), own_rules=_presets),
-    "group": _ControlType(("controls",), label_required=True, has_key=False, own_rules=_group_children),
+    "group": _ControlType(
+        ("controls",), label_required=True, has_key=False, own_rules=_group_controls, holds_controls=True,
+    ),
     "indicator": _ControlType(("key",), label_required=True),
 }
 
@@ -168,10 +174,16 @@ def check_controls(result: ValidationResult, sim: dict, known_keys: set[str]) ->
 
 
 def _check_control(result: ValidationResult, fields: Any, where: str, known_keys: set[str]) -> None:
-    """One control: a mapping of a known type, then its row's rules in order."""
+    """One control: a mapping of a known type, its row's rules in order, then
+    the controls it holds. Each level of a group is one call of this function
+    on the stack, so how deep a group can go before Python's recursion limit
+    stops the check is a property of this function alone."""
     kind = _control_type(result, fields, where)
-    if kind is not None:
-        _check_fields(_Control(result, fields, where, fields["type"], known_keys), kind)
+    if kind is None:
+        return
+    _check_fields(_Control(result, fields, where, fields["type"], known_keys), kind)
+    for i, child in enumerate(kind.children(fields)):
+        _check_control(result, child, f"{where}.controls[{i}]", known_keys)
 
 
 def _control_type(result: ValidationResult, fields: Any, where: str) -> _ControlType | None:
