@@ -274,6 +274,18 @@ CASES: dict[str, dict] = {
     "osc_malformed_poll_entries": _osc(polling={"queries": [7, None, {"send": 7}]}),
     "osc_malformed_handlers_not_a_list": _osc(simulator={"command_handlers": {"address": "/x"}}),
     "osc_malformed_default_config_list": _osc(default_config=["port"], commands={"m": {"address": "/a"}}),
+    "poll_sets_in_their_order": _with(
+        polling={"interval": 5, "queries": ["P?"]},
+        responses=[
+            {"match": "^CHANGED$", "then_query": ["T?"]},
+            {"match": "^PWR (\\d)$", "set": {"power": "$1"}},
+        ],
+        commands=_commands(power_off={"send": "PWR 0\\r\\n", "read_back": "R?"}),
+    ),
+    "first_matching_handler_answers": _handled(
+        [{"receive": "Q\\?", "respond": "UNREAD\r\n"}, {"receive": "Q.", "respond": "PWR 1\r\n"}],
+        polling={"interval": 5, "queries": ["Q?"]},
+    ),
     "read_back_unanswered": _with(commands=_commands(
         power_off={"send": "PWR 0\\r\\n", "read_back": "POWER?\\r\\n"},
     )),
@@ -320,6 +332,9 @@ CASES: dict[str, dict] = {
         commands={"plain": {"send": "x"}, "mute": {"address": "", "params": {}}},
     ),
     # ── OSC: poll coverage ──
+    "osc_poll_entry_without_send": _osc(
+        polling={"interval": 5, "queries": [{"address": "/x"}]},
+    ),
     "osc_poll_queries": _osc(
         commands={"mute": {"address": "/ch/1/mute", "params": {}}},
         responses=[{"address": "/ch/1/mute", "set": {"level": "$1"}}],
@@ -489,6 +504,16 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                    'reply_framing',
                                    '2 simulator replies checked, all terminated with '
                                    "'\\\\r\\\\n'.")],
+ 'first_matching_handler_answers': [('warning',
+                                     'response_parsing',
+                                     'Simulator answers a query this driver polls with a reply no '
+                                     "response rule matches: handler='Q\\\\?', response='UNREAD'. "
+                                     'Nothing reads that answer, so the state behind the query '
+                                     'never updates.'),
+                                    ('info',
+                                     'reply_framing',
+                                     '3 simulator replies checked, all terminated with '
+                                     "'\\\\r\\\\n'.")],
  'malformed_command_not_a_mapping': ('raises',
                                      'AttributeError',
                                      "'str' object has no attribute 'get'"),
@@ -563,6 +588,7 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                 ('error',
                                  'poll_coverage',
                                  "No simulator handler matches OSC polling query: '7'")],
+ 'osc_poll_entry_without_send': [],
  'osc_poll_queries': [('error',
                        'poll_coverage',
                        "No simulator handler matches OSC polling query: '/ch/2/mute'"),
@@ -757,6 +783,18 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                             'reply_framing',
                                             '2 simulator replies checked, all terminated with '
                                             "'\\\\r\\\\n'.")],
+ 'poll_sets_in_their_order': [('error',
+                               'poll_coverage',
+                               "No simulator handler matches polling query: 'P?'"),
+                              ('error',
+                               'poll_coverage',
+                               "No simulator handler matches then_query entry: 'T?'"),
+                              ('error',
+                               'poll_coverage',
+                               "No simulator handler matches read_back entry: 'R?'"),
+                              ('info',
+                               'reply_framing',
+                               "2 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
  'read_back_naming_a_command': [('info',
                                  'reply_framing',
                                  "3 simulator replies checked, all terminated with '\\\\r\\\\n'.")],
