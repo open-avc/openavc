@@ -328,7 +328,8 @@ def test_reload_reads_the_old_id_by_the_same_rule(tmp_path, isolated):
         cls.__module__ = module
         return cls
 
-    old.Imported = make("Imported", {"id": "pin_rl_elsewhere"}, "somewhere_else")
+    # sorts first by name, but is not defined in the module
+    old.Alien = make("Alien", {"id": "pin_rl_elsewhere"}, "somewhere_else")
     old.Zed = make("Zed", {"id": "pin_rl_old_z"}, "openavc_driver_pin_rl_old")
     old.Mid = make("Mid", {"id": ""}, "openavc_driver_pin_rl_old")
     old.Bee = make("Bee", {"id": "pin_rl_old_b"}, "openavc_driver_pin_rl_old")
@@ -704,3 +705,74 @@ def test_delete_moves_on_when_a_file_cannot_be_removed(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, "unlink", unlink)
     assert delete_driver_definition("pin_e", [tmp_path]) is False
     assert target.exists()
+
+
+def test_reload_whose_second_import_fails_puts_the_old_module_back(
+    tmp_path, isolated, monkeypatch
+):
+    path = tmp_path / "pin_rl_restore.py"
+    path.write_text(_driver("RestoreDriver", "pin_rl_restore"), encoding="utf-8")
+    assert load_python_drivers([tmp_path]) == 1
+    resident = sys.modules["openavc_driver_pin_rl_restore"]
+    registered = registry._DRIVER_REGISTRY["pin_rl_restore"]
+    monkeypatch.setattr(f"{RELOAD_HOME}.load_python_driver_file", lambda _p: None)
+    result = reload_python_driver(path)
+    assert result["status"] == "error" and result["old_driver_preserved"] is True
+    assert sys.modules["openavc_driver_pin_rl_restore"] is resident
+    assert registry._DRIVER_REGISTRY["pin_rl_restore"] is registered
+
+
+# --- the id a .py file declares, read without importing it ---------------------
+
+
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        # a class attribute
+        ("class A:\n    DRIVER_INFO = {'id': 'pin_cls'}\n", "pin_cls"),
+        # module level counts here
+        ("DRIVER_INFO = {'id': 'pin_mod'}\n", "pin_mod"),
+        # so does a function's local, and one of several names
+        ("def f():\n    DRIVER_INFO = {'id': 'pin_local'}\n", "pin_local"),
+        ("A = DRIVER_INFO = {'id': 'pin_chain'}\n", "pin_chain"),
+        # an annotated one does not
+        ("class A:\n    DRIVER_INFO: dict = {'id': 'pin_ann'}\n", None),
+        # an empty id reads as no id, and stops the search
+        (
+            "DRIVER_INFO = {'id': ''}\nclass A:\n    DRIVER_INFO = {'id': 'pin_later'}\n",
+            None,
+        ),
+        # a dict with no id is passed over for a later one
+        (
+            "DRIVER_INFO = {'name': 'x'}\nclass A:\n    DRIVER_INFO = {'id': 'pin_next'}\n",
+            "pin_next",
+        ),
+        # a non-text id is passed over for a later key in the same dict
+        ("DRIVER_INFO = {'id': 5, 'id': 'pin_text'}\n", "pin_text"),
+        # a computed dict or id is not read
+        ("DRIVER_INFO = dict(id='pin_call')\n", None),
+        ("ID = 'x'\nDRIVER_INFO = {'id': ID}\n", None),
+        # the first by walk order: the module's own statements before a class body
+        (
+            "class A:\n    DRIVER_INFO = {'id': 'pin_inner'}\nDRIVER_INFO = {'id': 'pin_outer'}\n",
+            "pin_outer",
+        ),
+        # no DRIVER_INFO at all
+        ("class A:\n    INFO = {'id': 'pin_other'}\n", None),
+    ],
+)
+def test_the_id_a_python_file_declares(tmp_path, source, expected):
+    from openavc.drivers.driver_loader import driver_id_from_file
+
+    path = tmp_path / "pin_declared.py"
+    path.write_text(source, encoding="utf-8")
+    assert driver_id_from_file(path) == expected
+
+
+def test_a_python_file_with_an_empty_id_is_the_driver_its_name_says(tmp_path):
+    from openavc.drivers.driver_loader import driver_files_for
+
+    (tmp_path / "pin_blank.py").write_text(
+        "class A:\n    DRIVER_INFO = {'id': ''}\n", encoding="utf-8"
+    )
+    assert driver_files_for(tmp_path, "pin_blank", ".py") == [tmp_path / "pin_blank.py"]
