@@ -23,6 +23,7 @@ import {
 import { ListControl, rowsFromState, showListSelection } from './modules/list.js';
 import { GaugeControl } from './modules/gauge.js';
 import { LevelMeterControl } from './modules/meter.js';
+import { ClockControl, ClockTicker } from './modules/clock.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
@@ -256,8 +257,7 @@ class PanelApp {
         });
         this.debounceTimers = [];    // Track all debounce timeouts for cleanup
         this._pluginMessageHandlers = new Set(); // Track all plugin iframe message handlers
-        this._clockElements = [];    // All clock update functions for batched interval
-        this._clockInterval = null;  // Single global clock interval
+        this._clocks = new ClockTicker();  // Every clock on screen, one interval; meeting starts outlive a redraw
         this._pendingBindingKeys = null; // Batched binding keys for rAF
         this._bindingRafId = null;       // requestAnimationFrame ID
         this.overlayStack = [];      // Stack of overlay page IDs (newest on top)
@@ -282,7 +282,6 @@ class PanelApp {
             showPageStatus: () => this._showPageStatus(),
             endHolds: () => this._endAllHolds(),
         });
-        this._meetingStartTimes = {};    // element_id -> meeting start Date (survives re-render)
         this.themeElementDefaults = {};
         // The variables the applied theme is actually drawing from, which is
         // not theme.variables: see _applyThemeData.
@@ -1213,16 +1212,9 @@ class PanelApp {
                 const eid = el.dataset.elementId;
                 if (eid) this._endHold(eid);
             });
-            // Clean up clock update closures for overlay elements. Clocks share
-            // a single global interval (this._clockInterval) and register their
-            // update fn in this._clockElements, so removing the element alone
-            // would leave a dead closure running every second forever.
-            overlayEl.querySelectorAll('.panel-clock').forEach(el => {
-                if (el._clockUpdate) {
-                    const idx = this._clockElements.indexOf(el._clockUpdate);
-                    if (idx !== -1) this._clockElements.splice(idx, 1);
-                }
-            });
+            // Its clocks stop: removing the element alone would leave the
+            // shared interval showing them every second forever.
+            this._clocks.releaseIn(overlayEl);
             // Remove window 'message' listeners registered by plugin iframes in
             // this overlay — otherwise each open/dismiss cycle leaks one stale
             // listener (retaining the removed iframe's closure).
@@ -1951,12 +1943,7 @@ class PanelApp {
         this.debounceTimers = [];
         endFaderDrags(this.root);
         endMatrixGestures(this.root);
-        // Clean up global clock interval
-        if (this._clockInterval) {
-            clearInterval(this._clockInterval);
-            this._clockInterval = null;
-        }
-        this._clockElements = [];
+        this._clocks.stop();
 
         // Page transition settings — disabled in edit mode so the designer isn't
         // fighting re-entry animations on every live-preview rebuild.
@@ -3319,180 +3306,13 @@ class PanelApp {
         el.className = 'panel-element panel-clock';
         el.dataset.elementId = element.id;
 
-        const display = document.createElement('div');
-        display.className = 'clock-display';
-        el.appendChild(display);
+        const clock = new ClockControl(element, (key) => this.state[key], this._clocks);
+        clock.mount(el);
 
         applyStyle(el, this.getThemedStyle(element.type, element.style));
 
-        const mode = element.clock_mode || 'time';
-        const defaultFormats = { time: 'h:mm A', date: 'MMM D, YYYY', datetime: 'MMM D, YYYY h:mm A', countdown: 'HH:mm:ss', elapsed: 'HH:mm:ss', meeting: 'mm:ss' };
-        // "12" / "24" are documented shorthands for 12- and 24-hour time, not
-        // literal token strings; map them before the token replacer runs.
-        const formatShortcuts = { '12': 'h:mm A', '24': 'HH:mm' };
-        const rawFormat = element.format || defaultFormats[mode] || 'h:mm A';
-        const format = formatShortcuts[rawFormat] || rawFormat;
-        const timezone = element.timezone || undefined;
-        const durationMin = element.duration_minutes || 60;
-
-        const updateClock = () => {
-            const now = new Date();
-            let text = '';
-
-            switch (mode) {
-                case 'time':
-                    text = this._formatDateTime(now, format, timezone);
-                    break;
-                case 'date':
-                    text = this._formatDateTime(now, format, timezone);
-                    break;
-                case 'datetime':
-                    text = this._formatDateTime(now, format, timezone);
-                    break;
-                case 'countdown': {
-                    // A live state key takes priority over a static target_time,
-                    // matching the builder help text. Both are validated as dates
-                    // so a non-ISO / garbage value renders the placeholder, not
-                    // NaN:NaN:NaN.
-                    const key = element.bindings?.show?.value?.key || element.start_key;
-                    const stateVal = key ? this.state[key] : null;
-                    const targetStr = (stateVal !== undefined && stateVal !== null && stateVal !== '')
-                        ? stateVal
-                        : element.target_time;
-                    const target = targetStr != null ? new Date(targetStr) : null;
-                    if (target && !isNaN(target.getTime())) {
-                        const diff = Math.max(0, target - now);
-                        text = this._formatDuration(diff);
-                    } else {
-                        text = '--:--:--';
-                    }
-                    break;
-                }
-                case 'elapsed': {
-                    const key = element.start_key;
-                    const stateVal = key ? this.state[key] : null;
-                    const start = stateVal != null ? new Date(stateVal) : null;
-                    if (start && !isNaN(start.getTime())) {
-                        const diff = Math.max(0, now - start);
-                        text = this._formatDuration(diff);
-                    } else {
-                        text = '00:00:00';
-                    }
-                    break;
-                }
-                case 'meeting': {
-                    // Anchor the meeting start on the app instance keyed by element
-                    // id so navigating away and back (or a theme/idle re-render)
-                    // doesn't restart the countdown from its full duration.
-                    let meetingStartTime = this._meetingStartTimes[element.id];
-                    if (!meetingStartTime) {
-                        meetingStartTime = now;
-                        this._meetingStartTimes[element.id] = meetingStartTime;
-                    }
-                    const elapsed = now - meetingStartTime;
-                    const totalMs = durationMin * 60 * 1000;
-                    const remaining = totalMs - elapsed;
-                    if (remaining > 0) {
-                        text = this._formatDuration(remaining);
-                    } else {
-                        text = '-' + this._formatDuration(Math.abs(remaining));
-                    }
-                    break;
-                }
-                default:
-                    text = this._formatDateTime(now, format, timezone);
-            }
-
-            display.textContent = text;
-        };
-
-        updateClock();
-        // Register with global clock interval instead of per-element interval.
-        // Stash the closure on the element so dismissOverlay can unregister it.
-        el._clockUpdate = updateClock;
-        this._clockElements.push(updateClock);
-        if (!this._clockInterval) {
-            this._clockInterval = setInterval(() => {
-                for (const fn of this._clockElements) fn();
-            }, 1000);
-        }
-
+        this._clocks.add(el, clock);
         return el;
-    }
-
-    _formatDateTime(date, format, timezone) {
-        let d = date;
-        if (timezone) {
-            try {
-                // Use Intl to get components in the target timezone
-                const opts = { timeZone: timezone, hour12: false };
-                const parts = new Intl.DateTimeFormat('en-US', {
-                    ...opts, year: 'numeric', month: '2-digit', day: '2-digit',
-                    hour: '2-digit', minute: '2-digit', second: '2-digit',
-                    weekday: 'short',
-                }).formatToParts(date);
-                const get = (type) => parts.find(p => p.type === type)?.value || '';
-                const tzDate = {
-                    year: parseInt(get('year')),
-                    month: parseInt(get('month')),
-                    day: parseInt(get('day')),
-                    hour: parseInt(get('hour')),
-                    minute: parseInt(get('minute')),
-                    second: parseInt(get('second')),
-                    weekday: get('weekday'),
-                };
-                d = tzDate;
-
-                return this._applyFormat(d, format, true);
-            } catch (e) {
-                // Fall through to local time
-            }
-        }
-        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-        return this._applyFormat({
-            year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(),
-            hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds(),
-            weekday: days[d.getDay()],
-        }, format, true);
-    }
-
-    _applyFormat(d, format) {
-        const h24 = d.hour;
-        const h12 = h24 % 12 || 12;
-        const ampm = h24 < 12 ? 'AM' : 'PM';
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        const fullMonths = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-        const fullDays = { Sun: 'Sunday', Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday' };
-
-        return format
-            .replace(/dddd/g, fullDays[d.weekday] || d.weekday || '')
-            .replace(/ddd/g, d.weekday || '')
-            .replace(/HH/g, String(h24).padStart(2, '0'))
-            .replace(/\bH\b/g, String(h24))
-            .replace(/hh/g, String(h12).padStart(2, '0'))
-            .replace(/\bh\b/g, String(h12))
-            .replace(/mm/g, String(d.minute).padStart(2, '0'))
-            .replace(/ss/g, String(d.second).padStart(2, '0'))
-            .replace(/\bA\b/g, ampm)
-            .replace(/\ba\b/g, ampm.toLowerCase())
-            .replace(/YYYY/g, String(d.year))
-            .replace(/MMMM/g, fullMonths[d.month - 1] || '')
-            .replace(/MMM/g, months[d.month - 1] || '')
-            .replace(/MM/g, String(d.month).padStart(2, '0'))
-            .replace(/\bM\b/g, String(d.month))
-            .replace(/DD/g, String(d.day).padStart(2, '0'))
-            .replace(/\bD\b/g, String(d.day));
-    }
-
-    _formatDuration(ms) {
-        const totalSec = Math.floor(ms / 1000);
-        const h = Math.floor(totalSec / 3600);
-        const m = Math.floor((totalSec % 3600) / 60);
-        const s = totalSec % 60;
-        if (h > 0) {
-            return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-        }
-        return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
     }
 
     _formatRichText(text) {
