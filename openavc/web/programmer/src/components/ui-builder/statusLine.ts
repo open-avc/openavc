@@ -9,10 +9,11 @@
  * An action is its `work`, which waits on the server, and its `done`, which acts
  * on the answer (holds the theme reloaded, chooses the theme it made, refreshes
  * the list) and returns the line. `done`, the line and the end of the hold happen
- * in one moment, with no wait between them, and that is behaviour, not style: the
- * Builder draws the Studio on a newly chosen theme as soon as it is told, and the
- * Studio's load of that theme clears the line, so a wait between choosing and
- * saying would change whether the line is seen.
+ * in one moment, with no wait between them. The Builder draws the Studio on a
+ * newly chosen theme as soon as it is told, and the Studio's load of a theme
+ * clears the line unless one of its own actions chose that theme
+ * (`chooseForAction` in ThemeStudio.tsx), so the line says what the action did
+ * whichever comes first.
  *
  * A failure is said from what was thrown, read in the one `catch` here
  * (`parseApiError`: the server's sentence for a refusal, else the error's own

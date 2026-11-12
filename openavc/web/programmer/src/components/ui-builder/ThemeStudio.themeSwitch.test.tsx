@@ -102,7 +102,7 @@ describe("in the Builder, an action that switches theme", () => {
       choose(themeFile());
       fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Keep both" }));
     }],
-  ])("%s: its line is cleared by the load of the theme it chose before it is ever seen", async (_name, id, line, act) => {
+  ])("%s: its line is still showing once the theme it chose has loaded", async (_name, id, line, act) => {
     render(<Builder />);
     await screen.findByText("Theme Info");
     await act();
@@ -113,6 +113,15 @@ describe("in the Builder, an action that switches theme", () => {
       seen.push(screen.queryByText(line) !== null);
       await pause(25);
     }
-    expect(seen).toEqual(Array(8).fill(false));
+    expect(seen).toEqual(Array(8).fill(true));
+  });
+
+  it("clears the line when the theme is chosen in the picker afterwards", async () => {
+    render(<Builder />);
+    await screen.findByText("Theme Info");
+    fireEvent.click(screen.getByRole("button", { name: "Save as Copy" }));
+    await screen.findByText(/Saved as/);
+    fireEvent.click(card("Dark"));
+    await waitFor(() => expect(screen.queryByText(/Saved as/)).toBeNull());
   });
 });

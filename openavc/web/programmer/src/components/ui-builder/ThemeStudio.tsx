@@ -92,6 +92,9 @@ export function ThemeStudio({
     catch { return null; }
   }, [savedJson]);
 
+  // The theme a file action of the Studio's own has just chosen (chooseForAction).
+  const chosenByAction = useRef<string | null>(null);
+
   // A theme as loaded is both the working copy and what Unsaved compares with.
   const hold = (theme: ThemeDefinition) => {
     const copy = editableCopy(theme);
@@ -107,7 +110,11 @@ export function ThemeStudio({
   useEffect(() => {
     if (!open || !currentThemeId) return;
     let cancelled = false;
-    say(null);
+    // The load of a theme one of the Studio's own actions chose leaves that
+    // action's line up; any other switch clears it.
+    const chosenHere = chosenByAction.current === currentThemeId;
+    chosenByAction.current = null;
+    if (!chosenHere) say(null);
     getTheme(currentThemeId)
       .then((t) => {
         if (!cancelled) hold(t);
@@ -157,6 +164,13 @@ export function ThemeStudio({
 
   const takenIds = () => new Set(themes.map((t) => t.id));
 
+  /** Choose the theme a file action made or left for. Its load keeps the
+   *  action's line (the effect above), which the Builder runs at once. */
+  const chooseForAction = (id: string) => {
+    if (id !== currentThemeId) chosenByAction.current = id;
+    onChangeTheme(id);
+  };
+
   const clearOverrides = () => {
     if (Object.keys(themeOverrides).length > 0) onClearOverrides();
   };
@@ -196,7 +210,7 @@ export function ThemeStudio({
       work: () => createTheme(themeFile(working, { id, name, author: "Custom", preview_colors: previewColors(working.variables) })),
       done: () => {
         // Choosing a theme clears the project's overrides in the same edit.
-        onChangeTheme(id);
+        chooseForAction(id);
         onRefreshThemes();
         return `Saved as "${name}"`;
       },
@@ -219,7 +233,7 @@ export function ThemeStudio({
       failure: orStepFailed("Delete"),
       work: () => deleteTheme(working.id),
       done: () => {
-        onChangeTheme("dark-default");
+        chooseForAction("dark-default");
         onRefreshThemes();
         return `Deleted "${working.name}"`;
       },
@@ -237,7 +251,7 @@ export function ThemeStudio({
         return copy;
       },
       done: (copy) => {
-        onChangeTheme(copy.id);
+        chooseForAction(copy.id);
         onRefreshThemes();
         return `Duplicated as "${copy.name}"`;
       },
@@ -257,7 +271,7 @@ export function ThemeStudio({
 
   /** An import the server took: chosen, and said. */
   const chooseImported = (result: { theme_id: string; name: string }) => {
-    onChangeTheme(result.theme_id);
+    chooseForAction(result.theme_id);
     onRefreshThemes();
     return `Imported "${result.name}"`;
   };
@@ -308,7 +322,7 @@ export function ThemeStudio({
         return kept;
       },
       done: (kept) => {
-        onChangeTheme(kept.id);
+        chooseForAction(kept.id);
         onRefreshThemes();
         return `Imported as "${kept.name}"`;
       },
