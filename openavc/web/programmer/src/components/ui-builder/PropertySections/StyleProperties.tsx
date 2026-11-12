@@ -21,7 +21,7 @@ interface StylePropertiesProps {
   onOpenStylesheet?: () => void;
 }
 
-// Shadow presets (must match panel.js applyStyle box-shadow handling)
+// Shadow presets (must match the panel's modules/paint.js: SHADOW_PRESETS, and paintShadow's glow)
 const SHADOW_PRESETS: Record<string, string> = {
   sm: "0 2px 4px rgba(0,0,0,0.2)",
   md: "0 4px 8px rgba(0,0,0,0.3)",

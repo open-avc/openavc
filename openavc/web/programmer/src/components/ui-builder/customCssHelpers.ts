@@ -217,7 +217,7 @@ export function toggleCssClass(
 
 /**
  * The style keys a control's own feedback can write, and the CSS property each
- * one lands on. Mirrors what `applyStyle` in panel.js does with them.
+ * one lands on. Mirrors what `applyStyle` in the panel's modules/paint.js does with them.
  */
 const FEEDBACK_STYLE_KEYS: Record<string, { prop: string; label: string }> = {
   bg_color: { prop: "background-color", label: "background" },

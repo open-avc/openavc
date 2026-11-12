@@ -10,7 +10,7 @@ draws nothing at all, both of them silently.
 
 **It matches on the stored form, not on a field list.** Every asset reference
 in a project is the exact string ``assets://<filename>`` -- the panel resolves
-on that prefix in six places (``panel.js resolveAssetUrl`` and its callers:
+on that prefix in six places (the panel's ``assetUrl`` and its callers:
 an image's ``src``, an ``icon``, a ``button_image``, ``style.background_image``,
 a page background and a sound id) and the upload door hands the same string
 back as ``reference``. So this walks the value tree of each holder looking for
