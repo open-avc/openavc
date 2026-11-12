@@ -10,7 +10,10 @@ Two halves of one job, which is why they share a module:
   entry to hash against, so that guard is the catalog's alone. The
   `min_platform_version` floor is not — every door here refuses a driver this
   platform is too old to run, because the file is the same file whichever way
-  it arrives.
+  it arrives. The install and the update bring a catalog driver's files in
+  through one `_CatalogFiles`; around it each door keeps its own floor check,
+  rollback and registration gates, and those differ from door to door
+  (`tests/test_driver_install_doors_pins.py` holds each as it is).
 * **Driver-definition CRUD** — list / get / validate / create / update / patch
   / delete / reload for the ``.avcdriver`` definitions the Driver Builder edits.
 
