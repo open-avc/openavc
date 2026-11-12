@@ -1994,6 +1994,134 @@ class TestDiagnosticActions:
         assert result["reachable"] is False
         assert "must not start with '-'" in result["error"]
 
+    @staticmethod
+    def _no_ping_program(monkeypatch, method: str, answers: list[str] | None = None) -> list[str]:
+        """An install with no ``ping`` program whose ICMP socket picks ``method``
+        and answers each echo from ``answers``; returns the addresses pinged."""
+        import asyncio
+        from openavc.discovery import icmp
+
+        async def _missing(*args, **kwargs):
+            raise FileNotFoundError(2, "No such file or directory", "ping")
+
+        async def _method():
+            return method
+
+        pinged: list[str] = []
+        replies = iter(answers or [])
+
+        async def _ping(ip, timeout=1.0, source_ip="", method=icmp.METHOD_EXEC):
+            pinged.append(ip)
+            return next(replies)
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _missing)
+        monkeypatch.setattr(icmp, "select_ping_method", _method)
+        monkeypatch.setattr(icmp, "ping_host", _ping)
+        return pinged
+
+    @pytest.mark.asyncio
+    async def test_ping_without_a_ping_program_sends_the_echoes_itself(self, monkeypatch):
+        """An install with no ping program, such as appliance hardware: the
+        echoes go out over an ICMP socket, a line each, as ping prints them."""
+        from openavc.cloud.command_handler import _diagnostic_ping
+        from openavc.discovery import icmp
+
+        pinged = self._no_ping_program(
+            monkeypatch, icmp.METHOD_DGRAM,
+            [icmp.RESULT_ALIVE, icmp.RESULT_TIMEOUT, icmp.RESULT_ERROR],
+        )
+        result = await _diagnostic_ping("192.0.2.10", {"count": 3, "timeout": 2})
+
+        assert pinged == ["192.0.2.10"] * 3
+        assert result["reachable"] is True
+        assert result["count"] == 3
+        assert "error" not in result
+        lines = result["output"].splitlines()
+        assert lines[0] == (
+            "PING 192.0.2.10 (192.0.2.10), sent by OpenAVC: this system has no ping program"
+        )
+        assert lines[1].startswith("Reply from 192.0.2.10: time=")
+        assert lines[2] == "No reply from 192.0.2.10 within 2 s"
+        assert lines[3] == "Could not send a ping to 192.0.2.10"
+        assert lines[4] == "3 sent, 1 received"
+
+    @pytest.mark.asyncio
+    async def test_ping_without_a_ping_program_and_no_answer_is_unreachable(self, monkeypatch):
+        from openavc.cloud.command_handler import _diagnostic_ping
+        from openavc.discovery import icmp
+
+        self._no_ping_program(monkeypatch, icmp.METHOD_RAW, [icmp.RESULT_TIMEOUT] * 2)
+        result = await _diagnostic_ping("192.0.2.10", {"count": 2})
+
+        assert result["reachable"] is False
+        assert result["output"].splitlines()[-1] == "2 sent, 0 received"
+
+    @pytest.mark.asyncio
+    async def test_ping_looks_a_host_name_up_before_the_socket_does(self, monkeypatch):
+        from openavc.cloud.command_handler import _diagnostic_ping
+        from openavc.discovery import icmp
+
+        pinged = self._no_ping_program(monkeypatch, icmp.METHOD_DGRAM, [icmp.RESULT_ALIVE])
+        result = await _diagnostic_ping("localhost", {"count": 1})
+
+        assert pinged == ["127.0.0.1"]
+        assert result["output"].startswith("PING localhost (127.0.0.1)")
+
+    @pytest.mark.asyncio
+    async def test_ping_that_cannot_be_sent_says_so_never_no_reply(self, monkeypatch):
+        """An install that can neither run ping nor open an ICMP socket is not
+        a dead host, so it never reads as one."""
+        from openavc.cloud.command_handler import _diagnostic_ping
+        from openavc.discovery import icmp
+
+        pinged = self._no_ping_program(monkeypatch, icmp.METHOD_NONE)
+        result = await _diagnostic_ping("192.0.2.10", {"count": 2})
+
+        assert pinged == []
+        assert result["reachable"] is False
+        assert result["output"] == ""
+        assert result["error"] == (
+            "This system has no ping program and is not allowed to send a ping itself"
+        )
+
+    @pytest.mark.asyncio
+    async def test_ping_to_a_name_that_does_not_resolve_says_so(self, monkeypatch):
+        from openavc.cloud.command_handler import _diagnostic_ping
+        from openavc.discovery import icmp, network_scanner
+
+        async def _nothing(address):
+            return ""
+
+        pinged = self._no_ping_program(monkeypatch, icmp.METHOD_DGRAM)
+        monkeypatch.setattr(network_scanner, "resolve_address", _nothing)
+        result = await _diagnostic_ping("nowhere.invalid", {"count": 1})
+
+        assert pinged == []
+        assert result["error"] == "Could not find an IPv4 address for nowhere.invalid"
+
+    @pytest.mark.asyncio
+    async def test_ping_without_a_ping_program_reaches_loopback(self, monkeypatch):
+        """The real ICMP socket, where the install allows one (not Windows,
+        whose ping program is always there)."""
+        import asyncio
+        import sys
+        from openavc.cloud.command_handler import _diagnostic_ping
+        from openavc.discovery import icmp
+
+        if sys.platform == "win32":
+            pytest.skip("Windows always has its ping program")
+        if await icmp.select_ping_method() not in (icmp.METHOD_DGRAM, icmp.METHOD_RAW):
+            pytest.skip("this machine allows no ICMP socket")
+
+        async def _missing(*args, **kwargs):
+            raise FileNotFoundError(2, "No such file or directory", "ping")
+
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", _missing)
+        result = await _diagnostic_ping("127.0.0.1", {"count": 2})
+
+        assert result["reachable"] is True
+        assert result["output"].splitlines()[-1] == "2 sent, 2 received"
+
     @pytest.mark.asyncio
     async def test_traceroute_rejects_dash_target(self):
         """traceroute never spawns a subprocess for a dash-prefixed target."""

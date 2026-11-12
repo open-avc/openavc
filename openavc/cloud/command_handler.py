@@ -677,7 +677,9 @@ async def _communicate_bounded(proc, timeout_s: float) -> tuple[bytes, bytes]:
 
 
 async def _diagnostic_ping(target: str, params: dict) -> dict:
-    """ICMP-ish ping using the OS `ping` binary (cross-platform)."""
+    """Ping a host with the OS ``ping`` program, as it prints it. An install
+    with no ``ping`` program (appliance hardware, a minimal Linux) sends the
+    echoes itself instead (:func:`_ping_without_program`)."""
     import asyncio
     import sys
     err = _validate_exec_target(target)
@@ -691,10 +693,13 @@ async def _diagnostic_ping(target: str, params: dict) -> dict:
     else:
         cmd = ["ping", "-c", str(count), "-W", str(timeout_s), target]
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        creationflags=CREATE_NO_WINDOW,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            creationflags=CREATE_NO_WINDOW,
+        )
+    except FileNotFoundError:
+        return await _ping_without_program(target, count, timeout_s)
     # Overall bound: each of `count` pings can wait up to timeout_s, plus slack.
     overall_timeout = count * timeout_s + 5
     try:
@@ -714,6 +719,54 @@ async def _diagnostic_ping(target: str, params: dict) -> dict:
         "output": output.strip(),
         "count": count,
     }
+
+
+async def _ping_without_program(target: str, count: int, timeout_s: int) -> dict:
+    """The ping diagnostic on an install with no ``ping`` program: ``count``
+    echoes sent one at a time over the ICMP socket a Discovery scan would use
+    (``discovery/icmp.py``), each reported on its own line.
+
+    An install that cannot send an echo either answers why, never "no reply":
+    that would read as a dead host. IPv4 only, as Discovery is.
+    """
+    from openavc.discovery import icmp
+    from openavc.discovery.network_scanner import resolve_address
+
+    result: dict[str, Any] = {"exit_code": None, "reachable": False, "output": "", "count": count}
+    # Looked up here: the socket would look a host name up on the engine's loop.
+    address = await resolve_address(target)
+    if not address:
+        return {**result, "error": f"Could not find an IPv4 address for {target}"}
+    method = await icmp.select_ping_method()
+    if method not in (icmp.METHOD_DGRAM, icmp.METHOD_RAW):
+        return {
+            **result,
+            "error": "This system has no ping program and is not allowed to send a ping itself",
+        }
+    lines = [f"PING {target} ({address}), sent by OpenAVC: this system has no ping program"]
+    replies = 0
+    for _ in range(count):
+        line, answered = await _one_echo(address, timeout_s, method)
+        lines.append(line)
+        replies += answered
+    lines.append(f"{count} sent, {replies} received")
+    return {**result, "reachable": replies > 0, "output": "\n".join(lines)}
+
+
+async def _one_echo(address: str, timeout_s: int, method: str) -> tuple[str, bool]:
+    """One echo to ``address``: the line that reports it, and whether it was answered."""
+    import asyncio
+
+    from openavc.discovery import icmp
+
+    loop = asyncio.get_running_loop()
+    started = loop.time()
+    answer = await icmp.ping_host(address, timeout=timeout_s, method=method)
+    if answer == icmp.RESULT_ALIVE:
+        return f"Reply from {address}: time={(loop.time() - started) * 1000:.0f} ms", True
+    if answer == icmp.RESULT_TIMEOUT:
+        return f"No reply from {address} within {timeout_s} s", False
+    return f"Could not send a ping to {address}", False
 
 
 async def _diagnostic_tcp_check(
