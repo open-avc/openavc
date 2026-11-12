@@ -3414,6 +3414,338 @@
         "t": 0
       }
     ],
+    "activity_goes_through_the_panel": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1,
+        "n": 1
+      },
+      {
+        "v": "1",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1,
+        "n": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1,
+        "n": 3
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1,
+        "n": 4
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1,
+        "n": 4
+      }
+    ],
+    "started_preview_listens_for_activity": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/plugins/extensions"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 68
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 68
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 64
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 3
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
     "hidden_clears_the_pin": [
       {
         "f": null,

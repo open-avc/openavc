@@ -8209,7 +8209,11 @@ function lockMount(advance, pending, { answers = [], edit = false } = {}) {
     return m;
 }
 
-/** One lock pin case on its own clock; a throw is pinned as its last step. */
+/**
+ * One lock pin case on its own clock; a throw is pinned as its last step.
+ * `start` starts the panel as the Programmer's Preview does, rather than
+ * only listening for activity.
+ */
 async function lockCase(got, name, opts, script) {
     const savedFetch = window.fetch;
     const savedWarn = window.console.warn;
@@ -8219,7 +8223,12 @@ async function lockCase(got, name, opts, script) {
             m = lockMount(advance, pending, opts);
             window.fetch = m.fetch;
             window.console.warn = m.warn;
-            m.app.lock.listenForActivity();
+            if (opts.start) {
+                m.app.embedded = true;
+                await m.app.start();
+            } else {
+                m.app.lock.listenForActivity();
+            }
             m.look();
             await script(m);
         } catch (e) {
@@ -8368,6 +8377,25 @@ Object.assign(tests, {
                 m.look();
             });
             m.wait(2000);
+            m.app.embedded = false;
+        });
+        // Activity goes through the panel's resetIdleTimer, as it is when it
+        // happens; a started panel listens for it.
+        await run('activity_goes_through_the_panel', { answers: ['right'] }, async (m) => {
+            const real = m.app.resetIdleTimer.bind(m.app);
+            let calls = 0;
+            m.app.resetIdleTimer = () => { calls += 1; real(); };
+            const count = () => m.look({ n: calls });
+            m.snapshot(); m.definition({ ...LOCKED, idle_timeout_seconds: 2 }); count();
+            m.type('1'); m.click(); await m.settle(); count();
+            m.activity('keydown'); count(); m.activity('scroll'); count(); m.activity('wheel'); count();
+        });
+        await run('started_preview_listens_for_activity', { start: true }, async (m) => {
+            withBuilderParent(() => {
+                fromBuilder({ type: 'openavc:editor-init', ui: lockUi({ idle_timeout_seconds: 2, idle_page: 'main' }), pageId: 'details' });
+                m.look();
+            });
+            m.wait(1500); m.activity('mousedown'); m.wait(1500); m.wait(500);
             m.app.embedded = false;
         });
         // A hidden page forgets what was typed.
