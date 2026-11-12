@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Play,
   FileCode,
@@ -37,7 +37,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { MacroConfig, MacroStep, TriggerConfig } from "../../api/types";
+import type { DeviceGroup, MacroConfig, MacroStep, TriggerConfig } from "../../api/types";
 import { useLogStore } from "../../store/logStore";
 import { useProjectStore } from "../../store/projectStore";
 import { showError } from "../../store/toastStore";
@@ -64,9 +64,13 @@ import {
 } from "./pluginMacroActions";
 import { CopyButton } from "../shared/CopyButton";
 import { issuesAt, issueLabel, issueSummary, issueText, type MacroIssue } from "./macroLint";
-import { CommandLabelContext, stepDeviceIds, useCommandLabel, useCommandLabels } from "./commandLabels";
+import { StepNamesContext, stepDeviceIds, useCommandLabels, useStepNames } from "./commandLabels";
 import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
+
+/** The project's device groups, as the store holds them (never a new array). */
+const selectDeviceGroups = (s: { project: { device_groups?: DeviceGroup[] } | null }) =>
+  s.project?.device_groups;
 
 interface SortableStepItemProps {
   id: string;
@@ -145,9 +149,9 @@ function SortableStepItem({
 
   const labelText = typeInfo?.label ?? pluginAction?.label ?? (isMissingPlugin ? "Missing" : step.action);
   const labelBg = typeInfo?.color ?? (pluginAction ? "#a855f7" : isMissingPlugin ? "#ef4444" : "#666");
-  const commandLabel = useCommandLabel();
+  const stepNames = useStepNames();
   const summaryText = typeInfo
-    ? typeInfo.summary(step, devices as any, allMacros, commandLabel)
+    ? typeInfo.summary(step, devices as any, allMacros, stepNames)
     : pluginAction
       ? pluginActionSummary(step, pluginAction)
       : isMissingPlugin
@@ -433,7 +437,9 @@ export function MacroEditor({
     return () => document.removeEventListener("mousedown", handler);
   }, [showAddMenu, showTemplates]);
   const [, setClipboardRevision] = useState(0); // force re-render on copy
-  const commandLabel = useCommandLabels(stepDeviceIds(macro.steps));
+  const deviceGroups = useProjectStore(selectDeviceGroups);
+  const commandLabel = useCommandLabels(stepDeviceIds(macro.steps, deviceGroups));
+  const stepNames = useMemo(() => ({ commandLabel, groups: deviceGroups }), [commandLabel, deviceGroups]);
 
   const { actions: pluginMacroActions, refresh: refreshPluginActions } = usePluginMacroActions();
 
@@ -874,7 +880,7 @@ export function MacroEditor({
       )}
 
       {/* Triggers + Steps */}
-      <CommandLabelContext.Provider value={commandLabel}>
+      <StepNamesContext.Provider value={stepNames}>
       <div style={{ flex: 1, overflow: "auto", padding: "var(--space-md)" }}>
         {/* Triggers section */}
         <TriggerList
@@ -1028,7 +1034,7 @@ export function MacroEditor({
                     <div>
                       <div style={{ fontWeight: 500, color: "var(--accent)" }}>Paste Copied Step</div>
                       <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>
-                        {(() => { const s = getClipboardStep(); return s ? getStepType(s.action)?.summary(s, devices as any, allMacros, commandLabel) ?? s.action : ""; })()}
+                        {(() => { const s = getClipboardStep(); return s ? getStepType(s.action)?.summary(s, devices as any, allMacros, stepNames) ?? s.action : ""; })()}
                       </div>
                     </div>
                   </div>
@@ -1224,7 +1230,7 @@ export function MacroEditor({
           )}
         </div>
       </div>
-      </CommandLabelContext.Provider>
+      </StepNamesContext.Provider>
 
       {/* Keyframe for spinner */}
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>

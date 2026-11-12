@@ -229,3 +229,33 @@ describe("macro step editing keeps the field you are typing in", () => {
     expect(seen.macro.steps[1].description).toBe("second");
   });
 });
+
+describe("a group command step's summary in the editor", () => {
+  it("reads the project's group name and a member's command label, in a branch too", async () => {
+    const project = mocks.projectState.project as Record<string, unknown>;
+    const original = mocks.getDevice.getMockImplementation();
+    project.device_groups = [{ id: "group_1788707883504", name: "All Tones", device_ids: ["tone_1"] }];
+    mocks.getDevice.mockImplementation(async () => ({
+      id: "tone_1",
+      commands: { set_tone: { label: "Set Tone", params: {} } },
+    }) as never);
+    try {
+      const step: MacroStep = { action: "group.command", group: "group_1788707883504", command: "set_tone" };
+      const { Host } = hostFor([
+        step,
+        {
+          action: "conditional",
+          condition: { key: "var.ready", operator: "truthy" },
+          then_steps: [{ ...step }],
+          else_steps: [],
+        },
+      ]);
+      render(<Host />);
+      await userEvent.setup().click(screen.getByText("Conditional"));
+      await waitFor(() => expect(screen.getAllByText("All Tones → Set Tone")).toHaveLength(2));
+    } finally {
+      delete project.device_groups;
+      mocks.getDevice.mockImplementation(original!);
+    }
+  });
+});

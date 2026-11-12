@@ -1,6 +1,7 @@
 /**
  * What each device calls its commands, for a step's one-line summary:
- * "Projector → Power On" rather than "Projector → power_on".
+ * "Projector → Power On" rather than "Projector → power_on", and a group
+ * command's "All Displays → Power On" from its members' labels.
  *
  * Read from the same device info the step's Command list is built from
  * (`GET /api/devices/{id}`), because a Generic device's commands are defined on
@@ -11,7 +12,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import * as api from "../../api/restClient";
-import type { MacroStep } from "../../api/types";
+import type { DeviceGroup, MacroStep } from "../../api/types";
 
 /** A command's label on a device, or undefined when there is none to show. */
 export type CommandLabelOf = (deviceId: string | undefined, command: string | undefined) => string | undefined;
@@ -26,12 +27,20 @@ export function commandLabelsOf(commands: Record<string, unknown> | undefined): 
   return labels;
 }
 
-/** Every device a device command step names, branches included. */
-export function stepDeviceIds(steps: MacroStep[] | undefined): string[] {
+/** The devices one step sends a command to: a device command's device, or
+ *  each member of a group command's group. */
+function commandStepDevices(step: MacroStep, groups: DeviceGroup[] | undefined): string[] {
+  if (step.action === "device.command") return step.device ? [step.device] : [];
+  if (step.action === "group.command") return groups?.find((g) => g.id === step.group)?.device_ids ?? [];
+  return [];
+}
+
+/** Every device the command steps send to, branches included. */
+export function stepDeviceIds(steps: MacroStep[] | undefined, groups?: DeviceGroup[]): string[] {
   const ids = new Set<string>();
   const walk = (list: MacroStep[] | undefined) => {
     for (const step of list ?? []) {
-      if (step.action === "device.command" && step.device) ids.add(step.device);
+      for (const id of commandStepDevices(step, groups)) ids.add(id);
       walk(step.then_steps);
       walk(step.else_steps);
     }
@@ -68,9 +77,17 @@ export function useCommandLabels(deviceIds: string[]): CommandLabelOf {
   );
 }
 
-/** The lookup the macro editor provides to its step rows. */
-export const CommandLabelContext = createContext<CommandLabelOf>(() => undefined);
+/** What a step's one-line summary names things by, beyond the devices and
+ *  macros it is handed: each device's command labels, and the project's
+ *  device groups. */
+export interface StepNames {
+  commandLabel?: CommandLabelOf;
+  groups?: DeviceGroup[];
+}
 
-export function useCommandLabel(): CommandLabelOf {
-  return useContext(CommandLabelContext);
+/** The names the macro editor provides to its step rows. */
+export const StepNamesContext = createContext<StepNames>({});
+
+export function useStepNames(): StepNames {
+  return useContext(StepNamesContext);
 }

@@ -1,6 +1,6 @@
 import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup } from "../../api/types";
 import { quotedValueText } from "../shared/booleanWords";
-import type { CommandLabelOf } from "./commandLabels";
+import type { StepNames } from "./commandLabels";
 
 export interface StepTypeInfo {
   action: string;
@@ -10,13 +10,14 @@ export interface StepTypeInfo {
   /** One line for a collapsed step. `macros` is here for the same reason
    *  `devices` is: a step that names another object by id has to be able to
    *  print what that object is called. The trigger table next door has taken
-   *  all three since it was written. `commandLabel` names a device's command
-   *  the way its Command list does, where the editor has fetched it. */
+   *  all three since it was written. `names` carries the rest the editor has
+   *  fetched: a device's command labels, as its Command list shows them, and
+   *  the project's device groups. */
   summary: (
     step: MacroStep,
     devices: DeviceConfig[],
     macros: MacroConfig[],
-    commandLabel?: CommandLabelOf,
+    names?: StepNames,
   ) => string;
   defaults: () => Partial<MacroStep>;
 }
@@ -34,12 +35,32 @@ export interface StepTypeInfo {
  * the id plain.
  */
 export function macroLabel(macroId: unknown, macros: MacroConfig[] | undefined): string {
-  const id = typeof macroId === "string" ? macroId.trim() : "";
+  return namedLabel(macroId, macros);
+}
+
+/** What to call anything a step names by a generated id (a macro, a device
+ *  group): its name, by the rule `macroLabel` describes. */
+function namedLabel(objectId: unknown, objects: { id: string; name: string }[] | undefined): string {
+  const id = typeof objectId === "string" ? objectId.trim() : "";
   if (!id) return "?";
-  if (!macros) return id;
-  const found = macros.find((m) => m.id === id);
+  if (!objects) return id;
+  const found = objects.find((o) => o.id === id);
   if (!found) return `${id} (missing)`;
   return found.name || id;
+}
+
+/**
+ * A Group Command step's one line: "All Displays → Power On".
+ *
+ * The group by its name, marked like a missing macro when the project no
+ * longer has it. The command by the label the first member that has one
+ * gives it, which is where the step's Command list takes its labels from;
+ * with none fetched, the command's id.
+ */
+function groupCommandSummary(step: MacroStep, names: StepNames | undefined): string {
+  const members = names?.groups?.find((g) => g.id === step.group?.trim())?.device_ids ?? [];
+  const label = members.map((d) => names?.commandLabel?.(d, step.command)).find(Boolean);
+  return `${namedLabel(step.group, names?.groups)} → ${label ?? step.command ?? "?"}`;
 }
 
 export const STEP_TYPES: StepTypeInfo[] = [
@@ -48,10 +69,10 @@ export const STEP_TYPES: StepTypeInfo[] = [
     label: "Device Command",
     description: "Send a command to a device (power on, switch input, etc.)",
     color: "#3b82f6",
-    summary: (step, devices, _macros, commandLabel) => {
+    summary: (step, devices, _macros, names) => {
       const dev = devices.find((d) => d.id === step.device);
       const name = dev ? dev.name : step.device ?? "?";
-      const command = commandLabel?.(step.device, step.command) ?? step.command;
+      const command = names?.commandLabel?.(step.device, step.command) ?? step.command;
       return `${name} → ${command ?? "?"}`;
     },
     defaults: () => ({ action: "device.command", device: "", command: "" }),
@@ -61,7 +82,7 @@ export const STEP_TYPES: StepTypeInfo[] = [
     label: "Group Command",
     description: "Send a command to all devices in a group at once",
     color: "#0ea5e9",
-    summary: (step) => `${step.group ?? "?"} → ${step.command ?? "?"}`,
+    summary: (step, _devices, _macros, names) => groupCommandSummary(step, names),
     defaults: () => ({ action: "group.command", group: "", command: "" }),
   },
   {
