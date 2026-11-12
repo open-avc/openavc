@@ -254,7 +254,7 @@ class PanelApp {
         this._firstThemeSettled = false;
         this._awaitingFirstTheme = false;
         // Sound the audio player plugin asks for (modules/sound.js).
-        this._sound = new SoundPlayer({ state: () => this.state, editMode: () => this.editMode });
+        this._sound = new SoundPlayer(this._soundHost());
         // Plugin panel_elements lookup: pluginId -> {[type]: extension}.
         // Populated once at startup via /api/plugins/extensions so per-element
         // iframe sandbox / allow attributes can apply the plugin's declared
@@ -284,6 +284,14 @@ class PanelApp {
             offline: () => this._offline,
             activity: () => this.resetIdleTimer(),
             goIdle: (pageId) => this._returnToIdlePage(pageId),
+        };
+    }
+
+    /** What the sound player reads from the panel, each at call time. */
+    _soundHost() {
+        return {
+            state: () => this.state,
+            editMode: () => this.editMode,
         };
     }
 

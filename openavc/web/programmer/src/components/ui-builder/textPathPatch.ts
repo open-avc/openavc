@@ -2,7 +2,7 @@
  * In-place text editing on the design canvas: the authored field an edit writes.
  *
  * The panel records which authored field produced the text on screen and hands
- * that path back when an edit commits (panel.js `_recordTextSource`). These two
+ * that path back when an edit commits (`recordSource` in the panel's modules/text_edit.js). These two
  * turn such a path into a patch the element write door already takes.
  */
 import type { UIElement } from "../../api/types";
