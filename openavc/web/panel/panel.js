@@ -242,13 +242,8 @@ class PanelApp {
         };
         this._onTextEditBlur = () => this._finishTextEdit(true);
         this.holdTimers = {};        // element_id -> interval for hold-repeat mode
-        // A panel that goes to the background mid-press never sees the
-        // release — end every hold-repeat rather than let it fire blind.
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden) {
-                for (const t of Object.values(this.holdTimers)) clearInterval(t);
-                this.holdTimers = {};
-            }
+            if (document.hidden) this._endAllHolds();
         });
         this.debounceTimers = [];    // Track all debounce timeouts for cleanup
         this._pluginMessageHandlers = new Set(); // Track all plugin iframe message handlers
@@ -655,8 +650,7 @@ class PanelApp {
             if (this._remoteSessionEnded) return;
             if (event.code === 4013 || event.code === 4014) {
                 this.setConnectionStatus(false);
-                for (const timer of Object.values(this.holdTimers)) clearInterval(timer);
-                this.holdTimers = {};
+                this._endAllHolds();
                 this._showWaitingScreen({ status: 'unavailable' });
                 const overlay = this._accessOverlay;
                 overlay.querySelector('.panel-access-title').textContent = event.code === 4014
@@ -672,10 +666,7 @@ class PanelApp {
                 return;
             }
             this.setConnectionStatus(false);
-            // Clear all active hold-repeat timers — pointer-events: none
-            // blocks release events, so timers would run indefinitely
-            for (const t of Object.values(this.holdTimers)) clearInterval(t);
-            this.holdTimers = {};
+            this._endAllHolds();
             if (event && event.code === PANEL_NOT_APPROVED_CLOSE) {
                 // The server took the handshake and then refused this device:
                 // not approved, or approval was just revoked. There is nothing
@@ -1326,13 +1317,9 @@ class PanelApp {
         // Remove the topmost overlay DOM element
         const overlayEl = document.querySelector(`.panel-overlay[data-page-id="${dismissed}"]`);
         if (overlayEl) {
-            // Clean up hold timers for overlay elements
             overlayEl.querySelectorAll('[data-element-id]').forEach(el => {
                 const eid = el.dataset.elementId;
-                if (eid && this.holdTimers[eid]) {
-                    clearInterval(this.holdTimers[eid]);
-                    delete this.holdTimers[eid];
-                }
+                if (eid) this._endHold(eid);
             });
             // Clean up clock update closures for overlay elements. Clocks share
             // a single global interval (this._clockInterval) and register their
@@ -2072,9 +2059,7 @@ class PanelApp {
         // Clean up overlays
         this.dismissAllOverlays();
 
-        // Clean up timers from previous render
-        for (const t of Object.values(this.holdTimers)) clearInterval(t);
-        this.holdTimers = {};
+        this._endAllHolds();
         for (const t of this.debounceTimers) clearTimeout(t);
         this.debounceTimers = [];
         // Clean up orphaned fader drag listeners
@@ -2452,6 +2437,24 @@ class PanelApp {
         }
     }
 
+    /** End a button's hold-repeat: a held button sends its press on a timer
+     *  until it is released. */
+    _endHold(elementId) {
+        if (this.holdTimers[elementId]) {
+            clearInterval(this.holdTimers[elementId]);
+            delete this.holdTimers[elementId];
+        }
+    }
+
+    /** End every hold-repeat. A press can lose its release: the panel goes to
+     *  the background, its socket drops (and the panel stops taking
+     *  touches), a new page is drawn, or a screen covers the panel. A timer
+     *  left running would go on pressing the button. */
+    _endAllHolds() {
+        for (const t of Object.values(this.holdTimers)) clearInterval(t);
+        this.holdTimers = {};
+    }
+
     renderButton(element) {
         const el = document.createElement('button');
         el.type = 'button';
@@ -2514,13 +2517,6 @@ class PanelApp {
         let pressTime = 0;
         let pressActive = false;
 
-        const endHold = () => {
-            if (this.holdTimers[element.id]) {
-                clearInterval(this.holdTimers[element.id]);
-                delete this.holdTimers[element.id];
-            }
-        };
-
         const onPress = (e) => {
             e.preventDefault();
             el.classList.add('pressing');
@@ -2551,7 +2547,7 @@ class PanelApp {
             if (effectiveMode === 'hold_repeat') {
                 this.send({ type: 'ui.press', element_id: element.id });
                 // Clear any existing timer before starting a new one
-                endHold();
+                this._endHold(element.id);
                 this.holdTimers[element.id] = setInterval(() => {
                     this.send({ type: 'ui.press', element_id: element.id });
                 }, holdRepeatMs);
@@ -2580,7 +2576,7 @@ class PanelApp {
             el.classList.remove('pressing');
 
             if (effectiveMode === 'hold_repeat') {
-                endHold();
+                this._endHold(element.id);
             } else if (effectiveMode === 'tap_hold') {
                 const held = Date.now() - pressTime;
                 if (held >= holdThresholdMs) {
@@ -2599,7 +2595,7 @@ class PanelApp {
             // Hold ends when the pointer leaves; the press cycle itself is
             // closed by the window-level mouseup fallback.
             el.classList.remove('pressing');
-            endHold();
+            this._endHold(element.id);
         });
         el.style.touchAction = 'none';
         el.addEventListener('touchstart', onPress);
@@ -7007,8 +7003,7 @@ class PanelApp {
     _showRemoteSessionEnded() {
         if (this._remoteSessionEnded) return;
         this._remoteSessionEnded = true;
-        for (const t of Object.values(this.holdTimers)) clearInterval(t);
-        this.holdTimers = {};
+        this._endAllHolds();
         this._showWaitingScreen({ status: 'unavailable' });
         const overlay = this._accessOverlay;
         overlay.dataset.status = 'ended';
