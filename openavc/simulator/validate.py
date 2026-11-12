@@ -56,11 +56,13 @@ from __future__ import annotations
 
 import argparse
 import ast
+import dataclasses
 import fnmatch
 import logging
 import re
 import sys
 import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -73,9 +75,16 @@ from openavc.simulator.single_client import single_client_problems
 from openavc.drivers.compiled_protocol import (
     decode_delimiter,
     derive_config,
-    parse_json_reply,
     safe_substitute,
     state_var_default,
+)
+from openavc.simulator.reply_reading import (
+    ReplyRules,
+    compile_response_patterns,
+    frame_delimiter,
+    json_rule_keys,
+    matches_json_rules,
+    response_lines,
 )
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 from openavc.simulator.send_templates import is_passthrough_send, send_regex
@@ -603,133 +612,144 @@ def _check_response_parsing(
     if not responses:
         return
 
-    # Compile response patterns (with config variable substitution)
-    response_patterns = _compile_response_patterns(responses, driver_def)
-    json_keys = _json_rule_keys(responses)
-    delimiter = _frame_delimiter(driver_def)
+    rules = ReplyRules.of(responses, _effective_config(driver_def), driver_def)
     answering = _query_answering_handlers(sim_handlers, driver_def)
     acknowledgements: list[str] = []
 
-    # Check explicit handler responses
-    for handler_def in sim_handlers:
-        if not isinstance(handler_def, dict) or "address" in handler_def:
-            # OSC handlers respond with (address, args) tuples, not text lines
+    for handler_def in _text_handlers(sim_handlers):
+        replies = _read_handler_replies(handler_def, sim_initial, rules)
+        if not replies.unread:
             continue
-        respond_template = handler_def.get("respond")
-        handler_code = handler_def.get("handler")
-        templates: list[str] = []
-        # A reply built from a capture group, an f-string or a concatenation
-        # cannot be resolved here, and the answer to a query is nearly always
-        # one of those. It is not evidence either way, so a handler with one
-        # is never the subject of the "none of its replies parses" finding.
-        any_unresolvable = False
-
-        if respond_template:
-            # Explicit handler with respond: template
-            templates = [respond_template]
-        elif handler_code:
-            # Script handler — extract respond() calls and try to resolve them
-            templates, any_unresolvable = _extract_respond_calls(handler_code)
-
-        unmatched: list[str] = []
-        any_matched = False
-        for template in templates:
-            # Resolve {state.key} with initial state values
-            response_text = _resolve_state_refs(template, sim_initial)
-            # Capture group refs ({1}, {2}) on a respond: template, and the
-            # {state.key} refs a script handler's literal may still carry.
-            if re.search(r"\{\d+\}", response_text) or (
-                handler_code and "{" in response_text and "}" in response_text
-            ):
-                any_unresolvable = True
-                continue
-            for line in _response_lines(response_text, delimiter):
-                if _matches_a_response_rule(
-                    line, response_patterns, json_keys
-                ):
-                    any_matched = True
-                elif line not in unmatched:
-                    unmatched.append(line)
-
-        if not unmatched:
-            continue
-        if (
-            id(handler_def) in answering
-            and not any_matched
-            and not any_unresolvable
-        ):
-            pattern_key = (
-                handler_def.get("receive") or handler_def.get("match", "?")
-            )
-            result.warning(
-                "response_parsing",
-                f"Simulator answers a query this driver polls with a reply no "
-                f"response rule matches: handler={pattern_key!r}, "
-                f"response={unmatched[0]!r}. Nothing reads that answer, so "
-                f"the state behind the query never updates."
-            )
-            continue
-        for text in unmatched:
-            if text not in acknowledgements:
-                acknowledgements.append(text)
+        if id(handler_def) in answering and replies.none_read:
+            _warn_unread_answer(result, handler_def, replies.unread[0])
+        else:
+            _add_unseen(acknowledgements, replies.unread)
 
     if acknowledgements:
-        shown = ", ".join(repr(a) for a in acknowledgements[:_ACK_EXAMPLES])
-        rest = len(acknowledgements) - _ACK_EXAMPLES
-        if rest > 0:
-            shown += f" (+{rest} more)"
-        result.info(
-            "response_parsing",
-            f"{len(acknowledgements)} simulator reply/replies match no driver "
-            f"response rule, none of them the only answer to a polled query — "
-            f"the shape of a write acknowledgement, which carries no state: "
-            f"{shown}. A polled query whose answer nothing parses warns "
-            f"instead."
-        )
+        _report_acknowledgements(result, acknowledgements)
 
 
-def _response_lines(response_text: str, delimiter: str | None = None) -> list[str]:
-    """One reply, split the way the driver's frame parser will split it.
+def _text_handlers(sim_handlers: list) -> Iterator[dict]:
+    """The handlers that answer with text lines: OSC handlers (``address:``)
+    respond with (address, args) tuples, and a malformed entry is
+    ``handler_syntax``'s to report."""
+    for handler_def in sim_handlers:
+        if isinstance(handler_def, dict) and "address" not in handler_def:
+            yield handler_def
 
-    A handler answering with several lines sends the driver several messages,
-    and each is matched against the response rules on its own — matching the
-    concatenation instead finds nothing and reports a driver that is fine.
-    The terminator arrives either as a real newline (a Python literal in
-    script code) or as the two characters ``\\r`` (a YAML respond: template);
-    both mean the same thing here. A driver framed on a terminator of its own
-    (``>``, ``#``) is split on it too, and the driver never sees it: its
-    rules are written without it.
-    """
-    text = (
-        response_text.replace("\\r\\n", "\n")
-        .replace("\\r", "\n")
-        .replace("\\n", "\n")
+
+def _add_unseen(seen: list[str], items: list[str]) -> None:
+    """Add each item ``seen`` does not hold yet, in order."""
+    for item in items:
+        if item not in seen:
+            seen.append(item)
+
+
+# A placeholder still in a reply after its {state.key} refs are filled: a
+# capture group ref ({1}, {2}) on a respond: template.
+_CAPTURE_REF = re.compile(r"\{\d+\}")
+
+
+def _left_unresolved(response_text: str, scripted: bool) -> bool:
+    """A reply still holding a capture group ref, or (a script handler's
+    literal) any ``{...}``, which this cannot resolve."""
+    if _CAPTURE_REF.search(response_text):
+        return True
+    return scripted and _has_braces(response_text)
+
+
+def _has_braces(text: str) -> bool:
+    return "{" in text and "}" in text
+
+
+@dataclasses.dataclass
+class _HandlerReplies:
+    """What one text handler answers, as the driver reads it."""
+
+    #: Each reply line no response rule reads, once, in the order sent.
+    unread: list[str] = dataclasses.field(default_factory=list)
+    #: Whether a response rule reads any line it sends.
+    any_read: bool = False
+    #: Whether a reply could not be resolved here (built from a capture
+    #: group, an f-string or a concatenation). The answer to a query is
+    #: nearly always one of those, and it is not evidence either way.
+    any_unresolvable: bool = False
+
+    def take(self, response_text: str, rules: ReplyRules) -> None:
+        """One resolved reply, split into the lines the driver reads."""
+        for line in rules.lines(response_text):
+            if rules.reads(line):
+                self.any_read = True
+            elif line not in self.unread:
+                self.unread.append(line)
+
+    @property
+    def none_read(self) -> bool:
+        """Whether "none of its replies parses" may be said of the handler:
+        no reply is read, and none could not be resolved."""
+        return not self.any_read and not self.any_unresolvable
+
+
+def _reply_templates(handler_def: dict) -> tuple[list[str], bool]:
+    """The reply templates a text handler sends, and whether one of them
+    could not be read: a ``respond:`` template, else the literals a script
+    ``handler:`` passes to ``respond()``, else none."""
+    respond_template = handler_def.get("respond")
+    handler_code = handler_def.get("handler")
+    if respond_template:
+        return [respond_template], False
+    if handler_code:
+        return _extract_respond_calls(handler_code)
+    return [], False
+
+
+def _read_handler_replies(
+    handler_def: dict, sim_initial: dict, rules: ReplyRules
+) -> _HandlerReplies:
+    """Each reply a handler sends, its ``{state.key}`` refs filled from the
+    initial state, split into the lines the driver reads and matched against
+    its rules. A reply still holding a capture group ref, or (a script
+    handler's literal) any ``{...}``, is unresolvable rather than read."""
+    templates, unresolvable = _reply_templates(handler_def)
+    replies = _HandlerReplies(any_unresolvable=unresolvable)
+    scripted = bool(handler_def.get("handler"))
+    for template in templates:
+        response_text = _resolve_state_refs(template, sim_initial)
+        if _left_unresolved(response_text, scripted):
+            replies.any_unresolvable = True
+        else:
+            replies.take(response_text, rules)
+    return replies
+
+
+def _warn_unread_answer(result: ValidationResult, handler_def: dict, reply: str) -> None:
+    """The finding: a handler answering a query the driver asks with nothing
+    a response rule reads."""
+    pattern_key = handler_def.get("receive") or handler_def.get("match", "?")
+    result.warning(
+        "response_parsing",
+        f"Simulator answers a query this driver polls with a reply no "
+        f"response rule matches: handler={pattern_key!r}, "
+        f"response={reply!r}. Nothing reads that answer, so "
+        f"the state behind the query never updates."
     )
-    if delimiter and delimiter.strip("\r\n"):
-        text = text.replace(delimiter, "\n")
-    return [line for line in (raw.strip() for raw in text.splitlines()) if line]
 
 
-def _frame_delimiter(driver_def: dict) -> str | None:
-    """The terminator the driver's frame parser splits replies on, decoded,
-    or None for a transport that is not delimiter-framed."""
-    if driver_def.get("transport", "tcp") not in _DELIMITED_TRANSPORTS:
-        return None
-    raw = driver_def.get("delimiter")
-    if not isinstance(raw, str) or not raw:
-        return None
-    return decode_delimiter(raw) or None
-
-
-def _matches_a_response_rule(
-    response_text: str,
-    response_patterns: list[re.Pattern],
-    json_keys: set[str] = frozenset(),
-) -> bool:
-    """Whether any of the driver's response rules would read this reply."""
-    return any(
-        p.search(response_text) for p in response_patterns
-    ) or _matches_json_rules(response_text, json_keys)
+def _report_acknowledgements(result: ValidationResult, acknowledgements: list[str]) -> None:
+    """The replies no rule reads that answer no polled query, counted once:
+    the shape of a write acknowledgement."""
+    shown = ", ".join(repr(a) for a in acknowledgements[:_ACK_EXAMPLES])
+    rest = len(acknowledgements) - _ACK_EXAMPLES
+    if rest > 0:
+        shown += f" (+{rest} more)"
+    result.info(
+        "response_parsing",
+        f"{len(acknowledgements)} simulator reply/replies match no driver "
+        f"response rule, none of them the only answer to a polled query — "
+        f"the shape of a write acknowledgement, which carries no state: "
+        f"{shown}. A polled query whose answer nothing parses warns "
+        f"instead."
+    )
 
 
 def _query_answering_handlers(sim_handlers: list, driver_def: dict) -> set[int]:
@@ -1386,7 +1406,9 @@ def _report_trailing_text(
     is a reply line that lost its delimiter: it is read one reply late, joined
     to the start of the next one.
     """
-    patterns = _compile_response_patterns(driver_def.get("responses") or [], driver_def)
+    patterns = compile_response_patterns(
+        driver_def.get("responses") or [], _effective_config(driver_def)
+    )
     shown = "; ".join(example for example, _, _ in trailing[:_FRAMING_EXAMPLES])
     more = len(trailing) - _FRAMING_EXAMPLES
     if more > 0:
@@ -1589,9 +1611,9 @@ def _check_notifications(
             f"TCP dial-back, or HTTP-listener push: block)"
         )
 
-    response_patterns = _compile_response_patterns(responses, driver_def)
-    json_keys = _json_rule_keys(responses)
-    delimiter = _frame_delimiter(driver_def)
+    response_patterns = compile_response_patterns(responses, _effective_config(driver_def))
+    json_keys = json_rule_keys(responses)
+    delimiter = frame_delimiter(driver_def)
 
     for key, value_map in notifications.items():
         if known_keys and key not in known_keys:
@@ -1676,10 +1698,10 @@ def _check_notifications(
             # a template wrapped in CR/LF (dial-back containers embed the
             # payload as "\r\n<response>\r\n") or ending in ">" still
             # round-trips.
-            candidates = [message.strip()] + _response_lines(message, delimiter)
+            candidates = [message.strip()] + response_lines(message, delimiter)
             if not any(
                 p.search(c) for c in candidates for p in response_patterns
-            ) and not _matches_json_rules(message, json_keys):
+            ) and not matches_json_rules(message, json_keys):
                 result.warning(
                     "notifications",
                     f"notification '{key}' emits {message!r} which matches no "
@@ -2203,76 +2225,6 @@ def _build_auto_pattern(template: str, params: dict) -> re.Pattern | None:
         return re.compile(f"^{send_regex(template, params)}$")
     except re.error:
         return None
-
-
-def _compile_response_patterns(
-    responses: list, driver_def: dict
-) -> list[re.Pattern]:
-    """Compile driver response patterns with config variable substitution."""
-    config = _effective_config(driver_def)
-    patterns = []
-    for resp in responses:
-        pattern_str = resp.get("match", "")
-        if not pattern_str:
-            continue
-        # Substitute config variables in response patterns
-        pattern_str = _substitute_config(pattern_str, config)
-        try:
-            patterns.append(re.compile(pattern_str))
-        except re.error:
-            pass
-    return patterns
-
-
-def _json_rule_keys(responses: list) -> set[str]:
-    """Top-level JSON keys mapped by ``json: true`` response rules.
-
-    Used by the round-trip checks: a simulated body that parses as a JSON
-    object carrying one of these keys IS parsed by the driver (via
-    _apply_json_responses), even though it matches no regex pattern.
-    """
-    keys: set[str] = set()
-    for resp in responses:
-        if not isinstance(resp, dict) or not resp.get("json"):
-            continue
-        for spec in (resp.get("set") or {}).values():
-            key = (
-                spec.get("key", spec.get("path")) if isinstance(spec, dict)
-                else spec
-            )
-            if isinstance(key, str) and key:
-                keys.add(key.split(".")[0].split("[")[0])
-        for mapping in resp.get("mappings") or []:
-            key = mapping.get("key") if isinstance(mapping, dict) else None
-            if isinstance(key, str) and key:
-                keys.add(key.split(".")[0].split("[")[0])
-        # A json rule's child_set routes by JSON path too (literal id per
-        # entry): a body carrying one of those paths' top-level keys is
-        # parsed just the same, so a per-child notification is not ignored.
-        for entry in resp.get("child_set") or []:
-            state_map = entry.get("state") if isinstance(entry, dict) else None
-            for spec in (state_map or {}).values():
-                key = (
-                    spec.get("key", spec.get("path")) if isinstance(spec, dict)
-                    else spec
-                )
-                if isinstance(key, str) and key:
-                    keys.add(key.split(".")[0].split("[")[0])
-    return keys
-
-
-def _matches_json_rules(message: str, json_keys: set[str]) -> bool:
-    """True when ``message`` is a JSON object carrying a json-rule key
-    (mirroring _apply_json_responses, single-element array unwrap included)."""
-    if not json_keys:
-        return False
-    try:
-        obj = parse_json_reply(message)
-    except (ValueError, TypeError):
-        return False
-    if isinstance(obj, list) and len(obj) == 1 and isinstance(obj[0], dict):
-        obj = obj[0]
-    return isinstance(obj, dict) and any(k in obj for k in json_keys)
 
 
 def _resolve_state_refs(template: str, state: dict) -> str:

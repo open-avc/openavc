@@ -9,7 +9,7 @@ here, so a new field on the spec is one edit to the compile; what the runtime
 does with the compiled mapping is ``json_replies.read_json_mapping``. Three
 other readings of the spec are kept by hand and do not ask this module: the
 loader's checks (``avcdriver_semantic``, vendored), the simulator validator's
-json-rule keys (``openavc.simulator.validate._json_rule_keys``) and the Driver
+json-rule keys (``openavc.simulator.reply_reading.json_rule_keys``) and the Driver
 Builder's json rows (``getJsonRows`` in ``responseBuilderHelpers.ts``).
 
 The two read the spec alike except in four ways, each a field of the place's
