@@ -6768,6 +6768,392 @@ const tests = {
         }
         comparePins('level_fader', got, LEVEL_PINS.level_fader);
     },
+
+    // The frame pins: a custom control and a plugin panel drawn, opened,
+    // spoken to and redrawn, every case compared whole with
+    // panel_frame_pins.json (FRAME_PINS above says how they were recorded).
+    async frames_custom_control_draws_opens_and_bridges_as_today() {
+        const got = {};
+        const themed = document.documentElement.style;
+        themed.setProperty('--panel-bg', '#123456');
+        themed.setProperty('--panel-border-radius', '6px');
+        try {
+            await frameCase(got, 'granted', customDef('cc', { grant: FRAME_GRANT, custom_config: { room: '204' }, style: { bg_color: '#222' } }));
+            await frameCase(got, 'no_grant', customDef('cc'));
+            await frameCase(got, 'odd_grant', customDef('cc', { grant: FRAME_ODD_GRANT }));
+            await frameCase(got, 'designer', customDef('cc', { grant: FRAME_GRANT }), { edit: true });
+            await frameCase(got, 'saved_version', customDef('cc', { custom_file: 'a b/c#d.html' }), {
+                before: (app) => { app._uiFilesVersion = 'v 7'; },
+            });
+            for (const [i, file] of ['', '/x.html', '../x.html', 'a\\b.html', 'x..y.html', null].entries()) {
+                await frameCase(got, `bad_file_${i}`, customDef('cc', { custom_file: file, style: { bg_color: '#222' } }));
+            }
+            await frameCase(got, 'missing_file', customDef('cc'), { answer: () => ({ ok: false, status: 404 }) });
+            await frameCase(got, 'unreachable_file', customDef('cc'), { answer: () => { throw new Error('offline'); } });
+            await frameCase(got, 'custom_page', null, {
+                page: {
+                    id: 'pg', name: 'P', page_type: 'page', render_mode: 'custom', custom_file: 'dialog/index.html',
+                    custom_config: { a: 1 }, grant: { devices: ['dsp1'], navigate: true }, elements: [],
+                    layouts: [{ id: 'landscape', orientation: 'landscape', primary: true, placements: {}, hidden: [] }],
+                },
+            });
+        } finally {
+            themed.removeProperty('--panel-bg');
+            themed.removeProperty('--panel-border-radius');
+        }
+        comparePins('frames_custom', got, FRAME_PINS.frames_custom);
+    },
+
+    async frames_plugin_panel_draws_opens_and_bridges_as_today() {
+        const got = {};
+        const withExt = (answer) => ({ before: (app) => { app._pluginExtensions = PLUGIN_EXTENSIONS; }, answer });
+        await frameCase(got, 'plain', pluginDef('pl', { grant: FRAME_GRANT, plugin_config: { a: 1 }, style: { bg_color: '#222' } }));
+        await frameCase(got, 'no_grant', pluginDef('pl'));
+        await frameCase(got, 'extended', pluginDef('pl', { grant: FRAME_GRANT }), withExt(
+            (url) => ({ ok: true, status: 200, json: async () => (url.endsWith('/ext-token') ? { token: 'tok-1' } : {}) })));
+        await frameCase(got, 'one_feature', pluginDef('pl'), {
+            before: (app) => { app._pluginExtensions = { p1: { panel: { allow_features: ['fullscreen'] } } }; },
+        });
+        await frameCase(got, 'token_refused', pluginDef('pl'), withExt(() => ({ ok: false, status: 401, json: async () => ({}) })));
+        await frameCase(got, 'token_unreachable', pluginDef('pl'), withExt(() => { throw new Error('offline'); }));
+        await frameCase(got, 'token_empty', pluginDef('pl'), withExt(() => ({ ok: true, status: 200, json: async () => ({ token: '' }) })));
+        await frameCase(got, 'token_after_removal', pluginDef('pl'), {
+            before: (app) => { app._pluginExtensions = PLUGIN_EXTENSIONS; },
+            answer: () => new Promise((resolve) => { pendingToken = resolve; }),
+        }, {
+            async afterLoad(r) {
+                r.window(false);
+                pendingToken({ ok: true, status: 200, json: async () => ({ token: 'late' }) });
+                await settle();
+                r.window();
+            },
+        });
+        await frameCase(got, 'designer', pluginDef('pl', { grant: FRAME_GRANT, style: { bg_color: '#222' } }), { edit: true });
+        for (const [i, ids] of [{ plugin_id: 'p 1' }, { plugin_type: 'pa/nel' }, { plugin_id: '' }, { plugin_type: null }].entries()) {
+            await frameCase(got, `unconfigured_${i}`, pluginDef('pl', { ...ids, style: { bg_color: '#222' } }));
+        }
+        // The extension table loaded at start: which entries it keeps, and a
+        // failed load leaving what was there.
+        const app = mkApp();
+        const saved = { fetch: window.fetch, warn: window.console.warn };
+        const warned = [];
+        window.console.warn = (...a) => warned.push(a.map(String).join(' '));
+        const answers = [
+            async () => ({ ok: true, json: async () => ({ extensions: { panel_elements: [
+                { plugin_id: 'p1', type: 'panel', ext_auth: true }, { plugin_id: 'p1', type: 'mini' },
+                { plugin_id: 'p2', type: 'panel', sandbox_permissions: ['allow-forms'] },
+                { type: 'orphan' }, { plugin_id: 'p3' }, { plugin_id: 'p1', type: 'panel', allow_features: ['camera'] },
+            ] } }) }),
+            async () => ({ ok: false, json: async () => ({ extensions: { panel_elements: [{ plugin_id: 'x', type: 'y' }] } }) }),
+            async () => { throw new Error('offline'); },
+            async () => ({ ok: true, json: async () => ({}) }),
+            async () => ({ ok: true, json: async () => ({ extensions: {} }) }),
+        ];
+        try {
+            for (const [i, answer] of answers.entries()) {
+                const urls = [];
+                window.fetch = (url) => { urls.push(String(url)); return answer(); };
+                await app._loadPluginExtensions();
+                got[`extensions_${i}`] = { urls, table: JSON.parse(JSON.stringify(app._pluginExtensions)), warned: warned.splice(0) };
+            }
+        } finally {
+            window.fetch = saved.fetch;
+            window.console.warn = saved.warn;
+        }
+        comparePins('frames_plugin', got, FRAME_PINS.frames_plugin);
+    },
+
+    // Where the browser reports a frame's own status, the file check reads it
+    // instead of asking again; a status of 0 still asks.
+    async frames_read_the_status_of_their_own_request_as_today() {
+        const got = {};
+        for (const status of [0, 200, 399, 400, 404, 500]) {
+            await withStatusTimeline(async (deliver) => {
+                await frameCase(got, `status_${status}`, customDef('cc'), {
+                    answer: () => ({ ok: false, status: 410 }),
+                }, {
+                    async afterLoad(r, node, iframe) {
+                        const src = iframe.src;
+                        deliver([
+                            { initiatorType: 'img', name: src, responseStatus: 404 },
+                            { initiatorType: 'iframe', name: `${src}?other`, responseStatus: 404 },
+                            { initiatorType: 'iframe', name: src, responseStatus: status },
+                        ]);
+                        await settle();
+                        deliver([{ initiatorType: 'iframe', name: src, responseStatus: 404 }]);
+                        await settle();
+                        got[`status_${status}_strip`] = node.querySelector('.panel-iframe-fault')?.textContent ?? null;
+                    },
+                });
+            });
+        }
+        await withStatusTimeline(async () => {
+            await frameCase(got, 'no_status_on_the_timeline', customDef('cc'), { answer: () => ({ ok: false, status: 404 }) });
+        }, { noStatus: true });
+        await withStatusTimeline(async (deliver) => {
+            await frameCase(got, 'redrawn_before_the_status', customDef('cc'), { answer: () => ({ ok: true, status: 200 }) }, {
+                async afterLoad(r, node, iframe) {
+                    const src = iframe.src;
+                    r.app.renderCurrentPage();
+                    await settle();
+                    r.take();
+                    deliver([{ initiatorType: 'iframe', name: src, responseStatus: 404 }]);
+                    await settle();
+                    got.redrawn_strips = [node, r.node()].map((n) => n.querySelector('.panel-iframe-fault')?.textContent ?? null);
+                },
+            });
+        });
+        await withStatusTimeline(async (deliver) => {
+            await frameCase(got, 'observer_refused', customDef('cc'), { answer: () => ({ ok: false, status: 404 }) });
+        }, { throwsOnObserve: true });
+        comparePins('frames_status', got, FRAME_PINS.frames_status);
+    },
+};
+
+// --- The frames (custom controls and plugin panels), as a page draws them ---
+//
+// The frame pins drive a custom control or a plugin panel the way a page and
+// the page inside the frame do: drawn on a page, the frame's load, messages
+// from the frame, state pushed to it, a file that is not there. They record
+// what the panel did in reply -- what it drew, what it told the frame, what it
+// sent the server, what it warned, whether the person counted as active, which
+// listeners it added and removed -- and compare it with panel_frame_pins.json,
+// recorded from the code before the frames moved, the way the paint and level
+// pins are.
+const FRAME_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_frame_pins.json'), 'utf8'));
+
+const FRAME_STATE = {
+    'device.dsp1.mute': true, 'device.dsp10.mute': false, 'device.dsp1.zone.2.level': -10,
+    'device.7.power': 'on', 'var.vol': 5, 'var.vol_max': 9, 'var.3': 'z',
+    'plugin.p1.x': 1, 'plugin.p10.x': 2, 'plugin.p1': 3, 'system.time': 't', 'ui.b1.label': 'L',
+};
+const FRAME_GRANT = { devices: ['dsp1', 7], variables: ['vol', 3], macros: true, navigate: true };
+const FRAME_ODD_GRANT = { devices: 'dsp1', variables: null, macros: 'true', navigate: 1 };
+
+/** Every message a frame sends in the pins, in order: the bridge's whole vocabulary and its edges. */
+const FRAME_MESSAGES = [
+    null, {}, { type: '' }, 'text', { type: 'openavc:unknown' },
+    { type: 'openavc:activity' },
+    { type: 'openavc:action' },
+    { type: 'openavc:action', action: 'device.command', device: 'dsp1', command: 'mute', params: { ch: 1 } },
+    { type: 'openavc:action', action: 'device.command', device: 'dsp1', command: 'mute' },
+    { type: 'openavc:action', action: 'device.command', device: 7, command: 'on' },
+    { type: 'openavc:action', action: 'device.command', device: 'dsp10', command: 'on' },
+    { type: 'openavc:action', action: 'device.command', device: 'dsp1' },
+    { type: 'openavc:action', action: 'device.command', command: 'on' },
+    { type: 'openavc:action', action: 'state.set', key: 'var.vol', value: 3 },
+    { type: 'openavc:action', action: 'state.set', key: 'var.vol_max', value: 3 },
+    { type: 'openavc:action', action: 'state.set', key: 'var.3', value: 'x' },
+    { type: 'openavc:action', action: 'state.set', key: 'plugin.p1.x', value: 1 },
+    { type: 'openavc:action', action: 'state.set', key: 'plugin.p10.x', value: 1 },
+    { type: 'openavc:action', action: 'state.set', key: 'plugin.p1', value: 1 },
+    { type: 'openavc:action', action: 'state.set', key: 'device.dsp1.mute', value: true },
+    { type: 'openavc:action', action: 'state.set', value: 1 },
+    { type: 'openavc:action', action: 'state.set', key: '', value: 1 },
+    { type: 'openavc:action', action: 'macro.run', macro: 'system_on' },
+    { type: 'openavc:action', action: 'macro.run', macro: 42 },
+    { type: 'openavc:action', action: 'macro.run' },
+    { type: 'openavc:action', action: 'ui.press', element: 'x' },
+    { type: 'openavc:navigate', page: 'admin' },
+    { type: 'openavc:navigate' },
+    { type: 'openavc:navigate', page: '' },
+    { type: 'openavc:error', message: 'ReferenceError: x' },
+    { type: 'openavc:error' },
+    { type: 'openavc:error', message: 12345 },
+    { type: 'openavc:error', message: 'y'.repeat(250) },
+];
+
+/**
+ * A frame element on a page of its own, live unless `edit`, with a recorder.
+ * `answer(url, init)` is what a fetch gets back (a value, a promise, or a throw);
+ * `before(app)` runs before the page is drawn. `take()` returns, and clears,
+ * everything the panel did since the last take.
+ */
+function frameMount(def, { edit, answer, before, page } = {}) {
+    const r = { ws: [], warn: [], posted: [], toParent: [], fetched: [], listen: [], rejected: [], idle: 0 };
+    const onRejection = (e) => r.rejected.push(String(e && e.message));
+    process.on('unhandledRejection', onRejection);
+    const saved = {
+        warn: window.console.warn, fetch: window.fetch,
+        add: window.addEventListener, remove: window.removeEventListener,
+    };
+    window.console.warn = (...a) => r.warn.push(a.map(String).join(' '));
+    window.fetch = async (url, init) => {
+        r.fetched.push(init === undefined ? String(url) : `${url} ${JSON.stringify(init)}`);
+        return answer ? answer(String(url), init) : { ok: true, status: 200, json: async () => ({}) };
+    };
+    window.addEventListener = function (type, fn, ...rest) {
+        if (type === 'message') r.listen.push(`+${r.handlerName(fn)}`);
+        return saved.add.call(this, type, fn, ...rest);
+    };
+    window.removeEventListener = function (type, fn, ...rest) {
+        if (type === 'message') r.listen.push(`-${r.handlerName(fn)}`);
+        return saved.remove.call(this, type, fn, ...rest);
+    };
+    const names = new Map();
+    r.handlerName = (fn) => {
+        if (!names.has(fn)) names.set(fn, `h${names.size + 1}`);
+        return names.get(fn);
+    };
+    r.restore = () => {
+        process.off('unhandledRejection', onRejection);
+        window.console.warn = saved.warn;
+        window.fetch = saved.fetch;
+        window.addEventListener = saved.add;
+        window.removeEventListener = saved.remove;
+    };
+    const app = mkApp();
+    app.editMode = !!edit;
+    app.ws = { readyState: 1, send: (m) => r.ws.push(JSON.parse(m)) };
+    app._postToParent = (m) => r.toParent.push(m);
+    app.resetIdleTimer = () => { r.idle += 1; };
+    app.state = { ...FRAME_STATE };
+    if (before) before(app);
+    if (page) {
+        app.uiDef = { settings: {}, master_elements: [], pages: [page] };
+        app.uiSettings = {};
+        app.currentPage = page.id;
+        app.snapshotReceived = true;
+        app.renderCurrentPage();
+    } else {
+        renderProject(app, project({
+            elements: [def, { id: 'lbl', type: 'label', text: 'x' }],
+            placements: { [def.id]: { x: 5, y: 5, w: 40, h: 40 }, lbl: { x: 50, y: 5, w: 20, h: 10 } },
+        }));
+    }
+    r.app = app;
+    r.node = () => app.root.querySelector(`[data-element-id="${page ? page.id : def.id}"]`);
+    r.take = () => {
+        const out = {};
+        for (const k of ['ws', 'warn', 'posted', 'toParent', 'fetched', 'listen', 'rejected']) {
+            if (r[k].length) out[k] = r[k].splice(0);
+        }
+        if (r.idle) { out.idle = r.idle; r.idle = 0; }
+        if (app._lastTouchedElementId != null) { out.touched = app._lastTouchedElementId; app._lastTouchedElementId = null; }
+        return out;
+    };
+    /** Point the frame's window at the recorder (or at nothing, `null`). */
+    r.window = (present = true) => {
+        const iframe = r.node()?.querySelector('iframe');
+        if (!iframe) return null;
+        const value = present ? { postMessage: (m, origin) => r.posted.push([m, origin]) } : null;
+        Object.defineProperty(iframe, 'contentWindow', { value, configurable: true });
+        return value;
+    };
+    return r;
+}
+
+/** Resolves the token fetch a case holds open (token_after_removal). */
+let pendingToken = () => {};
+
+/** Microtasks and the promise chains a fetch starts, run out. */
+async function settle() {
+    for (let i = 0; i < 6; i++) await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+}
+
+/** One frame pin case, end to end; a throw is pinned as its last step. */
+async function frameCase(got, name, def, opts = {}, extra) {
+    const steps = [];
+    let r;
+    try {
+        r = frameMount(def, opts);
+        const node = r.node();
+        steps.push({ drawn: nodeSnapshot(node), ...r.take() });
+        const id = def ? def.id : opts.page.id;
+        steps.push({
+            mapped: r.app.elementMap[id]?.el === node && (!def || r.app.elementMap[id]?.elementDef === def),
+            grant: node._grant ?? null, own: node._ownNamespace ?? null, config: node._pluginConfig ?? null,
+            bridge: typeof node._pluginMessageHandler, held: r.app._pluginMessageHandlers.has(node._pluginMessageHandler),
+            handlers: r.app._pluginMessageHandlers.size,
+        });
+        const iframe = node.querySelector('iframe');
+        if (iframe) {
+            await settle();
+            steps.push({ fileCheck: r.take(), drawn: nodeSnapshot(node) });
+            const win = r.window();
+            iframe.dispatchEvent(new window.Event('load'));
+            await settle();
+            steps.push({ load: r.take(), drawn: nodeSnapshot(node) });
+            if (extra?.afterLoad) { await extra.afterLoad(r, node, iframe); steps.push({ afterLoad: r.take() }); }
+            const fire = (data, source = win) => node._pluginMessageHandler({ source, data });
+            for (const data of FRAME_MESSAGES) {
+                fire(data);
+                steps.push({ msg: JSON.stringify(data)?.slice(0, 60) ?? 'undefined', ...r.take() });
+            }
+            fire({ type: 'openavc:action', action: 'device.command', device: 'dsp1', command: 'x' }, {});
+            steps.push({ wrongSource: r.take() });
+            // Focus: a message counts as activity only while the frame has it.
+            iframe.focus();
+            fire({ type: 'openavc:activity' });
+            steps.push({ focused: document.activeElement === iframe, ...r.take() });
+            Object.defineProperty(document, 'activeElement', { get() { throw new Error('no focus here'); }, configurable: true });
+            try { fire({ type: 'openavc:activity' }); } finally { delete document.activeElement; }
+            steps.push({ focusThrows: r.take() });
+            iframe.blur();
+            // The grant is read off the element when a message arrives.
+            const placed = node._grant;
+            node._grant = { devices: ['dsp10'], variables: [], macros: false, navigate: false };
+            fire({ type: 'openavc:action', action: 'device.command', device: 'dsp10', command: 'on' });
+            fire({ type: 'openavc:action', action: 'device.command', device: 'dsp1', command: 'on' });
+            node._grant = undefined;
+            fire({ type: 'openavc:action', action: 'device.command', device: 'dsp10', command: 'on' });
+            fire({ type: 'openavc:navigate', page: 'p' });
+            steps.push({ regranted: r.take() });
+            node._grant = placed;
+            // State pushed to the frame: the same scope as its opening snapshot.
+            r.app.handleMessage({ type: 'state.update', changes: Object.fromEntries(Object.keys(FRAME_STATE).map((k) => [k, `${k}!`])) });
+            r.app.handleMessage({ type: 'state.delete', keys: Object.keys(FRAME_STATE) });
+            steps.push({ pushed: r.take() });
+            // Asking for the opening message again.
+            fire({ type: 'openavc:request-init' });
+            await settle();
+            steps.push({ reinit: r.take(), drawn: nodeSnapshot(node) });
+            // A frame that has gone away is told nothing.
+            r.window(false);
+            r.app.handleMessage({ type: 'state.update', changes: { 'var.vol': 1 } });
+            fire({ type: 'openavc:request-init' }, null);
+            await settle();
+            steps.push({ gone: r.take() });
+            r.window();
+        }
+        // The page redrawn: every frame's listener goes, the new frames listen again.
+        r.app.renderCurrentPage();
+        await settle();
+        steps.push({ redrawn: r.take(), handlers: r.app._pluginMessageHandlers.size });
+    } catch (e) {
+        steps.push({ threw: String(e && e.message), at: (e && e.stack || '').split('\n')[1]?.trim() });
+    } finally {
+        if (r) r.restore();
+    }
+    got[name] = steps;
+}
+
+/** A fake resource timeline that reports a frame's status, installed before the app is made. */
+function withStatusTimeline(run, { throwsOnObserve, noStatus } = {}) {
+    const delivered = [];
+    window.PerformanceResourceTiming = function PerformanceResourceTiming() {};
+    if (!noStatus) window.PerformanceResourceTiming.prototype.responseStatus = 0;
+    window.PerformanceObserver = class {
+        constructor(cb) { this.cb = cb; delivered.push(this); }
+        observe(opts) { if (throwsOnObserve) throw new Error('not here'); this.opts = opts; }
+    };
+    const deliver = (entries) => {
+        for (const o of delivered) o.cb({ getEntries: () => entries });
+    };
+    return Promise.resolve(run(deliver, delivered)).finally(() => {
+        delete window.PerformanceResourceTiming;
+        delete window.PerformanceObserver;
+    });
+}
+
+const customDef = (id, extra) => ({ id, type: 'custom', custom_file: 'map/index.html', ...extra });
+const pluginDef = (id, extra) => ({ id, type: 'plugin', plugin_id: 'p1', plugin_type: 'panel', ...extra });
+const PLUGIN_EXTENSIONS = {
+    p1: { panel: {
+        sandbox_permissions: ['allow-forms', 'allow-scripts', 'allow-forms', 'allow-popups'],
+        allow_features: ['camera', 'microphone'], ext_auth: true,
+    } },
 };
 
 const results = {};

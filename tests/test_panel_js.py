@@ -129,6 +129,11 @@ SCENARIOS = [
     "level_slider_draws_follows_and_sends_as_today",
     "level_fader_draws_follows_and_sends_as_today",
     "level_controls_draw_their_first_reading_as_today",
+    # A custom control and a plugin panel drawn, opened, spoken to and redrawn,
+    # pinned whole (tests/fixtures/panel_frame_pins.json).
+    "frames_custom_control_draws_opens_and_bridges_as_today",
+    "frames_plugin_panel_draws_opens_and_bridges_as_today",
+    "frames_read_the_status_of_their_own_request_as_today",
     # display_decimals reaches every element that draws a number.
     "label_display_decimals_rounds_a_numeric_value",
     "label_display_decimals_leaves_text_alone",
