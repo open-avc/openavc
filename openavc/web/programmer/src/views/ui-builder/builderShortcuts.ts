@@ -34,6 +34,35 @@ import type { ElementEdits } from "./useElementEdits";
  *  enough to place a control by eye, large enough to see it move. */
 export const FINE_NUDGE = 0.25;
 
+/** One line of the shortcuts reference: the keys, and what they do. */
+export interface ShortcutRow {
+  keys: string;
+  description: string;
+}
+
+/**
+ * What the shortcuts reference (Ctrl+/) lists for the UI Builder: a row for
+ * every key this module answers, plus the canvas's Shift+Click. A key added
+ * here gets its row in the same change; builderShortcuts.test.tsx fails on a
+ * key without a row or a row without a key.
+ */
+export const BUILDER_SHORTCUTS: readonly ShortcutRow[] = [
+  { keys: "Ctrl+Z", description: "Undo" },
+  { keys: "Ctrl+Y / Ctrl+Shift+Z", description: "Redo" },
+  { keys: "Ctrl+S", description: "Save project" },
+  { keys: "Ctrl+P", description: "Toggle preview mode" },
+  { keys: "Ctrl+E", description: "Toggle element palette" },
+  { keys: "Ctrl+C", description: "Copy the selected elements" },
+  { keys: "Ctrl+V", description: "Paste" },
+  { keys: "Ctrl+D", description: "Duplicate the selected elements" },
+  { keys: "Delete / Backspace", description: "Delete the selection" },
+  { keys: "Arrow keys", description: "Move the selection one step" },
+  { keys: "Shift+Arrow keys", description: "Move the selection ten steps" },
+  { keys: "Alt+Arrow keys", description: "Move the selection a fine step, ignoring snapping" },
+  { keys: "Escape", description: "Deselect all" },
+  { keys: "Shift+Click", description: "Add to or remove from the selection" },
+];
+
 /** The page as the keyboard needs it, as last drawn, and what a key acts on. */
 export interface BuilderKeys {
   previewMode: boolean;

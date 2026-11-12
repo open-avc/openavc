@@ -1,37 +1,22 @@
 /**
  * Keyboard shortcuts reference panel — toggled with Ctrl+/
  */
+import { BUILDER_SHORTCUTS, type ShortcutRow } from "../../views/ui-builder/builderShortcuts";
 import { Modal } from "./Modal";
 
 interface ShortcutGroup {
   title: string;
-  shortcuts: { keys: string; description: string }[];
+  shortcuts: readonly ShortcutRow[];
 }
 
 const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: "Global",
     shortcuts: [
-      { keys: "Ctrl+Z", description: "Undo" },
-      { keys: "Ctrl+Shift+Z", description: "Redo" },
       { keys: "Ctrl+/", description: "Toggle this shortcuts panel" },
     ],
   },
-  {
-    title: "UI Builder",
-    shortcuts: [
-      { keys: "Ctrl+S", description: "Save project" },
-      { keys: "Ctrl+P", description: "Toggle preview mode" },
-      { keys: "Ctrl+E", description: "Toggle element palette" },
-      { keys: "Ctrl+C", description: "Copy selected element" },
-      { keys: "Ctrl+V", description: "Paste element" },
-      { keys: "Ctrl+D", description: "Duplicate selected element" },
-      { keys: "Delete / Backspace", description: "Delete selected element(s)" },
-      { keys: "Arrow keys", description: "Move selected element(s)" },
-      { keys: "Escape", description: "Deselect all" },
-      { keys: "Shift+Click", description: "Add/remove from multi-select" },
-    ],
-  },
+  { title: "UI Builder", shortcuts: BUILDER_SHORTCUTS },
   {
     title: "Script Editor",
     shortcuts: [
