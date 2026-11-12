@@ -125,6 +125,9 @@ CASES: dict[str, dict] = {
     "command_passthrough_skipped": _with(commands=_commands(
         raw={"send": "{text}\\r", "params": {"text": {"type": "string"}}},
     )),
+    "command_passthrough_with_a_numeric_spec": _with(commands=_commands(
+        raw={"send": "{text:02d}\\r", "params": {"text": {"type": "string"}}},
+    )),
     "command_sample_unfillable": _with(
         commands=_commands(alias={"send": "NAME {alias}\\r\\n"}),
         config_schema={"alias": {"type": "string"}},
@@ -439,6 +442,10 @@ EXPECTED: dict = {'answering_passes_over_an_address_entry': [('warning',
                                   'reply_framing',
                                   '2 simulator replies checked, all terminated with '
                                   "'\\\\r\\\\n'.")],
+ 'command_passthrough_with_a_numeric_spec': [('info',
+                                              'reply_framing',
+                                              '2 simulator replies checked, all terminated with '
+                                              "'\\\\r\\\\n'.")],
  'command_protocol_braces': [('info',
                               'reply_framing',
                               "1 simulator reply checked, all terminated with '\\\\r\\\\n'.")],
