@@ -289,21 +289,30 @@ def _python_driver_id(filepath: Path) -> str | None:
     """Extract ``DRIVER_INFO['id']`` from a .py driver via AST (no import)."""
     tree = ast.parse(filepath.read_text(encoding="utf-8"))
     # DRIVER_INFO may be a module-level assignment or a class attribute;
-    # ast.walk covers both. First declared id wins.
+    # ast.walk covers both. The first dict that names an id decides: an empty
+    # one reads as no id.
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
+        if _assigns_driver_info_dict(node):
+            declared = _literal_id(node.value)
+            if declared is not None:
+                return declared or None
+    return None
+
+
+def _assigns_driver_info_dict(node: ast.AST) -> bool:
+    """``DRIVER_INFO = {...}``, alone or among several names (not annotated)."""
+    if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Dict):
+        return False
+    return any(isinstance(t, ast.Name) and t.id == "DRIVER_INFO" for t in node.targets)
+
+
+def _literal_id(node: ast.Dict) -> str | None:
+    """The first ``"id"`` key's text value, or None if no key gives one."""
+    for key, value in zip(node.keys, node.values):
+        if not (isinstance(key, ast.Constant) and key.value == "id"):
             continue
-        if not any(
-            isinstance(t, ast.Name) and t.id == "DRIVER_INFO" for t in node.targets
-        ):
-            continue
-        if isinstance(node.value, ast.Dict):
-            for k, v in zip(node.value.keys, node.value.values):
-                if (
-                    isinstance(k, ast.Constant) and k.value == "id"
-                    and isinstance(v, ast.Constant) and isinstance(v.value, str)
-                ):
-                    return v.value or None
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            return value.value
     return None
 
 
@@ -675,6 +684,24 @@ def is_builtin_driver(
         return True
     builtin_match = False
     user_match = False
+    for filepath in _definitions_declaring(directories, driver_id):
+        if is_builtin_definition_path(filepath):
+            builtin_match = True
+        else:
+            user_match = True
+    return builtin_match and not user_match
+
+
+def _definitions_declaring(
+    directories: Sequence[Path | str], driver_id: str
+) -> Iterator[Path]:
+    """Each ``.avcdriver`` file whose top-level ``id`` is ``driver_id``.
+
+    Directories in the order given, files in the order the file system lists
+    them (``delete_driver_definition`` removes the first it may). A file that
+    cannot be read or parsed is passed over; one that is not UTF-8 raises.
+    ``find_driver_file_by_id`` reads ids by its own rule (``driver_id_from_file``).
+    """
     for dir_path in directories:
         dir_path = Path(dir_path)
         if not dir_path.exists():
@@ -684,13 +711,8 @@ def is_builtin_driver(
                 data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
             except (OSError, yaml.YAMLError):
                 continue
-            if not (isinstance(data, dict) and data.get("id") == driver_id):
-                continue
-            if is_builtin_definition_path(filepath):
-                builtin_match = True
-            else:
-                user_match = True
-    return builtin_match and not user_match
+            if isinstance(data, dict) and data.get("id") == driver_id:
+                yield filepath
 
 
 def restore_driver_registration(
@@ -747,27 +769,27 @@ def delete_driver_definition(
     crash lost the driver.
     """
     kept = Path(keep).resolve() if keep is not None else None
-    for dir_path in directories:
-        dir_path = Path(dir_path)
-        if not dir_path.exists():
+    for filepath in _definitions_declaring(directories, driver_id):
+        try:
+            if _delete_definition_file(filepath, kept):
+                return True
+        except OSError:
             continue
-        for filepath in dir_path.glob(f"*{DRIVER_EXTENSION}"):
-            try:
-                data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-                if isinstance(data, dict) and data.get("id") == driver_id:
-                    if kept is not None and filepath.resolve() == kept:
-                        continue
-                    if is_builtin_definition_path(filepath):
-                        log.warning(
-                            f"Refusing to delete built-in driver definition: {filepath}"
-                        )
-                        continue
-                    filepath.unlink()
-                    log.info(f"Deleted driver definition: {filepath}")
-                    return True
-            except (OSError, yaml.YAMLError):
-                continue
     return False
+
+
+def _delete_definition_file(filepath: Path, kept: Path | None) -> bool:
+    """Remove one definition file unless it is the one being kept or a
+    shipped built-in; whether it was removed. An ``OSError`` reaches the
+    caller, which goes on to the next file."""
+    if kept is not None and filepath.resolve() == kept:
+        return False
+    if is_builtin_definition_path(filepath):
+        log.warning(f"Refusing to delete built-in driver definition: {filepath}")
+        return False
+    filepath.unlink()
+    log.info(f"Deleted driver definition: {filepath}")
+    return True
 
 
 def list_driver_definitions(directories: Sequence[Path | str]) -> list[dict[str, Any]]:
