@@ -243,6 +243,7 @@ SCENARIOS = [
     "access_the_waiting_screen_fills_in_what_the_answer_left_out",
     "access_the_admin_password_refusals_say_what_happened",
     "remote_session_ended_is_drawn_once_and_ends_the_holds",
+    "hold_repeat_presses_until_let_go_and_stops_when_the_release_cannot_come",
     "every_server_address_follows_the_path_the_panel_was_opened_under",
     # A page nobody has built yet says so, without sending anyone to the IDE.
     "q160_an_empty_page_says_so",

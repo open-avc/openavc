@@ -4879,6 +4879,97 @@ const tests = {
         }
     },
 
+    // A held button presses again on a timer until it is let go. Every way a
+    // press can lose its release ends that timer: the pointer leaving, the
+    // panel going to the background, the socket dropping, a new page, and the
+    // overlay it sits on closing (which ends that overlay's holds only).
+    hold_repeat_presses_until_let_go_and_stops_when_the_release_cannot_come() {
+        const realSet = window.setInterval;
+        const realClear = window.clearInterval;
+        const realSetTimeout = window.setTimeout;
+        const timers = new Map();
+        let next = 0;
+        window.setInterval = (fn) => { timers.set(++next, fn); return next; };
+        window.clearInterval = (id) => { timers.delete(id); };
+        const tick = () => [...timers.values()].forEach((fn) => fn());
+        const held = (id) => el(id, 'button', {
+            bindings: { do: { press: [{ action: 'macro', macro: 'm1', mode: 'hold_repeat', hold_repeat_ms: 50 }] } },
+        });
+        const pages = ['home', 'help'].map(startupPage);
+        pages[0].elements.push(held('h1'));
+        pages[0].layouts[0].placements.h1 = { x: 0, y: 0, w: 10, h: 10 };
+        pages[1].page_type = 'overlay';
+        pages[1].elements.push(held('h2'));
+        pages[1].layouts[0].placements.h2 = { x: 0, y: 0, w: 10, h: 10 };
+        const app = openingPanel(pages);
+        const sent = [];
+        const recordSends = () => {
+            app.ws.send = (raw) => {
+                const msg = JSON.parse(raw);
+                sent.push(`${msg.type}:${msg.element_id || msg.page_id}`);
+                if (msg.type === 'ui.page') app.handleMessage({ type: 'ui.navigate', page_id: msg.page_id });
+            };
+        };
+        app.ws = { readyState: 1 };
+        recordSends();
+        const button = (id) => document.querySelector(`[data-element-id="${id}"]`);
+        const press = (id) => button(id).dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+        const letGo = () => window.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true }));
+        try {
+            press('h1');
+            tick(); tick();
+            assert(sent.join() === 'ui.press:h1,ui.press:h1,ui.press:h1',
+                `a press, then one per tick while held, got ${sent.join()}`);
+            button('h1').dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            tick();
+            assert(sent.join() === 'ui.press:h1,ui.press:h1,ui.press:h1,ui.release:h1',
+                `letting go stops it, got ${sent.join()}`);
+            assert(timers.size === 0 && !('h1' in app.holdTimers), 'no timer left');
+
+            press('h1');
+            button('h1').dispatchEvent(new window.MouseEvent('mouseleave'));
+            assert(timers.size === 0, 'the pointer leaving ends the hold');
+            letGo();
+
+            press('h1');
+            Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+            document.dispatchEvent(new window.Event('visibilitychange'));
+            delete document.hidden;
+            assert(timers.size === 0, 'going to the background ends the hold');
+            letGo();
+
+            press('h1');
+            document.dispatchEvent(new window.Event('visibilitychange'));
+            assert(timers.size === 1, 'coming back to the front is not a release');
+            app.renderCurrentPage();
+            assert(timers.size === 0, 'a new page ends the hold');
+            letGo();
+
+            press('h1');
+            app.navigateToPage('help');
+            press('h2');
+            assert(timers.size === 2, 'two buttons held, one under the overlay');
+            app.dismissOverlay();
+            assert(timers.size === 1 && !('h2' in app.holdTimers) && ('h1' in app.holdTimers),
+                'closing the overlay ends its own hold and leaves the page underneath alone');
+            letGo();
+
+            window.WebSocket = FakeWS;
+            app.connect();
+            recordSends();
+            press('h1');
+            dropSocket(app, 1006);
+            assert(timers.size === 0, 'a dropped socket ends the hold');
+            letGo();
+        } finally {
+            window.setInterval = realSet;
+            window.clearInterval = realClear;
+            window.setTimeout = realSetTimeout;
+            resetAfterDrop(app);
+            app.dismissAllOverlays();
+        }
+    },
+
     // The ended screen is drawn once and ends every hold-repeat.
     remote_session_ended_is_drawn_once_and_ends_the_holds() {
         clearAccessOverlay();
