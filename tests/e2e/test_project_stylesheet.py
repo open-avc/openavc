@@ -10,7 +10,7 @@ ours".
 
 Requiring ``!important`` was never protecting anything: the properties it
 applies to are exactly the properties the author is trying to change. So
-``_raiseCustomCssPriority`` re-sets every declaration in the project stylesheet
+``raisePriority`` (``web/panel/modules/stylesheet.js``) re-sets every declaration in the project stylesheet
 as important, through the CSSOM, and these tests pin the three things that has
 to mean:
 
@@ -176,7 +176,7 @@ def test_plain_css_beats_the_inline_look(panel) -> None:
     _render(panel, ".brand { background: rgb(138, 180, 147); border-radius: 32px; }")
     assert _computed(panel, "background-color") == "rgb(138, 180, 147)", (
         "the project stylesheet lost to the inline style the renderer wrote -- "
-        "this is the whole reason _raiseCustomCssPriority exists"
+        "this is the whole reason the panel raises the stylesheet's priority"
     )
     assert _computed(panel, "border-radius") == "32px"
 
