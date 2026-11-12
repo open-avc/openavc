@@ -6,6 +6,7 @@ number, the order the writes happen in, and the reply.
 Invented devices only (platform-feature tests).
 """
 
+import datetime
 import re
 
 import pytest
@@ -157,6 +158,21 @@ def test_the_writes_happen_in_order_and_a_later_one_reads_an_earlier_one():
     sim.set_state = record
     assert _run(sim, "Pnew") == b"new 300"
     assert seen == [("name", "new"), ("count", 3), ("level", 3.0)]
+
+
+def test_a_value_the_device_reports_as_unknown_is_read_back_before_its_type():
+    sim = _sim([{"receive": r"L(-?\d+)", "set_state": {"level": "{1}"}}], {
+        "level": {"type": "number", "label": "Level", "scale": 0.01, "unknown": ["-32768"]},
+    })
+    sim._state["level"] = 1.0
+    _run(sim, "L-32768")
+    assert sim._state["level"] is None
+
+
+def test_a_date_literal_is_written_as_its_text():
+    sim = _sim([{"receive": "D", "set_state": {"name": datetime.date(2024, 1, 2)}}])
+    _run(sim, "D")
+    assert sim._state["name"] == "2024-01-02"
 
 
 def test_a_write_outside_the_bounds_is_clamped():
