@@ -6,8 +6,12 @@
  */
 
 import { NOT_APPROVED_CLOSE, PanelAccess } from './modules/access.js';
-import { basePath } from './modules/base_path.js';
+import { assetUrl, basePath } from './modules/base_path.js';
 import { pickLook, withTwoStateWords } from './modules/looks.js';
+import {
+    applyFrameless, applyImageEffect, applyStyle, clearStateColours, drawFadedPicture,
+    gradientCss, updateImageTint,
+} from './modules/paint.js';
 import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
@@ -2465,10 +2469,10 @@ class PanelApp {
 
         // Apply static styles (theme defaults merged)
         const themedStyle = this.getThemedStyle('button', element.style);
-        this.applyStyle(el, themedStyle);
+        applyStyle(el, themedStyle);
 
         // Frameless: hide chrome so the image acts as the button
-        if (element.frameless) this.applyFrameless(el);
+        if (element.frameless) applyFrameless(el);
 
         const displayMode = element.display_mode || 'text';
         const showImage = (displayMode === 'image' || displayMode === 'image_text') && element.button_image;
@@ -2490,7 +2494,7 @@ class PanelApp {
 
         // Image effect last so its DOM layer isn't removed by other content rendering paths
         if (showImage) {
-            this.applyImageEffect(el, element.button_image, {
+            applyImageEffect(el, element.button_image, {
                 fit: element.image_fit,
                 blend: element.image_blend_mode,
                 opacity: element.image_opacity,
@@ -2652,7 +2656,7 @@ class PanelApp {
         // all -- so the path is the same and the editor reveals `**bold**`.
         this._recordTextSource(el, ['text']);
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
         this.renderElementContent(el, element);
 
         // Text binding (the label's value)
@@ -2703,7 +2707,7 @@ class PanelApp {
 
         // Apply theme element_defaults so wrapper bg / border / radius pick
         // up the theme. Without this, status_led ignored theme styling.
-        this.applyStyle(el, this.getThemedStyle('status_led', element.style));
+        applyStyle(el, this.getThemedStyle('status_led', element.style));
 
         const dot = document.createElement('div');
         dot.className = 'led-dot';
@@ -2740,7 +2744,7 @@ class PanelApp {
         // Apply theme element_defaults to the wrapper so slider bg / border /
         // radius / shadow pick up the theme. Without this, sliders silently
         // ignored their theme styling.
-        this.applyStyle(el, themedSliderStyle);
+        applyStyle(el, themedSliderStyle);
 
         // Thumb size: per-element value wins, otherwise theme element_default, otherwise 44.
         el.style.setProperty(
@@ -2938,7 +2942,7 @@ class PanelApp {
             el.style.opacity = '0.5';
         }
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
         this.renderElementContent(el, element);
 
         // Appearance, and lit while its page is showing. One binding and one
@@ -3040,7 +3044,7 @@ class PanelApp {
         });
 
         el.appendChild(select);
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
 
         // Value binding (read; two-way when show.value.write_back)
         const valueBinding = element.bindings?.show?.value;
@@ -3098,7 +3102,7 @@ class PanelApp {
         });
 
         el.appendChild(input);
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
 
         const valueBinding = element.bindings?.show?.value;
         if (valueBinding) {
@@ -3119,7 +3123,7 @@ class PanelApp {
         el.dataset.elementId = element.id;
 
         this._showImagePicture(el, element, element.src);
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
 
         // Appearance: a picture per state, so a variable a script sets (the
         // season, the room's mode) changes what the Image shows. The pictures
@@ -3184,7 +3188,7 @@ class PanelApp {
             el.prepend(img);
             el._pictureImg = img;
         }
-        img.src = this.resolveAssetUrl(src);
+        img.src = assetUrl(src);
     }
 
     /**
@@ -3205,7 +3209,7 @@ class PanelApp {
         take(look.style_inactive);
         for (const ref of pictures) {
             const probe = new Image();
-            probe.src = this.resolveAssetUrl(ref);
+            probe.src = assetUrl(ref);
         }
     }
 
@@ -3223,7 +3227,7 @@ class PanelApp {
         }
         el.textContent = content;
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
         this.renderElementContent(el, element);
 
         const onPress = (e) => {
@@ -3273,7 +3277,7 @@ class PanelApp {
         const itemBg = style.item_bg || '#2a2a4e';
         const itemActiveBg = style.item_active_bg || '#42a5f5';
 
-        this.applyStyle(el, style);
+        applyStyle(el, style);
 
         if (element.label) {
             const label = document.createElement('div');
@@ -3459,7 +3463,7 @@ class PanelApp {
         // theme, not just per-element overrides.
         const style = this.getThemedStyle('matrix', element.style);
         const matrix = createMatrix(element, style, this._matrixHost(element));
-        this.applyStyle(el, style);
+        applyStyle(el, style);
 
         if (element.label) {
             const label = document.createElement('div');
@@ -3625,7 +3629,7 @@ class PanelApp {
             el.appendChild(label);
         }
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
 
         // Value binding
         if (element.bindings?.show?.value) {
@@ -3743,7 +3747,7 @@ class PanelApp {
 
         el.appendChild(bar);
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
 
         // Value binding
         if (element.bindings?.show?.value) {
@@ -3834,7 +3838,7 @@ class PanelApp {
         el.classList.add(isHorizontal ? 'horizontal' : 'vertical');
 
         // Element-level wrapper styling (bg_color, border, padding, shadow, etc.)
-        this.applyStyle(el, this.getThemedStyle('fader', element.style));
+        applyStyle(el, this.getThemedStyle('fader', element.style));
 
         if (element.label) {
             const label = document.createElement('div');
@@ -4298,7 +4302,7 @@ class PanelApp {
             el.appendChild(label);
         }
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
 
         // Appearance: the frame's colour or background picture per state (a
         // divisible space in use, an alarm zone gone red).
@@ -4325,7 +4329,7 @@ class PanelApp {
         display.className = 'clock-display';
         el.appendChild(display);
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
 
         const mode = element.clock_mode || 'time';
         const defaultFormats = { time: 'h:mm A', date: 'MMM D, YYYY', datetime: 'MMM D, YYYY h:mm A', countdown: 'HH:mm:ss', elapsed: 'HH:mm:ss', meeting: 'mm:ss' };
@@ -4528,7 +4532,7 @@ class PanelApp {
         // drawn changes; the entry submitted is the digits themselves.
         const maskDisplay = element.mask_display === true;
 
-        this.applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.getThemedStyle(element.type, element.style));
 
         if (element.label) {
             const label = document.createElement('div');
@@ -4887,7 +4891,7 @@ class PanelApp {
         sub.style.fontSize = '0.7143em';
         el.appendChild(title);
         el.appendChild(sub);
-        this.applyStyle(el, this.getThemedStyle(styleType, element.style));
+        applyStyle(el, this.getThemedStyle(styleType, element.style));
         return el;
     }
 
@@ -5179,7 +5183,7 @@ class PanelApp {
         el._pluginMessageHandler = handler;
         this._pluginMessageHandlers.add(handler);
 
-        this.applyStyle(el, this.getThemedStyle(opts.styleType, element.style));
+        applyStyle(el, this.getThemedStyle(opts.styleType, element.style));
         return el;
     }
 
@@ -5267,7 +5271,7 @@ class PanelApp {
     _resolveSoundUrl(soundId) {
         if (!soundId || typeof soundId !== 'string') return null;
         if (soundId.startsWith('assets://')) {
-            return this.resolveAssetUrl(soundId);
+            return assetUrl(soundId);
         }
         if (soundId.startsWith('http://') || soundId.startsWith('https://') || soundId.startsWith('/')) {
             return this._resolveAbsoluteUrl(soundId);
@@ -5592,27 +5596,6 @@ class PanelApp {
     }
 
     /**
-     * Drop what a state look wrote inline -- background, text colour and
-     * opacity -- where the resting style has nothing to put back. applyStyle
-     * writes only the properties it is given, so without this a look that goes
-     * inactive keeps the last state's colours: a picker shows several inputs
-     * lit at once, a Blank All button stays orange after it is restored.
-     *
-     * Pass the THEMED resting style (getThemedStyle), not the element's own:
-     * most element types take their theme colour inline from it, and clearing
-     * one of those without putting it back would drop to the bare CSS. A
-     * button's theme colour comes from CSS, so clearing to '' restores it.
-     */
-    _clearStateColours(element, baseStyle) {
-        if (!element.style) return;
-        if (!baseStyle.bg_color && !baseStyle.background_gradient) {
-            element.style.backgroundColor = '';
-        }
-        if (!baseStyle.text_color) element.style.color = '';
-        if (baseStyle.opacity == null) element.style.opacity = '';
-    }
-
-    /**
      * Draw the artwork a button should show in its current state, after
      * applyStyle has decided background-image for the gradient.
      *
@@ -5634,7 +5617,7 @@ class PanelApp {
             element.querySelector(':scope > .panel-button-image-layer')?.remove();
             return;
         }
-        this.applyImageEffect(element, image, {
+        applyImageEffect(element, image, {
             fit: elementDef.image_fit,
             blend: elementDef.image_blend_mode,
             opacity: elementDef.image_opacity,
@@ -5997,8 +5980,8 @@ class PanelApp {
             // state. Where a `show.value` binding owns the text instead, it is
             // left alone: that binding has its own unknown form and writing
             // here would clobber it a moment after it arrived.
-            this._clearStateColours(element, baseStyle);
-            this.applyStyle(element, this.getThemedStyle(elementDef.type, baseStyle));
+            clearStateColours(element, baseStyle);
+            applyStyle(element, this.getThemedStyle(elementDef.type, baseStyle));
             if (!elementDef.bindings?.show?.value && elementDef.text !== undefined) {
                 this._setLabelText(element, String(elementDef.text), ['text']);
             }
@@ -6007,8 +5990,8 @@ class PanelApp {
 
         const { appearance, wordsPath } = withTwoStateWords(binding, pickLook(binding, stateValue));
 
-        this._clearStateColours(element, this.getThemedStyle(elementDef.type, baseStyle));
-        this.applyStyle(element, this.getThemedStyle(elementDef.type, { ...baseStyle, ...appearance }));
+        clearStateColours(element, this.getThemedStyle(elementDef.type, baseStyle));
+        applyStyle(element, this.getThemedStyle(elementDef.type, { ...baseStyle, ...appearance }));
 
         if (appearance.label !== undefined) {
             this._setLabelText(element, String(appearance.label), wordsPath);
@@ -6041,8 +6024,8 @@ class PanelApp {
 
         const appearance = offline ? {} : pickLook(binding, this.state[binding.key]).appearance;
 
-        this._clearStateColours(element, rest);
-        this.applyStyle(element, { ...rest, ...appearance });
+        clearStateColours(element, rest);
+        applyStyle(element, { ...rest, ...appearance });
         this._showImagePicture(element, elementDef, appearance.button_image || elementDef.src);
     }
 
@@ -6068,8 +6051,8 @@ class PanelApp {
             : { appearance: {}, wordsPath: ['label'] };
 
         const lit = this._navShowsItsPage(elementDef);
-        this._clearStateColours(element, rest);
-        this.applyStyle(element, {
+        clearStateColours(element, rest);
+        applyStyle(element, {
             ...rest, ...appearance, ...(lit ? this._toggleOnStyle(elementDef) : {}),
         });
         element.classList.toggle('nav-current', lit);
@@ -6115,8 +6098,8 @@ class PanelApp {
 
         const style = { ...rest, ...appearance };
         if (appearance.button_image) style.background_image = appearance.button_image;
-        this._clearStateColours(element, rest);
-        this.applyStyle(element, style);
+        clearStateColours(element, rest);
+        applyStyle(element, style);
         // A faded picture is a layer of its own, which applyStyle reuses but
         // never takes away: a state with no picture removes it here.
         if (!style.background_image) {
@@ -6144,10 +6127,10 @@ class PanelApp {
             // state colour on an element whose own style names none would
             // survive the revert -- a MUTED button staying red for an amplifier
             // nobody can reach is the whole fault, one property further down.
-            this._clearStateColours(element, baseStyle);
-            this.applyStyle(element, this.getThemedStyle(elementDef.type, baseStyle));
-            if (elementDef.frameless) this.applyFrameless(element);
-            if (baseStyle.bg_color) this.updateImageTint(element, baseStyle.bg_color);
+            clearStateColours(element, baseStyle);
+            applyStyle(element, this.getThemedStyle(elementDef.type, baseStyle));
+            if (elementDef.frameless) applyFrameless(element);
+            if (baseStyle.bg_color) updateImageTint(element, baseStyle.bg_color);
             if (suppressLabel) {
                 this._removeTextNodes(element);
                 this._recordTextSource(element, null);
@@ -6160,7 +6143,7 @@ class PanelApp {
             const baseIcon = elementDef.icon || elementDef.style?.icon;
             if (baseIcon) this.renderElementContent(element, elementDef);
             if (elementDef.button_image) {
-                this.applyImageEffect(element, elementDef.button_image, {
+                applyImageEffect(element, elementDef.button_image, {
                     fit: elementDef.image_fit,
                     blend: elementDef.image_blend_mode,
                     opacity: elementDef.image_opacity,
@@ -6176,10 +6159,10 @@ class PanelApp {
         if (binding.states) {
             const rest = this.getThemedStyle(elementDef.type, baseStyle);
             const style = { ...rest, ...appearance };
-            this._clearStateColours(element, rest);
-            this.applyStyle(element, style);
+            clearStateColours(element, rest);
+            applyStyle(element, style);
             // Re-apply frameless so state bg_color changes don't reintroduce chrome
-            if (elementDef.frameless) this.applyFrameless(element);
+            if (elementDef.frameless) applyFrameless(element);
             this._reapplyButtonImage(element, elementDef, appearance.button_image, style.bg_color);
 
             // Update label (suppressed when display mode hides text).
@@ -6212,9 +6195,9 @@ class PanelApp {
         const rest = this.getThemedStyle(elementDef.type, baseStyle);
         const style = { ...rest, ...appearance };
 
-        this._clearStateColours(element, rest);
-        this.applyStyle(element, style);
-        if (elementDef.frameless) this.applyFrameless(element);
+        clearStateColours(element, rest);
+        applyStyle(element, style);
+        if (elementDef.frameless) applyFrameless(element);
 
         // Per-state image override (legacy feedback), else the button's own
         this._reapplyButtonImage(element, elementDef, appearance.button_image, style.bg_color);
@@ -6300,16 +6283,16 @@ class PanelApp {
         // applyStyle only ever writes a property it has a value for, so going
         // off has to drop the lit colours first or a button whose own style
         // names none stays lit for good.
-        this._clearStateColours(element, baseStyle);
+        clearStateColours(element, baseStyle);
         const style = this.getThemedStyle(elementDef.type, on
             ? { ...baseStyle, ...this._toggleOnStyle(elementDef) }
             : baseStyle);
-        this.applyStyle(element, style);
+        applyStyle(element, style);
         element.classList.toggle('toggle-on', on);
         // Frameless and image buttons take their fill from artwork, so the
         // class above is the whole indication there -- an outline, which no
         // inline write of ours ever clobbers.
-        if (elementDef.frameless) this.applyFrameless(element);
+        if (elementDef.frameless) applyFrameless(element);
         this._reapplyButtonImage(element, elementDef, null, style.bg_color);
 
         // The words, only where the author asked for them. A toggle that names
@@ -6338,7 +6321,7 @@ class PanelApp {
      * The accent rather than a colour of our own, so it follows the theme and
      * the panel's own accent setting, and so an element that names its own
      * `accent_color` lights in that. Deliberately no border colour: the off
-     * pass restores the element's own style, and `_clearStateColours` drops
+     * pass restores the element's own style, and `clearStateColours` drops
      * only what a state look may write (background, text colour, opacity)
      * -- adding another here without teaching that helper about it is how a
      * button ends up wearing half of a state it is no longer in.
@@ -7052,37 +7035,26 @@ class PanelApp {
         }
         // Background image with opacity
         if (bg.image) {
-            const imgUrl = bg.image.startsWith('assets://')
-                ? this.resolveAssetUrl(bg.image)
-                : bg.image;
-            const opacity = bg.image_opacity ?? 1;
-            const size = bg.image_size || 'cover';
-            const position = bg.image_position || 'center';
-
             const imgLayer = document.createElement('div');
             imgLayer.className = 'panel-page-bg-image';
-            imgLayer.style.position = 'absolute';
-            imgLayer.style.inset = '0';
-            imgLayer.style.zIndex = '0';
-            imgLayer.style.pointerEvents = 'none';
-            imgLayer.style.backgroundImage = `url("${this._sanitizeCssUrl(imgUrl)}")`;
-            imgLayer.style.backgroundSize = this._sanitizeCssValue(size);
-            imgLayer.style.backgroundPosition = this._sanitizeCssValue(position);
-            imgLayer.style.backgroundRepeat = 'no-repeat';
-            imgLayer.style.opacity = String(parseFloat(opacity) || 1);
+            drawFadedPicture(imgLayer, {
+                url: assetUrl(bg.image),
+                size: bg.image_size || 'cover',
+                position: bg.image_position || 'center',
+                opacity: bg.image_opacity ?? 1,
+            });
             gridEl.prepend(imgLayer);
         }
         // Gradient overlay (renders on TOP of image)
-        if (bg.gradient && bg.gradient.from && bg.gradient.to) {
-            const g = bg.gradient;
-            const angle = g.angle ?? 180;
+        const gradient = gradientCss(bg.gradient);
+        if (gradient) {
             const gradLayer = document.createElement('div');
             gradLayer.className = 'panel-page-bg-gradient';
             gradLayer.style.position = 'absolute';
             gradLayer.style.inset = '0';
             gradLayer.style.zIndex = '1';
             gradLayer.style.pointerEvents = 'none';
-            gradLayer.style.background = `linear-gradient(${parseFloat(angle) || 180}deg, ${this._sanitizeCssValue(g.from)}, ${this._sanitizeCssValue(g.to)})`;
+            gradLayer.style.background = gradient;
             gridEl.prepend(gradLayer);
         }
     }
@@ -7090,256 +7062,6 @@ class PanelApp {
     getThemedStyle(elementType, elementStyle) {
         const defaults = this.themeElementDefaults[elementType] || {};
         return { ...defaults, ...elementStyle };
-    }
-
-    applyStyle(el, style) {
-        if (!style) return;
-
-        // Background: gradient takes priority over solid color.
-        //
-        // Written as the two longhands, never the `background` shorthand. A
-        // gradient IS a background-image, so the shorthand put it where the
-        // button image goes and reset background-color on the way past -- a
-        // button with both a gradient and an image then drew with no
-        // background at all, because the image replaced the gradient and the
-        // colour behind it had already been cleared. applyImageEffect composes
-        // with the gradient below and needs it in a property of its own.
-        //
-        // Both longhands are decided on every call, so a feedback state that
-        // names a flat colour cannot inherit the previous state's gradient.
-        const grad = style.background_gradient;
-        const gradientCss = (grad && grad.from && grad.to)
-            ? `linear-gradient(${parseFloat(grad.angle != null ? grad.angle : 180) || 180}deg, `
-                + `${this._sanitizeCssValue(grad.from)}, ${this._sanitizeCssValue(grad.to)})`
-            : null;
-        // Read by applyImageEffect, which runs after this and owns the same
-        // property. Stored rather than re-read from the style so it is right
-        // whichever render path got here.
-        el._avcGradientCss = gradientCss;
-        if (gradientCss) {
-            el.style.backgroundImage = gradientCss;
-            el.style.backgroundColor = style.bg_color || 'transparent';
-        } else {
-            el.style.backgroundImage = '';
-            if (style.bg_color) el.style.backgroundColor = style.bg_color;
-        }
-
-        // Background image (assets:// resolved by panel, see resolveAssetUrl)
-        if (style.background_image) {
-            const url = this.resolveAssetUrl(style.background_image);
-            const size = style.background_size || 'cover';
-            const pos = style.background_position || 'center';
-            const opacity = style.background_opacity != null ? style.background_opacity : 1;
-
-            if (opacity < 1) {
-                // Use a child div for opacity control (can't opacity just the bg image).
-                // One per element, reused: a state look calls this on every
-                // change, and a new layer each time would stack them.
-                // Never over a position already set: a state look runs after
-                // the element is placed, and `relative` would unplace it.
-                if (!el.style.position) el.style.position = 'relative';
-                let bgLayer = el.querySelector(':scope > .panel-bg-image-layer');
-                if (!bgLayer) {
-                    bgLayer = document.createElement('div');
-                    bgLayer.className = 'panel-bg-image-layer';
-                    el.prepend(bgLayer);
-                }
-                bgLayer.style.position = 'absolute';
-                bgLayer.style.inset = '0';
-                bgLayer.style.zIndex = '0';
-                bgLayer.style.pointerEvents = 'none';
-                bgLayer.style.backgroundImage = `url("${this._sanitizeCssUrl(url)}")`;
-                bgLayer.style.backgroundSize = this._sanitizeCssValue(size === 'stretch' ? '100% 100%' : size);
-                bgLayer.style.backgroundPosition = this._sanitizeCssValue(pos);
-                bgLayer.style.backgroundRepeat = 'no-repeat';
-                bgLayer.style.opacity = String(parseFloat(opacity) || 1);
-                // Ensure content is above the bg layer. A child that is placed
-                // already (a container's controls) is positioned, so it paints
-                // above the layer as it is; lifting it would unplace it.
-                Array.from(el.children).forEach(child => {
-                    if (child !== bgLayer && !child.style.zIndex && !child.style.position) {
-                        child.style.position = 'relative';
-                        child.style.zIndex = '1';
-                    }
-                });
-            } else {
-                // Over the gradient, not instead of it -- same composition the
-                // button-image path does, for the same reason.
-                const imageCss = `url("${this._sanitizeCssUrl(url)}")`;
-                const sizeValue = this._sanitizeCssValue(size === 'stretch' ? '100% 100%' : size);
-                const posValue = this._sanitizeCssValue(pos);
-                el.style.backgroundImage = gradientCss
-                    ? `${imageCss}, ${gradientCss}` : imageCss;
-                el.style.backgroundSize = gradientCss
-                    ? `${sizeValue}, cover` : sizeValue;
-                el.style.backgroundPosition = gradientCss
-                    ? `${posValue}, center` : posValue;
-                el.style.backgroundRepeat = 'no-repeat';
-            }
-        }
-
-        if (style.text_color) el.style.color = style.text_color;
-        if (style.font_size) el.style.fontSize = style.font_size + 'rem';
-        if (style.font_weight) el.style.fontWeight = style.font_weight;
-        if (style.border_radius != null) el.style.borderRadius = style.border_radius + 'rem';
-
-        // Text alignment → maps to justify-content (fixes flexbox override bug)
-        if (style.text_align) {
-            const alignMap = { left: 'flex-start', center: 'center', right: 'flex-end' };
-            el.style.justifyContent = alignMap[style.text_align] || 'center';
-            el.style.textAlign = style.text_align;
-        }
-
-        // Vertical alignment → maps to align-items
-        if (style.vertical_align) {
-            const vMap = { top: 'flex-start', center: 'center', bottom: 'flex-end' };
-            el.style.alignItems = vMap[style.vertical_align] || 'center';
-        }
-
-        // Border — only set properties that are explicitly in the style.
-        // Elements that rely on CSS variables for border-color (e.g. buttons
-        // using --panel-button-border) must not be clobbered by a fallback.
-        if (style.border_width) {
-            // Hairlines stay visible. A blanket rem would turn a 1px border
-            // into 0.0714rem, which on a small phone resolves to a third of a
-            // pixel and can render as nothing at all -- while a deliberately
-            // thick border should still scale with the panel.
-            el.style.borderWidth = `max(1px, ${style.border_width}rem)`;
-            el.style.borderStyle = style.border_style || 'solid';
-            if (style.border_color) {
-                el.style.borderColor = style.border_color;
-            }
-        }
-
-        // Box shadow with presets
-        if (style.box_shadow && style.box_shadow !== 'none') {
-            const shadowPresets = {
-                sm: '0 0.1429rem 0.2857rem rgba(0,0,0,0.2)',
-                md: '0 0.2857rem 0.5714rem rgba(0,0,0,0.3)',
-                lg: '0 0.5714rem 1.1429rem rgba(0,0,0,0.4)',
-                glow: `0 0 0.8571rem ${style.text_color || 'rgba(33,150,243,0.5)'}`,
-                inset: 'inset 0 0.1429rem 0.2857rem rgba(0,0,0,0.3)',
-            };
-            el.style.boxShadow = shadowPresets[style.box_shadow] || style.box_shadow;
-        }
-
-        // Margin
-        if (style.margin != null) {
-            const mv = style.margin_vertical != null ? style.margin_vertical : style.margin;
-            const mh = style.margin_horizontal != null ? style.margin_horizontal : style.margin;
-            el.style.margin = `${mv}rem ${mh}rem`;
-        } else {
-            if (style.margin_vertical != null) {
-                el.style.marginTop = style.margin_vertical + 'rem';
-                el.style.marginBottom = style.margin_vertical + 'rem';
-            }
-            if (style.margin_horizontal != null) {
-                el.style.marginLeft = style.margin_horizontal + 'rem';
-                el.style.marginRight = style.margin_horizontal + 'rem';
-            }
-        }
-
-        // Padding
-        if (style.padding != null) {
-            const pv = style.padding_vertical != null ? style.padding_vertical : style.padding;
-            const ph = style.padding_horizontal != null ? style.padding_horizontal : style.padding;
-            el.style.padding = `${pv}rem ${ph}rem`;
-        } else {
-            if (style.padding_vertical != null) {
-                el.style.paddingTop = style.padding_vertical + 'rem';
-                el.style.paddingBottom = style.padding_vertical + 'rem';
-            }
-            if (style.padding_horizontal != null) {
-                el.style.paddingLeft = style.padding_horizontal + 'rem';
-                el.style.paddingRight = style.padding_horizontal + 'rem';
-            }
-        }
-
-        // Typography
-        if (style.text_transform) el.style.textTransform = style.text_transform;
-        if (style.letter_spacing) el.style.letterSpacing = style.letter_spacing + 'rem';
-        if (style.line_height) el.style.lineHeight = String(style.line_height);
-
-        // White space (multi-line labels)
-        if (style.white_space) el.style.whiteSpace = style.white_space;
-
-        // Custom transition duration
-        if (style.transition_duration != null) {
-            el.style.transitionDuration = style.transition_duration + 'ms';
-        }
-
-        // Overflow
-        if (style.overflow) el.style.overflow = style.overflow;
-
-        // Opacity (also handled by ui.* overrides, but allow static setting)
-        if (style.opacity != null) el.style.opacity = String(style.opacity);
-
-        // Per-element CSS custom properties for accent/surface colors.
-        // These override theme-level --panel-accent / --panel-surface for
-        // sub-elements (thumb, fill, handle, track) that reference --el-*.
-        if (style.accent_color) el.style.setProperty('--el-accent', style.accent_color);
-        if (style.track_color) {
-            el.style.setProperty('--el-surface', style.track_color);
-            el.style.setProperty('--el-surface-border', style.track_color);
-        }
-    }
-
-    _sanitizeCssValue(value) {
-        // These values are interpolated into a CSS declaration (gradient stops,
-        // background-size/position). Strip everything that could break out of
-        // the value and inject another declaration or a url() — semicolons,
-        // braces, quotes, comments, url()/image-set(), expression(), and the
-        // usual scheme tricks. Parentheses and commas are kept so legitimate
-        // color functions like rgb(0,0,0) / hsl(...) still work.
-        if (typeof value !== 'string') return String(value ?? '');
-        return value.replace(/expression\s*\(/gi, '')
-                     .replace(/javascript\s*:/gi, '')
-                     .replace(/behavior\s*:/gi, '')
-                     .replace(/@import/gi, '')
-                     .replace(/url\s*\(/gi, '')
-                     .replace(/image-set\s*\(/gi, '')
-                     .replace(/\/\*/g, '')
-                     .replace(/\*\//g, '')
-                     .replace(/[;{}"']/g, '')
-                     .replace(/\\/g, '')
-                     .replace(/[\r\n]/g, '');
-    }
-
-    _sanitizeCssUrl(url) {
-        // The result is interpolated into url("...") so it must not contain
-        // characters that close the string/paren, and must use an allowed
-        // scheme (http:, https:, data:image/, or relative/no-scheme).
-        if (typeof url !== 'string') return '';
-        const trimmed = url.trim();
-        const lower = trimmed.toLowerCase();
-        if (lower.startsWith('javascript:') || lower.startsWith('vbscript:')) return '';
-        if (lower.startsWith('data:') && !lower.startsWith('data:image/')) return '';
-        const scheme = trimmed.match(/^([a-z][a-z0-9+.-]*):/i);
-        if (scheme) {
-            const s = scheme[1].toLowerCase();
-            if (s !== 'http' && s !== 'https' && s !== 'data') return '';
-        }
-        // Percent-encode the few characters that could escape the url("...")
-        // context. Structural URL characters (:/?&=%#) are left intact, so real
-        // asset URLs keep working; spaces and quotes become %20/%22 etc. We map
-        // by char code rather than encodeURIComponent because the latter leaves
-        // ( ) ' unescaped (they're "unreserved marks") — exactly the breakout
-        // characters we need to neutralize.
-        return trimmed.replace(/[\\"'()\s]/g,
-            (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0'));
-    }
-
-    resolveAssetUrl(ref) {
-        if (!ref) return '';
-        if (ref.startsWith('assets://')) {
-            // Encode the filename so legal-but-special names (spaces etc.,
-            // allowed by the server's asset FILENAME_PATTERN) resolve. Asset
-            // names are flat filenames, so encodeURIComponent is safe and
-            // matches the programmer's getAssetUrl.
-            const name = encodeURIComponent(ref.slice('assets://'.length));
-            return `${basePath()}/api/projects/default/assets/${name}`;
-        }
-        return ref;
     }
 
     /**
@@ -7768,135 +7490,6 @@ class PanelApp {
         });
     }
 
-    /**
-     * Hide button chrome (bg_color, border, box_shadow) so an image acts as the button.
-     * Uses only longhand CSS properties so subsequent backgroundImage assignments
-     * (from applyImageEffect) aren't wiped out by a shorthand reset.
-     */
-    applyFrameless(el) {
-        el.style.backgroundColor = 'transparent';
-        el.style.backgroundImage = 'none';
-        el.style.borderWidth = '0';
-        el.style.borderStyle = 'none';
-        el.style.borderColor = 'transparent';
-        el.style.boxShadow = 'none';
-    }
-
-    /**
-     * Apply a button image with optional blend mode and opacity effects.
-     * Idempotent: safe to call repeatedly as state changes.
-     *
-     * Tint color (passed via options.tintColor) lives on the image layer, not
-     * the button itself, so frameless buttons can still tint/mask without
-     * depending on the visible button background. Falls back to the button's
-     * current bg_color if no tintColor is given.
-     */
-    applyImageEffect(el, imageRef, options = {}) {
-        const url = this.resolveAssetUrl(imageRef);
-        if (!url) return;
-        const fit = options.fit || 'cover';
-        const blend = options.blend || 'none';
-        const opacity = options.opacity != null ? Number(options.opacity) : 1;
-        // Fall back to currentColor so mask/blend modes always render something even
-        // if no bg_color is set on the element or in theme.
-        // Use the explicit tintColor if given; fall back to currentColor (text color) rather than
-        // reading el.style.backgroundColor, because frameless may have just set it to transparent.
-        const tintColor = options.tintColor || 'currentColor';
-        const sanitizedUrl = this._sanitizeCssUrl(url);
-        const sizeCss = this._sanitizeCssValue(fit === 'fill' ? '100% 100%' : fit);
-
-        // Remove any existing image layer
-        const existingLayer = el.querySelector(':scope > .panel-button-image-layer');
-        if (existingLayer) existingLayer.remove();
-
-        // Clear any mask previously applied to the button itself (legacy path)
-        el.style.webkitMaskImage = '';
-        el.style.maskImage = '';
-
-        const needsBlend = blend && blend !== 'none' && blend !== 'normal' && blend !== 'mask';
-        const isMask = blend === 'mask';
-        const needsLayer = needsBlend || isMask || opacity < 1;
-
-        // A gradient authored on this element, if any: applyStyle put it in
-        // background-image, which is where the image below goes too. Draw the
-        // image over it as a second layer instead of replacing it.
-        const gradientCss = el._avcGradientCss || null;
-
-        if (!needsLayer) {
-            // Simple background image on the button, no effect layer
-            el.style.backgroundImage = gradientCss
-                ? `url("${sanitizedUrl}"), ${gradientCss}`
-                : `url("${sanitizedUrl}")`;
-            el.style.backgroundSize = gradientCss ? `${sizeCss}, cover` : sizeCss;
-            el.style.backgroundPosition = gradientCss ? 'center, center' : 'center';
-            el.style.backgroundRepeat = 'no-repeat';
-            // Clear isolation if previously set from another render
-            el.style.isolation = '';
-            return;
-        }
-
-        // Image effect runs on a child layer. Use isolation + negative z-index so the
-        // layer paints above the button's own background but below text/icons, without
-        // needing to wrap every text node or content element.
-        // The element's own background-image goes back to the gradient, if it
-        // has one, rather than to 'none': the artwork is on the layer now, and
-        // clearing this outright was what removed a gradient that had nothing
-        // to do with the image.
-        el.style.backgroundImage = gradientCss || 'none';
-        el.style.position = 'relative';
-        el.style.isolation = 'isolate';
-
-        const layer = document.createElement('div');
-        layer.className = 'panel-button-image-layer';
-        layer.style.position = 'absolute';
-        layer.style.inset = '0';
-        layer.style.pointerEvents = 'none';
-        layer.style.zIndex = '-1';
-        if (opacity < 1) layer.style.opacity = String(opacity);
-
-        if (isMask) {
-            // Mask mode: tint color fills the image shape. Button chrome untouched.
-            layer.style.backgroundColor = tintColor;
-            layer.style.webkitMaskImage = `url("${sanitizedUrl}")`;
-            layer.style.maskImage = `url("${sanitizedUrl}")`;
-            layer.style.webkitMaskSize = sizeCss;
-            layer.style.maskSize = sizeCss;
-            layer.style.webkitMaskPosition = 'center';
-            layer.style.maskPosition = 'center';
-            layer.style.webkitMaskRepeat = 'no-repeat';
-            layer.style.maskRepeat = 'no-repeat';
-        } else if (needsBlend) {
-            // Blend mode: layer holds both image and tint color, composited via background-blend-mode.
-            // This makes the tint self-contained on the layer so frameless buttons still tint.
-            layer.style.backgroundImage = `url("${sanitizedUrl}")`;
-            layer.style.backgroundColor = tintColor;
-            layer.style.backgroundSize = sizeCss;
-            layer.style.backgroundPosition = 'center';
-            layer.style.backgroundRepeat = 'no-repeat';
-            layer.style.backgroundBlendMode = blend;
-        } else {
-            // Opacity-only: plain image layer, no blend
-            layer.style.backgroundImage = `url("${sanitizedUrl}")`;
-            layer.style.backgroundSize = sizeCss;
-            layer.style.backgroundPosition = 'center';
-            layer.style.backgroundRepeat = 'no-repeat';
-        }
-        el.prepend(layer);
-    }
-
-    /**
-     * Update just the tint color on an existing image layer without recreating it.
-     * Called during feedback state changes to retint in place.
-     */
-    updateImageTint(el, tintColor) {
-        const layer = el.querySelector(':scope > .panel-button-image-layer');
-        if (!layer) return;
-        // Only layers with a mask or blend mode use tint color
-        if (layer.style.maskImage || layer.style.webkitMaskImage || layer.style.backgroundBlendMode) {
-            layer.style.backgroundColor = tintColor;
-        }
-    }
-
     /** `size` is in rem, so an icon scales with the rest of the panel. Leave
      *  it out and the stylesheet sizes the icon instead: an inline size would
      *  beat any rule there. */
@@ -7906,7 +7499,7 @@ class PanelApp {
         // Custom icon from asset system
         if (iconName.startsWith('assets://')) {
             const img = document.createElement('img');
-            img.src = this.resolveAssetUrl(iconName);
+            img.src = assetUrl(iconName);
             if (size != null) {
                 img.style.width = `${size}rem`;
                 img.style.height = `${size}rem`;

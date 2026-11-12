@@ -13,3 +13,18 @@
 export function basePath() {
     return location.pathname.split('/panel')[0] || '';
 }
+
+/**
+ * The address of a project asset (`assets://<name>`), or the reference as it
+ * is when it names an address already. The name is encoded, since a legal
+ * asset name may hold a space or a `#`, and asset names are flat, so
+ * encodeURIComponent is safe; the Programmer's getAssetUrl builds the same.
+ */
+export function assetUrl(ref) {
+    if (!ref) return '';
+    if (ref.startsWith('assets://')) {
+        const name = encodeURIComponent(ref.slice('assets://'.length));
+        return `${basePath()}/api/projects/default/assets/${name}`;
+    }
+    return ref;
+}

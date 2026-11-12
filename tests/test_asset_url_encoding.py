@@ -8,13 +8,13 @@ programmer's shared ``getAssetUrl`` helper does with ``encodeURIComponent``.
 
 Two renderers hand-built the URL WITHOUT encoding:
   * the Programmer IDE's ``ElementIcon`` (built the <img src> inline), and
-  * the runtime panel's ``resolveAssetUrl`` (plus a duplicate inline build for
+  * the runtime panel's asset URL builder (plus a duplicate inline build for
     the page background image).
 A name with a space produced a broken URL in both.
 
 The fix routes ElementIcon through the shared ``getAssetUrl`` and encodes the
-name in the panel's single ``resolveAssetUrl`` helper (which every panel asset
-build now uses). There is no vitest/jest harness in openavc/web/programmer, so — like
+name in the panel's single builder, ``assetUrl`` in ``modules/base_path.js``
+(which every panel asset build now uses). There is no vitest/jest harness in openavc/web/programmer, so — like
 the other frontend regression tests — this pins the source to the fixed shape.
 """
 
@@ -29,7 +29,8 @@ ELEMENT_ICON_TSX = (
     OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src"
     / "components" / "ui-builder" / "ElementIcon.tsx"
 )
-PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
+PANEL_DIR = OPENAVC_ROOT / "openavc" / "web" / "panel"
+BASE_PATH_JS = PANEL_DIR / "modules" / "base_path.js"
 
 
 def test_element_icon_uses_shared_getAssetUrl() -> None:
@@ -45,18 +46,19 @@ def test_element_icon_uses_shared_getAssetUrl() -> None:
     )
 
 
-def test_panel_resolveAssetUrl_encodes_name() -> None:
-    src = PANEL_JS.read_text(encoding="utf-8")
-    # resolveAssetUrl is the single asset-URL builder; it must encode the name.
+def test_panel_assetUrl_encodes_name() -> None:
+    src = BASE_PATH_JS.read_text(encoding="utf-8")
+    # assetUrl is the single asset-URL builder; it must encode the name.
     assert re.search(r"encodeURIComponent\(\s*ref\.slice\('assets://'\.length\)\s*\)", src), (
-        "panel.js resolveAssetUrl must encodeURIComponent the asset filename"
+        "modules/base_path.js assetUrl must encodeURIComponent the asset filename"
     )
     # No panel code path may build the assets URL by slicing/replacing the
     # assets:// prefix without encoding (the old duplicate inline builds).
-    unencoded = re.findall(
-        r"/api/projects/default/assets/\$\{[^}]*(?:\.slice\(|\.replace\()[^}]*\}",
-        src,
-    )
-    assert not unencoded, (
-        f"panel.js still builds an un-encoded asset URL: {unencoded}"
-    )
+    for script in sorted(PANEL_DIR.rglob("*.js")):
+        unencoded = re.findall(
+            r"/api/projects/default/assets/\$\{[^}]*(?:\.slice\(|\.replace\()[^}]*\}",
+            script.read_text(encoding="utf-8"),
+        )
+        assert not unencoded, (
+            f"{script.relative_to(PANEL_DIR)} still builds an un-encoded asset URL: {unencoded}"
+        )

@@ -71,6 +71,13 @@ window.HTMLMediaElement.prototype.pause = function () {};
  * finishes, so it is fired again here: a browser runs a module script before
  * that event, which is when the panel's start-up listener expects it.
  */
+let panelModules = new Map();
+/** The exports of one of the panel's modules (`modules/<name>`), as the panel linked it. */
+function panelModule(name) {
+    const file = [...panelModules.keys()].find((f) => f.endsWith(`${path.sep}modules${path.sep}${name}`));
+    return panelModules.get(file).namespace;
+}
+
 async function loadPanel(entry) {
     const context = dom.getInternalVMContext();
     const modules = new Map();
@@ -81,6 +88,7 @@ async function loadPanel(entry) {
         }
         return modules.get(file);
     };
+    panelModules = modules;
     const root = load(entry);
     await root.link((specifier, referrer) =>
         load(path.resolve(path.dirname(fileURLToPath(referrer.identifier)), specifier)));
@@ -102,14 +110,15 @@ function assert(cond, msg) { if (!cond) throw new Error(msg || 'assertion failed
 //
 // The paint scenarios reach the panel's style writers through these, so the
 // pins below say what is drawn, not where the code that draws it lives.
-const paintStyle = (node, style) => mkApp().applyStyle(node, style);
-const paintPicture = (node, ref, opts) => mkApp().applyImageEffect(node, ref, opts);
-const paintTint = (node, colour) => mkApp().updateImageTint(node, colour);
-const paintFrameless = (node) => mkApp().applyFrameless(node);
-const clearColours = (node, rest) => mkApp()._clearStateColours(node, rest);
-const sanitizeValue = (value) => mkApp()._sanitizeCssValue(value);
-const sanitizeUrl = (url) => mkApp()._sanitizeCssUrl(url);
-const assetUrl = (ref) => mkApp().resolveAssetUrl(ref);
+const paint = () => panelModule('paint.js');
+const paintStyle = (node, style) => paint().applyStyle(node, style);
+const paintPicture = (node, ref, opts) => paint().applyImageEffect(node, ref, opts);
+const paintTint = (node, colour) => paint().updateImageTint(node, colour);
+const paintFrameless = (node) => paint().applyFrameless(node);
+const clearColours = (node, rest) => paint().clearStateColours(node, rest);
+const sanitizeValue = (value) => paint().sanitizeCssValue(value);
+const sanitizeUrl = (url) => paint().sanitizeCssUrl(url);
+const assetUrl = (ref) => panelModule('base_path.js').assetUrl(ref);
 
 /**
  * The paint pins: what each case drew when it was pinned, in
@@ -1674,15 +1683,15 @@ const tests = {
     // CSS sanitizers neutralize breakout while keeping valid input.
     m010_m011_css_sanitizers() {
         const app = mkApp();
-        const v = app._sanitizeCssValue('red); background-image: url(http://evil)');
+        const v = sanitizeValue('red); background-image: url(http://evil)');
         assert(!/url\s*\(/i.test(v) && !v.includes(';'), `value breakout neutralized, got "${v}"`);
-        const rgb = app._sanitizeCssValue('rgb(10, 20, 30)');
+        const rgb = sanitizeValue('rgb(10, 20, 30)');
         assert(rgb.includes('rgb(') && rgb.includes(','), `rgb() preserved, got "${rgb}"`);
-        const u1 = app._sanitizeCssUrl('http://x/y z").evil');
+        const u1 = sanitizeUrl('http://x/y z").evil');
         assert(!u1.includes('"') && !u1.includes(')'), `url breakout neutralized, got "${u1}"`);
-        assert(app._sanitizeCssUrl('javascript:alert(1)') === '', 'javascript: url rejected');
-        assert(app._sanitizeCssUrl('data:text/html,x') === '', 'data:text url rejected');
-        assert(app._sanitizeCssUrl('/api/projects/default/assets/a.png') === '/api/projects/default/assets/a.png', 'relative asset url preserved');
+        assert(sanitizeUrl('javascript:alert(1)') === '', 'javascript: url rejected');
+        assert(sanitizeUrl('data:text/html,x') === '', 'data:text url rejected');
+        assert(sanitizeUrl('/api/projects/default/assets/a.png') === '/api/projects/default/assets/a.png', 'relative asset url preserved');
     },
 
     // dismissing an overlay unregisters its clock update
@@ -2217,7 +2226,7 @@ const tests = {
     layout_style_units_are_rem() {
         const app = mkApp();
         const node = document.createElement('div');
-        app.applyStyle(node, {
+        paintStyle(node, {
             font_size: 24 / 14, padding: 8 / 14, border_radius: 4 / 14,
             border_width: 1 / 14, letter_spacing: 2 / 14,
         });
@@ -5191,7 +5200,7 @@ const tests = {
             const built = [
                 app._resolveAbsoluteUrl('/api/x.mp3'),
                 app._resolveSoundUrl('chime 1'),
-                app.resolveAssetUrl('assets://a b.png'),
+                assetUrl('assets://a b.png'),
                 app.renderIcon('play').querySelector('use').getAttribute('href'),
                 app.renderCustomElement({ id: 'c', type: 'custom', custom_file: 'map/index.html' })
                     ._pluginIframe.getAttribute('src'),
