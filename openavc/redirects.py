@@ -118,9 +118,16 @@ about the certificate)</p>
 
 
 def _path_and_query(request: Request) -> str:
-    suffix = request.url.path
-    if request.url.query:
-        suffix += f"?{request.url.query}"
+    """The path and query the client asked for, read from the scope.
+
+    Never from ``request.url``: Starlette rebuilds that from the Host header,
+    and a release before 0.47 keeps a path written there, so
+    ``Host: evil.example/steal`` would put ``/steal`` in front of the path.
+    """
+    suffix = request.scope.get("path") or "/"
+    query = request.scope.get("query_string", b"").decode()  # UTF-8, as Starlette reads it
+    if query:
+        suffix += f"?{query}"
     return suffix
 
 
@@ -154,12 +161,21 @@ def _probe_page_response(
 
 def _host_from_header(request: Request) -> str:
     """The host the client addressed, from its Host header with the port
-    dropped. Pathological values fall back to the request URL's hostname,
-    then localhost."""
+    dropped. Pathological values fall back to the address the server
+    listens on, then localhost (never ``request.url``: ``_path_and_query``
+    says why)."""
     host = _host_part(request.headers.get("host", ""))
-    if not host or any(c in host for c in _BAD_HOST_CHARS):
-        host = request.url.hostname or "localhost"
-    return host
+    if _usable_host(host):
+        return host
+    server = request.scope.get("server")
+    host = str(server[0]) if server else ""
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"  # an IPv6 address; a URL needs the brackets
+    return host if _usable_host(host) else "localhost"
+
+
+def _usable_host(host: str) -> bool:
+    return bool(host) and not any(c in host for c in _BAD_HOST_CHARS)
 
 
 def _host_part(host_header: str) -> str:

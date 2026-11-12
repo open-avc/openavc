@@ -2,6 +2,7 @@
 
 import io
 import json
+import sys
 import zipfile
 from pathlib import Path
 from unittest.mock import patch
@@ -1077,11 +1078,17 @@ class TestAnArchiveBringsInOnlyWhatTheProjectCouldHold:
         scripts = tmp_lib / "starter" / "scripts"
         assert sorted(p.name for p in scripts.iterdir()) == ["main.py"]
 
+    @pytest.mark.skipif(
+        sys.platform == "win32",
+        reason="the stand-in file cannot be made on Windows: D:x.py names drive D:",
+    )
     def test_a_superseded_starter_driver_named_for_another_drive_is_not_touched(
         self, tmp_path, monkeypatch,
     ):
         # On Windows driver_repo / "D:x.py" is a file on drive D:, which the
-        # byte match would then delete. A POSIX file of that name stands in.
+        # byte match would then delete. A POSIX file of that name stands in;
+        # the name rule refuses the colon before it reaches the disk, so the
+        # same answer holds on Windows.
         repo = tmp_path / "driver_repo"
         repo.mkdir()
         monkeypatch.setattr(plib, "_DRIVER_REPO_DIR", repo)

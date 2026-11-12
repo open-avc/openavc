@@ -611,16 +611,32 @@ def test_the_probe_gives_the_certified_name_two_and_a_half_seconds(tmp_path):
     assert "setTimeout(function () { ctrl.abort(); }, 2500);" in resp.text
 
 
-def test_a_host_header_carrying_a_path_falls_back_to_the_request_url():
-    """The request URL's hostname, which the test client builds from the
-    scope's server address."""
+def test_a_host_header_carrying_a_path_falls_back_to_the_server_address():
+    """The scope's server address, which the test client names testserver."""
     resp = _client().get("/x", headers={"host": "evil.example/steal"}, follow_redirects=False)
     assert resp.headers["location"] == "https://testserver:8443/x"
 
 
-def test_with_no_usable_host_at_all_the_target_is_localhost():
-    """No Host header and no server address in the scope: nothing names the
-    host, so the target falls back to localhost."""
+def test_the_target_never_comes_from_starlettes_request_url(monkeypatch):
+    """Starlette rebuilds the request URL from the Host header, and a release
+    before 0.47 keeps a path written there: ``Host: evil.example/steal`` reads
+    as host evil.example and path /steal/x. Which Starlette is installed is not
+    pinned, so the redirect reads the host fallback, the path and the query
+    from the request itself."""
+    from starlette.datastructures import URL
+    from starlette.requests import Request
+
+    monkeypatch.setattr(
+        Request, "url", property(lambda self: URL("http://evil.example/steal/x?q=1")),
+    )
+    resp = _client().get(
+        "/x?keep=1", headers={"host": "evil.example/steal"}, follow_redirects=False,
+    )
+    assert resp.headers["location"] == "https://testserver:8443/x?keep=1"
+
+
+def _raw_redirect(**scope_fields) -> bytes:
+    """The Location a raw request with these scope fields is sent to."""
     sent = []
 
     async def receive():
@@ -633,10 +649,29 @@ def test_with_no_usable_host_at_all_the_target_is_localhost():
         "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
         "method": "GET", "scheme": "http", "path": "/x", "raw_path": b"/x",
         "query_string": b"", "root_path": "", "headers": [], "server": None,
-        "client": ("192.168.1.30", 50000),
+        "client": ("192.168.1.30", 50000), **scope_fields,
     }
     asyncio.run(_build_redirect_app(8443)(scope, receive, send))
 
     start = next(m for m in sent if m["type"] == "http.response.start")
     assert start["status"] == 302
-    assert dict(start["headers"])[b"location"] == b"https://localhost:8443/x"
+    return dict(start["headers"])[b"location"]
+
+
+def test_with_no_usable_host_at_all_the_target_is_localhost():
+    """No Host header and no server address in the scope: nothing names the
+    host, so the target falls back to localhost."""
+    assert _raw_redirect() == b"https://localhost:8443/x"
+
+
+def test_an_ipv6_server_address_is_bracketed():
+    assert _raw_redirect(server=("::1", 8080)) == b"https://[::1]:8443/x"
+
+
+def test_a_query_outside_ascii_is_carried_once_encoded():
+    assert _raw_redirect(query_string="q=é".encode()) == b"https://localhost:8443/x?q=%C3%A9"
+
+
+def test_a_unix_socket_server_address_is_not_a_host():
+    """A server listening on a unix socket names a file path, not a host."""
+    assert _raw_redirect(server=("/run/openavc.sock", None)) == b"https://localhost:8443/x"
