@@ -1016,6 +1016,38 @@ async def test_uninstall_removes_only_a_named_discovery_companion_here(world, na
     assert set(_tree(world.repo)) == expected
 
 
+def _link_outside(world, name: str) -> Path:
+    """A companion in the driver folder that is a link to a file outside it."""
+    outside = world.repo.parent / "outside_discovery.py"
+    outside.write_bytes(COMPANION)
+    try:
+        (world.repo / name).symlink_to(outside)
+    except OSError:
+        pytest.skip("this system cannot make a symbolic link")
+    return outside
+
+
+@pytest.mark.asyncio
+async def test_uninstall_leaves_a_companion_that_links_outside_the_folder(world):
+    (world.repo / "acme_widget.avcdriver").write_bytes(
+        _yaml(companion="./acme_widget_discovery.py")
+    )
+    _link_outside(world, "acme_widget_discovery.py")
+    await uninstall_driver(DRIVER_ID)
+    assert (world.repo / "acme_widget_discovery.py").is_symlink()
+
+
+@pytest.mark.asyncio
+async def test_update_leaves_an_old_companion_that_links_outside_the_folder(world):
+    (world.repo / "acme_widget.avcdriver").write_bytes(
+        _yaml(companion="./acme_widget_discovery.py")
+    )
+    _link_outside(world, "acme_widget_discovery.py")
+    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(version="2.0.0")
+    await _update("acme_widget.avcdriver")
+    assert (world.repo / "acme_widget_discovery.py").is_symlink()
+
+
 @pytest.mark.asyncio
 async def test_uninstall_reads_an_unreadable_yaml_as_naming_no_companion(world, monkeypatch):
     main = world.repo / "acme_widget.avcdriver"
