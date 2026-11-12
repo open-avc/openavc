@@ -7,6 +7,7 @@ import {
   getJsonRows,
   jsonChildPropFromText,
 } from "./responseBuilderHelpers";
+import type { DriverResponseDef } from "../../api/types";
 
 const stateVars = {
   no_link: { type: "boolean" },
@@ -37,7 +38,9 @@ describe("json rule contains", () => {
         { state: "no_link", key: "warnings", type: "boolean", contains: "NoLink" },
         { state: "no_link", key: "faults", type: "boolean", contains: "NoLink" },
       ],
-    };
+      // A json rule's mappings read a key, not the capture group the generated
+      // mapping type requires.
+    } as unknown as DriverResponseDef;
     const rows = getJsonRows(rule, stateVars);
     expect(rows[1].contains).toBe("NoLink");
     // Duplicate state names force the mappings form; contains survives.

@@ -42,7 +42,7 @@ describe("child_list on a response rule", () => {
   });
 
   it("keeps only_when through a rebuild too", () => {
-    const only_when = { key: "mode", operator: "eq", value: "matrix" };
+    const only_when = { key: "mode", operator: "eq" as const, value: "matrix" };
     const rule: DriverResponseDef = {
       match: "^Out(\\d+)$",
       mappings: [{ group: 1, state: "power", type: "string" }],

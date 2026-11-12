@@ -16,7 +16,8 @@ const NAV_BAR: MasterElement = {
   hidden: false,
   // 203 x 63px at the origin, on a 1280 x 800 reference.
   placements: { landscape: { x: 0, y: 0, w: 15.859375, h: 7.875 } },
-} as MasterElement;
+  // Only what placement reads: no style or bindings.
+} as unknown as MasterElement;
 
 const PAGE = {
   id: "main",

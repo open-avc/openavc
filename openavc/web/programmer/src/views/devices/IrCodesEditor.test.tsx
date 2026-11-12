@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
       connections: {} as Record<string, unknown>,
     },
   },
-  updateDevice: vi.fn(async () => ({})),
+  updateDevice: vi.fn(async (_id: string, _patch: unknown) => ({})),
   syncDeviceConfig: vi.fn(async () => {}),
   irEmit: vi.fn(async () => ({})),
   irImport: vi.fn(async () => ({ pronto: "0000 1111" })),

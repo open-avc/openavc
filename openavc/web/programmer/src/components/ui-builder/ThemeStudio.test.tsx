@@ -48,7 +48,7 @@ describe("Theme Studio import", () => {
     await screen.findByRole("button", { name: "Import .avctheme" });
     await user.upload(container.querySelector<HTMLInputElement>('input[type="file"]')!,
       new File([JSON.stringify({ ...theme, id: "imported" })], "imported.avctheme"));
-    if (overwrite) await user.click(await screen.findByRole("button", { name: "Overwrite", exact: true }));
+    if (overwrite) await user.click(await screen.findByRole("button", { name: "Overwrite" }));
     await screen.findByText('Imported "Imported"');
     expect(onChangeTheme).toHaveBeenCalledExactlyOnceWith("imported");
     expect(onRefreshThemes).toHaveBeenCalledOnce();

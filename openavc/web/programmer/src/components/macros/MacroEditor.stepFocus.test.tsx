@@ -109,7 +109,7 @@ describe("testing an edited macro", () => {
     }));
     const { Host } = hostFor([{ action: "delay", seconds: 1 }]);
     render(<Host />);
-    await userEvent.setup().click(screen.getByRole("button", { name: "Test", exact: true }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Test" }));
     expect(mocks.projectState.save).toHaveBeenCalledOnce();
     expect(mocks.executeMacro).not.toHaveBeenCalled();
     await act(async () => finishSave());
@@ -124,7 +124,7 @@ describe("testing an edited macro", () => {
     });
     const { Host } = hostFor([{ action: "delay", seconds: 1 }]);
     render(<Host />);
-    await userEvent.setup().click(screen.getByRole("button", { name: "Test", exact: true }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Test" }));
     await waitFor(() => expect(mocks.showError).toHaveBeenCalledWith("The project could not be saved."));
     expect(mocks.executeMacro).not.toHaveBeenCalled();
   });

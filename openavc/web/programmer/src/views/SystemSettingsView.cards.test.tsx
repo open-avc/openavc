@@ -318,7 +318,7 @@ describe("SSH access", () => {
 
   it("says Applying... and takes no second click while the change is in flight", async () => {
     served.ssh = { supported: true, enabled: false };
-    let answer: (v: { success: boolean }) => void = () => {};
+    let answer: (v: Awaited<ReturnType<typeof api.setSsh>>) => void = () => {};
     api.setSsh.mockImplementationOnce(() => new Promise((r) => { answer = r; }));
     await renderLoaded(<SystemSettingsView />);
     await screen.findByText("SSH access");
@@ -326,13 +326,13 @@ describe("SSH access", () => {
     await waitFor(() => expect(sshLine()).toBe("Applying..."));
     fireEvent.click(sshSwitch());
     expect(api.setSsh).toHaveBeenCalledTimes(1);
-    answer({ success: true });
+    answer({ success: true, enabled: true });
     await waitFor(() => expect(sshLine()).toBe("SSH is on"));
   });
 
   it("reads the state again when the change is still being confirmed", async () => {
     served.ssh = { supported: true, enabled: false };
-    api.setSsh.mockImplementationOnce(async () => ({ success: false, pending: true }));
+    api.setSsh.mockImplementationOnce(async () => ({ success: false, pending: true, enabled: true }));
     await renderLoaded(<SystemSettingsView />);
     await screen.findByText("SSH access");
     served.ssh = { supported: true, enabled: true };
@@ -344,7 +344,7 @@ describe("SSH access", () => {
 
   it("says Applying... until the read that confirms a pending change answers", async () => {
     served.ssh = { supported: true, enabled: false };
-    api.setSsh.mockImplementationOnce(async () => ({ success: false, pending: true }));
+    api.setSsh.mockImplementationOnce(async () => ({ success: false, pending: true, enabled: true }));
     await renderLoaded(<SystemSettingsView />);
     await screen.findByText("SSH access");
     let confirm: (v: { supported: boolean; enabled: boolean }) => void = () => {};
@@ -360,7 +360,7 @@ describe("SSH access", () => {
 
   it("keeps what it showed when that read fails", async () => {
     served.ssh = { supported: true, enabled: false };
-    api.setSsh.mockImplementationOnce(async () => ({ success: false, pending: true }));
+    api.setSsh.mockImplementationOnce(async () => ({ success: false, pending: true, enabled: true }));
     await renderLoaded(<SystemSettingsView />);
     await screen.findByText("SSH access");
     api.getSshStatus.mockRejectedValueOnce(new Error("down"));
@@ -371,8 +371,8 @@ describe("SSH access", () => {
   });
 
   it.each([
-    [{ success: false, error: "systemctl failed" }, "SSH change failed: systemctl failed"],
-    [{ success: false }, "SSH change failed: unknown error"],
+    [{ success: false, enabled: true, error: "systemctl failed" }, "SSH change failed: systemctl failed"],
+    [{ success: false, enabled: true }, "SSH change failed: unknown error"],
   ])("says why it failed: %j", async (answer, message) => {
     served.ssh = { supported: true, enabled: false };
     api.setSsh.mockImplementationOnce(async () => answer);

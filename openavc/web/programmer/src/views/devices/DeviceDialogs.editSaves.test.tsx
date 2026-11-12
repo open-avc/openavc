@@ -100,7 +100,7 @@ describe("Edit Device saves what its form shows", () => {
   function open(device: DeviceConfig, connection: Record<string, unknown>) {
     useProjectStore.setState({
       project: { devices: [device], connections: { [device.id]: connection } } as never,
-      load: vi.fn(() => Promise.resolve()),
+      load: vi.fn(() => Promise.resolve(true)),
     });
     render(<EditDeviceDialog device={device} onClose={() => {}} onSaved={() => {}} />);
   }
@@ -213,7 +213,7 @@ describe("Edit Device: SSH options", () => {
     const device = { id: "s1", driver: "acme_ssh_switch", name: "S1", config } as DeviceConfig;
     useProjectStore.setState({
       project: { devices: [device], connections: { s1: { host: "10.0.0.7", username: "admin" } } } as never,
-      load: vi.fn(() => Promise.resolve()),
+      load: vi.fn(() => Promise.resolve(true)),
     });
     render(<EditDeviceDialog device={device} onClose={() => {}} onSaved={() => {}} />);
   }

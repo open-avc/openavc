@@ -436,12 +436,12 @@ describe("the on-screen summary", () => {
   });
 
   it("names the drivers a verdict points at, in its order, with each one's signals", () => {
-    const port = { tier: "enrichment", source: "open_port:23", data: { kind: "open_port", value: 23 } };
+    const port = { tier: "enrichment" as const, source: "open_port:23", data: { kind: "open_port", value: 23 }, at: 0 };
     const vendor = {
-      tier: "enrichment", source: "vendor_string:acme",
-      data: { kind: "vendor_string", value: "acme", raw: "ACME Widget", source_probe_id: "greeting:23" },
+      tier: "enrichment" as const, source: "vendor_string:acme",
+      data: { kind: "vendor_string", value: "acme", raw: "ACME Widget", source_probe_id: "greeting:23" }, at: 0,
     };
-    const lone = { tier: "enrichment", source: "hostname:w1", data: { kind: "hostname", value: "w1" } };
+    const lone = { tier: "enrichment" as const, source: "hostname:w1", data: { kind: "hostname", value: "w1" }, at: 0 };
     const verdict = {
       // The server's order: the matcher's candidate first.
       drivers: {
@@ -450,9 +450,9 @@ describe("the on-screen summary", () => {
       },
       explanation: {
         signals: [
-          { source: "open_port:23", tier: "enrichment", strong: false, drivers: ["other_box", "acme_widget"], evidence: port },
-          { source: "vendor_string:acme", tier: "enrichment", strong: false, drivers: ["acme_widget"], evidence: vendor },
-          { source: "hostname:w1", tier: "enrichment", strong: false, drivers: [], evidence: lone },
+          { source: "open_port:23", tier: "enrichment" as const, strong: false, drivers: ["other_box", "acme_widget"], evidence: port },
+          { source: "vendor_string:acme", tier: "enrichment" as const, strong: false, drivers: ["acme_widget"], evidence: vendor },
+          { source: "hostname:w1", tier: "enrichment" as const, strong: false, drivers: [], evidence: lone },
         ],
         drivers: { other_box: ["open_port:23"], acme_widget: ["open_port:23", "vendor_string:acme"] },
         strong_drivers: [],
@@ -464,7 +464,7 @@ describe("the on-screen summary", () => {
     ]);
     expect(signalDrivers(verdict, port)).toEqual(["Other Box", "Acme Widget"]);
     expect(signalDrivers(verdict, lone)).toEqual([]);
-    expect(signalDrivers(verdict, { tier: "x", source: "nowhere", data: {} })).toBeNull();
+    expect(signalDrivers(verdict, { tier: "enrichment", source: "nowhere", data: {}, at: 0 })).toBeNull();
   });
 });
 

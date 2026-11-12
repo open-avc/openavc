@@ -1,0 +1,11 @@
+// The test files, which the build's tsconfig leaves out: `npm run typecheck:tests`.
+// They run in Node under vitest, so they may use ES2022 and Node's own modules.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"]
+  },
+  "include": ["src"],
+  "exclude": []
+}

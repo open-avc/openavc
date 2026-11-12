@@ -10,11 +10,12 @@ import type { UIElement } from "../../api/types";
  * one per writer, because a wrong path writes a field the author cannot see.
  */
 
-const el = (extra: Partial<UIElement> = {}): UIElement => ({
+// Only the fields a path reads; the rest of a UIElement is not consulted.
+const el = (extra: Partial<UIElement> = {}) => ({
   id: "btn1",
   type: "button",
   ...extra,
-});
+}) as UIElement;
 
 describe("patchForTextPath", () => {
   it("writes a top-level label", () => {
@@ -108,7 +109,7 @@ describe("patchForTextPath", () => {
       ["bindings", "do", "press", 0, "on_label"],
       "Running",
     );
-    const press = (patch as Record<string, Record<string, Record<string, string>[]>>)
+    const press = (patch as { bindings: { do: { press: Record<string, string>[] } } })
       .bindings.do.press;
     expect(Array.isArray(press)).toBe(true);
     expect(press[0].on_label).toBe("Running");
@@ -193,8 +194,10 @@ describe("an empty commit", () => {
  * not a list, and a path that does not start with a field name.
  */
 describe("patchForTextPath: list positions", () => {
+  // `items` stands for any list field: the patch follows the path, whatever the
+  // element type says the list holds.
   it("writes the position a path ends at, keeping the rest of the list", () => {
-    const element = el({ items: ["a", "b", "c"] } as Partial<UIElement>);
+    const element = el({ items: ["a", "b", "c"] } as unknown as Partial<UIElement>);
     const patch = patchForTextPath(element, ["items", 1], "z");
     expect(JSON.stringify(patch)).toBe(JSON.stringify({ items: ["a", "z", "c"] }));
     expect((element as unknown as { items: string[] }).items).toEqual(["a", "b", "c"]);
@@ -202,17 +205,17 @@ describe("patchForTextPath: list positions", () => {
 
   it("starts a list where a path ends at a position over nothing, or over an object", () => {
     expect(JSON.stringify(patchForTextPath(el(), ["items", 0], "x"))).toBe(JSON.stringify({ items: ["x"] }));
-    const overObject = el({ items: { a: 1 } } as Partial<UIElement>);
+    const overObject = el({ items: { a: 1 } } as unknown as Partial<UIElement>);
     expect(JSON.stringify(patchForTextPath(overObject, ["items", 0], "x"))).toBe(JSON.stringify({ items: ["x"] }));
   });
 
   it("stores an emptied position as an empty string, never removing it", () => {
-    const element = el({ items: ["a", "b"] } as Partial<UIElement>);
+    const element = el({ items: ["a", "b"] } as unknown as Partial<UIElement>);
     expect(JSON.stringify(patchForTextPath(element, ["items", 0], ""))).toBe(JSON.stringify({ items: ["", "b"] }));
   });
 
   it("fills the gap before a position past the end of the list", () => {
-    const element = el({ items: ["a"] } as Partial<UIElement>);
+    const element = el({ items: ["a"] } as unknown as Partial<UIElement>);
     expect(JSON.stringify(patchForTextPath(element, ["items", 2], "c"))).toBe(JSON.stringify({ items: ["a", null, "c"] }));
   });
 

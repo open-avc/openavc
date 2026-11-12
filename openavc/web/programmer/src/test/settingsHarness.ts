@@ -2,9 +2,10 @@
 // server answers, the project it has open, and the calls the screen makes.
 // Each test file mocks the modules itself (vi.mock is hoisted per file) and
 // points the factories here, so every file draws the same screen.
-import { vi, expect } from "vitest";
+import { vi, expect, type Mock } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
+import type * as rest from "../api/restClient";
 
 export const RUNNING_ANY = {
   mode: "any", adapter: {}, adapter_name: "", label: "Any network", addresses: ["0.0.0.0"],
@@ -54,7 +55,7 @@ export function cloudCert(over: Record<string, unknown> = {}): Record<string, un
 
 export const served: {
   config: Record<string, any>;
-  version: Record<string, unknown>;
+  version: Awaited<ReturnType<typeof rest.getSystemVersion>>;
   tls: Record<string, any> | null;
   ssh: Record<string, unknown> | null;
   adapters: Array<{ name: string; ip: string }>;
@@ -88,10 +89,12 @@ const answers = {
   }),
 };
 
-/** Every call the screen makes to the server, answered from `served`. */
+/** Every call the screen makes to the server, answered from `served`. Each
+ *  mock carries the real client's signature, so a test answering in a shape
+ *  the server no longer sends fails the type check. */
 export const api = Object.fromEntries(
   Object.entries(answers).map(([name, answer]) => [name, vi.fn(answer)]),
-) as unknown as { [K in keyof typeof answers]: ReturnType<typeof vi.fn<(typeof answers)[K]>> };
+) as unknown as { [K in keyof typeof answers]: Mock<(typeof rest)[K]> };
 
 export const toast = { showError: vi.fn(), showSuccess: vi.fn() };
 export const clipboard = { copyToClipboard: vi.fn(async (_text: string) => true) };

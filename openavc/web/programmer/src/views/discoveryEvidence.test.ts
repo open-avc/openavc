@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { describeEvidence, portProbeLines } from "./discoveryEvidence";
+import type { DiscoveryEvidence } from "../api/discoveryClient";
 
-const ev = (data: Record<string, unknown>) => ({ tier: "enrichment", source: "x", data });
+const ev = (data: Record<string, unknown>): DiscoveryEvidence => ({ tier: "enrichment", source: "x", data, at: 0 });
 
 describe("the evidence lines", () => {
   it("says a binary reply by its pattern or its bytes, never its stray printable bytes", () => {
@@ -87,7 +88,7 @@ describe("a device the project is connected to", () => {
   it("says which project device is connected, and on which port", () => {
     expect(describeEvidence({
       tier: "enrichment", source: "connected:1515",
-      data: { kind: "connected", driver_id: "acme_widget", device_name: "Lobby Widget", port: 1515 },
+      data: { kind: "connected", driver_id: "acme_widget", device_name: "Lobby Widget", port: 1515 }, at: 0,
     })).toEqual({ headline: "In the project as Lobby Widget, connected on port 1515", detail: null });
   });
 });

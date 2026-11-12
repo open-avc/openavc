@@ -188,7 +188,7 @@ describe("the arrangement reviewed", () => {
   });
 
   it("joins an element's findings for the canvas with a blank line between them", () => {
-    const p = page([{ ...LED, placeholder: "never drawn" } as UIElement], { led: tinyLed });
+    const p = page([{ ...LED, placeholder: "never drawn" }], { led: tinyLed });
     const messages = reviewPage(p).map((f) => f.message);
     expect(messages).toHaveLength(2);
     expect([...reviewWarningsByElement(p, null)]).toEqual([["led", messages.join("\n\n")]]);

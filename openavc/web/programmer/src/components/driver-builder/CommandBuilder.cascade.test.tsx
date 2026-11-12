@@ -46,7 +46,7 @@ function written(onUpdate: ReturnType<typeof vi.fn>) {
   return call.commands.toggle.params.control.options_from;
 }
 
-function open(d: DriverDefinition, onUpdate: ReturnType<typeof vi.fn>) {
+function open(d: DriverDefinition, onUpdate: (partial: Partial<DriverDefinition>) => void) {
   render(<CommandBuilder draft={d} onUpdate={onUpdate} />);
   fireEvent.click(screen.getByText("toggle"));
 }

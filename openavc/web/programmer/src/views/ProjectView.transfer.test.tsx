@@ -46,14 +46,14 @@ vi.mock("../components/video-streams/VideoStreamsSection", () => ({
 }));
 
 const exportCurrentProject = vi.fn(async () => {});
-const importToLibrary = vi.fn(async () => ({
+const importToLibrary = vi.fn(async (_f: File) => ({
   status: "imported",
   project_id: "test_room",
   installed_drivers: ["acme_matrix"],
   installed_plugins: ["acme_widget"],
   warnings: [],
 }));
-const openFromLibrary = vi.fn(async () => ({ status: "created", project_name: "Test Room" }));
+const openFromLibrary = vi.fn(async (_id: string, _mode: string, _name?: string) => ({ status: "created", project_name: "Test Room" }));
 const listLibrary = vi.fn(async () => [
   { id: "test_room", name: "Test Room", description: "", modified: "" },
 ]);

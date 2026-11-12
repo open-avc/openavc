@@ -38,7 +38,7 @@ describe("leaving a numeric type drops the conversion", () => {
   });
 
   it("on a child state variable", () => {
-    const next = applyChildVarTypeChange(numeric, "boolean") as Record<string, unknown>;
+    const next = applyChildVarTypeChange(numeric, "boolean") as unknown as Record<string, unknown>;
     expect(next.offset).toBeUndefined();
     expect(next.unknown).toBeUndefined();
   });

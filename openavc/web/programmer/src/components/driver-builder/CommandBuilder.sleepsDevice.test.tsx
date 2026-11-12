@@ -9,9 +9,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // renaming the wake command keeps the reference pointing at it.
 
 import { CommandBuilder } from "./CommandBuilder";
-import type { DriverDefinition } from "../../api/types";
+import type { DriverCommandDef, DriverDefinition } from "../../api/types";
 
-function draftWith(commands: DriverDefinition["commands"]): DriverDefinition {
+// Partial: a udp: command has no send, which the generated command type
+// requires of every command.
+function draftWith(commands: Record<string, Partial<DriverCommandDef>>): DriverDefinition {
   return {
     id: "acme_display",
     name: "Acme Display",

@@ -99,7 +99,7 @@ describe("request() error contract", () => {
         text: async () => '{"detail":"not implemented"}',
       }),
     );
-    const err = await request("/whatever").catch((e) => e);
+    const err = (await request("/whatever").catch((e: unknown) => e)) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(501);
     expect(err.detail).toBe("not implemented");

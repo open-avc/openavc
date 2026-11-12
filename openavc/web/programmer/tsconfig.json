@@ -11,6 +11,8 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    // No ambient type packages: Node's, installed for the tests, stay out of the app.
+    "types": [],
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,

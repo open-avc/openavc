@@ -20,7 +20,7 @@ describe("the Theme Studio's file buttons", () => {
     "look held exactly when they cannot be pressed: %s",
     (_label, state) => {
       render(<FileActionBar {...state} actions={actions()} />);
-      for (const button of screen.getAllByRole("button")) {
+      for (const button of screen.getAllByRole("button") as HTMLButtonElement[]) {
         const name = button.textContent;
         const looksHeld = button.style.cursor === "not-allowed";
         const faded = button.style.opacity !== "" && Number(button.style.opacity) < 1;

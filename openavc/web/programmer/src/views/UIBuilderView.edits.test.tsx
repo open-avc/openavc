@@ -759,8 +759,8 @@ describe("what each edit's undo entry holds", () => {
 
   it("puts back no masters as an empty list, and no stylesheet as an empty one", async () => {
     const bare = makeProject();
-    delete (bare.ui as Record<string, unknown>).master_elements;
-    delete (bare.ui as Record<string, unknown>).custom_css;
+    delete (bare.ui as unknown as Record<string, unknown>).master_elements;
+    delete (bare.ui as unknown as Record<string, unknown>).custom_css;
     seed(bare, { selectedPageId: "main", contextMenu: { x: 1, y: 2, elementId: "btn_1", isMaster: false } });
     await renderPage(UIBuilderView);
     call(() => menu().onPromoteToMaster("btn_1"));

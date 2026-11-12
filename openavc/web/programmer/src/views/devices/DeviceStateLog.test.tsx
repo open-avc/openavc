@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 
 // The device page's State Changes tab. What shipped broken: it only listed
 // changes it watched happen while it was open, so three changes made before

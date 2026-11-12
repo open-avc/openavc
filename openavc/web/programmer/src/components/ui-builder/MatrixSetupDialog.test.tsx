@@ -97,7 +97,7 @@ const audioTick = () => screen.getByRole("checkbox", { name: AUDIO_TICK });
 const destinationsOf = (patch: Partial<UIElement>) =>
   (patch.matrix_config as { destinations: Record<string, unknown>[] }).destinations;
 
-async function open(element: UIElement, onApply: ReturnType<typeof vi.fn>) {
+async function open(element: UIElement, onApply: (patch: Partial<UIElement>) => void) {
   render(
     <MatrixSetupDialog
       element={element}

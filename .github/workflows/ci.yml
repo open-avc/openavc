@@ -375,6 +375,13 @@ jobs:
         working-directory: openavc/web/programmer
         run: npm run test
 
+      # The build's tsc leaves the test files out and vitest strips types
+      # unchecked, so a test calling code in a shape it no longer takes is
+      # caught only here.
+      - name: Type-check Programmer UI tests
+        working-directory: openavc/web/programmer
+        run: npm run typecheck:tests
+
       - name: Install and build Simulator UI
         working-directory: openavc/web/simulator
         run: |

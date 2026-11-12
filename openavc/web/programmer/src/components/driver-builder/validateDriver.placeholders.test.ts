@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { DriverDefinition } from "../../api/types";
+import type { DriverCommandDef, DriverDefinition } from "../../api/types";
 import { validateDriverSafely } from "./validateDriver";
 
-function draft(commands: DriverDefinition["commands"]): DriverDefinition {
+// Partial: only the fields the placeholder check reads. An HTTP command has
+// no send, which the generated command type requires of every command.
+function draft(commands: Record<string, Partial<DriverCommandDef>>): DriverDefinition {
   return {
     id: "acme_widget",
     name: "Acme Widget",
@@ -14,7 +16,7 @@ function draft(commands: DriverDefinition["commands"]): DriverDefinition {
     description: "An Acme widget.",
     transport: "tcp",
     commands,
-  } as DriverDefinition;
+  } as unknown as DriverDefinition;
 }
 
 const placeholderWarnings = (d: DriverDefinition) =>

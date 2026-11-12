@@ -170,7 +170,7 @@ describe("Sidebar: the Simulator UI tab", () => {
   it("selects devices loaded after the dialog opens, until a person changes the selection", async () => {
     const loadedDevices = mocks.devices;
     mocks.devices = [];
-    const props = { activeView: "dashboard", onViewChange: vi.fn() };
+    const props = { activeView: "dashboard" as const, onViewChange: vi.fn() };
     const { rerender } = render(<Sidebar {...props} />);
     await userEvent.click(screen.getByRole("button", { name: "Simulate Devices" }));
     mocks.devices = loadedDevices;

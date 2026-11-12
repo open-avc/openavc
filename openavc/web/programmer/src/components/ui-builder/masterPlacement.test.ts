@@ -16,7 +16,8 @@ const NAV_BAR: MasterElement = {
   pages: "*",
   hidden: false,
   placements: { landscape: { x: 0, y: 90, w: 100, h: 10 } },
-} as MasterElement;
+  // Only what placement reads: no style or bindings.
+} as unknown as MasterElement;
 
 describe("masterPlacement", () => {
   it("falls back to landscape when this orientation has no box of its own", () => {

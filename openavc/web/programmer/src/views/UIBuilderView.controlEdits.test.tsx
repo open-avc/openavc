@@ -110,10 +110,10 @@ describe("with no page to edit", () => {
 describe("with a project that has no masters, macros or variables", () => {
   const bare = () => {
     const p = makeProject({ masters: [] });
-    delete (p.ui as Record<string, unknown>).master_elements;
-    delete (p as Record<string, unknown>).macros;
-    delete (p as Record<string, unknown>).variables;
-    delete (p as Record<string, unknown>).scripts;
+    delete (p.ui as unknown as Record<string, unknown>).master_elements;
+    delete (p as unknown as Record<string, unknown>).macros;
+    delete (p as unknown as Record<string, unknown>).variables;
+    delete (p as unknown as Record<string, unknown>).scripts;
     return p;
   };
 

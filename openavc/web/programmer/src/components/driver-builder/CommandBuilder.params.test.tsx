@@ -330,7 +330,7 @@ describe("the value boxes", () => {
     expect(valueGrid(document.body)).toBe("1fr 1fr 1fr 1fr 1fr 1fr");
     expect(captions(document.body)).toContain("Decimals");
     n.unmount();
-    const b = host({ a: { type: "boolean", unit: "x" } });
+    host({ a: { type: "boolean", unit: "x" } });
     expect(valueGrid(document.body)).toBe("1fr 1fr 1fr");
     expect(captions(document.body)).toContain("Unit");
     expect(screen.queryByPlaceholderText("scale (1)")).toBeNull();
@@ -631,7 +631,7 @@ describe("where a parameter's choices come from", () => {
     fireEvent.change(follows(), { target: { value: "" } });
     expect(c.params().value).toEqual({ type: "string" });
     c.unmount();
-    const odd = host({ a: { type: "string", type_from: { param: "b" } }, b: { type: "string" } } as never);
+    host({ a: { type: "string", type_from: { param: "b" } }, b: { type: "string" } } as never);
     const opts = Array.from((screen.getByTestId("param-type-from-a") as HTMLSelectElement).querySelectorAll("option"));
     expect(opts.map((o) => `${o.value}=${o.textContent}`)).toEqual(["=Nothing (use the type above)", "b=b (not a cascade)"]);
     expect((screen.getByTestId("param-type-from-a") as HTMLSelectElement).value).toBe("b");

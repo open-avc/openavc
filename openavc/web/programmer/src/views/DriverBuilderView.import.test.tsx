@@ -35,11 +35,11 @@ const edited = { ...original, version: "2.0.0", commands: {
 
 async function offerImport(definition = edited) {
   render(<DriverPanel />);
-  fireEvent.click(screen.getByRole("button", { name: "Create", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Create" }));
   await waitFor(() => expect(useDriverBuilderStore.getState().loading).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "Import from File" }));
   fireEvent.change(screen.getByRole("textbox"), { target: { value: JSON.stringify(definition) } });
-  fireEvent.click(screen.getByRole("button", { name: "Import", exact: true }));
+  fireEvent.click(screen.getByRole("button", { name: "Import" }));
 }
 
 beforeEach(() => {
@@ -61,7 +61,7 @@ describe("Importing an edited driver", () => {
     expect(await screen.findByRole("alertdialog", { name: "Update Existing Driver" })).toHaveTextContent("Room amplifier");
     expect(screen.queryByText("private-device-secret")).toBeNull();
     expect(api.updateDriverDefinition).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Update Driver", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Update Driver" }));
     await waitFor(() => expect(api.updateDriverDefinition).toHaveBeenCalledWith(original.id,
       expect.objectContaining({ id: original.id, version: "2.0.0", commands: edited.commands })));
     expect(api.createDriverDefinition).not.toHaveBeenCalled();
@@ -72,7 +72,7 @@ describe("Importing an edited driver", () => {
     const draft = useDriverBuilderStore.getState().draft;
     await offerImport();
     await screen.findByRole("alertdialog");
-    fireEvent.click(screen.getByRole("button", { name: "Cancel", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(api.createDriverDefinition).not.toHaveBeenCalled();
     expect(api.updateDriverDefinition).not.toHaveBeenCalled();
     expect(useDriverBuilderStore.getState().draft).toBe(draft);
@@ -105,7 +105,7 @@ describe("Importing an edited driver", () => {
     ] });
     await offerImport();
     await screen.findByRole("alertdialog");
-    fireEvent.click(screen.getByRole("button", { name: "Update Driver", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Update Driver" }));
     await waitFor(() => expect(useDriverBuilderStore.getState().dirty).toBe(true));
     expect(useDriverBuilderStore.getState().selectedId).toBe(original.id);
     expect(useDriverBuilderStore.getState().definitions[0]).toEqual(original);
@@ -154,7 +154,8 @@ it("keeps wire line endings unchanged when another section is appended to an exp
       blank: { send: "\n\n" },
     },
     auth: { type: "telnet_login", line_ending: "\n" },
-  } as DriverDefinition;
+    // Commands with only the line the serializer writes: no label or params.
+  } as unknown as DriverDefinition;
   const exported = serializeDriverDefinition(definition);
   expect(exported).toContain('line_ending: "\\n"');
   expect(exported).toContain('send: "STATUS\\n"');

@@ -17,9 +17,11 @@ import userEvent from "@testing-library/user-event";
 const mocks = vi.hoisted(() => ({
   state: { project: { devices: [] as Array<Record<string, unknown>> } },
   load: vi.fn(async () => true),
-  syncDeviceConfig: vi.fn(async () => {}),
+  syncDeviceConfig: vi.fn<typeof import("../../store/projectStore").syncDeviceConfig>(async () => {}),
   syncDeviceFromServer: vi.fn(async () => {}),
-  updateDevice: vi.fn(async () => ({})),
+  updateDevice: vi.fn<typeof import("../../api/restClient").updateDevice>(
+    async (deviceId) => ({ status: "ok", device_id: deviceId }),
+  ),
   listDrivers: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
@@ -106,10 +108,10 @@ describe("SetupField — saving before the driver schema arrives", () => {
 
     await waitFor(() => expect(mocks.updateDevice).toHaveBeenCalled());
     const [, body] = mocks.updateDevice.mock.calls[0];
-    expect(body.config.port).toBe(8554);
+    expect(body.config?.port).toBe(8554);
     // The rest of the driver's config survives: the endpoint replaces the whole
     // protocol config with what it is sent.
-    expect(body.config.host).toBe("10.0.0.5");
+    expect(body.config?.host).toBe("10.0.0.5");
   });
 });
 

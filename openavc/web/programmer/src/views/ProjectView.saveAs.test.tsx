@@ -40,8 +40,8 @@ vi.mock("../components/video-streams/VideoStreamsSection", () => ({
   VideoStreamsSection: () => null,
 }));
 
-const saveToLibrary = vi.fn(async () => ({ status: "created", project_id: "test_room" }));
-const replaceInLibrary = vi.fn(async () => ({ status: "replaced", project_id: "test_room" }));
+const saveToLibrary = vi.fn(async (_d: unknown) => ({ status: "created", project_id: "test_room" }));
+const replaceInLibrary = vi.fn(async (_id: string, _d: unknown) => ({ status: "replaced", project_id: "test_room" }));
 const listLibrary = vi.fn(async () => [
   {
     id: "test_room", name: "Test Room", description: "", modified: "2026-09-01T10:00:00",

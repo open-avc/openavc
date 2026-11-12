@@ -10,9 +10,11 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { CommandBuilder } from "./CommandBuilder";
 import { macFieldOptions } from "./UdpSendFields";
-import type { DriverDefinition } from "../../api/types";
+import type { DriverCommandDef, DriverDefinition } from "../../api/types";
 
-function draftWith(commands: DriverDefinition["commands"]): DriverDefinition {
+// Partial: a udp: command has no send, which the generated command type
+// requires of every command.
+function draftWith(commands: Record<string, Partial<DriverCommandDef>>): DriverDefinition {
   return {
     id: "acme_widget",
     name: "Acme Widget",

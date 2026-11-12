@@ -3,15 +3,17 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CommandParamForm } from "./CommandParamForm";
 import { coerceCommandParams, commandParamsBlocked, seedCommandParams } from "./commandParams";
 import type { ParamPickers } from "./ParamInput";
-import type { ChildEntityEntry } from "../../api/types";
+import type { ChildEntityEntry, DriverParamDef } from "../../api/types";
 
-const PARAMS = {
+type Params = Record<string, Partial<DriverParamDef>>;
+
+const PARAMS: Params = {
   zone: { type: "child_id", child_type: "zone", required: true, label: "Zone" },
   preset: { type: "string", options_state: "presets", label: "Preset" },
   level: { type: "integer", min: 0, max: 100, label: "Level", default: 20 },
   mute: { type: "boolean", label: "Mute" },
   input: { type: "enum", values: ["hdmi1", "hdmi2"], label: "Input", required: true },
-} as const;
+};
 
 function zone(local_id: number, display_name: string): ChildEntityEntry {
   return {
@@ -34,12 +36,17 @@ describe("what a command form starts with, sends, and refuses", () => {
   });
 
   it("fills a choice from the driver's default before the first option", () => {
-    const params = {
+    const params: Params = {
       color: { type: "enum", values: ["black", "white"], default: "white" },
-      speed: { type: "enum", values: [{ value: 1, label: "Slow" }, { value: 2, label: "Fast" }] },
+      // Numeric values, which the driver schema allows; the IDE's EnumOption
+      // type says string only.
+      speed: {
+        type: "enum",
+        values: [{ value: 1, label: "Slow" }, { value: 2, label: "Fast" }] as unknown as DriverParamDef["values"],
+      },
       stale: { type: "enum", values: ["a", "b"], default: "gone", required: true },
       zoom: { type: "boolean", default: true },
-    } as const;
+    };
     expect(seedCommandParams(params, { fillChoices: true })).toEqual({
       color: "white", speed: "1", stale: "", zoom: "true",
     });
@@ -53,7 +60,7 @@ describe("what a command form starts with, sends, and refuses", () => {
   });
 
   it("sends a number as the form's own check read it", () => {
-    const defs = { n: { type: "integer" }, x: { type: "number" } } as const;
+    const defs: Params = { n: { type: "integer" }, x: { type: "number" } };
     expect(commandParamsBlocked(defs, { n: "1e3", x: "2e2" })).toBe(false);
     expect(coerceCommandParams(defs, { n: "1e3", x: "2e2" })).toEqual({ n: 1000, x: 200 });
     expect(coerceCommandParams(defs, { n: "0x10" })).toEqual({ n: 16 });
@@ -145,7 +152,7 @@ describe("a command form's pickers", () => {
         }}
         values={{ block_id: "", control: "" }}
         onChange={vi.fn()}
-        pickers={{ loadChildren: vi.fn(async () => []) }}
+        pickers={{ loadChildren: vi.fn(async () => []), stateValue: () => undefined }}
       />,
     );
     expect(screen.getByText("Pick Block ID first to list its controls.")).toBeTruthy();

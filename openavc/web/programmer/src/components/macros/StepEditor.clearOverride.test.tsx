@@ -85,7 +85,7 @@ describe("clearing a control override from a macro step", () => {
 
   it("names a cleared override in the step's summary", () => {
     const summary = getStepType("state.set")!.summary;
-    expect(summary({ action: "state.set", key: "ui.btn_1.label", value: null })).toBe("ui.btn_1.label cleared");
-    expect(summary({ action: "state.set", key: "ui.btn_1.label", value: "Meeting" })).toBe('ui.btn_1.label = "Meeting"');
+    expect(summary({ action: "state.set", key: "ui.btn_1.label", value: null }, [], [])).toBe("ui.btn_1.label cleared");
+    expect(summary({ action: "state.set", key: "ui.btn_1.label", value: "Meeting" }, [], [])).toBe('ui.btn_1.label = "Meeting"');
   });
 });

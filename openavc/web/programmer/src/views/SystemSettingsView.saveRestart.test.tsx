@@ -39,6 +39,7 @@ vi.mock("../components/shared/RestartProgressDialog", async () => {
 
 import { SystemSettingsView } from "./SystemSettingsView";
 import { ApiError } from "../api/errors";
+import type { ListenPreview } from "../api/restClient";
 import {
   RUNNING_ANY,
   api,
@@ -68,11 +69,11 @@ function switchBeside(text: string): HTMLElement {
 }
 
 /** The server's answer for a choice: everything a preview carries. */
-function preview(over: Record<string, unknown> = {}) {
+function preview(over: Partial<ListenPreview> = {}): ListenPreview {
   return {
     mode: "any", adapter_name: "", label: "Any network", panel_addresses: [] as string[],
     connected_through: "192.168.1.40", serves_this_address: true, keeps_this_connection: true,
-    safety_net: false, problem: null, consequences: [] as Array<{ code: string; message: string }>,
+    safety_net: false, problem: null, consequences: [],
     held_by: null, cloud_remote_access: false,
     ...over,
   };
@@ -665,7 +666,7 @@ describe("What the page reads when it opens", () => {
   });
 
   it("says it is loading the update settings until the server answers", async () => {
-    let answer: (v: Record<string, unknown>) => void = () => {};
+    let answer: (v: typeof served.version) => void = () => {};
     api.getSystemVersion.mockImplementationOnce(() => new Promise((r) => { answer = r; }));
     await renderLoaded(<SystemSettingsView />);
     expect(screen.getByText("Loading update settings...")).toBeTruthy();
