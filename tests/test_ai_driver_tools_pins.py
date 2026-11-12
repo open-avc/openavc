@@ -800,3 +800,66 @@ async def test_update_definition_of_a_built_in_is_refused_before_it_is_validated
         "error": "Driver 'acme_yaml' is a built-in and cannot be modified. Duplicate it under a new id first.",
     }
     announced.assert_not_awaited()
+
+
+# --- a catalog of the wrong shape ------------------------------------------------------
+#
+# The catalog is published data: an entry of the wrong shape is skipped, and a
+# file whose list is not a list answers as a catalog that could not be fetched.
+
+
+@pytest.mark.parametrize("index", [{"drivers": 5}, "abc", {"drivers": {"id": "acme_widget"}}])
+async def test_an_index_whose_list_is_not_a_list_is_a_failed_fetch(monkeypatch, index):
+    _Web(monkeypatch, {"index.json": index})
+    handler = _handler()
+
+    assert await handler._search_community_drivers({"query": "acme"}) == {
+        "drivers": [], "total": 0, "error": "Failed to fetch community index",
+    }
+    assert await handler._get_community_driver_detail({"driver_id": "acme_widget"}) == {
+        "error": "Failed to fetch community index",
+    }
+
+
+async def test_index_entries_of_the_wrong_shape_are_skipped(monkeypatch):
+    _Web(monkeypatch, {"index.json": {"drivers": [
+        "abc", 5, None, ["acme_list"],
+        _entry("acme_named", name=5, manufacturer=["Acme"], file=["x"]),
+        _entry(["acme_listed_id"], name="Acme Listed"),
+        _entry("acme_models", compatible_models="WX-1", tags="widget"),
+        _entry("acme_rows", compatible_models=["WX-2", {"models": "WX-3"}, {"models": ["WX-4"]}]),
+        _entry("acme_widget", name="Acme Widget"),
+    ]}})
+    handler = _handler()
+
+    answer = await handler._search_community_drivers({"query": "acme"})
+    # acme_widget's name matches too; the listed id matches only by its name.
+    assert [d["id"] for d in answer["drivers"]] == [
+        "acme_widget", "acme_models", "acme_named", "acme_rows", ["acme_listed_id"],
+    ]
+    assert "download_url" not in answer["drivers"][2]
+    found = await handler._search_community_drivers({"query": "wx-4"})
+    assert [d["id"] for d in found["drivers"]] == ["acme_rows"]
+    assert (await handler._get_community_driver_detail({"driver_id": "acme_widget"}))["name"] == "Acme Widget"
+
+
+@pytest.mark.parametrize("devices", [{"devices": 5}, "abc", {"devices": {"model": "WX-100"}}])
+async def test_a_device_list_that_is_not_a_list_is_a_failed_fetch(monkeypatch, devices):
+    _Web(monkeypatch, {"devices.json": devices})
+
+    answer = await _handler()._find_driver_for_device({"manufacturer": "Acme", "model": "WX-100"})
+
+    assert answer == {"matches": [], "error": "Failed to fetch the community device catalog"}
+
+
+async def test_device_rows_of_the_wrong_shape_are_skipped(monkeypatch):
+    _Web(monkeypatch, {"devices.json": {"devices": [
+        "abc", 5,
+        {"manufacturer": "Acme", "model": 100, "drivers": [{"id": "acme_number"}]},
+        {"manufacturer": "Acme", "model": "WX-100", "drivers": "acme_text"},
+        {"manufacturer": "Acme", "model": "WX-100", "drivers": ["acme_text", {"id": "acme_widget"}]},
+    ]}})
+
+    answer = await _handler()._find_driver_for_device({"manufacturer": "Acme", "model": "WX-100"})
+
+    assert answer["matches"] == [{"driver_id": "acme_widget", "confidence": "untested", "notes": None}]

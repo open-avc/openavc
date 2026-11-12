@@ -14,6 +14,11 @@ free-text query scores each one (``_score_driver_match``: an exact id or
 manufacturer first, then the id, manufacturer, name, compatible models,
 tags and description, each with its own weight). Installing goes through the
 REST install route, so an AI install does everything an IDE install does.
+
+The catalog is published data, read as it comes: a row that is not an object
+is skipped (_catalog_rows), and a field of the wrong type reads as absent
+(_text, _listed), so one bad row never hides the rest. A file whose
+list is not a list answers as a catalog that could not be fetched.
 """
 
 from __future__ import annotations
@@ -52,9 +57,31 @@ async def _catalog_json(name: str) -> Any:
         return resp.json()
 
 
+def _catalog_rows(data: Any, key: str) -> list[dict] | None:
+    """The rows under key (or the file itself, when it is a bare list),
+    each an object; None when there is no list to read."""
+    rows = data.get(key) if isinstance(data, dict) else data
+    if not isinstance(rows, list):
+        return None
+    return [row for row in rows if isinstance(row, dict)]
+
+
 def _text(entry: dict, key: str) -> str:
-    """An entry's text field for matching: lowercased, empty when absent."""
-    return (entry.get(key) or "").lower()
+    """An entry's text field for matching: lowercased, empty when absent or not text."""
+    value = entry.get(key)
+    return value.lower() if isinstance(value, str) else ""
+
+
+def _listed(entry: dict, key: str) -> list:
+    """An entry's list field, empty when absent or not a list."""
+    value = entry.get(key)
+    return value if isinstance(value, list) else []
+
+
+def _id_of(entry: dict) -> str:
+    """An entry's id as text, for ordering; empty when it is not text."""
+    value = entry.get("id")
+    return value if isinstance(value, str) else ""
 
 
 def _search_text(input: dict, key: str) -> str:
@@ -76,8 +103,9 @@ def _passes_filters(drv: dict, filters: dict[str, str]) -> bool:
 def _compatible_model_names(drv: dict) -> list[str]:
     return [
         model.lower()
-        for entry in drv.get("compatible_models") or []
-        for model in entry.get("models") or []
+        for entry in _listed(drv, "compatible_models")
+        if isinstance(entry, dict)
+        for model in _listed(entry, "models")
         if isinstance(model, str)
     ]
 
@@ -91,7 +119,7 @@ def _score_driver_match(drv: dict, query: str) -> int:
     name = _text(drv, "name")
     manufacturer = _text(drv, "manufacturer")
     description = _text(drv, "description")
-    tags = [t.lower() for t in (drv.get("tags") or []) if isinstance(t, str)]
+    tags = [t.lower() for t in _listed(drv, "tags") if isinstance(t, str)]
     models = _compatible_model_names(drv)
     hits = (
         (100, query in (drv_id, manufacturer)),
@@ -120,7 +148,7 @@ def _ranked(drivers: list[dict], query: str, filters: dict[str, str]) -> list[tu
         score = _score_driver_match(drv, query)
         if score:
             results.append((score, drv))
-    results.sort(key=lambda pair: (-pair[0], pair[1].get("id", "")))
+    results.sort(key=lambda pair: (-pair[0], _id_of(pair[1])))
     return results
 
 
@@ -136,7 +164,8 @@ def _drivers_for_model(devices: list[dict], manufacturer: str, model: str) -> li
         }
         for dev in devices
         if _text(dev, "manufacturer") == manufacturer and _text(dev, "model") == model
-        for drv in dev.get("drivers", []) or []
+        for drv in _listed(dev, "drivers")
+        if isinstance(drv, dict)
     ]
 
 
@@ -220,7 +249,10 @@ class CatalogToolsMixin:
             get_logger(__name__).warning(f"Community device catalog fetch failed: {e}")
             return {"matches": [], "error": "Failed to fetch the community device catalog"}
 
-        devices = data.get("devices", []) if isinstance(data, dict) else data
+        devices = _catalog_rows(data, "devices")
+        if devices is None:
+            get_logger(__name__).warning("Community device catalog fetch failed: it holds no list of devices")
+            return {"matches": [], "error": "Failed to fetch the community device catalog"}
         return {
             "manufacturer": manufacturer,
             "model": model,
@@ -242,9 +274,12 @@ class CatalogToolsMixin:
         except (httpx.HTTPError, OSError):
             return cache["drivers"] if cache else None
 
-        drivers = data.get("drivers", []) if isinstance(data, dict) else data
+        drivers = _catalog_rows(data, "drivers")
+        if drivers is None:
+            get_logger(__name__).warning("Community index fetch failed: it holds no list of drivers")
+            return cache["drivers"] if cache else None
         for drv in drivers:
-            if "file" in drv:
+            if isinstance(drv.get("file"), str):
                 drv["download_url"] = f"{COMMUNITY_REPO_URL}/{drv['file']}"
         self._community_index_cache = {"drivers": drivers, "fetched_at": now}
         return drivers
