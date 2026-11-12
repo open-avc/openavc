@@ -7033,7 +7033,7 @@ const tests = {
             }, (m) => { m.set('var.solo', 'Only'); m.look(); m.set('var.solo', 5); m.look(); }],
             ['list_items_no_pattern', {
                 type: 'list', items: [{ value: 'a' }], bindings: { show: { items: { key: 'var.list' } } },
-            }, (m) => { m.set('var.list', 'x'); m.look(); }],
+            }, (m) => { m.set('var.list', 'x'); m.look(); m.set('', 'blank'); m.set('var.list', 'y'); m.look(); }],
             ['list_bare', { type: 'list' }, (m) => { tap(m, 0); }],
         ];
         const scrolled = [];
