@@ -5,6 +5,7 @@
  * from JSON definitions, and sends user interactions back to the server.
  */
 
+import { basePath } from './modules/base_path.js';
 import { pickLook, withTwoStateWords } from './modules/looks.js';
 import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
@@ -400,10 +401,8 @@ class PanelApp {
     }
 
     async _loadPluginExtensions() {
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
         try {
-            const res = await fetch(`${basePath}/api/plugins/extensions`);
+            const res = await fetch(`${basePath()}/api/plugins/extensions`);
             if (!res.ok) return;
             const data = await res.json();
             const elements = (data.extensions || {}).panel_elements || [];
@@ -424,11 +423,9 @@ class PanelApp {
     // plugin's /api/plugins/<id>/ext/* routes. Returns undefined when the
     // instance is open (empty token) or on any error.
     async _fetchPluginExtToken(pluginId) {
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
         try {
             const res = await fetch(
-                `${basePath}/api/plugins/${encodeURIComponent(pluginId)}/ext-token`
+                `${basePath()}/api/plugins/${encodeURIComponent(pluginId)}/ext-token`
             );
             if (!res.ok) return undefined;
             const data = await res.json();
@@ -477,12 +474,10 @@ class PanelApp {
     }
 
     _fetchProjectAndRender() {
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
         // The RESOLVED ui, not /api/project. A matrix's sources and destinations
         // are expanded on the server (matrix plan D6) and this renderer has no
         // expander, so the authoring copy would draw an empty matrix here.
-        fetch(`${basePath}/api/ui/resolved`)
+        fetch(`${basePath()}/api/ui/resolved`)
             .then(r => r.ok ? r.json() : null)
             .then(proj => {
                 if (!proj || !proj.ui) {
@@ -636,10 +631,7 @@ class PanelApp {
         // the reconnect scheduled before the probe answered stops here.
         if (this._remoteSessionEnded) return;
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // Derive WS path relative to page location so tunneled access works.
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
-        const url = `${protocol}//${location.host}${basePath}/ws?client=${this.embedded ? "preview" : "panel"}&namespaces=device,var,ui,system,plugin`;
+        const url = `${protocol}//${location.host}${basePath()}/ws?client=${this.embedded ? "preview" : "panel"}&namespaces=device,var,ui,system,plugin`;
 
         // When embedded in the Programmer IDE, attach the cached programmer
         // password as a Sec-WebSocket-Protocol so the handshake authenticates
@@ -4666,7 +4658,7 @@ class PanelApp {
         return this._renderIframeElement(element, {
             className: 'panel-plugin',
             styleType: 'plugin',
-            src: `${this._panelBasePath()}/api/plugins/${encodeURIComponent(pluginId)}/panel/${encodeURIComponent(pluginType)}.html`,
+            src: `${basePath()}/api/plugins/${encodeURIComponent(pluginId)}/panel/${encodeURIComponent(pluginType)}.html`,
             sandboxTokens,
             allowFeatures: extDef?.allow_features || [],
             config: element.plugin_config || {},
@@ -4701,7 +4693,7 @@ class PanelApp {
         return this._renderIframeElement(element, {
             className: 'panel-custom',
             styleType: 'custom',
-            src: `${this._panelBasePath()}/api/projects/default/ui/${src}${bust}`,
+            src: `${basePath()}/api/projects/default/ui/${src}${bust}`,
             // The one iframe type that runs in the designer. It is the control
             // the integrator is writing right now, so a grey box is the wrong
             // answer: it draws, it is themed, and it is the size they gave it.
@@ -4858,12 +4850,6 @@ class PanelApp {
             if (k === `var.${id}`) return true;
         }
         return false;
-    }
-
-    /** The path the panel is served under, so every URL we build is relative.
-     *  An absolute one works on the LAN and dies through the cloud tunnel. */
-    _panelBasePath() {
-        return location.pathname.split('/panel')[0] || '';
     }
 
     /** The box an iframe element draws when it cannot render for real:
@@ -5281,9 +5267,7 @@ class PanelApp {
         if (!url || typeof url !== 'string') return null;
         if (url.startsWith('http://') || url.startsWith('https://')) return url;
         if (!url.startsWith('/')) return url;
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
-        return basePath + url;
+        return basePath() + url;
     }
 
     _resolveSoundUrl(soundId) {
@@ -5296,9 +5280,7 @@ class PanelApp {
         }
         // Last-resort fallback for sounds the plugin didn't resolve a URL for.
         // Assumes .mp3 by convention; works for plugins that follow it.
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
-        return `${basePath}/api/plugins/audio_player/files/sounds/${encodeURIComponent(soundId)}.mp3`;
+        return `${basePath()}/api/plugins/audio_player/files/sounds/${encodeURIComponent(soundId)}.mp3`;
     }
 
     _playSound(url, volume) {
@@ -6678,12 +6660,10 @@ class PanelApp {
     async _checkLockCode(attempt) {
         const drafted = this.uiSettings?.lock_code;
         if (drafted) return attempt === drafted;
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 5000);
         try {
-            const res = await fetch(`${basePath}/api/panel/unlock`, {
+            const res = await fetch(`${basePath()}/api/panel/unlock`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code: attempt }),
@@ -6815,15 +6795,13 @@ class PanelApp {
      * not a refusal: a refusal is an answer whose status says so.
      */
     async _fetchPanelAccess() {
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
         // The zone this screen runs in: a panel on the system's own screen
         // sets the system's clock with it when the two disagree.
         let zone = '';
         try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { /* no Intl */ }
         const query = zone ? `?time_zone=${encodeURIComponent(zone)}` : '';
         try {
-            const res = await fetch(`${basePath}/api/panel/access${query}`, { cache: 'no-store' });
+            const res = await fetch(`${basePath()}/api/panel/access${query}`, { cache: 'no-store' });
             if (!res.ok) return null;
             const data = await res.json();
             return data && typeof data === 'object' ? data : null;
@@ -6986,7 +6964,7 @@ class PanelApp {
     /** True when this page was opened through the cloud's Remote Access
      *  (`/tunnel/<id>/panel/`). */
     _inRemoteSession() {
-        return this._panelBasePath().startsWith('/tunnel/');
+        return basePath().startsWith('/tunnel/');
     }
 
     /**
@@ -7016,7 +6994,7 @@ class PanelApp {
      */
     async _probeRemoteSession() {
         try {
-            const res = await fetch(`${this._panelBasePath()}/api/panel/access`, { cache: 'no-store' });
+            const res = await fetch(`${basePath()}/api/panel/access`, { cache: 'no-store' });
             if (await this._isEndedRemoteSession(res)) this._showRemoteSessionEnded();
         } catch (_) {
             // Unreachable, or an answer that could not be read: not an answer
@@ -7113,14 +7091,12 @@ class PanelApp {
     }
 
     async _claimWithPassword(username, password) {
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
         // URI-encode before base64: btoa is a Latin-1 encoder and the server
         // reads the header as UTF-8, so a password with an accent would go
         // out wrong and one above Latin-1 would make btoa throw.
         const token = btoa(unescape(encodeURIComponent(`${username}:${password}`)));
         try {
-            const res = await fetch(`${basePath}/api/panel/access/claim`, {
+            const res = await fetch(`${basePath()}/api/panel/access/claim`, {
                 method: 'POST',
                 headers: { Authorization: `Basic ${token}`, Accept: 'application/json' },
                 cache: 'no-store',
@@ -7231,10 +7207,8 @@ class PanelApp {
             return Promise.resolve();
         }
 
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
 
-        return fetch(`${basePath}/api/themes/${encodeURIComponent(themeId)}`)
+        return fetch(`${basePath()}/api/themes/${encodeURIComponent(themeId)}`)
             .then(res => {
                 if (!res.ok) return null;
                 return res.json().catch(() => null);
@@ -7697,15 +7671,12 @@ class PanelApp {
     resolveAssetUrl(ref) {
         if (!ref) return '';
         if (ref.startsWith('assets://')) {
-            // Derive base path so asset URLs route through cloud tunnel
-            const pathParts = location.pathname.split('/panel');
-            const basePath = pathParts[0] || '';
             // Encode the filename so legal-but-special names (spaces etc.,
             // allowed by the server's asset FILENAME_PATTERN) resolve. Asset
             // names are flat filenames, so encodeURIComponent is safe and
             // matches the programmer's getAssetUrl.
             const name = encodeURIComponent(ref.slice('assets://'.length));
-            return `${basePath}/api/projects/default/assets/${name}`;
+            return `${basePath()}/api/projects/default/assets/${name}`;
         }
         return ref;
     }
@@ -8287,10 +8258,7 @@ class PanelApp {
         // Built-in Lucide icon from sprite sheet
         const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-        // Derive sprite URL relative to panel location so tunneled access works
-        const pathParts = location.pathname.split('/panel');
-        const basePath = pathParts[0] || '';
-        const iconUrl = `${basePath}/panel/icons.svg#${iconName}`;
+        const iconUrl = `${basePath()}/panel/icons.svg#${iconName}`;
         use.setAttribute('href', iconUrl);
         use.setAttributeNS('http://www.w3.org/1999/xlink', 'href', iconUrl);
         svg.appendChild(use);
