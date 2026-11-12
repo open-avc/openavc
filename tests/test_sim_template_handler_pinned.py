@@ -71,6 +71,12 @@ def test_a_state_reference_the_device_does_not_hold_stays_as_written():
     assert _run(sim, "S") == b"{state.nope} x"
 
 
+def test_a_reference_to_a_childs_state_is_filled_like_a_flat_one():
+    sim = _sim([{"receive": "S", "respond": "{state.zone.1.level}|{state.zone-2}"}])
+    sim._state.update({"zone.1.level": 7, "zone-2": "on"})
+    assert _run(sim, "S") == b"7|on"
+
+
 def test_a_reference_written_twice_is_filled_twice():
     sim = _sim([{"receive": "S", "respond": "{state.name}/{state.name}"}])
     sim._state["name"] = "Z"
@@ -167,11 +173,12 @@ def test_the_section_is_read_into_handlers_in_order():
         {"receive": "A", "respond": "a"},
         {"match": "B", "set_state": {"name": "b"}},
         {"receive": "C", "handler": "respond('c')"},
+        {"receive": "D", "respond": ""},
         {"receive": "(", "respond": "bad"},
         {"receive": "", "respond": "never"},
     ])
     assert [(h.pattern.pattern, h.respond, h.set_state) for h in sim._explicit_handlers] == [
-        ("^A$", "a", {}), ("^B$", None, {"name": "b"}),
+        ("^A$", "a", {}), ("^B$", None, {"name": "b"}), ("^D$", "", {}),
     ]
     assert isinstance(sim._explicit_handlers[0], ExplicitHandler)
 
