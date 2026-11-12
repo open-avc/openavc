@@ -11,7 +11,7 @@ import { useState, type CSSProperties } from "react";
 import { Copy, Upload } from "lucide-react";
 import type { ThemeSummary } from "../../api/restClient";
 import { CSS_VAR_FALLBACKS } from "./colorUtils";
-import { DEFAULT_FONT } from "./quickAdjust";
+import { DEFAULT_FONT, radiusPx } from "./quickAdjust";
 
 /**
  * Mini panel mockup rendered with the theme's actual variables. Shows the
@@ -31,7 +31,7 @@ function ThemeCardPreview({ theme }: { theme: ThemeSummary }) {
   const surface = color("surface");
   const surfaceBorder = color("surface_border");
   const fontFamily = String(v.font_family ?? DEFAULT_FONT);
-  const radius = Number(v.border_radius ?? 8);
+  const radius = radiusPx(v);
   // Mini elements use a smaller corner — heavy radius on tiny shapes looks bulbous.
   const miniRadius = Math.min(radius, 6);
 

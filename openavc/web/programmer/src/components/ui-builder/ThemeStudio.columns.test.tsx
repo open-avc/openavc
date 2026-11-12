@@ -144,7 +144,7 @@ describe("the editor column", () => {
     view.rerender({ currentThemeId: "dark" });
     await waitFor(() => expect(working().id).toBe("dark"));
     expect(tokenRow("Border Radius (px)").querySelector("input")).toBe(radius);
-    expect(radius.value).toBe("0");
+    expect(radius.value).toBe("8");
     fireEvent.blur(radius);
     expect(json(working().variables)).toBe(json(builtinTheme().variables));
   });
@@ -194,6 +194,22 @@ describe("the picker's cards", () => {
   it("draw each theme's colours, font and corners, or the panel's defaults, as they always have", async () => {
     await loaded({ themes: [...SUMMARIES, bare, blank, rounded] });
     expect(picker().outerHTML).toMatchSnapshot();
+  });
+
+  it("round each card's corners as the panel draws the theme's, a hair smaller on the tiny controls", async () => {
+    const radius = (id: string, name: string, border_radius: unknown): ThemeSummary => ({
+      ...SUMMARIES[1], id, name, description: "", variables: { border_radius } as never,
+    });
+    await loaded({ themes: [
+      radius("sharp", "Sharp", 0), radius("small", "Small", 0.2857), radius("standard", "Standard", 0.5714),
+      radius("unset", "Unset", undefined), radius("cleared", "Cleared", ""),
+    ] });
+    const corner = (name: string) => within(card(name)).getByText("Button").style.borderRadius;
+    expect(corner("Sharp")).toBe("0");
+    expect(corner("Small")).toBe("4px");
+    expect(corner("Standard")).toBe("6px");
+    expect(corner("Unset")).toBe("6px");
+    expect(corner("Cleared")).toBe("6px");
   });
 
   it("are not drawn, and nothing is said about custom themes, while the list is empty", async () => {

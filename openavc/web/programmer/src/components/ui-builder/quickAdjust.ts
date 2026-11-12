@@ -35,9 +35,14 @@ export const ROUNDNESS: readonly (Preset & { px: number })[] = [
   { value: "round", label: "Round", px: 16 },
 ];
 
-/** The theme's border radius in pixels. */
+/** The theme's border radius in pixels: the stored rem as px, or the
+ *  panel's own 8px when the theme sets none (the panel skips an empty value
+ *  too). Quick Adjust, the Border Radius field and the picker's cards all
+ *  read it here. */
 export function radiusPx(variables: Record<string, unknown>): number {
-  return Number(displayStyleValue("border_radius", variables.border_radius ?? DEFAULT_RADIUS_PX / REM_BASE_PX));
+  const stored = variables.border_radius;
+  const unset = stored === undefined || stored === null || stored === "";
+  return Number(displayStyleValue("border_radius", unset ? DEFAULT_RADIUS_PX / REM_BASE_PX : stored));
 }
 
 /** The roundness preset at exactly this radius, or null. */

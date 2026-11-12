@@ -130,7 +130,8 @@ describe("a theme sent without variables or element defaults", () => {
     await loaded({ currentThemeId: "bare" });
     expect(json(working())).toBe(json({ id: "bare", name: "Bare", _source: "custom", description: "", variables: {}, element_defaults: {} }));
     expect(screen.queryByText("Unsaved")).toBeNull();
-    expect((tokenRow("Border Radius (px)").querySelector("input") as HTMLInputElement).value).toBe("0");
+    // No radius set: the panel draws its own 8px, and the field says so.
+    expect((tokenRow("Border Radius (px)").querySelector("input") as HTMLInputElement).value).toBe("8");
     expect(within(sectionBody("Quick Adjust")).getByRole("radio", { name: "Standard" })).toBeChecked();
     expect((tokenRow("Font Family").querySelector("select") as HTMLSelectElement).value).toBe("Inter, system-ui, sans-serif");
     fireEvent.change(textIn(controlRow("Label", "Text Color")), { target: { value: "#0f0f0f" } });

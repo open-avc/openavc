@@ -13,7 +13,7 @@ import type { ReactElement } from "react";
 import { NumericInput } from "../shared/NumericInput";
 import { ColorField } from "./ColorField";
 import { CSS_VAR_FALLBACKS } from "./colorUtils";
-import { DEFAULT_FONT, typographyFont } from "./quickAdjust";
+import { DEFAULT_FONT, radiusPx, typographyFont } from "./quickAdjust";
 import { ResetToSaved, StudioSection } from "./StudioParts";
 import { differsFromSaved, variablesOf, withInfo, withVariable, type ThemeDraft } from "./themeEdits";
 import { displayStyleValue, storeStyleValue } from "./uiBuilderHelpers";
@@ -104,12 +104,16 @@ function colorToken({ token, value, onChange }: TokenFieldProps) {
   return <ColorField value={value} inherits={CSS_VAR_FALLBACKS[token.key]} fontSize={11} onChange={onChange} />;
 }
 
-/** A numeric theme variable is a measurement, and the panel reads stored measurements as rem. Show px. */
+/** A numeric theme variable is a measurement, and the panel reads stored
+ *  measurements as rem. Show px; an unset radius as the panel draws it. */
 function numberToken({ token, value, themeId, onChange }: TokenFieldProps) {
+  const px = token.key === "border_radius"
+    ? radiusPx({ border_radius: value })
+    : (displayStyleValue(token.key, Number(value || 0)) as number) ?? 0;
   return (
     <NumericInput
       owner={`${themeId}/${token.key}`}
-      value={(displayStyleValue(token.key, Number(value || 0)) as number) ?? 0}
+      value={px}
       onCommit={(v) => {
         if (v !== undefined) onChange(storeStyleValue(token.key, v));
       }}
