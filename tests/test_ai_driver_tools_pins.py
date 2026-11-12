@@ -619,6 +619,16 @@ async def test_raw_command_takes_its_port_delimiter_and_timeout(tcp):
     assert holder["transport"].sent == [(b"X", 2)]
 
 
+async def test_raw_command_reads_a_timeout_sent_as_text(tcp):
+    made, _holder = tcp
+
+    await _handler()._test_driver_command({"host": "192.0.2.50", "command_string": "X", "timeout": "3"})
+    answer = await _handler()._test_driver_command({"host": "192.0.2.50", "command_string": "X", "timeout": "soon"})
+
+    assert [k["timeout"] for k in made] == [3.0]
+    assert answer == {"success": False, "error": "timeout must be a number of seconds", "response": None}
+
+
 @pytest.mark.parametrize(("reply", "error"), [
     (TimeoutError(), "Timeout waiting for response"),
     (ConnectionError("reset by peer"), "reset by peer"),

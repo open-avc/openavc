@@ -4,9 +4,11 @@ OpenAVC Cloud — AI tool call handler.
 Handles AI_TOOL_CALL messages from the cloud platform: looks the tool up in
 ``TOOLS`` (every tool the cloud may call, and whether it runs under the
 project lock), runs it as a background task, and sends the result back as an
-AI_TOOL_RESULT. A tool that returned an error or raised is answered as a
-failure, and what a raised exception may say is ``describe_tool_failure``'s
-call, because the answer is kept in the cloud chat history. The tools
+AI_TOOL_RESULT. An input field of the wrong JSON type is refused by name
+before the tool runs (``cloud/tools/input_shapes.py``). A tool that returned
+an error or raised is answered as a failure, and what a raised exception may
+say is ``describe_tool_failure``'s call, because the answer is kept in the
+cloud chat history. The tools
 themselves are the mixins under ``cloud/tools/``, one per area.
 """
 
@@ -26,6 +28,7 @@ from openavc.cloud.tools.catalog_tools import CatalogToolsMixin
 from openavc.cloud.tools.custom_ui_tools import CustomUIToolsMixin
 from openavc.cloud.tools.device_tools import DeviceToolsMixin
 from openavc.cloud.tools.driver_tools import DriverToolsMixin
+from openavc.cloud.tools.input_shapes import input_problem
 from openavc.cloud.tools.macro_tools import MacroToolsMixin
 from openavc.cloud.tools.plugin_tools import PluginToolsMixin
 from openavc.cloud.tools.project_tools import ProjectToolsMixin
@@ -343,6 +346,8 @@ class AIToolHandler(
         request_id = payload.get("request_id", "")
         tool_name = payload.get("tool_name", "")
         tool_input = payload.get("tool_input", {})
+        if tool_input is None:  # a tool that takes nothing may be sent null
+            tool_input = {}
 
         log.info(f"AI tool call: {tool_name} (request_id={request_id})")
 
@@ -365,6 +370,13 @@ class AIToolHandler(
         self, request_id: str, tool_name: str, handler: Any, tool_input: dict
     ) -> None:
         """Execute a tool handler and send the result back to the cloud."""
+        # A field of the wrong JSON type is answered by name before the tool
+        # (or the lock and the pre-AI backup) is reached: inside the tool it
+        # fails with Python's own error, which the cloud is not told.
+        problem = input_problem(tool_input)
+        if problem:
+            await self._send_result(request_id, False, result={"error": problem}, error=problem)
+            return
         try:
             if tool_name in self._CONCURRENT_SAFE_TOOLS:
                 result = await handler(tool_input)

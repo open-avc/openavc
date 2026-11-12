@@ -252,3 +252,27 @@ async def test_start_scan_validates_inputs(monkeypatch):
     )
     assert result["scan_id"] == "scan1"
     assert engine.calls == [{"subnets": ["192.168.1.0/24"], "timeout": 300.0}]
+
+
+class _FinishedDiscoveryEngine(_FakeDiscoveryEngine):
+    def get_status(self):
+        self.calls.append("status")
+        return {"status": "complete", "duration": 4}
+
+    def get_results(self):
+        return []
+
+
+async def test_discovery_results_wait_reads_a_timeout_sent_as_text(monkeypatch):
+    engine = _FinishedDiscoveryEngine()
+    monkeypatch.setattr(discovery_module, "_engine", engine)
+    handler = _Handler(None)
+
+    assert await handler._get_discovery_results({"wait": True, "timeout": "soon"}) == {
+        "error": "timeout must be a number of seconds",
+    }
+    assert engine.calls == []
+
+    result = await handler._get_discovery_results({"wait": True, "timeout": "60"})
+    assert result["scan_status"] == "complete"
+    assert engine.calls == ["status", "status"]  # the wait's poll, then the answer's

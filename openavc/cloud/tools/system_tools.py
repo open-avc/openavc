@@ -238,12 +238,13 @@ class SystemToolsMixin:
             return {"error": "Discovery engine not available"}
 
         wait = input.get("wait", False)
-        wait_timeout = input.get("timeout", 120)
         category = input.get("category")
 
         # If wait=True, poll until scan completes (or timeout)
         if wait:
-            wait_timeout = max(5, min(wait_timeout, 180))
+            wait_timeout = _coerce_number(input.get("timeout", 120), default=120, lo=5, hi=180)
+            if wait_timeout is None:
+                return {"error": "timeout must be a number of seconds"}
             elapsed = 0.0
             poll_interval = 3.0
             while elapsed < wait_timeout:

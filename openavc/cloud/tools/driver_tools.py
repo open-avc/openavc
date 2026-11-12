@@ -277,10 +277,13 @@ class DriverToolsMixin:
         port = input.get("port", 23)
         command_string = input.get("command_string", "")
         delimiter = input.get("delimiter", "\\r\\n")
-        timeout = input.get("timeout", 5)
-
         if not host or not command_string:
             return {"success": False, "error": "host and command_string are required", "response": None}
+        # A number sent as text ("5") is read as one, as the scan's timeout is.
+        try:
+            timeout = float(input["timeout"]) if input.get("timeout") is not None else 5.0
+        except (TypeError, ValueError):
+            return {"success": False, "error": "timeout must be a number of seconds", "response": None}
 
         try:
             delimiter_bytes = _unescaped(delimiter, "delimiter")
