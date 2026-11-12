@@ -19,6 +19,7 @@ import {
 import type {
   ChildEntityStateVarDef,
   ChildEntityTypeSchema,
+  CommunityDriver,
   DeviceSettingDef,
   DriverInfo,
   InstalledDriver,
@@ -38,6 +39,41 @@ export function driverMatchesSearch(
   const fields = [driver.name, driver.manufacturer, driver.category].map((f) => f.toLowerCase());
   return words.every((word) => fields.some((f) => f.includes(word)));
 }
+
+/** What the list shows: every registered driver but the generics, then each
+ *  library file that never registered (it failed to import, or was written for
+ *  an older OpenAVC), so it can be updated or uninstalled from here. Such a
+ *  file is named as the catalog names it, else as the file does. */
+export function listedDrivers(
+  registered: DriverInfo[],
+  installed: InstalledDriver[],
+  catalog: CommunityDriver[],
+): { drivers: DriverInfo[]; notLoaded: Set<string> } {
+  const registeredIds = new Set(registered.map((d) => d.id));
+  const catalogById = new Map(catalog.map((d) => [d.id, d]));
+  const notLoaded = installed
+    .filter((d) => !registeredIds.has(d.id) && !GENERIC_IDS.has(d.id))
+    .map((d): DriverInfo => {
+      const entry = catalogById.get(d.id);
+      return {
+        id: d.id,
+        name: entry?.name || d.name || d.id,
+        manufacturer: entry?.manufacturer ?? "",
+        category: entry?.category ?? "",
+        version: d.version || undefined,
+        commands: {},
+        config_schema: {},
+      };
+    });
+  return {
+    drivers: [...registered.filter((d) => !GENERIC_IDS.has(d.id)), ...notLoaded],
+    notLoaded: new Set(notLoaded.map((d) => d.id)),
+  };
+}
+
+const NOT_LOADED_TEXT =
+  "This driver did not load, so devices can't use it. Update it, or uninstall it and " +
+  "install it again from Browse Community. The Log has the reason.";
 
 const headerBtnStyle: React.CSSProperties = {
   display: "flex",
@@ -120,19 +156,19 @@ export function InstalledDriversView({
   );
   const definitionById = new Map(definitions.map((d) => [d.id, d]));
   const updates = driverUpdates(installedDrivers, communityDrivers, runningVersion);
+  const listed = listedDrivers(registeredDrivers, installedDrivers, communityDrivers);
   // Counted over the drivers this list shows, so the count and the rows with
   // an Update button agree.
   const listedUpdates = new Map(
-    registeredDrivers
-      .filter((d) => !GENERIC_IDS.has(d.id) && updates.has(d.id))
-      .map((d) => [d.id, updates.get(d.id)!]),
+    listed.drivers.filter((d) => updates.has(d.id)).map((d) => [d.id, updates.get(d.id)!]),
   );
 
-  const filteredDrivers = registeredDrivers.filter(
-    (d) => !GENERIC_IDS.has(d.id) && driverMatchesSearch(d, searchQuery),
-  );
+  const filteredDrivers = listed.drivers.filter((d) => driverMatchesSearch(d, searchQuery));
 
-  const selectedDriver = registeredDrivers.find((d) => d.id === selectedId) || null;
+  const selectedDriver =
+    registeredDrivers.find((d) => d.id === selectedId)
+    ?? listed.drivers.find((d) => d.id === selectedId)
+    ?? null;
   const canUninstall = selectedId ? installedIdSet.has(selectedId) : false;
   const selectedInstalled = selectedId ? installedById.get(selectedId) ?? null : null;
   const selectedDefinition = selectedId ? definitionById.get(selectedId) ?? null : null;
@@ -318,11 +354,13 @@ export function InstalledDriversView({
                   <div
                     style={{
                       fontSize: "var(--font-size-xs)",
-                      color: "var(--text-muted)",
+                      color: listed.notLoaded.has(d.id) ? "var(--color-warning)" : "var(--text-muted)",
                       marginTop: 2,
                     }}
                   >
-                    {d.manufacturer} &middot; {d.category || "Other"}
+                    {listed.notLoaded.has(d.id)
+                      ? "Did not load"
+                      : <>{d.manufacturer} &middot; {d.category || "Other"}</>}
                   </div>
                   {update && (
                     <div style={{ marginTop: 4 }}>
@@ -357,6 +395,7 @@ export function InstalledDriversView({
         {selectedDriver ? (
           <DriverDetailPanel
             driver={selectedDriver}
+            notLoaded={listed.notLoaded.has(selectedDriver.id)}
             installed={selectedInstalled}
             isPython={isPython}
             isBuiltin={isBuiltin}
@@ -418,6 +457,7 @@ export function InstalledDriversView({
 
 export function DriverDetailPanel({
   driver,
+  notLoaded = false,
   installed,
   isPython,
   isBuiltin,
@@ -441,6 +481,8 @@ export function DriverDetailPanel({
   onDismissUpdateError,
 }: {
   driver: DriverInfo;
+  /** A library file that never registered: said so, under the header. */
+  notLoaded?: boolean;
   installed: InstalledDriver | null;
   isPython: boolean;
   isBuiltin: boolean;
@@ -596,6 +638,17 @@ export function DriverDetailPanel({
             </span>
           )}
         </div>
+        {notLoaded && (
+          <p
+            style={{
+              margin: "var(--space-sm) 0 0",
+              fontSize: "var(--font-size-sm)",
+              color: "var(--color-warning)",
+            }}
+          >
+            {NOT_LOADED_TEXT}
+          </p>
+        )}
         <div style={{ display: "flex", gap: "var(--space-xs)", marginTop: "var(--space-sm)" }}>
           {driver.category && (
             <span

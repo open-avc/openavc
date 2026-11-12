@@ -282,6 +282,8 @@ The left panel lists all registered drivers. Click a driver to see its details. 
 
 A driver with a newer version in the community library shows **Update to v&lt;version&gt;** on its row, and the top of the list counts the updates available. See [Updating Drivers](#updating-drivers).
 
+An installed driver that did not load (one written for an older OpenAVC, for example) is listed too, marked **Did not load**. Devices can't use it until it loads: update it, or uninstall it and install it again from Browse Community. The Log says why it did not load.
+
 The body of the detail panel shows:
 
 - **Overview.** What the driver controls and which devices it supports.
