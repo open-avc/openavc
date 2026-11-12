@@ -27,6 +27,7 @@ import { ClockControl, ClockTicker } from './modules/clock.js';
 import { KeypadControl } from './modules/keypad.js';
 import { TextEditor } from './modules/text_edit.js';
 import { PanelLock } from './modules/lock.js';
+import { SoundPlayer } from './modules/sound.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
@@ -252,10 +253,8 @@ class PanelApp {
         // The first draw waits for the theme -- see _drawWhenThemeArrives.
         this._firstThemeSettled = false;
         this._awaitingFirstTheme = false;
-        // Audio playback (driven by plugin.audio_player.* state)
-        this._audioUnlocked = false;
-        this._lastAudioRequestId = null;
-        this._activeAudio = new Set();
+        // Sound the audio player plugin asks for (modules/sound.js).
+        this._sound = new SoundPlayer({ state: () => this.state, editMode: () => this.editMode });
         // Plugin panel_elements lookup: pluginId -> {[type]: extension}.
         // Populated once at startup via /api/plugins/extensions so per-element
         // iframe sandbox / allow attributes can apply the plugin's declared
@@ -332,7 +331,7 @@ class PanelApp {
         // Best-effort: if the fetch fails or hangs, we proceed with defaults.
         await this._loadPluginExtensions();
         this.lock.listenForActivity();
-        this._setupAudioUnlock();
+        this._sound.allowOnFirstTouch();
         this.connect();
     }
 
@@ -617,8 +616,8 @@ class PanelApp {
             // offline overlay. resetIdleTimer re-arms it on reconnect.
             this.lock.stopIdle();
             // Stop any in-flight notification audio; stale chimes on reconnect
-            // are worse than missed ones, and this bounds _activeAudio.
-            this._stopAllAudio();
+            // are worse than missed ones.
+            this._sound.stopAll();
         }
     }
 
@@ -638,7 +637,7 @@ class PanelApp {
                 this._updateSimulationTag();
                 // Seed audio dedupe id from current state so we don't replay
                 // the most recent sound when (re)connecting.
-                this._seedAudioDedupeFromSnapshot();
+                this._sound.seed();
                 break;
 
             case 'state.update':
@@ -650,9 +649,7 @@ class PanelApp {
                 // Notify plugin iframes of state changes
                 for (const [k, v] of Object.entries(msg.changes || {})) {
                     this._notifyPluginIframes(k, v);
-                    if (k === 'plugin.audio_player.play_request') {
-                        this._handleAudioPlayRequest(v);
-                    }
+                    this._sound.noteChange(k, v);
                 }
                 break;
 
@@ -3535,143 +3532,6 @@ class PanelApp {
             themedStyle: (type, style) => app.getThemedStyle(type, style),
             register: (id, entry) => { app.elementMap[id] = entry; },
         };
-    }
-
-    // ──── Audio Playback (driven by Audio Player plugin state) ────
-
-    // Modern browsers block audio until the user has interacted with the page.
-    // We attach a one-time gesture listener that "unlocks" playback by
-    // priming a silent <audio> element. After that, subsequent .play() calls
-    // succeed silently. Edit/embedded modes don't need this — they don't
-    // receive live state.
-    _setupAudioUnlock() {
-        if (this.editMode) return;
-        const unlock = () => {
-            if (this._audioUnlocked) return;
-            const silent = new Audio(
-                'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
-            );
-            silent.volume = 0;
-            silent.play().then(() => {
-                this._audioUnlocked = true;
-                document.removeEventListener('pointerdown', unlock);
-                document.removeEventListener('keydown', unlock);
-                document.removeEventListener('touchstart', unlock);
-            }).catch(() => {
-                // Another gesture will retry — keep listener attached
-            });
-        };
-        document.addEventListener('pointerdown', unlock);
-        document.addEventListener('keydown', unlock);
-        document.addEventListener('touchstart', unlock);
-    }
-
-    // Capture the current play_request id at snapshot time so reconnects
-    // don't replay the last sound.
-    _seedAudioDedupeFromSnapshot() {
-        const raw = this.state['plugin.audio_player.play_request'];
-        if (!raw) return;
-        try {
-            const req = JSON.parse(raw);
-            if (req && req.id) this._lastAudioRequestId = req.id;
-        } catch {
-            // Ignore — bad JSON means nothing to dedupe against
-        }
-    }
-
-    _handleAudioPlayRequest(rawValue) {
-        if (!rawValue) return;
-        let req;
-        try {
-            req = JSON.parse(rawValue);
-        } catch {
-            return;
-        }
-        if (!req || typeof req !== 'object') return;
-        // Dedupe — every fresh request gets a new id
-        if (req.id && req.id === this._lastAudioRequestId) return;
-        if (req.id) this._lastAudioRequestId = req.id;
-
-        if (req.stop) {
-            this._stopAllAudio();
-            return;
-        }
-        // Honor global mute
-        if (this.state['plugin.audio_player.muted']) return;
-        // Compute final volume = master × request
-        const master = Number(this.state['plugin.audio_player.master_volume'] ?? 1.0);
-        const reqVol = Number(req.volume ?? 1.0);
-        const finalVol = Math.max(0, Math.min(1, (isFinite(master) ? master : 1) * (isFinite(reqVol) ? reqVol : 1)));
-        if (finalVol <= 0) return;
-        // Prefer the URL the plugin resolved (knows file extensions);
-        // fall back to building one from the sound id for forward compat
-        // with plugins that don't include url, and for assets:// references.
-        const url = req.url ? this._resolveAbsoluteUrl(req.url) : this._resolveSoundUrl(req.sound);
-        if (!url) return;
-        this._playSound(url, finalVol);
-    }
-
-    _resolveAbsoluteUrl(url) {
-        if (!url || typeof url !== 'string') return null;
-        if (url.startsWith('http://') || url.startsWith('https://')) return url;
-        if (!url.startsWith('/')) return url;
-        return basePath() + url;
-    }
-
-    _resolveSoundUrl(soundId) {
-        if (!soundId || typeof soundId !== 'string') return null;
-        if (soundId.startsWith('assets://')) {
-            return assetUrl(soundId);
-        }
-        if (soundId.startsWith('http://') || soundId.startsWith('https://') || soundId.startsWith('/')) {
-            return this._resolveAbsoluteUrl(soundId);
-        }
-        // Last-resort fallback for sounds the plugin didn't resolve a URL for.
-        // Assumes .mp3 by convention; works for plugins that follow it.
-        return `${basePath()}/api/plugins/audio_player/files/sounds/${encodeURIComponent(soundId)}.mp3`;
-    }
-
-    _playSound(url, volume) {
-        if (!url) return;
-        // Prune elements that finished but never fired 'ended' (looping/streamed
-        // sounds) and cap concurrency so _activeAudio can't accumulate detached
-        // HTMLAudioElements over a multi-week kiosk uptime.
-        for (const a of this._activeAudio) {
-            if (a.ended) this._activeAudio.delete(a);
-        }
-        while (this._activeAudio.size >= 8) {
-            const oldest = this._activeAudio.values().next().value;
-            if (!oldest) break;
-            try { oldest.pause(); } catch { /* element may be in a bad state */ }
-            this._activeAudio.delete(oldest);
-        }
-        const audio = new Audio(url);
-        audio.volume = volume;
-        this._activeAudio.add(audio);
-        const cleanup = () => this._activeAudio.delete(audio);
-        audio.addEventListener('ended', cleanup);
-        audio.addEventListener('error', () => {
-            console.warn(`[panel-audio] failed to load: ${url}`);
-            cleanup();
-        });
-        audio.play().catch((err) => {
-            // Most common cause: browser autoplay policy hasn't been satisfied
-            // yet. Drop the sound — stale notifications are worse than missed.
-            console.warn(`[panel-audio] play() rejected for ${url}: ${err && err.message}`);
-            cleanup();
-        });
-    }
-
-    _stopAllAudio() {
-        for (const audio of this._activeAudio) {
-            try {
-                audio.pause();
-                audio.currentTime = 0;
-            } catch {
-                // Ignore — element may already be in a non-resettable state
-            }
-        }
-        this._activeAudio.clear();
     }
 
     // Send state update to plugin iframes
