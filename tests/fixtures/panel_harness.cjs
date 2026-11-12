@@ -5355,7 +5355,7 @@ const tests = {
             app._fetchProjectAndRender();
             await Promise.resolve();
             app.connect();
-            await app._checkLockCode('1234');
+            await app.lock.check('1234');
             await app.access.fetchAccess();
             await app.access.claimWithPassword('admin', 'x');
             app.currentTheme = null; app.inlineTheme = null;
@@ -8219,7 +8219,7 @@ async function lockCase(got, name, opts, script) {
             m = lockMount(advance, pending, opts);
             window.fetch = m.fetch;
             window.console.warn = m.warn;
-            m.app.setupIdleListeners();
+            m.app.lock.listenForActivity();
             m.look();
             await script(m);
         } catch (e) {

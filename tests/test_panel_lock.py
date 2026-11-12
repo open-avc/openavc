@@ -180,19 +180,21 @@ class TestTheDoor:
 
 
 class TestThePanelRuntimeAsksTheServer:
-    """`panel.js` is the other half and has no Python to pin it, so these read
-    the file. The two paths are deliberate — see `_checkLockCode` — and the
-    thing that must never come back is a bare comparison against a code the
-    server sent every panel."""
+    """The panel is the other half and has no Python to pin it, so these read
+    its source: `panel.js` and the lock it imports (`modules/lock.js`). The two
+    paths are deliberate — see `PanelLock.check` — and the thing that must
+    never come back is a bare comparison against a code the server sent every
+    panel."""
 
     @pytest.fixture
     def panel_js(self):
         from pathlib import Path
 
-        return (
-            Path(__file__).resolve().parents[1]
-            / "openavc" / "web" / "panel" / "panel.js"
-        ).read_text(encoding="utf-8")
+        panel = Path(__file__).resolve().parents[1] / "openavc" / "web" / "panel"
+        return "\n".join(
+            (panel / name).read_text(encoding="utf-8")
+            for name in ("panel.js", "modules/lock.js")
+        )
 
     def test_the_runtime_posts_the_attempt(self, panel_js):
         assert "/api/panel/unlock" in panel_js

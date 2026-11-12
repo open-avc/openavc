@@ -26,6 +26,7 @@ import { LevelMeterControl } from './modules/meter.js';
 import { ClockControl, ClockTicker } from './modules/clock.js';
 import { KeypadControl } from './modules/keypad.js';
 import { TextEditor } from './modules/text_edit.js';
+import { PanelLock } from './modules/lock.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
@@ -196,9 +197,7 @@ class PanelApp {
         // render; seeded here so a renderer reached before any page is drawn
         // still has an answer rather than `undefined`.
         this._drawnOrientation = 'landscape';
-        this.locked = false;
         this.snapshotReceived = false;
-        this.idleTimer = null;
         this.root = document.getElementById('panel-root');
         this.statusEl = document.getElementById('connection-status');
         this.bindings = [];          // Active bindings to evaluate on state change
@@ -211,13 +210,7 @@ class PanelApp {
         this._servedWakeDevices = null;
         // Editing words in place on the design canvas (modules/text_edit.js):
         // the edit in flight, and the gate both of its doors ask.
-        this._textEditor = new TextEditor({
-            editMode: () => this.editMode,
-            state: () => this.state,
-            ui: () => this.uiDef,
-            page: () => this.currentPage,
-            post: (msg) => this._postToParent(msg),
-        });
+        this._textEditor = new TextEditor(this._textEditHost());
         this.holdTimers = {};        // element_id -> interval for hold-repeat mode
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) this._endAllHolds();
@@ -243,7 +236,8 @@ class PanelApp {
         this._offline = false;           // true while the WS is disconnected
         this._lastTouchedElementId = null; // control the next failure is about
         this._errorMessageTimer = null;    // auto-dismiss for the failure band
-        this._lockInitialized = false;   // lock screen shown once per session, not on every reconnect
+        // The PIN lock and the idle timer (modules/lock.js).
+        this.lock = new PanelLock(this._lockHost());
         this.access = new PanelAccess({
             hidePageStatus: () => this._hidePageStatus(),
             showPageStatus: () => this._showPageStatus(),
@@ -269,6 +263,29 @@ class PanelApp {
         this._pluginExtensions = {};
         // What each frame's own request answered, for its file check.
         this._frameStatus = new FrameStatusWatch();
+    }
+
+    /** What the in-place text editor reads from the panel, each at call time. */
+    _textEditHost() {
+        return {
+            editMode: () => this.editMode,
+            state: () => this.state,
+            ui: () => this.uiDef,
+            page: () => this.currentPage,
+            post: (msg) => this._postToParent(msg),
+        };
+    }
+
+    /** What the lock and the idle timer read from the panel, each at call time. */
+    _lockHost() {
+        return {
+            editMode: () => this.editMode,
+            uiSettings: () => this.uiSettings,
+            pages: () => this.uiDef?.pages,
+            offline: () => this._offline,
+            activity: () => this.resetIdleTimer(),
+            goIdle: (pageId) => this._returnToIdlePage(pageId),
+        };
     }
 
     // The plugin panel elements the server lists, read once at start, so a
@@ -314,7 +331,7 @@ class PanelApp {
         // iframe sandbox / allow attributes can be applied correctly.
         // Best-effort: if the fetch fails or hangs, we proceed with defaults.
         await this._loadPluginExtensions();
-        this.setupIdleListeners();
+        this.lock.listenForActivity();
         this._setupAudioUnlock();
         this.connect();
     }
@@ -410,7 +427,7 @@ class PanelApp {
                         // Preview: an overlay page has to go through the
                         // navigation path or it draws as a flat page.
                         this._showPageAsRuntimeWould(msg.pageId || this.currentPage);
-                        this._reconcileLockOnDefinition();
+                        this.lock.reconcile();
                         this.resetIdleTimer();
                     }
                     this._postToParent({ type: 'openavc:editor-ready' });
@@ -598,10 +615,7 @@ class PanelApp {
             // Don't let a previously-scheduled idle timer fire while offline —
             // it would navigate the dead panel and stack a lock screen over the
             // offline overlay. resetIdleTimer re-arms it on reconnect.
-            if (this.idleTimer) {
-                clearTimeout(this.idleTimer);
-                this.idleTimer = null;
-            }
+            this.lock.stopIdle();
             // Stop any in-flight notification audio; stale chimes on reconnect
             // are worse than missed ones, and this bounds _activeAudio.
             this._stopAllAudio();
@@ -692,7 +706,7 @@ class PanelApp {
                         this._drawWhenThemeArrives();
                     }
                 }
-                this._reconcileLockOnDefinition();
+                this.lock.reconcile();
                 this.resetIdleTimer();
                 break;
 
@@ -4860,204 +4874,23 @@ class PanelApp {
         showTextValue(b.element, value, offline);
     }
 
-    // --- Lock Screen ---
+    // --- Lock and idle (modules/lock.js) ---
 
-    /** Is a lock configured for this panel?
-     *
-     *  The server sends `lock_enabled` and keeps the PIN — a panel client is
-     *  unauthenticated, so the definition it receives is public to the LAN.
-     *  `lock_code` is only ever present when the Programmer pushed an UNSAVED
-     *  draft into its Preview iframe, which is an authenticated surface; see
-     *  `_checkLockCode`.
-     */
-    _lockConfigured() {
-        const settings = this.uiSettings || {};
-        return settings.lock_enabled === true || !!settings.lock_code;
-    }
-
-    /** Is this the right PIN? true, false, or null for "could not ask".
-     *
-     *  Two paths, and the split is exactly the split in who holds the PIN.
-     *  Every real panel gets `lock_enabled` and no code, so the attempt goes
-     *  to the server and only the verdict comes back. The Builder's Preview is
-     *  handed the project it is editing, unsaved PIN and all, and compares
-     *  locally — otherwise changing the PIN and pressing Preview would test
-     *  the last SAVED one and tell the programmer their new PIN is wrong.
-     *
-     *  `null` is its own answer because "Incorrect PIN" for an unreachable
-     *  server sends somebody to try the PIN they already know, over and over.
-     *  The timeout is what turns a hung request into that answer instead of a
-     *  lock screen whose Unlock button never comes back.
-     */
-    async _checkLockCode(attempt) {
-        const drafted = this.uiSettings?.lock_code;
-        if (drafted) return attempt === drafted;
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 5000);
-        try {
-            const res = await fetch(`${basePath()}/api/panel/unlock`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code: attempt }),
-                signal: controller.signal,
-            });
-            if (!res.ok) return null;
-            const data = await res.json();
-            return data?.success === true;
-        } catch (err) {
-            console.warn('[panel] unlock check failed:', err);
-            return null;
-        } finally {
-            clearTimeout(timer);
-        }
-    }
-
-    /**
-     * Reconcile the lock overlay against a freshly-received ui.definition.
-     *
-     * The server resends state.snapshot + ui.definition on every (re)connect,
-     * so a transient socket drop must NOT re-lock a panel the operator already
-     * unlocked. We therefore show the lock screen at most once per session
-     * here; idle return-to-lock still re-shows it explicitly via resetIdleTimer.
-     * Also reconciles a project edit that cleared the PIN while a panel sat
-     * locked: a now-unconfigured lock overlay is removed so it can't get stuck.
-     */
-    _reconcileLockOnDefinition() {
-        if (this.editMode) return;
-        const overlay = document.getElementById('lock-overlay');
-        if (!this._lockConfigured()) {
-            // Lock disabled (or removed mid-session) — clear any stuck overlay.
-            if (overlay) overlay.remove();
-            this.locked = false;
-            return;
-        }
-        if (!this._lockInitialized) {
-            this._lockInitialized = true;
-            this.showLockScreen();
-        }
-    }
-
-    showLockScreen() {
-        if (this.editMode) return;
-        if (!this._lockConfigured()) return;
-
-        // Prevent stacking multiple lock overlays
-        if (document.getElementById('lock-overlay')) return;
-
-        this.locked = true;
-
-        // Create lock overlay
-        const overlay = document.createElement('div');
-        overlay.id = 'lock-overlay';
-        overlay.className = 'lock-overlay';
-
-        overlay.innerHTML = `
-            <div class="lock-container">
-                <div class="lock-icon">\u{1F512}</div>
-                <div class="lock-title">Panel Locked</div>
-                <input type="password" id="lock-input" class="lock-input" placeholder="Enter PIN" maxlength="6" inputmode="numeric" pattern="[0-9]*" />
-                <button id="lock-submit" class="lock-submit">Unlock</button>
-                <div id="lock-error" class="lock-error"></div>
-            </div>
-        `;
-
-        document.body.appendChild(overlay);
-
-        const input = document.getElementById('lock-input');
-        const submit = document.getElementById('lock-submit');
-        const error = document.getElementById('lock-error');
-
-        let checking = false;
-        const tryUnlock = async () => {
-            if (checking) return;   // Enter and the button both fire; one attempt.
-            checking = true;
-            submit.disabled = true;
-            try {
-                const ok = await this._checkLockCode(input.value);
-                if (!document.body.contains(overlay)) return;
-                if (ok === true) {
-                    overlay.remove();
-                    this.locked = false;
-                    this.resetIdleTimer();
-                } else {
-                    error.textContent = ok === null
-                        ? "Can't reach the server — try again"
-                        : 'Incorrect PIN';
-                    if (ok === false) input.value = '';
-                    input.focus();
-                    setTimeout(() => { error.textContent = ''; }, 2000);
-                }
-            } finally {
-                checking = false;
-                submit.disabled = false;
-            }
-        };
-
-        submit.addEventListener('click', tryUnlock);
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') tryUnlock();
-        });
-
-        // Clear PIN when page is hidden (security on shared displays)
-        const clearOnHide = () => {
-            if (document.hidden) {
-                input.value = '';
-                error.textContent = '';
-            }
-        };
-        document.addEventListener('visibilitychange', clearOnHide);
-        // Clean up listener when overlay is removed
-        const observer = new MutationObserver(() => {
-            if (!document.body.contains(overlay)) {
-                document.removeEventListener('visibilitychange', clearOnHide);
-                observer.disconnect();
-            }
-        });
-        observer.observe(document.body, { childList: true });
-
-        input.focus();
-    }
-
-    // --- Idle Timeout ---
-
+    /** Somebody used the panel: the idle timer starts again. Frames, the
+     *  activity listeners and an unlock all come here, and tests replace it. */
     resetIdleTimer() {
-        if (this.idleTimer) clearTimeout(this.idleTimer);
-        // Never arm the idle timer while disconnected — it would navigate a
-        // dead panel and stack a lock screen over the offline overlay.
-        if (this._offline) return;
-        const timeout = this.uiSettings?.idle_timeout_seconds;
-        if (!timeout || timeout <= 0 || this.locked) return;
-
-        this.idleTimer = setTimeout(() => {
-            let idlePage = this.uiSettings?.idle_page || 'main';
-            // Validate against the current pages so a deleted/renamed idle_page
-            // resolves deterministically to the first page instead of relying on
-            // renderCurrentPage's silent fallback.
-            const pages = this.uiDef?.pages || [];
-            if (pages.length && !pages.some(p => p.id === idlePage)) {
-                idlePage = pages[0].id;
-            }
-            if (this.currentPage !== idlePage || this.overlayStack.length > 0) {
-                this.dismissAllOverlays();
-                this.currentPage = idlePage;
-                this.pageHistory = []; // Idle reset starts a fresh session — no $back into prior user's navigation
-                this.renderCurrentPage();
-            }
-            // Re-show lock screen if lock code is set
-            if (this._lockConfigured()) {
-                this.showLockScreen();
-            }
-        }, timeout * 1000);
+        this.lock.resetIdle();
     }
 
-    setupIdleListeners() {
-        if (this._idleListenersSetup) return;
-        this._idleListenersSetup = true;
-
-        const events = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll'];
-        events.forEach(evt => {
-            document.addEventListener(evt, () => this.resetIdleTimer(), { passive: true });
-        });
+    /** Back to the idle page, overlays closed and the history of the last
+     *  person's navigation forgotten -- unless the panel is already there. */
+    _returnToIdlePage(idlePage) {
+        if (this.currentPage !== idlePage || this.overlayStack.length > 0) {
+            this.dismissAllOverlays();
+            this.currentPage = idlePage;
+            this.pageHistory = [];
+            this.renderCurrentPage();
+        }
     }
 
     // --- Helpers ---
