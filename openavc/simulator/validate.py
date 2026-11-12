@@ -21,7 +21,8 @@ Checks performed:
                           simulator's built-in system addresses)
     3. Response parsing — the answer to a query the driver polls matches one
                           of the driver's response patterns (a reply to a
-                          write is an acknowledgement: counted, not warned)
+                          write is an acknowledgement: counted, not warned;
+                          handler_replies)
     4. Poll coverage    — every polling query, and every response rule's
                           then_query, has a matching handler (each_child
                           queries are checked with a sample child id)
@@ -29,7 +30,7 @@ Checks performed:
                           definition sends back ends with the delimiter the
                           driver splits the stream on (byte-stream transports).
                           A reply without it never completes a frame, so the
-                          driver parses nothing it carries
+                          driver parses nothing it carries (reply_framing)
     5. Type consistency — boolean/enum/number types are handled correctly
     6. State machines   — simulator.state_machines structure is well-formed
     7. Handler syntax   — inline handler: Python bodies compile
@@ -38,6 +39,7 @@ Checks performed:
     9. Notifications    — notifications: keys exist, boolean value keys are
                           lowercase, templates round-trip through response
                           patterns, {value} isn't used for booleans
+                          (notification_checks)
    10. Controls         — simulator.controls entries have valid types,
                           required per-type fields, and known state keys
    11. Child entities   — drivers with child_entity_types get a heads-up that
@@ -228,7 +230,7 @@ def _check_state_coverage(
             )
 
 
-# ── Simulator-section checks (notifications, children) ──
+# ── The child entity heads-up ──
 
 
 def _check_child_entities(result: ValidationResult, driver_def: dict, sim: dict) -> None:
@@ -260,9 +262,6 @@ def _check_child_entities(result: ValidationResult, driver_def: dict, sim: dict)
             f"each_child poll query needs query_for:. Anything without one "
                 f"needs its own command_handlers entry."
         )
-
-
-# ── Helper functions ──
 
 
 # ── Directory scanning ──
