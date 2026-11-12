@@ -184,6 +184,18 @@ async def test_create_saves_registers_reconnects_and_announces_in_that_order(env
     assert "manufacturer" not in saved  # only what the client sent
 
 
+async def test_create_leaves_a_file_that_declares_the_id_but_does_not_load(env):
+    """The taken-id check reads the listing, which skips a file that does not
+    load, and a create removes no other copy of the id."""
+    broken = env.repo / "broken_gadget.avcdriver"
+    broken.write_text(yaml.safe_dump({**GADGET, "transport": 7}), encoding="utf-8")
+
+    await ROUTES.create_driver_definition(DriverDefinitionRequest(**GADGET))
+
+    assert env.files() == ["acme_gadget.avcdriver", "broken_gadget.avcdriver"]
+    assert yaml.safe_load(broken.read_text(encoding="utf-8"))["transport"] == 7
+
+
 async def test_create_refuses_a_taken_id_before_checking_the_definition(env):
     save_driver_definition(dict(GADGET), env.builtin)
 
