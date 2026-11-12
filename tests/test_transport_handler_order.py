@@ -10,7 +10,9 @@ from typing import Any, Callable
 
 import pytest
 
+from openavc.transport import multicast_listener, tcp_listener, udp_listener
 from openavc.transport.handler_runs import HandlerRuns
+from openavc.transport.osc import _OSCListenProtocol
 from openavc.transport.serial_transport import SerialTransport
 from openavc.transport.ssh import SSHTransport
 from openavc.transport.tcp import TCPTransport
@@ -53,7 +55,53 @@ def _ssh(handler: Any) -> Callable[[bytes], None]:
     return t._deliver
 
 
-@pytest.mark.parametrize("transport", [_tcp, _serial, _udp, _ssh], ids=["tcp", "serial", "udp", "ssh"])
+_PEER = ("127.0.0.1", 9000)
+
+
+def _osc_feedback(handler: Any) -> Callable[[bytes], None]:
+    protocol = _OSCListenProtocol(handler, "acme_widget")
+    return lambda data: protocol.datagram_received(data, _PEER)
+
+
+def _push_callback(handler: Any) -> Callable[[bytes, tuple[str, int]], Any]:
+    return lambda data, _addr: handler(data)
+
+
+def _tcp_listener_sub(handler: Any) -> tuple[Any, Any]:
+    listener = tcp_listener._PortListener(0)
+    sub = tcp_listener.TcpListenerSubscription(
+        listener, {"127.0.0.1"}, _push_callback(handler), None, "acme_widget",
+    )
+    listener.subscriptions.append(sub)
+    return listener, sub
+
+
+def _tcp_push(handler: Any) -> Callable[[bytes], None]:
+    listener, sub = _tcp_listener_sub(handler)
+    return lambda data: listener._dispatch(sub, data, _PEER)
+
+
+def _udp_push(handler: Any) -> Callable[[bytes], None]:
+    listener = udp_listener._PortListener(0)
+    listener.subscriptions.append(udp_listener.UdpListenerSubscription(
+        listener, {"127.0.0.1"}, _push_callback(handler), "acme_widget",
+    ))
+    return lambda data: listener.deliver(data, _PEER)
+
+
+def _multicast_push(handler: Any) -> Callable[[bytes], None]:
+    listener = multicast_listener._PortListener(0)
+    listener.subscriptions.append(multicast_listener.MulticastSubscription(
+        listener, "239.255.0.1", {"127.0.0.1"}, _push_callback(handler), "acme_widget",
+    ))
+    return lambda data: listener.deliver(data, _PEER)
+
+
+@pytest.mark.parametrize(
+    "transport",
+    [_tcp, _serial, _udp, _ssh, _osc_feedback, _tcp_push, _udp_push, _multicast_push],
+    ids=["tcp", "serial", "udp", "ssh", "osc", "tcp_listener", "udp_listener", "multicast"],
+)
 async def test_a_handler_that_pauses_keeps_its_place(transport: Any) -> None:
     handler = PausingHandler()
     deliver = transport(handler)
@@ -130,3 +178,33 @@ def test_a_handler_that_is_not_a_coroutine_is_left_alone() -> None:
     runs = HandlerRuns(lambda task: None)
     runs.run(None)
     assert runs.tasks == set()
+
+
+async def test_two_devices_on_one_push_port_do_not_wait_on_each_other() -> None:
+    """Each subscription keeps its own order: a device whose handler is held
+    does not hold another device's frames on the same port."""
+    held = asyncio.Event()
+    applied: list[str] = []
+
+    async def first(data: bytes, _addr: Any) -> None:
+        await held.wait()
+        applied.append("first")
+
+    async def second(data: bytes, _addr: Any) -> None:
+        applied.append("second")
+
+    listener = tcp_listener._PortListener(0)
+    subs = [
+        tcp_listener.TcpListenerSubscription(listener, {"127.0.0.1"}, cb, None, name)
+        for cb, name in ((first, "acme_one"), (second, "acme_two"))
+    ]
+    listener.subscriptions.extend(subs)
+    listener._dispatch(subs[0], b"one", _PEER)
+    listener._dispatch(subs[1], b"two", _PEER)
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert applied == ["second"]
+    held.set()
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert applied == ["second", "first"]

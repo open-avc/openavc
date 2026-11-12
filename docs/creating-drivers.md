@@ -1943,7 +1943,7 @@ push:
 - OpenAVC takes the port for itself: if another program on the server already listens on it (an SNMP trap daemon on 162, say), the listener cannot open, the log says so, and the device works at poll speed.
 - Needs platform 0.40.0 in a YAML driver: an older release refuses to load a `.avcdriver` that names it. A Python driver that declares it still runs on an older release, without the push.
 
-A Python driver declares the same block in `DRIVER_INFO["push"]` and receives each packet in `_handle_push_datagram(data, source)`. Override that method to decode a binary packet; the default splits the packet on the driver's delimiter and feeds `on_data_received`, as for a multicast datagram.
+A Python driver declares the same block in `DRIVER_INFO["push"]` and receives each packet in `_handle_push_datagram(data, source)`. Override that method to decode a binary packet; the default splits the packet on the driver's delimiter and feeds `on_data_received`, as for a multicast datagram. Packets reach it one at a time, in the order they arrived, as messages reach `on_data_received`: the next waits until the call before it returns.
 
 How it behaves:
 

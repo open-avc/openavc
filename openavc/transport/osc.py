@@ -26,6 +26,7 @@ import time
 from typing import Any
 
 from openavc.core.device_traffic import RX, record_traffic
+from openavc.transport.handler_runs import HandlerRuns
 from openavc.transport.osc_codec import osc_encode_message
 from openavc.transport.udp import UDPTransport, _expected_source_ip
 from openavc.utils.logger import get_logger
@@ -329,9 +330,9 @@ class _OSCListenProtocol(asyncio.DatagramProtocol):
         # Same source filter as the send socket: only accept feedback from the
         # configured device (fail open for hostname/multicast/broadcast targets).
         self._expected_src = _expected_source_ip(parent._host if parent else None)
-        # Strong refs to fire-and-forget async on_data tasks so they aren't
-        # garbage-collected mid-flight; cleared by their own done-callback.
-        self._bg_tasks: set[asyncio.Task] = set()
+        # The handler's runs, one message at a time in arrival order, each
+        # held until it ends (handler_runs).
+        self._handler_runs = HandlerRuns(_log_task_exception)
 
     def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
         import time
@@ -356,14 +357,8 @@ class _OSCListenProtocol(asyncio.DatagramProtocol):
         )
         if self._on_data is not None:
             try:
-                result = self._on_data(data)
-                if asyncio.iscoroutine(result):
-                    # Hold a strong ref (GC-safety) and log any failure that an
-                    # async handler would otherwise swallow.
-                    task = asyncio.create_task(result)
-                    self._bg_tasks.add(task)
-                    task.add_done_callback(self._bg_tasks.discard)
-                    task.add_done_callback(_log_task_exception)
+                # A coroutine runs once the one before it has ended (handler_runs).
+                self._handler_runs.run(self._on_data(data))
             except Exception:
                 log.exception("Error in OSC listen on_data callback")
 

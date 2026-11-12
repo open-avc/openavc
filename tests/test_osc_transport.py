@@ -242,7 +242,7 @@ async def test_listen_async_on_data_task_held_until_done():
     proto = _OSCListenProtocol(on_data=handler, name="t")
     proto.datagram_received(osc_encode_message("/ping"), ("127.0.0.1", 9000))
     await asyncio.wait_for(started.wait(), timeout=1.0)
-    assert len(proto._bg_tasks) == 1  # strong ref held while awaiting
+    assert len(proto._handler_runs.tasks) == 1  # strong ref held while awaiting
     release.set()
     await asyncio.sleep(0.05)
-    assert proto._bg_tasks == set()  # cleared by the done-callback
+    assert proto._handler_runs.tasks == set()  # cleared by the done-callback

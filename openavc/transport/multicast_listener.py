@@ -39,6 +39,7 @@ from typing import Any, Callable
 # transport-side callers.
 from openavc.core.device_traffic import RX, record_traffic
 from openavc.drivers.spec import is_multicast_group as is_multicast_group
+from openavc.transport.handler_runs import HandlerRuns
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -73,6 +74,9 @@ class MulticastSubscription:
         self._callback = callback
         self.name = name
         self._closed = False
+        # This device's handler runs, one frame at a time in arrival order;
+        # another device on the same port keeps its own (handler_runs).
+        self._handler_runs = HandlerRuns(_log_task_exception)
 
     @property
     def port(self) -> int:
@@ -106,8 +110,6 @@ class _PortListener:
         # group -> (refcount, interface IPs the join succeeded on)
         self.groups: dict[str, tuple[int, list[str]]] = {}
         self.subscriptions: list[MulticastSubscription] = []
-        # Strong refs to in-flight async callback tasks (GC safety).
-        self._bg_tasks: set[asyncio.Task] = set()
 
     async def open(self) -> None:
         from openavc.discovery.multicast import set_shared_port_reuse
@@ -198,12 +200,7 @@ class _PortListener:
                 meta={"peer": f"{addr[0]}:{addr[1]}", "group": sub.group},
             )
             try:
-                result = sub._callback(data, addr)
-                if asyncio.iscoroutine(result):
-                    task = asyncio.create_task(result)
-                    self._bg_tasks.add(task)
-                    task.add_done_callback(self._bg_tasks.discard)
-                    task.add_done_callback(_log_task_exception)
+                sub._handler_runs.run(sub._callback(data, addr))
             except Exception:
                 log.exception(
                     "[%s] Error in multicast push callback", sub.name

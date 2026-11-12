@@ -1,5 +1,8 @@
 """THE order a transport runs its receive handler in: one message at a time,
-in the order the messages arrived.
+in the order the messages arrived. The tcp, serial, udp and ssh transports
+each hold one, as do an OSC device's feedback socket and every push listener
+subscription (one per device, so devices sharing a port never wait on each
+other).
 
 A driver's ``on_data_received`` is a coroutine, and the transport that frames
 a message cannot await it inline (a slow handler would stall reading, and the

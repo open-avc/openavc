@@ -50,6 +50,7 @@ import socket
 from typing import Any, Callable
 
 from openavc.core.device_traffic import RX, record_traffic
+from openavc.transport.handler_runs import HandlerRuns
 from openavc.transport.multicast_listener import resolve_source_ips
 from openavc.utils.logger import get_logger
 
@@ -87,6 +88,9 @@ class UdpListenerSubscription:
         self._callback = callback
         self.name = name
         self._closed = False
+        # This device's handler runs, one frame at a time in arrival order;
+        # another device on the same port keeps its own (handler_runs).
+        self._handler_runs = HandlerRuns(_log_task_exception)
 
     @property
     def port(self) -> int:
@@ -118,8 +122,6 @@ class _PortListener:
         self.transport: asyncio.DatagramTransport | None = None
         self._sock: socket.socket | None = None
         self.subscriptions: list[UdpListenerSubscription] = []
-        # Strong refs to in-flight async callback tasks (GC safety).
-        self._bg_tasks: set[asyncio.Task] = set()
 
     async def open(self) -> None:
         # Built by hand so nothing sets SO_REUSEADDR: the port is ours alone
@@ -171,12 +173,7 @@ class _PortListener:
                 meta={"peer": f"{addr[0]}:{addr[1]}", "port": self.port},
             )
             try:
-                result = sub._callback(data, addr)
-                if asyncio.iscoroutine(result):
-                    task = asyncio.create_task(result)
-                    self._bg_tasks.add(task)
-                    task.add_done_callback(self._bg_tasks.discard)
-                    task.add_done_callback(_log_task_exception)
+                sub._handler_runs.run(sub._callback(data, addr))
             except Exception:
                 log.exception("[%s] Error in UDP push callback", sub.name)
         if not delivered:
