@@ -31,11 +31,11 @@ from __future__ import annotations
 
 import ast
 import dataclasses
-import re
 import textwrap
 from collections.abc import Iterator
 
 from openavc.simulator.driver_sends import effective_config
+from openavc.simulator.handler_checks import CAPTURE_REF
 from openavc.simulator.reply_reading import ReplyRules
 from openavc.simulator.send_coverage import query_answering_handlers
 from openavc.simulator.validation_result import ValidationResult, examples
@@ -124,15 +124,11 @@ def _add_unseen(seen: list[str], items: list[str]) -> None:
             seen.append(item)
 
 
-# A placeholder still in a reply after its {state.key} refs are filled: a
-# capture group ref ({1}, {2}) on a respond: template.
-_CAPTURE_REF = re.compile(r"\{\d+\}")
-
-
 def _left_unresolved(response_text: str, scripted: bool) -> bool:
-    """A reply still holding a capture group ref, or (a script handler's
-    literal) any ``{...}``, which this cannot resolve."""
-    if _CAPTURE_REF.search(response_text):
+    """A reply still holding a capture group ref (``{1}`` on a ``respond:``
+    template, once its ``{state.key}`` refs are filled), or (a script
+    handler's literal) any ``{...}``, which this cannot resolve."""
+    if CAPTURE_REF.search(response_text):
         return True
     return scripted and _has_braces(response_text)
 

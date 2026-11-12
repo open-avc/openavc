@@ -45,8 +45,10 @@ from openavc.simulator.validation_result import ValidationResult
 #: simulator's, which takes any key without a brace). ``check_boolean_refs``
 #: and ``check_templates`` both read with it.
 STATE_REF = re.compile(r"\{state\.(\w+)\}")
-#: A ``{N}`` capture group reference in a template's text.
-_CAPTURE_REF = re.compile(r"\{(\d+)\}")
+#: A ``{N}`` capture group reference in a template's text, as this validator
+#: reads one. ``check_templates`` and the response check
+#: (``handler_replies``) both read with it.
+CAPTURE_REF = re.compile(r"\{(\d+)\}")
 
 
 def check_boolean_refs(result: ValidationResult, sim_handlers: list, state_vars: dict) -> None:
@@ -198,7 +200,7 @@ class _Template:
         return texts
 
     def _capture_refs(self, text: str, group_count: int) -> None:
-        for m in _CAPTURE_REF.finditer(text):
+        for m in CAPTURE_REF.finditer(text):
             n = int(m.group(1))
             if n > group_count:
                 self.result.error(
