@@ -326,6 +326,7 @@ SCENARIOS = [
     # A clock in every mode drawn and ticked through seconds, hours, midnight,
     # time zones and redraws, pinned whole (tests/fixtures/panel_clock_pins.json).
     "clock_draws_and_ticks_as_today",
+    "clocks_share_one_interval_and_an_overlay_stops_its_own",
 ]
 
 

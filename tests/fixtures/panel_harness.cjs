@@ -7571,6 +7571,9 @@ function clockCases(at) {
         clock('cd_past', { clock_mode: 'countdown', target_time: iso(-5000) }),
         clock('cd_none', { clock_mode: 'countdown' }), clock('cd_garbage', { clock_mode: 'countdown', target_time: 'soon' }),
         clock('el_start', { clock_mode: 'elapsed', start_key: 'var.t0' }), clock('el_none', { clock_mode: 'elapsed' }),
+        clock('el_target_only', { clock_mode: 'elapsed', target_time: iso(-60000) }),
+        clock('t_number_format', { format: 7, timezone: 'UTC' }),
+        clock('c_faded_picture', { style: { background_image: 'room.png', background_opacity: 0.5 } }),
         clock('el_key_only', { clock_mode: 'elapsed', bindings: { show: { value: { key: 'var.t0' } } } }),
         clock('mt_default', { clock_mode: 'meeting' }), clock('mt_one', { clock_mode: 'meeting', duration_minutes: 1 }),
         clock('mt_zero', { clock_mode: 'meeting', duration_minutes: 0 }), clock('mt_text', { clock_mode: 'meeting', duration_minutes: '2' }),
@@ -7588,6 +7591,8 @@ function clockTicks(m, at, advance) {
     m.set('var.end', ''); advance(1000); m.look();
     m.set('var.end', 'later'); m.set('var.t0', 'garbage'); advance(1000); m.look();
     m.set('var.end', null); m.set('var.t0', iso(600000)); advance(1000); m.look();
+    m.set('var.end', 0); m.set('var.t0', false); advance(1000); m.look();
+    m.set('var.end', false); m.set('var.t0', 0); advance(1000); m.look();
     // A redraw between two ticks: the new clocks tick from it, and the old
     // ones (`o`, what the node drawn before shows afterwards) never again.
     advance(400);
@@ -7618,8 +7623,9 @@ Object.assign(tests, {
                     clockTicks(m, start, advance);
                 } catch (e) {
                     (m ? m.steps : []).push({ threw: String(e && e.message) });
+                    if (!m) got[`${pass}:${def.id}`] = [{ threw: 'mount', message: String(e && e.message) }];
                 }
-                got[`${pass}:${def.id}`] = m ? m.steps : [{ threw: 'mount' }];
+                if (m) got[`${pass}:${def.id}`] = m.steps;
             }, { start, tz });
         };
         const afternoon = Date.UTC(2026, 0, 15, 14, 5, 9, 250);
@@ -7629,6 +7635,37 @@ Object.assign(tests, {
         run('midnight', Date.UTC(2026, 0, 18, 23, 59, 58, 500), 'UTC', local);
         run('noon', Date.UTC(2026, 6, 4, 11, 59, 58, 500), 'UTC', local);
         comparePins('clock', got, CLOCK_PINS.clock);
+    },
+
+    // The clocks share one interval, started by the first one drawn, so a
+    // clock drawn later ticks on its second; a dismissed overlay stops the
+    // clocks inside it, a container's too, and no other.
+    clocks_share_one_interval_and_an_overlay_stops_its_own() {
+        withFakeTime((advance) => {
+            const app = mkApp();
+            const shown = (node) => node.querySelector('.clock-display').textContent;
+            const first = app.renderClock({ id: 'a', type: 'clock', format: 'HH:mm:ss' });
+            advance(400);
+            const second = app.renderClock({ id: 'b', type: 'clock', format: 'HH:mm:ss' });
+            advance(700);
+            assert(shown(first) === '14:05:10' && shown(second) === '14:05:10',
+                `both tick on the first clock's second, got ${shown(first)} and ${shown(second)}`);
+            const overlay = document.createElement('div');
+            overlay.className = 'panel-overlay';
+            overlay.dataset.pageId = 'ov2';
+            const group = document.createElement('div');
+            overlay.appendChild(group);
+            const nested = app.renderClock({ id: 'c', type: 'clock', format: 'HH:mm:ss' });
+            group.appendChild(nested);
+            document.body.appendChild(overlay);
+            app.overlayStack = ['ov2'];
+            advance(1000);
+            const frozen = shown(nested);
+            app.dismissOverlay();
+            advance(2000);
+            assert(shown(nested) === frozen, `a clock inside a container on the overlay stops, got ${shown(nested)}`);
+            assert(shown(first) === '14:05:13', `the page's clock keeps ticking, got ${shown(first)}`);
+        });
     },
 });
 
