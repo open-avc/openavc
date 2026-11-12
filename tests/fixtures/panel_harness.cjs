@@ -8638,6 +8638,394 @@ Object.assign(tests, {
     },
 });
 
+// --- The theme, as a panel lives with it -------------------------------------
+//
+// A definition names a theme; the panel fetches it, or takes the working copy
+// the Theme Studio hands it, sets its variables on the document, draws its
+// first page once the theme is in hand (or after a second without it) and
+// draws again when a later theme changes how controls look. A theme that
+// cannot be had falls back to a plain light or dark look. A page with no
+// background of its own takes the theme's. The Theme Studio's preview outlines
+// the control under the pointer and names the one clicked. Each case records,
+// step by step, the document's style and font, the page's background, a
+// themed button's style, the pages drawn, the themes asked for and the timers
+// pending, in panel_theme_pins.json, recorded from the code before it moved.
+
+const THEME_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_theme_pins.json'), 'utf8'));
+
+/** A theme as the server stores one; `extra` replaces whole sections. */
+function themeFixture(id, extra = {}) {
+    return {
+        id, name: id,
+        variables: { panel_bg: '#101820', panel_text: '#e0e0e0', accent: '#2196f3', button_bg: '#333333', border_radius: 0.5 },
+        element_defaults: { button: { bg_color: '#123456', border_radius: 4 } },
+        page_defaults: { background_color: 'var(panel_bg)' },
+        ...extra,
+    };
+}
+
+/** A page with a button and a gauge, and an overlay when `overlay` is given (its background). */
+function themeUi(settings, { background = null, overlay, elements } = {}) {
+    const layouts = (placements) => [{ id: 'landscape', orientation: 'landscape', primary: true, placements, hidden: [] }];
+    const own = elements || [{ id: 'b1', type: 'button', label: 'Go' }, { id: 'g1', type: 'gauge', label: 'Level' }];
+    const placements = {};
+    own.forEach((e, i) => { placements[e.id] = { x: 5 + i * 30, y: 5, w: 25, h: 20 }; });
+    const pages = [{
+        id: 'main', name: 'Main', page_type: 'page', background,
+        snap: { enabled: false, x: 100 / 12, y: 100 / 8 }, elements: own, layouts: layouts(placements),
+    }];
+    if (overlay !== undefined) {
+        pages.push({
+            id: 'pop', name: 'Pop', page_type: 'overlay', overlay: { type: 'dialog' }, background: overlay,
+            snap: { enabled: false, x: 100 / 12, y: 100 / 8 }, elements: [], layouts: layouts({}),
+        });
+    }
+    return { settings: { ...settings }, master_elements: [], pages };
+}
+
+/**
+ * How the server answers a theme request: a theme, `missing` (404), `garbled`
+ * (a body that is not JSON), `unreachable` (the request fails), `hangs`
+ * (never answers), or `{ after, answer }`, the answer arriving `after` ms later.
+ */
+function themeAnswer(answer) {
+    if (answer && typeof answer === 'object' && 'after' in answer) {
+        return new Promise((resolve) => window.setTimeout(resolve, answer.after)).then(() => themeAnswer(answer.answer));
+    }
+    if (answer && typeof answer === 'object') return Promise.resolve({ ok: true, json: async () => JSON.parse(JSON.stringify(answer)) });
+    if (answer === 'garbled') return Promise.resolve({ ok: true, json: async () => { throw new Error('not json'); } });
+    if (answer === 'unreachable') return Promise.reject(new Error('connection refused'));
+    if (answer === 'hangs') return new Promise(() => {});
+    return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+}
+
+/**
+ * A panel and its recorder, inside withFakeTime. `answers` maps a theme id to
+ * how the server answers for it. `look()` notes the document's style (`r`) and
+ * font (`ff`), the page surface's style and background layers (`bg`), the
+ * button's style (`b`) and the gauge's arc colour (`gc`), how many times a page
+ * was drawn (`n`), the themes asked for since the last look (`fx`), the
+ * overlay's background when one is up (`ov`) and the timers pending (`t`).
+ */
+function themeMount(pending, { answers = {}, edit = false } = {}) {
+    const app = mkApp();
+    app.editMode = edit;
+    app.send = () => {};
+    const m = { app, steps: [], fx: [], n: 0 };
+    const draw = app.renderCurrentPage.bind(app);
+    app.renderCurrentPage = () => {
+        m.n += 1;
+        if (m.failDraw && m.failDraw(m.n)) throw new Error('draw failed');
+        return draw();
+    };
+    m.fetch = (url) => {
+        const href = String(url);
+        m.fx.push(href);
+        const id = decodeURIComponent(href.split('/api/themes/')[1] || '');
+        return themeAnswer(Object.prototype.hasOwnProperty.call(answers, id) ? answers[id] : 'missing');
+    };
+    const layers = (box) => [box.getAttribute('style'), ...[...box.children]
+        .filter((c) => /panel-page-bg-/.test(c.className)).map((c) => `${c.className}: ${c.getAttribute('style')}`)];
+    m.look = (extra) => {
+        const step = {};
+        step.r = document.documentElement.getAttribute('style') || '';
+        step.ff = document.body.style.fontFamily;
+        // Every page surface: a draw inside a draw leaves two.
+        step.bg = [...app.root.querySelectorAll(':scope > .panel-page')].map(layers);
+        step.b = [...app.root.querySelectorAll('[data-element-id="b1"]')].map((b) => b.getAttribute('style'));
+        const arcs = [...app.root.querySelectorAll('[data-element-id="g1"] path:last-of-type')];
+        if (arcs.length) step.gc = arcs.map((a) => a.getAttribute('stroke'));
+        step.nb = app.bindings.length;
+        const overlaySurface = document.querySelector('.panel-overlay .panel-page');
+        if (overlaySurface) step.ov = layers(overlaySurface);
+        step.n = m.n;
+        if (m.fx.length) step.fx = m.fx.splice(0);
+        step.t = pending();
+        if (extra) Object.assign(step, extra);
+        m.steps.push(step);
+    };
+    m.settle = async () => { for (let i = 0; i < 30; i++) await null; };
+    m.snapshot = () => { app.handleMessage({ type: 'state.snapshot', state: {} }); m.look(); };
+    m.definition = (settings, opts) => { app.handleMessage({ type: 'ui.definition', ui: themeUi(settings, opts) }); m.look(); };
+    return m;
+}
+
+/** One theme case: the document's own style and font put back afterwards, and the fetch. */
+async function themeCase(got, name, opts, script) {
+    const root = document.documentElement;
+    const ownRoot = root.getAttribute('style');
+    const ownBody = document.body.getAttribute('style');
+    const savedFetch = window.fetch;
+    root.removeAttribute('style');
+    document.body.removeAttribute('style');
+    document.getElementById('panel-root').textContent = '';
+    try {
+        await withFakeTime(async (advance, { pending }) => {
+            const m = themeMount(pending, opts);
+            window.fetch = m.fetch;
+            m.wait = async (ms) => { advance(ms); await m.settle(); m.look(); };
+            try {
+                await script(m);
+            } catch (e) {
+                m.steps.push({ threw: String(e && e.message) });
+            }
+            got[name] = m.steps;
+        });
+    } finally {
+        window.fetch = savedFetch;
+        if (ownRoot === null) root.removeAttribute('style'); else root.setAttribute('style', ownRoot);
+        if (ownBody === null) document.body.removeAttribute('style'); else document.body.setAttribute('style', ownBody);
+        dismissThemeOverlays();
+    }
+}
+
+/** Overlays are appended to the shared document; none outlives a case. */
+function dismissThemeOverlays() {
+    for (const o of document.querySelectorAll('.panel-overlay')) o.remove();
+}
+
+/**
+ * The Theme Studio's preview: the design canvas, its Builder on this origin,
+ * a working-copy theme handed over with the definition. The listener the
+ * panel adds is taken away again afterwards, so a later case's messages reach
+ * only its own panel.
+ */
+async function themeStudioCase(got, name, script) {
+    const added = [];
+    const realAdd = window.addEventListener;
+    window.addEventListener = function (type, fn, o) {
+        if (type === 'message') added.push([fn, o]);
+        return realAdd.call(this, type, fn, o);
+    };
+    const tooltips = () => [...document.body.children].filter((n) => n.style && n.style.zIndex === '9999' && n.style.position === 'fixed');
+    const before = new Set(tooltips());
+    try {
+        await themeCase(got, name, {}, async (m) => {
+            await withBuilderParent(async (posted) => {
+                m.app.editMode = true;
+                m.app.embedded = true;
+                m.app._setupEditModeListener();
+                window.addEventListener = realAdd;
+                // To this panel's listener alone: every panel an earlier
+                // scenario made in this document is listening too.
+                const [listener] = added[added.length - 1];
+                const deliver = (data) => {
+                    const ev = new window.Event('message');
+                    Object.defineProperties(ev, {
+                        data: { value: data }, origin: { value: window.location.origin }, source: { value: window.parent },
+                    });
+                    listener(ev);
+                };
+                m.init = (settings, inlineTheme, opts = {}) => {
+                    const msg = { type: 'openavc:editor-init', ui: themeUi(settings, opts), pageId: 'main' };
+                    if (inlineTheme !== undefined) msg.inlineTheme = inlineTheme;
+                    deliver(msg);
+                    m.look({ m: posted.splice(0).map((p) => p.type || JSON.stringify(p)) });
+                };
+                // The surface on top, which is the one a pointer reaches.
+                m.surface = () => [...m.app.root.querySelectorAll(':scope > .panel-page')].pop();
+                m.node = (id) => m.surface().querySelector(`[data-element-id="${id}"]`);
+                m.point = (type, target) => {
+                    const ev = new window.MouseEvent(type, { bubbles: type !== 'mouseleave', cancelable: true });
+                    target.dispatchEvent(ev);
+                    return ev;
+                };
+                m.lookPicker = (extra) => {
+                    const mine = tooltips().filter((t) => !before.has(t));
+                    const outlines = {};
+                    for (const n of m.app.root.querySelectorAll('[data-element-type]')) {
+                        if (n.style.outline || n.style.outlineOffset) outlines[n.dataset.elementId] = `${n.style.outline}|${n.style.outlineOffset}`;
+                    }
+                    m.look({
+                        tips: mine.map((tip) => `${tip.textContent}|${tip.style.display}|${tip.style.left}|${tip.style.top}`),
+                        o: outlines,
+                        m: posted.splice(0).map((p) => JSON.stringify(p)),
+                        ...extra,
+                    });
+                };
+                await script(m);
+            });
+        });
+    } finally {
+        window.addEventListener = realAdd;
+        for (const [fn, o] of added) window.removeEventListener('message', fn, o);
+        for (const t of tooltips()) if (!before.has(t)) t.remove();
+    }
+}
+
+Object.assign(tests, {
+    async theme_applies_and_waits_as_today() {
+        const got = {};
+        const run = (name, opts, script) => themeCase(got, name, opts, script);
+        const t1 = themeFixture('t1');
+        const t2 = themeFixture('t2', {
+            variables: { panel_bg: '#202020', accent: '#ff9800', button_bg: '#444444', font_family: 'Georgia', radius_px: 6 },
+            element_defaults: { button: { bg_color: '#654321', text_color: '#fefefe' }, gauge: { gauge_color: '#00ff00' } },
+        });
+        const sameLook = themeFixture('t3', { variables: { panel_bg: '#303030' } });
+
+        // The first draw waits for the theme, and draws once it is here.
+        await run('cold_start_waits_for_the_theme', { answers: { t1: { after: 300, answer: t1 } } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(299); await m.wait(1); await m.wait(5000);
+        });
+        // The definition before the state: nothing is drawn until both are here.
+        await run('definition_before_state', { answers: { t1 } }, async (m) => {
+            m.definition({ theme_id: 't1' }); await m.settle(); m.look(); m.snapshot(); await m.settle(); m.look();
+            m.definition({ theme_id: 't1' }); await m.settle(); m.look();
+        });
+        // A theme that never answers: the page draws after a second, without it.
+        await run('theme_never_answers', { answers: { t1: 'hangs' } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(999); await m.wait(1); await m.wait(4000);
+        });
+        // ...and one that answers late draws the page again when it does.
+        await run('theme_answers_late', { answers: { t1: { after: 2500, answer: t1 } } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(1000); await m.wait(1500); await m.wait(1000);
+        });
+        // A second definition while the first waits for its theme.
+        await run('second_definition_while_waiting', { answers: { t1: { after: 400, answer: t1 }, t2 } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); m.definition({ theme_id: 't2' }); await m.wait(400); await m.wait(1000);
+        });
+        // No theme to be had: the fallback, light or dark, with the two settings.
+        for (const [name, answer] of [['missing', 'missing'], ['garbled', 'garbled'], ['unreachable', 'unreachable']]) {
+            await run(`fallback_${name}_light`, { answers: { 'light-modern': answer } }, async (m) => {
+                m.snapshot(); m.definition({ theme: 'light', accent_color: '#e91e63', font_family: 'Verdana' }); await m.wait(10);
+            });
+            await run(`fallback_${name}_dark`, { answers: { 'dark-default': answer } }, async (m) => {
+                m.snapshot(); m.definition({}); await m.wait(10);
+            });
+        }
+        // Which theme a definition names: its id, else light or dark by the old setting.
+        await run('theme_names', { answers: { 'dark-default': t1, 'light-modern': t2, 'slate blue/2': sameLook } }, async (m) => {
+            m.snapshot(); m.definition({ theme: 'dark' }); await m.wait(10);
+            m.definition({ theme: 'light' }); await m.wait(10);
+            m.definition({ theme_id: 'slate blue/2', theme: 'light' }); await m.wait(10);
+            m.definition({ theme_id: '' }); await m.wait(10);
+        });
+        // Variables, overrides and the two settings on the document and the page.
+        await run('overrides_and_settings', { answers: { t2 } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't2' }); await m.wait(10);
+            m.definition({ theme_id: 't2', theme_overrides: { panel_bg: '#0e1216', accent: '#abcdef', border_radius: 1.25, surface: '#111111' } }); await m.wait(10);
+            m.definition({ theme_id: 't2', accent_color: '#123123', font_family: 'Courier' }); await m.wait(10);
+            m.definition({ theme_id: 't2', theme_overrides: { font_family: 'Arial', accent: '#999999' }, accent_color: '#010101' }); await m.wait(10);
+            m.definition({ theme_id: 't2' }); await m.wait(10);
+        });
+        // The theme in hand is used again; a different one is fetched, and the
+        // page drawn again only when it changes how controls look.
+        await run('kept_and_changed', { answers: { t1, t2, t3: sameLook } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.definition({ theme_id: 't3' }); await m.wait(10);
+            m.definition({ theme_id: 't2' }); await m.wait(10);
+            m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.definition({ theme_id: 'gone' }); await m.wait(10);
+            m.definition({ theme_id: 't1' }); await m.wait(10);
+        });
+        // Two themes asked for, answering in the other order.
+        await run('answers_out_of_order', { answers: { t1, t2: { after: 500, answer: t2 }, t3: { after: 100, answer: sameLook } } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.definition({ theme_id: 't2' }); m.definition({ theme_id: 't3' }); await m.wait(100); await m.wait(400); await m.wait(10);
+        });
+        // A draw that fails while a new theme is going on.
+        await run('redraw_fails', { answers: { t1, t2 } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.failDraw = (n) => n === 3;
+            m.definition({ theme_id: 't2' }); await m.wait(10);
+            m.failDraw = null;
+            m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.definition({ theme_id: 't3' }); await m.wait(10);
+        });
+        // A page with no background takes the theme's; one with its own keeps it.
+        const pictureTheme = themeFixture('pic', {
+            variables: { panel_bg: '#0a0a0a', hero: '/hero.png', top: '#ff0000' },
+            page_defaults: {
+                background_color: 'var(panel_bg)', background_image: 'var(hero)', background_image_size: 'contain',
+                background_image_position: 'top', background_image_opacity: 0.25,
+                background_gradient: { from: 'var(top)', to: '#000000', angle: 180 },
+            },
+        });
+        const oddTheme = themeFixture('odd', {
+            variables: { panel_bg: '#0b0b0b' },
+            page_defaults: {
+                background_color: 'var( nope )', background_image: 'plain.png', background_image_opacity: 0,
+                background_gradient: { from: 'var(panel_bg)', to: 'var(missing)' },
+            },
+        });
+        await run('page_backgrounds', { answers: { pic: pictureTheme, odd: oddTheme, t1, none: themeFixture('none', { page_defaults: undefined }) } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 'pic' }); await m.wait(10);
+            m.definition({ theme_id: 'pic' }, { background: { color: '#445566' } }); await m.wait(10);
+            m.definition({ theme_id: 'pic' }, { background: {} }); await m.wait(10);
+            m.definition({ theme_id: 'pic' }, { background: { image_size: 'cover' } }); await m.wait(10);
+            m.definition({ theme_id: 'odd' }); await m.wait(10);
+            m.definition({ theme_id: 'none' }); await m.wait(10);
+            m.definition({ theme_id: 't1', theme_overrides: { panel_bg: '#00ff00' } }); await m.wait(10);
+            m.definition({ theme_id: 'gone' }); await m.wait(10);
+        });
+        // A definition with no settings at all, and a theme whose page
+        // defaults resolve to nothing.
+        const blankPage = themeFixture('blank', { page_defaults: { background_color: 'var(nope)', background_gradient: 'x' } });
+        await run('no_settings', { answers: { 'dark-default': blankPage } }, async (m) => {
+            const ui = themeUi({});
+            delete ui.settings;
+            m.app.handleMessage({ type: 'state.snapshot', state: {} }); m.look();
+            m.app.handleMessage({ type: 'ui.definition', ui }); m.look(); await m.wait(10);
+            m.app.handleMessage({ type: 'ui.definition', ui }); m.look(); await m.wait(10);
+        });
+        // An overlay's box takes the same rule.
+        await run('overlay_backgrounds', { answers: { pic: pictureTheme, t1 } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 'pic' }, { overlay: null }); await m.wait(10);
+            m.app.navigateToPage('pop'); await m.settle(); m.look();
+            m.app.dismissOverlay(); m.look();
+            m.definition({ theme_id: 't1' }, { overlay: { color: '#778899' } }); await m.wait(10);
+            m.app.navigateToPage('pop'); await m.settle(); m.look();
+        });
+
+        // The Theme Studio: its working copy is used as it is, with no request.
+        await themeStudioCase(got, 'studio_working_copy', async (m) => {
+            m.init({ theme_id: 't1' }, t1); m.init({ theme_id: 't1' }, { ...t2, id: 't1' });
+            m.init({ theme_id: 't1', theme_overrides: { accent: '#00ffff' } }, { ...t2, id: 't1' });
+            m.init({ theme_id: 't1' }, { ...t1, element_defaults: {} });
+            m.init({ theme_id: 't2' }, t1); await m.settle(); m.look();
+            m.init({ theme_id: 't1' }, null); await m.settle(); m.look();
+            m.init({ theme_id: 't1' }); await m.settle(); m.look();
+            m.init({ theme_id: 't1' }, 'not a theme'); await m.settle(); m.look();
+        });
+        // Its pointer: outline and name the control under it, name the one clicked.
+        await themeStudioCase(got, 'studio_picks_a_control', async (m) => {
+            m.init({ theme_id: 't1' }, t1, {
+                elements: [
+                    { id: 'b1', type: 'button', label: 'Go', icon: 'power' },
+                    { id: 'g1', type: 'gauge', label: 'Level' },
+                    { id: 'p1', type: 'plugin', plugin_id: 'nope', element_type: 'x' },
+                    { id: 's1', type: 'status_led', label: 'On' },
+                ],
+            });
+            m.lookPicker();
+            const inner = m.node('b1').querySelector('*') || m.node('b1');
+            m.point('mousemove', inner); m.lookPicker();
+            m.point('mousemove', m.node('b1')); m.lookPicker();
+            m.point('mousemove', m.node('g1')); m.lookPicker();
+            m.point('mousemove', m.node('p1')); m.lookPicker();
+            m.point('mousemove', m.node('s1')); m.lookPicker();
+            m.point('mousemove', m.surface()); m.lookPicker();
+            m.point('mousemove', m.node('g1')); m.lookPicker();
+            m.point('mouseleave', m.surface()); m.lookPicker();
+            m.point('mouseleave', m.surface()); m.lookPicker();
+            let heard = 0;
+            m.node('s1').addEventListener('click', () => { heard += 1; });
+            m.point('mousemove', m.node('s1'));
+            const press = m.point('click', m.node('s1')); m.lookPicker({ dp: press.defaultPrevented, heard });
+            const miss = m.point('click', m.surface()); m.lookPicker({ dp: miss.defaultPrevented, heard });
+            const inside = m.point('click', inner); m.lookPicker({ dp: inside.defaultPrevented });
+            // Each draw of the canvas adds its own name tag.
+            m.app.renderCurrentPage(); m.lookPicker();
+            m.point('mousemove', m.node('b1')); m.lookPicker();
+            m.app.editMode = false; m.app.renderCurrentPage(); m.lookPicker();
+            m.point('mousemove', m.node('b1')); m.lookPicker();
+        });
+        comparePins('theme', got, THEME_PINS.theme);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

@@ -342,6 +342,11 @@ SCENARIOS = [
     # once a request, stopped, capped at eight, allowed by the first touch,
     # pinned whole (tests/fixtures/panel_sound_pins.json).
     "sound_plays_and_stops_as_today",
+    # The theme: fetched or handed over by the Theme Studio, waited for by the
+    # first draw, fallen back from, kept and replaced, the page background it
+    # gives a page with none, and the Theme Studio's control picker, pinned
+    # whole (tests/fixtures/panel_theme_pins.json).
+    "theme_applies_and_waits_as_today",
 ]
 
 

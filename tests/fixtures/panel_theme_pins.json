@@ -1,0 +1,2897 @@
+{
+  "theme": {
+    "cold_start_waits_for_the_theme": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 2
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 2
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      }
+    ],
+    "definition_before_state": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      }
+    ],
+    "theme_never_answers": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 1
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 1
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      }
+    ],
+    "theme_answers_late": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 2
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 2
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      }
+    ],
+    "second_definition_while_waiting": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 2
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 2
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 2,
+        "fx": [
+          "/api/themes/t2"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      }
+    ],
+    "fallback_missing_light": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/light-modern"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-accent: #e91e63; --panel-bg: #f5f5f5; --panel-text: #212121; --panel-button-bg: #e0e0e0; --panel-button-text: #424242;",
+        "ff": "Verdana",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/light-modern"
+        ],
+        "t": 0
+      }
+    ],
+    "fallback_missing_dark": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "fallback_garbled_light": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/light-modern"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-accent: #e91e63; --panel-bg: #f5f5f5; --panel-text: #212121; --panel-button-bg: #e0e0e0; --panel-button-text: #424242;",
+        "ff": "Verdana",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/light-modern"
+        ],
+        "t": 0
+      }
+    ],
+    "fallback_garbled_dark": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "fallback_unreachable_light": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/light-modern"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-accent: #e91e63; --panel-bg: #f5f5f5; --panel-text: #212121; --panel-button-bg: #e0e0e0; --panel-button-text: #424242;",
+        "ff": "Verdana",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/light-modern"
+        ],
+        "t": 0
+      }
+    ],
+    "fallback_unreachable_dark": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "theme_names": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "fx": [
+          "/api/themes/light-modern"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 4,
+        "fx": [
+          "/api/themes/slate%20blue%2F2"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(48, 48, 48);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(48, 48, 48);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 6,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(48, 48, 48);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 6,
+        "t": 0
+      }
+    ],
+    "overrides_and_settings": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/t2"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0e1216; --panel-accent: #abcdef; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(14, 18, 22);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0e1216; --panel-accent: #abcdef; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(14, 18, 22);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-accent: #123123; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "ff": "Courier",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-accent: #123123; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "ff": "Courier",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-accent: #010101; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "ff": "Arial",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-accent: #010101; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "ff": "Arial",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0
+      }
+    ],
+    "kept_and_changed": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "fx": [
+          "/api/themes/t3"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(48, 48, 48);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 4,
+        "fx": [
+          "/api/themes/t2"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 6,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 7,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 8,
+        "fx": [
+          "/api/themes/gone"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 9,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 11,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 11,
+        "t": 0
+      }
+    ],
+    "answers_out_of_order": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "fx": [
+          "/api/themes/t2"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "fx": [
+          "/api/themes/t3"
+        ],
+        "t": 2
+      },
+      {
+        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0
+      }
+    ],
+    "redraw_fails": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "fx": [
+          "/api/themes/t2"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0
+      }
+    ],
+    "page_backgrounds": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/pic"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(68, 85, 102);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(68, 85, 102);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 5,
+        "fx": [
+          "/api/themes/odd"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0b0b0b;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0b0b0b;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative;",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"plain.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 6,
+        "fx": [
+          "/api/themes/none"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative;",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"plain.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 6,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 7,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #00ff00; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 7,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #00ff00; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 255, 0);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 8,
+        "fx": [
+          "/api/themes/gone"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #00ff00; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(0, 255, 0);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 9,
+        "t": 0
+      }
+    ],
+    "no_settings": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "fx": [
+          "/api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            null
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0
+      }
+    ],
+    "overlay_backgrounds": [
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [],
+        "b": [],
+        "nb": 0,
+        "n": 0,
+        "fx": [
+          "/api/themes/pic"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "ov": [
+          "width: 100%; height: 100%; position: relative; background-color: rgb(10, 10, 10);",
+          "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+          "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+        ],
+        "n": 1,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "ov": [
+          "width: 100%; height: 100%; position: relative; background-color: rgb(10, 10, 10);",
+          "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+          "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+        ],
+        "n": 1,
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #0a0a0a;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "fx": [
+          "/api/themes/t1"
+        ],
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 1
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(10, 10, 10);",
+            "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #000000);",
+            "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/hero.png\"); background-size: contain; background-position: top; background-repeat: no-repeat; opacity: 0.25;"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "ov": [
+          "width: 100%; height: 100%; position: relative; background-color: rgb(119, 136, 153);"
+        ],
+        "n": 2,
+        "t": 1
+      }
+    ],
+    "studio_working_copy": [
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0,
+        "m": [
+          "openavc:editor-text-defaults",
+          "openavc:editor-text-defaults",
+          "openavc:editor-ready"
+        ]
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00",
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 0,
+        "m": [
+          "openavc:editor-text-defaults",
+          "openavc:editor-text-defaults",
+          "openavc:editor-ready"
+        ]
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #00ffff; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(32, 32, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#00ff00"
+        ],
+        "nb": 0,
+        "n": 5,
+        "t": 0,
+        "m": [
+          "openavc:editor-text-defaults",
+          "openavc:editor-ready"
+        ]
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 7,
+        "t": 0,
+        "m": [
+          "openavc:editor-text-defaults",
+          "openavc:editor-text-defaults",
+          "openavc:editor-ready"
+        ]
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 8,
+        "fx": [
+          "/api/themes/t2"
+        ],
+        "t": 0,
+        "m": [
+          "openavc:editor-text-defaults",
+          "openavc:editor-ready"
+        ]
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 8,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 9,
+        "t": 0,
+        "m": []
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 9,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 10,
+        "t": 0,
+        "m": []
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 10,
+        "t": 0
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 11,
+        "t": 0,
+        "m": []
+      },
+      {
+        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "Georgia",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 11,
+        "t": 0
+      }
+    ],
+    "studio_picks_a_control": [
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0,
+        "m": [
+          "openavc:editor-text-defaults",
+          "openavc:editor-text-defaults",
+          "openavc:editor-ready"
+        ]
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 0,
+        "tips": [
+          "|none||",
+          "|none||"
+        ],
+        "o": {},
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%; outline: 2px solid rgba(33,150,243,0.7); outline-offset: -2px;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Button|block|0px|-22px"
+        ],
+        "o": {
+          "b1": "2px solid rgba(33,150,243,0.7)|-2px"
+        },
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%; outline: 2px solid rgba(33,150,243,0.7); outline-offset: -2px;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 1,
+        "tips": [
+          "|none||",
+          "Button|block|0px|-22px"
+        ],
+        "o": {
+          "b1": "2px solid rgba(33,150,243,0.7)|-2px"
+        },
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Gauge|block|0px|-22px"
+        ],
+        "o": {
+          "g1": "2px solid rgba(33,150,243,0.7)|-2px"
+        },
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 1,
+        "tips": [
+          "|none||",
+          "plugin|block|0px|-22px"
+        ],
+        "o": {
+          "p1": "2px solid rgba(33,150,243,0.7)|-2px"
+        },
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Status LED|block|0px|-22px"
+        ],
+        "o": {
+          "s1": "2px solid rgba(33,150,243,0.7)|-2px"
+        },
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Status LED|none|0px|-22px"
+        ],
+        "o": {},
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Gauge|block|0px|-22px"
+        ],
+        "o": {
+          "g1": "2px solid rgba(33,150,243,0.7)|-2px"
+        },
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Gauge|none|0px|-22px"
+        ],
+        "o": {},
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Gauge|none|0px|-22px"
+        ],
+        "o": {},
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Status LED|none|0px|-22px"
+        ],
+        "o": {},
+        "m": [
+          "{\"type\":\"openavc:theme-element-click\",\"elementType\":\"status_led\",\"elementId\":\"s1\"}"
+        ],
+        "dp": true,
+        "heard": 0
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Status LED|none|0px|-22px"
+        ],
+        "o": {},
+        "m": [],
+        "dp": false,
+        "heard": 0
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ],
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;",
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50",
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 2,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Status LED|none|0px|-22px"
+        ],
+        "o": {},
+        "m": [
+          "{\"type\":\"openavc:theme-element-click\",\"elementType\":\"button\",\"elementId\":\"b1\"}"
+        ],
+        "dp": true
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Status LED|none|0px|-22px",
+          "|none||"
+        ],
+        "o": {},
+        "m": [
+          "{\"type\":\"openavc:editor-text-defaults\",\"fontSizeRem\":{},\"editableText\":[\"b1\",\"g1\",\"s1\"],\"textRefusals\":{}}"
+        ]
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%; outline: 2px solid rgba(33,150,243,0.7); outline-offset: -2px;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 3,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Status LED|none|0px|-22px",
+          "Button|block|0px|-22px"
+        ],
+        "o": {
+          "b1": "2px solid rgba(33,150,243,0.7)|-2px"
+        },
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Status LED|none|0px|-22px",
+          "Button|block|0px|-22px"
+        ],
+        "o": {},
+        "m": []
+      },
+      {
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "ff": "",
+        "bg": [
+          [
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; gap: 0.4286rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 4,
+        "t": 2,
+        "tips": [
+          "|none||",
+          "Status LED|none|0px|-22px",
+          "Button|block|0px|-22px"
+        ],
+        "o": {},
+        "m": []
+      }
+    ]
+  }
+}
