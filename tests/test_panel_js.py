@@ -330,6 +330,10 @@ SCENARIOS = [
     # A keypad in every style pressed, auto-sent, cleared and redrawn, pinned
     # whole (tests/fixtures/panel_keypad_pins.json).
     "keypad_draws_and_sends_as_today",
+    # Text edited in place on the design canvas: opened, typed, committed,
+    # cancelled and refused through the Builder's messages, pinned whole
+    # (tests/fixtures/panel_text_edit_pins.json).
+    "text_edits_open_commit_and_refuse_as_today",
 ]
 
 

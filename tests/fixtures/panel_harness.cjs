@@ -58,6 +58,35 @@ window.cancelAnimationFrame = () => {};
 class FakeWS { constructor() { this.readyState = 1; } send() {} close() {} }
 FakeWS.OPEN = 1;
 window.WebSocket = FakeWS;
+// jsdom ships no CSS namespace. CSS.escape as the CSSOM spec defines it, so a
+// selector the panel builds from an element id is the one a browser builds.
+if (!window.CSS) window.CSS = {};
+if (!window.CSS.escape) {
+    window.CSS.escape = (value) => {
+        const s = String(value);
+        const n = s.length;
+        let out = '';
+        const first = n ? s.charCodeAt(0) : 0;
+        for (let i = 0; i < n; i++) {
+            const c = s.charCodeAt(i);
+            if (c === 0) { out += '�'; continue; }
+            if ((c >= 0x1 && c <= 0x1F) || c === 0x7F
+                || (i === 0 && c >= 0x30 && c <= 0x39)
+                || (i === 1 && c >= 0x30 && c <= 0x39 && first === 0x2D)) {
+                out += `\\${c.toString(16)} `;
+                continue;
+            }
+            if (i === 0 && n === 1 && c === 0x2D) { out += `\\${s.charAt(i)}`; continue; }
+            if (c >= 0x80 || c === 0x2D || c === 0x5F || (c >= 0x30 && c <= 0x39)
+                || (c >= 0x41 && c <= 0x5A) || (c >= 0x61 && c <= 0x7A)) {
+                out += s.charAt(i);
+                continue;
+            }
+            out += `\\${s.charAt(i)}`;
+        }
+        return out;
+    };
+}
 if (!window.Audio) window.Audio = window.HTMLAudioElement;
 // jsdom doesn't implement media playback; make play() a resolved no-op.
 window.HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
@@ -7756,6 +7785,289 @@ Object.assign(tests, {
             });
         }
         comparePins('keypad', got, KEYPAD_PINS.keypad);
+    },
+});
+
+// --- Editing text in place on the design canvas --------------------------
+//
+// The Builder's canvas is this document in an iframe. A double-click there
+// arrives as `openavc:editor-edit-text`, the words become editable where they
+// sit, and the panel answers through postMessage: the edit opened, it was
+// committed, it was refused, or a redraw closed it. These pins drive it the way
+// the Builder does -- messages from a parent on this origin, keys and a blur on
+// the node that took the caret, state arriving mid-edit, a redraw -- and record
+// every message the panel posted and what the element showed, step by step, in
+// panel_text_edit_pins.json.
+
+const TEXT_EDIT_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_text_edit_pins.json'), 'utf8'));
+
+/**
+ * The Builder: a parent window on this origin that records what the panel
+ * posts to it, and the root type size the canvas sets, which the text-size
+ * report reads. Restored afterwards, so the harness window is its own parent
+ * again.
+ */
+function withBuilderParent(run) {
+    const posted = [];
+    const ownParent = Object.getOwnPropertyDescriptor(window, 'parent');
+    Object.defineProperty(window, 'parent', {
+        value: { postMessage: (msg, target) => posted.push(target === window.location.origin ? msg : { msg, target }) },
+        configurable: true,
+    });
+    const rootStyle = document.documentElement.style;
+    const ownFontSize = rootStyle.fontSize;
+    rootStyle.fontSize = '14px';
+    try {
+        return run(posted);
+    } finally {
+        rootStyle.fontSize = ownFontSize;
+        if (ownParent) Object.defineProperty(window, 'parent', ownParent);
+        else delete window.parent;
+    }
+}
+
+/** A message from the Builder, as the panel's listener receives one. */
+function fromBuilder(data) {
+    const ev = new window.Event('message');
+    Object.defineProperties(ev, {
+        data: { value: data }, origin: { value: window.location.origin }, source: { value: window.parent },
+    });
+    window.dispatchEvent(ev);
+}
+
+/**
+ * A page of `elements` on the design canvas, the Builder's listener in place,
+ * and a recorder. `look()` notes the messages posted since the last look
+ * (`m`), what changed on the subject element's nodes (`c`), the
+ * contentEditable of the element and of the node holding the caret (`ce`),
+ * which node has focus (`f`), the selection (`sel`), how many caret
+ * stylesheets the document holds (`st`), and what a listener threw (`e`).
+ * `decoy` puts a page before this one holding an element of the same id.
+ */
+function textEditMount(posted, elements, subject, { state, masters, edit = true, decoy } = {}) {
+    const app = mkApp();
+    app.editMode = edit;
+    app.embedded = true;
+    app._setupEditModeListener();
+    const placements = {};
+    elements.forEach((e, i) => { placements[e.id] = { x: 2 + (i % 4) * 24, y: 2 + Math.floor(i / 4) * 20, w: 22, h: 16 }; });
+    const proj = project({ elements, placements });
+    if (masters) proj.ui.master_elements = masters;
+    if (decoy) proj.ui.pages.unshift({ ...proj.ui.pages[0], id: 'decoy', elements: decoy });
+    app.state = { ...(state || {}) };
+    app.uiDef = proj.ui;
+    app.uiSettings = proj.ui.settings || {};
+    app.currentPage = 'main';
+    app.snapshotReceived = true;
+    app.renderCurrentPage();
+    const m = { app, seen: {}, steps: [], errors: [] };
+    m.onError = (ev) => { m.errors.push(String(ev.message)); ev.preventDefault(); };
+    window.addEventListener('error', m.onError);
+    m.node = () => app.root.querySelector(`[data-element-id="${window.CSS.escape(subject)}"]`)
+        || document.querySelector(`[data-element-id="${window.CSS.escape(subject)}"]`);
+    m.editing = () => document.querySelector('[data-avc-text-editing]');
+    const describe = (n) => {
+        if (!n || n === document.body) return null;
+        const host = n.closest && n.closest('[data-element-id]');
+        return `${n.tagName.toLowerCase()}.${n.className || ''}@${host ? host.dataset.elementId : '-'}`;
+    };
+    m.look = (extra) => {
+        const node = m.node();
+        const now = node ? nodeSnapshot(node) : {};
+        const changed = {};
+        for (const k of new Set([...Object.keys(m.seen), ...Object.keys(now)])) {
+            if (m.seen[k] !== now[k]) changed[k] = now[k] ?? null;
+        }
+        m.seen = now;
+        const step = {};
+        if (posted.length) step.m = posted.splice(0);
+        if (Object.keys(changed).length) step.c = changed;
+        const editing = m.editing();
+        const ce = [node ? node.contentEditable ?? null : null, editing ? editing.contentEditable ?? null : null];
+        if (ce.some((v) => v != null)) step.ce = ce;
+        step.f = describe(document.activeElement);
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount) step.sel = sel.toString();
+        step.st = [...document.head.querySelectorAll('style')]
+            .filter((s) => s.textContent.includes('[data-avc-text-editing]')).length;
+        if (m.errors.length) step.e = m.errors.splice(0);
+        if (extra) Object.assign(step, extra);
+        m.steps.push(step);
+    };
+    m.open = (id = subject) => { fromBuilder({ type: 'openavc:editor-edit-text', elementId: id }); m.look(); };
+    m.cancel = () => { fromBuilder({ type: 'openavc:editor-cancel-text' }); m.look(); };
+    m.key = (key, opts = {}) => {
+        const target = m.editing() || m.node();
+        const ev = new window.KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...opts });
+        if (opts.isComposing) Object.defineProperty(ev, 'isComposing', { value: true });
+        target.dispatchEvent(ev);
+        m.look({ d: ev.defaultPrevented ? 'prevented' : 'default' });
+    };
+    m.type = (text) => { const h = m.editing(); if (h) h.textContent = text; m.look(); };
+    m.html = (html) => { const h = m.editing(); if (h) h.innerHTML = html; m.look(); };
+    m.blur = (host) => { const h = host || m.editing(); if (h) h.dispatchEvent(new window.FocusEvent('blur')); m.look(); };
+    m.redraw = () => { app.renderCurrentPage(); m.look(); };
+    m.set = (key, value) => {
+        if (value === undefined) delete app.state[key];
+        else app.state[key] = value;
+        app.evaluateAllBindings([key]);
+        m.look();
+    };
+    m.done = () => {
+        // Leave nothing open for the next case, and let go of the listener.
+        window.removeEventListener('error', m.onError);
+        app.renderCurrentPage();
+        app.editMode = false;
+        posted.length = 0;
+    };
+    return m;
+}
+
+const LOOK_LABELS = { key: 'var.v', states: { on: { label: 'ON' }, off: { label: 'OFF' } } };
+
+/** One text-edit pin case: mounted, `script` run, a throw pinned as its last step. */
+function textEditCase(got, posted, name, elements, subject, opts, script) {
+    let m;
+    try {
+        m = textEditMount(posted, elements, subject, opts);
+        m.look();
+        script(m);
+    } catch (e) {
+        (m ? m.steps : []).push({ threw: String(e && e.message) });
+    }
+    got[name] = m ? m.steps : [{ threw: 'mount' }];
+    if (m) { try { m.done(); } catch (_) { /* pinned above */ } }
+    posted.length = 0;
+}
+
+Object.assign(tests, {
+    text_edits_open_commit_and_refuse_as_today() {
+        const got = {};
+        const btn = (id, extra) => ({ id, type: 'button', label: 'Mic Mute', ...extra });
+        const caption = (type, extra) => ({ id: `cap_${type}`, type, label: 'Caption', ...extra });
+        // On the harness's own clock: a clock control is one of the types
+        // the gesture is not for, and it draws the time.
+        withFakeTime(() => withBuilderParent((posted) => {
+            const run = (name, elements, subject, opts, script) =>
+                textEditCase(got, posted, name, elements, subject, opts, script);
+            // A button's own words: space, Enter, unchanged, Escape, Tab, blur, an IME's Enter.
+            run('btn_space_enter', [btn('b')], 'b', {}, (m) => {
+                m.open(); m.key(' '); m.type('Mic On'); m.key('Enter'); m.key('Enter');
+            });
+            run('btn_unchanged', [btn('b')], 'b', {}, (m) => { m.open(); m.key('Enter'); });
+            run('btn_escape', [btn('b')], 'b', {}, (m) => { m.open(); m.type('Gone'); m.key('Escape'); m.key('Enter'); });
+            run('btn_tab', [btn('b')], 'b', {}, (m) => { m.open(); m.type('Tabbed'); m.key('Tab'); });
+            run('btn_blur', [btn('b')], 'b', {}, (m) => { m.open(); m.type('Blurred'); m.blur(); m.blur(); });
+            run('btn_ime', [btn('b')], 'b', {}, (m) => {
+                m.open(); m.type('ka'); m.key('Enter', { isComposing: true }); m.key('a'); m.key('Enter');
+            });
+            run('btn_shift_enter', [btn('b')], 'b', {}, (m) => { m.open(); m.type('One'); m.key('Enter', { shiftKey: true }); });
+            run('btn_empty_label', [btn('b', { label: '' })], 'b', {}, (m) => { m.open(); m.key('Enter'); m.open(); m.type('New'); m.key('Enter'); });
+            run('btn_no_label', [{ id: 'b', type: 'button' }], 'b', {}, (m) => { m.open(); m.type('Fresh'); m.key('Enter'); });
+            run('btn_number_label', [btn('b', { label: 5 })], 'b', {}, (m) => { m.open(); m.key('Enter'); m.open(); m.type('6'); m.key('Enter'); });
+            run('btn_icon', [btn('b', { icon: 'power' })], 'b', {}, (m) => {
+                m.open(); m.key(' '); m.type('Power'); m.key('Enter');
+            });
+            run('btn_icon_only', [btn('b', { icon: 'power', display_mode: 'icon_only' })], 'b', {}, (m) => { m.open(); });
+            run('btn_image_text', [btn('b', { display_mode: 'image_text', button_image: 'assets://x.png' })], 'b', {}, (m) => {
+                m.open(); m.type('Pic'); m.key('Enter');
+            });
+            // The second door: a look's state label, and a script's override.
+            run('btn_look_label', [btn('b', { bindings: { show: { look: LOOK_LABELS } } })], 'b',
+                { state: { 'var.v': 'on' } }, (m) => {
+                    m.open(); m.type('Lit'); m.set('var.v', 'off'); m.key('Enter'); m.set('var.v', 'on');
+                });
+            run('btn_look_icon_mid_edit', [btn('b', { icon: 'power', bindings: { show: { look: LOOK_LABELS } } })], 'b',
+                { state: { 'var.v': 'on' } }, (m) => {
+                    m.open(); m.type('Lit'); m.set('var.v', 'off'); m.key('Escape'); m.set('var.v', 'on');
+                });
+            run('btn_look_unnamed_state', [btn('b', { bindings: { show: { look: LOOK_LABELS } } })], 'b',
+                { state: { 'var.v': 'other' } }, (m) => { m.open(); m.key('Enter'); });
+            run('btn_override', [btn('b')], 'b', { state: { 'ui.b.label': 'Scripted' } }, (m) => {
+                m.open(); m.set('ui.b.label', null); m.open(); m.key('Escape');
+            });
+            run('btn_override_mid_edit', [btn('b'), btn('b2', { icon: 'power' })], 'b', {}, (m) => {
+                m.open(); m.type('Mine'); m.set('ui.b.label', 'Script'); m.key('Enter'); m.set('ui.b.label', 'Again');
+                m.open('b2'); m.set('ui.b2.label', 'Script2'); m.key('Escape');
+            });
+            run('btn_override_blank', [btn('b')], 'b', { state: { 'ui.b.label': '' } }, (m) => { m.open(); });
+            run('btn_override_null', [btn('b'), btn('b2', { icon: 'power' })], 'b',
+                { state: { 'ui.b.label': null, 'ui.b2.label': null } }, (m) => { m.open(); m.key('Escape'); m.open('b2'); m.key('Enter'); });
+            // A label holds lines: shift-Enter breaks one, and lines read back as \n.
+            run('label_lines', [{ id: 'l', type: 'label', text: 'Line one' }], 'l', {}, (m) => {
+                m.open(); m.key('Enter', { shiftKey: true }); m.html('a<br>b<div>c</div>d'); m.key(' '); m.key('Enter');
+            });
+            run('label_trailing_break', [{ id: 'l', type: 'label', text: 'x' }], 'l', {}, (m) => {
+                m.open(); m.html('abc<br>'); m.key('Tab');
+            });
+            run('label_blocks', [{ id: 'l', type: 'label', text: 'x' }], 'l', {}, (m) => {
+                m.open(); m.html('<div>one</div><div>two</div>'); m.blur();
+            });
+            run('label_rich', [{ id: 'l', type: 'label', text: '**bold** and *it*', style: { white_space: 'pre-wrap' } }], 'l', {}, (m) => {
+                m.open(); m.key('Escape');
+            });
+            run('label_format', [{ id: 'l', type: 'label', text: 'own', bindings: { show: { value: { key: 'var.t', format: 'Amp {value} A' } } } }], 'l',
+                { state: { 'var.t': 3 } }, (m) => {
+                    m.open(); m.set('var.t', 4); m.type('Amp: {value}'); m.key('Enter'); m.set('var.t', 5);
+                });
+            run('label_bare_value', [{ id: 'l', type: 'label', text: 'own', bindings: { show: { value: { key: 'var.t' } } } }], 'l',
+                { state: { 'var.t': 3 } }, (m) => { m.open(); m.key('Enter'); });
+            run('label_override', [{ id: 'l', type: 'label', text: 'own' }], 'l', { state: { 'ui.l.label': 'Scripted' } }, (m) => { m.open(); });
+            run('label_bare_value_null_override', [{ id: 'l', type: 'label', text: 'own', bindings: { show: { value: { key: 'var.t' } } } }], 'l',
+                { state: { 'var.t': 3, 'ui.l.label': null } }, (m) => { m.open(); });
+            // Captions: a node of their own, marked by the renderer.
+            for (const type of ['group', 'status_led', 'slider', 'fader', 'level_meter', 'gauge', 'select', 'text_input', 'list', 'keypad']) {
+                run(`caption_${type}`, [caption(type)], `cap_${type}`, {}, (m) => {
+                    m.open(); m.key(' '); m.type('Audio'); m.key('Enter');
+                });
+            }
+            run('caption_none', [{ id: 'cap', type: 'gauge' }], 'cap', {}, (m) => { m.open(); m.type('New'); m.key('Enter'); });
+            run('caption_override', [caption('slider')], 'cap_slider', { state: { 'ui.cap_slider.label': 'S' } }, (m) => { m.open(); });
+            // A nav button opens empty over the page it names.
+            run('nav_no_label', [{ id: 'n', type: 'page_nav', target_page: 'p2' }], 'n', {}, (m) => {
+                m.open(); m.key('Enter'); m.open(); m.type('Go'); m.key('Enter');
+            });
+            run('nav_no_target', [{ id: 'n', type: 'page_nav' }], 'n', {}, (m) => { m.open(); m.key('Escape'); });
+            run('nav_labelled', [{ id: 'n', type: 'page_nav', target_page: 'p2', label: 'Next' }], 'n', {}, (m) => {
+                m.open(); m.type(''); m.key('Enter');
+            });
+            // Types the gesture is not for, and ids it cannot find.
+            for (const type of ['camera_preset', 'matrix', 'clock', 'image']) {
+                run(`not_for_${type}`, [{ id: 'x', type, label: 'L' }], 'x', {}, (m) => { m.open(); m.key('Enter'); });
+            }
+            run('unknown_id', [btn('b')], 'b', {}, (m) => { m.open('nope'); m.open(''); });
+            // The page showing is not the first one, and the first holds the same id.
+            run('second_page', [btn('b')], 'b', { decoy: [{ id: 'b', type: 'clock' }, { id: 'c', type: 'label', text: 'C' }] }, (m) => {
+                m.open(); m.type('Here'); m.key('Enter'); m.open('c');
+            });
+            run('odd_id', [btn('a "b" c\\d')], 'a "b" c\\d', {}, (m) => { m.open(); m.type('Odd'); m.key('Enter'); });
+            run('number_id', [btn('b')], 'b', {}, (m) => { fromBuilder({ type: 'openavc:editor-edit-text', elementId: 0 }); m.look(); });
+            run('master_button', [btn('b')], 'mb', { masters: [{ id: 'mb', type: 'button', label: 'Home', pages: '*', placements: { landscape: { x: 80, y: 80, w: 15, h: 10 } } }] }, (m) => {
+                m.open(); m.type('House'); m.key('Enter');
+            });
+            // Two edits, a redraw, and the Builder's cancel.
+            run('second_open_commits_first', [btn('b'), btn('b2', { label: 'Two' })], 'b', {}, (m) => {
+                m.open(); m.type('One'); m.open('b2'); m.type('Deux'); m.open('b2'); m.key('Escape');
+            });
+            run('reopen_same', [btn('b')], 'b', {}, (m) => { m.open(); m.type('Once'); m.open(); m.key('Escape'); });
+            run('redraw_mid_edit', [btn('b')], 'b', {}, (m) => {
+                m.open(); m.type('Lost'); const host = m.editing(); m.redraw(); m.blur(host); m.cancel(); m.open(); m.key('Enter');
+            });
+            run('cancel_message', [btn('b')], 'b', {}, (m) => { m.open(); m.type('Nope'); m.cancel(); m.cancel(); });
+            run('cancel_with_nothing_open', [btn('b')], 'b', {}, (m) => { m.cancel(); });
+            run('preview_ignores_the_gesture', [btn('b')], 'b', { edit: false }, (m) => { m.open(); m.key('Enter'); });
+            // A source the panel cannot read, or that leads nowhere.
+            const withSource = (src) => (m) => {
+                m.node().setAttribute('data-avc-text-src', src); m.look(); m.open(); m.type('Q'); m.key('Enter');
+            };
+            run('src_not_json', [btn('b')], 'b', {}, withSource('not json'));
+            run('src_not_a_list', [btn('b')], 'b', {}, withSource('{"label":1}'));
+            run('src_leads_nowhere', [btn('b')], 'b', {}, withSource('["nope","deeper"]'));
+            run('src_through_a_value', [btn('b')], 'b', {}, withSource('["label","length"]'));
+            run('src_names_a_number', [btn('b', { size: 7 })], 'b', {}, withSource('["size"]'));
+            run('src_a_number', [btn('b')], 'b', {}, withSource('5'));
+        }));
+        comparePins('text_edit', got, TEXT_EDIT_PINS.text_edit);
     },
 });
 

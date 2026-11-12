@@ -1,0 +1,5683 @@
+{
+  "text_edit": {
+    "btn_space_enter": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "st": 0
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 2
+      },
+      {
+        "c": {
+          "r#": " "
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 2,
+        "d": "prevented"
+      },
+      {
+        "c": {
+          "r#": "Mic On"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 2
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "Mic On"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 2,
+        "d": "prevented"
+      },
+      {
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 2,
+        "d": "default"
+      }
+    ],
+    "btn_unchanged": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 2
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 3
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 3,
+        "d": "prevented"
+      }
+    ],
+    "btn_escape": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 3
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 4
+      },
+      {
+        "c": {
+          "r#": "Gone"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 4
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 4,
+        "d": "prevented"
+      },
+      {
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 4,
+        "d": "default"
+      }
+    ],
+    "btn_tab": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 4
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 5
+      },
+      {
+        "c": {
+          "r#": "Tabbed"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 5
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "Tabbed"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 5,
+        "d": "prevented"
+      }
+    ],
+    "btn_blur": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 5
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 6
+      },
+      {
+        "c": {
+          "r#": "Blurred"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 6
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "Blurred"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 6
+      },
+      {
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 6
+      }
+    ],
+    "btn_ime": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 6
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 7
+      },
+      {
+        "c": {
+          "r#": "ka"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 7
+      },
+      {
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 7,
+        "d": "default"
+      },
+      {
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 7,
+        "d": "default"
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "ka"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 7,
+        "d": "prevented"
+      }
+    ],
+    "btn_shift_enter": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 7
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 8
+      },
+      {
+        "c": {
+          "r#": "One"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 8
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "One"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 8,
+        "d": "prevented"
+      }
+    ],
+    "btn_empty_label": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "b",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+        },
+        "f": null,
+        "sel": "",
+        "st": 8
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing data-avc-text-placeholder",
+          "r@data-avc-text-editing": "1",
+          "r@data-avc-text-placeholder": ""
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 9
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r@data-avc-text-placeholder": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 9,
+        "d": "prevented"
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing data-avc-text-placeholder",
+          "r@data-avc-text-editing": "1",
+          "r@data-avc-text-placeholder": ""
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 9
+      },
+      {
+        "c": {
+          "r#": "New"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 9
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "New"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r@data-avc-text-placeholder": null,
+          "r#": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 9,
+        "d": "prevented"
+      }
+    ],
+    "btn_no_label": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "b",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+        },
+        "f": null,
+        "sel": "",
+        "st": 9
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing data-avc-text-placeholder",
+          "r@data-avc-text-editing": "1",
+          "r@data-avc-text-placeholder": ""
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 10
+      },
+      {
+        "c": {
+          "r#": "Fresh"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 10
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "Fresh"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r@data-avc-text-placeholder": null,
+          "r#": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 10,
+        "d": "prevented"
+      }
+    ],
+    "btn_number_label": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "5",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "5"
+        },
+        "f": null,
+        "sel": "",
+        "st": 10
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "5",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "5",
+        "st": 11
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 11,
+        "d": "prevented"
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "5",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "5",
+        "st": 11
+      },
+      {
+        "c": {
+          "r#": "6"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 11
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "6"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "5"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 11,
+        "d": "prevented"
+      }
+    ],
+    "btn_icon": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label style data-element-type",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@style": "gap: 0.4286rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r@data-element-type": "button",
+          "r.0@": "svg style viewBox fill stroke stroke-width stroke-linecap stroke-linejoin",
+          "r.0@style": "width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;",
+          "r.0@viewBox": "0 0 24 24",
+          "r.0@fill": "none",
+          "r.0@stroke": "currentColor",
+          "r.0@stroke-width": "2",
+          "r.0@stroke-linecap": "round",
+          "r.0@stroke-linejoin": "round",
+          "r.0.0@": "use href href",
+          "r.0.0@href": "/panel/icons.svg#power",
+          "r.1@": "span class",
+          "r.1@class": "panel-label-span",
+          "r.1#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 11
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.1@": "span class data-avc-text-editing",
+          "r.1@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Mic Mute",
+        "st": 12
+      },
+      {
+        "c": {
+          "r.1#": " "
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 12,
+        "d": "prevented"
+      },
+      {
+        "c": {
+          "r.1#": "Power"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 12
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "Power"
+          }
+        ],
+        "c": {
+          "r.1@": "span class",
+          "r.1@data-avc-text-editing": null,
+          "r.1#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 12,
+        "d": "prevented"
+      }
+    ],
+    "btn_icon_only": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "svg style viewBox fill stroke stroke-width stroke-linecap stroke-linejoin",
+          "r.0@style": "width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;",
+          "r.0@viewBox": "0 0 24 24",
+          "r.0@fill": "none",
+          "r.0@stroke": "currentColor",
+          "r.0@stroke-width": "2",
+          "r.0@stroke-linecap": "round",
+          "r.0@stroke-linejoin": "round",
+          "r.0.0@": "use href href",
+          "r.0.0@href": "/panel/icons.svg#power"
+        },
+        "f": null,
+        "sel": "",
+        "st": 12
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-refused",
+            "elementId": "b",
+            "reason": "These words come from the room, not from the element's own settings, so they cannot be changed here."
+          }
+        ],
+        "f": null,
+        "sel": "",
+        "st": 13
+      }
+    ],
+    "btn_image_text": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label style data-element-type",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@style": "background-image: url(\"/api/projects/default/assets/x.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; text-shadow: 0 1px 0.2143rem rgba(0,0,0,0.8); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r@data-element-type": "button",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 13
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label style data-element-type data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 14
+      },
+      {
+        "c": {
+          "r#": "Pic"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 14
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "Pic"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label style data-element-type",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 14,
+        "d": "prevented"
+      }
+    ],
+    "btn_look_label": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"bindings\",\"show\",\"look\",\"states\",\"on\",\"label\"]",
+          "r@aria-label": "ON",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "ON"
+        },
+        "f": null,
+        "sel": "",
+        "st": 14
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "bindings",
+              "show",
+              "look",
+              "states",
+              "on",
+              "label"
+            ],
+            "source": "ON",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "ON",
+        "st": 15
+      },
+      {
+        "c": {
+          "r#": "Lit"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 15
+      },
+      {
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 15
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "bindings",
+              "show",
+              "look",
+              "states",
+              "on",
+              "label"
+            ],
+            "value": "Lit"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "ON"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 15,
+        "d": "prevented"
+      },
+      {
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 15
+      }
+    ],
+    "btn_look_icon_mid_edit": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label style data-element-type",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"bindings\",\"show\",\"look\",\"states\",\"on\",\"label\"]",
+          "r@aria-label": "ON",
+          "r@style": "gap: 0.4286rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r@data-element-type": "button",
+          "r.0@": "svg style viewBox fill stroke stroke-width stroke-linecap stroke-linejoin",
+          "r.0@style": "width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;",
+          "r.0@viewBox": "0 0 24 24",
+          "r.0@fill": "none",
+          "r.0@stroke": "currentColor",
+          "r.0@stroke-width": "2",
+          "r.0@stroke-linecap": "round",
+          "r.0@stroke-linejoin": "round",
+          "r.0.0@": "use href href",
+          "r.0.0@href": "/panel/icons.svg#power",
+          "r.1@": "span class",
+          "r.1@class": "panel-label-span",
+          "r.1#": "ON"
+        },
+        "f": null,
+        "sel": "",
+        "st": 15
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "bindings",
+              "show",
+              "look",
+              "states",
+              "on",
+              "label"
+            ],
+            "source": "ON",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.1@": "span class data-avc-text-editing",
+          "r.1@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "ON",
+        "st": 16
+      },
+      {
+        "c": {
+          "r.1#": "Lit"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 16
+      },
+      {
+        "c": {
+          "r.1@": "span class",
+          "r.1@data-avc-text-editing": null
+        },
+        "f": null,
+        "sel": "",
+        "st": 16
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 16,
+        "d": "default"
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 16
+      }
+    ],
+    "btn_look_unnamed_state": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 16
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 17
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 17,
+        "d": "prevented"
+      }
+    ],
+    "btn_override": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {
+              "b": "This text is being set by a script or macro through ui.b.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again."
+            }
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@aria-label": "Scripted",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Scripted"
+        },
+        "f": null,
+        "sel": "",
+        "st": 17
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-refused",
+            "elementId": "b",
+            "reason": "This text is being set by a script or macro through ui.b.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again."
+          }
+        ],
+        "f": null,
+        "sel": "",
+        "st": 18
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id aria-label data-element-type style data-avc-text-src",
+          "r@aria-label": "Mic Mute",
+          "r#": "Mic Mute",
+          "r@data-avc-text-src": "[\"label\"]"
+        },
+        "f": null,
+        "sel": "",
+        "st": 18
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-element-type style data-avc-text-src data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 18
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id aria-label data-element-type style data-avc-text-src",
+          "r@data-avc-text-editing": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 18,
+        "d": "prevented"
+      }
+    ],
+    "btn_override_mid_edit": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b",
+              "b2"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 18
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 19
+      },
+      {
+        "c": {
+          "r#": "Mine"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 19
+      },
+      {
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 19
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "Mine"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 19,
+        "d": "prevented"
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id aria-label data-element-type style",
+          "r@data-avc-text-src": null,
+          "r@aria-label": "Again",
+          "r#": "Again"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 19
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b2",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "ce": [
+          "inherit",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 19
+      },
+      {
+        "ce": [
+          "inherit",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 19
+      },
+      {
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 19,
+        "d": "prevented"
+      }
+    ],
+    "btn_override_blank": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {
+              "b": "This text is being set by a script or macro through ui.b.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again."
+            }
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+        },
+        "f": null,
+        "sel": "",
+        "st": 19
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-refused",
+            "elementId": "b",
+            "reason": "This text is being set by a script or macro through ui.b.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again."
+          }
+        ],
+        "f": null,
+        "sel": "",
+        "st": 20
+      }
+    ],
+    "btn_override_null": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b",
+              "b2"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 20
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 21
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 21,
+        "d": "prevented"
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b2",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "ce": [
+          "inherit",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 21
+      },
+      {
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 21,
+        "d": "prevented"
+      }
+    ],
+    "label_lines": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "l"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-label",
+          "r@data-element-id": "l",
+          "r@data-avc-text-src": "[\"text\"]",
+          "r@data-element-type": "label",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Line one"
+        },
+        "f": null,
+        "sel": "",
+        "st": 21
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "l",
+            "path": [
+              "text"
+            ],
+            "source": "Line one",
+            "multiline": true
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Line one",
+        "st": 22
+      },
+      {
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Line one",
+        "st": 22,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r#": "abd",
+          "r.0@": "br",
+          "r.1@": "div",
+          "r.1#": "c"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 22
+      },
+      {
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 22,
+        "d": "default"
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "l",
+            "path": [
+              "text"
+            ],
+            "value": "a\nb\ncd"
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Line one",
+          "r.0@": null,
+          "r.1@": null,
+          "r.1#": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": null,
+        "sel": "",
+        "st": 22,
+        "d": "prevented"
+      }
+    ],
+    "label_trailing_break": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "l"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-label",
+          "r@data-element-id": "l",
+          "r@data-avc-text-src": "[\"text\"]",
+          "r@data-element-type": "label",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "x"
+        },
+        "f": null,
+        "sel": "",
+        "st": 22
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "l",
+            "path": [
+              "text"
+            ],
+            "source": "x",
+            "multiline": true
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "x",
+        "st": 23
+      },
+      {
+        "c": {
+          "r#": "abc",
+          "r.0@": "br"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 23
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "l",
+            "path": [
+              "text"
+            ],
+            "value": "abc"
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "x",
+          "r.0@": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": null,
+        "sel": "",
+        "st": 23,
+        "d": "prevented"
+      }
+    ],
+    "label_blocks": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "l"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-label",
+          "r@data-element-id": "l",
+          "r@data-avc-text-src": "[\"text\"]",
+          "r@data-element-type": "label",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "x"
+        },
+        "f": null,
+        "sel": "",
+        "st": 23
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "l",
+            "path": [
+              "text"
+            ],
+            "source": "x",
+            "multiline": true
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "x",
+        "st": 24
+      },
+      {
+        "c": {
+          "r#": null,
+          "r.0@": "div",
+          "r.0#": "one",
+          "r.1@": "div",
+          "r.1#": "two"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 24
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "l",
+            "path": [
+              "text"
+            ],
+            "value": "one\ntwo"
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r.0@": null,
+          "r.0#": null,
+          "r.1@": null,
+          "r.1#": null,
+          "r#": "x"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": null,
+        "sel": "",
+        "st": 24
+      }
+    ],
+    "label_rich": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "l"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src style data-element-type",
+          "r@class": "panel-element panel-label",
+          "r@data-element-id": "l",
+          "r@data-avc-text-src": "[\"text\"]",
+          "r@style": "white-space: pre-wrap; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r@data-element-type": "label",
+          "r#": " and ",
+          "r.0@": "strong",
+          "r.0#": "bold",
+          "r.1@": "em",
+          "r.1#": "it"
+        },
+        "f": null,
+        "sel": "",
+        "st": 24
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "l",
+            "path": [
+              "text"
+            ],
+            "source": "**bold** and *it*",
+            "multiline": true
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src style data-element-type data-avc-text-editing",
+          "r#": "**bold** and *it*",
+          "r.0@": null,
+          "r.0#": null,
+          "r.1@": null,
+          "r.1#": null,
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "**bold** and *it*",
+        "st": 25
+      },
+      {
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src style data-element-type",
+          "r@data-avc-text-editing": null,
+          "r#": " and ",
+          "r.0@": "strong",
+          "r.0#": "bold",
+          "r.1@": "em",
+          "r.1#": "it"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": null,
+        "sel": "",
+        "st": 25,
+        "d": "prevented"
+      }
+    ],
+    "label_format": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "l"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-label",
+          "r@data-element-id": "l",
+          "r@data-avc-text-src": "[\"bindings\",\"show\",\"value\",\"format\"]",
+          "r@data-element-type": "label",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Amp 3 A"
+        },
+        "f": null,
+        "sel": "",
+        "st": 25
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "l",
+            "path": [
+              "bindings",
+              "show",
+              "value",
+              "format"
+            ],
+            "source": "Amp {value} A",
+            "multiline": true
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style data-avc-text-editing",
+          "r#": "Amp {value} A",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Amp {value} A",
+        "st": 26
+      },
+      {
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Amp {value} A",
+        "st": 26
+      },
+      {
+        "c": {
+          "r#": "Amp: {value}"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 26
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "l",
+            "path": [
+              "bindings",
+              "show",
+              "value",
+              "format"
+            ],
+            "value": "Amp: {value}"
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Amp 3 A"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": null,
+        "sel": "",
+        "st": 26,
+        "d": "prevented"
+      },
+      {
+        "c": {
+          "r#": "Amp 5 A"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": null,
+        "sel": "",
+        "st": 26
+      }
+    ],
+    "label_bare_value": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-label",
+          "r@data-element-id": "l",
+          "r@data-element-type": "label",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "3"
+        },
+        "f": null,
+        "sel": "",
+        "st": 26
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-refused",
+            "elementId": "l",
+            "reason": "These words come from the room, not from the element's own settings, so they cannot be changed here."
+          }
+        ],
+        "f": null,
+        "sel": "",
+        "st": 27
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 27,
+        "d": "default"
+      }
+    ],
+    "label_override": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {
+              "l": "This text is being set by a script or macro through ui.l.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again."
+            }
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-label",
+          "r@data-element-id": "l",
+          "r@data-element-type": "label",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Scripted"
+        },
+        "f": null,
+        "sel": "",
+        "st": 27
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-refused",
+            "elementId": "l",
+            "reason": "This text is being set by a script or macro through ui.l.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again."
+          }
+        ],
+        "f": null,
+        "sel": "",
+        "st": 28
+      }
+    ],
+    "label_bare_value_null_override": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-label",
+          "r@data-element-id": "l",
+          "r@data-element-type": "label",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "3"
+        },
+        "f": null,
+        "sel": "",
+        "st": 28
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-refused",
+            "elementId": "l",
+            "reason": "These words come from the room, not from the element's own settings, so they cannot be changed here."
+          }
+        ],
+        "f": null,
+        "sel": "",
+        "st": 29
+      }
+    ],
+    "caption_group": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_group"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-group",
+          "r@data-element-id": "cap_group",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "group",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "div class data-avc-text-host style",
+          "r.0@class": "group-label",
+          "r.0@data-avc-text-host": "1",
+          "r.0@style": "top: 0px; left: 0.5714rem;",
+          "r.0#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 29
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_group",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host style data-avc-text-editing",
+          "r.0@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 30
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 30,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.0#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 30
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_group",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host style",
+          "r.0@data-avc-text-editing": null,
+          "r.0#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 30,
+        "d": "prevented"
+      }
+    ],
+    "caption_status_led": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_status_led"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-status-led",
+          "r@data-element-id": "cap_status_led",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "status_led",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "div class",
+          "r.0@class": "led-dot",
+          "r.1@": "label class data-avc-text-host",
+          "r.1@class": "led-label",
+          "r.1@data-avc-text-host": "1",
+          "r.1#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 30
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_status_led",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.1@": "label class data-avc-text-host data-avc-text-editing",
+          "r.1@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 31
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 31,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.1#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 31
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_status_led",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.1@": "label class data-avc-text-host",
+          "r.1@data-avc-text-editing": null,
+          "r.1#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 31,
+        "d": "prevented"
+      }
+    ],
+    "caption_slider": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_slider"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id style data-avc-text-src data-element-type",
+          "r@class": "panel-element panel-slider",
+          "r@data-element-id": "cap_slider",
+          "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "slider",
+          "r.0@": "label data-avc-text-host",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "Caption",
+          "r.1@": "div class",
+          "r.1@class": "slider-track-wrapper",
+          "r.1.0@": "div class",
+          "r.1.0@class": "slider-track",
+          "r.1.0.0@": "div class style",
+          "r.1.0.0@class": "slider-fill",
+          "r.1.0.0@style": "width: 50%;",
+          "r.1.1@": "input type aria-label min max step aria-valuetext",
+          "r.1.1@type": "range",
+          "r.1.1@aria-label": "Caption",
+          "r.1.1@min": "0",
+          "r.1.1@max": "100",
+          "r.1.1@step": "1",
+          "r.1.1@aria-valuetext": "50"
+        },
+        "f": null,
+        "sel": "",
+        "st": 31
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_slider",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.0@": "label data-avc-text-host data-avc-text-editing",
+          "r.0@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 32
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 32,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.0#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 32
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_slider",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.0@": "label data-avc-text-host",
+          "r.0@data-avc-text-editing": null,
+          "r.0#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 32,
+        "d": "prevented"
+      }
+    ],
+    "caption_fader": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_fader"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-fader vertical",
+          "r@data-element-id": "cap_fader",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "fader",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "div class data-avc-text-host",
+          "r.0@class": "fader-label",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "Caption",
+          "r.1@": "div class",
+          "r.1@class": "fader-body",
+          "r.1.0@": "div class",
+          "r.1.0@class": "fader-scale",
+          "r.1.0.0@": "div class style",
+          "r.1.0.0@class": "fader-mark",
+          "r.1.0.0@style": "bottom: 0%;",
+          "r.1.0.0#": "0",
+          "r.1.0.1@": "div class style",
+          "r.1.0.1@class": "fader-mark",
+          "r.1.0.1@style": "bottom: 20%;",
+          "r.1.0.1#": "20",
+          "r.1.0.2@": "div class style",
+          "r.1.0.2@class": "fader-mark",
+          "r.1.0.2@style": "bottom: 40%;",
+          "r.1.0.2#": "40",
+          "r.1.0.3@": "div class style",
+          "r.1.0.3@class": "fader-mark",
+          "r.1.0.3@style": "bottom: 60%;",
+          "r.1.0.3#": "60",
+          "r.1.0.4@": "div class style",
+          "r.1.0.4@class": "fader-mark",
+          "r.1.0.4@style": "bottom: 80%;",
+          "r.1.0.4#": "80",
+          "r.1.0.5@": "div class style",
+          "r.1.0.5@class": "fader-mark",
+          "r.1.0.5@style": "bottom: 100%;",
+          "r.1.0.5#": "100",
+          "r.1.1@": "div class",
+          "r.1.1@class": "fader-track-wrap",
+          "r.1.1.0@": "div class",
+          "r.1.1.0@class": "fader-track",
+          "r.1.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow",
+          "r.1.1.1@class": "fader-handle",
+          "r.1.1.1@role": "slider",
+          "r.1.1.1@aria-label": "Caption",
+          "r.1.1.1@aria-valuemin": "0",
+          "r.1.1.1@aria-valuemax": "100",
+          "r.1.1.1@tabindex": "0",
+          "r.1.1.1@style": "bottom: 50%;",
+          "r.1.1.1@aria-valuenow": "50",
+          "r.2@": "div class",
+          "r.2@class": "fader-value",
+          "r.2#": "50.0"
+        },
+        "f": null,
+        "sel": "",
+        "st": 32
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_fader",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host data-avc-text-editing",
+          "r.0@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 33
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 33,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.0#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 33
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_fader",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host",
+          "r.0@data-avc-text-editing": null,
+          "r.0#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 33,
+        "d": "prevented"
+      }
+    ],
+    "caption_level_meter": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_level_meter"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-level-meter vertical",
+          "r@data-element-id": "cap_level_meter",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "level_meter",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "div class data-avc-text-host",
+          "r.0@class": "meter-label",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "Caption",
+          "r.1@": "div class",
+          "r.1@class": "meter-bar",
+          "r.1.0@": "div class data-zone",
+          "r.1.0@class": "meter-segment",
+          "r.1.0@data-zone": "green",
+          "r.1.1@": "div class data-zone",
+          "r.1.1@class": "meter-segment",
+          "r.1.1@data-zone": "green",
+          "r.1.2@": "div class data-zone",
+          "r.1.2@class": "meter-segment",
+          "r.1.2@data-zone": "green",
+          "r.1.3@": "div class data-zone",
+          "r.1.3@class": "meter-segment",
+          "r.1.3@data-zone": "green",
+          "r.1.4@": "div class data-zone",
+          "r.1.4@class": "meter-segment",
+          "r.1.4@data-zone": "green",
+          "r.1.5@": "div class data-zone",
+          "r.1.5@class": "meter-segment",
+          "r.1.5@data-zone": "green",
+          "r.1.6@": "div class data-zone",
+          "r.1.6@class": "meter-segment",
+          "r.1.6@data-zone": "green",
+          "r.1.7@": "div class data-zone",
+          "r.1.7@class": "meter-segment",
+          "r.1.7@data-zone": "green",
+          "r.1.8@": "div class data-zone",
+          "r.1.8@class": "meter-segment",
+          "r.1.8@data-zone": "green",
+          "r.1.9@": "div class data-zone",
+          "r.1.9@class": "meter-segment",
+          "r.1.9@data-zone": "green",
+          "r.1.10@": "div class data-zone",
+          "r.1.10@class": "meter-segment",
+          "r.1.10@data-zone": "green",
+          "r.1.11@": "div class data-zone",
+          "r.1.11@class": "meter-segment",
+          "r.1.11@data-zone": "green",
+          "r.1.12@": "div class data-zone",
+          "r.1.12@class": "meter-segment",
+          "r.1.12@data-zone": "green",
+          "r.1.13@": "div class data-zone",
+          "r.1.13@class": "meter-segment",
+          "r.1.13@data-zone": "green",
+          "r.1.14@": "div class data-zone",
+          "r.1.14@class": "meter-segment",
+          "r.1.14@data-zone": "green",
+          "r.1.15@": "div class data-zone",
+          "r.1.15@class": "meter-segment",
+          "r.1.15@data-zone": "green",
+          "r.1.16@": "div class data-zone",
+          "r.1.16@class": "meter-segment",
+          "r.1.16@data-zone": "yellow",
+          "r.1.17@": "div class data-zone",
+          "r.1.17@class": "meter-segment",
+          "r.1.17@data-zone": "yellow",
+          "r.1.18@": "div class data-zone",
+          "r.1.18@class": "meter-segment",
+          "r.1.18@data-zone": "yellow",
+          "r.1.19@": "div class data-zone",
+          "r.1.19@class": "meter-segment",
+          "r.1.19@data-zone": "red"
+        },
+        "f": null,
+        "sel": "",
+        "st": 33
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_level_meter",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host data-avc-text-editing",
+          "r.0@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 34
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 34,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.0#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 34
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_level_meter",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host",
+          "r.0@data-avc-text-editing": null,
+          "r.0#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 34,
+        "d": "prevented"
+      }
+    ],
+    "caption_gauge": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_gauge"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-gauge",
+          "r@data-element-id": "cap_gauge",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "gauge",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "svg viewBox style",
+          "r.0@viewBox": "0 0 120 120",
+          "r.0@style": "width: 100%; height: 100%; max-width: 100%; max-height: 100%;",
+          "r.0.0@": "path d fill stroke stroke-width stroke-linecap",
+          "r.0.0@d": "M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996",
+          "r.0.0@fill": "none",
+          "r.0.0@stroke": "#333333",
+          "r.0.0@stroke-width": "8",
+          "r.0.0@stroke-linecap": "round",
+          "r.0.1@": "path fill stroke stroke-width stroke-linecap data-role",
+          "r.0.1@fill": "none",
+          "r.0.1@stroke": "#4CAF50",
+          "r.0.1@stroke-width": "8",
+          "r.0.1@stroke-linecap": "round",
+          "r.0.1@data-role": "gauge-fg",
+          "r.0.2@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.2@x1": "21.894882233484694",
+          "r.0.2@y1": "82",
+          "r.0.2@x2": "11.50257738807143",
+          "r.0.2@y2": "88",
+          "r.0.2@stroke": "#666",
+          "r.0.2@stroke-width": "1",
+          "r.0.3@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.3@x1": "18.15351328301324",
+          "r.0.3@y1": "46.40325224750232",
+          "r.0.3@x2": "6.740835087471396",
+          "r.0.3@y2": "42.69504831500295",
+          "r.0.3@stroke": "#666",
+          "r.0.3@stroke-width": "1",
+          "r.0.4@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.4@x1": "42.10358770466476",
+          "r.0.4@y1": "19.80399986372558",
+          "r.0.4@x2": "37.22274798775515",
+          "r.0.4@y2": "8.841454372014368",
+          "r.0.4@stroke": "#666",
+          "r.0.4@stroke-width": "1",
+          "r.0.5@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.5@x1": "77.89641229533515",
+          "r.0.5@y1": "19.803999863725537",
+          "r.0.5@x2": "82.77725201224474",
+          "r.0.5@y2": "8.841454372014319",
+          "r.0.5@stroke": "#666",
+          "r.0.5@stroke-width": "1",
+          "r.0.6@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.6@x1": "101.84648671698676",
+          "r.0.6@y1": "46.40325224750231",
+          "r.0.6@x2": "113.2591649125286",
+          "r.0.6@y2": "42.695048315002936",
+          "r.0.6@stroke": "#666",
+          "r.0.6@stroke-width": "1",
+          "r.0.7@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.7@x1": "98.10511776651532",
+          "r.0.7@y1": "81.99999999999997",
+          "r.0.7@x2": "108.49742261192858",
+          "r.0.7@y2": "87.99999999999996",
+          "r.0.7@stroke": "#666",
+          "r.0.7@stroke-width": "1",
+          "r.0.8@": "text x y text-anchor fill font-size font-weight data-role",
+          "r.0.8@x": "60",
+          "r.0.8@y": "64",
+          "r.0.8@text-anchor": "middle",
+          "r.0.8@fill": "#ffffff",
+          "r.0.8@font-size": "16",
+          "r.0.8@font-weight": "600",
+          "r.0.8@data-role": "gauge-value",
+          "r.0.8#": "--",
+          "r.1@": "div class data-avc-text-host",
+          "r.1@class": "gauge-label",
+          "r.1@data-avc-text-host": "1",
+          "r.1#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 34
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_gauge",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.1@": "div class data-avc-text-host data-avc-text-editing",
+          "r.1@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 35
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 35,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.1#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 35
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_gauge",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.1@": "div class data-avc-text-host",
+          "r.1@data-avc-text-editing": null,
+          "r.1#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 35,
+        "d": "prevented"
+      }
+    ],
+    "caption_select": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_select"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-select",
+          "r@data-element-id": "cap_select",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "select",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "label data-avc-text-host",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "Caption",
+          "r.1@": "select"
+        },
+        "f": null,
+        "sel": "",
+        "st": 35
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_select",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.0@": "label data-avc-text-host data-avc-text-editing",
+          "r.0@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 36
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 36,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.0#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 36
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_select",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.0@": "label data-avc-text-host",
+          "r.0@data-avc-text-editing": null,
+          "r.0#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 36,
+        "d": "prevented"
+      }
+    ],
+    "caption_text_input": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_text_input"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-text-input",
+          "r@data-element-id": "cap_text_input",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "text_input",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "label data-avc-text-host",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "Caption",
+          "r.1@": "input type placeholder",
+          "r.1@type": "text",
+          "r.1@placeholder": ""
+        },
+        "f": null,
+        "sel": "",
+        "st": 36
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_text_input",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.0@": "label data-avc-text-host data-avc-text-editing",
+          "r.0@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 37
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 37,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.0#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 37
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_text_input",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.0@": "label data-avc-text-host",
+          "r.0@data-avc-text-editing": null,
+          "r.0#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 37,
+        "d": "prevented"
+      }
+    ],
+    "caption_list": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_list"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-list",
+          "r@data-element-id": "cap_list",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "list",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "div class data-avc-text-host",
+          "r.0@class": "list-label",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "Caption",
+          "r.1@": "div class",
+          "r.1@class": "list-scroll"
+        },
+        "f": null,
+        "sel": "",
+        "st": 37
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_list",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host data-avc-text-editing",
+          "r.0@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 38
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 38,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.0#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 38
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_list",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host",
+          "r.0@data-avc-text-editing": null,
+          "r.0#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 38,
+        "d": "prevented"
+      }
+    ],
+    "caption_keypad": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "cap_keypad"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-keypad",
+          "r@data-element-id": "cap_keypad",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "keypad",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "div class data-avc-text-host",
+          "r.0@class": "keypad-label",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "Caption",
+          "r.1@": "div class",
+          "r.1@class": "keypad-display",
+          "r.2@": "div class",
+          "r.2@class": "keypad-grid",
+          "r.2.0@": "button type class aria-label",
+          "r.2.0@type": "button",
+          "r.2.0@class": "keypad-key",
+          "r.2.0@aria-label": "Key 1",
+          "r.2.0#": "1",
+          "r.2.1@": "button type class aria-label",
+          "r.2.1@type": "button",
+          "r.2.1@class": "keypad-key",
+          "r.2.1@aria-label": "Key 2",
+          "r.2.1#": "2",
+          "r.2.2@": "button type class aria-label",
+          "r.2.2@type": "button",
+          "r.2.2@class": "keypad-key",
+          "r.2.2@aria-label": "Key 3",
+          "r.2.2#": "3",
+          "r.2.3@": "button type class aria-label",
+          "r.2.3@type": "button",
+          "r.2.3@class": "keypad-key",
+          "r.2.3@aria-label": "Key 4",
+          "r.2.3#": "4",
+          "r.2.4@": "button type class aria-label",
+          "r.2.4@type": "button",
+          "r.2.4@class": "keypad-key",
+          "r.2.4@aria-label": "Key 5",
+          "r.2.4#": "5",
+          "r.2.5@": "button type class aria-label",
+          "r.2.5@type": "button",
+          "r.2.5@class": "keypad-key",
+          "r.2.5@aria-label": "Key 6",
+          "r.2.5#": "6",
+          "r.2.6@": "button type class aria-label",
+          "r.2.6@type": "button",
+          "r.2.6@class": "keypad-key",
+          "r.2.6@aria-label": "Key 7",
+          "r.2.6#": "7",
+          "r.2.7@": "button type class aria-label",
+          "r.2.7@type": "button",
+          "r.2.7@class": "keypad-key",
+          "r.2.7@aria-label": "Key 8",
+          "r.2.7#": "8",
+          "r.2.8@": "button type class aria-label",
+          "r.2.8@type": "button",
+          "r.2.8@class": "keypad-key",
+          "r.2.8@aria-label": "Key 9",
+          "r.2.8#": "9",
+          "r.2.9@": "button type class aria-label",
+          "r.2.9@type": "button",
+          "r.2.9@class": "keypad-key keypad-clear",
+          "r.2.9@aria-label": "Clear",
+          "r.2.9#": "C",
+          "r.2.10@": "button type class aria-label",
+          "r.2.10@type": "button",
+          "r.2.10@class": "keypad-key",
+          "r.2.10@aria-label": "Key 0",
+          "r.2.10#": "0",
+          "r.2.11@": "button type class aria-label",
+          "r.2.11@type": "button",
+          "r.2.11@class": "keypad-key keypad-enter",
+          "r.2.11@aria-label": "Enter",
+          "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+          "r.2.11.0@viewBox": "0 0 24 24",
+          "r.2.11.0@fill": "none",
+          "r.2.11.0@stroke": "currentColor",
+          "r.2.11.0@stroke-width": "2",
+          "r.2.11.0@stroke-linecap": "round",
+          "r.2.11.0@stroke-linejoin": "round",
+          "r.2.11.0@style": "flex-shrink: 0;",
+          "r.2.11.0.0@": "use href href",
+          "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+        },
+        "f": null,
+        "sel": "",
+        "st": 38
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "cap_keypad",
+            "path": [
+              "label"
+            ],
+            "source": "Caption",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host data-avc-text-editing",
+          "r.0@data-avc-text-editing": "1"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 39
+      },
+      {
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "Caption",
+        "st": 39,
+        "d": "default"
+      },
+      {
+        "c": {
+          "r.0#": "Audio"
+        },
+        "ce": [
+          null,
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 39
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "cap_keypad",
+            "path": [
+              "label"
+            ],
+            "value": "Audio"
+          }
+        ],
+        "c": {
+          "r.0@": "div class data-avc-text-host",
+          "r.0@data-avc-text-editing": null,
+          "r.0#": "Caption"
+        },
+        "f": null,
+        "sel": "",
+        "st": 39,
+        "d": "prevented"
+      }
+    ],
+    "caption_none": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-gauge",
+          "r@data-element-id": "cap",
+          "r@data-element-type": "gauge",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "svg viewBox style",
+          "r.0@viewBox": "0 0 120 120",
+          "r.0@style": "width: 100%; height: 100%; max-width: 100%; max-height: 100%;",
+          "r.0.0@": "path d fill stroke stroke-width stroke-linecap",
+          "r.0.0@d": "M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996",
+          "r.0.0@fill": "none",
+          "r.0.0@stroke": "#333333",
+          "r.0.0@stroke-width": "8",
+          "r.0.0@stroke-linecap": "round",
+          "r.0.1@": "path fill stroke stroke-width stroke-linecap data-role",
+          "r.0.1@fill": "none",
+          "r.0.1@stroke": "#4CAF50",
+          "r.0.1@stroke-width": "8",
+          "r.0.1@stroke-linecap": "round",
+          "r.0.1@data-role": "gauge-fg",
+          "r.0.2@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.2@x1": "21.894882233484694",
+          "r.0.2@y1": "82",
+          "r.0.2@x2": "11.50257738807143",
+          "r.0.2@y2": "88",
+          "r.0.2@stroke": "#666",
+          "r.0.2@stroke-width": "1",
+          "r.0.3@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.3@x1": "18.15351328301324",
+          "r.0.3@y1": "46.40325224750232",
+          "r.0.3@x2": "6.740835087471396",
+          "r.0.3@y2": "42.69504831500295",
+          "r.0.3@stroke": "#666",
+          "r.0.3@stroke-width": "1",
+          "r.0.4@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.4@x1": "42.10358770466476",
+          "r.0.4@y1": "19.80399986372558",
+          "r.0.4@x2": "37.22274798775515",
+          "r.0.4@y2": "8.841454372014368",
+          "r.0.4@stroke": "#666",
+          "r.0.4@stroke-width": "1",
+          "r.0.5@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.5@x1": "77.89641229533515",
+          "r.0.5@y1": "19.803999863725537",
+          "r.0.5@x2": "82.77725201224474",
+          "r.0.5@y2": "8.841454372014319",
+          "r.0.5@stroke": "#666",
+          "r.0.5@stroke-width": "1",
+          "r.0.6@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.6@x1": "101.84648671698676",
+          "r.0.6@y1": "46.40325224750231",
+          "r.0.6@x2": "113.2591649125286",
+          "r.0.6@y2": "42.695048315002936",
+          "r.0.6@stroke": "#666",
+          "r.0.6@stroke-width": "1",
+          "r.0.7@": "line x1 y1 x2 y2 stroke stroke-width",
+          "r.0.7@x1": "98.10511776651532",
+          "r.0.7@y1": "81.99999999999997",
+          "r.0.7@x2": "108.49742261192858",
+          "r.0.7@y2": "87.99999999999996",
+          "r.0.7@stroke": "#666",
+          "r.0.7@stroke-width": "1",
+          "r.0.8@": "text x y text-anchor fill font-size font-weight data-role",
+          "r.0.8@x": "60",
+          "r.0.8@y": "64",
+          "r.0.8@text-anchor": "middle",
+          "r.0.8@fill": "#ffffff",
+          "r.0.8@font-size": "16",
+          "r.0.8@font-weight": "600",
+          "r.0.8@data-role": "gauge-value",
+          "r.0.8#": "--"
+        },
+        "f": null,
+        "sel": "",
+        "st": 39
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-refused",
+            "elementId": "cap",
+            "reason": "These words come from the room, not from the element's own settings, so they cannot be changed here."
+          }
+        ],
+        "f": null,
+        "sel": "",
+        "st": 40
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 40
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 40,
+        "d": "default"
+      }
+    ],
+    "caption_override": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {
+              "cap_slider": "This text is being set by a script or macro through ui.cap_slider.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again."
+            }
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id style data-element-type",
+          "r@class": "panel-element panel-slider",
+          "r@data-element-id": "cap_slider",
+          "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r@data-element-type": "slider",
+          "r.0@": "label data-avc-text-host",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "S",
+          "r.1@": "div class",
+          "r.1@class": "slider-track-wrapper",
+          "r.1.0@": "div class",
+          "r.1.0@class": "slider-track",
+          "r.1.0.0@": "div class style",
+          "r.1.0.0@class": "slider-fill",
+          "r.1.0.0@style": "width: 50%;",
+          "r.1.1@": "input type aria-label min max step aria-valuetext",
+          "r.1.1@type": "range",
+          "r.1.1@aria-label": "Caption",
+          "r.1.1@min": "0",
+          "r.1.1@max": "100",
+          "r.1.1@step": "1",
+          "r.1.1@aria-valuetext": "50"
+        },
+        "f": null,
+        "sel": "",
+        "st": 40
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-refused",
+            "elementId": "cap_slider",
+            "reason": "This text is being set by a script or macro through ui.cap_slider.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again."
+          }
+        ],
+        "f": null,
+        "sel": "",
+        "st": 41
+      }
+    ],
+    "nav_no_label": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "n"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-avc-text-src data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-page-nav",
+          "r@data-element-id": "n",
+          "r@aria-label": "Navigate to p2",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "page_nav",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "p2"
+        },
+        "f": null,
+        "sel": "",
+        "st": 41
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "n",
+            "path": [
+              "label"
+            ],
+            "source": "",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-avc-text-src data-element-type style data-avc-text-editing data-avc-text-placeholder",
+          "r#": null,
+          "r@data-avc-text-editing": "1",
+          "r@data-avc-text-placeholder": "p2"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-page-nav@n",
+        "sel": "",
+        "st": 42
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id aria-label data-avc-text-src data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r@data-avc-text-placeholder": null,
+          "r#": "p2"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-page-nav@n",
+        "sel": "",
+        "st": 42,
+        "d": "prevented"
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "n",
+            "path": [
+              "label"
+            ],
+            "source": "",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-avc-text-src data-element-type style data-avc-text-editing data-avc-text-placeholder",
+          "r#": null,
+          "r@data-avc-text-editing": "1",
+          "r@data-avc-text-placeholder": "p2"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-page-nav@n",
+        "sel": "",
+        "st": 42
+      },
+      {
+        "c": {
+          "r#": "Go"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-page-nav@n",
+        "sel": "",
+        "st": 42
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "n",
+            "path": [
+              "label"
+            ],
+            "value": "Go"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-avc-text-src data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r@data-avc-text-placeholder": null,
+          "r#": "p2"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-page-nav@n",
+        "sel": "",
+        "st": 42,
+        "d": "prevented"
+      }
+    ],
+    "nav_no_target": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "n"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src disabled style data-element-type",
+          "r@type": "button",
+          "r@class": "panel-element panel-page-nav",
+          "r@data-element-id": "n",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@disabled": "",
+          "r@style": "opacity: 0.5; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r@data-element-type": "page_nav",
+          "r#": "No Target"
+        },
+        "f": null,
+        "sel": "",
+        "st": 42
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "n",
+            "path": [
+              "label"
+            ],
+            "source": "",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src disabled style data-element-type data-avc-text-editing data-avc-text-placeholder",
+          "r#": null,
+          "r@data-avc-text-editing": "1",
+          "r@data-avc-text-placeholder": "No Target"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": null,
+        "sel": "",
+        "st": 43
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src disabled style data-element-type",
+          "r@data-avc-text-editing": null,
+          "r@data-avc-text-placeholder": null,
+          "r#": "No Target"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": null,
+        "sel": "",
+        "st": 43,
+        "d": "prevented"
+      }
+    ],
+    "nav_labelled": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "n"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-avc-text-src data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-page-nav",
+          "r@data-element-id": "n",
+          "r@aria-label": "Navigate to Next",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "page_nav",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Next"
+        },
+        "f": null,
+        "sel": "",
+        "st": 43
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "n",
+            "path": [
+              "label"
+            ],
+            "source": "Next",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-avc-text-src data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-page-nav@n",
+        "sel": "Next",
+        "st": 44
+      },
+      {
+        "c": {
+          "r#": null
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-page-nav@n",
+        "sel": "",
+        "st": 44
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "n",
+            "path": [
+              "label"
+            ],
+            "value": ""
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id aria-label data-avc-text-src data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Next"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-page-nav@n",
+        "sel": "",
+        "st": 44,
+        "d": "prevented"
+      }
+    ],
+    "not_for_camera_preset": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "x",
+          "r@data-element-type": "camera_preset",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "L"
+        },
+        "f": null,
+        "sel": "",
+        "st": 44
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 45
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 45,
+        "d": "default"
+      }
+    ],
+    "not_for_matrix": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-avc-text-src data-element-type style",
+          "r@class": "panel-element panel-matrix",
+          "r@data-element-id": "x",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@data-element-type": "matrix",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "div class data-avc-text-host",
+          "r.0@class": "matrix-label",
+          "r.0@data-avc-text-host": "1",
+          "r.0#": "L",
+          "r.1@": "div class",
+          "r.1@class": "matrix-scroll",
+          "r.1.0@": "div class style",
+          "r.1.0@class": "matrix-grid",
+          "r.1.0@style": "grid-template-columns: minmax(80px, max-content); grid-template-rows: auto; max-width: 80px;",
+          "r.1.0.0@": "div class",
+          "r.1.0.0@class": "matrix-corner",
+          "r.2@": "div class",
+          "r.2@class": "matrix-legend"
+        },
+        "f": null,
+        "sel": "",
+        "st": 45
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 46
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 46,
+        "d": "default"
+      }
+    ],
+    "not_for_clock": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-clock",
+          "r@data-element-id": "x",
+          "r@data-element-type": "clock",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r.0@": "div class",
+          "r.0@class": "clock-display",
+          "r.0#": "2:05 PM"
+        },
+        "f": null,
+        "sel": "",
+        "st": 46
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 47
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 47,
+        "d": "default"
+      }
+    ],
+    "not_for_image": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "div class data-element-id data-element-type style",
+          "r@class": "panel-element panel-image",
+          "r@data-element-id": "x",
+          "r@data-element-type": "image",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+        },
+        "f": null,
+        "sel": "",
+        "st": 47
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 48
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 48,
+        "d": "default"
+      }
+    ],
+    "unknown_id": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 48
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 49
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 49
+      }
+    ],
+    "second_page": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 49
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 50
+      },
+      {
+        "c": {
+          "r#": "Here"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 50
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "Here"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 50,
+        "d": "prevented"
+      },
+      {
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 50
+      }
+    ],
+    "odd_id": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "a \"b\" c\\d"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "a \"b\" c\\d",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 50
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "a \"b\" c\\d",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@a \"b\" c\\d",
+        "sel": "Mic Mute",
+        "st": 51
+      },
+      {
+        "c": {
+          "r#": "Odd"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@a \"b\" c\\d",
+        "sel": "",
+        "st": 51
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "a \"b\" c\\d",
+            "path": [
+              "label"
+            ],
+            "value": "Odd"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@a \"b\" c\\d",
+        "sel": "",
+        "st": 51,
+        "d": "prevented"
+      }
+    ],
+    "number_id": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 51
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 51
+      }
+    ],
+    "master_button": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "mb",
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "mb",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Home",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 80%; top: 80%; width: 15%; height: 10%;",
+          "r#": "Home"
+        },
+        "f": null,
+        "sel": "",
+        "st": 51
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "mb",
+            "path": [
+              "label"
+            ],
+            "source": "Home",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@mb",
+        "sel": "Home",
+        "st": 52
+      },
+      {
+        "c": {
+          "r#": "House"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@mb",
+        "sel": "",
+        "st": 52
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "mb",
+            "path": [
+              "label"
+            ],
+            "value": "House"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Home"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@mb",
+        "sel": "",
+        "st": 52,
+        "d": "prevented"
+      }
+    ],
+    "second_open_commits_first": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b",
+              "b2"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 52
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 53
+      },
+      {
+        "c": {
+          "r#": "One"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 53
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "One"
+          },
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b2",
+            "path": [
+              "label"
+            ],
+            "source": "Two",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b2",
+        "sel": "Two",
+        "st": 53
+      },
+      {
+        "ce": [
+          "inherit",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b2",
+        "sel": "",
+        "st": 53
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b2",
+            "path": [
+              "label"
+            ],
+            "value": "Deux"
+          },
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b2",
+            "path": [
+              "label"
+            ],
+            "source": "Two",
+            "multiline": false
+          }
+        ],
+        "ce": [
+          "inherit",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b2",
+        "sel": "Two",
+        "st": 53
+      },
+      {
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b2",
+        "sel": "",
+        "st": 53,
+        "d": "prevented"
+      }
+    ],
+    "reopen_same": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 53
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 54
+      },
+      {
+        "c": {
+          "r#": "Once"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 54
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "value": "Once"
+          },
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 54
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 54,
+        "d": "prevented"
+      }
+    ],
+    "redraw_mid_edit": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 54
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 55
+      },
+      {
+        "c": {
+          "r#": "Lost"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 55
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-closed"
+          },
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 55
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 55
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 55
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 55
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 55,
+        "d": "prevented"
+      }
+    ],
+    "cancel_message": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 55
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label"
+            ],
+            "source": "Mic Mute",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "Mic Mute",
+        "st": 56
+      },
+      {
+        "c": {
+          "r#": "Nope"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 56
+      },
+      {
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 56
+      },
+      {
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 56
+      }
+    ],
+    "cancel_with_nothing_open": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 56
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 56
+      }
+    ],
+    "preview_ignores_the_gesture": [
+      {
+        "c": {
+          "r@": "button type class data-element-id aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 56
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 56
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 56,
+        "d": "default"
+      }
+    ],
+    "src_not_json": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 56
+      },
+      {
+        "c": {
+          "r@data-avc-text-src": "not json"
+        },
+        "f": null,
+        "sel": "",
+        "st": 56
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 57
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 57
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 57,
+        "d": "default"
+      }
+    ],
+    "src_not_a_list": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 57
+      },
+      {
+        "c": {
+          "r@data-avc-text-src": "{\"label\":1}"
+        },
+        "f": null,
+        "sel": "",
+        "st": 57
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 58
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 58
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 58,
+        "d": "default"
+      }
+    ],
+    "src_leads_nowhere": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 58
+      },
+      {
+        "c": {
+          "r@data-avc-text-src": "[\"nope\",\"deeper\"]"
+        },
+        "f": null,
+        "sel": "",
+        "st": 58
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "nope",
+              "deeper"
+            ],
+            "source": "",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing data-avc-text-placeholder",
+          "r#": null,
+          "r@data-avc-text-editing": "1",
+          "r@data-avc-text-placeholder": ""
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 59
+      },
+      {
+        "c": {
+          "r#": "Q"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 59
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "nope",
+              "deeper"
+            ],
+            "value": "Q"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r@data-avc-text-placeholder": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 59,
+        "d": "prevented"
+      }
+    ],
+    "src_through_a_value": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 59
+      },
+      {
+        "c": {
+          "r@data-avc-text-src": "[\"label\",\"length\"]"
+        },
+        "f": null,
+        "sel": "",
+        "st": 59
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "label",
+              "length"
+            ],
+            "source": "",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing data-avc-text-placeholder",
+          "r#": null,
+          "r@data-avc-text-editing": "1",
+          "r@data-avc-text-placeholder": ""
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 60
+      },
+      {
+        "c": {
+          "r#": "Q"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 60
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "label",
+              "length"
+            ],
+            "value": "Q"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r@data-avc-text-placeholder": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 60,
+        "d": "prevented"
+      }
+    ],
+    "src_names_a_number": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 60
+      },
+      {
+        "c": {
+          "r@data-avc-text-src": "[\"size\"]"
+        },
+        "f": null,
+        "sel": "",
+        "st": 60
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-open",
+            "elementId": "b",
+            "path": [
+              "size"
+            ],
+            "source": "7",
+            "multiline": false
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-avc-text-editing",
+          "r#": "7",
+          "r@data-avc-text-editing": "1"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "7",
+        "st": 61
+      },
+      {
+        "c": {
+          "r#": "Q"
+        },
+        "ce": [
+          "plaintext-only",
+          "plaintext-only"
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 61
+      },
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-commit",
+            "elementId": "b",
+            "path": [
+              "size"
+            ],
+            "value": "Q"
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@data-avc-text-editing": null,
+          "r#": "Mic Mute"
+        },
+        "ce": [
+          "inherit",
+          null
+        ],
+        "f": "button.panel-element panel-button@b",
+        "sel": "",
+        "st": 61,
+        "d": "prevented"
+      }
+    ],
+    "src_a_number": [
+      {
+        "m": [
+          {
+            "type": "openavc:editor-text-defaults",
+            "fontSizeRem": {},
+            "editableText": [
+              "b"
+            ],
+            "textRefusals": {}
+          }
+        ],
+        "c": {
+          "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+          "r@type": "button",
+          "r@class": "panel-element panel-button",
+          "r@data-element-id": "b",
+          "r@data-avc-text-src": "[\"label\"]",
+          "r@aria-label": "Mic Mute",
+          "r@data-element-type": "button",
+          "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+          "r#": "Mic Mute"
+        },
+        "f": null,
+        "sel": "",
+        "st": 61
+      },
+      {
+        "c": {
+          "r@data-avc-text-src": "5"
+        },
+        "f": null,
+        "sel": "",
+        "st": 61
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 62
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 62
+      },
+      {
+        "f": null,
+        "sel": "",
+        "st": 62,
+        "d": "default"
+      }
+    ]
+  }
+}
