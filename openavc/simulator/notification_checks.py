@@ -12,9 +12,11 @@ placeholder in is passed over: its message cannot be known here.
 
 Whether a message can reach the driver at all is read from the declarations:
 the push types listed here, or a transport whose simulator pushes on its control
-link. The simulator has no such list (each push type has its own set-up in
-``push_channels``, which sends only when the block's target resolves), so a new
-push type is added there and to ``_PUSH_ON_ANY_TRANSPORT`` by hand.
+link. The simulator keeps no list of type names (each push type has its own
+set-up in ``push_channels``, which sends only when the block's target
+resolves), so a new push type is added there by hand, to
+``_PUSH_ON_ANY_TRANSPORT``, and to the "has no effect" warning in
+``check_notifications``, which names the types in words.
 """
 
 from __future__ import annotations
@@ -113,8 +115,10 @@ def _is_boolean_word(value: Any) -> bool:
 
 
 # A placeholder the renderer left in a message, which cannot be validated
-# statically. A brace followed by a quote is JSON, not a placeholder, so a
-# rendered JSON notification is still read below.
+# statically. It follows the placeholders the simulator's renderer
+# (push_channels._render_notification) fills and leaves as written, so a new
+# placeholder form there is one here too. A brace followed by a quote is JSON,
+# not a placeholder, so a rendered JSON notification is still read below.
 _UNRESOLVED_PLACEHOLDER = re.compile(r"\{[a-zA-Z_][\w.]*(:[^}]*)?\}")
 
 
