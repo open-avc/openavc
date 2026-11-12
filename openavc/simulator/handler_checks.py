@@ -25,6 +25,9 @@ some the simulator then skips or reads differently:
 - A pattern is compiled as written, where the simulator compiles
   ``^<pattern>$``, so one that compiles only as written (an inline flag such
   as ``(?i)``, which must come first) passes here and the simulator skips it.
+- A script handler's pattern is not compiled here at all (the template check
+  stops at the ``handler:``), so one that does not compile passes here and the
+  simulator skips the handler.
 - A ``handler:`` that is not text is compiled as its text here, where the
   simulator hands the value to ``compile`` as it is.
 """
