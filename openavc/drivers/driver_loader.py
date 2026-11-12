@@ -245,6 +245,9 @@ def load_driver_file(filepath: Path) -> dict[str, Any] | None:
     try:
         text = filepath.read_text(encoding="utf-8")
         driver_def = yaml.safe_load(text)
+    except UnicodeDecodeError:
+        log.warning(f"Driver file {filepath} is not UTF-8 text; save it as UTF-8 to load it")
+        return None
     except (OSError, yaml.YAMLError) as e:
         log.warning(f"Failed to load driver file {filepath}: {e}")
         return None
@@ -719,7 +722,7 @@ def _definitions_declaring(
 
     Directories in the order given, files in the order the file system lists
     them (``delete_driver_definition`` removes the first it may). A file that
-    cannot be read or parsed is passed over; one that is not UTF-8 raises.
+    cannot be read, decoded or parsed is passed over.
     ``find_driver_file_by_id`` reads ids by its own rule (``driver_id_from_file``).
     """
     for dir_path in directories:
@@ -732,7 +735,7 @@ def _declaring_in(dir_path: Path, driver_id: str) -> Iterator[Path]:
     for filepath in dir_path.glob(f"*{DRIVER_EXTENSION}"):
         try:
             data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-        except (OSError, yaml.YAMLError):
+        except (OSError, ValueError, yaml.YAMLError):  # ValueError: not UTF-8
             continue
         if isinstance(data, dict) and data.get("id") == driver_id:
             yield filepath

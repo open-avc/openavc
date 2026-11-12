@@ -11,9 +11,10 @@ Several of these record behaviour that looks wrong, deliberately, so that a
 change to it is a decision rather than a side effect: the listing reads only
 the first class in a file and keeps the first directory's copy of an id where
 loading keeps the last; the YAML listing keeps the first file of a directory
-where loading keeps the one named for the id; a ``.avcdriver`` that is not
-UTF-8 raises out of every YAML scan. Each such test says so, and fixing one
-changes its assertion.
+where loading keeps the one named for the id. Each such test says so, and
+fixing one changes its assertion. A ``.avcdriver`` that is not UTF-8, and a
+Python class whose ``DRIVER_INFO`` is not a mapping, are passed over with a
+warning: neither may stop the server starting.
 
 Every driver id and file stem here starts with ``pin_`` so that nothing in the
 shared registry or ``sys.modules`` collides with another test, and the
@@ -630,11 +631,20 @@ def _latin(directory: Path) -> None:
     ],
     ids=["load", "list", "is_builtin", "delete"],
 )
-def test_a_definition_that_is_not_utf8_raises_out_of_the_yaml_scans(tmp_path, scan):
-    """Pinned as it is; a fix changes this assertion."""
+def test_a_definition_that_is_not_utf8_is_passed_over_by_every_yaml_scan(tmp_path, scan):
     _latin(tmp_path)
-    with pytest.raises(UnicodeDecodeError):
-        scan([tmp_path])
+    assert scan([tmp_path]) in (0, [], False)
+    assert (tmp_path / "pin_latin.avcdriver").exists()
+
+
+def test_loading_a_definition_that_is_not_utf8_says_which_file(tmp_path, caplog):
+    _latin(tmp_path)
+    (tmp_path / "pin_fine.avcdriver").write_text(_avcdriver("pin_fine"), encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert load_driver_files([tmp_path]) == 1
+    assert [r.getMessage() for r in caplog.records if "pin_latin" in r.getMessage()] == [
+        f"Driver file {tmp_path / 'pin_latin.avcdriver'} is not UTF-8 text; save it as UTF-8 to load it",
+    ]
 
 
 def test_is_builtin_driver_skips_what_it_cannot_read(tmp_path, monkeypatch):
@@ -831,24 +841,37 @@ def test_a_yaml_companion_must_sit_beside_its_driver(tmp_path, declared):
     assert driver_companions(main) == [tmp_path / "pin_comp_discovery.py"]
 
 
-def test_a_class_whose_driver_info_is_not_a_dict_stays_resident_through_reloads(
-    tmp_path, isolated
-):
-    """The class scan raises outside the import's guard, so the module stays
-    in sys.modules; a reload reads its old id before dropping it, and raises
-    the same way every time. Pinned as it is."""
+@pytest.mark.parametrize("info", ["None", "'pin_rl_bad_info'", "['id']"])
+def test_a_class_whose_driver_info_is_not_a_mapping_is_no_driver(tmp_path, isolated, caplog, info):
+    """Skipped with the scan's warning, refused on reload in the reload's
+    words, and a fixed file then reloads without a restart."""
     path = tmp_path / "pin_rl_bad_info.py"
-    path.write_text(HEADER + "class BadInfo(BaseDriver):\n    DRIVER_INFO = None\n", encoding="utf-8")
-    with pytest.raises(AttributeError):
-        load_python_driver_file(path)
-    resident = sys.modules["openavc_driver_pin_rl_bad_info"]
+    path.write_text(HEADER + f"class BadInfo(BaseDriver):\n    DRIVER_INFO = {info}\n", encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        assert load_python_driver_file(path) is None
+    assert [r.getMessage() for r in caplog.records if "pin_rl_bad_info" in r.getMessage()] == [
+        f"No BaseDriver subclass with DRIVER_INFO found in {path}",
+    ]
+    assert reload_python_driver(path) == {
+        "status": "error", "error": "No BaseDriver subclass with DRIVER_INFO found", "old_driver_preserved": True,
+    }
 
     path.write_text(_driver("FixedDriver", "pin_rl_bad_info", "Fixed at last"), encoding="utf-8")
-    for _ in range(2):
-        with pytest.raises(AttributeError):
-            reload_python_driver(path)
-        assert sys.modules["openavc_driver_pin_rl_bad_info"] is resident
-    assert "pin_rl_bad_info" not in registry._DRIVER_REGISTRY
+    assert reload_python_driver(path)["status"] == "reloaded"
+    assert registry._DRIVER_REGISTRY["pin_rl_bad_info"].DRIVER_INFO["name"] == "Fixed at last"
+
+
+def test_a_library_holding_both_unreadable_kinds_still_loads_the_rest(tmp_path, isolated):
+    """What the startup pass reads: neither file stops it."""
+    _latin(tmp_path)
+    (tmp_path / "pin_fine.avcdriver").write_text(_avcdriver("pin_fine"), encoding="utf-8")
+    (tmp_path / "pin_bad_info.py").write_text(HEADER + "class BadInfo(BaseDriver):\n    DRIVER_INFO = None\n", encoding="utf-8")
+    (tmp_path / "pin_good_py.py").write_text(_driver("GoodDriver", "pin_good_py"), encoding="utf-8")
+
+    from openavc.drivers.driver_loader import load_all_drivers
+
+    assert load_all_drivers([tmp_path]) == 2
+    assert {"pin_fine", "pin_good_py"} <= set(registry._DRIVER_REGISTRY)
 
 
 def test_a_same_id_reload_unregisters_nothing(tmp_path, isolated, caplog):

@@ -10,7 +10,8 @@ registered), and a reload whose final import fails puts the previous module
 back. Removing a driver's file removes its entry (``forget_module``).
 
 ``driver_class_in`` is the one rule for which class is the driver: the first,
-by name, defined in that module, whose ``DRIVER_INFO`` has an id. The reload's
+by name, defined in that module, whose ``DRIVER_INFO`` is a mapping with an id
+(any other ``DRIVER_INFO`` makes it no driver, so the scan never raises). The reload's
 trial import, its final import and its reading of the previous module's id
 all ask it, so a file that passes the trial is one the final import accepts.
 
@@ -33,6 +34,7 @@ import inspect
 import re
 import sys
 import traceback
+from collections.abc import Mapping
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -84,12 +86,13 @@ def driver_class_in(module: Any, name: str) -> type | None:
 
 def _is_driver_class(obj: type, name: str, base: type) -> bool:
     """A subclass of ``base`` (not ``base`` itself), defined in module
-    ``name``, whose ``DRIVER_INFO`` has an id. Asked in that order."""
+    ``name``, whose ``DRIVER_INFO`` is a mapping with an id. Asked in that order."""
     if not issubclass(obj, base) or obj is base:
         return False
     if obj.__module__ != name:
         return False
-    return bool(hasattr(obj, "DRIVER_INFO") and obj.DRIVER_INFO.get("id"))
+    info = getattr(obj, "DRIVER_INFO", None)
+    return isinstance(info, Mapping) and bool(info.get("id"))
 
 
 def _import(filepath: Path, name: str) -> ModuleType | None:
@@ -269,8 +272,7 @@ def reload_python_driver(filepath: Path) -> dict[str, Any]:
         return trial
     new_driver_id = trial.DRIVER_INFO["id"]
 
-    # The previous id is read before its module is dropped: a resident class
-    # the scan cannot read raises here and leaves the module where it was.
+    # The previous id is read before its module is dropped.
     name = module_name(filepath)
     old_module = sys.modules.get(name)
     old_class = driver_class_in(old_module, name) if old_module is not None else None
