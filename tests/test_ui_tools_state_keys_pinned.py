@@ -107,8 +107,8 @@ CASES = [
     ("device.amp.level", None, None, LEVEL, ["amp"]),
     ("device.amp.levl", FLAT, None, None, ["amp"]),
     ("device.amp.online", None, None, None, ["amp"]),
-    # The platform writes it for every device, and this list does not have it.
-    ("device.amp.web_ui_url", FLAT, None, None, ["amp"]),
+    # The platform writes it for every device once its web page is found.
+    ("device.amp.web_ui_url", None, None, None, ["amp"]),
     ("device.amp.label", None, None, None, ["amp"]),
     ("device.amp.preset.recall.last", None, None, {"type": "string"}, ["amp"]),
     ("device.amp.preset.recall.next", FLAT, None, None, ["amp"]),

@@ -27,24 +27,19 @@ from pathlib import Path
 from typing import Any
 
 from openavc.core.command_params import file_command_check, missing_params_check
+from openavc.core.device_info import PLATFORM_DEVICE_KEYS
 from openavc.drivers.child_ids import coerce_child_local_id, declared_child_ids
 from openavc.ui.page_references import first_device_of, ids_longest_first
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
 
-#: Device properties the PLATFORM sets, which no driver declares.
-#:
-#: `device.<id>.online` is the single commonest binding on any panel and it
-#: appears in no DRIVER_INFO anywhere, so a property check that did not know
-#: these would fire on the most correct page in the project. Set by
-#: device_manager and connection_fault, not by the device.
-_PLATFORM_DEVICE_PROPERTIES = frozenset({
-    "connected", "enabled", "host", "name", "offline_detail", "offline_reason",
-    "orphan_reason", "orphaned", "paused", "paused_for", "reconnect_attempt",
-    "reconnect_failed",
-    "restarting", "asleep", "wake_command", "online", "status", "last_seen", "error",
-})
+#: Device properties the property check never calls undeclared: the ones the
+#: platform writes for every device, which no driver declares
+#: (core/device_info.py), and five names this check has always stayed silent
+#: on although nothing writes them for every device.
+_SILENT_WITHOUT_A_WRITER = frozenset({"host", "online", "status", "last_seen", "error"})
+_PLATFORM_DEVICE_PROPERTIES = PLATFORM_DEVICE_KEYS | _SILENT_WITHOUT_A_WRITER
 
 
 @dataclass(frozen=True)

@@ -46,6 +46,7 @@ from openavc.core.device_traffic import (
     get_traffic_recorder,
     serialize_entry,
 )
+from openavc.core.device_info import PLATFORM_DEVICE_KEYS
 from openavc.core.state_store import is_flat_primitive
 from openavc.utils.log_redaction import get_secret_registry
 
@@ -190,14 +191,9 @@ class AuditObserver:
         return [serialize_entry(e, redactor) for e in self.traffic]
 
 
-# The keys the platform writes for every device (and the device manager's
-# reconnect count): not status values a driver reports, so never something a
-# command changed or a value the device reported.
-PLATFORM_KEYS = frozenset({
-    "connected", "name", "enabled", "offline_reason", "offline_detail", "paused",
-    "paused_for", "restarting", "asleep", "wake_command", "web_ui_url", "orphaned",
-    "orphan_reason", "reconnect_attempt",
-})
+# The keys the platform writes for every device: not status values a driver
+# reports, so never something a command changed or a value the device reported.
+PLATFORM_KEYS = PLATFORM_DEVICE_KEYS
 
 # What the platform writes for every child beside the driver's own values: its
 # label, and the fault pair it carries while its parent is unreachable. A

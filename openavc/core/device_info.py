@@ -45,6 +45,20 @@ if TYPE_CHECKING:
 _redact_config = redact_config
 
 
+#: The ``device.<id>.<key>`` keys the device manager writes for every device:
+#: its name and switches, whether it is connected, why it is away, its pause,
+#: sleep and restart, its reconnect count, its web page. No driver declares
+#: them. The AI's property check and the device audit both read this; a new key
+#: the manager writes is added here, and tests/test_platform_device_keys.py
+#: fails until it is.
+PLATFORM_DEVICE_KEYS = frozenset({
+    "name", "enabled", "connected", "offline_reason", "offline_detail",
+    "paused", "paused_for", "restarting", "asleep", "wake_command",
+    "orphaned", "orphan_reason", "reconnect_attempt", "reconnect_failed",
+    "web_ui_url",
+})
+
+
 # What every listing gives each device, live or not.
 _SUMMARY_KEYS = ("id", "name", "driver", "connected", "connection")
 
