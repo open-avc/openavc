@@ -655,6 +655,8 @@ function EditorColumn({
   onClearOverrides,
 }: EditorColumnProps) {
   if (!draft) {
+    // No theme yet: a failed load says so here, in place of the wait.
+    if (line?.kind === "error") return <FileActionLine line={line} />;
     return (
       <div
         style={{

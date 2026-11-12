@@ -69,14 +69,21 @@ describe("opening the Studio", () => {
     expect(screen.getByRole("button", { name: "Save as Custom" })).toBeEnabled();
   });
 
-  it("keeps waiting, and says nothing, when the first theme fails to load", async () => {
+  it("says which theme failed when the first one cannot be loaded, and stops saying it is loading", async () => {
     getTheme.mockRejectedValue(new Error("boom"));
     renderStudio();
-    await waitFor(() => expect(getTheme).toHaveBeenCalledOnce());
-    await act(async () => {});
-    expect(screen.getByText("Loading theme…")).toBeInTheDocument();
-    expect(screen.queryByText(/Failed to load/)).toBeNull();
+    expect(await screen.findByText('Failed to load "studio-sample"')).toBeInTheDocument();
+    expect(screen.queryByText("Loading theme…")).toBeNull();
     expect(shown().inlineTheme).toBeNull();
+    vi.useFakeTimers();
+    act(() => vi.advanceTimersByTime(10000));
+    expect(screen.getByText('Failed to load "studio-sample"')).toBeInTheDocument();
+  });
+
+  it("says it is loading while the first theme is on its way", () => {
+    getTheme.mockReturnValue(new Promise(() => {}));
+    renderStudio();
+    expect(screen.getByText("Loading theme…")).toBeInTheDocument();
   });
 
   it("names a theme that failed to load over the one already open, and keeps that error", async () => {
