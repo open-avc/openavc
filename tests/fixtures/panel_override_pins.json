@@ -1,0 +1,1515 @@
+{
+  "override": {
+    "every_type": [
+      {
+        "c": {
+          "x_button": {
+            "r@": "button type class data-element-id aria-label data-element-type style",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "x_button",
+            "r@aria-label": "Cap",
+            "r@data-element-type": "button",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Cap"
+          },
+          "x_label": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-label",
+            "r@data-element-id": "x_label",
+            "r@data-element-type": "label",
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Cap"
+          },
+          "x_led": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-status-led",
+            "r@data-element-id": "x_led",
+            "r@data-element-type": "status_led",
+            "r@style": "position: absolute; left: 50%; top: 2%; width: 22%; height: 16%;",
+            "r.0@": "div class",
+            "r.0@class": "led-dot",
+            "r.1@": "label class",
+            "r.1@class": "led-label",
+            "r.1#": "Cap"
+          },
+          "x_slider": {
+            "r@": "div class data-element-id style data-element-type",
+            "r@class": "panel-element panel-slider",
+            "r@data-element-id": "x_slider",
+            "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 74%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "slider",
+            "r.0@": "label",
+            "r.0#": "Cap",
+            "r.1@": "div class",
+            "r.1@class": "slider-track-wrapper",
+            "r.1.0@": "div class",
+            "r.1.0@class": "slider-track",
+            "r.1.0.0@": "div class style",
+            "r.1.0.0@class": "slider-fill",
+            "r.1.0.0@style": "width: 0%;",
+            "r.1.1@": "input type aria-label min max step aria-valuetext",
+            "r.1.1@type": "range",
+            "r.1.1@aria-label": "Cap",
+            "r.1.1@min": "0",
+            "r.1.1@max": "100",
+            "r.1.1@step": "1",
+            "r.1.1@aria-valuetext": "0"
+          },
+          "x_nav": {
+            "r@": "button type class data-element-id aria-label data-element-type style",
+            "r@type": "button",
+            "r@class": "panel-element panel-page-nav",
+            "r@data-element-id": "x_nav",
+            "r@aria-label": "Navigate to Cap",
+            "r@data-element-type": "page_nav",
+            "r@style": "position: absolute; left: 2%; top: 22%; width: 22%; height: 16%;",
+            "r#": "Cap"
+          },
+          "x_select": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-select",
+            "r@data-element-id": "x_select",
+            "r@data-element-type": "select",
+            "r@style": "position: absolute; left: 26%; top: 22%; width: 22%; height: 16%;",
+            "r.0@": "label",
+            "r.0#": "Cap",
+            "r.1@": "select",
+            "r.1.0@": "option value",
+            "r.1.0@value": "a",
+            "r.1.0#": "A"
+          },
+          "x_text": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-text-input",
+            "r@data-element-id": "x_text",
+            "r@data-element-type": "text_input",
+            "r@style": "position: absolute; left: 50%; top: 22%; width: 22%; height: 16%;",
+            "r.0@": "label",
+            "r.0#": "Cap",
+            "r.1@": "input type placeholder",
+            "r.1@type": "text",
+            "r.1@placeholder": ""
+          },
+          "x_image": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-image",
+            "r@data-element-id": "x_image",
+            "r@data-element-type": "image",
+            "r@style": "position: absolute; left: 74%; top: 22%; width: 22%; height: 16%;"
+          },
+          "x_preset": {
+            "r@": "div class data-element-id style data-element-type",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "x_preset",
+            "r@style": "white-space: pre-line; line-height: 1.15; position: absolute; left: 2%; top: 42%; width: 22%; height: 16%;",
+            "r@data-element-type": "camera_preset",
+            "r#": "1\nCap"
+          },
+          "x_list": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-list",
+            "r@data-element-id": "x_list",
+            "r@data-element-type": "list",
+            "r@style": "position: absolute; left: 26%; top: 42%; width: 22%; height: 16%;",
+            "r.0@": "div class",
+            "r.0@class": "list-label",
+            "r.0#": "Cap",
+            "r.1@": "div class",
+            "r.1@class": "list-scroll"
+          },
+          "x_gauge": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-gauge",
+            "r@data-element-id": "x_gauge",
+            "r@data-element-type": "gauge",
+            "r@style": "position: absolute; left: 50%; top: 42%; width: 22%; height: 16%;",
+            "r.0@": "svg viewBox style",
+            "r.0@viewBox": "0 0 120 120",
+            "r.0@style": "width: 100%; height: 100%; max-width: 100%; max-height: 100%;",
+            "r.0.0@": "path d fill stroke stroke-width stroke-linecap",
+            "r.0.0@d": "M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996",
+            "r.0.0@fill": "none",
+            "r.0.0@stroke": "#333333",
+            "r.0.0@stroke-width": "8",
+            "r.0.0@stroke-linecap": "round",
+            "r.0.1@": "path fill stroke stroke-width stroke-linecap data-role",
+            "r.0.1@fill": "none",
+            "r.0.1@stroke": "#4CAF50",
+            "r.0.1@stroke-width": "8",
+            "r.0.1@stroke-linecap": "round",
+            "r.0.1@data-role": "gauge-fg",
+            "r.0.2@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.2@x1": "21.894882233484694",
+            "r.0.2@y1": "82",
+            "r.0.2@x2": "11.50257738807143",
+            "r.0.2@y2": "88",
+            "r.0.2@stroke": "#666",
+            "r.0.2@stroke-width": "1",
+            "r.0.3@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.3@x1": "18.15351328301324",
+            "r.0.3@y1": "46.40325224750232",
+            "r.0.3@x2": "6.740835087471396",
+            "r.0.3@y2": "42.69504831500295",
+            "r.0.3@stroke": "#666",
+            "r.0.3@stroke-width": "1",
+            "r.0.4@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.4@x1": "42.10358770466476",
+            "r.0.4@y1": "19.80399986372558",
+            "r.0.4@x2": "37.22274798775515",
+            "r.0.4@y2": "8.841454372014368",
+            "r.0.4@stroke": "#666",
+            "r.0.4@stroke-width": "1",
+            "r.0.5@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.5@x1": "77.89641229533515",
+            "r.0.5@y1": "19.803999863725537",
+            "r.0.5@x2": "82.77725201224474",
+            "r.0.5@y2": "8.841454372014319",
+            "r.0.5@stroke": "#666",
+            "r.0.5@stroke-width": "1",
+            "r.0.6@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.6@x1": "101.84648671698676",
+            "r.0.6@y1": "46.40325224750231",
+            "r.0.6@x2": "113.2591649125286",
+            "r.0.6@y2": "42.695048315002936",
+            "r.0.6@stroke": "#666",
+            "r.0.6@stroke-width": "1",
+            "r.0.7@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.7@x1": "98.10511776651532",
+            "r.0.7@y1": "81.99999999999997",
+            "r.0.7@x2": "108.49742261192858",
+            "r.0.7@y2": "87.99999999999996",
+            "r.0.7@stroke": "#666",
+            "r.0.7@stroke-width": "1",
+            "r.0.8@": "text x y text-anchor fill font-size font-weight data-role",
+            "r.0.8@x": "60",
+            "r.0.8@y": "64",
+            "r.0.8@text-anchor": "middle",
+            "r.0.8@fill": "#ffffff",
+            "r.0.8@font-size": "16",
+            "r.0.8@font-weight": "600",
+            "r.0.8@data-role": "gauge-value",
+            "r.0.8#": "--",
+            "r.1@": "div class",
+            "r.1@class": "gauge-label",
+            "r.1#": "Cap"
+          },
+          "x_meter": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-level-meter vertical",
+            "r@data-element-id": "x_meter",
+            "r@data-element-type": "level_meter",
+            "r@style": "position: absolute; left: 74%; top: 42%; width: 22%; height: 16%;",
+            "r.0@": "div class",
+            "r.0@class": "meter-label",
+            "r.0#": "Cap",
+            "r.1@": "div class",
+            "r.1@class": "meter-bar",
+            "r.1.0@": "div class data-zone",
+            "r.1.0@class": "meter-segment",
+            "r.1.0@data-zone": "green",
+            "r.1.1@": "div class data-zone",
+            "r.1.1@class": "meter-segment",
+            "r.1.1@data-zone": "green",
+            "r.1.2@": "div class data-zone",
+            "r.1.2@class": "meter-segment",
+            "r.1.2@data-zone": "green",
+            "r.1.3@": "div class data-zone",
+            "r.1.3@class": "meter-segment",
+            "r.1.3@data-zone": "green",
+            "r.1.4@": "div class data-zone",
+            "r.1.4@class": "meter-segment",
+            "r.1.4@data-zone": "green",
+            "r.1.5@": "div class data-zone",
+            "r.1.5@class": "meter-segment",
+            "r.1.5@data-zone": "green",
+            "r.1.6@": "div class data-zone",
+            "r.1.6@class": "meter-segment",
+            "r.1.6@data-zone": "green",
+            "r.1.7@": "div class data-zone",
+            "r.1.7@class": "meter-segment",
+            "r.1.7@data-zone": "green",
+            "r.1.8@": "div class data-zone",
+            "r.1.8@class": "meter-segment",
+            "r.1.8@data-zone": "green",
+            "r.1.9@": "div class data-zone",
+            "r.1.9@class": "meter-segment",
+            "r.1.9@data-zone": "green",
+            "r.1.10@": "div class data-zone",
+            "r.1.10@class": "meter-segment",
+            "r.1.10@data-zone": "green",
+            "r.1.11@": "div class data-zone",
+            "r.1.11@class": "meter-segment",
+            "r.1.11@data-zone": "green",
+            "r.1.12@": "div class data-zone",
+            "r.1.12@class": "meter-segment",
+            "r.1.12@data-zone": "green",
+            "r.1.13@": "div class data-zone",
+            "r.1.13@class": "meter-segment",
+            "r.1.13@data-zone": "green",
+            "r.1.14@": "div class data-zone",
+            "r.1.14@class": "meter-segment",
+            "r.1.14@data-zone": "green",
+            "r.1.15@": "div class data-zone",
+            "r.1.15@class": "meter-segment",
+            "r.1.15@data-zone": "green",
+            "r.1.16@": "div class data-zone",
+            "r.1.16@class": "meter-segment",
+            "r.1.16@data-zone": "yellow",
+            "r.1.17@": "div class data-zone",
+            "r.1.17@class": "meter-segment",
+            "r.1.17@data-zone": "yellow",
+            "r.1.18@": "div class data-zone",
+            "r.1.18@class": "meter-segment",
+            "r.1.18@data-zone": "yellow",
+            "r.1.19@": "div class data-zone",
+            "r.1.19@class": "meter-segment",
+            "r.1.19@data-zone": "red"
+          },
+          "x_fader": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-fader vertical",
+            "r@data-element-id": "x_fader",
+            "r@data-element-type": "fader",
+            "r@style": "position: absolute; left: 2%; top: 62%; width: 22%; height: 16%;",
+            "r.0@": "div class",
+            "r.0@class": "fader-label",
+            "r.0#": "Cap",
+            "r.1@": "div class",
+            "r.1@class": "fader-body",
+            "r.1.0@": "div class",
+            "r.1.0@class": "fader-scale",
+            "r.1.0.0@": "div class style",
+            "r.1.0.0@class": "fader-mark",
+            "r.1.0.0@style": "bottom: 0%;",
+            "r.1.0.0#": "0",
+            "r.1.0.1@": "div class style",
+            "r.1.0.1@class": "fader-mark",
+            "r.1.0.1@style": "bottom: 20%;",
+            "r.1.0.1#": "20",
+            "r.1.0.2@": "div class style",
+            "r.1.0.2@class": "fader-mark",
+            "r.1.0.2@style": "bottom: 40%;",
+            "r.1.0.2#": "40",
+            "r.1.0.3@": "div class style",
+            "r.1.0.3@class": "fader-mark",
+            "r.1.0.3@style": "bottom: 60%;",
+            "r.1.0.3#": "60",
+            "r.1.0.4@": "div class style",
+            "r.1.0.4@class": "fader-mark",
+            "r.1.0.4@style": "bottom: 80%;",
+            "r.1.0.4#": "80",
+            "r.1.0.5@": "div class style",
+            "r.1.0.5@class": "fader-mark",
+            "r.1.0.5@style": "bottom: 100%;",
+            "r.1.0.5#": "100",
+            "r.1.1@": "div class",
+            "r.1.1@class": "fader-track-wrap",
+            "r.1.1.0@": "div class",
+            "r.1.1.0@class": "fader-track",
+            "r.1.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow",
+            "r.1.1.1@class": "fader-handle",
+            "r.1.1.1@role": "slider",
+            "r.1.1.1@aria-label": "Cap",
+            "r.1.1.1@aria-valuemin": "0",
+            "r.1.1.1@aria-valuemax": "100",
+            "r.1.1.1@tabindex": "0",
+            "r.1.1.1@style": "bottom: 0%;",
+            "r.1.1.1@aria-valuenow": "0",
+            "r.2@": "div class",
+            "r.2@class": "fader-value",
+            "r.2#": "0.0"
+          },
+          "x_group": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-group",
+            "r@data-element-id": "x_group",
+            "r@data-element-type": "group",
+            "r@style": "position: absolute; left: 26%; top: 62%; width: 22%; height: 16%;",
+            "r.0@": "div class style",
+            "r.0@class": "group-label",
+            "r.0@style": "top: 0px; left: 0.5714rem;",
+            "r.0#": "Cap"
+          },
+          "x_clock": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-clock",
+            "r@data-element-id": "x_clock",
+            "r@data-element-type": "clock",
+            "r@style": "position: absolute; left: 50%; top: 62%; width: 22%; height: 16%;",
+            "r.0@": "div class",
+            "r.0@class": "clock-display",
+            "r.0#": "2:05 PM"
+          },
+          "x_keypad": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-keypad",
+            "r@data-element-id": "x_keypad",
+            "r@data-element-type": "keypad",
+            "r@style": "position: absolute; left: 74%; top: 62%; width: 22%; height: 16%;",
+            "r.0@": "div class",
+            "r.0@class": "keypad-label",
+            "r.0#": "Cap",
+            "r.1@": "div class",
+            "r.1@class": "keypad-display",
+            "r.2@": "div class",
+            "r.2@class": "keypad-grid",
+            "r.2.0@": "button type class aria-label",
+            "r.2.0@type": "button",
+            "r.2.0@class": "keypad-key",
+            "r.2.0@aria-label": "Key 1",
+            "r.2.0#": "1",
+            "r.2.1@": "button type class aria-label",
+            "r.2.1@type": "button",
+            "r.2.1@class": "keypad-key",
+            "r.2.1@aria-label": "Key 2",
+            "r.2.1#": "2",
+            "r.2.2@": "button type class aria-label",
+            "r.2.2@type": "button",
+            "r.2.2@class": "keypad-key",
+            "r.2.2@aria-label": "Key 3",
+            "r.2.2#": "3",
+            "r.2.3@": "button type class aria-label",
+            "r.2.3@type": "button",
+            "r.2.3@class": "keypad-key",
+            "r.2.3@aria-label": "Key 4",
+            "r.2.3#": "4",
+            "r.2.4@": "button type class aria-label",
+            "r.2.4@type": "button",
+            "r.2.4@class": "keypad-key",
+            "r.2.4@aria-label": "Key 5",
+            "r.2.4#": "5",
+            "r.2.5@": "button type class aria-label",
+            "r.2.5@type": "button",
+            "r.2.5@class": "keypad-key",
+            "r.2.5@aria-label": "Key 6",
+            "r.2.5#": "6",
+            "r.2.6@": "button type class aria-label",
+            "r.2.6@type": "button",
+            "r.2.6@class": "keypad-key",
+            "r.2.6@aria-label": "Key 7",
+            "r.2.6#": "7",
+            "r.2.7@": "button type class aria-label",
+            "r.2.7@type": "button",
+            "r.2.7@class": "keypad-key",
+            "r.2.7@aria-label": "Key 8",
+            "r.2.7#": "8",
+            "r.2.8@": "button type class aria-label",
+            "r.2.8@type": "button",
+            "r.2.8@class": "keypad-key",
+            "r.2.8@aria-label": "Key 9",
+            "r.2.8#": "9",
+            "r.2.9@": "button type class aria-label",
+            "r.2.9@type": "button",
+            "r.2.9@class": "keypad-key keypad-clear",
+            "r.2.9@aria-label": "Clear",
+            "r.2.9#": "C",
+            "r.2.10@": "button type class aria-label",
+            "r.2.10@type": "button",
+            "r.2.10@class": "keypad-key",
+            "r.2.10@aria-label": "Key 0",
+            "r.2.10#": "0",
+            "r.2.11@": "button type class aria-label",
+            "r.2.11@type": "button",
+            "r.2.11@class": "keypad-key keypad-enter",
+            "r.2.11@aria-label": "Enter",
+            "r.2.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+            "r.2.11.0@viewBox": "0 0 24 24",
+            "r.2.11.0@fill": "none",
+            "r.2.11.0@stroke": "currentColor",
+            "r.2.11.0@stroke-width": "2",
+            "r.2.11.0@stroke-linecap": "round",
+            "r.2.11.0@stroke-linejoin": "round",
+            "r.2.11.0@style": "flex-shrink: 0;",
+            "r.2.11.0.0@": "use href href",
+            "r.2.11.0.0@href": "/panel/icons.svg#corner-down-left"
+          }
+        }
+      },
+      {
+        "c": {
+          "x_button": {
+            "r@aria-label": "New",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r#": "New"
+          },
+          "x_label": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r#": "New"
+          },
+          "x_led": {
+            "r@style": "position: absolute; left: 50%; top: 2%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.1#": "New"
+          },
+          "x_slider": {
+            "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 74%; top: 2%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.0#": "New"
+          },
+          "x_nav": {
+            "r@aria-label": "New",
+            "r@style": "position: absolute; left: 2%; top: 22%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r#": "New"
+          },
+          "x_select": {
+            "r@style": "position: absolute; left: 26%; top: 22%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.0#": "New"
+          },
+          "x_text": {
+            "r@style": "position: absolute; left: 50%; top: 22%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.0#": "New"
+          },
+          "x_image": {
+            "r@style": "position: absolute; left: 74%; top: 22%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;"
+          },
+          "x_preset": {
+            "r@style": "white-space: pre-line; line-height: 1.15; position: absolute; left: 2%; top: 42%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r#": "New"
+          },
+          "x_list": {
+            "r@style": "position: absolute; left: 26%; top: 42%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.0#": "New"
+          },
+          "x_gauge": {
+            "r@style": "position: absolute; left: 50%; top: 42%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.1#": "New"
+          },
+          "x_meter": {
+            "r@style": "position: absolute; left: 74%; top: 42%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.0#": "New"
+          },
+          "x_fader": {
+            "r@style": "position: absolute; left: 2%; top: 62%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.0#": "New"
+          },
+          "x_group": {
+            "r@style": "position: absolute; left: 26%; top: 62%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.0#": "New"
+          },
+          "x_clock": {
+            "r@style": "position: absolute; left: 50%; top: 62%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;"
+          },
+          "x_keypad": {
+            "r@style": "position: absolute; left: 74%; top: 62%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.5; display: none;",
+            "r.0#": "New"
+          }
+        }
+      },
+      {
+        "c": {
+          "x_button": {
+            "r@aria-label": "Newer",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r#": "Newer"
+          },
+          "x_label": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r#": "Newer"
+          },
+          "x_led": {
+            "r@style": "position: absolute; left: 50%; top: 2%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.1#": "Newer"
+          },
+          "x_slider": {
+            "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 74%; top: 2%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Newer"
+          },
+          "x_nav": {
+            "r@aria-label": "Newer",
+            "r@style": "position: absolute; left: 2%; top: 22%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r#": "Newer"
+          },
+          "x_select": {
+            "r@style": "position: absolute; left: 26%; top: 22%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Newer"
+          },
+          "x_text": {
+            "r@style": "position: absolute; left: 50%; top: 22%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Newer"
+          },
+          "x_image": {
+            "r@style": "position: absolute; left: 74%; top: 22%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;"
+          },
+          "x_preset": {
+            "r@style": "white-space: pre-line; line-height: 1.15; position: absolute; left: 2%; top: 42%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r#": "Newer"
+          },
+          "x_list": {
+            "r@style": "position: absolute; left: 26%; top: 42%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Newer"
+          },
+          "x_gauge": {
+            "r@style": "position: absolute; left: 50%; top: 42%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.1#": "Newer"
+          },
+          "x_meter": {
+            "r@style": "position: absolute; left: 74%; top: 42%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Newer"
+          },
+          "x_fader": {
+            "r@style": "position: absolute; left: 2%; top: 62%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Newer"
+          },
+          "x_group": {
+            "r@style": "position: absolute; left: 26%; top: 62%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Newer"
+          },
+          "x_clock": {
+            "r@style": "position: absolute; left: 50%; top: 62%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;"
+          },
+          "x_keypad": {
+            "r@style": "position: absolute; left: 74%; top: 62%; width: 22%; height: 16%; background-color: rgb(17, 34, 51); color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Newer"
+          }
+        }
+      },
+      {
+        "c": {
+          "x_button": {
+            "r@aria-label": "Cap",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r#": "Cap"
+          },
+          "x_label": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r#": "Cap"
+          },
+          "x_led": {
+            "r@style": "position: absolute; left: 50%; top: 2%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.1#": "Cap"
+          },
+          "x_slider": {
+            "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 74%; top: 2%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Cap"
+          },
+          "x_nav": {
+            "r@aria-label": "Cap",
+            "r@style": "position: absolute; left: 2%; top: 22%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r#": "Cap"
+          },
+          "x_select": {
+            "r@style": "position: absolute; left: 26%; top: 22%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Cap"
+          },
+          "x_text": {
+            "r@style": "position: absolute; left: 50%; top: 22%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Cap"
+          },
+          "x_image": {
+            "r@style": "position: absolute; left: 74%; top: 22%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;"
+          },
+          "x_preset": {
+            "r@style": "white-space: pre-line; line-height: 1.15; position: absolute; left: 2%; top: 42%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r#": "1\nCap"
+          },
+          "x_list": {
+            "r@style": "position: absolute; left: 26%; top: 42%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Cap"
+          },
+          "x_gauge": {
+            "r@style": "position: absolute; left: 50%; top: 42%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.1#": "Cap"
+          },
+          "x_meter": {
+            "r@style": "position: absolute; left: 74%; top: 42%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Cap"
+          },
+          "x_fader": {
+            "r@style": "position: absolute; left: 2%; top: 62%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Cap"
+          },
+          "x_group": {
+            "r@style": "position: absolute; left: 26%; top: 62%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Cap"
+          },
+          "x_clock": {
+            "r@style": "position: absolute; left: 50%; top: 62%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;"
+          },
+          "x_keypad": {
+            "r@style": "position: absolute; left: 74%; top: 62%; width: 22%; height: 16%; color: rgb(68, 85, 102); opacity: 0.25;",
+            "r.0#": "Cap"
+          }
+        }
+      },
+      {
+        "c": {
+          "x_button": {
+            "r@aria-label": "Again",
+            "r#": "Again"
+          },
+          "x_label": {
+            "r#": "Again"
+          },
+          "x_led": {
+            "r.1#": "Again"
+          },
+          "x_slider": {
+            "r.0#": "Again"
+          },
+          "x_nav": {
+            "r@aria-label": "Again",
+            "r#": "Again"
+          },
+          "x_select": {
+            "r.0#": "Again"
+          },
+          "x_text": {
+            "r.0#": "Again"
+          },
+          "x_preset": {
+            "r#": "Again"
+          },
+          "x_list": {
+            "r.0#": "Again"
+          },
+          "x_gauge": {
+            "r.1#": "Again"
+          },
+          "x_meter": {
+            "r.0#": "Again"
+          },
+          "x_fader": {
+            "r.0#": "Again"
+          },
+          "x_group": {
+            "r.0#": "Again"
+          },
+          "x_keypad": {
+            "r.0#": "Again"
+          }
+        }
+      },
+      {
+        "c": {
+          "x_button": {
+            "r@aria-label": "Cap",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Cap"
+          },
+          "x_label": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Cap"
+          },
+          "x_led": {
+            "r@style": "position: absolute; left: 50%; top: 2%; width: 22%; height: 16%;",
+            "r.1#": "Cap"
+          },
+          "x_slider": {
+            "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 74%; top: 2%; width: 22%; height: 16%;",
+            "r.0#": "Cap"
+          },
+          "x_nav": {
+            "r@aria-label": "Cap",
+            "r@style": "position: absolute; left: 2%; top: 22%; width: 22%; height: 16%;",
+            "r#": "Cap"
+          },
+          "x_select": {
+            "r@style": "position: absolute; left: 26%; top: 22%; width: 22%; height: 16%;",
+            "r.0#": "Cap"
+          },
+          "x_text": {
+            "r@style": "position: absolute; left: 50%; top: 22%; width: 22%; height: 16%;",
+            "r.0#": "Cap"
+          },
+          "x_image": {
+            "r@style": "position: absolute; left: 74%; top: 22%; width: 22%; height: 16%;"
+          },
+          "x_preset": {
+            "r@style": "white-space: pre-line; line-height: 1.15; position: absolute; left: 2%; top: 42%; width: 22%; height: 16%;",
+            "r#": "1\nCap"
+          },
+          "x_list": {
+            "r@style": "position: absolute; left: 26%; top: 42%; width: 22%; height: 16%;",
+            "r.0#": "Cap"
+          },
+          "x_gauge": {
+            "r@style": "position: absolute; left: 50%; top: 42%; width: 22%; height: 16%;",
+            "r.1#": "Cap"
+          },
+          "x_meter": {
+            "r@style": "position: absolute; left: 74%; top: 42%; width: 22%; height: 16%;",
+            "r.0#": "Cap"
+          },
+          "x_fader": {
+            "r@style": "position: absolute; left: 2%; top: 62%; width: 22%; height: 16%;",
+            "r.0#": "Cap"
+          },
+          "x_group": {
+            "r@style": "position: absolute; left: 26%; top: 62%; width: 22%; height: 16%;",
+            "r.0#": "Cap"
+          },
+          "x_clock": {
+            "r@style": "position: absolute; left: 50%; top: 62%; width: 22%; height: 16%;"
+          },
+          "x_keypad": {
+            "r@style": "position: absolute; left: 74%; top: 62%; width: 22%; height: 16%;",
+            "r.0#": "Cap"
+          }
+        }
+      },
+      {}
+    ],
+    "values": [
+      {
+        "c": {
+          "b": {
+            "r@": "button type class data-element-id aria-label data-element-type style",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "b",
+            "r@aria-label": "Go",
+            "r@data-element-type": "button",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Go"
+          },
+          "l": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-label",
+            "r@data-element-id": "l",
+            "r@data-element-type": "label",
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Words"
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r#": null
+          },
+          "l": {
+            "r#": null
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r@aria-label": "0",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; opacity: 0;",
+            "r#": "0"
+          },
+          "l": {
+            "r#": "0"
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r@aria-label": "false",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; opacity: 0; display: none;",
+            "r#": "false"
+          },
+          "l": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%; display: none;",
+            "r#": "false"
+          }
+        }
+      },
+      {},
+      {
+        "c": {
+          "b": {
+            "r@aria-label": "123",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; opacity: 1;",
+            "r#": "123"
+          },
+          "l": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r#": "123"
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r@aria-label": "no",
+            "r#": "no"
+          },
+          "l": {
+            "r#": "no"
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r@aria-label": "true",
+            "r#": "true"
+          },
+          "l": {
+            "r#": "true"
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r@aria-label": "FALSE",
+            "r#": "FALSE"
+          },
+          "l": {
+            "r#": "FALSE"
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r@aria-label": "Mixed <b>case</b>",
+            "r#": "Mixed <b>case</b>"
+          },
+          "l": {
+            "r#": "Mixed <b>case</b>"
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r@aria-label": "Go",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Go"
+          },
+          "l": {
+            "r#": "Words"
+          }
+        }
+      },
+      {}
+    ],
+    "button_words": [
+      {
+        "c": {
+          "icon": {
+            "r@": "button type class data-element-id aria-label style data-element-type",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "icon",
+            "r@aria-label": "Power",
+            "r@style": "gap: 0.4286rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "button",
+            "r.0@": "svg style viewBox fill stroke stroke-width stroke-linecap stroke-linejoin",
+            "r.0@style": "width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;",
+            "r.0@viewBox": "0 0 24 24",
+            "r.0@fill": "none",
+            "r.0@stroke": "currentColor",
+            "r.0@stroke-width": "2",
+            "r.0@stroke-linecap": "round",
+            "r.0@stroke-linejoin": "round",
+            "r.0.0@": "use href href",
+            "r.0.0@href": "/panel/icons.svg#power",
+            "r.1@": "span class",
+            "r.1@class": "panel-label-span",
+            "r.1#": "Power"
+          },
+          "icon_only": {
+            "r@": "button type class data-element-id aria-label style data-element-type",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "icon_only",
+            "r@aria-label": "icon_only",
+            "r@style": "gap: 0.4286rem; position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "button",
+            "r.0@": "svg style viewBox fill stroke stroke-width stroke-linecap stroke-linejoin",
+            "r.0@style": "width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;",
+            "r.0@viewBox": "0 0 24 24",
+            "r.0@fill": "none",
+            "r.0@stroke": "currentColor",
+            "r.0@stroke-width": "2",
+            "r.0@stroke-linecap": "round",
+            "r.0@stroke-linejoin": "round",
+            "r.0.0@": "use href href",
+            "r.0.0@href": "/panel/icons.svg#power",
+            "r.1@": "span class",
+            "r.1@class": "panel-label-span"
+          },
+          "bare": {
+            "r@": "button type class data-element-id aria-label data-element-type style",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "bare",
+            "r@aria-label": "bare",
+            "r@data-element-type": "button",
+            "r@style": "position: absolute; left: 50%; top: 2%; width: 22%; height: 16%;"
+          },
+          "picture": {
+            "r@": "button type class data-element-id aria-label style data-element-type",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "picture",
+            "r@aria-label": "Pic",
+            "r@style": "background-image: url(\"/p.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; position: absolute; left: 74%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "button"
+          }
+        }
+      },
+      {
+        "c": {
+          "icon": {
+            "r@aria-label": "Set",
+            "r.1#": "Set"
+          }
+        }
+      },
+      {
+        "c": {
+          "icon_only": {
+            "r@aria-label": "Set",
+            "r.1#": "Set"
+          }
+        }
+      },
+      {
+        "c": {
+          "bare": {
+            "r@aria-label": "Set",
+            "r#": "Set"
+          }
+        }
+      },
+      {
+        "c": {
+          "picture": {
+            "r@aria-label": "Set",
+            "r#": "Set"
+          }
+        }
+      },
+      {
+        "c": {
+          "icon": {
+            "r@aria-label": "Power",
+            "r.1#": null
+          }
+        }
+      },
+      {
+        "c": {
+          "icon_only": {
+            "r@aria-label": "icon_only",
+            "r.1#": null
+          }
+        }
+      },
+      {
+        "c": {
+          "bare": {
+            "r@aria-label": "bare",
+            "r#": null
+          }
+        }
+      },
+      {
+        "c": {
+          "picture": {
+            "r@aria-label": "Pic",
+            "r#": null
+          }
+        }
+      },
+      {
+        "c": {
+          "icon": {
+            "r.1#": "Power"
+          }
+        }
+      }
+    ],
+    "rich_label": [
+      {
+        "c": {
+          "rich": {
+            "r@": "div class data-element-id style data-element-type",
+            "r@class": "panel-element panel-label",
+            "r@data-element-id": "rich",
+            "r@style": "white-space: pre-wrap; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "label",
+            "r#": "Plain  and ",
+            "r.0@": "strong",
+            "r.0#": "bold",
+            "r.1@": "em",
+            "r.1#": "soft"
+          },
+          "flat": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-label",
+            "r@data-element-id": "flat",
+            "r@data-element-type": "label",
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Plain **bold**"
+          },
+          "empty": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-label",
+            "r@data-element-id": "empty",
+            "r@data-element-type": "label",
+            "r@style": "position: absolute; left: 50%; top: 2%; width: 22%; height: 16%;"
+          },
+          "rich_none": {
+            "r@": "div class data-element-id style data-element-type",
+            "r@class": "panel-element panel-label",
+            "r@data-element-id": "rich_none",
+            "r@style": "white-space: pre-line; position: absolute; left: 74%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "label"
+          }
+        }
+      },
+      {
+        "c": {
+          "rich": {
+            "r#": "Over *it*",
+            "r.0@": null,
+            "r.0#": null,
+            "r.1@": null,
+            "r.1#": null
+          },
+          "flat": {
+            "r#": "Over"
+          },
+          "empty": {
+            "r#": "Filled"
+          },
+          "rich_none": {
+            "r#": "**x**"
+          }
+        }
+      },
+      {
+        "c": {
+          "rich": {
+            "r#": "Again"
+          }
+        }
+      },
+      {
+        "c": {
+          "rich": {
+            "r#": "Plain  and ",
+            "r.0@": "strong",
+            "r.0#": "bold",
+            "r.1@": "em",
+            "r.1#": "soft"
+          },
+          "flat": {
+            "r#": "Plain **bold**"
+          },
+          "empty": {
+            "r#": null
+          },
+          "rich_none": {
+            "r#": null
+          }
+        }
+      }
+    ],
+    "no_caption": [
+      {
+        "c": {
+          "s": {
+            "r@": "div class data-element-id style data-element-type",
+            "r@class": "panel-element panel-slider",
+            "r@data-element-id": "s",
+            "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "slider",
+            "r.0@": "div class",
+            "r.0@class": "slider-track-wrapper",
+            "r.0.0@": "div class",
+            "r.0.0@class": "slider-track",
+            "r.0.0.0@": "div class style",
+            "r.0.0.0@class": "slider-fill",
+            "r.0.0.0@style": "width: 0%;",
+            "r.0.1@": "input type aria-label min max step aria-valuetext",
+            "r.0.1@type": "range",
+            "r.0.1@aria-label": "s",
+            "r.0.1@min": "0",
+            "r.0.1@max": "100",
+            "r.0.1@step": "1",
+            "r.0.1@aria-valuetext": "0"
+          },
+          "g": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-gauge",
+            "r@data-element-id": "g",
+            "r@data-element-type": "gauge",
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r.0@": "svg viewBox style",
+            "r.0@viewBox": "0 0 120 120",
+            "r.0@style": "width: 100%; height: 100%; max-width: 100%; max-height: 100%;",
+            "r.0.0@": "path d fill stroke stroke-width stroke-linecap",
+            "r.0.0@d": "M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996",
+            "r.0.0@fill": "none",
+            "r.0.0@stroke": "#333333",
+            "r.0.0@stroke-width": "8",
+            "r.0.0@stroke-linecap": "round",
+            "r.0.1@": "path fill stroke stroke-width stroke-linecap data-role",
+            "r.0.1@fill": "none",
+            "r.0.1@stroke": "#4CAF50",
+            "r.0.1@stroke-width": "8",
+            "r.0.1@stroke-linecap": "round",
+            "r.0.1@data-role": "gauge-fg",
+            "r.0.2@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.2@x1": "21.894882233484694",
+            "r.0.2@y1": "82",
+            "r.0.2@x2": "11.50257738807143",
+            "r.0.2@y2": "88",
+            "r.0.2@stroke": "#666",
+            "r.0.2@stroke-width": "1",
+            "r.0.3@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.3@x1": "18.15351328301324",
+            "r.0.3@y1": "46.40325224750232",
+            "r.0.3@x2": "6.740835087471396",
+            "r.0.3@y2": "42.69504831500295",
+            "r.0.3@stroke": "#666",
+            "r.0.3@stroke-width": "1",
+            "r.0.4@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.4@x1": "42.10358770466476",
+            "r.0.4@y1": "19.80399986372558",
+            "r.0.4@x2": "37.22274798775515",
+            "r.0.4@y2": "8.841454372014368",
+            "r.0.4@stroke": "#666",
+            "r.0.4@stroke-width": "1",
+            "r.0.5@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.5@x1": "77.89641229533515",
+            "r.0.5@y1": "19.803999863725537",
+            "r.0.5@x2": "82.77725201224474",
+            "r.0.5@y2": "8.841454372014319",
+            "r.0.5@stroke": "#666",
+            "r.0.5@stroke-width": "1",
+            "r.0.6@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.6@x1": "101.84648671698676",
+            "r.0.6@y1": "46.40325224750231",
+            "r.0.6@x2": "113.2591649125286",
+            "r.0.6@y2": "42.695048315002936",
+            "r.0.6@stroke": "#666",
+            "r.0.6@stroke-width": "1",
+            "r.0.7@": "line x1 y1 x2 y2 stroke stroke-width",
+            "r.0.7@x1": "98.10511776651532",
+            "r.0.7@y1": "81.99999999999997",
+            "r.0.7@x2": "108.49742261192858",
+            "r.0.7@y2": "87.99999999999996",
+            "r.0.7@stroke": "#666",
+            "r.0.7@stroke-width": "1",
+            "r.0.8@": "text x y text-anchor fill font-size font-weight data-role",
+            "r.0.8@x": "60",
+            "r.0.8@y": "64",
+            "r.0.8@text-anchor": "middle",
+            "r.0.8@fill": "#ffffff",
+            "r.0.8@font-size": "16",
+            "r.0.8@font-weight": "600",
+            "r.0.8@data-role": "gauge-value",
+            "r.0.8#": "--"
+          },
+          "k": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-keypad",
+            "r@data-element-id": "k",
+            "r@data-element-type": "keypad",
+            "r@style": "position: absolute; left: 50%; top: 2%; width: 22%; height: 16%;",
+            "r.0@": "div class",
+            "r.0@class": "keypad-display",
+            "r.1@": "div class",
+            "r.1@class": "keypad-grid",
+            "r.1.0@": "button type class aria-label",
+            "r.1.0@type": "button",
+            "r.1.0@class": "keypad-key",
+            "r.1.0@aria-label": "Key 1",
+            "r.1.0#": "1",
+            "r.1.1@": "button type class aria-label",
+            "r.1.1@type": "button",
+            "r.1.1@class": "keypad-key",
+            "r.1.1@aria-label": "Key 2",
+            "r.1.1#": "2",
+            "r.1.2@": "button type class aria-label",
+            "r.1.2@type": "button",
+            "r.1.2@class": "keypad-key",
+            "r.1.2@aria-label": "Key 3",
+            "r.1.2#": "3",
+            "r.1.3@": "button type class aria-label",
+            "r.1.3@type": "button",
+            "r.1.3@class": "keypad-key",
+            "r.1.3@aria-label": "Key 4",
+            "r.1.3#": "4",
+            "r.1.4@": "button type class aria-label",
+            "r.1.4@type": "button",
+            "r.1.4@class": "keypad-key",
+            "r.1.4@aria-label": "Key 5",
+            "r.1.4#": "5",
+            "r.1.5@": "button type class aria-label",
+            "r.1.5@type": "button",
+            "r.1.5@class": "keypad-key",
+            "r.1.5@aria-label": "Key 6",
+            "r.1.5#": "6",
+            "r.1.6@": "button type class aria-label",
+            "r.1.6@type": "button",
+            "r.1.6@class": "keypad-key",
+            "r.1.6@aria-label": "Key 7",
+            "r.1.6#": "7",
+            "r.1.7@": "button type class aria-label",
+            "r.1.7@type": "button",
+            "r.1.7@class": "keypad-key",
+            "r.1.7@aria-label": "Key 8",
+            "r.1.7#": "8",
+            "r.1.8@": "button type class aria-label",
+            "r.1.8@type": "button",
+            "r.1.8@class": "keypad-key",
+            "r.1.8@aria-label": "Key 9",
+            "r.1.8#": "9",
+            "r.1.9@": "button type class aria-label",
+            "r.1.9@type": "button",
+            "r.1.9@class": "keypad-key keypad-clear",
+            "r.1.9@aria-label": "Clear",
+            "r.1.9#": "C",
+            "r.1.10@": "button type class aria-label",
+            "r.1.10@type": "button",
+            "r.1.10@class": "keypad-key",
+            "r.1.10@aria-label": "Key 0",
+            "r.1.10#": "0",
+            "r.1.11@": "button type class aria-label",
+            "r.1.11@type": "button",
+            "r.1.11@class": "keypad-key keypad-enter",
+            "r.1.11@aria-label": "Enter",
+            "r.1.11.0@": "svg viewBox fill stroke stroke-width stroke-linecap stroke-linejoin style",
+            "r.1.11.0@viewBox": "0 0 24 24",
+            "r.1.11.0@fill": "none",
+            "r.1.11.0@stroke": "currentColor",
+            "r.1.11.0@stroke-width": "2",
+            "r.1.11.0@stroke-linecap": "round",
+            "r.1.11.0@stroke-linejoin": "round",
+            "r.1.11.0@style": "flex-shrink: 0;",
+            "r.1.11.0.0@": "use href href",
+            "r.1.11.0.0@href": "/panel/icons.svg#corner-down-left"
+          }
+        }
+      },
+      {
+        "c": {
+          "s": {
+            "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; background-color: rgb(1, 1, 1);"
+          }
+        }
+      },
+      {
+        "c": {
+          "s": {
+            "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+          }
+        }
+      }
+    ],
+    "look_underneath": [
+      {
+        "c": {
+          "lit": {
+            "r@": "button type class data-element-id aria-label style data-element-type",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "lit",
+            "r@aria-label": "Blank",
+            "r@style": "background-color: rgb(66, 66, 66); color: rgb(238, 238, 238); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "button",
+            "r#": "Blank"
+          }
+        }
+      },
+      {
+        "c": {
+          "lit": {
+            "r@aria-label": "Blanked",
+            "r@style": "background-color: rgb(255, 152, 0); color: rgb(0, 0, 0); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Blanked"
+          }
+        }
+      },
+      {
+        "c": {
+          "lit": {
+            "r@aria-label": "Script",
+            "r@style": "background-color: rgb(0, 0, 255); color: rgb(0, 255, 0); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Script"
+          }
+        }
+      },
+      {},
+      {
+        "c": {
+          "lit": {
+            "r@style": "background-color: rgb(66, 66, 66); color: rgb(0, 255, 0); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+          }
+        }
+      },
+      {
+        "c": {
+          "lit": {
+            "r@style": "background-color: rgb(255, 152, 0); color: rgb(0, 255, 0); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+          }
+        }
+      },
+      {
+        "c": {
+          "lit": {
+            "r@aria-label": "Blanked",
+            "r@style": "background-color: rgb(255, 152, 0); color: rgb(0, 0, 0); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Blanked"
+          }
+        }
+      },
+      {
+        "c": {
+          "lit": {
+            "r@aria-label": "Blank",
+            "r@style": "background-color: rgb(66, 66, 66); color: rgb(238, 238, 238); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Blank"
+          }
+        }
+      }
+    ],
+    "visible_when_underneath": [
+      {
+        "c": {
+          "vw": {
+            "r@": "button type class data-element-id aria-label data-element-type style",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "vw",
+            "r@aria-label": "Shown",
+            "r@data-element-type": "button",
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Shown"
+          },
+          "plain": {
+            "r@": "button type class data-element-id aria-label data-element-type style",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "plain",
+            "r@aria-label": "Plain",
+            "r@data-element-type": "button",
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Plain"
+          }
+        }
+      },
+      {
+        "c": {
+          "vw": {
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; display: none;"
+          },
+          "plain": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%; display: none;"
+          }
+        }
+      },
+      {},
+      {
+        "c": {
+          "vw": {
+            "r@style": "position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;"
+          },
+          "plain": {
+            "r@style": "position: absolute; left: 26%; top: 2%; width: 22%; height: 16%;"
+          }
+        }
+      },
+      {},
+      {},
+      {}
+    ],
+    "set_before_drawing_and_redrawn": [
+      {
+        "c": {
+          "b": {
+            "r@": "button type class data-element-id aria-label style data-element-type",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "b",
+            "r@aria-label": "Early",
+            "r@style": "background-color: rgb(51, 0, 0); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "button",
+            "r#": "Early"
+          },
+          "mst": {
+            "r@": "div class data-element-id data-element-type style",
+            "r@class": "panel-element panel-label",
+            "r@data-element-id": "mst",
+            "r@data-element-type": "label",
+            "r@style": "position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;",
+            "r#": "M!"
+          }
+        }
+      },
+      {},
+      {
+        "c": {
+          "b": {
+            "r@style": "background-color: rgb(51, 0, 0); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; opacity: 0.3;"
+          }
+        }
+      },
+      {},
+      {
+        "c": {
+          "b": {
+            "r@aria-label": "Go",
+            "r@style": "background-color: rgb(34, 34, 34); position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r#": "Go"
+          },
+          "mst": {
+            "r#": "Master"
+          }
+        }
+      },
+      {}
+    ],
+    "design_canvas": [
+      {
+        "c": {
+          "b": {
+            "r@": "button type class data-element-id data-avc-text-src aria-label style data-element-type",
+            "r@type": "button",
+            "r@class": "panel-element panel-button",
+            "r@data-element-id": "b",
+            "r@data-avc-text-src": "[\"label\"]",
+            "r@aria-label": "Go",
+            "r@style": "gap: 0.4286rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r@data-element-type": "button",
+            "r.0@": "svg style viewBox fill stroke stroke-width stroke-linecap stroke-linejoin",
+            "r.0@style": "width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;",
+            "r.0@viewBox": "0 0 24 24",
+            "r.0@fill": "none",
+            "r.0@stroke": "currentColor",
+            "r.0@stroke-width": "2",
+            "r.0@stroke-linecap": "round",
+            "r.0@stroke-linejoin": "round",
+            "r.0.0@": "use href href",
+            "r.0.0@href": "/panel/icons.svg#power",
+            "r.1@": "span class",
+            "r.1@class": "panel-label-span",
+            "r.1#": "Go"
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r@": "button type class data-element-id aria-label style data-element-type",
+            "r@data-avc-text-src": null,
+            "r@aria-label": "Edit",
+            "r@style": "gap: 0.4286rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%; background-color: rgb(18, 49, 35);",
+            "r.1#": "Edit"
+          }
+        }
+      },
+      {
+        "c": {
+          "b": {
+            "r@": "button type class data-element-id aria-label style data-element-type data-avc-text-src",
+            "r@aria-label": "Go",
+            "r@style": "gap: 0.4286rem; position: absolute; left: 2%; top: 2%; width: 22%; height: 16%;",
+            "r.1#": "Go",
+            "r@data-avc-text-src": "[\"label\"]"
+          }
+        }
+      }
+    ]
+  }
+}

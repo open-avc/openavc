@@ -9026,6 +9026,214 @@ Object.assign(tests, {
     },
 });
 
+// --- ui.<id>.* overrides, as a script or macro sets and clears them ----------
+//
+// A script writes ui.<element id>.label, bg_color, text_color, opacity or
+// visible; the panel draws it over the control, and when the key is cleared
+// gives the control back what it would show had the override never been set.
+// Each case draws a page, sends state the way the server does (state.update,
+// state.delete) and records, step by step, what changed on every control's
+// nodes, in panel_override_pins.json, recorded from the code before it moved.
+
+const OVERRIDE_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_override_pins.json'), 'utf8'));
+
+/** One control of each kind that takes an override, with a caption where it has one. */
+const OVERRIDE_TYPES = [
+    { id: 'x_button', type: 'button', label: 'Cap' },
+    { id: 'x_label', type: 'label', text: 'Cap' },
+    { id: 'x_led', type: 'status_led', label: 'Cap' },
+    { id: 'x_slider', type: 'slider', label: 'Cap', min: 0, max: 100 },
+    { id: 'x_nav', type: 'page_nav', label: 'Cap', target_page: 'main' },
+    { id: 'x_select', type: 'select', label: 'Cap', options: [{ label: 'A', value: 'a' }] },
+    { id: 'x_text', type: 'text_input', label: 'Cap' },
+    { id: 'x_image', type: 'image', label: 'Cap' },
+    { id: 'x_preset', type: 'camera_preset', label: 'Cap', preset_number: 1 },
+    { id: 'x_list', type: 'list', label: 'Cap' },
+    { id: 'x_gauge', type: 'gauge', label: 'Cap' },
+    { id: 'x_meter', type: 'level_meter', label: 'Cap' },
+    { id: 'x_fader', type: 'fader', label: 'Cap' },
+    { id: 'x_group', type: 'group', label: 'Cap' },
+    { id: 'x_clock', type: 'clock', label: 'Cap' },
+    { id: 'x_keypad', type: 'keypad', label: 'Cap' },
+];
+
+/** The five override keys for an element, set to `values` (missing ones left alone). */
+function overrideKeys(id, values) {
+    const out = {};
+    for (const [prop, value] of Object.entries(values)) out[`ui.${id}.${prop}`] = value;
+    return out;
+}
+
+/**
+ * A page of `elements` drawn live (or on the design canvas with `edit`), with
+ * `state` in place first, and a recorder: `look()` notes what changed on each
+ * control's nodes since the last look (`c`, by element id), and `set`,
+ * `clear`, `redraw` drive it the way the server and the panel do.
+ */
+function overrideMount({ elements, state, edit, masters }) {
+    const app = mkApp();
+    app.editMode = !!edit;
+    app.send = () => {};
+    const placements = {};
+    elements.forEach((e, i) => { placements[e.id] = { x: 2 + (i % 4) * 24, y: 2 + Math.floor(i / 4) * 20, w: 22, h: 16 }; });
+    const proj = project({ elements, placements });
+    if (masters) proj.ui.master_elements = masters;
+    app.state = { ...(state || {}) };
+    renderProject(app, proj);
+    const ids = [...elements, ...(masters || [])].map((e) => e.id);
+    const m = { app, seen: {}, steps: [] };
+    m.look = (extra) => {
+        const step = {};
+        const changed = {};
+        for (const id of ids) {
+            const node = app.root.querySelector(`[data-element-id="${window.CSS.escape(id)}"]`);
+            const now = node ? nodeSnapshot(node) : { gone: '1' };
+            const was = m.seen[id] || {};
+            const diff = {};
+            for (const k of new Set([...Object.keys(was), ...Object.keys(now)])) {
+                if (was[k] !== now[k]) diff[k] = now[k] ?? null;
+            }
+            m.seen[id] = now;
+            if (Object.keys(diff).length) changed[id] = diff;
+        }
+        if (Object.keys(changed).length) step.c = changed;
+        if (extra) Object.assign(step, extra);
+        m.steps.push(step);
+    };
+    m.set = (changes) => { app.handleMessage({ type: 'state.update', changes }); m.look(); };
+    m.clear = (keys) => { app.handleMessage({ type: 'state.delete', keys }); m.look(); };
+    m.redraw = () => { app.renderCurrentPage(); m.look(); };
+    m.look();
+    return m;
+}
+
+/** One override case, on the harness's clock: a clock control draws the time. */
+function overrideCase(got, name, opts, script) {
+    withFakeTime(() => {
+        const m = overrideMount(opts);
+        try {
+            script(m);
+        } catch (e) {
+            m.steps.push({ threw: String(e && e.message) });
+        }
+        got[name] = m.steps;
+    });
+}
+
+Object.assign(tests, {
+    ui_overrides_apply_and_clear_as_today() {
+        const got = {};
+        const run = (name, opts, script) => overrideCase(got, name, opts, script);
+        const all = (values) => Object.assign({}, ...OVERRIDE_TYPES.map((e) => overrideKeys(e.id, values)));
+        const keysOf = (props) => OVERRIDE_TYPES.flatMap((e) => props.map((p) => `ui.${e.id}.${p}`));
+
+        // Every kind of control: all five set, changed, cleared two at a time, cleared.
+        run('every_type', { elements: OVERRIDE_TYPES }, (m) => {
+            m.set(all({ label: 'New', bg_color: '#112233', text_color: '#445566', opacity: 0.5, visible: false }));
+            m.set(all({ visible: true, opacity: '0.25', label: 'Newer' }));
+            m.clear(keysOf(['label', 'bg_color']));
+            m.set(all({ label: 'Again' }));
+            m.clear(keysOf(['label', 'bg_color', 'text_color', 'opacity', 'visible']));
+            m.clear(keysOf(['label']));
+        });
+        // What a value reads as: words from anything, hidden only for false.
+        run('values', { elements: [{ id: 'b', type: 'button', label: 'Go' }, { id: 'l', type: 'label', text: 'Words' }] }, (m) => {
+            for (const v of ['', 0, false, 'false', 123, 'no', true, 'FALSE', 'Mixed <b>case</b>']) {
+                m.set({ ...overrideKeys('b', { label: v, visible: v, opacity: v, bg_color: v }), ...overrideKeys('l', { label: v, visible: v, text_color: v }) });
+            }
+            m.set({ ...overrideKeys('b', { label: null, visible: null, opacity: null, bg_color: null }), ...overrideKeys('l', { label: null, visible: null, text_color: null }) });
+            m.set(overrideKeys('b', { label: undefined }));
+        });
+        // A button's words beside an icon, with none of its own, or no words drawn at all.
+        run('button_words', {
+            elements: [
+                { id: 'icon', type: 'button', label: 'Power', icon: 'power' },
+                { id: 'icon_only', type: 'button', label: '', icon: 'power' },
+                { id: 'bare', type: 'button' },
+                { id: 'picture', type: 'button', label: 'Pic', button_image: '/p.png', display_mode: 'image' },
+            ],
+        }, (m) => {
+            for (const id of ['icon', 'icon_only', 'bare', 'picture']) m.set(overrideKeys(id, { label: 'Set' }));
+            for (const id of ['icon', 'icon_only', 'bare', 'picture']) m.set(overrideKeys(id, { label: '' }));
+            m.clear(['ui.icon.label', 'ui.icon_only.label', 'ui.bare.label', 'ui.picture.label']);
+        });
+        // A label written as rich text gives back its bold and italic runs.
+        run('rich_label', {
+            elements: [
+                { id: 'rich', type: 'label', text: 'Plain **bold** and *soft*', style: { white_space: 'pre-wrap' } },
+                { id: 'flat', type: 'label', text: 'Plain **bold**' },
+                { id: 'empty', type: 'label', text: '' },
+                { id: 'rich_none', type: 'label', style: { white_space: 'pre-line' } },
+            ],
+        }, (m) => {
+            m.set({ 'ui.rich.label': 'Over *it*', 'ui.flat.label': 'Over', 'ui.empty.label': 'Filled', 'ui.rich_none.label': '**x**' });
+            m.set({ 'ui.rich.label': 'Again' });
+            m.clear(['ui.rich.label', 'ui.flat.label', 'ui.empty.label', 'ui.rich_none.label']);
+        });
+        // A captioned control with no caption has no words to replace.
+        run('no_caption', {
+            elements: [
+                { id: 's', type: 'slider', label: '' },
+                { id: 'g', type: 'gauge' },
+                { id: 'k', type: 'keypad', label: '' },
+            ],
+        }, (m) => {
+            m.set({ ...overrideKeys('s', { label: 'S', bg_color: '#010101' }), ...overrideKeys('g', { label: 'G' }), ...overrideKeys('k', { label: 'K' }) });
+            m.clear(['ui.s.label', 'ui.s.bg_color', 'ui.g.label', 'ui.k.label']);
+        });
+        // A control whose look moved after it was drawn: a cleared override
+        // gives back the look it shows now, and one still set stays on top.
+        const looked = {
+            id: 'lit', type: 'button', label: 'Blank',
+            style: { bg_color: '#424242', text_color: '#eeeeee' },
+            bindings: { show: { look: {
+                key: 'var.blank', condition: { equals: 'on' },
+                style_active: { bg_color: '#ff9800', text_color: '#000000' }, label_active: 'Blanked',
+            } } },
+        };
+        run('look_underneath', { elements: [looked] }, (m) => {
+            m.set({ 'var.blank': 'on' });
+            m.set(overrideKeys('lit', { bg_color: '#0000ff', label: 'Script', text_color: '#00ff00' }));
+            m.set({ 'var.blank': 'off' });
+            m.clear(['ui.lit.bg_color']);
+            m.set({ 'var.blank': 'on' });
+            m.clear(['ui.lit.label', 'ui.lit.text_color']);
+            m.set({ 'var.blank': 'off' });
+        });
+        // Visibility handed back to the control's own visible_when.
+        const shown = {
+            id: 'vw', type: 'button', label: 'Shown',
+            bindings: { show: { visible_when: { conditions: [{ key: 'var.show', operator: 'eq', value: true }] } } },
+        };
+        run('visible_when_underneath', { elements: [shown, { id: 'plain', type: 'button', label: 'Plain' }], state: { 'var.show': true } }, (m) => {
+            m.set({ 'ui.vw.visible': false, 'ui.plain.visible': false });
+            m.set({ 'var.show': false });
+            m.clear(['ui.vw.visible', 'ui.plain.visible']);
+            m.set({ 'ui.vw.visible': true });
+            m.set({ 'var.show': true });
+            m.clear(['ui.vw.visible']);
+        });
+        // Set before the page is drawn, kept through a redraw, and on a master.
+        run('set_before_drawing_and_redrawn', {
+            elements: [{ id: 'b', type: 'button', label: 'Go', style: { bg_color: '#222222' } }],
+            masters: [{ id: 'mst', type: 'label', text: 'Master', pages: '*' }],
+            state: { ...overrideKeys('b', { label: 'Early', bg_color: '#330000' }), 'ui.mst.label': 'M!' },
+        }, (m) => {
+            m.redraw();
+            m.set({ 'ui.b.opacity': 0.3 });
+            m.redraw();
+            m.clear(['ui.b.label', 'ui.b.bg_color', 'ui.b.opacity', 'ui.mst.label']);
+            m.redraw();
+        });
+        // On the design canvas the same overrides draw.
+        run('design_canvas', { elements: [{ id: 'b', type: 'button', label: 'Go', icon: 'power' }], edit: true }, (m) => {
+            m.set(overrideKeys('b', { label: 'Edit', bg_color: '#123123' }));
+            m.clear(['ui.b.label', 'ui.b.bg_color']);
+        });
+        comparePins('override', got, OVERRIDE_PINS.override);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

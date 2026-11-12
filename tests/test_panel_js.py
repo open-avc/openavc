@@ -347,6 +347,10 @@ SCENARIOS = [
     # gives a page with none, and the Theme Studio's control picker, pinned
     # whole (tests/fixtures/panel_theme_pins.json).
     "theme_applies_and_waits_as_today",
+    # ui.<id>.label, bg_color, text_color, opacity and visible set and cleared
+    # on every kind of control, over a look and a visible_when, before a draw
+    # and through a redraw, pinned whole (tests/fixtures/panel_override_pins.json).
+    "ui_overrides_apply_and_clear_as_today",
 ]
 
 
