@@ -14,9 +14,15 @@ by name, defined in that module, whose ``DRIVER_INFO`` has an id. The reload's
 trial import, its final import and its reading of the previous module's id
 all ask it, so a file that passes the trial is one the final import accepts.
 
+The name is also what the IDE files a driver's own log lines under (a driver
+that logs through ``getLogger(__name__)``): the Code view's console matches
+the ``openavc_driver_`` prefix and builds one driver's filter from it, so a
+change to the name changes those two places in ``web/programmer`` too.
+
 Logs as ``openavc.drivers.driver_loader``, where these lines have always
-appeared. ``driver_loader`` re-exports the public names here, and the routes
-and project library import them from there.
+appeared. ``driver_loader`` re-exports ``load_python_driver_file``,
+``reload_python_driver`` and ``python_source_syntax_error``, the import path
+the routes, the project library and the tests use.
 """
 
 from __future__ import annotations
@@ -263,10 +269,13 @@ def reload_python_driver(filepath: Path) -> dict[str, Any]:
         return trial
     new_driver_id = trial.DRIVER_INFO["id"]
 
+    # The previous id is read before its module is dropped: a resident class
+    # the scan cannot read raises here and leaves the module where it was.
     name = module_name(filepath)
-    old_module = sys.modules.pop(name, None)
+    old_module = sys.modules.get(name)
     old_class = driver_class_in(old_module, name) if old_module is not None else None
     old_driver_id = old_class.DRIVER_INFO["id"] if old_class is not None else None
+    sys.modules.pop(name, None)
 
     final_class = load_python_driver_file(filepath)
     if final_class is None:

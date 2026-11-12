@@ -33,7 +33,6 @@ from openavc.drivers.python_modules import (
     load_python_driver_file as load_python_driver_file,
     python_source_syntax_error as python_source_syntax_error,
     reload_python_driver as reload_python_driver,
-    syntax_error_report as syntax_error_report,
 )
 from openavc.drivers.registry import (
     is_driver_registered,

@@ -829,3 +829,47 @@ def test_a_yaml_companion_must_sit_beside_its_driver(tmp_path, declared):
         encoding="utf-8",
     )
     assert driver_companions(main) == [tmp_path / "pin_comp_discovery.py"]
+
+
+def test_a_class_whose_driver_info_is_not_a_dict_stays_resident_through_reloads(
+    tmp_path, isolated
+):
+    """The class scan raises outside the import's guard, so the module stays
+    in sys.modules; a reload reads its old id before dropping it, and raises
+    the same way every time. Pinned as it is."""
+    path = tmp_path / "pin_rl_bad_info.py"
+    path.write_text(HEADER + "class BadInfo(BaseDriver):\n    DRIVER_INFO = None\n", encoding="utf-8")
+    with pytest.raises(AttributeError):
+        load_python_driver_file(path)
+    resident = sys.modules["openavc_driver_pin_rl_bad_info"]
+
+    path.write_text(_driver("FixedDriver", "pin_rl_bad_info", "Fixed at last"), encoding="utf-8")
+    for _ in range(2):
+        with pytest.raises(AttributeError):
+            reload_python_driver(path)
+        assert sys.modules["openavc_driver_pin_rl_bad_info"] is resident
+    assert "pin_rl_bad_info" not in registry._DRIVER_REGISTRY
+
+
+def test_a_same_id_reload_unregisters_nothing(tmp_path, isolated, caplog):
+    path = tmp_path / "pin_rl_quiet.py"
+    path.write_text(_driver("QuietDriver", "pin_rl_quiet", "First"), encoding="utf-8")
+    assert load_python_drivers([tmp_path]) == 1
+    path.write_text(_driver("QuietDriver", "pin_rl_quiet", "Second one"), encoding="utf-8")
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG):
+        assert reload_python_driver(path)["status"] == "reloaded"
+    assert [r.getMessage() for r in caplog.records if r.name == "openavc.drivers.registry"] == [
+        "Registered driver: pin_rl_quiet"
+    ]
+
+
+def test_finding_a_definition_by_id_prefers_the_file_named_for_it(tmp_path):
+    from openavc.drivers.driver_loader import find_driver_file_by_id
+
+    (tmp_path / "pin_a_copy.avcdriver").write_text(_avcdriver("pin_nf", "Copy"), encoding="utf-8")
+    (tmp_path / "pin_nf.avcdriver").write_text(_avcdriver("pin_nf", "Named"), encoding="utf-8")
+    (tmp_path / "pin_z_copy.avcdriver").write_text(_avcdriver("pin_nf", "Later"), encoding="utf-8")
+    assert find_driver_file_by_id([tmp_path], "pin_nf") == tmp_path / "pin_nf.avcdriver"
+    (tmp_path / "pin_nf.avcdriver").unlink()
+    assert find_driver_file_by_id([tmp_path], "pin_nf") == tmp_path / "pin_a_copy.avcdriver"

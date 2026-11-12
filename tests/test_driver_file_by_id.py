@@ -271,3 +271,39 @@ async def test_an_id_that_is_not_a_plain_name_is_refused_by_every_door(
             await door()
         assert refused.value.status_code == 400
     assert "MARK = 'outside'" in outside.read_text(encoding="utf-8")
+
+
+# --- a removed file's module goes with it ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_deleting_a_python_driver_drops_each_copy_s_module(driver_repo):
+    import types
+
+    (driver_repo / "copy-one.py").write_text(_source("one"), encoding="utf-8")
+    (driver_repo / "copy-two.py").write_text(_source("two"), encoding="utf-8")
+    names = ["openavc_driver_copy-one", "openavc_driver_copy-two", "openavc_driver_unrelated"]
+    for name in names:
+        sys.modules[name] = types.ModuleType(name)
+    try:
+        await delete_python_driver("acme_widget")
+        assert [name for name in names if name in sys.modules] == ["openavc_driver_unrelated"]
+    finally:
+        for name in names:
+            sys.modules.pop(name, None)
+
+
+@pytest.mark.asyncio
+async def test_an_upload_drops_the_replaced_copy_s_module(driver_repo):
+    import types
+
+    (driver_repo / "acme-widget-starter.py").write_text(_source("old"), encoding="utf-8")
+    sys.modules["openavc_driver_acme-widget-starter"] = types.ModuleType("stale")
+    try:
+        await upload_driver(_request("acme_widget.py", _source("new").encode()))
+        assert "openavc_driver_acme-widget-starter" not in sys.modules
+        assert "MARK = 'new'" in sys.modules["openavc_driver_acme_widget"].__loader__.get_source(
+            "openavc_driver_acme_widget"
+        )
+    finally:
+        sys.modules.pop("openavc_driver_acme-widget-starter", None)
