@@ -74,6 +74,14 @@ DRIVER = {
 FAST = {"min_seconds": 0.3, "min_cycles": 1, "max_seconds": 30.0, "flush_seconds": 0.05}
 QUICK = {"ping_seconds": 0.05, "flush_seconds": 0.05, "repopulate_seconds": 0.6}
 
+# A liveness probe that notices only after the device is back has to beat the
+# "back, never noticed" end: notice_within from when the device went, plus a
+# third of this. A shared runner can stall the loop a quarter of a second
+# between a probe's last miss and its drop, so this leaves half a second; and
+# back plus this alone still ends before the probe notices, so the late-probe
+# test fails if the notice_within term is lost.
+BACK_UNNOTICED_FOR_A_LATE_PROBE = 1.5
+
 
 @pytest.fixture
 def driver():
@@ -566,7 +574,8 @@ async def test_a_probe_that_notices_after_the_device_is_back_is_waited_for(drive
 
     try:
         test = start_outage(
-            session, run, POWER_CYCLE, pinger=pinger, back_unnoticed_seconds=0.3, **QUICK,
+            session, run, POWER_CYCLE, pinger=pinger,
+            back_unnoticed_seconds=BACK_UNNOTICED_FOR_A_LATE_PROBE, **QUICK,
         )
         assert test.watch["notice_within"] == pytest.approx(2.6)
         test.mark("off")
@@ -623,7 +632,8 @@ async def test_what_a_held_reconnect_reads_before_it_is_announced_counts(driver,
 
     try:
         test = start_outage(
-            session, run, POWER_CYCLE, pinger=pinger, back_unnoticed_seconds=0.3, **QUICK,
+            session, run, POWER_CYCLE, pinger=pinger,
+            back_unnoticed_seconds=BACK_UNNOTICED_FOR_A_LATE_PROBE, **QUICK,
         )
         assert "model" in test.before
         test.mark("off")
