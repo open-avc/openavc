@@ -1,8 +1,9 @@
 """The overrides the IDE offers are the ones the panel actually reads.
 
 `ui.<element id>.<property>` lets a macro or script change a control while the
-program runs. The panel implements that in `evaluateUiOverrides`; the IDE's key
-picker offers it from `uiOverrideProperties.ts`. Those are two hand-written
+program runs. The panel implements that from the `OVERRIDES` table in
+`web/panel/modules/overrides.js`; the IDE's key picker offers it from
+`uiOverrideProperties.ts`. Those are two hand-written
 lists of the same five names, in two languages, and the failure they invite is
 silent both ways: a property the picker offers and the panel ignores is a
 control an integrator sets and watches do nothing, and one the panel reads and
@@ -20,31 +21,28 @@ import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-PANEL_JS = REPO / "openavc" / "web" / "panel" / "panel.js"
+OVERRIDES_JS = REPO / "openavc" / "web" / "panel" / "modules" / "overrides.js"
 PICKER_TS = (
     REPO / "openavc" / "web" / "programmer" / "src" / "components" / "shared"
     / "uiOverrideProperties.ts"
 )
 
-#: `this.state[prefix + 'label']` inside evaluateUiOverrides. The function
-#: reads every override through that one prefix, so this finds all of them.
-_PANEL_READ = re.compile(r"""this\.state\[\s*prefix\s*\+\s*['"]([a-z_]+)['"]\s*\]""")
+#: `name: 'label',` in the OVERRIDES table. The panel reads every override
+#: through that table's names, so this finds all of them.
+_PANEL_READ = re.compile(r"""^\s*\{?\s*name:\s*['"]([a-z_]+)['"]""", re.MULTILINE)
 
 #: `name: "label",` in the TS table.
 _TS_NAME = re.compile(r"""^\s*name:\s*["']([a-z_]+)["']""", re.MULTILINE)
 
 
 def _panel_override_properties() -> set[str]:
-    src = PANEL_JS.read_text(encoding="utf-8")
-    # The DEFINITION, not the call site a few hundred lines above it: both read
-    # "evaluateUiOverrides()" and slicing from the call gets an unrelated body.
-    start = src.index("\n    evaluateUiOverrides() {")
-    # To the next method at the same indentation, so a later `prefix +` in an
-    # unrelated function can't leak in.
-    end = src.index("\n    evaluate", start + 1)
-    body = src[start:end]
+    src = OVERRIDES_JS.read_text(encoding="utf-8")
+    # The table itself, to the line that closes it, so a `name:` elsewhere in
+    # the module can't leak in.
+    start = src.index("export const OVERRIDES = [")
+    body = src[start:src.index("\n];", start)]
     found = set(_PANEL_READ.findall(body))
-    assert found, "found no ui.* overrides in evaluateUiOverrides -- the regex is stale"
+    assert found, "found no ui.* overrides in the OVERRIDES table -- the regex is stale"
     return found
 
 

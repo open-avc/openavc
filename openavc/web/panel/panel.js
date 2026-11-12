@@ -29,6 +29,7 @@ import { TextEditor } from './modules/text_edit.js';
 import { PanelLock } from './modules/lock.js';
 import { SoundPlayer } from './modules/sound.js';
 import { PanelTheme, ThemeStudioPicker } from './modules/theme.js';
+import { UiOverrides } from './modules/overrides.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
@@ -206,6 +207,8 @@ class PanelApp {
         // Editing words in place on the design canvas (modules/text_edit.js):
         // the edit in flight, and the gate both of its doors ask.
         this._textEditor = new TextEditor(this._textEditHost());
+        // ui.<id>.* overrides a script or macro sets (modules/overrides.js).
+        this._overrides = new UiOverrides(this._overridesHost());
         this.holdTimers = {};        // element_id -> interval for hold-repeat mode
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) this._endAllHolds();
@@ -271,6 +274,17 @@ class PanelApp {
             offline: () => this._offline,
             activity: () => this.resetIdleTimer(),
             goIdle: (pageId) => this._returnToIdlePage(pageId),
+        };
+    }
+
+    /** What the ui overrides read from the panel, each at call time. */
+    _overridesHost() {
+        return {
+            state: () => this.state,
+            holds: (el) => this._textEditor.holds(el),
+            setLabelText: (node, text, path) => this._setLabelText(node, text, path),
+            richText: (text) => this._formatRichText(text),
+            redraw: (elementId) => this._redrawElement(elementId),
         };
     }
 
@@ -3896,171 +3910,9 @@ class PanelApp {
         }
     }
 
+    /** Draw every control's ui.<id>.* overrides from current state (modules/overrides.js). */
     evaluateUiOverrides() {
-        for (const [elementId, entry] of Object.entries(this.elementMap)) {
-            const el = entry.el;
-            const elementDef = entry.elementDef;
-            if (!el || !el.style) continue;
-            const prefix = `ui.${elementId}.`;
-
-            // Lazily snapshot the rendered base so an override can be reverted
-            // when its state key is later deleted. Without this, a script/macro
-            // that sets ui.<id>.* and then clears it can't visually revert the
-            // element until a full page re-render (one-way-invariant violation).
-            if (!entry._uiBase) {
-                const words = this._overrideWordsNode(el, elementDef);
-                // A label drawn as rich text is put back from its source, so
-                // its **bold** comes back bold rather than as asterisks.
-                const rich = words === el && elementDef?.type === 'label'
-                    && !!elementDef.style?.white_space && !this._labelSpan(el);
-                entry._uiBase = {
-                    backgroundColor: el.style.backgroundColor,
-                    color: el.style.color,
-                    opacity: el.style.opacity,
-                    display: el.style.display,
-                    words,
-                    label: !words ? null
-                        : rich ? String(elementDef.text ?? '') : this._drawnWords(words),
-                    labelRich: rich,
-                    labelPath: elementDef?.type === 'label' ? ['text'] : ['label'],
-                };
-                entry._uiApplied = new Set();
-            }
-            const base = entry._uiBase;
-            const applied = entry._uiApplied;
-            const isSet = (v) => v !== undefined && v !== null;
-            const labelOverride = this.state[prefix + 'label'];
-            const bgOverride = this.state[prefix + 'bg_color'];
-            const textColorOverride = this.state[prefix + 'text_color'];
-            const opacityOverride = this.state[prefix + 'opacity'];
-            const visibleOverride = this.state[prefix + 'visible'];
-
-            // First, put back what a cleared override was covering.
-            let cleared = false;
-            if (!isSet(labelOverride) && applied.has('label')) {
-                this._writeOverrideWords(el, base.words, base.label, base.labelPath, base.labelRich);
-                applied.delete('label');
-                cleared = true;
-            }
-            if (!isSet(bgOverride) && applied.has('bg')) {
-                el.style.backgroundColor = base.backgroundColor;
-                applied.delete('bg');
-                cleared = true;
-            }
-            if (!isSet(textColorOverride) && applied.has('text')) {
-                el.style.color = base.color;
-                applied.delete('text');
-                cleared = true;
-            }
-            if (!isSet(opacityOverride) && applied.has('opacity')) {
-                el.style.opacity = base.opacity;
-                applied.delete('opacity');
-                cleared = true;
-            }
-            if (!isSet(visibleOverride) && applied.has('visible')) {
-                // Hand display back to a visible_when binding if one governs
-                // this element (the redraw below re-asserts it); otherwise
-                // restore the rendered base.
-                el.style.display = elementDef?.bindings?.show?.visible_when ? '' : base.display;
-                applied.delete('visible');
-                cleared = true;
-            }
-            // The snapshot is the element as first drawn, and a look or a
-            // toggle may have drawn something else since: a Blank All button
-            // lit orange, coloured by a script, then uncoloured, went back to
-            // the grey it had before the screens were blanked. So the
-            // element's own bindings draw again from current state, over the
-            // snapshot, and what shows is what it would show had the override
-            // never been set. The snapshot stays the answer only for what no
-            // binding draws.
-            if (cleared) this._redrawElement(elementId);
-
-            // Then every override still set, over whatever was drawn.
-            if (isSet(labelOverride) && base.words) {
-                // Runtime words with no authored home. The editor refuses these
-                // and says which key is setting them: writing the element's own
-                // label here would be a silent no-op, because this override
-                // would still be covering it. Preserves the image layer and
-                // other element children.
-                this._writeOverrideWords(el, base.words, String(labelOverride), null);
-                applied.add('label');
-            }
-            if (isSet(bgOverride)) {
-                el.style.backgroundColor = String(bgOverride);
-                applied.add('bg');
-            }
-            if (isSet(textColorOverride)) {
-                el.style.color = String(textColorOverride);
-                applied.add('text');
-            }
-            if (isSet(opacityOverride)) {
-                el.style.opacity = String(opacityOverride);
-                applied.add('opacity');
-            }
-            if (isSet(visibleOverride)) {
-                el.style.display = (visibleOverride === false || visibleOverride === 'false')
-                    ? 'none' : '';
-                applied.add('visible');
-            }
-        }
-    }
-
-    /**
-     * Where a control's words are, for a `ui.<id>.label` override: the caption
-     * on a control that carries one (a slider, a dropdown, a meter, a keypad),
-     * the control itself where its words are the control (a button, a page
-     * nav, a camera preset, a label). Null for a control with no words to
-     * replace -- an image, a clock, a frame, or a captioned control given no
-     * caption -- and the override draws nothing there.
-     */
-    _overrideWordsNode(el, elementDef) {
-        if (el._captionNode) return el._captionNode;
-        return PanelApp.OWN_WORDS_TYPES.has(elementDef?.type) ? el : null;
-    }
-
-    static get OWN_WORDS_TYPES() {
-        return new Set(['button', 'page_nav', 'camera_preset', 'label']);
-    }
-
-    /** The span a control with an icon keeps its words in (`renderElementContent`). */
-    _labelSpan(node) {
-        return node.querySelector(':scope > .panel-label-span');
-    }
-
-    /**
-     * The words a node draws, leaving icons and image layers out: the span
-     * beside an icon when there is one, else the text sitting in the node.
-     */
-    _drawnWords(node) {
-        const span = this._labelSpan(node);
-        if (span) return span.textContent;
-        let text = '';
-        for (const child of node.childNodes) {
-            if (child.nodeType === Node.TEXT_NODE) text += child.nodeValue;
-        }
-        return text;
-    }
-
-    /**
-     * Write a control's words for an override, unless an edit holds them.
-     *
-     * Beside an icon the words go in its span, so the icon stays on the side
-     * it was drawn. A rich-text label's bold and italic runs are words too,
-     * so they go with the rest, and `rich` draws the text as rich text again.
-     */
-    _writeOverrideWords(el, node, text, path, rich = false) {
-        if (this._textEditor.holds(el)) return;
-        const span = this._labelSpan(node);
-        if (span) {
-            this._setLabelText(span, text, path);
-            if (node.tagName === 'BUTTON') {
-                node.setAttribute('aria-label', text !== '' ? text : (node._baseAccessibleName || ''));
-            }
-            return;
-        }
-        node.querySelectorAll(':scope > strong, :scope > em').forEach((n) => n.remove());
-        this._setLabelText(node, rich ? '' : text, path);
-        if (rich) node.insertAdjacentHTML('beforeend', this._formatRichText(text));
+        this._overrides.apply(this.elementMap);
     }
 
     evaluateVisibleWhen(b) {
@@ -4696,7 +4548,7 @@ class PanelApp {
      * A caption: which field it came from, and which node holds it. Two facts
      * only the renderer has. The field and the node's mark are the in-place
      * editor's (modules/text_edit.js); the node is also where a
-     * `ui.<id>.label` override writes, which finds it here (`_overrideWordsNode`)
+     * `ui.<id>.label` override writes, which finds it here (`overrideWordsNode` in modules/overrides.js)
      * because a caption is not findable by class.
      */
     _recordCaption(root, captionNode, path) {
