@@ -98,6 +98,13 @@ from openavc.simulator.state_replies import (
     StateResponse,
 )
 from openavc.simulator.setting_handlers import setting_handlers
+from openavc.simulator.side_receiver import (
+    Server,
+    is_magic_packet,
+    side_send_blocks,
+    start_on_one_port,
+    wake_sets,
+)
 from openavc.simulator.send_templates import (
     is_passthrough_send,
     send_param_groups,
@@ -117,9 +124,6 @@ from openavc.simulator.telnet_sign_in import (
 )
 
 logger = logging.getLogger(__name__)
-
-# How many numbers start(0) tries before a side receiver's refusal stands.
-_SIDE_PORT_ATTEMPTS = 5
 
 # Names exposed to inline `handler:` scripts (both TCP and OSC). This is the
 # documented contract (writing-simulators.md "Script Handlers"): the same set
@@ -171,15 +175,6 @@ def _as_number(value: Any) -> float | None:
 #: `set_state` value; a value with neither is the author's, as written.
 _HANDLER_PLACEHOLDER = re.compile(r"\{(?:\d+|state\.[^{}]+)\}")
 _HANDLER_STATE_REF = re.compile(r"\{state\.([^{}]+)\}")
-
-def _side_send_blocks(driver_def: dict) -> dict[str, dict]:
-    """Each command's udp: block, by command name."""
-    return {
-        name: cmd["udp"]
-        for name, cmd in (driver_def.get("commands") or {}).items()
-        if isinstance(cmd, dict) and isinstance(cmd.get("udp"), dict)
-    }
-
 
 class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     """Auto-generated simulator from a .avcdriver definition.
@@ -250,10 +245,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
         UDP, OSC and HTTP run the datagram or HTTP server from the mixins in
         place of the inherited TCP one. A command that sends a datagram
-        BESIDE the main transport (a udp: block: a wake-on-LAN magic packet,
-        a message to a presentation's UDP receiver) gives a TCP or HTTP
-        device a UDP receiver on its own port number, so the datagram shows
-        in the protocol log and its declared state effect applies. An HTTPS
+        BESIDE the main transport (a udp: block) gives a TCP or HTTP device a
+        UDP receiver on its own port number (side_receiver.py). An HTTPS
         device is served over TLS, as the driver dials it in the field
         (self_signed_tls.py); the platform reads that back out of
         to_info_dict() and leaves its ssl setting alone while redirected.
@@ -262,7 +255,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         self._is_udp = transport == "udp"
         self._is_osc = transport == "osc"
         self._is_http = transport == "http"
-        self._udp_side_commands: dict[str, dict] = _side_send_blocks(driver_def)
+        self._udp_side_commands: dict[str, dict] = side_send_blocks(driver_def)
         self._side_receiver = bool(self._udp_side_commands) and not (
             self._is_udp or self._is_osc
         )
@@ -420,54 +413,25 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
         A device with udp: side-send commands and a stream transport also
         listens for datagrams on the same port number (UDP and TCP ports are
-        separate namespaces, so nothing collides).
+        separate namespaces, so nothing collides); which side picks the
+        number is side_receiver.start_on_one_port.
         """
         self._open_push_channels()
         if self._is_udp or self._is_osc:
             await self.start_datagram_server(port)
             return
-        # start(0) promises one number both servers answer on. Windows keeps
-        # whole blocks of numbers for itself on one protocol and not the other
-        # (WinError 10013), and it hands out free numbers in order, so when the
-        # stream server's pick sits in a block UDP refuses, so do its next
-        # several picks. Asking the same side again only walks the block. The
-        # side that refused picks the next number instead: a number a protocol
-        # hands out itself is never one it keeps. A number the caller named is
-        # never traded.
-        attempts = _SIDE_PORT_ATTEMPTS if port == 0 and self._side_receiver else 1
-        stream_picks = True
-        for attempt in range(attempts):
-            last = attempt == attempts - 1
-            if stream_picks:
-                await self._start_stream_server(port)
-                if not self._side_receiver:
-                    return
-                try:
-                    # The stream server's port, read back after start(0)
-                    # resolved it: side-sends go to the number the driver
-                    # connects to, and binding the argument again would put
-                    # them on a second ephemeral port.
-                    await self.start_datagram_server(self.port)
-                except OSError:
-                    if last:
-                        raise
-                    await self._stop_stream_server()
-                    stream_picks = False
-                    continue
-            else:
-                await self.start_datagram_server(0)
-                try:
-                    await self._start_stream_server(self.port)
-                except OSError:
-                    if last:
-                        raise
-                    await self.stop_datagram_server()
-                    stream_picks = True
-                    continue
-            logger.info(
-                "%s also receives UDP side-sends on port %d", self.name, self.port
-            )
+        if not self._side_receiver:
+            await self._start_stream_server(port)
             return
+        await start_on_one_port(
+            Server(self._start_stream_server, self._stop_stream_server),
+            Server(self.start_datagram_server, self.stop_datagram_server),
+            port,
+            lambda: self.port,
+        )
+        logger.info(
+            "%s also receives UDP side-sends on port %d", self.name, self.port
+        )
 
     async def _start_stream_server(self, port: int) -> None:
         if self._is_http:
@@ -539,9 +503,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     # ── UDP / OSC transport ──
 
-    #: What every Wake-on-LAN magic packet starts with.
-    _MAGIC_PACKET_PREFIX = b"\xff" * 6
-
     async def dispatch_datagram(self, data: bytes, addr: tuple[str, int]) -> None:
         """Route a datagram to the OSC or the plain command pipeline.
 
@@ -570,20 +531,13 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
         A magic packet applies the ``sets`` of every magic_packet command (a
         wake declares ``sets: {power: on}`` and the simulated display comes
-        on, like the real one); a payload runs through the command pipeline
-        the way a line on the stream would, its reply discarded.
+        on, like the real one; side_receiver.wake_sets); a payload runs
+        through the command pipeline the way a line on the stream would, its
+        reply discarded.
         """
-        if data.startswith(self._MAGIC_PACKET_PREFIX) and len(data) >= 102:
-            for cmd_name, udp_def in self._udp_side_commands.items():
-                if not udp_def.get("magic_packet"):
-                    continue
-                cmd_def = (self._driver_def.get("commands") or {}).get(cmd_name) or {}
-                sets = cmd_def.get("sets")
-                if isinstance(sets, dict):
-                    for var_name, value in sets.items():
-                        if isinstance(value, str) and re.fullmatch(r"\{[^{}]+\}", value):
-                            continue  # a magic packet carries no params
-                        self.set_state(var_name, value)
+        if is_magic_packet(data):
+            for var_name, value in wake_sets(self._driver_def, self._udp_side_commands):
+                self.set_state(var_name, value)
             return
         try:
             self.handle_command(data)
