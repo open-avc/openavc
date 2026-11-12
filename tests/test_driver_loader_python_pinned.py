@@ -787,3 +787,45 @@ def test_loading_python_drivers_keeps_one_copy_of_an_id(tmp_path, isolated, capl
     assert _records(caplog)[-1] == (
         LOGGER, "WARNING", "Driver 'pin_ld_dup' is in both pin_ld_dup.py and pin_ld_dup_z.py; pin_ld_dup.py is used"
     )
+
+
+def test_delete_goes_on_to_a_later_copy_when_one_cannot_be_removed(tmp_path, monkeypatch):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    stuck = first / "pin_f.avcdriver"
+    stuck.write_text(_avcdriver("pin_f"), encoding="utf-8")
+    loose = second / "pin_f.avcdriver"
+    loose.write_text(_avcdriver("pin_f"), encoding="utf-8")
+    real_unlink = Path.unlink
+
+    def unlink(self, *a, **k):
+        if self == stuck:
+            raise PermissionError("in use")
+        return real_unlink(self, *a, **k)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    assert delete_driver_definition("pin_f", [first, second]) is True
+    assert stuck.exists()
+    assert not loose.exists()
+
+
+@pytest.mark.parametrize(
+    "declared",
+    ["sub/pin_comp_discovery.py", "../pin_comp_discovery.py", "/abs/pin_comp_discovery.py"],
+)
+def test_a_yaml_companion_must_sit_beside_its_driver(tmp_path, declared):
+    from openavc.drivers.driver_loader import driver_companions
+
+    (tmp_path / "pin_comp_discovery.py").write_text("x = 1\n", encoding="utf-8")
+    main = tmp_path / "pin_comp.avcdriver"
+    main.write_text(
+        _avcdriver("pin_comp") + f"discovery:\n  python: {declared}\n", encoding="utf-8"
+    )
+    assert driver_companions(main) == []
+    main.write_text(
+        _avcdriver("pin_comp") + "discovery:\n  python: ./pin_comp_discovery.py\n",
+        encoding="utf-8",
+    )
+    assert driver_companions(main) == [tmp_path / "pin_comp_discovery.py"]
