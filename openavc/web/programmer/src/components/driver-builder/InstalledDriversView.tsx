@@ -298,82 +298,19 @@ export function InstalledDriversView({
               )}
             </div>
           ) : (
-            filteredDrivers.map((d) => {
-              const installedRow = installedById.get(d.id);
-              const formatBadge = installedRow?.format === "python" ? "PY" : null;
-              const update = updates.get(d.id);
-              return (
-                <div
-                  key={d.id}
-                  onClick={() => setSelectedId(d.id)}
-                  style={{
-                    padding: "var(--space-sm) var(--space-md)",
-                    cursor: "pointer",
-                    borderBottom: "1px solid var(--border-color)",
-                    background:
-                      selectedId === d.id ? "var(--accent-dim, rgba(59,130,246,0.1))" : "transparent",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6,
-                      fontWeight: 500,
-                      fontSize: "var(--font-size-sm)",
-                    }}
-                  >
-                    <span
-                      style={{
-                        flex: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {d.name}
-                    </span>
-                    {formatBadge && (
-                      <span
-                        title="Python driver"
-                        style={{
-                          fontSize: 10,
-                          padding: "1px 5px",
-                          borderRadius: 3,
-                          background: "var(--bg-hover)",
-                          color: "var(--text-muted)",
-                          fontFamily: "var(--font-mono)",
-                          fontWeight: 600,
-                          flexShrink: 0,
-                        }}
-                      >
-                        {formatBadge}
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: "var(--font-size-xs)",
-                      color: listed.notLoaded.has(d.id) ? "var(--color-warning)" : "var(--text-muted)",
-                      marginTop: 2,
-                    }}
-                  >
-                    {listed.notLoaded.has(d.id)
-                      ? "Did not load"
-                      : <>{d.manufacturer} &middot; {d.category || "Other"}</>}
-                  </div>
-                  {update && (
-                    <div style={{ marginTop: 4 }}>
-                      <UpdateRowButton
-                        update={update}
-                        updating={updatingDriverIds.has(d.id)}
-                        onUpdate={() => handleUpdate(update)}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })
+            filteredDrivers.map((d) => (
+              <DriverListRow
+                key={d.id}
+                driver={d}
+                selected={selectedId === d.id}
+                notLoaded={listed.notLoaded.has(d.id)}
+                python={installedById.get(d.id)?.format === "python"}
+                update={updates.get(d.id)}
+                updating={updatingDriverIds.has(d.id)}
+                onSelect={() => setSelectedId(d.id)}
+                onUpdate={handleUpdate}
+              />
+            ))
           )}
         </div>
 
@@ -393,48 +330,50 @@ export function InstalledDriversView({
       {/* Right detail panel */}
       <div style={{ flex: 1, overflowY: "auto", padding: "var(--space-lg)" }}>
         {selectedDriver ? (
-          <DriverDetailPanel
-            driver={selectedDriver}
-            notLoaded={listed.notLoaded.has(selectedDriver.id)}
-            installed={selectedInstalled}
-            isPython={isPython}
-            isBuiltin={isBuiltin}
-            canUninstall={canUninstall}
-            devicesUsingDriver={devicesUsingDriver.map((d) => d.name || d.id)}
-            confirmUninstall={confirmUninstall}
-            uninstalling={uninstalling}
-            uninstallError={uninstallError}
-            canOpenInBuilder={!!onOpenInBuilder && !isPython && !!selectedDefinition}
-            onOpenInBuilder={
-              onOpenInBuilder ? () => onOpenInBuilder(selectedDriver.id) : undefined
-            }
-            onCustomizeCopy={
-              onCustomizeCopy ? () => onCustomizeCopy(selectedDriver.id) : undefined
-            }
-            onOpenInCodeEditor={
-              isPython
-                ? () => handleOpenInCodeEditor(selectedDriver.id, selectedInstalled?.filename)
-                : undefined
-            }
-            onRequestUninstall={() => {
-              setUninstallError(null);
-              setConfirmUninstall(true);
-            }}
-            onConfirmUninstall={handleUninstall}
-            onCancelUninstall={() => setConfirmUninstall(false)}
-            onDismissUninstallError={() => setUninstallError(null)}
-            update={updates.get(selectedDriver.id) ?? null}
-            updating={updatingDriverIds.has(selectedDriver.id)}
-            updateError={updateErrors[selectedDriver.id] ?? null}
-            onUpdate={handleUpdate}
-            onDismissUpdateError={() =>
-              setUpdateErrors((prev) => {
-                const next = { ...prev };
-                delete next[selectedDriver.id];
-                return next;
-              })
-            }
-          />
+          <>
+            <NotLoadedNote show={listed.notLoaded.has(selectedDriver.id)} />
+            <DriverDetailPanel
+              driver={selectedDriver}
+              installed={selectedInstalled}
+              isPython={isPython}
+              isBuiltin={isBuiltin}
+              canUninstall={canUninstall}
+              devicesUsingDriver={devicesUsingDriver.map((d) => d.name || d.id)}
+              confirmUninstall={confirmUninstall}
+              uninstalling={uninstalling}
+              uninstallError={uninstallError}
+              canOpenInBuilder={!!onOpenInBuilder && !isPython && !!selectedDefinition}
+              onOpenInBuilder={
+                onOpenInBuilder ? () => onOpenInBuilder(selectedDriver.id) : undefined
+              }
+              onCustomizeCopy={
+                onCustomizeCopy ? () => onCustomizeCopy(selectedDriver.id) : undefined
+              }
+              onOpenInCodeEditor={
+                isPython
+                  ? () => handleOpenInCodeEditor(selectedDriver.id, selectedInstalled?.filename)
+                  : undefined
+              }
+              onRequestUninstall={() => {
+                setUninstallError(null);
+                setConfirmUninstall(true);
+              }}
+              onConfirmUninstall={handleUninstall}
+              onCancelUninstall={() => setConfirmUninstall(false)}
+              onDismissUninstallError={() => setUninstallError(null)}
+              update={updates.get(selectedDriver.id) ?? null}
+              updating={updatingDriverIds.has(selectedDriver.id)}
+              updateError={updateErrors[selectedDriver.id] ?? null}
+              onUpdate={handleUpdate}
+              onDismissUpdateError={() =>
+                setUpdateErrors((prev) => {
+                  const next = { ...prev };
+                  delete next[selectedDriver.id];
+                  return next;
+                })
+              }
+            />
+          </>
         ) : (
           <div
             style={{
@@ -455,9 +394,120 @@ export function InstalledDriversView({
 }
 
 
+/** One driver in the list: its name (a PY mark for a Python driver), its
+ *  maker and category or that it did not load, and Update when there is one. */
+function DriverListRow({
+  driver,
+  selected,
+  notLoaded,
+  python,
+  update,
+  updating,
+  onSelect,
+  onUpdate,
+}: {
+  driver: DriverInfo;
+  selected: boolean;
+  notLoaded: boolean;
+  python: boolean;
+  update?: CatalogUpdate;
+  updating: boolean;
+  onSelect: () => void;
+  onUpdate: (update: CatalogUpdate) => void;
+}) {
+  return (
+    <div
+      onClick={onSelect}
+      style={{
+        padding: "var(--space-sm) var(--space-md)",
+        cursor: "pointer",
+        borderBottom: "1px solid var(--border-color)",
+        background:
+          selected ? "var(--accent-dim, rgba(59,130,246,0.1))" : "transparent",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontWeight: 500,
+          fontSize: "var(--font-size-sm)",
+        }}
+      >
+        <span
+          style={{
+            flex: 1,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {driver.name}
+        </span>
+        {python && (
+          <span
+            title="Python driver"
+            style={{
+              fontSize: 10,
+              padding: "1px 5px",
+              borderRadius: 3,
+              background: "var(--bg-hover)",
+              color: "var(--text-muted)",
+              fontFamily: "var(--font-mono)",
+              fontWeight: 600,
+              flexShrink: 0,
+            }}
+          >
+            PY
+          </span>
+        )}
+      </div>
+      <div
+        style={{
+          fontSize: "var(--font-size-xs)",
+          color: notLoaded ? "var(--color-warning)" : "var(--text-muted)",
+          marginTop: 2,
+        }}
+      >
+        {notLoaded
+          ? "Did not load"
+          : <>{driver.manufacturer} &middot; {driver.category || "Other"}</>}
+      </div>
+      {update && (
+        <div style={{ marginTop: 4 }}>
+          <UpdateRowButton
+            update={update}
+            updating={updating}
+            onUpdate={() => onUpdate(update)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Said above a driver's page when its file never registered. */
+function NotLoadedNote({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <p
+      style={{
+        margin: "0 0 var(--space-md)",
+        padding: "var(--space-sm) var(--space-md)",
+        borderRadius: "var(--radius)",
+        border: "1px solid var(--color-warning)",
+        fontSize: "var(--font-size-sm)",
+        color: "var(--color-warning)",
+      }}
+    >
+      {NOT_LOADED_TEXT}
+    </p>
+  );
+}
+
 export function DriverDetailPanel({
   driver,
-  notLoaded = false,
   installed,
   isPython,
   isBuiltin,
@@ -481,8 +531,6 @@ export function DriverDetailPanel({
   onDismissUpdateError,
 }: {
   driver: DriverInfo;
-  /** A library file that never registered: said so, under the header. */
-  notLoaded?: boolean;
   installed: InstalledDriver | null;
   isPython: boolean;
   isBuiltin: boolean;
@@ -638,17 +686,6 @@ export function DriverDetailPanel({
             </span>
           )}
         </div>
-        {notLoaded && (
-          <p
-            style={{
-              margin: "var(--space-sm) 0 0",
-              fontSize: "var(--font-size-sm)",
-              color: "var(--color-warning)",
-            }}
-          >
-            {NOT_LOADED_TEXT}
-          </p>
-        )}
         <div style={{ display: "flex", gap: "var(--space-xs)", marginTop: "var(--space-sm)" }}>
           {driver.category && (
             <span
