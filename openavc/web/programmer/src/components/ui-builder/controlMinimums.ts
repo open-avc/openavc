@@ -95,7 +95,8 @@ function stylePx(el: UIElement, key: string): number | null {
 }
 
 /** Whether a ControlConditionalPart is drawn. Mirrors `part_is_present`
- *  in openavc/ui/control_minimums.py -- each case is renderMatrix's own test. */
+ *  in openavc/ui/control_minimums.py -- each case is the panel matrix's own
+ *  test (its modules/matrix.js). */
 function partIsPresent(when: string, el: UIElement): boolean {
   const config = subObject(el, "matrix_config");
   switch (when) {
@@ -120,8 +121,8 @@ function partIsPresent(when: string, el: UIElement): boolean {
 /** How many columns and rows a wall of `count` tiles is drawn in.
  *
  *  Mirrors `tile_grid_shape` in openavc/ui/control_minimums.py and
- *  `matrixTileGridShape` in panel.js. All three agree or the floor stated here
- *  is for a shape the panel does not draw. */
+ *  `matrixTileGridShape` in the panel's modules/matrix.js. All three agree or
+ *  the floor stated here is for a shape the panel does not draw. */
 export function matrixTileGridShape(
   count: number,
   orientation: string = "landscape",
@@ -172,7 +173,8 @@ function repeatedCount(
  *
  *  Mirrors `rule_for` in openavc/ui/control_minimums.py: the matrix's floor is
  *  a different function for `crosspoint`, `list` and `tiles`, and the rule in
- *  the table IS the default (crosspoint), exactly as renderMatrix reads it. */
+ *  the table IS the default (crosspoint), exactly as the panel's createMatrix
+ *  reads it. */
 function ruleFor(el: UIElement): ControlMinimumRule | undefined {
   const rule = own(CONTROL_MINIMUMS, el.type);
   if (!rule || !rule.styleProperty) return rule;

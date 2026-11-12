@@ -35,7 +35,7 @@ function matrixNamed(labels: string[]): string {
 
 /**
  * What a review sentence calls one matrix row: the name it was given, else its
- * value. Not the panel's caption (`_entryLabel`), which can read a live name off
+ * value. Not the panel's caption (`entryLabel` in its modules/matrix.js), which can read a live name off
  * the device: a review has no state to read. The AI side's twin is
  * `_entry_name` in page_review.py.
  */

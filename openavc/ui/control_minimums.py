@@ -331,7 +331,7 @@ def tile_grid_shape(count: int, orientation: str = "landscape") -> tuple[int, in
     179. Orientation is knowable without measuring the box, which is what keeps
     the floor from depending on the box it is judging.
 
-    Mirrored in ``panel.js`` (which draws it) and in the Builder's
+    Mirrored in the panel's ``modules/matrix.js`` (which draws it) and in the Builder's
     ``controlMinimums.ts`` (which mirrors this file). All three have to agree
     or the floor is for a shape nothing renders.
     """

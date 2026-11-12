@@ -45,8 +45,9 @@ const MATRIX_NUMERIC = /^[+-]?\d+(?:\.\d+)?$/;
 
 /** A routed-source value in comparable form, or null when nothing is routed.
  *
- *  Mirrors `route_value` in matrix_model.py, which mirrors `_routeValue` in
- *  panel.js -- the copy that decides what a panel actually lights. */
+ *  Mirrors `route_value` in matrix_model.py, which mirrors `routeValue` in
+ *  the panel's modules/matrix.js -- the copy that decides what a panel
+ *  actually lights. */
 export function matrixRouteValue(value: unknown): number | string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return routedNumber(value);

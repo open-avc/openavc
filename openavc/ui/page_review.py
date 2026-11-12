@@ -1951,7 +1951,7 @@ def _matrix_named(labels: list[str]) -> str:
 def _entry_name(entry: Mapping[str, Any]) -> str:
     """What a review sentence calls one matrix row: the name it was given, else its value.
 
-    Not the panel's caption (``_entryLabel``), which can read a live name off
+    Not the panel's caption (``entryLabel`` in its ``modules/matrix.js``), which can read a live name off
     the device: a review has no state to read, so a row the device names is
     called by its value here. The Builder's twin is ``matrixEntryName``.
     """
