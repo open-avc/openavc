@@ -16,8 +16,7 @@ import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
 import {
-    LevelScale, formatLevel, levelSettings, liveSender, responseCurveInverse, scaleMarks, snapToStep,
-    unknownText,
+    LevelScale, SliderControl, formatLevel, levelSettings, liveSender, scaleMarks, snapToStep, unknownText,
 } from './modules/level.js';
 
 // --- Programmer session bridge ---------------------------------------------
@@ -2738,15 +2737,14 @@ class PanelApp {
     }
 
     renderSlider(element) {
+        const slider = new SliderControl(element, this._levelHost(element.id));
         const el = document.createElement('div');
-        const isVertical = element.orientation === 'vertical';
-        el.className = 'panel-element panel-slider' + (isVertical ? ' panel-slider-vertical' : '');
+        el.className = 'panel-element panel-slider' + (slider.vertical ? ' panel-slider-vertical' : '');
         el.dataset.elementId = element.id;
 
+        // The theme's element_defaults style the wrapper: background, border,
+        // radius, shadow.
         const themedSliderStyle = this.getThemedStyle('slider', element.style);
-        // Apply theme element_defaults to the wrapper so slider bg / border /
-        // radius / shadow pick up the theme. Without this, sliders silently
-        // ignored their theme styling.
         applyStyle(el, themedSliderStyle);
 
         // Thumb size: per-element value wins, otherwise theme element_default, otherwise 44.
@@ -2761,155 +2759,40 @@ class PanelApp {
             this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
-
-        // Track wrapper (contains track background, fill, and the range input)
-        const wrapper = document.createElement('div');
-        wrapper.className = 'slider-track-wrapper';
-
-        const track = document.createElement('div');
-        track.className = 'slider-track';
-
-        const fill = document.createElement('div');
-        fill.className = 'slider-fill';
-        track.appendChild(fill);
-        wrapper.appendChild(track);
-
-        const input = document.createElement('input');
-        input.type = 'range';
-        const settings = levelSettings(element, { decimals: null, rateMs: 100 });
-        const sliderMin = element.min ?? 0;
-        const sliderMax = element.max ?? 100;
-        const sliderStep = settings.step;
-        const scale = new LevelScale(sliderMin, sliderMax, settings);
-        const sSpan = scale.span;
-        const sResponse = settings.response;
-        const sUnit = settings.unit;
-        const sSendOnRelease = settings.sendOnRelease;
-        input.setAttribute('aria-label', element.label || element.id);
-
-        // The native range input runs in a normalized POSITION domain (0..STEPS)
-        // rather than the display-value domain, because a native thumb is always
-        // linear in its own value — representing travel directly is the only way
-        // to taper the feel. For a linear response STEPS equals the value-step
-        // count, so position maps 1:1 to a value step and behaviour is unchanged.
-        const rawSteps = sliderStep > 0 ? Math.round(sSpan / sliderStep) : 0;
-        const STEPS = sResponse === 'logarithmic' ? Math.max(rawSteps, 200) : Math.max(rawSteps, 1);
-        input.min = 0;
-        input.max = STEPS;
-        input.step = 1;
-
-        // position (0..STEPS) -> display value (curved, snapped to step, clamped)
-        const posToValue = (pos) => {
-            let v = scale.valueAt(STEPS > 0 ? pos / STEPS : 0);
-            if (sliderStep > 0) v = snapToStep(v, sliderStep);
-            v = Math.max(sliderMin, Math.min(sliderMax, v));
-            if (scale.limited) v = scale.toOutput(v);
-            return v;
-        };
-        // display value -> position (0..STEPS)
-        const valueToPos = (v) => {
-            const travel = sSpan !== 0 ? scale.travelOf(v) : 0;
-            return Math.max(0, Math.min(STEPS, Math.round(travel * STEPS)));
-        };
-        const sDecimals = settings.decimals != null ? settings.decimals : (sliderStep < 1 ? 1 : 0);
-        const fmtValue = (v) => formatLevel(v, sDecimals, sUnit);
-
-        // Use a design sample when the author has no reading to work with.
-        const sliderBinding = element.bindings?.show?.value;
-        const initialRaw = sliderBinding?.key ? this.state[sliderBinding.key] : undefined;
-        const initialValue = scale.reading(initialRaw, this.editMode);
-        input.value = valueToPos(initialValue ?? sliderMin);
-
-        // Update fill from current travel position
-        const updateFill = () => {
-            const pct = STEPS > 0 ? (parseFloat(input.value) / STEPS) * 100 : 0;
-            if (isVertical) {
-                fill.style.height = pct + '%';
-            } else {
-                fill.style.width = pct + '%';
-            }
-        };
-        updateFill();
-
-        // Value display element
-        let valueDisplay = null;
-        const showValue = element.style?.show_value === true;
-        {
-            const v0 = posToValue(parseFloat(input.value));
-            input.setAttribute('aria-valuetext', fmtValue(v0));
-            if (showValue) {
-                valueDisplay = document.createElement('div');
-                valueDisplay.className = 'slider-value';
-                valueDisplay.textContent = fmtValue(v0);
-            }
-        }
-
-        // Streams at the element's rate while dragging live; the release sends
-        // the final value (see liveSender in modules/level.js).
-        const sender = liveSender(
-            (value) => this.send({ type: 'ui.change', element_id: element.id, value }),
-            settings.rateMs, !sSendOnRelease, (timer) => this.debounceTimers.push(timer));
-        input.addEventListener('input', () => {
-            // Dead-space mode: clamp travel so the thumb can't enter the region
-            // past the device's output limit (mirrors the value clamp above).
-            if (scale.limited) {
-                const loPos = valueToPos(scale.outputMin);
-                const hiPos = valueToPos(scale.outputMax);
-                const p = parseFloat(input.value);
-                input.value = Math.max(Math.min(loPos, hiPos), Math.min(Math.max(loPos, hiPos), p));
-            }
-            updateFill();
-            const v = posToValue(parseFloat(input.value));
-            input.setAttribute('aria-valuetext', fmtValue(v));
-            if (valueDisplay) valueDisplay.textContent = fmtValue(v);
-            // Live mode streams while dragging; send-on-release waits for 'change'.
-            if (!sSendOnRelease) sender.live(v);
-        });
-        // 'change' fires when the value is committed (mouse release, keyboard).
-        // The release sends the final value, so send-on-release delivers
-        // exactly one command and a live drag ends on the value it stopped at.
-        input.addEventListener('change', () => {
-            const v = posToValue(parseFloat(input.value));
-            if (valueDisplay) valueDisplay.textContent = fmtValue(v);
-            sender.release(v);
-        });
-
-        // Track active dragging so inbound state echoes don't fight the operator
-        // (see evaluateSliderValue). Range inputs aren't reliably focused during
-        // touch drags, so a pointer/touch flag is needed alongside activeElement.
-        input.addEventListener('pointerdown', () => { input._dragging = true; });
-        const sliderEndDrag = () => { input._dragging = false; };
-        input.addEventListener('pointerup', sliderEndDrag);
-        input.addEventListener('pointercancel', sliderEndDrag);
-        input.addEventListener('blur', sliderEndDrag);
-        input.addEventListener('touchend', sliderEndDrag);
-        input.addEventListener('touchcancel', sliderEndDrag);
-
-        wrapper.appendChild(input);
-        el.appendChild(wrapper);
-        if (valueDisplay) el.appendChild(valueDisplay);
+        slider.mount(el);
 
         // Value binding (read; two-way when show.value.write_back)
         const valueBinding = element.bindings?.show?.value;
         if (valueBinding) {
             this.bindings.push({
                 type: 'slider_value',
-                element: input,
+                element: slider.input,
                 elementDef: element,
                 binding: valueBinding,
-                fill,
-                valueDisplay,
-                isVertical,
-                // Readings are placed against the range read as numbers.
-                readings: new LevelScale(parseFloat(element.min ?? 0), parseFloat(element.max ?? 100), settings),
-                steps: STEPS,
-                unit: sUnit,
-                valueToPos,
-                fmtValue,
+                _slider: slider,
             });
         }
 
         return el;
+    }
+
+    /**
+     * What a slider or fader borrows from the panel, read when called: the
+     * state object is replaced on a full update, the timer list on a page
+     * redraw. `bindingOf` gives the control's value binding once it is
+     * registered; a slider never asks whether its device is reachable.
+     */
+    _levelHost(elementId, bindingOf = () => null) {
+        return {
+            read: (key) => this.state[key],
+            sendValue: (value) => this.send({ type: 'ui.change', element_id: elementId, value }),
+            keepTimer: (timer) => this.debounceTimers.push(timer),
+            design: () => this.editMode,
+            offline: () => {
+                const binding = bindingOf();
+                return !!binding && this._bindingOffline(binding);
+            },
+        };
     }
 
     renderPageNav(element) {
@@ -6343,44 +6226,19 @@ class PanelApp {
     }
 
     evaluateSliderValue(b) {
-        const { element, binding, fill, valueDisplay, isVertical, readings, steps, unit, valueToPos, fmtValue } = b;
         // Don't yank the thumb out from under an operator who is actively
         // dragging it when a device echo or another panel's change arrives.
         // A native range input keeps keyboard focus after pointer release or
         // a committed arrow-key change. Focus alone must not suppress later
         // readings or disconnection feedback; only an active drag does.
-        if (element._dragging) return;
-        const rawValue = this.state[binding.key];
+        if (b.element._dragging) return;
+        const rawValue = this.state[b.binding.key];
         const offline = this._bindingOffline(b);
         if (b._lastSliderRaw === rawValue && b._lastSliderOffline === offline) return;
         b._lastSliderRaw = rawValue;
         b._lastSliderOffline = offline;
         this._markBindingAvailability(b, offline);
-        const setFill = (pct) => {
-            if (!fill) return;
-            if (isVertical) fill.style.height = pct + '%';
-            else fill.style.width = pct + '%';
-        };
-        const displayValue = readings.reading(rawValue, this.editMode);
-        if (offline || displayValue === null) {
-            // Nothing to read -- the device is unreachable, the key was
-            // deleted, or the device is right there and has not reported this
-            // one yet. The fill is emptied, the thumb is hidden (a thumb at the
-            // bottom is a claim of minimum) and the readout says so rather than
-            // printing the range's floor as a value.
-            element.value = valueToPos(readings.min);
-            element.removeAttribute('aria-valuetext');
-            element.classList.add('no-reading');
-            setFill(0);
-            if (valueDisplay) valueDisplay.textContent = unknownText(unit);
-            return;
-        }
-        element.classList.remove('no-reading');
-        const pos = valueToPos(displayValue);
-        element.value = pos;
-        element.setAttribute('aria-valuetext', fmtValue(displayValue));
-        setFill(steps > 0 ? (pos / steps) * 100 : 0);
-        if (valueDisplay) valueDisplay.textContent = fmtValue(displayValue);
+        b._slider.show(rawValue, offline);
     }
 
     evaluateSelectValue(b) {

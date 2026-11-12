@@ -27,6 +27,13 @@
  */
 
 const DEFAULT_DB_RANGE = 60;
+const SLIDER_RATE_MS = 100;
+// A logarithmic slider gets at least this many positions, so the low end of
+// its travel can still be reached finely.
+const LOG_MIN_STEPS = 200;
+// Every way a drag on a slider ends. A range input is not reliably focused
+// during a touch drag, so the pointer and touch ends are listened for too.
+const SLIDER_DRAG_ENDS = ['pointerup', 'pointercancel', 'blur', 'touchend', 'touchcancel'];
 
 /** A number held between two others, `low` winning when they cross. */
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -237,4 +244,192 @@ export function liveSender(sendValue, rateMs, streaming, keepTimer) {
             if (!repeat) put(v);
         },
     };
+}
+
+/**
+ * What a slider and a fader share: the host they borrow from the panel, the
+ * settings both read, their value binding's key, the readout and the sender.
+ * A subclass sets `scale`.
+ */
+class LevelControl {
+    constructor(element, host, settings) {
+        this.host = host;
+        this.step = settings.step;
+        this.unit = settings.unit;
+        this.decimals = settings.decimals;
+        this.sendOnRelease = settings.sendOnRelease;
+        this.valueKey = element.bindings?.show?.value?.key;
+        this.sender = liveSender(host.sendValue, settings.rateMs, !settings.sendOnRelease, host.keepTimer);
+    }
+
+    /** `value` as the readout shows it. */
+    format(value) {
+        return formatLevel(value, this.decimals, this.unit);
+    }
+
+    /** What the control is first drawn showing: its device's reading, or the design sample; null with neither. */
+    startingReading() {
+        const raw = this.valueKey ? this.host.read(this.valueKey) : undefined;
+        return this.scale.reading(raw, this.host.design());
+    }
+}
+
+/** How many positions a slider's range input has: one per step, and never fewer than one (or LOG_MIN_STEPS). */
+function travelSteps(span, step, response) {
+    const rawSteps = step > 0 ? Math.round(span / step) : 0;
+    return response === 'logarithmic' ? Math.max(rawSteps, LOG_MIN_STEPS) : Math.max(rawSteps, 1);
+}
+
+/**
+ * A slider: a native range input over a fill. The input runs in a POSITION
+ * domain (0..steps) rather than in display values, because a native thumb is
+ * always linear in its own value and only the travel can carry the curve. For
+ * a linear response a position is one value step.
+ */
+export class SliderControl extends LevelControl {
+    constructor(element, host) {
+        const settings = levelSettings(element, { decimals: null, rateMs: SLIDER_RATE_MS });
+        super(element, host, settings);
+        this.scale = new LevelScale(element.min ?? 0, element.max ?? 100, settings);
+        // A reading is placed against the range read as numbers; the travel
+        // is drawn against the range as written.
+        this.readings = new LevelScale(parseFloat(element.min ?? 0), parseFloat(element.max ?? 100), settings);
+        if (this.decimals == null) this.decimals = this.step < 1 ? 1 : 0;
+        this.steps = travelSteps(this.scale.span, this.step, settings.response);
+        this.vertical = element.orientation === 'vertical';
+        this.showValue = element.style?.show_value === true;
+        this.label = element.label || element.id;
+    }
+
+    /** Draw the track, its fill, the range input and the readout into `el`. */
+    mount(el) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'slider-track-wrapper';
+        const track = document.createElement('div');
+        track.className = 'slider-track';
+        this.fill = document.createElement('div');
+        this.fill.className = 'slider-fill';
+        track.appendChild(this.fill);
+        wrapper.appendChild(track);
+        this.input = this.drawInput();
+        this.drawStart();
+        this.listen();
+        wrapper.appendChild(this.input);
+        el.appendChild(wrapper);
+        if (this.valueDisplay) el.appendChild(this.valueDisplay);
+    }
+
+    drawInput() {
+        const input = document.createElement('input');
+        input.type = 'range';
+        input.setAttribute('aria-label', this.label);
+        input.min = 0;
+        input.max = this.steps;
+        input.step = 1;
+        return input;
+    }
+
+    /** The starting position, fill, spoken value and readout. */
+    drawStart() {
+        this.input.value = this.positionOf(this.startingReading() ?? this.scale.min);
+        this.fillFromInput();
+        const start = this.valueAtPosition(parseFloat(this.input.value));
+        this.input.setAttribute('aria-valuetext', this.format(start));
+        this.valueDisplay = null;
+        if (this.showValue) {
+            this.valueDisplay = document.createElement('div');
+            this.valueDisplay.className = 'slider-value';
+            this.valueDisplay.textContent = this.format(start);
+        }
+    }
+
+    listen() {
+        const input = this.input;
+        input.addEventListener('input', () => this.moved());
+        // 'change' fires when the value is committed: a release, a key.
+        input.addEventListener('change', () => this.committed());
+        // A drag in progress keeps readings off the thumb (the panel checks
+        // `_dragging` before showing one).
+        input.addEventListener('pointerdown', () => { input._dragging = true; });
+        const endDrag = () => { input._dragging = false; };
+        for (const type of SLIDER_DRAG_ENDS) input.addEventListener(type, endDrag);
+    }
+
+    /** The thumb moved: redraw, and stream the value unless the control sends on release only. */
+    moved() {
+        const input = this.input;
+        // Dead-space mode: the thumb cannot travel past the device's output limits.
+        if (this.scale.limited) {
+            const lo = this.positionOf(this.scale.outputMin);
+            const hi = this.positionOf(this.scale.outputMax);
+            input.value = clamp(parseFloat(input.value), Math.min(lo, hi), Math.max(lo, hi));
+        }
+        this.fillFromInput();
+        const v = this.valueAtPosition(parseFloat(input.value));
+        input.setAttribute('aria-valuetext', this.format(v));
+        if (this.valueDisplay) this.valueDisplay.textContent = this.format(v);
+        if (!this.sendOnRelease) this.sender.live(v);
+    }
+
+    /** The release sends the final value: the one command on send-on-release, where a live drag lands otherwise. */
+    committed() {
+        const v = this.valueAtPosition(parseFloat(this.input.value));
+        if (this.valueDisplay) this.valueDisplay.textContent = this.format(v);
+        this.sender.release(v);
+    }
+
+    /** The input position (0..steps) that shows display value `value`. */
+    positionOf(value) {
+        const travel = this.scale.span !== 0 ? this.scale.travelOf(value) : 0;
+        return clamp(Math.round(travel * this.steps), 0, this.steps);
+    }
+
+    /** The display value at input position `pos`: on the curve, snapped to the step, held to the range and any dead space. */
+    valueAtPosition(pos) {
+        let v = this.scale.valueAt(this.steps > 0 ? pos / this.steps : 0);
+        if (this.step > 0) v = snapToStep(v, this.step);
+        v = clamp(v, this.scale.min, this.scale.max);
+        if (this.scale.limited) v = this.scale.toOutput(v);
+        return v;
+    }
+
+    fillFromInput() {
+        this.fillTo(this.steps > 0 ? (parseFloat(this.input.value) / this.steps) * 100 : 0);
+    }
+
+    fillTo(pct) {
+        if (this.vertical) this.fill.style.height = pct + '%';
+        else this.fill.style.width = pct + '%';
+    }
+
+    /** Show the device's reading, or that there is none. */
+    show(raw, offline) {
+        const value = this.readings.reading(raw, this.host.design());
+        if (offline || value === null) {
+            this.showUnknown();
+            return;
+        }
+        const input = this.input;
+        input.classList.remove('no-reading');
+        const pos = this.positionOf(value);
+        input.value = pos;
+        input.setAttribute('aria-valuetext', this.format(value));
+        this.fillTo(this.steps > 0 ? (pos / this.steps) * 100 : 0);
+        if (this.valueDisplay) this.valueDisplay.textContent = this.format(value);
+    }
+
+    /**
+     * Nothing to read: the device unreachable, the key gone, or a live device
+     * that has not reported it yet. The fill empties, the thumb is hidden (a
+     * thumb at the bottom is a claim of minimum) and the readout says so
+     * rather than printing the range's floor as a value.
+     */
+    showUnknown() {
+        const input = this.input;
+        input.value = this.positionOf(this.readings.min);
+        input.removeAttribute('aria-valuetext');
+        input.classList.add('no-reading');
+        this.fillTo(0);
+        if (this.valueDisplay) this.valueDisplay.textContent = unknownText(this.unit);
+    }
 }
