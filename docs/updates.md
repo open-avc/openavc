@@ -168,7 +168,7 @@ From the Updates view, scroll to the **Rollback** section and click **Rollback t
 
 ### Rolling back to a version older than v0.40.0
 
-From v0.40.0, the logins a project uses (device passwords, plugin logins and the Inter-System key) are kept on the system rather than in the project file, which holds "saved on this system" in their place. **Rollback** in the Updates view, and the automatic rollback, write every saved login back into the project files before the older version starts, so its devices still sign in.
+From v0.40.0, the logins a project uses (device passwords, plugin logins and the Inter-System key) are kept on the system rather than in the project file, which holds "saved on this system" in their place. **Rollback** in the Updates view, and the automatic rollback, write every saved login back into the project files before the older version starts, so its devices still sign in. The stream keys and passwords saved in macro steps and controls go back into their steps the same way.
 
 Installing an older version by hand over this one, by running an older installer, does not. That version finds "saved on this system" where each password was, and a device with a login cannot sign in until its login is entered again. Roll back from the Updates view instead.
 

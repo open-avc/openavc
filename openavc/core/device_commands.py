@@ -9,6 +9,12 @@ the name or the door, not the network. A send the driver raises on is published
 as ``device.error.<id>`` and raised again. The checks read off the driver's own
 declaration are core/command_gates.py.
 
+A step or a control's action that saved a secret parameter on this system
+names it in ``saved``, and the value is filled in here from this system's
+login file, against the live driver, before anything else reads the
+parameters (``command_gates.fill_saved_params``); a marker any other door
+sends is refused.
+
 The rule worth knowing before changing it: whether a command goes out now is
 one rule, ``command_goes_out``. The device accepts commands (connected, or
 its connection held open until it answers, ``accepts_commands``, which is also
@@ -23,13 +29,16 @@ Mixed into DeviceManager (core/device_manager.py).
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Any, TYPE_CHECKING
 
+from openavc.core import saved_params
 from openavc.core.command_gates import (
     available_offline,
     check_command_declared,
     check_file_door,
     coerce_child_id_params,
+    fill_saved_params,
     send_file_command,
     validate_command_params,
 )
@@ -45,6 +54,13 @@ if TYPE_CHECKING:
     from openavc.core.event_bus import EventBus
     from openavc.core.state_store import StateStore
     from openavc.drivers.base import BaseDriver
+
+
+def _saved_value(name: str) -> str | None:
+    """A command parameter saved on this system, by its marker's name."""
+    from openavc.core.device_logins import device_logins, param_owner
+
+    return device_logins().secret(param_owner(name), saved_params.FIELD)
 
 
 class DeviceCommandsMixin:
@@ -69,6 +85,7 @@ class DeviceCommandsMixin:
         params: dict[str, Any] | None = None,
         *,
         files_allowed: bool = False,
+        saved: Collection[str] = (),
     ) -> Any:
         """Send a command to a device by ID.
 
@@ -84,6 +101,11 @@ class DeviceCommandsMixin:
         (``spec.is_file_command``) is refused everywhere else with
         :class:`FileCommandError`; this method is the one gate every door
         passes, so no door can run one by accident.
+
+        ``saved`` is a macro step or a control's action naming the parameters
+        it saved on this system (``core/saved_params.py``); their values are
+        filled in here. A saved-on-this-system marker in any other parameter,
+        or from any other caller, is refused with CommandParamError.
         """
         driver = self._live_driver(device_id)
         # Before the connected-gate on purpose: a command name the driver does
@@ -95,6 +117,8 @@ class DeviceCommandsMixin:
         # sentence that helps is where it runs from, not that the device is
         # offline.
         file_command = check_file_door(driver, command, params, files_allowed)
+        # And for a saved value: what helps is where to enter it.
+        params = fill_saved_params(driver, command, params, saved_params.filler(saved, _saved_value))
         self._require_control_target(device_id)
         # The connected-gate is skipped for commands the driver declares
         # available_offline — a handler that needs no live connection (e.g. a

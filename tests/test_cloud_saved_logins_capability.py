@@ -37,6 +37,14 @@ class _FakeSocket:
 
 def test_the_capability_is_announced():
     assert "saved_logins" in DEFAULT_CAPABILITIES
+    assert "saved_command_params" in DEFAULT_CAPABILITIES
+
+
+def test_the_saved_parameter_marker_the_second_capability_stands_for():
+    # The cloud looks for a value of this shape before it sends a project.
+    from openavc.core import saved_params
+
+    assert saved_params.marker("0123456789abcdef") == "<saved on this system #0123456789abcdef>"
 
 
 def test_the_marker_the_capability_stands_for():
@@ -68,3 +76,4 @@ async def test_the_hello_on_the_wire_carries_it():
     hello = socket.sent[0]
     assert hello["type"] == "hello"
     assert "saved_logins" in hello["payload"]["capabilities"]
+    assert "saved_command_params" in hello["payload"]["capabilities"]

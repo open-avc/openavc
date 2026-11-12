@@ -100,6 +100,13 @@ DEFAULT_CAPABILITIES = [
     # its real password, so the cloud sends a project holding the marker only
     # to a system that announces this. Nothing on this side is gated by it.
     "saved_logins",
+    # A secret command parameter saved in a macro step or a control's action
+    # is kept here too, and the step holds a marker naming it
+    # (core/saved_params.py, `<saved on this system #` and its name). An older
+    # version would send that marker to the device as the key, so the cloud
+    # sends a project holding one only to a system that announces this.
+    # Nothing on this side is gated by it.
+    "saved_command_params",
     # This version can stage a panel software update (panel_software_update).
     # Announced by every system, panel or not: whether there is panel
     # software to update is what `system.panel_software.*` state says, and a

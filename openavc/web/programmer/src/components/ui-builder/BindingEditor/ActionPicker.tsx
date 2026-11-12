@@ -321,6 +321,7 @@ function DeviceCommandConfig({
                         params: { ...currentParams, [param]: val },
                       })
                     }
+                    savedParamKey={param}
                     deviceId={selectedDevice}
                     values={currentParams}
                     params={commandDef?.params as Record<string, Partial<DriverParamDef>> | undefined}

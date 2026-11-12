@@ -82,6 +82,12 @@ class StateSetRequest(BaseModel):
     value: Any
 
 
+class SavedParamRequest(BaseModel):
+    """A secret command parameter to save on this system (POST /api/saved-params)."""
+
+    value: str = Field(min_length=1, max_length=4096)
+
+
 class DeviceResponse(BaseModel):
     id: str
     name: str

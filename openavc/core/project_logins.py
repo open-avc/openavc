@@ -26,14 +26,18 @@ import asyncio
 import copy
 import functools
 
+from openavc.core import saved_params
 from openavc.core.device_logins import (
     DEVICE,
+    PARAM,
     SAVED_LOGIN,
+    FoundLogin,
     StoreView,
     in_project,
     marked_fields,
     move_logins,
     move_plugin_logins,
+    param_owner,
     plugin_logins_waiting,
     saved_isc_key,
     saved_logins_of,
@@ -90,6 +94,23 @@ class ProjectLoginsMixin:
             if found.kind != DEVICE:
                 values |= set(found.fields.values())
         return values
+
+    def saved_param_value(self, name: str) -> str | None:
+        """The value of the command parameter saved on this system under
+        ``name`` (the name its step's marker carries), or None."""
+        return self.device_logins.secret(param_owner(name), saved_params.FIELD)
+
+    def save_param_value(self, value: str) -> str:
+        """Save ``value`` as a command parameter on this system and return the
+        marker a step holds in its place (``core/saved_params.py``). Raises
+        ValueError for an empty value or a marker, LoginFileUnreadable when
+        the login file cannot be opened; nothing is saved then."""
+        name = saved_params.new_name()
+        self.device_logins.store(
+            [FoundLogin(name, "", {saved_params.FIELD: value}, PARAM)], typed=True,
+        )
+        self.device_logins.verify()
+        return saved_params.marker(name)
 
     def logins_needed(self) -> list[dict[str, str]]:
         """The devices that wait for somebody to enter a login, in project

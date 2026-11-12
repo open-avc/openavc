@@ -31,6 +31,11 @@ The format is 2. Format 1 (logins of the running project only) is still read.
 Format 2 added the logins of each saved copy in the Project Library, and
 changed the number because a reader of format 1 that rewrote the file would
 have dropped them; it leaves a format it does not know untouched instead.
+The saved command parameters' list (below) joined format 2 without a number of
+its own: a new number would make an earlier release refuse the whole file, its
+device logins with it, where an earlier release reading format 2 keeps
+everything else and drops only that list on its next write. A rollback puts
+each saved parameter back in its step first (``put_back_for_rollback``).
 
 Which saved login a device gets
 -------------------------------
@@ -112,10 +117,18 @@ for a marked login this system does not have, never the marker, since a
 plugin has no refusal to dial and would take the marker as the value
 (``filled_plugin_config``); the mesh key the same (``saved_isc_key``).
 
+Command parameters
+------------------
+A secret command parameter saved in a macro step or a control's action (a
+stream key) is kept here too, under the name its marker carries
+(``core.saved_params``), and moves, travels and is put back with the rest. It
+is filled in where its own step sends it, never in a config.
+
 Every entry has an owner, (kind, name, qualifier): a device is
 (``DEVICE``, its id, its driver); a plugin's own settings
 (``PLUGIN``, its id, ``""``) and a list item (``PLUGIN``, its id,
-``streams[stream_id=cam1]``); the mesh key (``PROJECT``, ``isc``, ``""``).
+``streams[stream_id=cam1]``); the mesh key (``PROJECT``, ``isc``, ``""``); a
+saved command parameter (``PARAM``, its marker's name, ``""``).
 """
 
 from __future__ import annotations
@@ -130,7 +143,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from openavc.core import plugin_secrets
+from openavc.core import plugin_secrets, saved_params
 from openavc.drivers.registry import get_driver_class
 from openavc.drivers.spec import PASSWORD_FIELD, secret_settings
 from openavc.utils.fileio import atomic_write_text
@@ -163,7 +176,7 @@ CONNECTION_LOGIN = PASSWORD_FIELD
 _PRIVATE = stat.S_IRUSR | stat.S_IWUSR
 
 #: Whose login an entry is (module docstring).
-DEVICE, PLUGIN, PROJECT = "device", "plugin", "project"
+DEVICE, PLUGIN, PROJECT, PARAM = "device", "plugin", "project", "parameter"
 Owner = tuple[str, str, str]
 
 #: The project's mesh key: its owner and the setting it is in.
@@ -180,6 +193,11 @@ def device_owner(device_id: str, driver: str) -> Owner:
 
 def plugin_owner(plugin_id: str, item: str = "") -> Owner:
     return (PLUGIN, plugin_id, item)
+
+
+def param_owner(name: str) -> Owner:
+    """A saved command parameter's owner: the name its marker carries."""
+    return (PARAM, name, "")
 
 
 class LoginFileUnreadable(RuntimeError):
@@ -211,10 +229,10 @@ class FoundLogin:
 
 
 def _usable(value: Any) -> bool:
-    return isinstance(value, str) and value != "" and value != SAVED_LOGIN
+    return isinstance(value, str) and value != "" and not saved_params.is_any_marker(value)
 
 
-KIND_ORDER = {DEVICE: 0, PLUGIN: 1, PROJECT: 2}
+KIND_ORDER = {DEVICE: 0, PLUGIN: 1, PROJECT: 2, PARAM: 3}
 
 
 def _sort_key(key: _Key) -> tuple[int, str, int, str, str]:
@@ -598,8 +616,9 @@ class DeviceLogins:
 
 #: Each kind's list in the login file's payload, and the names its owner is
 #: written under there and in a sealed export.
-PAYLOAD_LISTS = {DEVICE: "devices", PLUGIN: "plugins", PROJECT: "project"}
-_OWNER_NAMES = {DEVICE: ("device", "driver"), PLUGIN: ("plugin", "item"), PROJECT: ("section", None)}
+PAYLOAD_LISTS = {DEVICE: "devices", PLUGIN: "plugins", PROJECT: "project", PARAM: "parameters"}
+_OWNER_NAMES = {DEVICE: ("device", "driver"), PLUGIN: ("plugin", "item"), PROJECT: ("section", None),
+                PARAM: ("name", None)}
 
 
 def owner_fields(kind: str, name: str, qualifier: str) -> dict[str, str]:
@@ -859,12 +878,14 @@ def move_logins(
     logged. ``typed`` and ``library`` are as for ``DeviceLogins.store``.
     """
     found = find_logins(project, skip=skip)
+    marked, values = saved_params.mark_clear(project)
+    found += [FoundLogin(name, "", {saved_params.FIELD: value}, PARAM) for name, value in values.items()]
     if not found:
         return project
     where = f"library copy '{library}'" if library is not None else "the project"
     if not _stored(found, logins, typed=typed, library=library, where=where):
         return project
-    return _marked_copy(project, found)
+    return _marked_copy(marked, found)
 
 
 def _stored(
@@ -983,12 +1004,14 @@ class FoundView:
 
 def put_back(project: dict[str, Any], view: StoreView | FoundView) -> dict[str, Any] | None:
     """A copy of ``project`` (read as JSON) with each marker replaced by its
-    saved login in ``view``: every device's, every plugin's and the mesh
-    key's; None when nothing changed. A marker with no saved login stays."""
+    saved login in ``view``: every device's, every plugin's, the mesh key's
+    and each saved command parameter's; None when nothing changed. A marker
+    with no saved login stays."""
     marked = copy.deepcopy(project)
-    changed = False
-    for found in saved_logins_of(marked, view):
-        if found.kind == DEVICE:
+    saved = saved_logins_of(marked, view)
+    changed = saved_params.put_back(marked, _param_values(saved))
+    for found in saved:
+        if found.kind in (DEVICE, PARAM):
             continue
         changed = True
         if found.kind == PROJECT:
@@ -1104,6 +1127,7 @@ def in_project(project: Any) -> Callable[[Owner], bool]:
     right for a plugin that is not installed."""
     devices = {device_owner(d, drv) for d, drv in project_devices(project)}
     configs = dict(plugin_configs(project))
+    params = saved_params.names_in(project)
 
     def present(owner: Owner) -> bool:
         kind, name, qualifier = owner
@@ -1111,6 +1135,8 @@ def in_project(project: Any) -> Callable[[Owner], bool]:
             return owner in devices
         if kind == PLUGIN:
             return name in configs and plugin_secrets.holder_of(configs[name], qualifier) is not None
+        if kind == PARAM:
+            return name in params
         return owner == ISC_OWNER
 
     return present
@@ -1142,7 +1168,20 @@ def saved_logins_of(project: Any, view: StoreView | FoundView) -> list[FoundLogi
         value = view.secret(ISC_OWNER, ISC_FIELD)
         if _usable(value):
             found.append(FoundLogin(ISC_OWNER[1], ISC_OWNER[2], {ISC_FIELD: value}, PROJECT))
+    found.extend(_saved_params_of(project, view))
     return found
+
+
+def _saved_params_of(project: Any, view: StoreView | FoundView) -> list[FoundLogin]:
+    """The saved command parameters ``view`` has behind the markers in
+    ``project``'s steps and actions (``core.saved_params``)."""
+    values = {name: view.secret(param_owner(name), saved_params.FIELD) for name in saved_params.names_in(project)}
+    return [FoundLogin(name, "", {saved_params.FIELD: v}, PARAM) for name, v in sorted(values.items()) if _usable(v)]
+
+
+def _param_values(found: list[FoundLogin]) -> dict[str, str]:
+    """The saved command parameters in ``found``, by name."""
+    return {f.name: f.fields[saved_params.FIELD] for f in found if f.kind == PARAM}
 
 
 def filled_plugin_config(plugin_id: str, config: Any, logins: DeviceLogins) -> Any:

@@ -11,6 +11,7 @@ from openavc.core.command_params import (
     file_command_check,
     missing_params_check,
     param_label_check,
+    unsaved_value_check,
 )
 from openavc.core.macro_validation import macro_issues
 
@@ -119,6 +120,12 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
     file_command = file_command_check(
         getattr(engine, "devices", None), getattr(engine, "project", None),
     )
+    # And a value a step saved on another system that this one does not have:
+    # the run refuses it in this sentence, so the step is marked until it is
+    # entered here (core/saved_params.py). The editor's door only.
+    unsaved = unsaved_value_check(
+        getattr(engine, "devices", None), getattr(engine, "project", None),
+    )
 
     if not isinstance(body, dict) or not isinstance(body.get("macros"), list):
         raise _api_error(400, 'Expected {"macros": [{"id": ..., "steps": [...], "triggers": [...]}]}')
@@ -134,7 +141,7 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
                 extra_actions=extra_actions,
                 missing_params=missing_params,
                 param_label=param_label,
-                file_command=file_command,
+                file_command=lambda step: file_command(step) or unsaved(step),
             )
         }
     return {"macros": results}

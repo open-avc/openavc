@@ -21,3 +21,9 @@ export function isSecretSetting(key: string | null | undefined, def: unknown): b
   const d = def as { secret?: unknown; type?: unknown };
   return d.secret === true || d.type === "password";
 }
+
+/** The type of the plain input a form shows `def`'s value in: masked for a
+ *  secret, else `otherwise`. */
+export function maskedInputType(def: unknown, otherwise: string): string {
+  return isSecretSetting(null, def) ? "password" : otherwise;
+}

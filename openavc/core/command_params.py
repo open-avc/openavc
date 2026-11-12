@@ -33,6 +33,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from typing import Any
 
+from openavc.core import saved_params
 from openavc.drivers.base import missing_required_params
 from openavc.drivers.command_files import returns_file_sentence, takes_file_sentence
 from openavc.drivers.param_labels import param_label
@@ -208,6 +209,60 @@ def param_label_of(
         if defs and name in defs:
             return param_label(name, defs[name])
     return None
+
+
+def unsaved_value_reason(
+    action: Mapping[str, Any],
+    *,
+    devices: Any,
+    groups: Mapping[str, Sequence[str]] | None = None,
+) -> str | None:
+    """Why this action is refused when it runs because a value it saved on a
+    system is not saved on this one (a template, a copy without its logins),
+    in the send's own sentence; None when every one it holds is here
+    (``core/saved_params.py``). For the Programmer's lint doors only: the AI's
+    writers keep such a step, since its value is entered on the Programmer."""
+    if not isinstance(action, Mapping) or action.get("action") not in COMMAND_ACTIONS:
+        return None
+    params = action.get("params")
+    missing = [key for key in sorted(saved_params.saved_names(params)) if not _saved_here(params[key])]
+    if not missing:
+        return None
+    command = str(action.get("command") or "")
+    label = param_label_of(action, missing[0], devices=devices, groups=groups) or param_label(missing[0])
+    sends = _command_label_of(action, command, devices, groups)
+    return saved_params.not_saved_sentence(label, sends)
+
+
+def _saved_here(marker: Any) -> bool:
+    from openavc.core.device_logins import device_logins, param_owner
+
+    name = saved_params.name_of(marker)
+    return name is not None and device_logins().secret(param_owner(name), saved_params.FIELD) is not None
+
+
+def _command_label_of(
+    action: Mapping[str, Any], command: str, devices: Any, groups: Mapping[str, Sequence[str]] | None,
+) -> str:
+    """The command's label as its device's driver declares it, else its id."""
+    if action.get("action") == "device.command":
+        candidates: Iterable[Any] = [action.get("device")]
+    else:
+        candidates = (groups or {}).get(str(action.get("group") or ""), ())
+    for device_id in candidates:
+        definition = _declared_command(devices, str(device_id or ""), command)
+        if definition is not None and definition.get("label"):
+            return str(definition["label"])
+    return command
+
+
+def unsaved_value_check(
+    devices: Any, project: Any = None
+) -> Callable[[Mapping[str, Any]], str | None]:
+    """:func:`unsaved_value_reason` as one callable, injected the way
+    :func:`missing_params_check` is."""
+    groups = device_groups(project) if project is not None else None
+    return lambda action: unsaved_value_reason(action, devices=devices, groups=groups)
 
 
 def device_groups(project: Any) -> dict[str, list[str]]:

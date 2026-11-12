@@ -18,6 +18,7 @@ import itertools
 from typing import TYPE_CHECKING, Any
 
 from openavc.core.device_manager import failed_command
+from openavc.core.saved_params import saved_kwargs
 from openavc.core.script_engine import ScriptCallError
 from openavc.core.state_store import coerce_flat_primitive
 from openavc.core.value_resolver import resolve_ref
@@ -418,7 +419,11 @@ class UIEventRuntime:
                 record(device=device_id, command=command, params=params, sent=False)
                 return
             try:
-                await engine.devices.send_command(device_id, command, params)
+                # A value this action saved on this system is filled in by the
+                # send; the record keeps the marker (core/saved_params.py).
+                await engine.devices.send_command(
+                    device_id, command, params, **saved_kwargs(action_def.get("params")),
+                )
                 record(device=device_id, command=command, params=params, sent=True)
             except Exception as exc:  # Catch-all: driver send_command may raise arbitrary errors
                 log.exception(f"Binding command failed: {device_id}.{command}")

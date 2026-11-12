@@ -150,6 +150,23 @@ export async function saveProject(
     : { status: result.status, etag: newEtag };
 }
 
+/** Save a secret command parameter (a stream key in a macro step or a
+ *  control's action) on this system. Resolves the marker the step holds in
+ *  its place; the value is never read back (components/shared/savedParams.ts). */
+export async function saveParamValue(value: string): Promise<string> {
+  const answer = await request<{ marker: string }>("/saved-params", {
+    method: "POST",
+    body: JSON.stringify({ value }),
+  });
+  return answer.marker;
+}
+
+/** Whether a value is saved on this system under a saved parameter's name. */
+export async function savedParamState(name: string): Promise<boolean> {
+  const answer = await request<{ saved: boolean }>(`/saved-params/${encodeURIComponent(name)}`);
+  return answer.saved;
+}
+
 export async function reloadProject(): Promise<{ status: string }> {
   return request("/project/reload", { method: "POST" });
 }

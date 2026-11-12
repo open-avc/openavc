@@ -448,6 +448,8 @@ A keypad's **On submit** runs when Enter is pressed. With **Send without Enter**
 
 For a **Select**, the **On change** card lets every option run its own action ("different per choice"), so HDMI 1 routes input 1, HDMI 2 routes input 2, and so on. For a **Matrix**, the four routing interactions (video route, audio route, mute, audio mute) are separate cards but share the same crosspoint grid.
 
+A stream key, password or PIN in a **Device Command** action is saved on this system, as it is in a macro step ([Macros and Triggers](macros-and-triggers.md)): type it and click **Save**, and it shows **Saved on this system** with **Change**. The project, and every touch panel, holds only a placeholder for it, and the control sends the real value when pressed. On a system that does not have it, **Validate** names the control until it is entered.
+
 #### Dynamic parameter values (the `$` picker)
 
 When an action sends a **Device Command**, each parameter has a `$` toggle. Turn it on and a grouped picker opens instead of the plain input. It offers, in one place:

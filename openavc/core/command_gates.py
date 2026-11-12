@@ -5,7 +5,9 @@ reaches the wire, and how a file command is run.
 In the order send_command asks them: the command is one the driver declares
 (enforced only when it declares a non-empty set, since an empty or missing one
 means "this driver did not say"); a file command comes only from a door that
-can give or take a file, with a file in each file param; each ``child_id``
+can give or take a file, with a file in each file param; a value saved on this
+system is filled in where the step that sent it saved it, and any marker left
+is refused (``fill_saved_params``, ``core/saved_params.py``); each ``child_id``
 param is coerced to its child type's declared id kind and checked against its
 range; then every param passes the declared-schema gate
 (drivers/param_validation.py). Whether the device takes the command at all
@@ -21,8 +23,11 @@ commands) is judged on what the driver declares when the command is sent.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
+
+from openavc.core import saved_params
 
 from openavc.core.device_traffic import RX, TX, get_traffic_recorder
 from openavc.drivers.avcdriver_semantic import undeclared_child_type_reason
@@ -44,7 +49,7 @@ from openavc.drivers.command_files import (
     takes_file_sentence,
 )
 from openavc.drivers.param_labels import param_label
-from openavc.drivers.spec import file_param_names, is_file_command
+from openavc.drivers.spec import file_param_names, is_file_command, secret_settings
 
 
 def _driver_info(driver: Any) -> dict[str, Any]:
@@ -68,6 +73,43 @@ def _param_defs(driver: Any, command: str) -> dict[str, Any] | None:
     cmd_def = command_definition(driver, command)
     pdefs = cmd_def.get("params") if cmd_def is not None else None
     return pdefs if isinstance(pdefs, dict) else None
+
+
+def fill_saved_params(
+    driver: Any,
+    command: str,
+    params: dict[str, Any] | None,
+    fill: Callable[[str, Any], str | None],
+) -> dict[str, Any] | None:
+    """``params`` with each value saved on this system filled in, or refused.
+
+    ``fill`` answers a parameter's saved value from its marker, and only for a
+    parameter whose stored value in the sending step or action was that
+    marker (``saved_params.filler``); it is asked only where the driver marks
+    the parameter secret. A marker of either kind it does not fill (one sent
+    from another door, copied into a parameter that is not secret, reached
+    through a variable, or with nothing saved behind it) raises
+    CommandParamError, and nothing is sent: a device is never handed a
+    marker as its key.
+    """
+    marked = [key for key, value in (params or {}).items() if saved_params.is_any_marker(value)]
+    if not marked:
+        return params
+    secret = secret_settings(_param_defs(driver, command))
+    filled = dict(params or {})
+    for key in marked:
+        value = fill(key, filled[key]) if key in secret else None
+        if value is None:
+            raise _not_saved_here(driver, command, key)
+        filled[key] = value
+    return filled
+
+
+def _not_saved_here(driver: Any, command: str, key: str) -> CommandParamError:
+    """Where to enter a saved value the send could not fill in."""
+    label = param_label(key, (_param_defs(driver, command) or {}).get(key))
+    sends = command_label(command_definition(driver, command), command)
+    return CommandParamError(saved_params.not_saved_sentence(label, sends))
 
 
 def check_command_declared(driver: Any, device_id: str, command: str) -> None:

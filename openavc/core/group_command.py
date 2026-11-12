@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any, Callable, TYPE_CHECKING
+from collections.abc import Collection
+from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from openavc.core.macro_text import StepWording
 from openavc.core.state_store import StateStore
@@ -88,13 +89,16 @@ class GroupCommand:
     async def send(
         self, group_id: str, command: str, params: dict[str, Any],
         project_device_ids: Callable[[], set[str] | None] | None,
+        *, saved: Collection[str] = (),
     ) -> list[dict[str, Any]] | None:
         """Send ``command`` to the group's members; return each member's result.
 
         None for a group with no members, which is skipped with nothing to
         report. Raises ``ValueError`` for a group the project does not have.
         ``project_device_ids`` answers which devices the project has; when it
-        is unwired, or answers None, no member is called missing.
+        is unwired, or answers None, no member is called missing. ``saved``
+        names the parameters the step saved on this system, filled in by each
+        member's send (``DeviceManager.send_command``).
         """
         device_ids = self._groups.members(group_id)
         if device_ids is None:
@@ -104,7 +108,11 @@ class GroupCommand:
             return None
         known_device_ids = project_device_ids() if project_device_ids else None
         members = self._sort(group_id, device_ids, command, known_device_ids)
-        outcome = await self._sent(group_id, command, params, members.sendable)
+        extra = {"saved": saved} if saved else {}
+        outcome = await self._sent(
+            group_id, command, members.sendable,
+            lambda did: self._devices.send_command(did, command, params, **extra),
+        )
         for did in members.offline:
             outcome[did] = self._offline(did)
         for did in members.missing:
@@ -139,10 +147,12 @@ class GroupCommand:
         return members
 
     async def _sent(
-        self, group_id: str, command: str, params: dict[str, Any], sendable: list[str],
+        self, group_id: str, command: str, sendable: list[str],
+        send: Callable[[str], Awaitable[Any]],
     ) -> dict[str, dict[str, Any]]:
-        """Send to every reachable member at once; each one's result by id."""
-        tasks = [self._devices.send_command(did, command, params) for did in sendable]
+        """Send to every reachable member at once (``send`` sends to one);
+        each one's result by id."""
+        tasks = [send(did) for did in sendable]
         results: list[Any] = []
         if tasks:
             log.debug(f"  Macro step: group '{group_id}'.{command} -> {len(tasks)} device(s)")

@@ -29,6 +29,7 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
 from openavc.core.group_command import reached_nobody
+from openavc.core.saved_params import saved_kwargs
 from openavc.core.value_resolver import resolve_in_text, resolve_ref
 from openavc.utils.logger import get_logger
 
@@ -329,7 +330,10 @@ class MacroSteps:
             return
         params = self._resolve_params(step.get("params") or {}, run.context)
         log.debug(f"  Macro step: {device_id}.{command}({params})")
-        await self.devices.send_command(device_id, command, params)
+        # A value the step saved on this system is filled in by the send,
+        # never here: the log line above and the step's progress keep the
+        # marker (core/saved_params.py).
+        await self.devices.send_command(device_id, command, params, **saved_kwargs(step.get("params")))
 
     async def _group_command_step(
         self, step: dict[str, Any], run: StepRun, _path: StepPath,
@@ -338,7 +342,7 @@ class MacroSteps:
         command = step.get("command", "")
         params = self._resolve_params(step.get("params") or {}, run.context)
         device_results = await self._group_command.send(
-            group_id, command, params, self._project_device_ids,
+            group_id, command, params, self._project_device_ids, **saved_kwargs(step.get("params")),
         )
         if device_results is None:
             return None

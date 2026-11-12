@@ -43,7 +43,9 @@ const smallButton: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   flex: 1,
-  minWidth: 0,
+  // Below this the buttons wrap under the box rather than squeeze it (the
+  // UI Builder's narrow Bindings panel).
+  minWidth: 160,
   padding: "var(--space-sm) var(--space-md)",
   borderRadius: "var(--border-radius)",
   border: "1px solid var(--border-color)",
@@ -91,6 +93,7 @@ export function SavedLoginField({
   placeholder,
   savedActions,
   savedView,
+  saveOnLeave,
 }: {
   label: string;
   state: SavedLoginState;
@@ -104,6 +107,10 @@ export function SavedLoginField({
   savedActions?: ReactNode;
   /** Drawn in place of "Saved on this system" while set (a shown mesh key). */
   savedView?: ReactNode;
+  /** Save what was typed when the box is left for anywhere but its own
+   *  buttons: on a surface whose other fields save themselves (a macro step,
+   *  a control's action), its own Save is easy to miss. */
+  saveOnLeave?: boolean;
 }) {
   const [changing, setChanging] = useState(false);
   const [value, setValue] = useState("");
@@ -158,7 +165,7 @@ export function SavedLoginField({
   return (
     <div>
       <form
-        style={{ display: "flex", gap: "var(--space-xs)", alignItems: "center" }}
+        style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)", alignItems: "center" }}
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -175,6 +182,9 @@ export function SavedLoginField({
           disabled={saving}
           placeholder={keeping ? KEEP_SAVED_PLACEHOLDER : placeholder}
           onChange={(e) => setValue(e.target.value)}
+          onBlur={(e) => {
+            if (saveOnLeave && value !== "" && !e.currentTarget.form?.contains(e.relatedTarget)) void save();
+          }}
           style={inputStyle}
         />
         <button

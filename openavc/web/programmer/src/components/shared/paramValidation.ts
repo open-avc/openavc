@@ -1,4 +1,5 @@
 import type { ActionParam, DriverParamDef } from "../../api/types";
+import { isSavedParam } from "./savedParams";
 
 /** Either param-schema shape — the authoring surfaces use both. */
 type ParamLike = Partial<DriverParamDef> & Partial<ActionParam>;
@@ -25,6 +26,7 @@ type ParamLike = Partial<DriverParamDef> & Partial<ActionParam>;
 export function validateParam(def: ParamLike, value: string): string | null {
   if (typeof value !== "string") return null;
   if (value.startsWith("$")) return null; // dynamic ref — resolved at runtime
+  if (isSavedParam(value)) return null; // a value saved on this system, checked when sent
   const v = value.trim();
   if (v === "") return null;
   const type = def.type || "string";

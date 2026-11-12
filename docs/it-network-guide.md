@@ -538,7 +538,7 @@ Failed authentication attempts are throttled at the strict (10/min) rate on ever
 
 - No user credentials for the web interface are stored in a database (the password is a single config value)
 - No personal data, user accounts, or usage analytics
-- No device credentials beyond what is configured in the project file (e.g., PJLink passwords)
+- No device credentials beyond what is configured in the project file (e.g., PJLink passwords). A stream key, password or PIN saved in a macro step or a control's action is kept with the system's device logins, not in the project file, and is never sent to a touch panel.
 - No data is written outside the application's data directory
 
 ### Filesystem permissions

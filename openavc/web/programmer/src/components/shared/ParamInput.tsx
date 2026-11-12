@@ -23,7 +23,9 @@ import { validateParam } from "./paramValidation";
 import { VariableKeyPicker } from "./VariableKeyPicker";
 import { BooleanOptions } from "./BooleanOptions";
 import { FileParamInput } from "./FileParamInput";
-import { isSecretSetting } from "./secretSetting";
+import { SavedParamField } from "./SavedParamField";
+import { drawsAsSaved } from "./savedParams";
+import { maskedInputType } from "./secretSetting";
 
 /** The widget for a single command/action parameter — the part that varies by
  *  the param's declared type. One shared control so every authoring surface
@@ -44,7 +46,10 @@ import { isSecretSetting } from "./secretSetting";
  *   - options_state   -> combobox sourced from a state-published list
  *                        (a device-relative state key)
  *   - integer/number/float -> number input (honors min/max)
- *   - password/secret -> masked input (never pre-filled)
+ *   - password/secret -> masked input; on a surface that saves its params
+ *                        (`savedParamKey`: a macro step, a control's action)
+ *                        the value is saved on this system instead and the
+ *                        step holds a marker (SavedParamField)
  *   - file            -> a file picker (needs `onFile`; the device page and a
  *                        device audit are the only surfaces that send one)
  *   - everything else -> text input
@@ -98,6 +103,11 @@ export interface ParamInputProps {
   onFile?: (file: File | null) => void;
   /** The param's key, for a file param's own check (its label names it). */
   name?: string;
+  /** The param's key, given by a surface that saves its params into the
+   *  project (a macro step, a control's action): a secret param's value is
+   *  then saved on this system, never in the project, and drawn as "Saved on
+   *  this system" with Change (SavedParamField). */
+  savedParamKey?: string;
 }
 
 /** A param value is a dynamic state reference (and should render the picker). */
@@ -135,6 +145,7 @@ export function ParamInput({
   file,
   onFile,
   name,
+  savedParamKey,
 }: ParamInputProps) {
   const type = def.type || "string";
   // Something to read live children and status values from.
@@ -270,6 +281,11 @@ export function ParamInput({
         {toggle}
       </div>
     );
+  }
+
+  // A secret on a surface that saves it: only the marker comes back here.
+  if (drawsAsSaved(savedParamKey, def, value)) {
+    return <SavedParamField paramKey={savedParamKey} def={def} value={value} onChange={onChange} style={rowStyle} trailing={toggle} />;
   }
 
   // Resolve option-provider lists. A combobox (input + datalist) renders these
@@ -432,13 +448,7 @@ export function ParamInput({
         : undefined;
     widget = (
       <input
-        type={
-          isSecretSetting(null, def)
-            ? "password"
-            : isNumber
-              ? "number"
-              : "text"
-        }
+        type={maskedInputType(def, isNumber ? "number" : "text")}
         autoComplete="new-password"
         value={value}
         min={effMin}

@@ -344,6 +344,7 @@ function DeviceCommandEditor({
                   def={(paramDef ?? {}) as Partial<DriverParamDef>}
                   value={String(currentVal)}
                   onChange={(val) => handleParamChange(paramKey, val)}
+                  savedParamKey={paramKey}
                   deviceId={step.device}
                   values={step.params as Record<string, unknown> | undefined}
                   params={paramSchema as Record<string, Partial<DriverParamDef>>}
@@ -516,6 +517,7 @@ function GroupCommandEditor({
                     def={(paramDef ?? {}) as Partial<DriverParamDef>}
                     value={String(currentVal)}
                     onChange={(val) => handleParamChange(paramKey, val)}
+                    savedParamKey={paramKey}
                     values={step.params as Record<string, unknown> | undefined}
                     params={paramSchema as Record<string, Partial<DriverParamDef>>}
                     allowDynamic
