@@ -199,13 +199,14 @@ const frameLine = ({ type, element_id: id, value, ...rest }) =>
  * A level control on a page of its own, live unless `edit`, with a recorder:
  * `look()` notes what changed on its nodes since the last look (`c`:
  * everything, the first time), the range input's position (`p`), and every
- * frame sent since (`s`).
+ * frame sent since (`s`). `before(app)` runs before the page is drawn.
  */
-function levelMount(def, { state, edit } = {}) {
+function levelMount(def, { state, edit, before } = {}) {
     const app = mkApp();
     app.editMode = !!edit;
     const sent = [];
     app.send = (frame) => sent.push(frame);
+    if (before) before(app);
     renderProject(app, project({
         elements: [def], placements: { [def.id]: { x: 5, y: 5, w: 30, h: 30 } },
     }));
@@ -739,16 +740,12 @@ const tests = {
     // is deleted (device removed/offline), instead of freezing on last value.
     h002_gauge_reset() {
         const app = mkApp();
-        const fg = { setAttribute(k, v) { this[k] = v; } };
-        const vt = {};
-        const b = {
-            binding: { key: 'device.g.level' },
-            _svg: {
-                fgPath: fg, valueText: vt, startAngle: 0, endAngle: Math.PI, radius: 50,
-                min: 0, max: 100, unit: '%', gaugeColor: '#0f0', zones: null, showValue: true,
-                arcPath: (a, c) => `d${a}-${c}`, polarToCart: () => ({ x: 0, y: 0 }),
-            },
-        };
+        const { node, b } = drawnLevel(app, {
+            id: 'g', type: 'gauge', min: 0, max: 100, unit: '%',
+            bindings: { show: { value: { key: 'device.g.level' } } },
+        });
+        const fg = { get d() { return node.querySelector('[data-role=gauge-fg]').getAttribute('d'); } };
+        const vt = node.querySelector('[data-role=gauge-value]');
         app.state = { 'device.g.level': 50 };
         app.evaluateGaugeValue(b);
         assert(fg.d && fg.d !== '', 'gauge arc drawn for a live value');
@@ -761,14 +758,11 @@ const tests = {
 
     h002_meter_reset() {
         const app = mkApp();
-        const bar = document.createElement('div');
-        for (let i = 0; i < 5; i++) {
-            const s = document.createElement('div'); s.className = 'meter-segment'; bar.appendChild(s);
-        }
-        const b = {
-            binding: { key: 'device.m.level' },
-            _meter: { segments: 5, min: -60, max: 0, bar, showPeak: true, peakValue: -Infinity, peakTime: 0, peakHoldMs: 1500 },
-        };
+        const { node, b } = drawnLevel(app, {
+            id: 'm', type: 'level_meter', min: -60, max: 0, style: { meter_segments: 5, show_peak: true },
+            bindings: { show: { value: { key: 'device.m.level' } } },
+        });
+        const bar = node.querySelector('.meter-bar');
         app.state = { 'device.m.level': 0 };
         app.evaluateLevelMeterValue(b);
         assert(bar.querySelectorAll('.meter-segment.lit').length > 0, 'meter lit at max');
@@ -1962,19 +1956,18 @@ const tests = {
     // degenerate ranges don't produce NaN.
     l001_divide_by_zero_guards() {
         const app = mkApp();
-        const fg = { setAttribute(k, v) { this[k] = v; } };
-        const vt = {};
-        const b = {
-            binding: { key: 'var.g' },
-            _svg: { fgPath: fg, valueText: vt, startAngle: 0, endAngle: 1, radius: 10, min: 50, max: 50, unit: '%', gaugeColor: '#0f0', zones: null, showValue: true, arcPath: () => 'd', polarToCart: () => ({ x: 0, y: 0 }) },
-        };
+        const { node, b } = drawnLevel(app, {
+            id: 'g', type: 'gauge', min: 50, max: 50, unit: '%', bindings: { show: { value: { key: 'var.g' } } },
+        });
+        const vt = node.querySelector('[data-role=gauge-value]');
         app.state = { 'var.g': 50 };
         app.evaluateGaugeValue(b);
         assert(!String(vt.textContent).includes('NaN'), `gauge min==max no NaN, got ${vt.textContent}`);
         // level meter span 0
-        const bar = document.createElement('div');
-        const seg = document.createElement('div'); seg.className = 'meter-segment'; bar.appendChild(seg);
-        const mb = { binding: { key: 'var.m' }, _meter: { segments: 1, min: 0, max: 0, bar, showPeak: false, peakValue: -Infinity, peakTime: 0, peakHoldMs: 1500 } };
+        const { b: mb } = drawnLevel(app, {
+            id: 'm', type: 'level_meter', min: 0, max: 0, style: { meter_segments: 1, show_peak: false },
+            bindings: { show: { value: { key: 'var.m' } } },
+        });
         app.state['var.m'] = 0;
         app.evaluateLevelMeterValue(mb); // must not throw
     },
@@ -2860,15 +2853,12 @@ const tests = {
 
         // Gauge
         app.state['device.d.connected'] = true;
-        const fgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        const gb = {
-            type: 'gauge_value', element: document.createElement('div'), elementDef: { id: 'g' },
-            binding: { key: 'device.d.v' },
-            _svg: { fgPath, valueText, startAngle: 0, endAngle: 180, radius: 10,
-                min: 0, max: 100, unit: '%', gaugeColor: '#0f0', zones: [], showValue: true,
-                displayDecimals: null, arcPath: () => 'M0 0' },
-        };
+        const { node: gaugeNode, b: gb } = drawnLevel(app, {
+            id: 'g', type: 'gauge', min: 0, max: 100, unit: '%', zones: [],
+            bindings: { show: { value: { key: 'device.d.v' } } },
+        });
+        const fgPath = gaugeNode.querySelector('[data-role=gauge-fg]');
+        const valueText = gaugeNode.querySelector('[data-role=gauge-value]');
         app.evaluateGaugeValue(gb);
         assert(valueText.textContent === '42%', `gauge connected, got ${valueText.textContent}`);
         offline();
@@ -2878,13 +2868,11 @@ const tests = {
 
         // Level meter
         app.state['device.d.connected'] = true;
-        const bar = document.createElement('div');
-        for (let i = 0; i < 4; i++) { const s = document.createElement('div'); s.className = 'meter-segment'; bar.appendChild(s); }
-        const mb = {
-            type: 'level_meter_value', element: document.createElement('div'), elementDef: { id: 'm' },
-            binding: { key: 'device.d.v' },
-            _meter: { segments: 4, min: 0, max: 100, bar, showPeak: false, peakValue: -Infinity, peakTime: 0, peakHoldMs: 1500 },
-        };
+        const { node: meterNode, b: mb } = drawnLevel(app, {
+            id: 'm', type: 'level_meter', min: 0, max: 100, style: { meter_segments: 4, show_peak: false },
+            bindings: { show: { value: { key: 'device.d.v' } } },
+        });
+        const bar = meterNode.querySelector('.meter-bar');
         app.evaluateLevelMeterValue(mb);
         assert(bar.querySelectorAll('.lit').length > 0, 'meter connected lights segments');
         offline();
@@ -3133,15 +3121,12 @@ const tests = {
         assert(sel.selectedIndex === -1, `select unreported shows nothing, got ${sel.selectedIndex}`);
 
         // Gauge: no arc, "--%".
-        const fgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        const gb = {
-            type: 'gauge_value', element: document.createElement('div'), elementDef: { id: 'g' },
-            binding: { key: 'device.d.v' },
-            _svg: { fgPath, valueText, startAngle: 0, endAngle: 180, radius: 10,
-                min: 0, max: 100, unit: '%', gaugeColor: '#0f0', zones: [], showValue: true,
-                displayDecimals: null, arcPath: () => 'M0 0' },
-        };
+        const { node: gaugeNode, b: gb } = drawnLevel(app, {
+            id: 'g', type: 'gauge', min: 0, max: 100, unit: '%', zones: [],
+            bindings: { show: { value: { key: 'device.d.v' } } },
+        });
+        const fgPath = gaugeNode.querySelector('[data-role=gauge-fg]');
+        const valueText = gaugeNode.querySelector('[data-role=gauge-value]');
         app.evaluateGaugeValue(gb);
         assert(valueText.textContent === '--%', `gauge unreported, got ${valueText.textContent}`);
         assert(fgPath.getAttribute('d') === '', 'gauge arc cleared while unreported');
@@ -7373,6 +7358,180 @@ const PLUGIN_EXTENSIONS = {
         allow_features: ['camera', 'microphone'], ext_auth: true,
     } },
 };
+
+// --- The panel's own time, moved by hand -------------------------------------
+//
+// The gauge and meter pins, the clock's and the keypad's read the wall clock
+// (`new Date()`, `Date.now()`) and the timers (`setTimeout`, `setInterval`).
+// withFakeTime replaces all of them on the panel's window for one run, starting
+// at `start` (a UTC instant) in the time zone `tz`, so a pin reads the same on
+// any machine. `advance(ms)` runs every timer and interval that falls due, in
+// time order.
+
+function withFakeTime(run, { start = Date.UTC(2026, 0, 15, 14, 5, 9, 250), tz = 'UTC' } = {}) {
+    const RealDate = window.Date;
+    const real = {
+        setTimeout: window.setTimeout, clearTimeout: window.clearTimeout,
+        setInterval: window.setInterval, clearInterval: window.clearInterval,
+    };
+    const realTz = process.env.TZ;
+    process.env.TZ = tz;
+    let now = start;
+    let seq = 0;
+    const timers = new Map();
+    class FakeDate extends RealDate {
+        constructor(...args) { if (args.length === 0) super(now); else super(...args); }
+        static now() { return now; }
+    }
+    const schedule = (fn, ms, every) => {
+        seq += 1;
+        const step = Math.max(0, Number(ms) || 0);
+        timers.set(seq, { at: now + step, fn, every: every ? Math.max(1, step) : 0 });
+        return seq;
+    };
+    window.Date = FakeDate;
+    window.setTimeout = (fn, ms) => schedule(fn, ms, false);
+    window.setInterval = (fn, ms) => schedule(fn, ms, true);
+    window.clearTimeout = (id) => { timers.delete(id); };
+    window.clearInterval = (id) => { timers.delete(id); };
+    const advance = (ms) => {
+        const until = now + ms;
+        for (;;) {
+            const due = [...timers].filter(([, t]) => t.at <= until)
+                .sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
+            if (!due) break;
+            const [id, t] = due;
+            now = t.at;
+            if (t.every) t.at += t.every; else timers.delete(id);
+            t.fn();
+        }
+        now = until;
+    };
+    try {
+        return run(advance, { pending: () => timers.size });
+    } finally {
+        window.Date = RealDate;
+        Object.assign(window, real);
+        if (realTz === undefined) delete process.env.TZ; else process.env.TZ = realTz;
+    }
+}
+
+// --- The gauge and the level meter, as a page draws them ---------------------
+//
+// Each drawn on a page by levelMount's recorder (theme defaults or the design
+// canvas where a case says), taken through meterReadings with the clock moving
+// between readings (the meter's peak hold reads it), then a page redraw, a
+// refusal redraw and the peak hold's window; compared with
+// panel_meter_pins.json, recorded from the code before they moved.
+
+const METER_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_meter_pins.json'), 'utf8'));
+const METER_KEY = 'device.d.v';
+
+function meterReadings(m, key, advance) {
+    m.look();
+    for (const value of [-30, -6, -1, 5, -70, 60, 250, -5, 0, null, 33.333, 0.05, -0.04, 72.6]) {
+        m.set(key, value); advance(400); m.look();
+    }
+    m.set('device.d.connected', false); m.look();
+    m.set(key, 30); m.look();
+    m.set('device.d.connected', true); m.look();
+    m.set(key, undefined); m.look();
+    for (const value of ['55', '-20', ' 7 ', true, false, '', 'abc', 1e21, -1e-9, 42]) {
+        m.set(key, value); advance(400); m.look();
+    }
+}
+
+function meterGestures(m, key, advance) {
+    m.app.renderCurrentPage(); m.look();
+    m.set(key, -12); m.look();
+    m.app._redrawElement(m.id); m.look();
+    m.set(key, -10); m.look();
+    advance(100); m.set(key, -40); m.look();
+    advance(100); m.set(key, -40.5); m.look();
+    advance(1500); m.set(key, -41); m.look();
+    advance(10); m.set(key, -50); m.look();
+    advance(5000); m.app._redrawElement(m.id); m.look();
+    // The default hold's edge: inside it, exactly at it, just past it.
+    advance(5000); m.set(key, -5); m.look();
+    advance(1450); m.set(key, -45); m.look();
+    advance(50); m.set(key, -46); m.look();
+    advance(1); m.set(key, -47); m.look();
+}
+
+Object.assign(tests, {
+    meters_draw_and_show_readings_as_today() {
+        const got = {};
+        const bound = { bindings: { show: { value: { key: METER_KEY } } } };
+        const gauge = (id, extra) => ({ id, type: 'gauge', label: 'Level', ...bound, ...extra });
+        const meter = (id, extra) => ({ id, type: 'level_meter', label: 'Mic', ...bound, ...extra });
+        const live = { 'device.d.connected': true };
+        const themeDefaults = (app) => {
+            app.themeElementDefaults = {
+                gauge: { gauge_color: '#0a0a0a', gauge_bg_color: '#1b1b1b', tick_count: 3, show_value: false, text_color: '#2c2c2c' },
+                level_meter: { meter_segments: 6, show_peak: false, green_to: -30, yellow_to: -10, peak_hold_ms: 200 },
+            };
+        };
+        const cases = [
+            [gauge('g_plain', { min: 0, max: 100, unit: '%' })],
+            [gauge('g_defaults', { label: undefined })],
+            [gauge('g_zones', {
+                min: 0, max: 100, display_decimals: 2,
+                zones: [{ from: 0, to: 30, color: '#00ff00' }, { from: 30, to: 70, color: '#ffff00' }, { from: 60, to: 100, color: '#ff0000' }],
+            })],
+            [gauge('g_zones_empty', { zones: [] })],
+            [gauge('g_zones_object', { zones: { from: 0, to: 100, color: '#ff0000' } })],
+            [gauge('g_negative', { min: -20, max: 20, arc_angle: 180, display_decimals: 0, unit: ' dB' })],
+            [gauge('g_flat', { min: 50, max: 50 })],
+            [gauge('g_inverted', { min: 100, max: 0 })],
+            [gauge('g_text_range', { min: '9', max: '10' })],
+            [gauge('g_null_range', { min: null, max: null, unit: null, arc_angle: null })],
+            [gauge('g_style', { style: {
+                gauge_color: '#123456', gauge_bg_color: '#654321', gauge_width: 4,
+                show_value: false, show_ticks: false, text_color: '#abcdef',
+            } })],
+            [gauge('g_one_tick', { style: { tick_count: 1 } })],
+            [gauge('g_seven_ticks', { style: { tick_count: 7, gauge_width: 0, show_value: true } })],
+            [gauge('g_full_circle', { arc_angle: 360 })],
+            [gauge('g_no_arc', { arc_angle: 0 })],
+            [gauge('g_decimals_text', { display_decimals: 'x' })],
+            [gauge('g_decimals_big', { display_decimals: 25 })],
+            [gauge('g_decimals_negative', { display_decimals: -3, unit: 'V' })],
+            [gauge('g_unbound', { bindings: undefined })],
+            [gauge('g_themed', { style: { gauge_width: 10 } }), { before: themeDefaults }],
+            [gauge('g_design', { min: 0, max: 10 }), { edit: true }],
+            [meter('m_plain', {})],
+            [meter('m_horizontal', { orientation: 'horizontal', style: { meter_segments: 10, green_to: -20, yellow_to: -6 } })],
+            [meter('m_no_peak', { style: { show_peak: false } })],
+            [meter('m_whole_steps', { min: -24, max: 0, style: { meter_segments: 25 } })],
+            [meter('m_one_segment', { style: { meter_segments: 1 } })],
+            [meter('m_flat', { min: 0, max: 0 })],
+            [meter('m_inverted', { min: 0, max: -60 })],
+            [meter('m_text_range', { min: '-60', max: '0' })],
+            [meter('m_null_range', { min: null, max: null, orientation: null })],
+            [meter('m_hold', { style: { peak_hold_ms: 500 } })],
+            [meter('m_positive', { min: 0, max: 100, style: { green_to: 50, yellow_to: 80, meter_segments: 8 } })],
+            [meter('m_odd_orientation', { orientation: 'diagonal', label: '' })],
+            [meter('m_unbound', { bindings: undefined })],
+            [meter('m_themed', { style: { meter_segments: 3 } }), { before: themeDefaults }],
+            [meter('m_design', {}), { edit: true }],
+        ];
+        for (const [def, opts] of cases) {
+            withFakeTime((advance) => {
+                let m;
+                try {
+                    m = levelMount(def, { state: live, ...opts });
+                    m.id = def.id;
+                    meterReadings(m, METER_KEY, advance);
+                    meterGestures(m, METER_KEY, advance);
+                } catch (e) {
+                    (m ? m.steps : []).push({ threw: String(e && e.message) });
+                }
+                got[def.id] = m ? m.steps : [{ threw: 'mount' }];
+            });
+        }
+        comparePins('meters', got, METER_PINS.meters);
+    },
+});
 
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of

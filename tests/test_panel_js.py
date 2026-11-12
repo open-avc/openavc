@@ -320,6 +320,9 @@ SCENARIOS = [
     "paint_sanitizes_and_resolves_as_it_does_today",
     "paint_draws_a_page_background_as_it_does_today",
     "button_face_after_feedback_and_toggle_looks",
+    # A gauge and a level meter drawn, read, peak-held and redrawn, pinned
+    # whole (tests/fixtures/panel_meter_pins.json).
+    "meters_draw_and_show_readings_as_today",
 ]
 
 
