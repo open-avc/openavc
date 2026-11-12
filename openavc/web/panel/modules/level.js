@@ -28,6 +28,8 @@
 
 const DEFAULT_DB_RANGE = 60;
 const SLIDER_RATE_MS = 100;
+const FADER_RATE_MS = 50;
+const FADER_DECIMALS = 1;
 // A logarithmic slider gets at least this many positions, so the low end of
 // its travel can still be reached finely.
 const LOG_MIN_STEPS = 200;
@@ -66,7 +68,7 @@ export function snapToStep(value, step) {
  * Purely a feel: the value handed to the device is unchanged, so the server
  * never sees the curve.
  */
-export function responseCurve(travelFrac, response, dbRange) {
+function responseCurve(travelFrac, response, dbRange) {
     if (response !== 'logarithmic') return travelFrac;
     const D = dbRange > 0 ? dbRange : DEFAULT_DB_RANGE;
     const denom = Math.pow(10, D / 20) - 1;
@@ -75,7 +77,7 @@ export function responseCurve(travelFrac, response, dbRange) {
 }
 
 /** The curve backwards: a share of the range (0..1) to travel (0..1), to place a handle or a mark. */
-export function responseCurveInverse(valueFrac, response, dbRange) {
+function responseCurveInverse(valueFrac, response, dbRange) {
     if (response !== 'logarithmic') return valueFrac;
     const D = dbRange > 0 ? dbRange : DEFAULT_DB_RANGE;
     const denom = Math.pow(10, D / 20) - 1;
@@ -85,7 +87,7 @@ export function responseCurveInverse(valueFrac, response, dbRange) {
 }
 
 /** The numbers a fader's scale is marked with: three to seven round ones, and both ends. */
-export function scaleMarks(min, max) {
+function scaleMarks(min, max) {
     const range = max - min;
     if (range === 0) return [min];
     const rawStep = range / 5;
@@ -103,14 +105,14 @@ export function scaleMarks(min, max) {
 }
 
 /** A level value as its readout: `decimals` places (whole when none), then the unit. */
-export function formatLevel(value, decimals, unit) {
+function formatLevel(value, decimals, unit) {
     const n = Number(value);
     const s = decimals > 0 ? n.toFixed(decimals) : String(Math.round(n));
     return unit ? `${s} ${unit}` : s;
 }
 
 /** The readout of a level nobody has reported: dashes, with the unit. */
-export function unknownText(unit) {
+function unknownText(unit) {
     return unit ? `-- ${unit}` : '--';
 }
 
@@ -118,7 +120,7 @@ export function unknownText(unit) {
  * What a slider and a fader both read off their definition. `defaults` are
  * the two each assumes for itself: readout `decimals` and the send `rateMs`.
  */
-export function levelSettings(element, defaults) {
+function levelSettings(element, defaults) {
     return {
         step: element.step ?? 1,
         unit: element.unit || '',
@@ -138,7 +140,7 @@ export function levelSettings(element, defaults) {
  * along its travel, and the device's output range. Built from a range and
  * the settings levelSettings read.
  */
-export class LevelScale {
+class LevelScale {
     constructor(min, max, settings) {
         this.min = min;
         this.max = max;
@@ -209,7 +211,7 @@ export class LevelScale {
  * that steps (a time sync at boot) would hold the stream for as long as the
  * step.
  */
-export function liveSender(sendValue, rateMs, streaming, keepTimer) {
+function liveSender(sendValue, rateMs, streaming, keepTimer) {
     const rate = Number(rateMs) > 0 ? Number(rateMs) : 0;
     let lastSentAt = -Infinity;
     let timer = null;
@@ -430,6 +432,273 @@ export class SliderControl extends LevelControl {
         input.removeAttribute('aria-valuetext');
         input.classList.add('no-reading');
         this.fillTo(0);
+        if (this.valueDisplay) this.valueDisplay.textContent = unknownText(this.unit);
+    }
+}
+
+/** A fader's range, read as numbers, a reversed one turned round. */
+function faderRange(element) {
+    const min = element.min != null ? parseFloat(element.min) : 0;
+    const max = element.max != null ? parseFloat(element.max) : 100;
+    return min >= max ? [max, min] : [min, max];
+}
+
+/** 1 for a key that steps a fader up, -1 for one that steps it down, 0 for any other. */
+function keyStep(key) {
+    if (key === 'ArrowUp' || key === 'ArrowRight') return 1;
+    if (key === 'ArrowDown' || key === 'ArrowLeft') return -1;
+    return 0;
+}
+
+// The fader each drawn track belongs to, so a page about to be redrawn can
+// end a drag still in progress (endFaderDrags).
+const FADERS = new WeakMap();
+
+/** End every fader drag under `root`: its release goes out and it stops listening to the document. */
+export function endFaderDrags(root) {
+    for (const wrap of root.querySelectorAll('.panel-fader .fader-track-wrap')) {
+        const fader = FADERS.get(wrap);
+        if (fader) fader.release();
+    }
+}
+
+/**
+ * A fader: a handle on a track, dragged by mouse or touch or stepped with the
+ * arrow keys, beside an optional scale of marks, over an optional readout.
+ */
+export class FaderControl extends LevelControl {
+    constructor(element, style, host) {
+        const settings = levelSettings(element, { decimals: FADER_DECIMALS, rateMs: FADER_RATE_MS });
+        super(element, host, settings);
+        const [min, max] = faderRange(element);
+        this.scale = new LevelScale(min, max, settings);
+        this.horizontal = (element.orientation || 'vertical') === 'horizontal';
+        this.showValue = style.show_value !== false;
+        this.showScale = style.show_scale !== false;
+        this.label = element.label || `Fader ${element.id}`;
+        this.dragging = false;
+    }
+
+    /** Draw the scale, the track and its handle, and the readout into `el`, then listen. */
+    mount(el) {
+        const body = document.createElement('div');
+        body.className = 'fader-body';
+        if (this.showScale) body.appendChild(this.drawMarks());
+        this.trackWrap = this.drawTrack();
+        body.appendChild(this.trackWrap);
+        el.appendChild(body);
+        this.valueDisplay = null;
+        if (this.showValue) {
+            this.valueDisplay = document.createElement('div');
+            this.valueDisplay.className = 'fader-value';
+            this.valueDisplay.textContent = this.format(0);
+            el.appendChild(this.valueDisplay);
+        }
+        // Drawn by the function a drag uses, spoken value included: the arrow
+        // keys read their starting point back from it.
+        const start = clamp(this.startingReading() ?? 0, this.scale.min, this.scale.max);
+        this.dragValue = start;
+        this.place(start);
+        this.listen();
+    }
+
+    drawMarks() {
+        const marks = document.createElement('div');
+        marks.className = 'fader-scale';
+        for (const m of scaleMarks(this.scale.min, this.scale.max)) {
+            const mark = document.createElement('div');
+            mark.className = 'fader-mark';
+            this.atTravel(mark, this.scale.travelOf(m));
+            mark.textContent = m.toString();
+            marks.appendChild(mark);
+        }
+        return marks;
+    }
+
+    drawTrack() {
+        const trackWrap = document.createElement('div');
+        trackWrap.className = 'fader-track-wrap';
+        const track = document.createElement('div');
+        track.className = 'fader-track';
+        trackWrap.appendChild(track);
+        if (this.scale.limited) this.drawDeadSpace(trackWrap);
+        this.handle = this.drawHandle();
+        trackWrap.appendChild(this.handle);
+        FADERS.set(trackWrap, this);
+        return trackWrap;
+    }
+
+    /**
+     * Shade the travel past the device's output limits, at either end. Placed
+     * through the response curve, so a band lines up with where the handle
+     * actually stops on a logarithmic fader.
+     */
+    drawDeadSpace(trackWrap) {
+        const maxFrac = this.scale.travelOf(this.scale.outputMax);
+        const minFrac = this.scale.travelOf(this.scale.outputMin);
+        if (maxFrac < 1) trackWrap.appendChild(this.deadBand(`${maxFrac * 100}%`, '0'));
+        if (minFrac > 0) trackWrap.appendChild(this.deadBand('0', `${(1 - minFrac) * 100}%`));
+    }
+
+    /** A dead-space band: from `start` along the travel to `end` short of its far end, across the whole track. */
+    deadBand(start, end) {
+        const dead = document.createElement('div');
+        dead.className = 'fader-dead-space';
+        const [from, to, side, otherSide] = this.horizontal
+            ? ['left', 'right', 'top', 'bottom']
+            : ['bottom', 'top', 'left', 'right'];
+        dead.style[from] = start;
+        dead.style[to] = end;
+        dead.style[side] = '0';
+        dead.style[otherSide] = '0';
+        return dead;
+    }
+
+    drawHandle() {
+        const handle = document.createElement('div');
+        handle.className = 'fader-handle';
+        handle.setAttribute('role', 'slider');
+        handle.setAttribute('aria-label', this.label);
+        handle.setAttribute('aria-valuemin', String(this.scale.min));
+        handle.setAttribute('aria-valuemax', String(this.scale.max));
+        handle.tabIndex = 0;
+        return handle;
+    }
+
+    /** Put `node` at `frac` (0..1) along the travel. */
+    atTravel(node, frac) {
+        if (this.horizontal) node.style.left = `${frac * 100}%`;
+        else node.style.bottom = `${frac * 100}%`;
+    }
+
+    /** Draw display value `value`: the handle where the curve puts it, its spoken value and the readout. */
+    place(value) {
+        this.drawAt(value, this.scale.travelOf(value));
+    }
+
+    drawAt(value, travel) {
+        this.atTravel(this.handle, travel);
+        this.handle.setAttribute('aria-valuenow', String(Math.round(value * 10) / 10));
+        if (this.valueDisplay) this.valueDisplay.textContent = this.format(value);
+    }
+
+    listen() {
+        const wrap = this.trackWrap;
+        this.onMove = (e) => {
+            if (!this.dragging) return;
+            e.preventDefault();
+            this.follow(e);
+        };
+        this.onEnd = () => this.release();
+        wrap.addEventListener('mousedown', (e) => {
+            this.grab(e);
+            document.addEventListener('mousemove', this.onMove);
+            document.addEventListener('mouseup', this.onEnd);
+        });
+        wrap.style.touchAction = 'none';
+        wrap.addEventListener('touchstart', (e) => {
+            this.grab(e);
+            document.addEventListener('touchmove', this.onMove);
+            document.addEventListener('touchend', this.onEnd);
+        });
+        // The keys go through the same rate as a drag, so a held key streams
+        // and its last step always lands.
+        this.handle.addEventListener('keydown', (e) => this.stepByKey(e));
+    }
+
+    grab(e) {
+        e.preventDefault();
+        this.dragging = true;
+        // Keeps readings off the handle mid-drag (show).
+        this.handle._dragging = true;
+        this.follow(e);
+    }
+
+    follow(e) {
+        const val = this.valueAtPointer(e);
+        this.dragValue = val;
+        this.place(val);
+        if (!this.sendOnRelease) this.sender.live(val);
+    }
+
+    /** The display value under the pointer: on the curve, held to any dead space, snapped to the step. */
+    valueAtPointer(e) {
+        const rect = this.trackWrap.getBoundingClientRect();
+        const point = e.touches ? e.touches[0] : e;
+        const frac = this.horizontal
+            ? clamp((point.clientX - rect.left) / rect.width, 0, 1)
+            : 1 - clamp((point.clientY - rect.top) / rect.height, 0, 1);
+        let val = this.scale.valueAt(frac);
+        if (this.scale.limited) val = this.scale.toOutput(val);
+        return snapToStep(val, this.step);
+    }
+
+    /** End a drag: send its final value once, and stop listening to the document. */
+    release() {
+        const wasDragging = this.dragging;
+        this.dragging = false;
+        this.handle._dragging = false;
+        // On send-on-release this is the only send; on a live fader it lands
+        // the stream on the end value.
+        if (wasDragging) this.sender.release(this.dragValue);
+        // A drag on an unreachable device leaves the readout showing the
+        // number the operator dragged to, the confident wrong value this
+        // control must not draw, so it goes straight back to unknown. (A drag
+        // on a live device whose command is then refused is the other half,
+        // answered when the refusal arrives: the panel's
+        // _revertRefusedInteraction.)
+        if (wasDragging && this.host.offline()) this.showUnknown();
+        document.removeEventListener('mousemove', this.onMove);
+        document.removeEventListener('mouseup', this.onEnd);
+        document.removeEventListener('touchmove', this.onMove);
+        document.removeEventListener('touchend', this.onEnd);
+    }
+
+    /** An arrow key steps the value from the one it is showing (the bottom of the range when none). */
+    stepByKey(e) {
+        const direction = keyStep(e.key);
+        if (!direction) return;
+        e.preventDefault();
+        const current = parseFloat(this.handle.getAttribute('aria-valuenow') || String(this.scale.min));
+        const next = direction > 0
+            ? Math.min(this.scale.max, snapToStep(current + this.step, this.step))
+            : Math.max(this.scale.min, snapToStep(current - this.step, this.step));
+        this.place(next);
+        this.sender.live(next);
+    }
+
+    /** Show the device's reading, or that there is none; never while the handle is held. */
+    show(raw, offline) {
+        if (this.handle._dragging) return;
+        const value = this.scale.reading(raw, this.host.design());
+        if (offline || value === null) {
+            this.showUnknown();
+            return;
+        }
+        this.handle.classList.remove('no-reading');
+        const shown = clamp(value, this.scale.min, this.scale.max);
+        // The arrow keys read their starting point off the spoken value, so
+        // a reading that moves the handle moves that too.
+        this.drawAt(shown, this.scale.span > 0 ? this.scale.travelOf(shown) : 0);
+    }
+
+    /**
+     * Nothing to show: the device is gone, or it is right there and has not
+     * reported this reading yet. The handle is hidden rather than parked at
+     * the floor: a handle at the bottom is a claim of minimum, and on a
+     * -80..0 fader that reads as fully attenuated. What was photographed for
+     * the offline fault was the opposite claim, a handle at the top over
+     * "0.0 dB", on an amplifier sitting at -6.0 and muted.
+     *
+     * `no-reading` goes on the handle rather than on the element, because the
+     * element's `device-offline` mark is a different statement (dimmed and
+     * dashed: "this control cannot be trusted") and a live device that simply
+     * has not answered yet has earned neither.
+     */
+    showUnknown() {
+        this.atTravel(this.handle, 0);
+        this.handle.removeAttribute('aria-valuenow');
+        this.handle.classList.add('no-reading');
         if (this.valueDisplay) this.valueDisplay.textContent = unknownText(this.unit);
     }
 }

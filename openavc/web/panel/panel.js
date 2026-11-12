@@ -15,9 +15,7 @@ import {
 import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
-import {
-    LevelScale, SliderControl, formatLevel, levelSettings, liveSender, scaleMarks, snapToStep, unknownText,
-} from './modules/level.js';
+import { FaderControl, SliderControl, endFaderDrags } from './modules/level.js';
 
 // --- Programmer session bridge ---------------------------------------------
 // When the panel is embedded as an iframe inside the Programmer IDE (the UI
@@ -2071,10 +2069,7 @@ class PanelApp {
         this._endAllHolds();
         for (const t of this.debounceTimers) clearTimeout(t);
         this.debounceTimers = [];
-        // Clean up orphaned fader drag listeners
-        for (const el of this.root.querySelectorAll('.panel-fader .fader-track-wrap')) {
-            if (el._faderDragCleanup) el._faderDragCleanup();
-        }
+        endFaderDrags(this.root);
         endMatrixGestures(this.root);
         // Clean up global clock interval
         if (this._clockInterval) {
@@ -3683,28 +3678,15 @@ class PanelApp {
         el.className = 'panel-element panel-fader';
         el.dataset.elementId = element.id;
 
-        const orientation = element.orientation || 'vertical';
-        const isHorizontal = orientation === 'horizontal';
-        let min = element.min != null ? parseFloat(element.min) : 0;
-        let max = element.max != null ? parseFloat(element.max) : 100;
-        if (min >= max) { const tmp = min; min = max; max = tmp; }
-        const settings = levelSettings(element, { decimals: 1, rateMs: 50 });
-        const scale = new LevelScale(min, max, settings);
-        const step = settings.step;
-        const unit = settings.unit;
-        const faderSendOnRelease = settings.sendOnRelease;
-        const fmtFaderValue = (v) => formatLevel(v, settings.decimals, unit);
-        // Merge theme element_defaults for consistency with other renderers,
-        // even though show_value/show_scale aren't currently theme-editable
-        // — keeps the pattern uniform if those flags become themable later.
+        // The theme's element_defaults style the wrapper (bg_color, border,
+        // padding, shadow) and say whether it shows its value and its scale.
         const style = this.getThemedStyle('fader', element.style);
-        const showValue = style.show_value !== false;
-        const showScale = style.show_scale !== false;
-
-        el.classList.add(isHorizontal ? 'horizontal' : 'vertical');
-
-        // Element-level wrapper styling (bg_color, border, padding, shadow, etc.)
-        applyStyle(el, this.getThemedStyle('fader', element.style));
+        // Filled in below when the fader has a value binding: the end of a
+        // drag asks whether that binding's device is reachable.
+        let faderBinding = null;
+        const fader = new FaderControl(element, style, this._levelHost(element.id, () => faderBinding));
+        el.classList.add(fader.horizontal ? 'horizontal' : 'vertical');
+        applyStyle(el, style);
 
         if (element.label) {
             const label = document.createElement('div');
@@ -3713,209 +3695,17 @@ class PanelApp {
             this._recordCaption(el, label, ['label']);
             el.appendChild(label);
         }
-
-        const body = document.createElement('div');
-        body.className = 'fader-body';
-
-        // Scale marks
-        if (showScale) {
-            const marksNode = document.createElement('div');
-            marksNode.className = 'fader-scale';
-            const marks = scaleMarks(min, max);
-            for (const m of marks) {
-                const mark = document.createElement('div');
-                mark.className = 'fader-mark';
-                const frac = scale.travelOf(m);
-                if (isHorizontal) mark.style.left = `${frac * 100}%`;
-                else mark.style.bottom = `${frac * 100}%`;
-                mark.textContent = m.toString();
-                marksNode.appendChild(mark);
-            }
-            body.appendChild(marksNode);
-        }
-
-        // Track + handle
-        const trackWrap = document.createElement('div');
-        trackWrap.className = 'fader-track-wrap';
-
-        const track = document.createElement('div');
-        track.className = 'fader-track';
-        trackWrap.appendChild(track);
-
-        // Dead space overlay when output range is clamped and not scaled to full.
-        // Position it through the response curve so it lines up with where the
-        // handle actually stops on a logarithmic fader (identity for linear).
-        if (scale.limited) {
-            const maxFrac = scale.travelOf(scale.outputMax);
-            const minFrac = scale.travelOf(scale.outputMin);
-            if (maxFrac < 1) {
-                const dead = document.createElement('div');
-                dead.className = 'fader-dead-space';
-                if (isHorizontal) { dead.style.left = `${maxFrac * 100}%`; dead.style.right = '0'; dead.style.top = '0'; dead.style.bottom = '0'; }
-                else { dead.style.bottom = `${maxFrac * 100}%`; dead.style.top = '0'; dead.style.left = '0'; dead.style.right = '0'; }
-                trackWrap.appendChild(dead);
-            }
-            if (minFrac > 0) {
-                const dead = document.createElement('div');
-                dead.className = 'fader-dead-space';
-                if (isHorizontal) { dead.style.left = '0'; dead.style.right = `${(1 - minFrac) * 100}%`; dead.style.top = '0'; dead.style.bottom = '0'; }
-                else { dead.style.bottom = '0'; dead.style.top = `${(1 - minFrac) * 100}%`; dead.style.left = '0'; dead.style.right = '0'; }
-                trackWrap.appendChild(dead);
-            }
-        }
-
-        const handle = document.createElement('div');
-        handle.className = 'fader-handle';
-        handle.setAttribute('role', 'slider');
-        handle.setAttribute('aria-label', element.label || `Fader ${element.id}`);
-        handle.setAttribute('aria-valuemin', String(min));
-        handle.setAttribute('aria-valuemax', String(max));
-        handle.tabIndex = 0;
-        trackWrap.appendChild(handle);
-
-        body.appendChild(trackWrap);
-        el.appendChild(body);
-
-        // Value display
-        let valueDisplay = null;
-        if (showValue) {
-            valueDisplay = document.createElement('div');
-            valueDisplay.className = 'fader-value';
-            valueDisplay.textContent = fmtFaderValue(0);
-            el.appendChild(valueDisplay);
-        }
-
-        // Position the handle from a reading, or a sample in the design canvas.
-        const valueBinding = element.bindings?.show?.value;
-        const initialRaw = valueBinding?.key ? this.state[valueBinding.key] : undefined;
-        let currentValue = scale.reading(initialRaw, this.editMode) ?? 0;
-        currentValue = Math.max(min, Math.min(max, currentValue));
-
-        // Touch/mouse drag interaction
-        let dragging = false;
-        let currentDragVal = currentValue;
-        // Filled in below when this fader has a value binding; the drag-end
-        // handler needs it to put an unreachable device's readout back.
-        let faderBinding = null;
-
-        const getValueFromEvent = (e) => {
-            const rect = trackWrap.getBoundingClientRect();
-            let frac;
-            if (isHorizontal) {
-                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                frac = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-            } else {
-                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-                frac = 1 - Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
-            }
-            let val = scale.valueAt(frac);
-            // Clamp to output range when not scaling (dead space mode)
-            if (scale.limited) val = scale.toOutput(val);
-            return snapToStep(val, step);
-        };
-
-        const updateFader = (val) => {
-            const frac = scale.travelOf(val);
-            if (isHorizontal) handle.style.left = `${frac * 100}%`;
-            else handle.style.bottom = `${frac * 100}%`;
-            handle.setAttribute('aria-valuenow', String(Math.round(val * 10) / 10));
-            if (valueDisplay) valueDisplay.textContent = fmtFaderValue(val);
-        };
-        // Draw the starting value through the same function the drag uses. It
-        // used to be an inline copy of these four lines placed above, which is
-        // where the aria value went missing: nothing announced a reading until
-        // somebody dragged the handle, and the arrow keys read their starting
-        // point back out of that attribute -- so the first press of Down on a
-        // freshly-drawn fader jumped it to the floor.
-        updateFader(currentValue);
-
-        // Streams at the element's rate during a live drag; the release sends
-        // the final value (see liveSender in modules/level.js).
-        const sender = liveSender(
-            (value) => this.send({ type: 'ui.change', element_id: element.id, value }),
-            settings.rateMs, !faderSendOnRelease, (timer) => this.debounceTimers.push(timer));
-
-        const onStart = (e) => {
-            e.preventDefault();
-            dragging = true;
-            handle._dragging = true; // suppress inbound state echoes mid-drag
-            const val = getValueFromEvent(e);
-            currentDragVal = val;
-            updateFader(val);
-            if (!faderSendOnRelease) sender.live(val);
-        };
-        const onMove = (e) => {
-            if (!dragging) return;
-            e.preventDefault();
-            const val = getValueFromEvent(e);
-            currentDragVal = val;
-            updateFader(val);
-            if (!faderSendOnRelease) sender.live(val);
-        };
-        const onEnd = () => {
-            const wasDragging = dragging;
-            dragging = false;
-            handle._dragging = false;
-            // Send the final position once when the drag ends. In send-on-release
-            // mode this is the only send; in live mode it lands the stream on
-            // the end value.
-            if (wasDragging) sender.release(currentDragVal);
-            // A drag on an unreachable device leaves the readout showing the
-            // number the operator dragged to, which is exactly the confident
-            // wrong value this control is not allowed to draw. Put it straight
-            // back to unknown. (A drag on a LIVE device whose command is then
-            // refused is the other half, and it cannot be answered here: the
-            // refusal has not arrived yet. See _revertRefusedInteraction.)
-            if (wasDragging && faderBinding && this._bindingOffline(faderBinding)) {
-                this._renderFaderUnknown(faderBinding);
-            }
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onEnd);
-            document.removeEventListener('touchmove', onMove);
-            document.removeEventListener('touchend', onEnd);
-        };
-        // Store drag cleanup so renderCurrentPage can remove orphaned listeners
-        trackWrap._faderDragCleanup = () => {
-            onEnd();
-        };
-
-        trackWrap.addEventListener('mousedown', (e) => {
-            onStart(e);
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onEnd);
-        });
-        trackWrap.style.touchAction = 'none';
-        trackWrap.addEventListener('touchstart', (e) => {
-            onStart(e);
-            document.addEventListener('touchmove', onMove);
-            document.addEventListener('touchend', onEnd);
-        });
-
-        // Keyboard arrow key support for fader. The keys go through the same
-        // rate as a drag, so a held key streams and its last step always lands.
-        handle.addEventListener('keydown', (e) => {
-            let current = parseFloat(handle.getAttribute('aria-valuenow') || String(min));
-            if (e.key === 'ArrowUp' || e.key === 'ArrowRight') {
-                e.preventDefault();
-                current = Math.min(max, snapToStep(current + step, step));
-                updateFader(current);
-                sender.live(current);
-            } else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') {
-                e.preventDefault();
-                current = Math.max(min, snapToStep(current - step, step));
-                updateFader(current);
-                sender.live(current);
-            }
-        });
+        fader.mount(el);
 
         // Value binding for state updates
+        const valueBinding = element.bindings?.show?.value;
         if (valueBinding) {
             faderBinding = {
                 type: 'fader_value',
                 element: el,
                 elementDef: element,
                 binding: valueBinding,
-                _fader: { handle, valueDisplay, unit, horizontal: isHorizontal, scale, fmt: fmtFaderValue },
+                _fader: fader,
             };
             this.bindings.push(faderBinding);
         }
@@ -3935,31 +3725,6 @@ class PanelApp {
         return Math.max(0, Math.min(20, Math.round(n)));
     }
 
-    /**
-     * The fader with nothing to show: the device it reads is gone, or it is
-     * right there and has not reported this reading yet.
-     *
-     * The handle is hidden rather than parked at the floor: a handle at the
-     * bottom is a claim of minimum, and on a -80..0 fader that reads as fully
-     * attenuated. What was photographed for the offline fault was the opposite
-     * claim -- a handle at the top over "0.0 dB" -- on an amplifier sitting at
-     * -6.0 and muted.
-     *
-     * `no-reading` goes on the handle rather than on the element, because the
-     * element's `device-offline` mark is a different statement (dimmed and
-     * dashed: "this control cannot be trusted") and a live device that simply
-     * has not answered yet has earned neither. It is also per-handle rather
-     * than tallied, since one fader has exactly one.
-     */
-    _renderFaderUnknown(b) {
-        const { handle, valueDisplay, unit, horizontal } = b._fader;
-        if (horizontal) handle.style.left = '0%';
-        else handle.style.bottom = '0%';
-        handle.removeAttribute('aria-valuenow');
-        handle.classList.add('no-reading');
-        if (valueDisplay) valueDisplay.textContent = unknownText(unit);
-    }
-
     evaluateFaderValue(b) {
         const raw = this.state[b.binding.key];
         const offline = this._bindingOffline(b);
@@ -3969,32 +3734,7 @@ class PanelApp {
         b._lastFaderRaw = raw;
         b._lastFaderOffline = offline;
         this._markBindingAvailability(b, offline);
-        const { handle, valueDisplay, horizontal, scale, fmt } = b._fader;
-        // Don't fight the operator while they're dragging the handle.
-        if (handle._dragging) return;
-        if (offline) {
-            this._renderFaderUnknown(b);
-            return;
-        }
-        const displayValue = scale.reading(raw, this.editMode);
-        if (displayValue === null) {
-            // No reading: the key was deleted, or the device is reachable and
-            // simply has not reported this one yet. Same answer either way, and
-            // it is the same one an unreachable device gets -- printing fmt(min)
-            // was a claim of full attenuation nobody made.
-            this._renderFaderUnknown(b);
-            return;
-        }
-        handle.classList.remove('no-reading');
-        const value = Math.max(scale.min, Math.min(scale.max, displayValue));
-        const frac = scale.span > 0 ? scale.travelOf(value) : 0;
-        if (horizontal) handle.style.left = `${frac * 100}%`;
-        else handle.style.bottom = `${frac * 100}%`;
-        // The arrow keys read their starting point off this, so a state update
-        // that moved the handle and left it behind would send the operator's
-        // next keystroke off the OLD value.
-        handle.setAttribute('aria-valuenow', String(Math.round(value * 10) / 10));
-        if (valueDisplay) valueDisplay.textContent = fmt(value);
+        b._fader.show(raw, offline);
     }
 
     // --- Group ---
