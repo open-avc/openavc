@@ -265,6 +265,19 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "ws": [
+          {
+            "type": "state.set",
+            "key": [
+              "var.vol"
+            ],
+            "value": 1
+          }
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "ws": [
           {
@@ -367,6 +380,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -385,6 +401,67 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {
+                  "room": "204"
+                },
+                "theme": {
+                  "--panel-bg": "#123456",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "6px"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -496,7 +573,10 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "6px"
                 },
-                "state": {},
+                "state": {
+                  "device.dsp1.mute": "replaced",
+                  "var.vol": 9
+                },
                 "elementId": "cc",
                 "edit": false,
                 "grant": {
@@ -768,6 +848,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -867,6 +954,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -885,6 +975,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#123456",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "6px"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -1177,6 +1326,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -1276,6 +1432,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -1294,6 +1453,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#123456",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "6px"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -1589,6 +1807,10 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "touched": "cc"
       },
@@ -1673,6 +1895,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -1683,6 +1908,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#123456",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "6px"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": true,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -1792,7 +2076,10 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "6px"
                 },
-                "state": {},
+                "state": {
+                  "device.dsp1.mute": "replaced",
+                  "var.vol": 9
+                },
                 "elementId": "cc",
                 "edit": true,
                 "grant": {
@@ -2064,6 +2351,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -2163,6 +2457,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -2181,6 +2478,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#123456",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "6px"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -2695,6 +3051,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -2794,6 +3157,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -2812,6 +3178,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#123456",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "6px"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -3129,6 +3554,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -3228,6 +3660,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -3246,6 +3681,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#123456",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "6px"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -3568,6 +4062,13 @@
         "touched": "pg"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'pg' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "pg"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'pg' attempted to run macro 'system_on' without the macro switch"
@@ -3664,6 +4165,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -3682,6 +4186,67 @@
             "[panel] custom control 'pg' attempted to change pages without the navigation switch"
           ],
           "touched": "pg"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {
+                  "a": 1
+                },
+                "theme": {
+                  "--panel-bg": "#123456",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "6px"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "pg",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -3745,7 +4310,9 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "6px"
                 },
-                "state": {},
+                "state": {
+                  "device.dsp1.mute": "replaced"
+                },
                 "elementId": "pg",
                 "edit": false,
                 "grant": {
@@ -4066,6 +4633,19 @@
         "touched": "pl"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "ws": [
+          {
+            "type": "state.set",
+            "key": [
+              "var.vol"
+            ],
+            "value": 1
+          }
+        ],
+        "touched": "pl"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "ws": [
           {
@@ -4168,6 +4748,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -4186,6 +4769,68 @@
             "[panel] plugin 'p1' attempted to change pages without the navigation switch"
           ],
           "touched": "pl"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {
+                  "a": 1
+                },
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r",
+                  "plugin.p1.x": 1
+                },
+                "elementId": "pl",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -4313,7 +4958,11 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "0.5714rem"
                 },
-                "state": {},
+                "state": {
+                  "device.dsp1.mute": "replaced",
+                  "var.vol": 9,
+                  "plugin.p1.x": "replaced"
+                },
                 "elementId": "pl",
                 "edit": false,
                 "grant": {
@@ -4589,6 +5238,13 @@
         "touched": "pl"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] plugin 'p1' attempted to run macro 'system_on' without the macro switch"
@@ -4688,6 +5344,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -4706,6 +5365,66 @@
             "[panel] plugin 'p1' attempted to change pages without the navigation switch"
           ],
           "touched": "pl"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r",
+                  "plugin.p1.x": 1
+                },
+                "elementId": "pl",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -4751,7 +5470,9 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "0.5714rem"
                 },
-                "state": {},
+                "state": {
+                  "plugin.p1.x": "replaced"
+                },
                 "elementId": "pl",
                 "edit": false,
                 "grant": {
@@ -5070,6 +5791,19 @@
         "touched": "pl"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "ws": [
+          {
+            "type": "state.set",
+            "key": [
+              "var.vol"
+            ],
+            "value": 1
+          }
+        ],
+        "touched": "pl"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "ws": [
           {
@@ -5172,6 +5906,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -5190,6 +5927,70 @@
             "[panel] plugin 'p1' attempted to change pages without the navigation switch"
           ],
           "touched": "pl"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r",
+                  "plugin.p1.x": 1
+                },
+                "elementId": "pl",
+                "ext_token": "tok-1",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ],
+          "fetched": [
+            "/api/plugins/p1/ext-token"
+          ]
         }
       },
       {
@@ -5315,7 +6116,11 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "0.5714rem"
                 },
-                "state": {},
+                "state": {
+                  "device.dsp1.mute": "replaced",
+                  "var.vol": 9,
+                  "plugin.p1.x": "replaced"
+                },
                 "elementId": "pl",
                 "ext_token": "tok-1",
                 "edit": false,
@@ -5603,6 +6408,13 @@
         "touched": "pl"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] plugin 'p1' attempted to run macro 'system_on' without the macro switch"
@@ -5702,6 +6514,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -5720,6 +6535,66 @@
             "[panel] plugin 'p1' attempted to change pages without the navigation switch"
           ],
           "touched": "pl"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r",
+                  "plugin.p1.x": 1
+                },
+                "elementId": "pl",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -5765,7 +6640,9 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "0.5714rem"
                 },
-                "state": {},
+                "state": {
+                  "plugin.p1.x": "replaced"
+                },
                 "elementId": "pl",
                 "edit": false,
                 "grant": {
@@ -6040,6 +6917,13 @@
         "touched": "pl"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] plugin 'p1' attempted to run macro 'system_on' without the macro switch"
@@ -6139,6 +7023,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -6157,6 +7044,67 @@
             "[panel] plugin 'p1' attempted to change pages without the navigation switch"
           ],
           "touched": "pl"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r",
+                  "plugin.p1.x": 1
+                },
+                "elementId": "pl",
+                "ext_token": "panel-token-p1",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -6202,7 +7150,9 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "0.5714rem"
                 },
-                "state": {},
+                "state": {
+                  "plugin.p1.x": "replaced"
+                },
                 "elementId": "pl",
                 "ext_token": "panel-token-p1",
                 "edit": false,
@@ -6480,6 +7430,13 @@
         "touched": "pl"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] plugin 'p1' attempted to run macro 'system_on' without the macro switch"
@@ -6579,6 +7536,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -6597,6 +7557,69 @@
             "[panel] plugin 'p1' attempted to change pages without the navigation switch"
           ],
           "touched": "pl"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r",
+                  "plugin.p1.x": 1
+                },
+                "elementId": "pl",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ],
+          "fetched": [
+            "/api/plugins/p1/ext-token"
+          ]
         }
       },
       {
@@ -6642,7 +7665,9 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "0.5714rem"
                 },
-                "state": {},
+                "state": {
+                  "plugin.p1.x": "replaced"
+                },
                 "elementId": "pl",
                 "edit": false,
                 "grant": {
@@ -6929,6 +7954,13 @@
         "touched": "pl"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] plugin 'p1' attempted to run macro 'system_on' without the macro switch"
@@ -7028,6 +8060,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -7046,6 +8081,72 @@
             "[panel] plugin 'p1' attempted to change pages without the navigation switch"
           ],
           "touched": "pl"
+        }
+      },
+      {
+        "regrantedReads": {
+          "warn": [
+            "[panel] failed to fetch plugin ext token: Error: offline"
+          ],
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r",
+                  "plugin.p1.x": 1
+                },
+                "elementId": "pl",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ],
+          "fetched": [
+            "/api/plugins/p1/ext-token"
+          ]
         }
       },
       {
@@ -7094,7 +8195,9 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "0.5714rem"
                 },
-                "state": {},
+                "state": {
+                  "plugin.p1.x": "replaced"
+                },
                 "elementId": "pl",
                 "edit": false,
                 "grant": {
@@ -7381,6 +8484,13 @@
         "touched": "pl"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] plugin 'p1' attempted to run macro 'system_on' without the macro switch"
@@ -7480,6 +8590,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -7498,6 +8611,69 @@
             "[panel] plugin 'p1' attempted to change pages without the navigation switch"
           ],
           "touched": "pl"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r",
+                  "plugin.p1.x": 1
+                },
+                "elementId": "pl",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ],
+          "fetched": [
+            "/api/plugins/p1/ext-token"
+          ]
         }
       },
       {
@@ -7543,7 +8719,9 @@
                   "--panel-warning": "#FF9800",
                   "--panel-border-radius": "0.5714rem"
                 },
-                "state": {},
+                "state": {
+                  "plugin.p1.x": "replaced"
+                },
                 "elementId": "pl",
                 "edit": false,
                 "grant": {
@@ -7743,6 +8921,9 @@
         "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":\"\",\"valu"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste"
       },
       {
@@ -7782,10 +8963,35 @@
         "focused": true
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
         "regranted": {}
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ]
+          ]
+        }
       },
       {
         "pushed": {
@@ -7822,6 +9028,591 @@
           "r.0@sandbox": "allow-scripts allow-forms allow-popups",
           "r.0@allow": "camera; microphone",
           "r.0@style": "width: 100%; height: 100%; border-radius: inherit;"
+        }
+      },
+      {
+        "gone": {
+          "fetched": [
+            "/api/plugins/p1/ext-token"
+          ]
+        }
+      },
+      {
+        "redrawn": {
+          "fetched": [
+            "/api/themes/dark-default"
+          ],
+          "listen": [
+            "-h1",
+            "+h2"
+          ]
+        },
+        "handlers": 1
+      }
+    ],
+    "state_during_token": [
+      {
+        "drawn": {
+          "r@": "div class data-element-id style data-element-type",
+          "r@class": "panel-element panel-plugin",
+          "r@data-element-id": "pl",
+          "r@style": "overflow: hidden; position: absolute; left: 5%; top: 5%; width: 40%; height: 40%;",
+          "r@data-element-type": "plugin",
+          "r.0@": "iframe src sandbox allow style",
+          "r.0@src": "/api/plugins/p1/panel/panel.html",
+          "r.0@sandbox": "allow-scripts allow-forms allow-popups",
+          "r.0@allow": "camera; microphone",
+          "r.0@style": "width: 100%; height: 100%; border-radius: inherit;",
+          "r.1@": "div style",
+          "r.1@style": "display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;",
+          "r.1#": "Loading plugin..."
+        },
+        "fetched": [
+          "/api/themes/dark-default"
+        ],
+        "listen": [
+          "+h1"
+        ]
+      },
+      {
+        "mapped": true,
+        "grant": {
+          "devices": [
+            "dsp1",
+            "7"
+          ],
+          "variables": [
+            "vol",
+            "3"
+          ],
+          "macros": true,
+          "navigate": true
+        },
+        "own": "plugin.p1.",
+        "config": {},
+        "bridge": "function",
+        "held": true,
+        "handlers": 1
+      },
+      {
+        "fileCheck": {},
+        "drawn": {
+          "r@": "div class data-element-id style data-element-type",
+          "r@class": "panel-element panel-plugin",
+          "r@data-element-id": "pl",
+          "r@style": "overflow: hidden; position: absolute; left: 5%; top: 5%; width: 40%; height: 40%;",
+          "r@data-element-type": "plugin",
+          "r.0@": "iframe src sandbox allow style",
+          "r.0@src": "/api/plugins/p1/panel/panel.html",
+          "r.0@sandbox": "allow-scripts allow-forms allow-popups",
+          "r.0@allow": "camera; microphone",
+          "r.0@style": "width: 100%; height: 100%; border-radius: inherit;",
+          "r.1@": "div style",
+          "r.1@style": "display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;",
+          "r.1#": "Loading plugin..."
+        }
+      },
+      {
+        "load": {
+          "fetched": [
+            "/api/plugins/p1/ext-token"
+          ]
+        },
+        "drawn": {
+          "r@": "div class data-element-id style data-element-type",
+          "r@class": "panel-element panel-plugin",
+          "r@data-element-id": "pl",
+          "r@style": "overflow: hidden; position: absolute; left: 5%; top: 5%; width: 40%; height: 40%;",
+          "r@data-element-type": "plugin",
+          "r.0@": "iframe src sandbox allow style",
+          "r.0@src": "/api/plugins/p1/panel/panel.html",
+          "r.0@sandbox": "allow-scripts allow-forms allow-popups",
+          "r.0@allow": "camera; microphone",
+          "r.0@style": "width: 100%; height: 100%; border-radius: inherit;"
+        }
+      },
+      {
+        "afterLoad": {
+          "posted": [
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp1.mute": true,
+                  "device.dsp1.zone.2.level": -10,
+                  "device.7.power": "on",
+                  "var.vol": 5,
+                  "var.3": "z",
+                  "plugin.p1.x": 1
+                },
+                "elementId": "pl",
+                "ext_token": "held",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp1",
+                    "7"
+                  ],
+                  "variables": [
+                    "vol",
+                    "3"
+                  ],
+                  "macros": true,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
+        }
+      },
+      {
+        "msg": "null"
+      },
+      {
+        "msg": "{}"
+      },
+      {
+        "msg": "{\"type\":\"\"}"
+      },
+      {
+        "msg": "\"text\""
+      },
+      {
+        "msg": "{\"type\":\"openavc:unknown\"}"
+      },
+      {
+        "msg": "{\"type\":\"openavc:activity\"}"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\"}",
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"device.command\",\"device\":",
+        "ws": [
+          {
+            "type": "command",
+            "device_id": "dsp1",
+            "command": "mute",
+            "params": {
+              "ch": 1
+            }
+          }
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"device.command\",\"device\":",
+        "ws": [
+          {
+            "type": "command",
+            "device_id": "dsp1",
+            "command": "mute",
+            "params": {}
+          }
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"device.command\",\"device\":",
+        "ws": [
+          {
+            "type": "command",
+            "device_id": 7,
+            "command": "on",
+            "params": {}
+          }
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"device.command\",\"device\":",
+        "warn": [
+          "[panel] plugin 'p1' attempted a command on device 'dsp10', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"device.command\",\"device\":",
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"device.command\",\"command\"",
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":\"var.vol",
+        "ws": [
+          {
+            "type": "state.set",
+            "key": "var.vol",
+            "value": 3
+          }
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":\"var.vol",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'var.vol_max', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":\"var.3\",",
+        "ws": [
+          {
+            "type": "state.set",
+            "key": "var.3",
+            "value": "x"
+          }
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":\"plugin.",
+        "ws": [
+          {
+            "type": "state.set",
+            "key": "plugin.p1.x",
+            "value": 1
+          }
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":\"plugin.",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'plugin.p10.x', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":\"plugin.",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'plugin.p1', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":\"device.",
+        "warn": [
+          "[panel] plugin 'p1' attempted to write 'device.dsp1.mute', which it was not granted"
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"value\":1}",
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":\"\",\"valu",
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "ws": [
+          {
+            "type": "state.set",
+            "key": [
+              "var.vol"
+            ],
+            "value": 1
+          }
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
+        "ws": [
+          {
+            "type": "macro.execute",
+            "macro_id": "system_on"
+          }
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":42}",
+        "ws": [
+          {
+            "type": "macro.execute",
+            "macro_id": "42"
+          }
+        ],
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\"}",
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"ui.press\",\"element\":\"x\"}",
+        "touched": "pl"
+      },
+      {
+        "msg": "{\"type\":\"openavc:navigate\",\"page\":\"admin\"}",
+        "ws": [
+          {
+            "type": "ui.page",
+            "page_id": "admin"
+          }
+        ]
+      },
+      {
+        "msg": "{\"type\":\"openavc:navigate\"}"
+      },
+      {
+        "msg": "{\"type\":\"openavc:navigate\",\"page\":\"\"}"
+      },
+      {
+        "msg": "{\"type\":\"openavc:error\",\"message\":\"ReferenceError: x\"}",
+        "warn": [
+          "[panel] plugin 'p1' reported an error: ReferenceError: x"
+        ],
+        "toParent": [
+          {
+            "type": "openavc:element-error",
+            "elementId": "pl",
+            "message": "ReferenceError: x"
+          }
+        ]
+      },
+      {
+        "msg": "{\"type\":\"openavc:error\"}",
+        "warn": [
+          "[panel] plugin 'p1' reported an error: error"
+        ],
+        "toParent": [
+          {
+            "type": "openavc:element-error",
+            "elementId": "pl",
+            "message": "error"
+          }
+        ]
+      },
+      {
+        "msg": "{\"type\":\"openavc:error\",\"message\":12345}",
+        "warn": [
+          "[panel] plugin 'p1' reported an error: 12345"
+        ],
+        "toParent": [
+          {
+            "type": "openavc:element-error",
+            "elementId": "pl",
+            "message": "12345"
+          }
+        ]
+      },
+      {
+        "msg": "{\"type\":\"openavc:error\",\"message\":\"yyyyyyyyyyyyyyyyyyyyyyyyy",
+        "warn": [
+          "[panel] plugin 'p1' reported an error: yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+        ],
+        "toParent": [
+          {
+            "type": "openavc:element-error",
+            "elementId": "pl",
+            "message": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+          }
+        ]
+      },
+      {
+        "wrongSource": {}
+      },
+      {
+        "focused": true,
+        "idle": 1
+      },
+      {
+        "focusedTypeless": {}
+      },
+      {
+        "focusThrows": {}
+      },
+      {
+        "regranted": {
+          "ws": [
+            {
+              "type": "command",
+              "device_id": "dsp10",
+              "command": "on",
+              "params": {}
+            }
+          ],
+          "warn": [
+            "[panel] plugin 'p1' attempted a command on device 'dsp1', which it was not granted",
+            "[panel] plugin 'p1' attempted a command on device 'dsp10', which it was not granted",
+            "[panel] plugin 'p1' attempted to change pages without the navigation switch"
+          ],
+          "touched": "pl"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ]
+          ],
+          "fetched": [
+            "/api/plugins/p1/ext-token"
+          ]
+        }
+      },
+      {
+        "pushed": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp1.mute",
+                "value": "device.dsp1.mute!"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp1.zone.2.level",
+                "value": "device.dsp1.zone.2.level!"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.7.power",
+                "value": "device.7.power!"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol",
+                "value": "var.vol!"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.3",
+                "value": "var.3!"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "plugin.p1.x",
+                "value": "plugin.p1.x!"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp1.mute",
+                "value": null
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp1.zone.2.level",
+                "value": null
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.7.power",
+                "value": null
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol",
+                "value": null
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.3",
+                "value": null
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "plugin.p1.x",
+                "value": null
+              },
+              "*"
+            ]
+          ]
+        }
+      },
+      {
+        "reinit": {
+          "fetched": [
+            "/api/plugins/p1/ext-token"
+          ]
+        },
+        "drawn": {
+          "r@": "div class data-element-id style data-element-type",
+          "r@class": "panel-element panel-plugin",
+          "r@data-element-id": "pl",
+          "r@style": "overflow: hidden; position: absolute; left: 5%; top: 5%; width: 40%; height: 40%;",
+          "r@data-element-type": "plugin",
+          "r.0@": "iframe src sandbox allow style",
+          "r.0@src": "/api/plugins/p1/panel/panel.html",
+          "r.0@sandbox": "allow-scripts allow-forms allow-popups",
+          "r.0@allow": "camera; microphone",
+          "r.0@style": "width: 100%; height: 100%; border-radius: inherit;",
+          "r.1@": "div class style title",
+          "r.1@class": "panel-iframe-fault",
+          "r.1@style": "position: absolute; left: 0px; right: 0px; bottom: 0px; z-index: 2; padding: 3px 5px; font-size: 10px; line-height: 1.3; text-align: left; background: var(--panel-danger, #b3261e); color: rgb(255, 255, 255); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+          "r.1@title": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy",
+          "r.1#": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
         }
       },
       {
@@ -8452,6 +10243,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -8551,6 +10349,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -8569,6 +10370,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -8863,6 +10723,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -8962,6 +10829,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -8980,6 +10850,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -9274,6 +11203,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -9373,6 +11309,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -9391,6 +11330,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -9693,6 +11691,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -9792,6 +11797,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -9810,6 +11818,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -10112,6 +12179,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -10211,6 +12285,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -10229,6 +12306,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -10531,6 +12667,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -10630,6 +12773,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -10648,6 +12794,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -10957,6 +13162,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -11056,6 +13268,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -11074,6 +13289,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -11387,6 +13661,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -11485,6 +13766,9 @@
         "focused": false
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -11503,6 +13787,49 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {
@@ -11812,6 +14139,13 @@
         "touched": "cc"
       },
       {
+        "msg": "{\"type\":\"openavc:action\",\"action\":\"state.set\",\"key\":[\"var.vo",
+        "warn": [
+          "[panel] custom control 'cc' attempted to write 'var.vol', which it was not granted"
+        ],
+        "touched": "cc"
+      },
+      {
         "msg": "{\"type\":\"openavc:action\",\"action\":\"macro.run\",\"macro\":\"syste",
         "warn": [
           "[panel] custom control 'cc' attempted to run macro 'system_on' without the macro switch"
@@ -11911,6 +14245,9 @@
         "idle": 1
       },
       {
+        "focusedTypeless": {}
+      },
+      {
         "focusThrows": {}
       },
       {
@@ -11929,6 +14266,65 @@
             "[panel] custom control 'cc' attempted to change pages without the navigation switch"
           ],
           "touched": "cc"
+        }
+      },
+      {
+        "regrantedReads": {
+          "posted": [
+            [
+              {
+                "type": "openavc:state",
+                "key": "device.dsp10.mute",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:state",
+                "key": "var.vol_max",
+                "value": "r"
+              },
+              "*"
+            ],
+            [
+              {
+                "type": "openavc:init",
+                "config": {},
+                "theme": {
+                  "--panel-bg": "#1a1a2e",
+                  "--panel-text": "#ffffff",
+                  "--panel-accent": "#2196F3",
+                  "--panel-button-bg": "#424242",
+                  "--panel-button-text": "#cccccc",
+                  "--panel-button-border": "#555555",
+                  "--panel-surface": "#2a2a4a",
+                  "--panel-surface-border": "#3a3a5c",
+                  "--panel-danger": "#F44336",
+                  "--panel-success": "#4CAF50",
+                  "--panel-warning": "#FF9800",
+                  "--panel-border-radius": "0.5714rem"
+                },
+                "state": {
+                  "device.dsp10.mute": "r",
+                  "var.vol_max": "r"
+                },
+                "elementId": "cc",
+                "edit": false,
+                "grant": {
+                  "devices": [
+                    "dsp10"
+                  ],
+                  "variables": [
+                    "vol_max"
+                  ],
+                  "macros": false,
+                  "navigate": true
+                }
+              },
+              "*"
+            ]
+          ]
         }
       },
       {

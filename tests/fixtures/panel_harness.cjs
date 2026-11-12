@@ -5350,7 +5350,7 @@ const tests = {
             `${base}/api/themes/slate%20blue`,
             `${base}/api/panel/access`,
             // A custom control's frame asks for its own file first, to say
-            // so when it is missing (_watchIframeStatuses).
+            // so when it is missing (modules/frames.js, the file check).
             `${base}/api/projects/default/ui/map/index.html`,
             `${base}/api/x.mp3`,
             `${base}/api/plugins/audio_player/files/sounds/chime%201.mp3`,
@@ -6835,6 +6835,18 @@ const tests = {
                 r.window();
             },
         });
+        await frameCase(got, 'state_during_token', pluginDef('pl', { grant: FRAME_GRANT }), {
+            before: (app) => { app._pluginExtensions = PLUGIN_EXTENSIONS; },
+            answer: (url) => (url.endsWith('/ext-token')
+                ? new Promise((resolve) => { pendingToken = resolve; })
+                : { ok: true, status: 200, json: async () => ({}) }),
+        }, {
+            async afterLoad(r) {
+                r.app.state = { 'device.dsp1.mute': 'during', 'plugin.p1.x': 'during' };
+                pendingToken({ ok: true, status: 200, json: async () => ({ token: 'held' }) });
+                await settle();
+            },
+        });
         await frameCase(got, 'designer', pluginDef('pl', { grant: FRAME_GRANT, style: { bg_color: '#222' } }), { edit: true });
         for (const [i, ids] of [{ plugin_id: 'p 1' }, { plugin_type: 'pa/nel' }, { plugin_id: '' }, { plugin_type: null }].entries()) {
             await frameCase(got, `unconfigured_${i}`, pluginDef('pl', { ...ids, style: { bg_color: '#222' } }));
@@ -7124,6 +7136,7 @@ const FRAME_MESSAGES = [
     { type: 'openavc:action', action: 'state.set', key: 'device.dsp1.mute', value: true },
     { type: 'openavc:action', action: 'state.set', value: 1 },
     { type: 'openavc:action', action: 'state.set', key: '', value: 1 },
+    { type: 'openavc:action', action: 'state.set', key: ['var.vol'], value: 1 },
     { type: 'openavc:action', action: 'macro.run', macro: 'system_on' },
     { type: 'openavc:action', action: 'macro.run', macro: 42 },
     { type: 'openavc:action', action: 'macro.run' },
@@ -7153,6 +7166,9 @@ function frameMount(def, { edit, answer, before, page } = {}) {
     };
     window.console.warn = (...a) => r.warn.push(a.map(String).join(' '));
     window.fetch = async (url, init) => {
+        // An earlier scenario's access check-in can still be polling; it is
+        // not the frame's request, and whether it lands here is timing.
+        if (String(url).includes('/api/panel/access')) return saved.fetch(url, init);
         r.fetched.push(init === undefined ? String(url) : `${url} ${JSON.stringify(init)}`);
         return answer ? answer(String(url), init) : { ok: true, status: 200, json: async () => ({}) };
     };
@@ -7280,6 +7296,8 @@ async function frameCase(got, name, def, opts = {}, extra) {
             iframe.focus();
             fire({ type: 'openavc:activity' });
             steps.push({ focused: document.activeElement === iframe, ...r.take() });
+            for (const data of [null, {}, { type: '' }]) fire(data);
+            steps.push({ focusedTypeless: r.take() });
             Object.defineProperty(document, 'activeElement', { get() { throw new Error('no focus here'); }, configurable: true });
             try { fire({ type: 'openavc:activity' }); } finally { delete document.activeElement; }
             steps.push({ focusThrows: r.take() });
@@ -7293,12 +7311,19 @@ async function frameCase(got, name, def, opts = {}, extra) {
             fire({ type: 'openavc:action', action: 'device.command', device: 'dsp10', command: 'on' });
             fire({ type: 'openavc:navigate', page: 'p' });
             steps.push({ regranted: r.take() });
+            node._grant = { devices: ['dsp10'], variables: ['vol_max'], macros: false, navigate: true };
+            r.app.handleMessage({ type: 'state.update', changes: { 'device.dsp10.mute': 'r', 'device.dsp1.mute': 'r', 'var.vol_max': 'r', 'var.vol': 'r' } });
+            fire({ type: 'openavc:request-init' });
+            await settle();
+            steps.push({ regrantedReads: r.take() });
             node._grant = placed;
             // State pushed to the frame: the same scope as its opening snapshot.
             r.app.handleMessage({ type: 'state.update', changes: Object.fromEntries(Object.keys(FRAME_STATE).map((k) => [k, `${k}!`])) });
             r.app.handleMessage({ type: 'state.delete', keys: Object.keys(FRAME_STATE) });
             steps.push({ pushed: r.take() });
-            // Asking for the opening message again.
+            // Asking for the opening message again, after the panel's state was
+            // replaced whole, as a reconnect's snapshot does.
+            r.app.state = { 'device.dsp1.mute': 'replaced', 'var.vol': 9, 'plugin.p1.x': 'replaced', 'device.other.z': 1 };
             fire({ type: 'openavc:request-init' });
             await settle();
             steps.push({ reinit: r.take(), drawn: nodeSnapshot(node) });
