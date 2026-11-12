@@ -21,6 +21,11 @@ The rules worth knowing before changing anything here:
 * Device-side registrations do not survive a reboot, a link cut or a new
   session, so ``register`` runs again on every (re)open, and a registration
   the device refuses is warned about once until it succeeds again.
+* A dial-back device connected to the simulator listens on a port of its own
+  when its register command tells it the port (``{listener_port}``): every
+  simulated device dials back from 127.0.0.1, so a listener shared by port
+  number cannot tell two of them apart. One whose register command names no
+  port keeps the configured port, the only one its simulator can know.
 
 ``PushChannel`` is a mixin that ``BaseDriver`` inherits, so every name stays on
 the driver object: Python drivers override ``_handle_push_datagram``,
@@ -75,6 +80,18 @@ def _port_in_range(port: int | None, lowest: int = 1) -> bool:
     """A resolved port a listener can bind: ``lowest`` to 65535. The TCP
     dial-back listener takes 0, an ephemeral port the OS picks."""
     return port is not None and lowest <= port < 65536
+
+
+def _carries_listener_port(value: Any) -> bool:
+    """Whether a command definition has ``{listener_port}`` in any text it
+    holds (its send line, path, body or headers)."""
+    if isinstance(value, str):
+        return "{listener_port}" in value
+    if isinstance(value, dict):
+        return any(_carries_listener_port(v) for v in value.values())
+    if isinstance(value, list):
+        return any(_carries_listener_port(v) for v in value)
+    return False
 
 
 def _is_child_id_param(pdef: Any, child_type: str) -> bool:
@@ -248,6 +265,9 @@ class PushChannel:
                 f"notification settings fields)"
             )
             return
+        if self.udp_redirect is not None and self._register_tells_listener_port(push_def):
+            # Connected to the simulator: a port of its own (module docstring).
+            port = 0
 
         frame_cfg = push_def.get("frame_parser")
         if isinstance(frame_cfg, dict):
@@ -457,6 +477,19 @@ class PushChannel:
             elif isinstance(item, dict) and isinstance(item.get("command"), str):
                 entries.append(item)
         return entries
+
+    def _push_command_def(self, command: str) -> Any:
+        """What ``command`` is declared to send: its ``DRIVER_INFO`` entry. A
+        YAML driver answers from its definition, which also holds the send
+        line."""
+        return (self.DRIVER_INFO.get("commands") or {}).get(command)
+
+    def _register_tells_listener_port(self, push_def: dict[str, Any]) -> bool:
+        """Whether a register command tells the device the listener port."""
+        return any(
+            _carries_listener_port(self._push_command_def(str(entry["command"])))
+            for entry in self._push_register_entries(push_def)
+        )
 
     def _push_entry_enabled(self, entry: dict[str, Any]) -> bool:
         """``when: <config_field>``: run only while that field is truthy."""

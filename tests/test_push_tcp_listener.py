@@ -719,3 +719,132 @@ async def test_sim_to_platform_end_to_end():
         await sim.stop()
     # Graceful disconnect sent connect=stop -> subscriber slot freed.
     assert not sim._push_tcp_subscribers
+
+
+# ===========================================================================
+# Simulation — each simulated dial-back device gets a listener of its own
+# ===========================================================================
+#
+# Every simulated device dials back from 127.0.0.1, so a listener shared by
+# port number cannot tell two of them apart. While a device is connected to
+# the simulator and its register command tells it the port, it listens on a
+# port of its own; a register command that names no port keeps the
+# configured one, which is all its simulator can know.
+
+
+def _free_tcp_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("0.0.0.0", 0))
+        return s.getsockname()[1]
+
+
+async def _simulated_cam(definition: dict, notify_port: int, device_id: str):
+    """One simulated camera, connected the way Start Simulation connects it:
+    the simulator started, the manager's own redirect applied, then connect."""
+    from openavc.core.simulation import SimulationManager
+    from openavc.simulator.yaml_auto import YAMLAutoSimulator
+
+    sim = YAMLAutoSimulator(
+        device_id=device_id, config={"notify_port": notify_port},
+        driver_def=definition,
+    )
+    await sim.start(0)
+    drv = _make_driver(
+        definition, {"host": "192.0.2.60", "notify_port": notify_port}, device_id,
+    )
+    SimulationManager(engine=object())._apply_sim_redirect(drv, device_id, sim.port)
+    await drv.connect()
+    return sim, drv
+
+
+@pytest.mark.asyncio
+async def test_two_simulated_cameras_on_one_port_each_get_only_their_own_changes():
+    shared = _free_tcp_port()
+    sim_a, drv_a = await _simulated_cam(_sim_def(), shared, "cam_a")
+    sim_b, drv_b = await _simulated_cam(_sim_def(), shared, "cam_b")
+    try:
+        sim_a.set_state("preset", 7)
+        # Generous: each wait ends as soon as the state arrives.
+        await _wait_for(lambda: drv_a.state.get("device.cam_a.preset") == 7, timeout=10)
+        sim_b.set_state("preset", 3)
+        await _wait_for(lambda: drv_b.state.get("device.cam_b.preset") == 3, timeout=10)
+        await asyncio.sleep(0.2)
+        assert drv_a.state.get("device.cam_a.preset") == 7
+        assert drv_b.state.get("device.cam_b.preset") == 3
+    finally:
+        for drv, sim in ((drv_a, sim_a), (drv_b, sim_b)):
+            await drv.disconnect()
+            await sim.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_simulated_camera_listens_on_a_port_of_its_own():
+    shared = _free_tcp_port()
+    sim, drv = await _simulated_cam(_sim_def(), shared, "cam1")
+    try:
+        port = drv._push_subscription.port
+        assert port != shared
+        assert drv.config["listener_port"] == port
+        assert ("127.0.0.1", port) in sim._push_tcp_subscribers
+    finally:
+        await drv.disconnect()
+        await sim.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_simulated_text_camera_whose_send_names_the_port_gets_its_own():
+    """The token in a ``send`` line counts too: it is the template a text
+    device's registration goes out as."""
+    definition = _cam_def(transport="tcp", delimiter="\\r")
+    definition["commands"] = {
+        "start_notifications": {"send": "NOTIFY ON {listener_port}\\r"},
+        "stop_notifications": {"send": "NOTIFY OFF {listener_port}\\r"},
+    }
+    drv = _make_driver(definition, {"host": "192.0.2.60", "notify_port": _free_tcp_port()})
+    drv.udp_redirect = ("127.0.0.1", 1)
+
+    async def fake_send(command, params=None):
+        pass
+
+    drv.send_command = fake_send
+    await drv._start_push()
+    try:
+        assert drv._push_subscription.port != drv.config["notify_port"]
+    finally:
+        await drv._stop_push()
+
+
+@pytest.mark.asyncio
+async def test_a_simulated_register_command_without_the_token_keeps_the_configured_port():
+    holder = await tl.subscribe(0, "127.0.0.1", lambda d, a: None, "holder")
+    definition = _cam_def()
+    definition["commands"]["start_notifications"]["path"] = "/api/event?connect=start"
+    drv = _make_driver(definition, {"host": "192.0.2.60", "notify_port": holder.port})
+    drv.udp_redirect = ("127.0.0.1", 1)
+
+    async def fake_send(command, params=None):
+        pass
+
+    drv.send_command = fake_send
+    await drv._start_push()
+    try:
+        assert drv._push_subscription.port == holder.port
+    finally:
+        await drv._stop_push()
+
+
+@pytest.mark.asyncio
+async def test_a_real_camera_keeps_the_configured_port():
+    holder = await tl.subscribe(0, "127.0.0.1", lambda d, a: None, "holder")
+    drv = _make_driver(_cam_def(), {"host": "192.0.2.60", "notify_port": holder.port})
+
+    async def fake_send(command, params=None):
+        pass
+
+    drv.send_command = fake_send
+    await drv._start_push()
+    try:
+        assert drv.udp_redirect is None
+        assert drv._push_subscription.port == holder.port
+    finally:
+        await drv._stop_push()

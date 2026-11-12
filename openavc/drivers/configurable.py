@@ -416,6 +416,11 @@ class ConfigurableDriver(
             params["push_session"] = self._push_session
         return params
 
+    def _push_command_def(self, command: str) -> Any:
+        """The command as the definition declares it, send line included
+        (``DRIVER_INFO`` keeps only its HTTP and OSC fields)."""
+        return self._definition.get("commands", {}).get(command)
+
     # Shared with the simulator/validator interpreters — one substitution
     # implementation for every surface (see compiled_protocol module docs).
     # Kept as a staticmethod so existing callers (API routes, tests) work.
