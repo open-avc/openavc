@@ -99,6 +99,10 @@ const REM_BASE_PX = 14;
 // before it runs.
 const MACRO_CLAIM_MAX_AGE_MS = 5 * 60 * 1000;
 
+// A button's display modes that draw no words, and those that draw its own picture.
+const WORDLESS_MODES = new Set(['image', 'icon_only']);
+const PICTURE_MODES = new Set(['image', 'image_text']);
+
 // Overlay and sidebar boxes, as percentages of the viewport. These are the
 // old hardcoded pixel defaults (400x300 dialog, 320-wide sidebar) measured
 // against the 1280x800 reference, so an overlay that never set a size keeps
@@ -5618,19 +5622,11 @@ class PanelApp {
      * state names shows in any mode: the Builder offers it on every button.
      */
     _buttonShowsWords(elementDef) {
-        return !PanelApp.WORDLESS_MODES.has(elementDef.display_mode || 'text');
+        return !WORDLESS_MODES.has(elementDef.display_mode || 'text');
     }
 
     _buttonShowsOwnPicture(elementDef) {
-        return PanelApp.PICTURE_MODES.has(elementDef.display_mode || 'text');
-    }
-
-    static get WORDLESS_MODES() {
-        return new Set(['image', 'icon_only']);
-    }
-
-    static get PICTURE_MODES() {
-        return new Set(['image', 'image_text']);
+        return PICTURE_MODES.has(elementDef.display_mode || 'text');
     }
 
     /** How a button draws its picture: its fit, blend and opacity, tinted with `tint`. */
