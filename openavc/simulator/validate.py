@@ -62,7 +62,7 @@ import logging
 import re
 import sys
 import textwrap
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +73,6 @@ from openavc.simulator.capacity import capacity_problems
 from openavc.simulator.osc_addresses import SYSTEM_ADDRESSES, SYSTEM_PREFIXES
 from openavc.simulator.single_client import single_client_problems
 from openavc.drivers.compiled_protocol import (
-    decode_delimiter,
     derive_config,
     safe_substitute,
     state_var_default,
@@ -81,6 +80,7 @@ from openavc.drivers.compiled_protocol import (
 from openavc.simulator.reply_reading import (
     ReplyRules,
     compile_response_patterns,
+    frame_delimiter,
 )
 from openavc.simulator.reread_queries import follow_up_queries, read_back_queries
 from openavc.simulator.send_templates import is_passthrough_send, send_regex
@@ -1225,11 +1225,6 @@ def _check_osc_read_back_coverage(
                 )
 
 
-# Transports where the driver reads replies by splitting a byte stream on its
-# delimiter. A datagram transport frames one message per packet, so a reply
-# there needs no terminator to be complete.
-_DELIMITED_TRANSPORTS = ("tcp", "serial")
-
 # How many unframed replies the finding quotes. The count is always exact; the
 # examples are there to recognise the shape, not to enumerate it.
 _FRAMING_EXAMPLES = 3
@@ -1271,14 +1266,10 @@ def _check_reply_framing(
     why it sees replies the page cannot: one built from a capture group or an
     f-string is unresolvable as source and perfectly concrete as output.
     """
-    if driver_def.get("transport", "tcp") not in _DELIMITED_TRANSPORTS:
+    delimiter = frame_delimiter(driver_def)
+    if delimiter is None:
         return
     raw_delimiter = driver_def.get("delimiter")
-    if not isinstance(raw_delimiter, str) or not raw_delimiter:
-        return
-    delimiter = decode_delimiter(raw_delimiter)
-    if not delimiter:
-        return
 
     # Built lazily: importing the simulator pulls in its server bases, and a
     # caller who only wants the other checks should not pay for them.
@@ -1287,24 +1278,57 @@ def _check_reply_framing(
     except Exception:  # pragma: no cover - the simulator package is shipped
         return
 
-    # Normalized the same way the poll checks do it, so an each_child template
-    # is probed with a sample child id rather than a literal {child_id} — which
-    # the simulator answers "does not exist", and an example nobody recognises
-    # is a finding an author reads past.
+    probes = _framing_probes(commands, queries, driver_def)
+    if not probes:
+        return
+    heard = _ask_the_simulator(
+        lambda: YAMLAutoSimulator(
+            driver_def.get("id", result.driver_id), {}, driver_def=driver_def
+        ),
+        probes,
+        delimiter.encode(),
+    )
+    if heard is not None:
+        _report_framing(result, heard, raw_delimiter, driver_def)
+
+
+def _framing_probes(commands: dict, queries: list, driver_def: dict) -> list[str]:
+    """What the driver sends, in order: its liveness probe, its poll queries
+    and a sample of each command.
+
+    Normalized the same way the poll checks do it, so an each_child template
+    is probed with a sample child id rather than a literal {child_id} — which
+    the simulator answers "does not exist", and an example nobody recognises
+    is a finding an author reads past.
+    """
     config = _effective_config(driver_def)
     transport = driver_def.get("transport", "tcp")
-    probes: list[str] = []
-    liveness = driver_def.get("liveness")
+    probes = _liveness_probe(driver_def.get("liveness"), config, transport)
+    probes += _query_probes(queries, config, transport)
+    probes += _command_probes(commands, driver_def)
+    return probes
+
+
+def _liveness_probe(liveness: Any, config: dict, transport: Any) -> list[str]:
     if isinstance(liveness, dict) and isinstance(liveness.get("send"), str):
-        probes.append(_normalize_query_sample(liveness["send"], config, transport))
+        return [_normalize_query_sample(liveness["send"], config, transport)]
+    return []
+
+
+def _query_probes(queries: list, config: dict, transport: Any) -> list[str]:
+    probes: list[str] = []
     for query in queries or []:
         query_text = query.get("send", "") if isinstance(query, dict) else str(query)
         if isinstance(query_text, str) and query_text:
             probes.append(_normalize_query_sample(query_text, config, transport))
+    return probes
+
+
+def _command_probes(commands: dict, driver_def: dict) -> list[str]:
+    """A sample of each command whose ``send`` is text."""
+    probes: list[str] = []
     for cmd_def in commands.values():
-        if not isinstance(cmd_def, dict):
-            continue
-        send_template = cmd_def.get("send")
+        send_template = cmd_def.get("send") if isinstance(cmd_def, dict) else None
         if not isinstance(send_template, str) or not send_template:
             continue
         sample = _generate_sample_command(
@@ -1312,69 +1336,98 @@ def _check_reply_framing(
         )
         if sample is not None:
             probes.append(sample)
-    if not probes:
-        return
+    return probes
 
-    # A handler that raises logs a traceback, and a driver whose sample values
-    # do not suit every command has a few. They are ``handler_syntax``'s to
-    # report, not this check's, and a wall of them would bury its finding.
+
+@dataclasses.dataclass
+class _Heard:
+    """What the simulator sent back to the probes, judged against the
+    delimiter."""
+
+    #: Probes answered with something.
+    replies: int = 0
+    #: Each reply with no delimiter in it at all, as an example.
+    unframed: list[str] = dataclasses.field(default_factory=list)
+    #: Each reply whose lines end in the delimiter but which carries something
+    #: after the last one: (example, the trailing text, whether the reply
+    #: also opens with the delimiter).
+    trailing: list[tuple[str, bytes, bool]] = dataclasses.field(default_factory=list)
+
+    def take(self, probe: str, reply: bytes, terminator: bytes) -> None:
+        """One probe's non-empty reply."""
+        self.replies += 1
+        if reply.endswith(terminator):
+            return
+        example = f"{probe.strip()!r} -> {reply[:40]!r}"
+        if terminator in reply:
+            self.trailing.append(
+                (example, reply.rsplit(terminator, 1)[1], reply.startswith(terminator))
+            )
+        else:
+            self.unframed.append(example)
+
+
+def _ask_the_simulator(
+    build: Callable[[], Any], probes: list[str], terminator: bytes,
+) -> _Heard | None:
+    """Each probe's reply from a simulator ``build`` makes, or None when it
+    cannot be built (an unbuildable simulator is the other checks' finding).
+
+    The simulator's log is muted while it runs. A handler that raises logs a
+    traceback, and a driver whose sample values do not suit every command has
+    a few. They are ``handler_syntax``'s to report, not this check's, and a
+    wall of them would bury its finding.
+    """
     sim_log = logging.getLogger("openavc.simulator.yaml_auto")
     previous_level = sim_log.level
     sim_log.setLevel(logging.CRITICAL)
     try:
         try:
-            sim = YAMLAutoSimulator(
-                driver_def.get("id", result.driver_id), {}, driver_def=driver_def
-            )
+            sim = build()
         except Exception:
-            # An unbuildable simulator is the other checks' finding to make.
-            return
-        terminator = delimiter.encode()
-        unframed: list[str] = []
-        # Replies whose lines end in the delimiter but which carry something
-        # after the last one: (example, the trailing text, whether the reply
-        # also opens with the delimiter).
-        trailing: list[tuple[str, bytes, bool]] = []
-        replies = 0
+            return None
+        heard = _Heard()
         for probe in probes:
             try:
                 reply = sim.handle_command(probe.encode())
             except Exception:
                 continue
-            if not reply:
-                continue
-            replies += 1
-            if reply.endswith(terminator):
-                continue
-            example = f"{probe.strip()!r} -> {reply[:40]!r}"
-            if terminator in reply:
-                trailing.append(
-                    (example, reply.rsplit(terminator, 1)[1], reply.startswith(terminator))
-                )
-            else:
-                unframed.append(example)
+            if reply:
+                heard.take(probe, reply, terminator)
+        return heard
     finally:
         sim_log.setLevel(previous_level)
 
-    if trailing:
-        _report_trailing_text(result, trailing, raw_delimiter, driver_def)
 
-    if not unframed:
-        if replies and not trailing:
-            result.info(
-                "reply_framing",
-                f"{replies} simulator repl{'y' if replies == 1 else 'ies'} checked, "
-                f"all terminated with {raw_delimiter!r}."
-            )
-        return
+def _report_framing(
+    result: ValidationResult, heard: _Heard, raw_delimiter: str, driver_def: dict,
+) -> None:
+    """Replies that trail text after their last delimiter are judged apart;
+    replies with no delimiter at all are the error; otherwise, when every
+    reply ends in it, the count is noted."""
+    if heard.trailing:
+        _report_trailing_text(result, heard.trailing, raw_delimiter, driver_def)
+    if heard.unframed:
+        _report_unframed(result, heard, raw_delimiter)
+    elif heard.replies and not heard.trailing:
+        replies = heard.replies
+        result.info(
+            "reply_framing",
+            f"{replies} simulator repl{'y' if replies == 1 else 'ies'} checked, "
+            f"all terminated with {raw_delimiter!r}."
+        )
 
+
+def _report_unframed(result: ValidationResult, heard: _Heard, raw_delimiter: str) -> None:
+    """The error: replies that never complete a frame."""
+    unframed = heard.unframed
     shown = "; ".join(unframed[:_FRAMING_EXAMPLES])
     more = len(unframed) - _FRAMING_EXAMPLES
     if more > 0:
         shown += f"; +{more} more"
     result.error(
         "reply_framing",
-        f"{len(unframed)} of {replies} simulator replies come back without the "
+        f"{len(unframed)} of {heard.replies} simulator replies come back without the "
         f"{raw_delimiter!r} this driver splits incoming bytes on, so the driver "
         f"never completes a frame and reads nothing they carry: {shown}. "
         f"A reply written by hand — a respond: template or a respond() call in "
