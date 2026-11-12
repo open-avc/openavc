@@ -33,8 +33,9 @@ inline protocol (its merge, its own response patterns, an HTTP one's JSON
 status poll) is inline_device. A stream device's side receiver (the UDP
 server beside it, the port number both share, what a magic packet applies)
 is side_receiver, and which children the device holds is read by
-child_roster. Construction runs in named stages, each saying what it must
-follow.
+child_roster. A simulator: section's template handler (its placeholders,
+the values it reads as the device's own number) is template_handler.
+Construction runs in named stages, each saying what it must follow.
 """
 
 from __future__ import annotations
@@ -126,6 +127,7 @@ from openavc.simulator.telnet_sign_in import (
     offers_sign_in_required,
     telnet_login,
 )
+from openavc.simulator.template_handler import ExplicitHandler, fill, state_writes
 
 logger = logging.getLogger(__name__)
 
@@ -173,12 +175,6 @@ def _as_number(value: Any) -> float | None:
     except (ValueError, TypeError):
         return None
 
-
-#: A template handler's placeholders: a capture group (`{1}`) or another state
-#: value (`{state.key}`). Either brings the device's own number into a
-#: `set_state` value; a value with neither is the author's, as written.
-_HANDLER_PLACEHOLDER = re.compile(r"\{(?:\d+|state\.[^{}]+)\}")
-_HANDLER_STATE_REF = re.compile(r"\{state\.([^{}]+)\}")
 
 class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     """Auto-generated simulator from a .avcdriver definition.
@@ -944,21 +940,16 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         return None if text is None else (text + delimiter).encode()
 
     def _execute_explicit_handler(self, handler: ExplicitHandler, m: re.Match) -> bytes | None:
-        """Execute an explicit command_handler from the simulator: section."""
-        # Apply state changes
-        for key, val in handler.set_state.items():
-            template = str(val)
-            resolved: Any = self._resolve_template(template, m)
-            if _HANDLER_PLACEHOLDER.search(template):
-                resolved = self._from_wire(key, resolved)
-            self.set_state(key, self._coerce_value(key, resolved))
-
-        # Generate response
-        if handler.respond:
-            response_text = self._resolve_template(handler.respond, m)
-            return response_text.encode()
-
-        return None
+        """A template handler (template_handler.py): its writes in order,
+        each filled from what the earlier ones left, a value made from a
+        placeholder read back from the device's number; then its reply,
+        with no delimiter of its own."""
+        for key, filled, from_device in state_writes(handler, m, self._state, self._to_wire):
+            value = self._from_wire(key, filled) if from_device else filled
+            self.set_state(key, self._coerce_value(key, value))
+        if not handler.respond:
+            return None
+        return fill(handler.respond, m, self._state, self._to_wire).encode()
 
     def _execute_script_handler(self, handler: ScriptHandler, m: re.Match) -> bytes | None:
         """Execute a script handler (match: + handler: with inline Python).
@@ -1544,30 +1535,6 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         var_type = self._var_def_for_key(state_key).get("type", "string")
         return coerce_osc_value(value, var_type)
 
-    def _resolve_template(self, template: str, match: re.Match | None = None) -> str:
-        """Resolve {1}, {2}, {state.key} placeholders in a template.
-
-        A state value goes in as the device's own number (``_to_wire``), as
-        every other reply the simulator sends does."""
-        result = template
-
-        # Replace capture group references {1}, {2}
-        if match:
-            for i in range(1, match.lastindex + 1 if match.lastindex else 1):
-                try:
-                    result = result.replace(f"{{{i}}}", match.group(i) or "")
-                except IndexError:
-                    pass
-
-        # Replace state references {state.key}
-        for key in set(_HANDLER_STATE_REF.findall(result)):
-            if key in self._state:
-                result = result.replace(
-                    f"{{state.{key}}}", str(self._to_wire(key, self._state[key]))
-                )
-
-        return result
-
     @staticmethod
     def _build_info(driver_def: dict) -> dict:
         """Build SIMULATOR_INFO from driver definition."""
@@ -1912,14 +1879,6 @@ class _CommandRead:
         else:
             self.state_changes.pop(target, None)
             self.child_state_keys.discard(target)
-
-
-class ExplicitHandler:
-    """Explicit handler from simulator: command_handlers section."""
-    def __init__(self, pattern: re.Pattern, respond: str | None, set_state: dict):
-        self.pattern = pattern
-        self.respond = respond
-        self.set_state = set_state
 
 
 class ScriptHandler:
