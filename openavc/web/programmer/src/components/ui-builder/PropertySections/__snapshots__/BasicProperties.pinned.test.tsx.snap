@@ -31,7 +31,7 @@ exports[`the Basic section, every element type > a type named like an object met
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="constructor" :: change "abc" -> nothing
 #1 input readonly="" value="constructor" :: change "" -> nothing
 #1 input readonly="" value="constructor" :: change "{\\"a\\":1}" -> nothing
@@ -89,7 +89,7 @@ exports[`the Basic section, every element type > an unknown type (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="widget" :: change "abc" -> nothing
 #1 input readonly="" value="widget" :: change "" -> nothing
 #1 input readonly="" value="widget" :: change "{\\"a\\":1}" -> nothing
@@ -223,7 +223,7 @@ exports[`the Basic section, every element type > button, a look whose states are
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -325,7 +325,7 @@ exports[`the Basic section, every element type > button, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -439,7 +439,7 @@ exports[`the Basic section, every element type > button, icon and text (page) 1`
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -557,7 +557,7 @@ exports[`the Basic section, every element type > button, image with no picture (
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -703,7 +703,7 @@ exports[`the Basic section, every element type > button, image with tint and sta
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -806,7 +806,7 @@ exports[`the Basic section, every element type > button, multi-line label (page)
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -892,7 +892,7 @@ exports[`the Basic section, every element type > button, pre-wrap label (page) 1
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -1028,7 +1028,7 @@ exports[`the Basic section, every element type > button, recolor with an on/off 
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -1181,7 +1181,7 @@ exports[`the Basic section, every element type > button, recolor with unbound st
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -1334,7 +1334,7 @@ exports[`the Basic section, every element type > button, tint with no bindings (
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -1490,7 +1490,7 @@ exports[`the Basic section, every element type > button, tint with no look (page
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -1644,7 +1644,7 @@ exports[`the Basic section, every element type > button, tint with only an off l
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="button" :: change "abc" -> nothing
 #1 input readonly="" value="button" :: change "" -> nothing
 #1 input readonly="" value="button" :: change "{\\"a\\":1}" -> nothing
@@ -1736,7 +1736,7 @@ exports[`the Basic section, every element type > camera preset, bare (page) 1`] 
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="camera_preset" :: change "abc" -> nothing
 #1 input readonly="" value="camera_preset" :: change "" -> nothing
 #1 input readonly="" value="camera_preset" :: change "{\\"a\\":1}" -> nothing
@@ -1842,7 +1842,7 @@ exports[`the Basic section, every element type > camera preset, set (page) 1`] =
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="camera_preset" :: change "abc" -> nothing
 #1 input readonly="" value="camera_preset" :: change "" -> nothing
 #1 input readonly="" value="camera_preset" :: change "{\\"a\\":1}" -> nothing
@@ -1950,7 +1950,7 @@ exports[`the Basic section, every element type > clock, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2058,7 +2058,7 @@ exports[`the Basic section, every element type > clock, countdown from a start k
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2170,7 +2170,7 @@ exports[`the Basic section, every element type > clock, countdown from state (pa
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2282,7 +2282,7 @@ exports[`the Basic section, every element type > clock, countdown to a time (pag
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2394,7 +2394,7 @@ exports[`the Basic section, every element type > clock, countdown with only a va
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2496,7 +2496,7 @@ exports[`the Basic section, every element type > clock, date (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2594,7 +2594,7 @@ exports[`the Basic section, every element type > clock, date and time (page) 1`]
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2698,7 +2698,7 @@ exports[`the Basic section, every element type > clock, elapsed (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2804,7 +2804,7 @@ exports[`the Basic section, every element type > clock, meeting (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2909,7 +2909,7 @@ exports[`the Basic section, every element type > clock, unknown mode (page) 1`] 
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="clock" :: change "abc" -> nothing
 #1 input readonly="" value="clock" :: change "" -> nothing
 #1 input readonly="" value="clock" :: change "{\\"a\\":1}" -> nothing
@@ -2979,7 +2979,7 @@ exports[`the Basic section, every element type > custom, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="custom" :: change "abc" -> nothing
 #1 input readonly="" value="custom" :: change "" -> nothing
 #1 input readonly="" value="custom" :: change "{\\"a\\":1}" -> nothing
@@ -3029,7 +3029,7 @@ exports[`the Basic section, every element type > custom, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="custom" :: change "abc" -> nothing
 #1 input readonly="" value="custom" :: change "" -> nothing
 #1 input readonly="" value="custom" :: change "{\\"a\\":1}" -> nothing
@@ -3378,7 +3378,7 @@ exports[`the Basic section, every element type > fader, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="fader" :: change "abc" -> nothing
 #1 input readonly="" value="fader" :: change "" -> nothing
 #1 input readonly="" value="fader" :: change "{\\"a\\":1}" -> nothing
@@ -3590,7 +3590,7 @@ exports[`the Basic section, every element type > fader, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="fader" :: change "abc" -> nothing
 #1 input readonly="" value="fader" :: change "" -> nothing
 #1 input readonly="" value="fader" :: change "{\\"a\\":1}" -> nothing
@@ -3777,7 +3777,7 @@ exports[`the Basic section, every element type > gauge, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="gauge" :: change "abc" -> nothing
 #1 input readonly="" value="gauge" :: change "" -> nothing
 #1 input readonly="" value="gauge" :: change "{\\"a\\":1}" -> nothing
@@ -3951,7 +3951,7 @@ exports[`the Basic section, every element type > gauge, no ticks (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="gauge" :: change "abc" -> nothing
 #1 input readonly="" value="gauge" :: change "" -> nothing
 #1 input readonly="" value="gauge" :: change "{\\"a\\":1}" -> nothing
@@ -4128,7 +4128,7 @@ exports[`the Basic section, every element type > gauge, one zone (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="gauge" :: change "abc" -> nothing
 #1 input readonly="" value="gauge" :: change "" -> nothing
 #1 input readonly="" value="gauge" :: change "{\\"a\\":1}" -> nothing
@@ -4343,7 +4343,7 @@ exports[`the Basic section, every element type > gauge, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="gauge" :: change "abc" -> nothing
 #1 input readonly="" value="gauge" :: change "" -> nothing
 #1 input readonly="" value="gauge" :: change "{\\"a\\":1}" -> nothing
@@ -4521,7 +4521,7 @@ exports[`the Basic section, every element type > group, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="group" :: change "abc" -> nothing
 #1 input readonly="" value="group" :: change "" -> nothing
 #1 input readonly="" value="group" :: change "{\\"a\\":1}" -> nothing
@@ -4601,7 +4601,7 @@ exports[`the Basic section, every element type > group, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="group" :: change "abc" -> nothing
 #1 input readonly="" value="group" :: change "" -> nothing
 #1 input readonly="" value="group" :: change "{\\"a\\":1}" -> nothing
@@ -4688,7 +4688,7 @@ probe //api/projects/default/assets/logo.png
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="image" :: change "abc" -> nothing
 #1 input readonly="" value="image" :: change "" -> nothing
 #1 input readonly="" value="image" :: change "{\\"a\\":1}" -> nothing
@@ -4789,7 +4789,7 @@ exports[`the Basic section, every element type > image, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="image" :: change "abc" -> nothing
 #1 input readonly="" value="image" :: change "" -> nothing
 #1 input readonly="" value="image" :: change "{\\"a\\":1}" -> nothing
@@ -4890,7 +4890,7 @@ exports[`the Basic section, every element type > image, url with a ratio (page) 
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="image" :: change "abc" -> nothing
 #1 input readonly="" value="image" :: change "" -> nothing
 #1 input readonly="" value="image" :: change "{\\"a\\":1}" -> nothing
@@ -5001,7 +5001,7 @@ exports[`the Basic section, every element type > keypad, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="keypad" :: change "abc" -> nothing
 #1 input readonly="" value="keypad" :: change "" -> nothing
 #1 input readonly="" value="keypad" :: change "{\\"a\\":1}" -> nothing
@@ -5103,7 +5103,7 @@ exports[`the Basic section, every element type > keypad, masked (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="keypad" :: change "abc" -> nothing
 #1 input readonly="" value="keypad" :: change "" -> nothing
 #1 input readonly="" value="keypad" :: change "{\\"a\\":1}" -> nothing
@@ -5199,7 +5199,7 @@ exports[`the Basic section, every element type > keypad, no display (page) 1`] =
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="keypad" :: change "abc" -> nothing
 #1 input readonly="" value="keypad" :: change "" -> nothing
 #1 input readonly="" value="keypad" :: change "{\\"a\\":1}" -> nothing
@@ -5310,7 +5310,7 @@ exports[`the Basic section, every element type > keypad, phone sending on its ow
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="keypad" :: change "abc" -> nothing
 #1 input readonly="" value="keypad" :: change "" -> nothing
 #1 input readonly="" value="keypad" :: change "{\\"a\\":1}" -> nothing
@@ -5403,7 +5403,7 @@ exports[`the Basic section, every element type > label, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="label" :: change "abc" -> nothing
 #1 input readonly="" value="label" :: change "" -> nothing
 #1 input readonly="" value="label" :: change "{\\"a\\":1}" -> nothing
@@ -5512,7 +5512,7 @@ exports[`the Basic section, every element type > label, multi-line text and deci
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="label" :: change "abc" -> nothing
 #1 input readonly="" value="label" :: change "" -> nothing
 #1 input readonly="" value="label" :: change "{\\"a\\":1}" -> nothing
@@ -5787,7 +5787,7 @@ exports[`the Basic section, every element type > level meter, bare (page) 1`] = 
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="level_meter" :: change "abc" -> nothing
 #1 input readonly="" value="level_meter" :: change "" -> nothing
 #1 input readonly="" value="level_meter" :: change "{\\"a\\":1}" -> nothing
@@ -5932,7 +5932,7 @@ exports[`the Basic section, every element type > level meter, no peak (page) 1`]
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="level_meter" :: change "abc" -> nothing
 #1 input readonly="" value="level_meter" :: change "" -> nothing
 #1 input readonly="" value="level_meter" :: change "{\\"a\\":1}" -> nothing
@@ -6076,7 +6076,7 @@ exports[`the Basic section, every element type > level meter, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="level_meter" :: change "abc" -> nothing
 #1 input readonly="" value="level_meter" :: change "" -> nothing
 #1 input readonly="" value="level_meter" :: change "{\\"a\\":1}" -> nothing
@@ -6209,7 +6209,7 @@ exports[`the Basic section, every element type > list, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="list" :: change "abc" -> nothing
 #1 input readonly="" value="list" :: change "" -> nothing
 #1 input readonly="" value="list" :: change "{\\"a\\":1}" -> nothing
@@ -6314,7 +6314,7 @@ exports[`the Basic section, every element type > list, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="list" :: change "abc" -> nothing
 #1 input readonly="" value="list" :: change "" -> nothing
 #1 input readonly="" value="list" :: change "{\\"a\\":1}" -> nothing
@@ -6515,7 +6515,7 @@ exports[`the Basic section, every element type > matrix, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -6775,7 +6775,7 @@ exports[`the Basic section, every element type > matrix, generator (page) 1`] = 
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -7036,7 +7036,7 @@ exports[`the Basic section, every element type > matrix, lists on both axes (pag
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -7188,7 +7188,7 @@ exports[`the Basic section, every element type > matrix, lists without audio (pa
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -7368,7 +7368,7 @@ exports[`the Basic section, every element type > matrix, mute left on by default
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -7588,7 +7588,7 @@ exports[`the Basic section, every element type > matrix, odd axes (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -7818,7 +7818,7 @@ exports[`the Basic section, every element type > matrix, one preset (page) 1`] =
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -8026,7 +8026,7 @@ exports[`the Basic section, every element type > matrix, setup dialog open (page
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -8199,7 +8199,7 @@ exports[`the Basic section, every element type > matrix, sources a list and dest
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -8420,7 +8420,7 @@ exports[`the Basic section, every element type > matrix, unbacked lock and missi
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="matrix" :: change "abc" -> nothing
 #1 input readonly="" value="matrix" :: change "" -> nothing
 #1 input readonly="" value="matrix" :: change "{\\"a\\":1}" -> nothing
@@ -8571,7 +8571,7 @@ exports[`the Basic section, every element type > page nav, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="page_nav" :: change "abc" -> nothing
 #1 input readonly="" value="page_nav" :: change "" -> nothing
 #1 input readonly="" value="page_nav" :: change "{\\"a\\":1}" -> nothing
@@ -8655,7 +8655,7 @@ exports[`the Basic section, every element type > page nav, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="page_nav" :: change "abc" -> nothing
 #1 input readonly="" value="page_nav" :: change "" -> nothing
 #1 input readonly="" value="page_nav" :: change "{\\"a\\":1}" -> nothing
@@ -8728,7 +8728,7 @@ exports[`the Basic section, every element type > plugin, empty schema (page) 1`]
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="plugin" :: change "abc" -> nothing
 #1 input readonly="" value="plugin" :: change "" -> nothing
 #1 input readonly="" value="plugin" :: change "{\\"a\\":1}" -> nothing
@@ -8809,7 +8809,7 @@ exports[`the Basic section, every element type > plugin, schema edited as JSON (
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="plugin" :: change "abc" -> nothing
 #1 input readonly="" value="plugin" :: change "" -> nothing
 #1 input readonly="" value="plugin" :: change "{\\"a\\":1}" -> nothing
@@ -8948,7 +8948,7 @@ exports[`the Basic section, every element type > plugin, with a schema (page) 1`
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="plugin" :: change "abc" -> nothing
 #1 input readonly="" value="plugin" :: change "" -> nothing
 #1 input readonly="" value="plugin" :: change "{\\"a\\":1}" -> nothing
@@ -9085,7 +9085,7 @@ exports[`the Basic section, every element type > plugin, with no schema (page) 1
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="plugin" :: change "abc" -> nothing
 #1 input readonly="" value="plugin" :: change "" -> nothing
 #1 input readonly="" value="plugin" :: change "{\\"a\\":1}" -> nothing
@@ -9164,7 +9164,7 @@ exports[`the Basic section, every element type > select, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="select" :: change "abc" -> nothing
 #1 input readonly="" value="select" :: change "" -> nothing
 #1 input readonly="" value="select" :: change "{\\"a\\":1}" -> nothing
@@ -9238,7 +9238,7 @@ exports[`the Basic section, every element type > select, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="select" :: change "abc" -> nothing
 #1 input readonly="" value="select" :: change "" -> nothing
 #1 input readonly="" value="select" :: change "{\\"a\\":1}" -> nothing
@@ -9622,7 +9622,7 @@ exports[`the Basic section, every element type > slider, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="slider" :: change "abc" -> nothing
 #1 input readonly="" value="slider" :: change "" -> nothing
 #1 input readonly="" value="slider" :: change "{\\"a\\":1}" -> nothing
@@ -9828,7 +9828,7 @@ exports[`the Basic section, every element type > slider, on release (page) 1`] =
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="slider" :: change "abc" -> nothing
 #1 input readonly="" value="slider" :: change "" -> nothing
 #1 input readonly="" value="slider" :: change "{\\"a\\":1}" -> nothing
@@ -10262,7 +10262,7 @@ exports[`the Basic section, every element type > slider, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="slider" :: change "abc" -> nothing
 #1 input readonly="" value="slider" :: change "" -> nothing
 #1 input readonly="" value="slider" :: change "{\\"a\\":1}" -> nothing
@@ -10404,7 +10404,7 @@ exports[`the Basic section, every element type > text input, bare (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="text_input" :: change "abc" -> nothing
 #1 input readonly="" value="text_input" :: change "" -> nothing
 #1 input readonly="" value="text_input" :: change "{\\"a\\":1}" -> nothing
@@ -10474,7 +10474,7 @@ exports[`the Basic section, every element type > text input, set (page) 1`] = `
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, blur -> nothing
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change " new_id ", blur -> rename "new_id"
 #0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Enter -> rename "abc"
-#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> rename "abc"
+#0 input title="Rename element (Enter to commit, Esc to cancel)" value="el" :: focus, change "abc", key Escape -> nothing
 #1 input readonly="" value="text_input" :: change "abc" -> nothing
 #1 input readonly="" value="text_input" :: change "" -> nothing
 #1 input readonly="" value="text_input" :: change "{\\"a\\":1}" -> nothing

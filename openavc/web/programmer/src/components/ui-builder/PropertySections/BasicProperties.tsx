@@ -8,7 +8,7 @@
  * ValueFields, ClockFields, ButtonImageFields, PluginElementConfig); the rows
  * they are built from are FieldRow's and StyleRows'.
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Plus, X } from "lucide-react";
 import type { UIElement, UIPage, UIElementOption, Placement, ProjectConfig } from "../../../api/types";
 import { CopyButton } from "../../shared/CopyButton";
@@ -718,6 +718,9 @@ function ElementIdField({
 }) {
   const [draft, setDraft] = useState(id);
   const [focused, setFocused] = useState(false);
+  // Set by Escape just before it blurs: the blur's commit reads the draft
+  // from before the reset, so it is told to throw that draft away instead.
+  const cancelled = useRef(false);
 
   // Reset draft when the underlying id changes (selection switch, undo, etc.)
   // — only when the field isn't being actively edited.
@@ -726,6 +729,10 @@ function ElementIdField({
   }, [id, focused]);
 
   const commit = () => {
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
     if (!onRename) return;
     const trimmed = draft.trim();
     if (trimmed === id) return;
@@ -739,7 +746,10 @@ function ElementIdField({
     <input
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
-      onFocus={() => setFocused(true)}
+      onFocus={() => {
+        cancelled.current = false;
+        setFocused(true);
+      }}
       onBlur={() => {
         setFocused(false);
         commit();
@@ -750,6 +760,7 @@ function ElementIdField({
           (e.target as HTMLInputElement).blur();
         } else if (e.key === "Escape") {
           e.preventDefault();
+          cancelled.current = true;
           setDraft(id);
           (e.target as HTMLInputElement).blur();
         }

@@ -22,7 +22,7 @@ Toggle the palette with **Ctrl+E**.
 - Preview mode toggle (**Ctrl+P**) to test interactions with live state
 
 **Right panel: Properties.** Configure the selected element:
-- Basic properties (ID, type, label). Changing a control's ID updates the rest of the project with it: the `ui.<id>.` keys bindings, macros and variables read, a `$ui.<id>.` value, and a macro trigger on the control's panel events (`ui.press.<id>`). Scripts are not changed, so update any that use the old ID yourself
+- Basic properties (ID, type, label). Type a new ID and press Enter or click away to save it; Escape puts the old one back. Changing a control's ID updates the rest of the project with it: the `ui.<id>.` keys bindings, macros and variables read, a `$ui.<id>.` value, and a macro trigger on the control's panel events (`ui.press.<id>`). Scripts are not changed, so update any that use the old ID yourself
 - Layout (position and size in percent, container, aspect lock)
 - Style (colors, font size, border radius)
 - Bindings (the critical programming section, where logic meets the UI)
