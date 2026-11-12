@@ -6,15 +6,13 @@
  * Changes' place, offers Save as Custom instead of Save as Copy, and cannot be
  * deleted.
  *
- * Each button is held by its own rule, and how a held button looks (its cursor,
- * how faded it is) follows a rule of its own that is not always the same one:
- * Save Changes is held and looks it while an action runs or nothing is unsaved;
- * Save as Custom is held while an action runs or the name is blank, but looks
- * held only while an action runs; Discard is held while an action runs or
- * nothing is unsaved, but looks held only while nothing is unsaved; Delete is
- * held while an action runs and shows it by its cursor alone.
+ * Each button is held by one rule, and a held button always looks it (a
+ * not-allowed cursor, faded): Save Changes and Discard while an action runs or
+ * nothing is unsaved; Save as Copy / Save as Custom while an action runs or the
+ * name is blank, which its tooltip then says; Delete while an action runs.
+ * Export is never held.
  */
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { AlertTriangle, Copy, Download, FilePlus, RotateCcw, Save, Trash2 } from "lucide-react";
 import type { StatusLine } from "./statusLine";
 
@@ -38,29 +36,44 @@ interface FileActionBarProps {
   actions: FileActions;
 }
 
-const BUTTON: CSSProperties = { display: "flex", alignItems: "center", gap: 4, padding: "6px 12px" };
+const BUTTON: CSSProperties = { display: "flex", alignItems: "center", gap: 4, padding: "6px 12px", borderRadius: 4, fontSize: 12 };
+/** How a button the bar is not drawing as the main one is coloured. */
+const PLAIN: CSSProperties = { background: "var(--bg-hover)", border: "1px solid var(--border-color)", color: "var(--text-secondary)" };
 
-function SaveChangesButton({ isDirty, busy, onClick }: { isDirty: boolean; busy: boolean; onClick: () => void }) {
-  const held = busy || !isDirty;
+interface FileButtonProps {
+  /** It cannot be pressed now: disabled, a not-allowed cursor and faded, all from this one flag. */
+  held?: boolean;
+  /** How faded it is while held. */
+  fade?: number;
+  title: string;
+  look: CSSProperties;
+  onClick: () => void;
+  children: ReactNode;
+}
+
+function FileButton({ held = false, fade = 0.55, title, look, onClick, children }: FileButtonProps) {
   return (
     <button
       onClick={onClick}
       disabled={held}
+      title={title}
+      style={{ ...BUTTON, ...look, cursor: held ? "not-allowed" : "pointer", opacity: held ? fade : 1 }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SaveChangesButton({ isDirty, busy, onClick }: { isDirty: boolean; busy: boolean; onClick: () => void }) {
+  return (
+    <FileButton
+      held={busy || !isDirty}
       title={isDirty ? "Save changes to this theme file" : "No changes to save"}
-      style={{
-        ...BUTTON,
-        background: "var(--accent-bg)",
-        color: "#fff",
-        border: "none",
-        borderRadius: 4,
-        cursor: held ? "not-allowed" : "pointer",
-        fontSize: 12,
-        fontWeight: 600,
-        opacity: held ? 0.55 : 1,
-      }}
+      look={{ background: "var(--accent-bg)", color: "#fff", border: "none", fontWeight: 600 }}
+      onClick={onClick}
     >
       <Save size={14} /> Save Changes
-    </button>
+    </FileButton>
   );
 }
 
@@ -102,89 +115,52 @@ const SAVE_AS = {
 
 function SaveAsButton({ isCustom, busy, name, onClick }: { isCustom: boolean; busy: boolean; name: string; onClick: () => void }) {
   const { title, background, color, border, Icon, label } = isCustom ? SAVE_AS.custom : SAVE_AS.builtin;
+  const unnamed = !name.trim();
   return (
-    <button
+    <FileButton
+      held={busy || unnamed}
+      title={unnamed ? "Enter a theme name" : title}
+      look={{ background, color, border }}
       onClick={onClick}
-      disabled={busy || !name.trim()}
-      title={title}
-      style={{
-        ...BUTTON,
-        background,
-        color,
-        border,
-        borderRadius: 4,
-        cursor: busy ? "not-allowed" : "pointer",
-        fontSize: 12,
-        opacity: busy ? 0.55 : 1,
-      }}
     >
       <Icon size={14} />
       {label}
-    </button>
+    </FileButton>
   );
 }
 
 function DiscardButton({ isDirty, busy, onClick }: { isDirty: boolean; busy: boolean; onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={busy || !isDirty}
+    <FileButton
+      held={busy || !isDirty}
+      fade={0.5}
       title={isDirty ? "Reload theme and discard your edits" : "No edits to discard"}
-      style={{
-        ...BUTTON,
-        background: "var(--bg-hover)",
-        border: "1px solid var(--border-color)",
-        borderRadius: 4,
-        cursor: !isDirty ? "not-allowed" : "pointer",
-        fontSize: 12,
-        color: "var(--text-secondary)",
-        opacity: !isDirty ? 0.5 : 1,
-      }}
+      look={PLAIN}
+      onClick={onClick}
     >
       <RotateCcw size={14} /> Discard
-    </button>
+    </FileButton>
   );
 }
 
 function ExportButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      title="Download theme JSON"
-      style={{
-        ...BUTTON,
-        background: "var(--bg-hover)",
-        border: "1px solid var(--border-color)",
-        borderRadius: 4,
-        cursor: "pointer",
-        fontSize: 12,
-        color: "var(--text-secondary)",
-      }}
-    >
+    <FileButton title="Download theme JSON" look={PLAIN} onClick={onClick}>
       <Download size={14} /> Export
-    </button>
+    </FileButton>
   );
 }
 
 function DeleteButton({ busy, onClick }: { busy: boolean; onClick: () => void }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={busy}
+    <FileButton
+      held={busy}
       title="Delete this custom theme"
-      style={{
-        ...BUTTON,
-        background: "transparent",
-        border: "1px solid var(--border-color)",
-        borderRadius: 4,
-        cursor: busy ? "not-allowed" : "pointer",
-        fontSize: 12,
-        color: "#ef5350",
-        marginLeft: "auto",
-      }}
+      look={{ background: "transparent", border: "1px solid var(--border-color)", color: "#ef5350", marginLeft: "auto" }}
+      onClick={onClick}
     >
       <Trash2 size={14} /> Delete
-    </button>
+    </FileButton>
   );
 }
 
