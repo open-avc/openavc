@@ -7,7 +7,8 @@ a write fails here:
   unknown script.
 - ``get_script_health``: no engine, no script runtime, the whole project, one
   script, a script with nothing wrong.
-- ``create_script``: no project, an id in use, a syntax error (checked before
+- ``create_script``: no project, an id in use, an id the project refuses
+  (nothing written), a syntax error (checked before
   the file name, and nothing written), the file name defaulting to the id, an
   empty source written without a check, what the record holds, and a
   duplicate that appears while the edit runs (the file is already written).
@@ -190,6 +191,26 @@ async def test_create_script_refuses_an_id_in_use(harness):
     assert answer == {"error": "Script 'lights' already exists"}
     assert not (scripts_dir / "lights2.py").exists()
     engine.apply_project_edit.assert_not_awaited()
+
+
+async def test_create_script_refuses_an_id_the_project_refuses_before_writing(harness):
+    """The id is checked before the file is written, so a refused one leaves
+    no stray file; the model is told the field and why."""
+    from pydantic import ValidationError
+
+    from openavc.cloud.ai_tool_handler import describe_tool_failure
+
+    handler, engine, scripts_dir, _edits = harness
+
+    with pytest.raises(ValidationError) as refused:
+        await handler._create_script({"id": "Hall Lights", "file": "hall.py", "source": "x = 1\n"})
+
+    assert not (scripts_dir / "hall.py").exists()
+    engine.apply_project_edit.assert_not_awaited()
+    assert describe_tool_failure(refused.value) == (
+        "id: Value error, Script ID 'Hall Lights' must be lowercase alphanumeric "
+        "with underscores (^[a-z0-9_]+$)"
+    )
 
 
 async def test_create_script_refuses_a_syntax_error_before_the_file_name(harness):

@@ -643,6 +643,21 @@ async def test_raw_command_that_cannot_connect(tcp):
     assert answer == {"success": False, "error": "Connection refused", "response": None}
 
 
+@pytest.mark.parametrize("field", ["command_string", "delimiter"])
+async def test_raw_command_with_a_truncated_escape_is_refused_before_dialing(tcp, field):
+    """A truncated escape names its field, in the tool's own words, and
+    nothing is dialed; the command text's used to raise after the connect."""
+    made, _holder = tcp
+    sent = {"host": "192.0.2.50", "command_string": "PWR?", field: "PWR\\x"}
+
+    answer = await _handler()._test_driver_command(sent)
+
+    assert answer["success"] is False
+    assert answer["error"].startswith(f"Invalid {field} escape sequence 'PWR\\\\x': ")
+    assert answer["response"] is None
+    assert made == []
+
+
 @pytest.mark.parametrize("sent", [{"host": "192.0.2.50"}, {"command_string": "X"}, {"host": "", "command_string": "X"}])
 async def test_raw_command_needs_a_host_and_text(tcp, sent):
     made, _holder = tcp

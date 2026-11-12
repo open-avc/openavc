@@ -1094,6 +1094,18 @@ def refresh_crash_copy(path: str | Path) -> None:
             shutil.copy2(path, crash_copy_path(path))
 
 
+class ProjectSaveError(OSError):
+    """A project save that failed. Its text is what the Programmer shows,
+    which may quote the operating system and the file's path; ``reason`` is
+    the same answer without either, for a reader off this system."""
+
+    def __init__(self, cause: OSError) -> None:
+        from openavc.api.error_messages import friendly_save_error, save_error_reason
+
+        super().__init__(friendly_save_error(cause))
+        self.reason = save_error_reason(cause)
+
+
 def save_project(path: str | Path, project: ProjectConfig) -> None:
     """
     Save a ProjectConfig back to a JSON file atomically.
@@ -1136,8 +1148,7 @@ def save_project(path: str | Path, project: ProjectConfig) -> None:
                 shutil.copy2(path, crash_copy_path(path))
             except OSError as e:
                 log.error(f"Cannot create crash-protection backup — aborting save: {e}")
-                from openavc.api.error_messages import friendly_save_error
-                raise OSError(friendly_save_error(e)) from e
+                raise ProjectSaveError(e) from e
 
         # Atomic write: write to temp file in the same directory, then rename.
         # os.replace() is atomic on both Windows (NTFS) and Linux.
@@ -1154,8 +1165,7 @@ def save_project(path: str | Path, project: ProjectConfig) -> None:
             tmp_path = None  # Successfully replaced, don't clean up
         except OSError as e:
             log.exception("Failed to save project atomically")
-            from openavc.api.error_messages import friendly_save_error
-            raise OSError(friendly_save_error(e)) from e
+            raise ProjectSaveError(e) from e
         finally:
             if fd is not None:
                 try:

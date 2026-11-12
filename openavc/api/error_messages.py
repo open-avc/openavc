@@ -370,31 +370,50 @@ def friendly_error(
     return f"Unexpected error: {exc}"
 
 
+_SAVE_REFUSED = (
+    "Could not save the project. Permission denied. "
+    "Ensure the project directory has write permissions."
+)
+
+#: The save failures worded without the operating system's own text, by errno.
+_SAVE_FAILURES = {
+    errno.ENOSPC: "Could not save the project. The disk is full. Free up disk space and try again.",
+    errno.EROFS: "Could not save the project. The file system is read-only.",
+}
+
+
 def friendly_save_error(exc: Exception) -> str:
     """
-    Convert a save/file-write exception to a user-friendly message.
+    Convert a save/file-write exception to a user-friendly message. One this
+    module does not word carries the exception's own text, path included:
+    :func:`save_error_reason` is the same answer without it.
     """
-    if isinstance(exc, PermissionError):
-        return (
-            "Could not save the project. Permission denied. "
-            "Ensure the project directory has write permissions."
-        )
-
+    worded = _worded_save_error(exc)
+    if worded:
+        return worded
     if isinstance(exc, OSError):
-        err = getattr(exc, "errno", None)
-        if err == errno.ENOSPC:
-            return (
-                "Could not save the project. The disk is full. "
-                "Free up disk space and try again."
-            )
-        if err == errno.EROFS:
-            return "Could not save the project. The file system is read-only."
         return (
             f"Could not save the project: {exc}. "
             "Check disk space and directory permissions."
         )
-
     return f"Could not save the project: {exc}"
+
+
+def save_error_reason(exc: Exception) -> str:
+    """Why a project save failed, in a sentence that names no path and quotes
+    none of the operating system's text: what a reader off this system (the
+    cloud AI's chat history) is told."""
+    return _worded_save_error(exc) or (
+        "Could not save the project. Check disk space and directory permissions."
+    )
+
+
+def _worded_save_error(exc: Exception) -> str | None:
+    if isinstance(exc, PermissionError):
+        return _SAVE_REFUSED
+    if isinstance(exc, OSError):
+        return _SAVE_FAILURES.get(getattr(exc, "errno", None))
+    return None
 
 
 def _matches_errno(exc: Exception, code: int) -> bool:

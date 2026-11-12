@@ -176,13 +176,15 @@ class ScriptToolsMixin:
             path = _new_script_path(scripts_dir, filename)
         except ToolEditError as refused:
             return refused.result
-        scripts_dir.mkdir(parents=True, exist_ok=True)
-        path.write_text(source, encoding="utf-8")
-
+        # Built before the file is written: an id the project refuses is
+        # answered without leaving a file behind.
         new_script = ScriptConfig(
             id=script_id, file=filename,
             enabled=input.get("enabled", True), description=input.get("description", ""),
         )
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(source, encoding="utf-8")
+
         # The scripts reconcile loads just this script.
         err = await apply_tool_edit(engine, lambda project: _append_script(project, new_script))
         if err:

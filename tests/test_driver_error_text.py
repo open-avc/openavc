@@ -17,6 +17,7 @@ An invented device (Acme) throughout, on the real device manager.
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import textwrap
@@ -34,7 +35,8 @@ from openavc.cloud.ai_tool_handler import TOOL_FAILED, AIToolHandler
 from openavc.core.device_manager import DeviceNotFoundError
 from openavc.core.engine import Engine
 from openavc.core.isc import ISCRemoteError
-from openavc.core.project_loader import DeviceConfig, load_project
+from openavc.core import project_loader
+from openavc.core.project_loader import DeviceConfig, ProjectSaveError, load_project
 from openavc.core.script_engine import ScriptEngine
 from openavc.drivers.base import (
     BaseDriver,
@@ -297,6 +299,77 @@ async def test_the_platforms_own_sentence_still_reaches_the_model(engine, exc, s
     payload = await _escaped(engine, exc)
     assert payload["success"] is False
     assert sentence in payload["error"]
+
+
+@pytest.mark.parametrize("cause,sentence", [
+    (OSError(errno.ENOSPC, "No space left on device", f"/srv/{PRIVATE}/project.avc"),
+     "Could not save the project. The disk is full. Free up disk space and try again."),
+    (OSError(errno.EIO, "Input/output error", f"/srv/{PRIVATE}/project.avc"),
+     "Could not save the project. Check disk space and directory permissions."),
+])
+async def test_a_failed_save_says_why_without_the_path(engine, cause, sentence):
+    """The Programmer is shown the operating system's text, path included; the
+    model is told why, and nothing more."""
+    payload = await _escaped(engine, ProjectSaveError(cause))
+
+    assert payload["success"] is False
+    assert payload["error"] == sentence
+    _assert_private(payload)
+
+
+async def test_a_write_tool_whose_save_fails_says_why(engine, monkeypatch):
+    """Through a real write tool, the engine's edit and the real save: nothing
+    between them rewraps the failure."""
+    real_replace = project_loader.os.replace
+
+    def replace(src, dst):
+        if str(dst).endswith("project.avc"):
+            raise OSError(errno.ENOSPC, "No space left on device", f"/srv/{PRIVATE}/project.avc")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(project_loader.os, "replace", replace)
+    handler, send = _ai(engine)
+
+    await handler._execute_tool(
+        "r1", "add_variable", handler._tools["add_variable"],
+        {"id": "room_mode", "type": "string", "default": "off"},
+    )
+
+    payload = send.await_args.args[1]
+    assert payload["success"] is False
+    assert payload["error"] == (
+        "Could not save the project. The disk is full. Free up disk space and try again."
+    )
+    _assert_private(payload)
+
+
+def test_a_failed_save_is_still_an_os_error_with_the_programmers_text(tmp_path, monkeypatch):
+    """Every local door that catches OSError still does, with the text it showed."""
+    project = load_project(_write_minimal_project(tmp_path))
+
+    def replace(src, dst):
+        raise OSError(errno.EIO, "Input/output error", str(dst))
+
+    monkeypatch.setattr(project_loader.os, "replace", replace)
+    with pytest.raises(OSError) as failed:
+        project_loader.save_project(tmp_path / "project.avc", project)
+
+    assert isinstance(failed.value, ProjectSaveError)
+    assert str(failed.value) == (
+        f"Could not save the project: [Errno 5] Input/output error: "
+        f"{str(tmp_path / 'project.avc')!r}. Check disk space and directory permissions."
+    )
+    assert failed.value.reason == (
+        "Could not save the project. Check disk space and directory permissions."
+    )
+
+
+def _write_minimal_project(tmp_path) -> Any:
+    path = tmp_path / "project.avc"
+    path.write_text(json.dumps({
+        "openavc_version": "0.13.0", "project": {"id": "test", "name": "Test"},
+    }))
+    return path
 
 
 async def test_a_validation_error_keeps_the_platforms_sentence_and_nothing_else(engine):

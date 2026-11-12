@@ -21,12 +21,27 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from openavc.cloud.tools import ToolEditError
 from openavc.drivers.registry import (
     is_driver_registered,
     list_registered_drivers,
     register_driver,
 )
 from openavc.utils.logger import get_logger
+
+
+def _unescaped(value: str, field: str) -> bytes:
+    """``value`` with its backslash escapes (``\\r``, ``\\n``, ``\\x0D``) as the
+    bytes they stand for. A truncated one (``\\x``) is a ToolEditError naming
+    the field, raised before anything is dialed."""
+    try:
+        return value.encode().decode("unicode_escape").encode()
+    except (UnicodeDecodeError, UnicodeEncodeError) as e:
+        raise ToolEditError({
+            "success": False,
+            "error": f"Invalid {field} escape sequence {value!r}: {e}",
+            "response": None,
+        }) from e
 
 
 def _installed_yaml_entry(filepath: Path) -> dict | None:
@@ -267,13 +282,11 @@ class DriverToolsMixin:
         if not host or not command_string:
             return {"success": False, "error": "host and command_string are required", "response": None}
 
-        # A delimiter routinely carries backslash escapes (\r\n); a truncated one
-        # like '\x' raises here, outside the connection try/except below — catch
-        # it and return an actionable message instead of an opaque codec crash.
         try:
-            delimiter_bytes = delimiter.encode().decode("unicode_escape").encode()
-        except (UnicodeDecodeError, UnicodeEncodeError) as e:
-            return {"success": False, "error": f"Invalid delimiter escape sequence {delimiter!r}: {e}", "response": None}
+            delimiter_bytes = _unescaped(delimiter, "delimiter")
+            cmd_data = _unescaped(command_string, "command_string")
+        except ToolEditError as refused:
+            return refused.result
 
         # A port a connected project device's driver holds is never opened
         # (see the module docstring).
@@ -301,7 +314,6 @@ class DriverToolsMixin:
             return {"success": False, "error": str(e), "response": None}
 
         try:
-            cmd_data = command_string.encode().decode("unicode_escape").encode()
             response = await transport.send_and_wait(cmd_data, timeout=timeout)
             response_text = response.decode("ascii", errors="replace")
             return {"success": True, "error": None, "response": response_text}

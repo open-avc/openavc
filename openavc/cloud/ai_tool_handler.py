@@ -83,17 +83,19 @@ def describe_tool_failure(exc: Exception) -> str:
     The answer is kept in the cloud chat history, so an exception's text
     reaches it only when the platform wrote that text for a reader: a typed
     refusal, which tells the model what to change in its next call. The
-    project's validation errors are reduced to each field and its message.
-    Anything else (an operating system or library error that may hold a local
-    path or an address, a driver's or a plugin's own text, Python's own
-    message for a mistake) gets :data:`TOOL_FAILED`.
+    project's validation errors are reduced to each field and its message,
+    and a failed project save says why without the file's path. Anything
+    else (an operating system or library error that may hold a local path or
+    an address, a driver's or a plugin's own text, Python's own message for a
+    mistake) gets :data:`TOOL_FAILED`.
     """
     from pydantic import ValidationError
 
-    from openavc.api.error_messages import _WORDED_CONNECTION_ERRORS, friendly_error
+    from openavc.api.error_messages import friendly_error
     from openavc.core.device_manager import DeviceNotFoundError
     from openavc.core.installed_equipment import InstalledEquipmentError
     from openavc.core.isc import ISCRemoteError
+    from openavc.core.project_loader import ProjectSaveError
     from openavc.drivers.base import (
         CommandParamError,
         CommandPartialError,
@@ -109,6 +111,8 @@ def describe_tool_failure(exc: Exception) -> str:
 
     if isinstance(exc, ValidationError):
         return _field_problems(exc)
+    if isinstance(exc, ProjectSaveError):
+        return exc.reason
     if isinstance(exc, WakeAddressError):
         return friendly_error(exc)
     if isinstance(exc, (
@@ -118,6 +122,15 @@ def describe_tool_failure(exc: Exception) -> str:
         InstalledEquipmentError, CommunityArtifactError, ISCRemoteError,
     )) and str(exc).strip():
         return str(exc)
+    return _system_error_sentence(exc)
+
+
+def _system_error_sentence(exc: Exception) -> str:
+    """A connection or operating-system error: the device manager's own
+    refusal as written, one ``friendly_error`` answers with a fixed sentence,
+    and :data:`TOOL_FAILED` for the rest."""
+    from openavc.api.error_messages import _WORDED_CONNECTION_ERRORS, friendly_error
+
     if isinstance(exc, ConnectionError):
         # The device manager's own refusals carry the device's id.
         if getattr(exc, "device_id", None) is not None:
