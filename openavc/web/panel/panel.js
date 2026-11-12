@@ -24,6 +24,7 @@ import { ListControl, rowsFromState, showListSelection } from './modules/list.js
 import { GaugeControl } from './modules/gauge.js';
 import { LevelMeterControl } from './modules/meter.js';
 import { ClockControl, ClockTicker } from './modules/clock.js';
+import { KeypadControl } from './modules/keypad.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
@@ -3337,14 +3338,11 @@ class PanelApp {
         el.className = 'panel-element panel-keypad';
         el.dataset.elementId = element.id;
 
-        const digits = element.digits ?? 4;
-        const autoSend = element.auto_send ?? false;
-        const autoSendDelay = element.auto_send_delay_ms ?? 1500;
-        const keypadStyle = element.keypad_style || 'numeric';
-        const showDisplay = element.show_display !== false;
-        // A PIN pad: the display shows a dot per digit typed. Only what is
-        // drawn changes; the entry submitted is the digits themselves.
-        const maskDisplay = element.mask_display === true;
+        const keypad = new KeypadControl(element, {
+            send: (frame) => this.send(frame),
+            keepTimer: (timer) => this.debounceTimers.push(timer),
+            icon: (name) => this.renderIcon(name),
+        });
 
         applyStyle(el, this.getThemedStyle(element.type, element.style));
 
@@ -3356,83 +3354,7 @@ class PanelApp {
             el.appendChild(label);
         }
 
-        // Display
-        let displayEl = null;
-        let buffer = '';
-        if (showDisplay) {
-            displayEl = document.createElement('div');
-            displayEl.className = 'keypad-display';
-            displayEl.textContent = '';
-            el.appendChild(displayEl);
-        }
-
-        // Button grid
-        const grid = document.createElement('div');
-        grid.className = 'keypad-grid';
-
-        let keys;
-        if (keypadStyle === 'phone') {
-            keys = ['1','2','3','4','5','6','7','8','9','*','0','#'];
-        } else {
-            keys = ['1','2','3','4','5','6','7','8','9','C','0','enter'];
-        }
-
-        let autoSendTimer = null;
-
-        const updateDisplay = () => {
-            if (!displayEl) return;
-            displayEl.textContent = maskDisplay ? '•'.repeat(buffer.length) : buffer;
-        };
-
-        const doSubmit = () => {
-            if (buffer) {
-                this.send({ type: 'ui.submit', element_id: element.id, value: buffer });
-                buffer = '';
-                updateDisplay();
-            }
-        };
-
-        for (const key of keys) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'keypad-key';
-            // Enter is the panel's own arrow, never a font's return symbol.
-            // Few fonts carry U+23CE, so each device drew a different
-            // stand-in at a different width, and that one key set the
-            // keypad's minimum width. The stylesheet sizes the arrow.
-            if (key === 'enter') btn.appendChild(this.renderIcon('corner-down-left'));
-            else btn.textContent = key;
-            btn.setAttribute('aria-label', key === 'C' ? 'Clear' : key === 'enter' ? 'Enter' : key === '*' ? 'Star' : key === '#' ? 'Hash' : `Key ${key}`);
-
-            if (key === 'C') btn.classList.add('keypad-clear');
-            if (key === 'enter') btn.classList.add('keypad-enter');
-
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (key === 'C') {
-                    buffer = '';
-                    if (autoSendTimer) { clearTimeout(autoSendTimer); autoSendTimer = null; }
-                } else if (key === 'enter') {
-                    doSubmit();
-                } else {
-                    if (buffer.length < digits) {
-                        buffer += key;
-                        if (autoSend && buffer.length >= digits) {
-                            doSubmit();
-                        } else if (autoSend) {
-                            if (autoSendTimer) clearTimeout(autoSendTimer);
-                            autoSendTimer = setTimeout(doSubmit, autoSendDelay);
-                            this.debounceTimers.push(autoSendTimer);
-                        }
-                    }
-                }
-                updateDisplay();
-            });
-
-            grid.appendChild(btn);
-        }
-
-        el.appendChild(grid);
+        keypad.mount(el);
         return el;
     }
 

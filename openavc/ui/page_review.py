@@ -1832,7 +1832,7 @@ def _content_supplied(element: Mapping[str, Any], prop: str, slot: str | None) -
     )
 
 
-#: The keypad's defaults, as panel.js renderKeypad reads them (``digits ?? 4``,
+#: The keypad's defaults, as the panel's keypad reads them (``digits ?? 4``,
 #: ``auto_send_delay_ms ?? 1500``). The delay is also the review's threshold:
 #: nobody has measured how long a person takes between two keys on a panel, so
 #: the one number with a claim to it is the platform's own default.
