@@ -487,7 +487,7 @@ function openingPanel(pages, query = '') {
     window.history.replaceState({}, '', previousUrl);
     // Use the opening wire messages, without renderProject's explicit page
     // selection. The theme is already settled so this render is synchronous.
-    app._firstThemeSettled = true;
+    app.theme.firstSettled = true;
     app.handleMessage({ type: 'state.snapshot', state: {} });
     app.handleMessage({ type: 'ui.definition', ui: { ...project({}).ui, pages } });
     return app;
@@ -521,7 +521,7 @@ function themeWithPageDefaults(pageDefaults) {
 }
 
 /** The project the page-background scenarios draw: one button, and settings naming the
- *  inline theme so applyTheme takes its synchronous path. */
+ *  inline theme so the theme is applied synchronously. */
 function themedProject(settings) {
     const proj = project({
         elements: [el('b1', 'button')],
@@ -5371,8 +5371,8 @@ const tests = {
             await app.lock.check('1234');
             await app.access.fetchAccess();
             await app.access.claimWithPassword('admin', 'x');
-            app.currentTheme = null; app.inlineTheme = null;
-            app.applyTheme({ theme_id: 'slate blue' });
+            app.theme.current = null; app.theme.inline = null;
+            app.theme.apply({ theme_id: 'slate blue' });
             await app.access.probeRemoteSession();
             const built = [
                 soundAddress(app, { url: '/api/x.mp3' }),
@@ -5455,7 +5455,7 @@ const tests = {
     // page stayed the theme's colour while every element on it moved.
     theme_override_moves_the_page_background() {
         const app = mkApp();
-        app.inlineTheme = themeWithPageDefaults();
+        app.theme.inline = themeWithPageDefaults();
         try {
             renderProject(app, themedProject({ theme_overrides: { panel_bg: '#0e1216' } }));
             const surface = document.querySelector('#panel-root .panel-page');
@@ -5473,7 +5473,7 @@ const tests = {
     // altogether and simply painted whatever it was handed.
     theme_with_no_override_paints_its_own_page_colour() {
         const app = mkApp();
-        app.inlineTheme = themeWithPageDefaults();
+        app.theme.inline = themeWithPageDefaults();
         try {
             renderProject(app, themedProject());
             const surface = document.querySelector('#panel-root .panel-page');
@@ -5489,7 +5489,7 @@ const tests = {
     // too, applied after theme_overrides and on top of them.
     theme_page_defaults_references_read_one_set_of_variables() {
         const app = mkApp();
-        app.inlineTheme = themeWithPageDefaults({
+        app.theme.inline = themeWithPageDefaults({
             background_gradient: { from: 'var(panel_bg)', to: 'var(accent)', angle: 90 },
         });
         try {
@@ -5616,7 +5616,7 @@ const tests = {
     // so letting go of a state's colour has to put the theme's back.
     themed_element_returns_to_its_theme_colour() {
         const app = mkApp();
-        app.themeElementDefaults = { camera_preset: { bg_color: '#2a2a4a', text_color: '#e0e0e0' } };
+        app.theme.elementDefaults = { camera_preset: { bg_color: '#2a2a4a', text_color: '#e0e0e0' } };
         const proj = project({
             elements: [{
                 id: 'cam', type: 'camera_preset', label: 'Wide', preset_number: 1,
@@ -6560,7 +6560,7 @@ const tests = {
             renderProject(app, project({
                 elements: [def], placements: { [def.id]: { x: 5, y: 5, w: 20, h: 10 } },
             }));
-            app.themeElementDefaults = badTheme;
+            app.theme.elementDefaults = badTheme;
             app.state = state;
             app.evaluateAllBindings(Object.keys(state));
             return { app, el: app.root.querySelector(`[data-element-id="${def.id}"]`) };
@@ -6900,7 +6900,7 @@ const tests = {
         }
         // The theme's defaults for each type reach the frame and its placeholders.
         const themed = mkApp();
-        themed.themeElementDefaults = {
+        themed.theme.elementDefaults = {
             custom: { bg_color: '#0a0b0c', border_radius: 3 }, plugin: { bg_color: '#0d0e0f', opacity: 0.9 },
         };
         const designer = () => {
@@ -7124,7 +7124,7 @@ const tests = {
             }
             // The theme's defaults for each type, on controls drawn on their own.
             const themed = mkApp();
-            themed.themeElementDefaults = {
+            themed.theme.elementDefaults = {
                 select: { bg_color: '#010203' }, text_input: { border_color: '#040506' },
                 list: { item_bg: '#070809', item_active_bg: '#0a0b0c', bg_color: '#0d0e0f' },
             };
@@ -7537,7 +7537,7 @@ Object.assign(tests, {
         const meter = (id, extra) => ({ id, type: 'level_meter', label: 'Mic', ...bound, ...extra });
         const live = { 'device.d.connected': true };
         const themeDefaults = (app) => {
-            app.themeElementDefaults = {
+            app.theme.elementDefaults = {
                 gauge: { gauge_color: '#0a0a0a', gauge_bg_color: '#1b1b1b', tick_count: 3, show_value: false, text_color: '#2c2c2c' },
                 level_meter: { meter_segments: 6, show_peak: false, green_to: -30, yellow_to: -10, peak_hold_ms: 200 },
             };
@@ -7683,7 +7683,7 @@ Object.assign(tests, {
                     m = levelMount(def, {
                         state: { 'device.d.connected': true },
                         edit: def.id === 'c_design',
-                        before: def.id === 'c_themed' ? (app) => { app.themeElementDefaults = { clock: { text_color: '#00ff00', font_size: 12 } }; } : undefined,
+                        before: def.id === 'c_themed' ? (app) => { app.theme.elementDefaults = { clock: { text_color: '#00ff00', font_size: 12 } }; } : undefined,
                     });
                     clockTicks(m, start, advance);
                 } catch (e) {
@@ -7804,7 +7804,7 @@ Object.assign(tests, {
             [keypad('k_auto_digits_fraction', { auto_send: true, digits: 2.5 })],
             [{ id: 7, type: 'keypad' }],
             [keypad('k_style', { style: { bg_color: '#101010', text_color: '#fafafa', font_size: 22 } })],
-            [keypad('k_themed'), { before: (app) => { app.themeElementDefaults = { keypad: { bg_color: '#202020', border_radius: 9 } }; } }],
+            [keypad('k_themed'), { before: (app) => { app.theme.elementDefaults = { keypad: { bg_color: '#202020', border_radius: 9 } }; } }],
             [keypad('k_design', { auto_send: true }), { edit: true }],
         ];
         for (const [def, opts] of cases) {

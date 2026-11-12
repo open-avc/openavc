@@ -28,6 +28,7 @@ import { KeypadControl } from './modules/keypad.js';
 import { TextEditor } from './modules/text_edit.js';
 import { PanelLock } from './modules/lock.js';
 import { SoundPlayer } from './modules/sound.js';
+import { PanelTheme, ThemeStudioPicker } from './modules/theme.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
@@ -131,13 +132,6 @@ const OVERLAY_DEFAULTS = {
 
 // The snap increment a page falls back to: the old 12x8 grid's spacing.
 const SNAP_FALLBACK = { x: 100 / 12, y: 100 / 8 };
-
-// How long the first draw waits for the theme before going ahead without it.
-// The fetch is same-origin and answers in milliseconds; this only exists so a
-// server that accepts the request and never answers cannot leave a panel with
-// nothing on it. Past this the page draws unthemed -- what it used to draw
-// first anyway -- and repaints when the theme finally lands.
-const FIRST_THEME_WAIT_MS = 1000;
 
 // The `device.<id>.*` properties the PLATFORM maintains rather than the device
 // reports. They describe the device -- whether it is reachable, what it is
@@ -244,15 +238,8 @@ class PanelApp {
             showPageStatus: () => this._showPageStatus(),
             endHolds: () => this._endAllHolds(),
         });
-        this.themeElementDefaults = {};
-        // The variables the applied theme is actually drawing from, which is
-        // not theme.variables: see _applyThemeData.
-        this.themeVariables = {};
-        this.currentTheme = null;
-        this._themeApplyInProgress = false;
-        // The first draw waits for the theme -- see _drawWhenThemeArrives.
-        this._firstThemeSettled = false;
-        this._awaitingFirstTheme = false;
+        // The theme every control draws from (modules/theme.js).
+        this.theme = new PanelTheme(this._themeHost());
         // Sound the audio player plugin asks for (modules/sound.js).
         this._sound = new SoundPlayer(this._soundHost());
         // Plugin panel_elements lookup: pluginId -> {[type]: extension}.
@@ -284,6 +271,15 @@ class PanelApp {
             offline: () => this._offline,
             activity: () => this.resetIdleTimer(),
             goIdle: (pageId) => this._returnToIdlePage(pageId),
+        };
+    }
+
+    /** What the theme reads from the panel, each at call time. */
+    _themeHost() {
+        return {
+            redraw: () => this.renderCurrentPage(),
+            drawn: () => this.snapshotReceived,
+            settings: () => this.uiDef?.settings,
         };
     }
 
@@ -410,15 +406,8 @@ class PanelApp {
                     if (Object.prototype.hasOwnProperty.call(msg, 'vmin')) {
                         this._applyVminOverride(msg.vmin);
                     }
-                    // The Theme Studio sends a live working-copy theme so edits
-                    // apply within a frame (no fetch). When omitted, fall back to
-                    // the normal /api/themes/<id> fetch path.
-                    if (msg.inlineTheme && typeof msg.inlineTheme === 'object') {
-                        this.inlineTheme = msg.inlineTheme;
-                    } else if (Object.prototype.hasOwnProperty.call(msg, 'inlineTheme')) {
-                        // Explicitly null/undefined cleared from parent — drop any prior inline theme
-                        this.inlineTheme = null;
-                    }
+                    // The Theme Studio's working copy of the theme, or word that there is none.
+                    this.theme.takeWorkingCopy(msg);
                     // Edit mode has no WS, so the parent supplies state (or none).
                     // Preview mode has a WS that manages state — don't clobber it.
                     if (this.editMode) {
@@ -697,20 +686,8 @@ class PanelApp {
                 this.uiDef = msg.ui;
                 this.uiSettings = msg.ui?.settings || {};
                 this._setupViewportListener();
-                if (this.snapshotReceived) {
-                    // The first definition is the cold start, and the theme
-                    // that decides what every element looks like is still one
-                    // fetch away -- so wait for it here rather than draw the
-                    // whole page and draw it again when it lands. Only here:
-                    // renderCurrentPage() itself still draws when called, which
-                    // is what every other caller (and every test) expects.
-                    if (this._firstThemeSettled) {
-                        this.renderCurrentPage();
-                    } else if (!this._awaitingFirstTheme) {
-                        this._awaitingFirstTheme = true;
-                        this._drawWhenThemeArrives();
-                    }
-                }
+                // The first draw waits for the theme (see drawWhenReady).
+                if (this.snapshotReceived) this.theme.drawWhenReady();
                 this.lock.reconcile();
                 this.resetIdleTimer();
                 break;
@@ -1286,7 +1263,7 @@ class PanelApp {
         if (customFrame) surface.appendChild(customFrame);
         else this._renderPageElements(page, surface);
 
-        this._applyPageBackground(surface, page.background);
+        this.theme.paintBackground(surface, page.background);
         content.appendChild(surface);
         container.appendChild(content);
 
@@ -1962,7 +1939,7 @@ class PanelApp {
         this._frameStatus.clear();
 
         // Apply theme
-        this.applyTheme(this.uiDef.settings || {});
+        this.theme.apply(this.uiDef.settings || {});
 
         // The project stylesheet goes on after the theme, so an author's rule
         // can override what a theme variable produced.
@@ -1978,7 +1955,7 @@ class PanelApp {
         surface.className = 'panel-page';
 
         // Apply per-page background
-        this._applyPageBackground(surface, page.background);
+        this.theme.paintBackground(surface, page.background);
 
         // Apply page enter animation
         if (pageTransition !== 'none') {
@@ -2044,7 +2021,7 @@ class PanelApp {
         // Theme Studio direct manipulation — click any element in the preview
         // to jump to its section in the editor. Hover shows an outline + type label.
         if (this.editMode) {
-            this._setupThemeStudioInteraction(surface);
+            new ThemeStudioPicker(surface, (msg) => this._postToParent(msg));
             this._reportTextDefaults();
         }
     }
@@ -2119,92 +2096,6 @@ class PanelApp {
             `background-size: ${stepX}% ${stepY}%`,
         ].join(';');
         surface.appendChild(overlay);
-    }
-
-    _setupThemeStudioInteraction(grid) {
-        const TYPE_LABELS = {
-            button: 'Button', label: 'Label', slider: 'Slider', fader: 'Fader',
-            select: 'Select', text_input: 'Text Input', status_led: 'Status LED',
-            gauge: 'Gauge', level_meter: 'Level Meter', list: 'List', matrix: 'Matrix',
-            group: 'Group', image: 'Image', clock: 'Clock',
-            page_nav: 'Page Nav', camera_preset: 'Camera Preset', keypad: 'Keypad',
-        };
-
-        const tooltip = document.createElement('div');
-        tooltip.style.cssText = [
-            'position: fixed', 'padding: 2px 6px', 'font-size: 10px', 'font-weight: 600',
-            'background: rgba(0,0,0,0.8)', 'color: #fff', 'border-radius: 3px',
-            'pointer-events: none', 'z-index: 9999', 'display: none', 'white-space: nowrap',
-        ].join(';');
-        document.body.appendChild(tooltip);
-
-        let hoveredEl = null;
-
-        const findPanelElement = (target) => {
-            let el = target;
-            while (el && el !== grid) {
-                if (el.dataset && el.dataset.elementType) return el;
-                el = el.parentElement;
-            }
-            return null;
-        };
-
-        grid.addEventListener('mousemove', (e) => {
-            const panelEl = findPanelElement(e.target);
-            if (panelEl === hoveredEl) {
-                if (panelEl) {
-                    const r = panelEl.getBoundingClientRect();
-                    tooltip.style.left = (r.left + r.width / 2 - tooltip.offsetWidth / 2) + 'px';
-                    tooltip.style.top = (r.top - 22) + 'px';
-                }
-                return;
-            }
-            if (hoveredEl) {
-                hoveredEl.style.outline = '';
-                hoveredEl.style.outlineOffset = '';
-            }
-            hoveredEl = panelEl;
-            if (panelEl) {
-                panelEl.style.outline = '2px solid rgba(33,150,243,0.7)';
-                panelEl.style.outlineOffset = '-2px';
-                const type = panelEl.dataset.elementType;
-                tooltip.textContent = TYPE_LABELS[type] || type;
-                tooltip.style.display = 'block';
-                const r = panelEl.getBoundingClientRect();
-                tooltip.style.left = (r.left + r.width / 2 - tooltip.offsetWidth / 2) + 'px';
-                tooltip.style.top = (r.top - 22) + 'px';
-            } else {
-                tooltip.style.display = 'none';
-            }
-        });
-
-        grid.addEventListener('mouseleave', () => {
-            if (hoveredEl) {
-                hoveredEl.style.outline = '';
-                hoveredEl.style.outlineOffset = '';
-                hoveredEl = null;
-            }
-            tooltip.style.display = 'none';
-        });
-
-        grid.addEventListener('click', (e) => {
-            const panelEl = findPanelElement(e.target);
-            if (!panelEl) return;
-            e.preventDefault();
-            e.stopPropagation();
-            if (hoveredEl) {
-                hoveredEl.style.outline = '';
-                hoveredEl.style.outlineOffset = '';
-                hoveredEl = null;
-            }
-            tooltip.style.display = 'none';
-            const elType = panelEl.dataset.elementType;
-            this._postToParent({
-                type: 'openavc:theme-element-click',
-                elementType: elType,
-                elementId: panelEl.dataset.elementId,
-            });
-        }, true);
     }
 
     /**
@@ -2293,7 +2184,7 @@ class PanelApp {
         el.setAttribute('aria-label', el._baseAccessibleName);
 
         // Apply static styles (theme defaults merged)
-        const themedStyle = this.getThemedStyle('button', element.style);
+        const themedStyle = this.theme.styleFor('button', element.style);
         applyStyle(el, themedStyle);
 
         // Frameless: hide chrome so the image acts as the button
@@ -2476,7 +2367,7 @@ class PanelApp {
         // all -- so the path is the same and the editor reveals `**bold**`.
         this._textEditor.recordSource(el, ['text']);
 
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
         this.renderElementContent(el, element);
 
         // Text binding (the label's value)
@@ -2527,7 +2418,7 @@ class PanelApp {
 
         // Apply theme element_defaults so wrapper bg / border / radius pick
         // up the theme. Without this, status_led ignored theme styling.
-        applyStyle(el, this.getThemedStyle('status_led', element.style));
+        applyStyle(el, this.theme.styleFor('status_led', element.style));
 
         const dot = document.createElement('div');
         dot.className = 'led-dot';
@@ -2562,7 +2453,7 @@ class PanelApp {
 
         // The theme's element_defaults style the wrapper: background, border,
         // radius, shadow.
-        const themedSliderStyle = this.getThemedStyle('slider', element.style);
+        const themedSliderStyle = this.theme.styleFor('slider', element.style);
         applyStyle(el, themedSliderStyle);
 
         // Thumb size: per-element value wins, otherwise theme element_default, otherwise 44.
@@ -2636,7 +2527,7 @@ class PanelApp {
             el.style.opacity = '0.5';
         }
 
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
         this.renderElementContent(el, element);
 
         // Appearance, and lit while its page is showing. One binding and one
@@ -2710,7 +2601,7 @@ class PanelApp {
         const styleMap = lookBinding && lookBinding.style_map ? lookBinding.style_map : null;
         const select = drawSelect(this._choiceHost(), element.id, element.options || [], styleMap);
         el.appendChild(select);
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
 
         // Value binding (read; two-way when show.value.write_back)
         const valueBinding = element.bindings?.show?.value;
@@ -2752,7 +2643,7 @@ class PanelApp {
 
         const input = drawTextInput(this._choiceHost(), element.id, element.placeholder || '');
         el.appendChild(input);
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
 
         const valueBinding = element.bindings?.show?.value;
         if (valueBinding) {
@@ -2773,7 +2664,7 @@ class PanelApp {
         el.dataset.elementId = element.id;
 
         this._showImagePicture(el, element, element.src);
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
 
         // Appearance: a picture per state, so a variable a script sets (the
         // season, the room's mode) changes what the Image shows. The pictures
@@ -2877,7 +2768,7 @@ class PanelApp {
         }
         el.textContent = content;
 
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
         this.renderElementContent(el, element);
 
         const onPress = (e) => {
@@ -2921,7 +2812,7 @@ class PanelApp {
         // the theme actually drive list row colors. Reading raw element.style
         // here was a long-standing bug — theme edits looked dead because
         // only per-element overrides won.
-        const style = this.getThemedStyle('list', element.style);
+        const style = this.theme.styleFor('list', element.style);
         applyStyle(el, style);
 
         if (element.label) {
@@ -2993,7 +2884,7 @@ class PanelApp {
         el.dataset.elementId = element.id;
         // Merge theme element_defaults so crosspoint colors come from the
         // theme, not just per-element overrides.
-        const style = this.getThemedStyle('matrix', element.style);
+        const style = this.theme.styleFor('matrix', element.style);
         const matrix = createMatrix(element, style, this._matrixHost(element));
         applyStyle(el, style);
 
@@ -3059,7 +2950,7 @@ class PanelApp {
         el.dataset.elementId = element.id;
 
         // The theme's element_defaults give gauge_color and gauge_bg_color.
-        const gauge = new GaugeControl(element, this.getThemedStyle('gauge', element.style), this._displayDecimals(element));
+        const gauge = new GaugeControl(element, this.theme.styleFor('gauge', element.style), this._displayDecimals(element));
         gauge.mount(el);
 
         if (element.label) {
@@ -3070,7 +2961,7 @@ class PanelApp {
             el.appendChild(label);
         }
 
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
 
         // Value binding
         if (element.bindings?.show?.value) {
@@ -3105,7 +2996,7 @@ class PanelApp {
         el.dataset.elementId = element.id;
 
         // The theme's element_defaults give the green_to / yellow_to thresholds.
-        const meter = new LevelMeterControl(element, this.getThemedStyle('level_meter', element.style));
+        const meter = new LevelMeterControl(element, this.theme.styleFor('level_meter', element.style));
         el.classList.add(meter.horizontal ? 'horizontal' : 'vertical');
 
         if (element.label) {
@@ -3118,7 +3009,7 @@ class PanelApp {
 
         meter.mount(el);
 
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
 
         // Value binding
         if (element.bindings?.show?.value) {
@@ -3153,7 +3044,7 @@ class PanelApp {
 
         // The theme's element_defaults style the wrapper (bg_color, border,
         // padding, shadow) and say whether it shows its value and its scale.
-        const style = this.getThemedStyle('fader', element.style);
+        const style = this.theme.styleFor('fader', element.style);
         // Filled in below when the fader has a value binding: the end of a
         // drag asks whether that binding's device is reachable.
         let faderBinding = null;
@@ -3243,7 +3134,7 @@ class PanelApp {
             el.appendChild(label);
         }
 
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
 
         // Appearance: the frame's colour or background picture per state (a
         // divisible space in use, an alarm zone gone red).
@@ -3269,7 +3160,7 @@ class PanelApp {
         const clock = new ClockControl(element, (key) => this.state[key], this._clocks);
         clock.mount(el);
 
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
 
         this._clocks.add(el, clock);
         return el;
@@ -3303,7 +3194,7 @@ class PanelApp {
             icon: (name) => this.renderIcon(name),
         });
 
-        applyStyle(el, this.getThemedStyle(element.type, element.style));
+        applyStyle(el, this.theme.styleFor(element.type, element.style));
 
         if (element.label) {
             const label = document.createElement('div');
@@ -3537,7 +3428,7 @@ class PanelApp {
             noteActivity: (iframe) => { if (app._frameHasFocus(iframe)) app.resetIdleTimer(); },
             fetchToken: (pluginId) => app._fetchPluginExtToken(pluginId),
             postToParent: (msg) => app._postToParent(msg),
-            themedStyle: (type, style) => app.getThemedStyle(type, style),
+            themedStyle: (type, style) => app.theme.styleFor(type, style),
             register: (id, entry) => { app.elementMap[id] = entry; },
         };
     }
@@ -4230,7 +4121,7 @@ class PanelApp {
             // left alone: that binding has its own unknown form and writing
             // here would clobber it a moment after it arrived.
             clearStateColours(element, baseStyle);
-            applyStyle(element, this.getThemedStyle(elementDef.type, baseStyle));
+            applyStyle(element, this.theme.styleFor(elementDef.type, baseStyle));
             if (!elementDef.bindings?.show?.value && elementDef.text !== undefined) {
                 this._setLabelText(element, String(elementDef.text), ['text']);
             }
@@ -4239,8 +4130,8 @@ class PanelApp {
 
         const { appearance, wordsPath } = withTwoStateWords(binding, pickLook(binding, stateValue));
 
-        clearStateColours(element, this.getThemedStyle(elementDef.type, baseStyle));
-        applyStyle(element, this.getThemedStyle(elementDef.type, { ...baseStyle, ...appearance }));
+        clearStateColours(element, this.theme.styleFor(elementDef.type, baseStyle));
+        applyStyle(element, this.theme.styleFor(elementDef.type, { ...baseStyle, ...appearance }));
 
         if (appearance.label !== undefined) {
             this._setLabelText(element, String(appearance.label), wordsPath);
@@ -4266,7 +4157,7 @@ class PanelApp {
      */
     evaluateImageLook(b) {
         const { element, elementDef, binding } = b;
-        const rest = this.getThemedStyle(elementDef.type, elementDef.style || {});
+        const rest = this.theme.styleFor(elementDef.type, elementDef.style || {});
 
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
@@ -4291,7 +4182,7 @@ class PanelApp {
      */
     evaluateNavLook(b) {
         const { element, elementDef, binding } = b;
-        const rest = this.getThemedStyle(elementDef.type, elementDef.style || {});
+        const rest = this.theme.styleFor(elementDef.type, elementDef.style || {});
         const offline = this._bindingOffline(b);
         this._markBindingAvailability(b, offline);
 
@@ -4332,7 +4223,7 @@ class PanelApp {
      */
     evaluateGroupLook(b) {
         const { element, elementDef, binding } = b;
-        const rest = this.getThemedStyle(elementDef.type, elementDef.style || {});
+        const rest = this.theme.styleFor(elementDef.type, elementDef.style || {});
 
         const appearance = this._bindingOffline(b)
             ? {}
@@ -4359,7 +4250,7 @@ class PanelApp {
         }
 
         const look = pickLook(binding, this.state[binding.key]);
-        const rest = this.getThemedStyle(elementDef.type, elementDef.style || {});
+        const rest = this.theme.styleFor(elementDef.type, elementDef.style || {});
         const style = { ...rest, ...look.appearance };
         clearStateColours(element, rest);
         applyStyle(element, style);
@@ -4387,7 +4278,7 @@ class PanelApp {
     _drawButtonClaimingNoState(element, elementDef) {
         const own = elementDef.style || {};
         clearStateColours(element, own);
-        applyStyle(element, this.getThemedStyle(elementDef.type, own));
+        applyStyle(element, this.theme.styleFor(elementDef.type, own));
         if (elementDef.frameless) applyFrameless(element);
         if (own.bg_color) updateImageTint(element, own.bg_color);
         this._drawButtonWords(element, elementDef, [elementDef.label || '', ['label']]);
@@ -4469,7 +4360,7 @@ class PanelApp {
         // off has to drop the lit colours first or a button whose own style
         // names none stays lit for good.
         clearStateColours(element, baseStyle);
-        const style = this.getThemedStyle(elementDef.type, on
+        const style = this.theme.styleFor(elementDef.type, on
             ? { ...baseStyle, ...this._toggleOnStyle(elementDef) }
             : baseStyle);
         applyStyle(element, style);
@@ -4762,263 +4653,6 @@ class PanelApp {
     }
 
     // --- Helpers ---
-
-    /** Put a theme on the page, and redraw it if that changed how elements look.
-     *
-     *  Returns a promise that settles once a theme (or the fallback) has been
-     *  applied, so the first draw can wait for it rather than drawing the whole
-     *  page twice. `repaint: false` is for exactly that caller: it is about to
-     *  draw the page itself, so there is nothing yet to repaint.
-     */
-    applyTheme(settings, { repaint = true } = {}) {
-        const themeId = settings.theme_id || (settings.theme === 'light' ? 'light-modern' : 'dark-default');
-        const overrides = settings.theme_overrides || {};
-
-        if (this._themeApplyInProgress) return Promise.resolve();
-
-        const prevDefaults = JSON.stringify(this.themeElementDefaults || {});
-
-        // The same question at the end of all three branches: element defaults
-        // are merged into what each renderer draws, so a theme that moved them
-        // only takes effect on a redraw. Written once -- it was three copies,
-        // and a rule that decides whether the panel repaints should not be able
-        // to disagree with itself.
-        const repaintIfLookChanged = () => {
-            const newDefaults = JSON.stringify(this.themeElementDefaults || {});
-            if (!repaint || prevDefaults === newDefaults || !this.snapshotReceived) return;
-            this._themeApplyInProgress = true;
-            this.renderCurrentPage();
-            this._themeApplyInProgress = false;
-        };
-
-        // Theme Studio path: parent supplied a working-copy theme. Apply it
-        // synchronously without hitting the network so picker drags reflect
-        // within a frame instead of after a round-trip.
-        if (this.inlineTheme && this.inlineTheme.id === themeId) {
-            this._applyThemeData(this.inlineTheme, overrides, settings);
-            this.currentTheme = this.inlineTheme;
-            repaintIfLookChanged();
-            return Promise.resolve();
-        }
-
-        if (this.currentTheme && this.currentTheme.id === themeId) {
-            this._applyThemeData(this.currentTheme, overrides, settings);
-            repaintIfLookChanged();
-            return Promise.resolve();
-        }
-
-
-        return fetch(`${basePath()}/api/themes/${encodeURIComponent(themeId)}`)
-            .then(res => {
-                if (!res.ok) return null;
-                return res.json().catch(() => null);
-            })
-            .catch(() => null)
-            .then(theme => {
-                if (theme) {
-                    this._applyThemeData(theme, overrides, settings);
-                    this.currentTheme = theme;
-                } else {
-                    this._applyFallbackTheme(settings);
-                }
-                repaintIfLookChanged();
-            })
-            .catch(() => this._applyFallbackTheme(settings));
-    }
-
-    /** Draw the first page once the theme is in hand -- but draw it regardless.
-     *
-     *  Everything an element looks like comes from a theme that is one fetch
-     *  away, and `applyTheme` returns before it lands. Drawing first and again
-     *  when it arrives is what made a custom control cost two frame loads
-     *  instead of one, and rebuilding every frame on a page is the most
-     *  expensive thing the panel does.
-     *
-     *  A theme that never answers must not leave a blank panel, so the wait is
-     *  capped: past it the page draws with no theme -- which is what the
-     *  discarded first pass used to draw -- and repaints when the theme lands.
-     */
-    _drawWhenThemeArrives() {
-        const drawFirst = () => {
-            if (this._firstThemeSettled) return;
-            this._firstThemeSettled = true;
-            this.renderCurrentPage();
-        };
-        const giveUpWaiting = setTimeout(drawFirst, FIRST_THEME_WAIT_MS);
-        this.applyTheme(this.uiDef?.settings || {}, { repaint: false }).then(() => {
-            clearTimeout(giveUpWaiting);
-            // Already drew without it: this is now an ordinary theme change to
-            // a page that is up, which is the repaint applyTheme normally does.
-            if (this._firstThemeSettled) this.renderCurrentPage();
-            else drawFirst();
-        });
-    }
-
-    _applyThemeData(theme, overrides, settings) {
-        const root = document.documentElement;
-        const vars = { ...theme.variables, ...overrides };
-
-        // Map theme variables to CSS custom properties. The last four
-        // (accent_hover, button_border, surface, surface_border) aren't
-        // consumed by any rule in panel-elements.css today, but are exposed
-        // so theme authors and user CSS can reference them via var(--panel-*).
-        // Hover derives from accent/button via CSS filter (no *_hover token).
-        // Active button bg derives from --panel-accent in CSS (no separate token).
-        const varMap = {
-            panel_bg: '--panel-bg',
-            panel_text: '--panel-text',
-            accent: '--panel-accent',
-            button_bg: '--panel-button-bg',
-            button_text: '--panel-button-text',
-            button_border: '--panel-button-border',
-            danger: '--panel-danger',
-            success: '--panel-success',
-            warning: '--panel-warning',
-            surface: '--panel-surface',
-            surface_border: '--panel-surface-border',
-            border_radius: '--panel-border-radius',
-        };
-
-        for (const [key, cssVar] of Object.entries(varMap)) {
-            if (vars[key] != null) {
-                // Numeric theme variables are measurements, and every stored
-                // measurement is rem now -- the same unit the stylesheets and
-                // the migration speak.
-                const val = typeof vars[key] === 'number' ? vars[key] + 'rem' : vars[key];
-                root.style.setProperty(cssVar, val);
-            }
-        }
-
-        if (vars.font_family) {
-            document.body.style.fontFamily = vars.font_family;
-        }
-
-        // Per-setting overrides take priority over the theme's variables.
-        if (settings.accent_color) {
-            root.style.setProperty('--panel-accent', settings.accent_color);
-            vars.accent = settings.accent_color;
-        }
-        if (settings.font_family) {
-            document.body.style.fontFamily = settings.font_family;
-            vars.font_family = settings.font_family;
-        }
-
-        // Store element defaults for use in rendering
-        this.themeElementDefaults = theme.element_defaults || {};
-        // ...and the variables every element ends up drawing from: the theme's
-        // own, overlaid with the project's theme_overrides and then the two
-        // per-setting overrides above. Elements get these for free because they
-        // read the --panel-* custom properties set here; page_defaults do not,
-        // because their `var(name)` references are resolved in JS. Resolving
-        // those against theme.variables painted the page in the theme's colour
-        // while every element on it honoured the override.
-        this.themeVariables = vars;
-    }
-
-    _applyFallbackTheme(settings) {
-        const root = document.documentElement;
-        if (settings.accent_color) {
-            root.style.setProperty('--panel-accent', settings.accent_color);
-        }
-        if (settings.font_family) {
-            document.body.style.fontFamily = settings.font_family;
-        }
-        // Basic light/dark fallback
-        if (settings.theme === 'light') {
-            root.style.setProperty('--panel-bg', '#f5f5f5');
-            root.style.setProperty('--panel-text', '#212121');
-            root.style.setProperty('--panel-button-bg', '#e0e0e0');
-            root.style.setProperty('--panel-button-text', '#424242');
-        }
-        this.themeElementDefaults = {};
-    }
-
-    /**
-     * Resolve a theme `"var(name)"` reference to its underlying variable value.
-     * Returns the original value unchanged if it isn't a var() string.
-     */
-    _resolveThemeValue(value, variables) {
-        if (typeof value !== 'string') return value;
-        const match = value.match(/^var\(([^)]+)\)$/);
-        if (!match) return value;
-        const v = variables?.[match[1].trim()];
-        return v != null ? v : null;
-    }
-
-    /**
-     * Convert theme.page_defaults (with background_color/_image/_gradient keys
-     * and `var(name)` references) into a page.background-shaped object so
-     * _applyPageBackground can consume it.
-     */
-    _themePageDefaultsToBackground(defaults, variables) {
-        if (!defaults) return null;
-        const bg = {};
-        const color = this._resolveThemeValue(defaults.background_color, variables);
-        if (color) bg.color = color;
-        const image = this._resolveThemeValue(defaults.background_image, variables);
-        if (image) {
-            bg.image = image;
-            if (defaults.background_image_size) bg.image_size = defaults.background_image_size;
-            if (defaults.background_image_position) bg.image_position = defaults.background_image_position;
-            if (defaults.background_image_opacity != null) bg.image_opacity = defaults.background_image_opacity;
-        }
-        const gradient = defaults.background_gradient;
-        if (gradient && typeof gradient === 'object') {
-            const from = this._resolveThemeValue(gradient.from, variables);
-            const to = this._resolveThemeValue(gradient.to, variables);
-            if (from && to) {
-                bg.gradient = { from, to, angle: gradient.angle };
-            }
-        }
-        return Object.keys(bg).length ? bg : null;
-    }
-
-    _applyPageBackground(gridEl, bg) {
-        // Inherit theme.page_defaults when the page itself doesn't set a background.
-        // Keeps bg visuals consistent with the active theme for pages that don't opt out.
-        if (!bg || (!bg.color && !bg.image && !bg.gradient)) {
-            bg = this._themePageDefaultsToBackground(
-                this.currentTheme?.page_defaults,
-                this.themeVariables,
-            );
-        }
-        if (!bg) return;
-        gridEl.style.position = 'relative';
-
-        // Solid color
-        if (bg.color) {
-            gridEl.style.backgroundColor = bg.color;
-        }
-        // Background image with opacity
-        if (bg.image) {
-            const imgLayer = document.createElement('div');
-            imgLayer.className = 'panel-page-bg-image';
-            drawFadedPicture(imgLayer, {
-                url: assetUrl(bg.image),
-                size: bg.image_size || 'cover',
-                position: bg.image_position || 'center',
-                opacity: bg.image_opacity ?? 1,
-            });
-            gridEl.prepend(imgLayer);
-        }
-        // Gradient overlay (renders on TOP of image)
-        const gradient = gradientCss(bg.gradient);
-        if (gradient) {
-            const gradLayer = document.createElement('div');
-            gradLayer.className = 'panel-page-bg-gradient';
-            gradLayer.style.position = 'absolute';
-            gradLayer.style.inset = '0';
-            gradLayer.style.zIndex = '1';
-            gradLayer.style.pointerEvents = 'none';
-            gradLayer.style.background = gradient;
-            gridEl.prepend(gradLayer);
-        }
-    }
-
-    getThemedStyle(elementType, elementStyle) {
-        const defaults = this.themeElementDefaults[elementType] || {};
-        return { ...defaults, ...elementStyle };
-    }
 
     /**
      * Remove text nodes from an element, leaving element children intact.
