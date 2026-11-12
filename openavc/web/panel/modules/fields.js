@@ -3,9 +3,10 @@
  * `ui.change` once they stop (`quietSender`: the dropdown after 100 ms, the
  * text field after 300), and the value the device reports shown in it.
  *
- * Shown or not, the rule for a reading is the same in both: a value that is
- * not there (no reading yet, the key deleted) or a device that cannot be
- * reached shows nothing at all, never the last value or the first option.
+ * Shown or not, the rule for a reading is the same in both, and the gauge's
+ * and the level meter's (readings.js): a value that is not there (no reading
+ * yet, the key deleted) or a device that cannot be reached shows nothing at
+ * all, never the last value or the first option.
  *
  * The panel draws each control's element and caption and registers its
  * bindings; what is drawn here takes plain values, never a definition. The
@@ -14,6 +15,8 @@
  * values read off their element, so a definition is never read here: a
  * property only one of them reads stays in its renderer in panel.js.
  */
+
+import { nothingToShow } from './readings.js';
 
 const SELECT_QUIET_MS = 100;
 const TEXT_QUIET_MS = 300;
@@ -28,11 +31,6 @@ function quietSender(host, elementId, ms, read) {
         }, ms);
         host.keepTimer(pending);
     };
-}
-
-/** No value to show: none reported, or a device that cannot be reached. */
-function nothingToShow(value, offline) {
-    return offline || value === undefined || value === null;
 }
 
 /**

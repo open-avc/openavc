@@ -27,6 +27,7 @@ from pathlib import Path
 # Repo root = openavc/ (this file is openavc/tests/test_display_decimals_reach.py).
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
+GAUGE_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "modules" / "gauge.js"
 PROJECT_LOADER = OPENAVC_ROOT / "openavc" / "core" / "project_loader.py"
 TYPES_TS = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "api" / "types.ts"
 PROPERTY_SECTIONS = (
@@ -89,11 +90,11 @@ def test_panel_label_rounds_through_the_shared_helper() -> None:
 
 
 def test_panel_gauge_readout_is_not_hardcoded_to_one_decimal() -> None:
-    src = _read(PANEL_JS)
+    src = _read(GAUGE_JS)
     assert "`${Math.round(value * 10) / 10}${unit}`" not in src, (
         "the gauge readout must not hard-code one decimal place"
     )
-    assert "value.toFixed(displayDecimals)" in src, (
+    assert "value.toFixed(this.decimals)" in src, (
         "the gauge readout must honour the element's display_decimals"
     )
     # Unset has to stay byte-identical or every existing gauge shifts to "50.0".

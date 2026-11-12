@@ -21,6 +21,8 @@ import {
     pushToFrames, releaseFrames, releaseFramesIn,
 } from './modules/frames.js';
 import { ListControl, rowsFromState, showListSelection } from './modules/list.js';
+import { GaugeControl } from './modules/gauge.js';
+import { LevelMeterControl } from './modules/meter.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
@@ -3109,100 +3111,9 @@ class PanelApp {
         el.className = 'panel-element panel-gauge';
         el.dataset.elementId = element.id;
 
-        const min = element.min ?? 0;
-        const max = element.max ?? 100;
-        const unit = element.unit || '';
-        const arcAngle = element.arc_angle ?? 240;
-        // Merge theme element_defaults so gauge_color / gauge_bg_color come
-        // from the theme.
-        const style = this.getThemedStyle('gauge', element.style);
-        const gaugeColor = style.gauge_color || '#4CAF50';
-        const gaugeBgColor = style.gauge_bg_color || '#333333';
-        const gaugeWidth = style.gauge_width || 8;
-        const showValue = style.show_value !== false;
-        const showTicks = style.show_ticks !== false;
-        const tickCount = style.tick_count || 5;
-        const zones = element.zones || null;
-        const displayDecimals = this._displayDecimals(element);
-
-        // SVG gauge
-        const size = 120;
-        const cx = size / 2, cy = size / 2;
-        const radius = (size - gaugeWidth * 2) / 2;
-        const startAngle = (270 - arcAngle / 2) * Math.PI / 180;
-        const endAngle = (270 + arcAngle / 2) * Math.PI / 180;
-
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
-        svg.style.width = '100%';
-        svg.style.height = '100%';
-        svg.style.maxWidth = '100%';
-        svg.style.maxHeight = '100%';
-
-        // Helper: polar to cartesian
-        const polarToCart = (angle, r) => ({
-            x: cx + r * Math.cos(angle),
-            y: cy + r * Math.sin(angle)
-        });
-
-        // Helper: create arc path
-        const arcPath = (startA, endA, r) => {
-            const s = polarToCart(startA, r);
-            const e = polarToCart(endA, r);
-            const sweep = endA - startA;
-            const largeArc = sweep > Math.PI ? 1 : 0;
-            return `M ${s.x} ${s.y} A ${r} ${r} 0 ${largeArc} 1 ${e.x} ${e.y}`;
-        };
-
-        // Background arc
-        const bgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        bgPath.setAttribute('d', arcPath(startAngle, endAngle, radius));
-        bgPath.setAttribute('fill', 'none');
-        bgPath.setAttribute('stroke', gaugeBgColor);
-        bgPath.setAttribute('stroke-width', gaugeWidth);
-        bgPath.setAttribute('stroke-linecap', 'round');
-        svg.appendChild(bgPath);
-
-        // Foreground arc placeholder (updated via binding)
-        const fgPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        fgPath.setAttribute('fill', 'none');
-        fgPath.setAttribute('stroke', gaugeColor);
-        fgPath.setAttribute('stroke-width', gaugeWidth);
-        fgPath.setAttribute('stroke-linecap', 'round');
-        fgPath.dataset.role = 'gauge-fg';
-        svg.appendChild(fgPath);
-
-        // Tick marks
-        if (showTicks && tickCount > 1) {
-            for (let i = 0; i <= tickCount; i++) {
-                const frac = i / tickCount;
-                const angle = startAngle + frac * (endAngle - startAngle);
-                const inner = polarToCart(angle, radius - gaugeWidth);
-                const outer = polarToCart(angle, radius + gaugeWidth / 2);
-                const tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-                tick.setAttribute('x1', inner.x);
-                tick.setAttribute('y1', inner.y);
-                tick.setAttribute('x2', outer.x);
-                tick.setAttribute('y2', outer.y);
-                tick.setAttribute('stroke', '#666');
-                tick.setAttribute('stroke-width', '1');
-                svg.appendChild(tick);
-            }
-        }
-
-        // Value text in center
-        const valueText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        valueText.setAttribute('x', cx);
-        valueText.setAttribute('y', cy + 4);
-        valueText.setAttribute('text-anchor', 'middle');
-        valueText.setAttribute('fill', style.text_color || '#ffffff');
-        valueText.setAttribute('font-size', '16');
-        valueText.setAttribute('font-weight', '600');
-        valueText.textContent = showValue ? `--${unit}` : '';
-        valueText.dataset.role = 'gauge-value';
-        svg.appendChild(valueText);
-
-        el.appendChild(svg);
+        // The theme's element_defaults give gauge_color and gauge_bg_color.
+        const gauge = new GaugeControl(element, this.getThemedStyle('gauge', element.style), this._displayDecimals(element));
+        gauge.mount(el);
 
         if (element.label) {
             const label = document.createElement('div');
@@ -3221,7 +3132,7 @@ class PanelApp {
                 element: el,
                 elementDef: element,
                 binding: element.bindings.show.value,
-                _svg: { fgPath, valueText, startAngle, endAngle, radius, cx, cy, min, max, unit, gaugeColor, zones, showValue, displayDecimals, arcPath: arcPath, polarToCart },
+                _gauge: gauge,
             });
         }
 
@@ -3236,47 +3147,7 @@ class PanelApp {
         b._lastGaugeRaw = raw;
         b._lastGaugeOffline = offline;
         this._markBindingAvailability(b, offline);
-        const { fgPath, valueText, startAngle, endAngle, radius, min, max, unit, gaugeColor, zones, showValue, displayDecimals, arcPath: arcPathFn } = b._svg;
-        if (offline || raw === undefined || raw === null) {
-            // Nothing to draw — the key was deleted, or the device it comes
-            // from is unreachable. Either way the no-data placeholder, never a
-            // frozen last reading and never an arc at zero.
-            fgPath.setAttribute('d', '');
-            if (showValue) valueText.textContent = `--${unit}`;
-            return;
-        }
-        const value = Math.max(min, Math.min(max, Number(raw)));
-        const frac = max > min ? (value - min) / (max - min) : 0;
-        const valAngle = startAngle + frac * (endAngle - startAngle);
-
-        if (frac > 0.001) {
-            fgPath.setAttribute('d', arcPathFn(startAngle, valAngle, radius));
-        } else {
-            fgPath.setAttribute('d', '');
-        }
-
-        // Zone coloring
-        let color = gaugeColor;
-        if (zones && zones.length) {
-            for (const z of zones) {
-                if (value >= z.from && value <= z.to) {
-                    color = z.color;
-                    break;
-                }
-            }
-        }
-        fgPath.setAttribute('stroke', color);
-
-        if (showValue) {
-            // Unset means one decimal with trailing zeros dropped — exactly what
-            // a gauge has always drawn, so no panel built before this moves. An
-            // explicit setting is a fixed width instead, the way the slider and
-            // fader readouts already behave.
-            const shown = displayDecimals != null
-                ? value.toFixed(displayDecimals)
-                : String(Math.round(value * 10) / 10);
-            valueText.textContent = `${shown}${unit}`;
-        }
+        b._gauge.show(raw, offline);
     }
 
     // --- Level Meter ---
@@ -3286,18 +3157,9 @@ class PanelApp {
         el.className = 'panel-element panel-level-meter';
         el.dataset.elementId = element.id;
 
-        const orientation = element.orientation || 'vertical';
-        const min = element.min ?? -60;
-        const max = element.max ?? 0;
-        // Merge theme element_defaults so green_to / yellow_to thresholds
-        // (now editable per theme) actually drive the meter zones.
-        const style = this.getThemedStyle('level_meter', element.style);
-        const segments = style.meter_segments || 20;
-        const showPeak = style.show_peak !== false;
-        const greenTo = style.green_to ?? -12;
-        const yellowTo = style.yellow_to ?? -3;
-
-        el.classList.add(orientation === 'horizontal' ? 'horizontal' : 'vertical');
+        // The theme's element_defaults give the green_to / yellow_to thresholds.
+        const meter = new LevelMeterControl(element, this.getThemedStyle('level_meter', element.style));
+        el.classList.add(meter.horizontal ? 'horizontal' : 'vertical');
 
         if (element.label) {
             const label = document.createElement('div');
@@ -3307,28 +3169,7 @@ class PanelApp {
             el.appendChild(label);
         }
 
-        const bar = document.createElement('div');
-        bar.className = 'meter-bar';
-
-        // Create segments (for vertical: bottom=min, top=max).
-        // Colors come from CSS using --panel-success / --panel-warning / --panel-danger
-        // via [data-zone] selectors, so themes can recolor zones without code changes.
-        for (let i = 0; i < segments; i++) {
-            const seg = document.createElement('div');
-            seg.className = 'meter-segment';
-            const segFrac = segments > 1 ? i / (segments - 1) : 0;
-            const segValue = min + segFrac * (max - min);
-            if (segValue >= yellowTo) {
-                seg.dataset.zone = 'red';
-            } else if (segValue >= greenTo) {
-                seg.dataset.zone = 'yellow';
-            } else {
-                seg.dataset.zone = 'green';
-            }
-            bar.appendChild(seg);
-        }
-
-        el.appendChild(bar);
+        meter.mount(el);
 
         applyStyle(el, this.getThemedStyle(element.type, element.style));
 
@@ -3339,7 +3180,7 @@ class PanelApp {
                 element: el,
                 elementDef: element,
                 binding: element.bindings.show.value,
-                _meter: { segments, min, max, bar, showPeak, peakValue: -Infinity, peakTime: 0, peakHoldMs: style.peak_hold_ms || 1500 },
+                _meter: meter,
             });
         }
 
@@ -3353,34 +3194,7 @@ class PanelApp {
         b._lastMeterRaw = raw;
         b._lastMeterOffline = offline;
         this._markBindingAvailability(b, offline);
-        const { segments, min, max, bar, showPeak, peakHoldMs } = b._meter;
-        const segs = bar.querySelectorAll('.meter-segment');
-        if (offline || raw === undefined || raw === null) {
-            // Key deleted, or the device is unreachable — clear the meter
-            // rather than freezing the level it last reported.
-            b._meter.peakValue = -Infinity;
-            for (const s of segs) { s.classList.remove('lit'); s.classList.remove('peak'); }
-            return;
-        }
-        const value = Math.max(min, Math.min(max, Number(raw)));
-        const span = max - min;
-        const frac = span > 0 ? (value - min) / span : 0;
-        const litCount = Math.round(frac * segments);
-
-        // Peak hold
-        const now = Date.now();
-        if (value > b._meter.peakValue || now - b._meter.peakTime > peakHoldMs) {
-            b._meter.peakValue = value;
-            b._meter.peakTime = now;
-        }
-        const peakFrac = span > 0 ? (b._meter.peakValue - min) / span : 0;
-        const peakIdx = segments > 1 ? Math.round(peakFrac * (segments - 1)) : 0;
-
-        // Toggle CSS classes; backgrounds come from theme tokens via panel-elements.css.
-        for (let i = 0; i < segs.length; i++) {
-            segs[i].classList.toggle('lit', i < litCount);
-            segs[i].classList.toggle('peak', showPeak && i === peakIdx && i >= litCount);
-        }
+        b._meter.show(raw, offline);
     }
 
     // --- Fader ---
