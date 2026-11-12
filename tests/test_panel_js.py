@@ -334,6 +334,10 @@ SCENARIOS = [
     # cancelled and refused through the Builder's messages, pinned whole
     # (tests/fixtures/panel_text_edit_pins.json).
     "text_edits_open_commit_and_refuse_as_today",
+    # The PIN lock and the idle timer: unlocked by the server or a draft PIN,
+    # once a session, back to the idle page and locked again, stopped while
+    # offline, pinned whole (tests/fixtures/panel_lock_pins.json).
+    "lock_and_idle_as_today",
 ]
 
 

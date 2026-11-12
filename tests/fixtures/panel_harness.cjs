@@ -907,22 +907,26 @@ const tests = {
 
     // lock shown once per session (no re-lock on reconnect), and
     // a cleared lock_code removes a stuck overlay.
-    h003_l007_lock_reconcile() {
+    async h003_l007_lock_reconcile() {
+        const definition = (app, settings) => app.handleMessage({
+            type: 'ui.definition', ui: { settings, pages: [], master_elements: [] },
+        });
         const app = mkApp();
-        app.uiSettings = { lock_code: '1234' };
-        app._reconcileLockOnDefinition();
+        definition(app, { lock_code: '1234' });
         assert(document.getElementById('lock-overlay'), 'lock shown on first definition');
         // Operator unlocks.
-        document.getElementById('lock-overlay').remove(); app.locked = false;
+        document.getElementById('lock-input').value = '1234';
+        document.getElementById('lock-submit').click();
+        for (let i = 0; i < 10; i++) await null;
+        assert(!document.getElementById('lock-overlay'), 'the operator unlocked it');
         // A reconnect resends ui.definition — must NOT re-lock.
-        app._reconcileLockOnDefinition();
+        definition(app, { lock_code: '1234' });
         assert(!document.getElementById('lock-overlay'), 'no re-lock on reconnect after unlock');
         // lock_code cleared while locked removes the stuck overlay.
-        app._lockInitialized = false; app.uiSettings = { lock_code: '1234' };
-        app._reconcileLockOnDefinition();
+        const fresh = mkApp();
+        definition(fresh, { lock_code: '1234' });
         assert(document.getElementById('lock-overlay'), 'lock re-armed for a fresh session');
-        app.uiSettings = { lock_code: '' };
-        app._reconcileLockOnDefinition();
+        definition(fresh, { lock_code: '' });
         assert(!document.getElementById('lock-overlay'), 'cleared lock_code removes the overlay');
     },
 
@@ -1896,14 +1900,23 @@ const tests = {
     // going offline clears the idle timer and disables open
     // overlays; reconnecting re-enables them.
     m008_l006_offline_handling() {
+        // The idle timer, armed and about to send the panel home, is stopped.
+        const idle = mkApp();
+        withFakeTime((advance) => {
+            idle.handleMessage({ type: 'state.snapshot', state: {} });
+            idle.handleMessage({ type: 'ui.definition', ui: lockUi({ idle_timeout_seconds: 1, idle_page: 'main' }) });
+            idle.navigateToPage('details');
+            idle.setConnectionStatus(false);
+            advance(5000);
+            assert(idle.currentPage === 'details', 'idle timer cleared while offline');
+            idle.setConnectionStatus(true);
+        });
         const app = mkApp();
         const overlay = document.createElement('div');
         overlay.className = 'panel-overlay';
         document.body.appendChild(overlay);
-        app.idleTimer = window.setTimeout(() => {}, 100000);
         app.setConnectionStatus(false);
         assert(app._offline === true, 'offline flag set');
-        assert(app.idleTimer === null, 'idle timer cleared while offline');
         assert(overlay.style.pointerEvents === 'none', 'open overlay disabled offline');
         app.setConnectionStatus(true);
         if (app._statusHideTimer) window.clearTimeout(app._statusHideTimer);
@@ -7443,13 +7456,22 @@ function withFakeTime(run, { start = Date.UTC(2026, 0, 15, 14, 5, 9, 250), tz = 
         }
         now = until;
     };
-    try {
-        return run(advance, { pending: () => timers.size });
-    } finally {
+    const restore = () => {
         window.Date = RealDate;
         Object.assign(window, real);
         if (realTz === undefined) delete process.env.TZ; else process.env.TZ = realTz;
+    };
+    let out;
+    try {
+        out = run(advance, { pending: () => timers.size });
+    } catch (e) {
+        restore();
+        throw e;
     }
+    // A run that returns a promise keeps the clock until it settles.
+    if (out && typeof out.then === 'function') return out.finally(restore);
+    restore();
+    return out;
 }
 
 // --- The gauge and the level meter, as a page draws them ---------------------
@@ -8075,6 +8097,288 @@ Object.assign(tests, {
             run('src_a_number', [btn('b')], 'b', {}, withSource('5'));
         }));
         comparePins('text_edit', got, TEXT_EDIT_PINS.text_edit);
+    },
+});
+
+// --- The PIN lock and the idle timer, as a panel lives with them ------------
+//
+// A definition arrives from the server (or the Programmer's Preview), the lock
+// screen comes up, a PIN is typed and checked -- by the server, or against the
+// draft the Preview was handed -- the panel sits idle and goes back to its idle
+// page, a socket drops and comes back. Each case records, step by step, the
+// lock screen's nodes, what is typed and focused, the page showing, the
+// overlays and history, every request and warning, and the timers pending, in
+// panel_lock_pins.json, recorded from the code before it moved.
+
+const LOCK_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_lock_pins.json'), 'utf8'));
+
+/** Three pages: home, another, and an overlay over them; `order` picks and orders them by id. */
+function lockUi(settings, order = ['main', 'details', 'pop']) {
+    const page = (id, extra) => ({
+        id, name: id, page_type: 'page', elements: [], snap: { enabled: false, x: 100 / 12, y: 100 / 8 },
+        layouts: [{ id: 'landscape', orientation: 'landscape', primary: true, placements: {}, hidden: [] }],
+        ...extra,
+    });
+    return {
+        settings: { ...settings },
+        master_elements: [],
+        pages: order.map((id) => (id === 'pop'
+            ? page('pop', { page_type: 'overlay', overlay: { type: 'dialog' } }) : page(id))),
+    };
+}
+
+/** How the server answers an unlock attempt, by name. */
+const UNLOCK_ANSWERS = {
+    right: async () => ({ ok: true, json: async () => ({ success: true }) }),
+    wrong: async () => ({ ok: true, json: async () => ({ success: false }) }),
+    odd: async () => ({ ok: true, json: async () => ({ success: 'yes' }) }),
+    refused: async () => ({ ok: false, status: 503, json: async () => ({}) }),
+    unreachable: async () => { throw new Error('connection refused'); },
+    garbled: async () => ({ ok: true, json: async () => { throw new Error('bad json'); } }),
+    hangs: (init) => new Promise((resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+    }),
+};
+
+/**
+ * A panel and its recorder, inside withFakeTime. `answers` is the list of
+ * unlock answers the server gives, in order. `look()` notes what changed on
+ * the lock screen (`c`), the input's value (`v`), the error line (`er`),
+ * whether Unlock is disabled (`dis`), the focused node (`f`), the page and
+ * overlays and history (`pg`), the requests made (`fx`) and warnings logged
+ * (`w`) since the last look, and the timers pending (`t`).
+ */
+function lockMount(advance, pending, { answers = [], edit = false } = {}) {
+    const app = mkApp();
+    app.editMode = edit;
+    app.send = () => {};
+    const m = { app, seen: {}, steps: [], fx: [], w: [] };
+    const queue = [...answers];
+    m.fetch = (url, init) => {
+        const href = String(url);
+        m.fx.push(`${init && init.method || 'GET'} ${href}${init && init.body ? ` ${init.body}` : ''}`);
+        if (href.endsWith('/api/panel/unlock')) return UNLOCK_ANSWERS[queue.shift() || 'refused'](init);
+        return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
+    };
+    m.warn = (...args) => { m.w.push(args.map(String).join(' ')); };
+    m.overlay = () => document.getElementById('lock-overlay');
+    m.look = (extra) => {
+        const o = m.overlay();
+        const now = o ? nodeSnapshot(o) : {};
+        const changed = {};
+        for (const k of new Set([...Object.keys(m.seen), ...Object.keys(now)])) {
+            if (m.seen[k] !== now[k]) changed[k] = now[k] ?? null;
+        }
+        m.seen = now;
+        const step = {};
+        if (Object.keys(changed).length) step.c = changed;
+        if (o) {
+            step.v = o.querySelector('#lock-input').value;
+            step.er = o.querySelector('#lock-error').textContent;
+            step.dis = o.querySelector('#lock-submit').disabled;
+        }
+        const f = document.activeElement;
+        step.f = f && f !== document.body ? (f.id || f.className || f.tagName) : null;
+        step.pg = `${app.currentPage} ov${app.overlayStack.length} h${JSON.stringify(app.pageHistory)}`;
+        if (m.fx.length) step.fx = m.fx.splice(0);
+        if (m.w.length) step.w = m.w.splice(0);
+        step.t = pending();
+        if (extra) Object.assign(step, extra);
+        m.steps.push(step);
+    };
+    m.settle = async () => { for (let i = 0; i < 20; i++) await null; };
+    m.definition = (settings, order) => { app.handleMessage({ type: 'ui.definition', ui: lockUi(settings, order) }); m.look(); };
+    m.snapshot = () => { app.handleMessage({ type: 'state.snapshot', state: {} }); m.look(); };
+    m.wait = (ms) => { advance(ms); m.look(); };
+    m.go = (pageId) => { app.navigateToPage(pageId); m.look(); };
+    m.type = (pin) => { const o = m.overlay(); if (o) o.querySelector('#lock-input').value = pin; m.look(); };
+    m.enter = () => {
+        const o = m.overlay();
+        if (o) o.querySelector('#lock-input').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        m.look();
+    };
+    m.click = () => { const o = m.overlay(); if (o) o.querySelector('#lock-submit').click(); m.look(); };
+    m.activity = (type) => { document.dispatchEvent(new window.Event(type)); m.look(); };
+    m.hidden = (hidden) => {
+        Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
+        document.dispatchEvent(new window.Event('visibilitychange'));
+        delete document.hidden;
+        m.look();
+    };
+    m.connection = (up) => { app.setConnectionStatus(up); m.look(); };
+    return m;
+}
+
+/** One lock pin case on its own clock; a throw is pinned as its last step. */
+async function lockCase(got, name, opts, script) {
+    const savedFetch = window.fetch;
+    const savedWarn = window.console.warn;
+    await withFakeTime(async (advance, { pending }) => {
+        let m;
+        try {
+            m = lockMount(advance, pending, opts);
+            window.fetch = m.fetch;
+            window.console.warn = m.warn;
+            m.app.setupIdleListeners();
+            m.look();
+            await script(m);
+        } catch (e) {
+            (m ? m.steps : []).push({ threw: String(e && e.message) });
+        } finally {
+            window.fetch = savedFetch;
+            window.console.warn = savedWarn;
+            got[name] = m ? m.steps : [{ threw: 'mount' }];
+            if (m) {
+                // Leave no lock screen and no idle timer behind for the next case.
+                const o = m.overlay();
+                if (o) o.remove();
+                m.app.uiSettings = {};
+                m.app.resetIdleTimer();
+                m.app.dismissAllOverlays();
+            }
+        }
+    });
+}
+
+Object.assign(tests, {
+    async lock_and_idle_as_today() {
+        const got = {};
+        const run = (name, opts, script) => lockCase(got, name, opts, script);
+        const LOCKED = { lock_enabled: true };
+        // The server checks the PIN: right, wrong, an odd answer, refused,
+        // unreachable, garbled, and a request that never answers.
+        await run('server_right', { answers: ['right'] }, async (m) => {
+            m.snapshot(); m.definition({ ...LOCKED, idle_timeout_seconds: 5 }); m.wait(1000);
+            m.type('1234'); m.click(); await m.settle(); m.look(); m.wait(4999); m.wait(1); await m.settle(); m.look();
+        });
+        await run('server_wrong_then_right', { answers: ['wrong', 'right'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.wait(1000);
+            m.type('9999'); m.enter(); await m.settle(); m.look(); m.wait(1999); m.wait(1);
+            m.type('1234'); m.click(); await m.settle(); m.look();
+        });
+        await run('server_odd_answer', { answers: ['odd'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('1234'); m.click(); await m.settle(); m.look();
+        });
+        await run('server_refused', { answers: ['refused'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('1234'); m.click(); await m.settle(); m.look(); m.wait(2000);
+        });
+        await run('server_unreachable', { answers: ['unreachable'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('1234'); m.enter(); await m.settle(); m.look();
+        });
+        await run('server_garbled', { answers: ['garbled'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('1234'); m.click(); await m.settle(); m.look();
+        });
+        await run('server_hangs', { answers: ['hangs'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('1234'); m.click(); await m.settle(); m.look();
+            m.wait(4999); await m.settle(); m.look(); m.wait(1); await m.settle(); m.look();
+        });
+        await run('one_attempt_for_enter_and_click', { answers: ['wrong', 'right'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('1111'); m.enter(); m.click(); m.enter();
+            await m.settle(); m.look(); m.click(); await m.settle(); m.look();
+        });
+        await run('lock_removed_mid_check', { answers: ['wrong'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('1234'); m.click(); m.definition({}); await m.settle(); m.look();
+        });
+        // The Preview compares against the draft it was handed; nothing is asked.
+        await run('draft_pin', {}, async (m) => {
+            m.snapshot(); m.definition({ lock_code: '4321', idle_timeout_seconds: 3 });
+            m.type('1234'); m.click(); await m.settle(); m.look(); m.type('4321'); m.enter(); await m.settle(); m.look();
+            m.wait(3000); await m.settle(); m.look();
+        });
+        await run('draft_pin_a_number', {}, async (m) => {
+            m.snapshot(); m.definition({ lock_code: 4321 }); m.type('4321'); m.click(); await m.settle(); m.look();
+        });
+        await run('draft_beats_enabled', {}, async (m) => {
+            m.snapshot(); m.definition({ lock_enabled: true, lock_code: '77' }); m.type('77'); m.click(); await m.settle(); m.look();
+        });
+        await run('enabled_false_no_code', {}, async (m) => { m.snapshot(); m.definition({ lock_enabled: false }); m.definition({ lock_enabled: 'yes' }); });
+        // Once a session: a reconnect's definition does not lock again; a cleared PIN takes a stuck lock away.
+        await run('reconnect_does_not_relock', { answers: ['right'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('1'); m.click(); await m.settle(); m.look();
+            m.connection(false); m.connection(true); m.definition(LOCKED); m.definition(LOCKED);
+        });
+        await run('definition_twice_while_locked', {}, async (m) => { m.snapshot(); m.definition(LOCKED); m.type('12'); m.definition(LOCKED); });
+        await run('cleared_pin_takes_the_lock_away', {}, async (m) => {
+            m.snapshot(); m.definition({ ...LOCKED, idle_timeout_seconds: 2 }); m.definition({ idle_timeout_seconds: 2 });
+            m.go('details'); m.wait(2000); m.definition(LOCKED);
+        });
+        await run('design_canvas_never_locks', { edit: true }, async (m) => { m.snapshot(); m.definition(LOCKED); m.definition({ lock_code: '1' }); });
+        // Idle: back to the idle page, overlays closed, history forgotten, locked again.
+        await run('idle_goes_home', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 4, idle_page: 'main' }); m.wait(1000);
+            m.go('details'); m.go('pop'); m.wait(3999); m.activity('mousedown'); m.wait(3999); m.wait(1); m.wait(10000);
+        });
+        await run('idle_every_activity', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 2, idle_page: 'main' }); m.go('details');
+            for (const type of ['mousemove', 'keydown', 'touchstart', 'scroll', 'click', 'wheel']) { m.wait(1500); m.activity(type); }
+            m.wait(2000);
+        });
+        await run('idle_relocks', { answers: ['right'] }, async (m) => {
+            m.snapshot(); m.definition({ ...LOCKED, idle_timeout_seconds: 3, idle_page: 'details' });
+            m.type('1'); m.click(); await m.settle(); m.look(); m.wait(3000); m.activity('mousedown'); m.wait(3000);
+        });
+        await run('idle_page_missing', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 1, idle_page: 'gone' }); m.go('details'); m.wait(1000);
+        });
+        await run('idle_page_unset', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 1 }); m.go('details'); m.wait(1000);
+        });
+        await run('idle_page_unset_main_not_first', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 1 }, ['details', 'main', 'pop']); m.wait(1000); m.go('pop'); m.go('details'); m.wait(1000);
+        });
+        await run('idle_page_missing_main_not_first', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 1, idle_page: 'gone' }, ['details', 'main']); m.wait(1000); m.go('main'); m.wait(1000);
+        });
+        await run('idle_no_pages', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 1 }, []); m.wait(1000); m.wait(1000);
+        });
+        await run('idle_home_with_an_overlay', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 1, idle_page: 'main' }); m.wait(1000); m.go('pop'); m.activity('mousedown'); m.wait(1000);
+        });
+        await run('idle_already_home', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 1, idle_page: 'main' }); m.wait(1000); m.wait(1000);
+        });
+        for (const [label, timeout] of [['zero', 0], ['negative', -5], ['text', '2'], ['null', null], ['nan', 'x'], ['fraction', 0.5]]) {
+            await run(`idle_timeout_${label}`, {}, async (m) => {
+                m.snapshot(); m.definition({ idle_timeout_seconds: timeout }); m.go('details'); m.wait(2000);
+            });
+        }
+        await run('idle_not_while_locked', {}, async (m) => {
+            m.snapshot(); m.definition({ ...LOCKED, idle_timeout_seconds: 1 }); m.go('details'); m.wait(1000); m.activity('keydown'); m.wait(1000);
+        });
+        await run('idle_not_while_offline', {}, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 2 }); m.go('details'); m.wait(1000);
+            m.connection(false); m.wait(2000); m.activity('mousedown'); m.wait(2000); m.connection(true); m.wait(2000);
+            m.activity('mousedown'); m.wait(2000);
+        });
+        await run('idle_design_canvas', { edit: true }, async (m) => {
+            m.snapshot(); m.definition({ idle_timeout_seconds: 1, lock_code: '1' }); m.go('details'); m.wait(1000);
+        });
+        // The Programmer's Preview hands the panel its definition: locked, and idle armed.
+        await run('preview_door', {}, async (m) => {
+            m.app.embedded = true;
+            m.app._setupEditModeListener();
+            withBuilderParent(() => {
+                fromBuilder({ type: 'openavc:editor-init', ui: lockUi({ lock_code: '9', idle_timeout_seconds: 2, idle_page: 'main' }), pageId: 'details' });
+                m.look();
+            });
+            m.type('9'); m.click(); await m.settle(); m.look(); m.wait(1999); m.wait(1);
+            withBuilderParent(() => {
+                fromBuilder({ type: 'openavc:editor-project', ui: lockUi({ idle_timeout_seconds: 2, idle_page: 'details' }), pageId: 'main' });
+                m.look();
+            });
+            m.wait(2000);
+            m.app.embedded = false;
+        });
+        // A hidden page forgets what was typed.
+        await run('hidden_clears_the_pin', { answers: ['wrong'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('12'); m.click(); await m.settle(); m.look();
+            m.type('34'); m.hidden(true); m.type('56'); m.hidden(false);
+        });
+        await run('hidden_after_unlock', { answers: ['right'] }, async (m) => {
+            m.snapshot(); m.definition(LOCKED); m.type('12'); m.click(); await m.settle(); m.look(); m.hidden(true); m.hidden(false);
+        });
+        comparePins('lock', got, LOCK_PINS.lock);
     },
 });
 

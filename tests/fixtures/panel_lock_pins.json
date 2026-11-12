@@ -1,0 +1,3670 @@
+{
+  "lock": {
+    "server_right": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1234\"}"
+        ],
+        "t": 1
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ],
+    "server_wrong_then_right": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "v": "9999",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "9999",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"9999\"}"
+        ],
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Incorrect PIN"
+        },
+        "v": "",
+        "er": "Incorrect PIN",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "",
+        "er": "Incorrect PIN",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.4#": null
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1234\"}"
+        ],
+        "t": 1
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ],
+    "server_odd_answer": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1234\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Incorrect PIN"
+        },
+        "v": "",
+        "er": "Incorrect PIN",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      }
+    ],
+    "server_refused": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1234\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Can't reach the server \u2014 try again"
+        },
+        "v": "1234",
+        "er": "Can't reach the server \u2014 try again",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.4#": null
+        },
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ],
+    "server_unreachable": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1234\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Can't reach the server \u2014 try again"
+        },
+        "v": "1234",
+        "er": "Can't reach the server \u2014 try again",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "w": [
+          "[panel] unlock check failed: Error: connection refused"
+        ],
+        "t": 1
+      }
+    ],
+    "server_garbled": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1234\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Can't reach the server \u2014 try again"
+        },
+        "v": "1234",
+        "er": "Can't reach the server \u2014 try again",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "w": [
+          "[panel] unlock check failed: Error: bad json"
+        ],
+        "t": 1
+      }
+    ],
+    "server_hangs": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1234\"}"
+        ],
+        "t": 2
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Can't reach the server \u2014 try again"
+        },
+        "v": "1234",
+        "er": "Can't reach the server \u2014 try again",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "w": [
+          "[panel] unlock check failed: Error: aborted"
+        ],
+        "t": 1
+      }
+    ],
+    "one_attempt_for_enter_and_click": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1111",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1111",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1111\"}"
+        ],
+        "t": 2
+      },
+      {
+        "v": "1111",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 2
+      },
+      {
+        "v": "1111",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 2
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Incorrect PIN"
+        },
+        "v": "",
+        "er": "Incorrect PIN",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "",
+        "er": "Incorrect PIN",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null,
+          "r.0.4#": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1
+      }
+    ],
+    "lock_removed_mid_check": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1234\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "draft_pin": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1234",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1234",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Incorrect PIN"
+        },
+        "v": "",
+        "er": "Incorrect PIN",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "4321",
+        "er": "Incorrect PIN",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "4321",
+        "er": "Incorrect PIN",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null,
+          "r.0.4#": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 2
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ],
+    "draft_pin_a_number": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "4321",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "4321",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Incorrect PIN"
+        },
+        "v": "",
+        "er": "Incorrect PIN",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      }
+    ],
+    "draft_beats_enabled": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "77",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "77",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "enabled_false_no_code": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 1
+      }
+    ],
+    "reconnect_does_not_relock": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      }
+    ],
+    "definition_twice_while_locked": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "12",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "v": "12",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      }
+    ],
+    "cleared_pin_takes_the_lock_away": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "design_canvas_never_locks": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 1
+      }
+    ],
+    "idle_goes_home": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[\"main\"]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov1 h[\"main\"]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ],
+    "idle_every_activity": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ],
+    "idle_relocks": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "1",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "1",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"1\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "t": 0
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "t": 0
+      }
+    ],
+    "idle_page_missing": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_page_unset": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_page_unset_main_not_first": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov1 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[\"main\"]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[\"main\"]",
+        "t": 0
+      }
+    ],
+    "idle_page_missing_main_not_first": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[\"details\"]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[\"details\"]",
+        "t": 0
+      }
+    ],
+    "idle_no_pages": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ],
+    "idle_home_with_an_overlay": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov1 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov1 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_already_home": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ],
+    "idle_timeout_zero": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_timeout_negative": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_timeout_text": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_timeout_null": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_timeout_nan": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_timeout_fraction": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_not_while_locked": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "t": 0
+      },
+      {
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "t": 0
+      }
+    ],
+    "idle_not_while_offline": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 1
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "idle_design_canvas": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 2
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "preview_door": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 65
+      },
+      {
+        "v": "9",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "t": 65
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "9",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": "details ov0 h[]",
+        "t": 65
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 66
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "t": 66
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 67
+      },
+      {
+        "f": null,
+        "pg": "details ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      }
+    ],
+    "hidden_clears_the_pin": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "12",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "12",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"12\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class",
+          "r.0.3@disabled": null,
+          "r.0.4#": "Incorrect PIN"
+        },
+        "v": "",
+        "er": "Incorrect PIN",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "34",
+        "er": "Incorrect PIN",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.4#": null
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "v": "56",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 1
+      },
+      {
+        "v": "56",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": "main ov0 h[]",
+        "t": 1
+      }
+    ],
+    "hidden_after_unlock": [
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": " ov0 h[]",
+        "t": 0
+      },
+      {
+        "c": {
+          "r@": "div id class",
+          "r@id": "lock-overlay",
+          "r@class": "lock-overlay",
+          "r#": "\n            \n        ",
+          "r.0@": "div class",
+          "r.0@class": "lock-container",
+          "r.0#": "\n                \n                \n                \n                \n                \n            ",
+          "r.0.0@": "div class",
+          "r.0.0@class": "lock-icon",
+          "r.0.0#": "\ud83d\udd12",
+          "r.0.1@": "div class",
+          "r.0.1@class": "lock-title",
+          "r.0.1#": "Panel Locked",
+          "r.0.2@": "input type id class placeholder maxlength inputmode pattern",
+          "r.0.2@type": "password",
+          "r.0.2@id": "lock-input",
+          "r.0.2@class": "lock-input",
+          "r.0.2@placeholder": "Enter PIN",
+          "r.0.2@maxlength": "6",
+          "r.0.2@inputmode": "numeric",
+          "r.0.2@pattern": "[0-9]*",
+          "r.0.3@": "button id class",
+          "r.0.3@id": "lock-submit",
+          "r.0.3@class": "lock-submit",
+          "r.0.3#": "Unlock",
+          "r.0.4@": "div id class",
+          "r.0.4@id": "lock-error",
+          "r.0.4@class": "lock-error"
+        },
+        "v": "",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 1
+      },
+      {
+        "v": "12",
+        "er": "",
+        "dis": false,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "t": 1
+      },
+      {
+        "c": {
+          "r.0.3@": "button id class disabled",
+          "r.0.3@disabled": ""
+        },
+        "v": "12",
+        "er": "",
+        "dis": true,
+        "f": "lock-input",
+        "pg": " ov0 h[]",
+        "fx": [
+          "POST /api/panel/unlock {\"code\":\"12\"}"
+        ],
+        "t": 2
+      },
+      {
+        "c": {
+          "r@": null,
+          "r@id": null,
+          "r@class": null,
+          "r#": null,
+          "r.0@": null,
+          "r.0@class": null,
+          "r.0#": null,
+          "r.0.0@": null,
+          "r.0.0@class": null,
+          "r.0.0#": null,
+          "r.0.1@": null,
+          "r.0.1@class": null,
+          "r.0.1#": null,
+          "r.0.2@": null,
+          "r.0.2@type": null,
+          "r.0.2@id": null,
+          "r.0.2@class": null,
+          "r.0.2@placeholder": null,
+          "r.0.2@maxlength": null,
+          "r.0.2@inputmode": null,
+          "r.0.2@pattern": null,
+          "r.0.3@": null,
+          "r.0.3@id": null,
+          "r.0.3@class": null,
+          "r.0.3@disabled": null,
+          "r.0.3#": null,
+          "r.0.4@": null,
+          "r.0.4@id": null,
+          "r.0.4@class": null
+        },
+        "f": null,
+        "pg": "main ov0 h[]",
+        "fx": [
+          "GET /api/themes/dark-default"
+        ],
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      },
+      {
+        "f": null,
+        "pg": "main ov0 h[]",
+        "t": 0
+      }
+    ]
+  }
+}
