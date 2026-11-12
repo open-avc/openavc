@@ -557,11 +557,19 @@ def test_a_multicast_sender_that_cannot_open_is_none(caplog, monkeypatch):
     caplog.set_level(logging.WARNING, logger=LOGGER)
     sim = _sim(push={"type": "multicast", "group": "239.1.2.3", "port": 5000})
     import socket as socket_mod
+    import types
+
+    from openavc.simulator import push_channels
 
     def boom(*_a, **_k):
         raise OSError("no sockets")
 
-    monkeypatch.setattr(socket_mod, "socket", boom)
+    # Only the simulator's own reference: replacing socket.socket for the
+    # whole process breaks the Windows event loop's isinstance() check on its
+    # self-pipe, whose error would land in caplog beside the warning.
+    monkeypatch.setattr(push_channels, "socket", types.SimpleNamespace(
+        socket=boom, AF_INET=socket_mod.AF_INET, SOCK_DGRAM=socket_mod.SOCK_DGRAM,
+    ))
     sim._open_multicast_sender()
     assert sim._mcast_sock is None
     assert _warnings(caplog) == [(LOGGER, "WARNING", "Could not open multicast sender: no sockets")]
