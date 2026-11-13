@@ -20,7 +20,10 @@ parse wrong, the fix is to teach the parse, not to loosen the assertion.
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -52,6 +55,7 @@ from openavc.ui.control_minimums import (
     RULES,
     reference_box,
 )
+from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
@@ -617,22 +621,44 @@ def test_the_guide_states_the_off_values_the_led_renderer_uses(
 
 # --- What a visibility operator means, and a keypad's defaults ---------------
 
-_CONDITION_CASE = re.compile(r"((?:case '[^']+':\s*)+)return (.+?);")
+#: Readings tried against a target of 1, which tell every meaning apart.
+_PROBES = [0, 1, 2, -1]
 
-#: How the panel's comparison reads for each family the review knows.
-_PANEL_COMPARISON = {
-    "actual == target": "eq",
-    "actual != target": "ne",
-    "!!actual": "truthy",
-    "!actual": "falsy",
+#: What each meaning answers for those readings.
+_MEANING_BY_ANSWERS = {
+    (False, True, False, False): "eq",
+    (True, False, True, True): "ne",
+    (False, False, True, False): ">",
+    (False, True, True, False): ">=",
+    (True, False, False, True): "<",
+    (True, True, False, True): "<=",
+    (False, True, True, True): "truthy",
+    (True, False, False, False): "falsy",
 }
 
+_OPERATORS_SCRIPT = """
+const visibility = await import(process.argv[1]);
+const probes = JSON.parse(process.argv[2]);
+const out = {};
+for (const spelling of visibility.OPERATORS.keys()) {
+    out[spelling] = probes.map((reading) => visibility.conditionHolds(spelling, reading, 1));
+}
+console.log(JSON.stringify(out));
+"""
 
-def _panel_meaning(expression: str) -> str:
-    for bound in (">=", "<=", ">", "<"):
-        if expression.endswith(f"actual {bound} target"):
-            return bound
-    return _PANEL_COMPARISON.get(expression, f"unread: {expression}")
+
+def _panel_meanings() -> dict[str, str]:
+    """Each spelling the panel's visible_when evaluates, by what it answers when run."""
+    if shutil.which("node") is None:
+        gates.skip_or_fail(gates.NODE, "node not installed")
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", _OPERATORS_SCRIPT,
+         (PANEL_JS.parent / "modules" / "visibility.js").as_uri(), json.dumps(_PROBES)],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    answers = json.loads(proc.stdout)
+    return {spelling: _MEANING_BY_ANSWERS.get(tuple(got), f"unread: {got}") for spelling, got in answers.items()}
 
 
 def _review_meanings() -> dict[str, str]:
@@ -644,9 +670,7 @@ def _review_meanings() -> dict[str, str]:
     return meanings
 
 
-def test_the_visibility_operators_are_the_ones_the_panel_evaluates(
-    panel_method_bodies: dict[str, str],
-) -> None:
+def test_the_visibility_operators_are_the_ones_the_panel_evaluates() -> None:
     """Every operator spelling the panel's visible_when knows, read as the panel reads it.
 
     The review stays quiet about two stacked elements only when their
@@ -655,12 +679,8 @@ def test_the_visibility_operators_are_the_ones_the_panel_evaluates(
     not know is read as undecidable, which costs a warning; one the review reads
     differently from the panel can hide a real overlap. Both are caught here.
     """
-    body = panel_method_bodies["_evalConditionOp"]
-    panel = {}
-    for labels, expression in _CONDITION_CASE.findall(body):
-        for spelling in re.findall(r"case '([^']+)'", labels):
-            panel[spelling] = _panel_meaning(expression.strip())
-    assert len(panel) > 10, "the operator scan found almost nothing -- the parse is wrong"
+    panel = _panel_meanings()
+    assert len(panel) > 10, "the panel's operator table is almost empty -- the run is wrong"
     assert panel == _review_meanings()
 
 

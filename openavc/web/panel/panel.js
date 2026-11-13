@@ -36,6 +36,7 @@ import { MacroRuns } from './modules/macro_runs.js';
 import { ProjectStylesheet } from './modules/stylesheet.js';
 import { attachPress, pressOf } from './modules/press.js';
 import { drawIcon, iconNode, removeWords, showWords } from './modules/words.js';
+import { isShown, visibilityOf } from './modules/visibility.js';
 import {
     REM_BASE_PX, applyCoordinateSpaces, applyLivePlacements, applyVminOverride, drawElementTree, drawSnapRuler,
     masterOrientation, masterPlacement, placeElement, selectLayout, viewportOrientation,
@@ -1306,19 +1307,13 @@ class PanelApp {
      * Call this after renderElement() for every element placed on a page.
      */
     registerVisibleWhen(el, element) {
-        const vw = element.bindings?.show?.visible_when;
-        if (!vw) return;
-
-        // Single condition, compound AND (all:[...]), or compound OR (any:[...])
-        const conditions = vw.all || vw.any || [vw];
-        const mode = vw.any ? 'any' : 'all';
-        const keys = conditions.map(c => c.key).filter(Boolean);
-
+        const binding = visibilityOf(element);
+        if (!binding) return;
         this.bindings.push({
             type: 'visible_when',
             element: el,
             elementDef: element,
-            binding: { conditions, mode, _keys: keys },
+            binding,
         });
     }
 
@@ -2604,32 +2599,9 @@ class PanelApp {
         this._overrides.apply(this.elementMap);
     }
 
+    /** Show or hide a control by its visible_when (modules/visibility.js). */
     evaluateVisibleWhen(b) {
-        const { element, binding } = b;
-        const conditions = binding.conditions || [];
-        const check = (cond) => {
-            const actual = this.state[cond.key];
-            return this._evalConditionOp(cond.operator || 'eq', actual, cond.value);
-        };
-        const visible = binding.mode === 'any'
-            ? conditions.some(check)
-            : conditions.every(check);
-        element.style.display = visible ? '' : 'none';
-    }
-
-    /** Evaluate a condition operator (shared by visible_when). */
-    _evalConditionOp(op, actual, target) {
-        switch (op) {
-            case 'eq': case 'equals': case '==': return actual == target;
-            case 'ne': case 'not_equals': case '!=': return actual != target;
-            case 'gt': case '>': return actual != null && target != null && actual > target;
-            case 'lt': case '<': return actual != null && target != null && actual < target;
-            case 'gte': case '>=': return actual != null && target != null && actual >= target;
-            case 'lte': case '<=': return actual != null && target != null && actual <= target;
-            case 'truthy': return !!actual;
-            case 'falsy': return !actual;
-            default: return false;
-        }
+        b.element.style.display = isShown(b.binding, this.state) ? '' : 'none';
     }
 
     /**

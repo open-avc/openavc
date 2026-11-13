@@ -6,7 +6,7 @@ import type {
 
 /**
  * Evaluate a single condition operator. Mirrors the panel runtime's
- * `_evalConditionOp` (openavc/web/panel/panel.js) and the shared backend evaluator
+ * `OPERATORS` (openavc/web/panel/modules/visibility.js) and the shared backend evaluator
  * (openavc/core/condition_eval.py) so an action's `visible_when` behaves the
  * same wherever it's evaluated.
  */

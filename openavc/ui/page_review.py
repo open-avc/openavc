@@ -1126,7 +1126,7 @@ def _overlap_message(
 # conditionally-shown elements costs one warning, and a false one costs the
 # credibility of every warning printed beside it.
 
-#: The operator spellings the panel's ``_evalConditionOp`` understands, by what
+#: The operator spellings the panel evaluates (``OPERATORS`` in its ``modules/visibility.js``), by what
 #: they mean. A spelling missing here reads as undecidable, which only costs a
 #: warning; tests/test_ui_page_review_mirrors.py holds these to the panel's
 #: and the Builder's sets to these.
