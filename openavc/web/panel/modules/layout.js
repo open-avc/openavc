@@ -18,7 +18,13 @@
  * `ui/page_review.py` and `reviewMasters.ts` pick a master's box by the same
  * fallbacks and default a missing coordinate the same way. A change to how a
  * box is chosen or defaulted goes to all of them, or the canvas, the review
- * and the panel disagree about the same file.
+ * and the panel disagree about the same file. `tests/test_panel_layout_mirror.py`
+ * runs these functions under Node against the Python copies: the fold, the
+ * hidden ids, a master's box and the coordinate defaults.
+ *
+ * Two things here are not placement but ride on it: the elements' entry
+ * stagger, which needs the order the walk draws them in, and the vmin pin
+ * (`applyVminOverride`) the Builder sends with the box it previews a page in.
  *
  * `drawElementTree` is lent `how`: `element(def)`, the panel's renderer, and
  * `visibleWhen(node, def)`, which registers the node's visibility rule, both
@@ -119,7 +125,7 @@ function masterBox(master, orientation) {
     return { key: key || 'landscape', box: key === undefined ? null : (placements[key] || null) };
 }
 
-/** The first of a master's boxes that is set, in masterBox's order (none: undefined). */
+/** The key masterBox draws from: this orientation's, landscape or portrait when set, else the first key whatever its value (none: undefined). */
 function masterKey(placements, orientation) {
     return [orientation, 'landscape', 'portrait'].find(k => placements[k]) ?? Object.keys(placements)[0];
 }
@@ -149,13 +155,22 @@ function aspectLockFor(element) {
     return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-/** Put a node in a box, four percentages of what it sits inside; a missing coordinate is the whole box. */
-function setBox(node, box) {
+/**
+ * A stored box as four numbers: a coordinate that is missing or not a number
+ * is the whole box (x and y 0, w and h 100). A zero is kept as zero.
+ */
+export function boxOf(box) {
     const p = box || {};
-    node.style.left = `${pct(p.x, 0)}%`;
-    node.style.top = `${pct(p.y, 0)}%`;
-    node.style.width = `${pct(p.w, 100)}%`;
-    node.style.height = `${pct(p.h, 100)}%`;
+    return { x: pct(p.x, 0), y: pct(p.y, 0), w: pct(p.w, 100), h: pct(p.h, 100) };
+}
+
+/** Put a node in a box, four percentages of what it sits inside. */
+function setBox(node, box) {
+    const { x, y, w, h } = boxOf(box);
+    node.style.left = `${x}%`;
+    node.style.top = `${y}%`;
+    node.style.width = `${w}%`;
+    node.style.height = `${h}%`;
 }
 
 /**

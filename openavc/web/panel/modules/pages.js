@@ -6,20 +6,21 @@
  * A page's type decides how it is shown. A regular page (no type, or
  * 'page') replaces the one on screen and goes into the history `$back`
  * walks; an overlay or a sidebar opens over it, in a box of its own. The
- * rule worth knowing before changing it: every path that shows a page asks
- * `opensOver` here. Preview once set the page it was handed and drew it, and
- * a dialog came out as a flat page with no backdrop and an empty overlay
- * stack, so its Cancel did nothing: the type had been read in one of the two
- * paths and not the other.
+ * rule worth knowing before changing it: a path that shows a page asks
+ * `opensOver` here. Navigation and the Builder's Preview do. Preview once set
+ * the page it was handed and drew it, and a dialog came out as a flat page
+ * with no backdrop and an empty overlay stack, so its Cancel did nothing: the
+ * type had been read in one of the two paths and not the other. The idle
+ * return and a `?page=` link still draw the page they name as a regular page.
  *
  * A master element draws on every page its `pages` names, '*' or a list of
- * ids (`namesPage`), unless it is hidden. The appliance's setup screen
- * (`api/routes/setup.py` `_panel_has_content`) asks the whole project the
- * same question before it hands the display to /panel, so the two must agree
- * on what draws.
+ * ids (`namesPage`), unless it is hidden. The AI's page review asks the same
+ * question (`master_draws_on` in `ui/page_review.py`, held to this one by
+ * `tests/test_panel_layout_mirror.py`), so the two agree on what draws.
  *
- * Pure functions of the definition, except `drawOverlayFrame`, which builds
- * the nodes an overlay's page is drawn into and reads nothing of the panel.
+ * Functions of the definition, except `rememberPage`, which adds to the
+ * history it is handed, and `drawOverlayFrame`, which builds the nodes an
+ * overlay's page is drawn into and reads nothing of the panel.
  */
 
 import { pct } from './layout.js';

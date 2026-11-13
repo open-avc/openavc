@@ -871,7 +871,7 @@ function PageProperties({
         <>
           {sectionHeader(isSidebar ? "Sidebar" : "Overlay", true)}
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
-            {/* Stored as percentages of the viewport (the runtime's _pct
+            {/* Stored as percentages of the viewport (the runtime's pct
                 fallbacks are the placeholders) — the px labels this carried
                 before 0.8.0 wrote pixel-scale numbers into a percent field. */}
             <FieldRow label="Width">

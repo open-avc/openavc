@@ -106,7 +106,7 @@ function pageShowing(ui, pageId) {
     return pages.find(p => p && p.id === pageId);
 }
 
-/** The master elements, which every page draws. */
+/** Every master element, whichever pages it draws on. */
 function masterElements(ui) {
     return (ui && ui.master_elements) || [];
 }

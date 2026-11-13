@@ -377,7 +377,7 @@ class PanelApp {
 
     /** To the Builder, when this panel is its canvas or Preview (modules/builder_link.js). */
     _postToParent(msg) {
-        if (this.embedded) postToBuilder(msg);
+        postToBuilder(this.embedded, msg);
     }
 
     /** What the Builder tells the canvas and Preview, from the parent on this origin only. */

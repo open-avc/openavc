@@ -10,9 +10,10 @@
  * (`isBuilderFrame`; anything else framing it gets an ordinary panel), and
  * the origin decides what it will hear and where it will speak. Messages are
  * taken only from the parent on this origin (`listenToBuilder`) and sent only
- * to it (`postToBuilder`), never with '*', which would hand a framing page the
- * editor's text, element errors and file names. Both directions live here
- * because each was once fixed on its own.
+ * to it, and only when the panel is the Builder's (`postToBuilder`), never
+ * with '*', which would hand a framing page the editor's text, element errors
+ * and file names. Both directions live here because each was once fixed on
+ * its own.
  *
  * `listenToBuilder` is lent `on`, one handler per message the Builder sends:
  * `project(msg)` (a definition: editor-init and editor-project), `page(msg)`,
@@ -25,8 +26,12 @@ export function isBuilderFrame(params, editMode) {
     return framed && (params.get('preview') === '1' || editMode);
 }
 
-/** Send the Builder a message: to the parent on this origin only. */
-export function postToBuilder(msg) {
+/**
+ * Send the Builder a message, when this panel is the Builder's (`isBuilder`,
+ * the `isBuilderFrame` answer): to the parent on this origin only.
+ */
+export function postToBuilder(isBuilder, msg) {
+    if (!isBuilder) return;
     try { window.parent.postMessage(msg, window.location.origin); } catch (_) { /* ignore */ }
 }
 
