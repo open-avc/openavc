@@ -2907,6 +2907,194 @@
     "f": "3",
     "n": "p||"
    }
+  ],
+  "duplicate_id_takes_the_override": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"c1\" aria-label=\"first\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">first</button><div class=\"panel-element panel-label\" data-element-id=\"other\" data-element-type=\"label\" style=\"position: absolute; left: 20%; top: 21%; width: 30%; height: 40%;\">other</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "p||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "dup",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "state",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"c1\" aria-label=\"first\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%; background-color: rgb(255, 0, 0);\">first</button><div class=\"panel-element panel-label\" data-element-id=\"other\" data-element-type=\"label\" style=\"position: absolute; left: 20%; top: 21%; width: 30%; height: 40%;\">other</div></div></div>",
+    "f": "1",
+    "n": "p||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "dup",
+     "state": {
+      "ui.c1.bg_color": "#ff0000"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "state",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"c1\" aria-label=\"Scripted\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%; background-color: rgb(255, 0, 0);\">Scripted</button><div class=\"panel-element panel-label\" data-element-id=\"other\" data-element-type=\"label\" style=\"position: absolute; left: 20%; top: 21%; width: 30%; height: 40%;\">other</div></div></div>",
+    "f": "1",
+    "n": "p||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "dup",
+     "state": {
+      "ui.c1.bg_color": "#ff0000",
+      "ui.c1.label": "Scripted"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "state",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"c1\" aria-label=\"Scripted\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Scripted</button><div class=\"panel-element panel-label\" data-element-id=\"other\" data-element-type=\"label\" style=\"position: absolute; left: 20%; top: 21%; width: 30%; height: 40%;\">other</div></div></div>",
+    "f": "1",
+    "n": "p||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "dup",
+     "state": {
+      "ui.c1.bg_color": null,
+      "ui.c1.label": "Scripted"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "entry_fade_aspect_locked": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%; opacity: 0;\">free</div><div class=\"panel-placement\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; opacity: 0;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "p||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "entry",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label element-entry-fade\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">free</div><div class=\"panel-placement\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; opacity: 0;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "f": "1",
+    "n": "p||"
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label element-entry-fade\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">free</div><div class=\"panel-placement element-entry-fade\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; opacity: 0;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "f": "1",
+    "n": "p||"
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label element-entry-fade\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">free</div><div class=\"panel-placement element-entry-fade\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; opacity: 0;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement element-entry-fade\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "f": "1",
+    "n": "p||"
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label element-entry-fade\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">free</div><div class=\"panel-placement element-entry-fade\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group element-entry-fade\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement element-entry-fade\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "f": "1",
+    "n": "p||"
+   }
+  ],
+  "entry_stagger_aspect_locked": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%; opacity: 0;\">free</div><div class=\"panel-placement\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; opacity: 0;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "p||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "entry",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label element-entry-fade-up\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">free</div><div class=\"panel-placement\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; opacity: 0;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "f": "1",
+    "n": "p||"
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label element-entry-fade-up\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">free</div><div class=\"panel-placement element-entry-fade-up\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; opacity: 0;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%; opacity: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "f": "1",
+    "n": "p||"
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label element-entry-fade-up\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">free</div><div class=\"panel-placement element-entry-fade-up\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; opacity: 0;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement element-entry-fade-up\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "f": "1",
+    "n": "p||"
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label element-entry-fade-up\" data-element-id=\"free\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">free</div><div class=\"panel-placement element-entry-fade-up\" data-placement-for=\"lk\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\"><div class=\"panel-element panel-label\" data-element-id=\"lk\" data-element-type=\"label\" style=\"aspect-ratio: 1;\">lk</div></div><div class=\"panel-element panel-group element-entry-fade-up\" data-element-id=\"g\" data-element-type=\"group\" style=\"overflow: visible; pointer-events: auto; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%;\" data-coordinate-space=\"1\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">G</div><div class=\"panel-placement element-entry-fade-up\" data-placement-for=\"glk\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\"><div class=\"panel-element panel-label\" data-element-id=\"glk\" data-element-type=\"label\" style=\"aspect-ratio: 2;\">glk</div></div></div></div></div>",
+    "f": "1",
+    "n": "p||"
+   }
   ]
  }
 }

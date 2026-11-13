@@ -4196,6 +4196,204 @@
      "data"
     ]
    }
+  ],
+  "unknown_page_type_navigated_to": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "popup",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"pp1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">pp1</div></div></div>",
+    "f": "2",
+    "n": "pop||home"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "f": "2,3",
+    "n": "pop|dlg|home"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "f": "2,3",
+    "n": "pop||home"
+   },
+   {
+    "op": "wait",
+    "o": [],
+    "f": "2",
+    "n": "pop||home"
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "f": "4",
+    "n": "home||"
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"pp1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">pp1</div></div></div>",
+    "f": "5",
+    "n": "pop||home"
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "f": "6",
+    "n": "home||home,pop"
+   }
+  ],
+  "unknown_page_type_in_the_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "popup",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"pp1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">pp1</div></div></div>",
+    "f": "2",
+    "n": "pop||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "2",
+    "n": "pop||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "f": "3,4",
+    "n": "home|dlg|",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "f": "3,4",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "o": [],
+    "f": "3",
+    "n": "home||"
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"pp1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">pp1</div></div></div>",
+    "f": "5",
+    "n": "pop||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "f": "6",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
   ]
  }
 }

@@ -4272,6 +4272,297 @@
      }
     ]
    }
+  ],
+  "vmin_handed_back_on_the_canvas": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "2",
+    "n": "home||",
+    "v": "font-size: 14px; --panel-vmin: 8px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "3",
+    "n": "home||",
+    "v": "font-size: 14px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "4",
+    "n": "home||",
+    "v": "font-size: 14px; --panel-vmin: 8px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "5",
+    "n": "home||",
+    "v": "font-size: 14px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "5",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "vmin_handed_back_in_the_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "2",
+    "n": "home||",
+    "v": "font-size: 14px; --panel-vmin: 8px;",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "3",
+    "n": "home||",
+    "v": "font-size: 14px;",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "4",
+    "n": "home||",
+    "v": "font-size: 14px; --panel-vmin: 8px;",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "5",
+    "n": "home||",
+    "v": "font-size: 14px;",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "5",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
   ]
  }
 }

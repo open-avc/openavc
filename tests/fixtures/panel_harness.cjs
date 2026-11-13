@@ -10617,6 +10617,13 @@ const PREVIEW = { url: '/panel?preview=1', framed: true, listen: true };
 const init = (ui, more) => ['builder', { type: 'openavc:editor-init', ui, ...more }];
 const showPage = (more) => ['builder', { type: 'openavc:editor-page', ...more }];
 
+/** A page of a type the panel does not know (`popup`) beside a regular page and a dialog. */
+const POPUP_UI = pinUi('popup', [
+    pinPage('home', { elements: [pinLabel('h1')] }),
+    pinPage('pop', { page_type: 'popup', elements: [pinLabel('pp1')] }),
+    pinPage('dlg', { page_type: 'overlay', elements: [pinLabel('d1')] }),
+]);
+
 /** A page and the master elements standing on it, drawn. */
 const mastersOn = (pageId, masters, pageExtra) => ({
     ui: pinUi('masters', [pinPage('home', { ...pageExtra }), pinPage('main', { elements: [pinLabel('m1')] })], { master_elements: masters }),
@@ -10893,6 +10900,20 @@ const PAGE_CASES = {
         ...PREVIEW,
         steps: [init(pinUi('pv', PREVIEW_PAGES()), { pageId: 'home' }), showPage({ pageId: 'dlg' }), showPage({ pageId: 'dlg', vmin: 6 }), showPage({ vmin: 7 })],
     },
+    // A page of a type the panel does not know: navigation shows it in place of
+    // the page on screen and puts that page on the history, as a regular page.
+    unknown_page_type_navigated_to: {
+        ui: POPUP_UI,
+        steps: [['nav', 'pop'], ['nav', 'dlg'], ['nav', '$back'], ['wait', 500], ['nav', '$back'], ['nav', 'pop'], ['nav', 'home']],
+    },
+    // The Preview shows it as a regular page too. It is not one when the
+    // Preview picks the page a dialog opens over, so a dialog shown after it
+    // opens over the first regular page instead.
+    unknown_page_type_in_the_preview: {
+        ...PREVIEW,
+        steps: [init(POPUP_UI, { pageId: 'home' }), showPage({ pageId: 'pop' }), showPage({ pageId: 'pop' }), showPage({ pageId: 'dlg' }),
+            ['nav', '$back'], ['wait', 500], showPage({ pageId: 'pop' }), showPage({ pageId: 'home' })],
+    },
 };
 
 Object.assign(tests, {
@@ -10988,6 +11009,15 @@ const entryCase = (settings, extra) => ({
     }), pinPage('q', { elements: [pinLabel('qa')] })], { settings, master_elements: [pinLabel('m', { pages: '*' })] }),
     steps: [['wait', 0], ['wait', 29], ['wait', 1], ['wait', 30], ['wait', 30], ['wait', 100]],
     ...extra,
+});
+
+/** An aspect-locked label and one that is not, and a container holding a locked child, for the entry animations. */
+const lockedEntryCase = (settings) => ({
+    ui: pinUi('entry', [pinPage('p', {
+        elements: [pinLabel('free'), pinLabel('lk', { aspect_lock: 1 }), { id: 'g', type: 'group', label: 'G' }, pinLabel('glk', { parent: 'g', aspect_lock: 2 })],
+        placements: { free: box(1), lk: box(2), g: box(3), glk: box(4) },
+    })], { settings }),
+    steps: [['wait', 0], ['wait', 30], ['wait', 30], ['wait', 100]],
 });
 
 /** Containers framed every way a border can reach them. */
@@ -11206,6 +11236,20 @@ const LAYOUT_CASES = {
             ['viewport', ...PORTRAIT, ['resize']], ['viewport', ...PORTRAIT, ['resize']],
         ],
     },
+
+    // An id listed twice draws its first copy, and a script's override of
+    // that id lands on the copy that was drawn.
+    duplicate_id_takes_the_override: {
+        ui: pinUi('dup', [pinPage('p', {
+            elements: [{ id: 'c1', type: 'button', label: 'first' }, pinLabel('other'), { id: 'c1', type: 'button', label: 'second' }],
+            placements: { c1: box(1), other: box(20) },
+        })]),
+        steps: [['state', { 'ui.c1.bg_color': '#ff0000' }], ['state', { 'ui.c1.label': 'Scripted' }], ['state', { 'ui.c1.bg_color': null }]],
+    },
+    // Under an entry animation an aspect-locked element's placement box is
+    // what starts transparent and takes the class, not the element inside it.
+    entry_fade_aspect_locked: lockedEntryCase({ element_entry: 'fade' }),
+    entry_stagger_aspect_locked: lockedEntryCase({ element_entry: 'stagger' }),
 };
 
 Object.assign(tests, {
@@ -11243,6 +11287,8 @@ const textUi = () => pinUi('text', [pinPage('home', {
     placements: { t1: box(1), t2: box(2), tb: box(3), t3: box(4) },
 })]);
 const opened = (url, isFramed) => ({ url, framed: isFramed, draw: false });
+const pageVmin = (vmin) => ['builder', { type: 'openavc:editor-page', vmin }];
+const VMIN_HANDED_BACK = [take(), pageVmin(8), pageVmin(null), pageVmin(8), pageVmin('=undefined'), ['builder', { type: 'openavc:editor-page' }]];
 
 const BUILDER_LINK_CASES = {
     // Who may speak to the panel: the parent window, on the panel's own
@@ -11441,6 +11487,12 @@ const BUILDER_LINK_CASES = {
     post_embedded: { framed: true, embedded: true, draw: false, steps: [['post', { type: 'openavc:x', n: 1 }]] },
     post_parent_throws: { framed: true, embedded: true, parentThrows: true, draw: false, steps: [['post', { type: 'openavc:x' }]] },
     post_to_its_own_window: { embedded: true, draw: false, steps: [['post', { type: 'openavc:x' }]] },
+
+    // A page change that carries a vmin of null (or undefined) hands the type
+    // scale back to the viewport and redraws, as a vmin does; one that
+    // carries none leaves both alone.
+    vmin_handed_back_on_the_canvas: { ...CANVAS, steps: VMIN_HANDED_BACK },
+    vmin_handed_back_in_the_preview: { ...PREVIEWED, steps: VMIN_HANDED_BACK },
 };
 
 Object.assign(tests, {
