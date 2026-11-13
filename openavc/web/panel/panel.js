@@ -660,7 +660,7 @@ class PanelApp {
     /** A frame from the server, handled by its type (FRAMES); any other type is ignored. */
     handleMessage(msg) {
         const handle = FRAMES.get(msg.type);
-        if (handle) handle(this, msg);
+        if (typeof handle === 'function') handle(this, msg);
     }
 
     /** The whole state: drawn at once, and the loading note taken away. */
