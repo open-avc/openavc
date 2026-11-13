@@ -41,17 +41,20 @@ const { window } = dom;
 const { document } = window;
 
 // --- Stubs the panel code touches at construction / in the paths under test ---
-// Records what it was handed, so a scenario can assert on the headers the
-// panel's own fetch patch attaches. panel.js binds THIS as its originalFetch
-// at eval time, which is the only way to see them from outside.
+// Records what it was handed, and the response it gave, so a scenario can
+// assert on the headers the session bridge (modules/session.js, installed by
+// panel.js) attaches and on what the bridge hands back. The bridge binds THIS
+// as its originalFetch when panel.js loads, which is the only way to see them
+// from outside.
 window.__fetchCalls = [];
-// jsdom ships Headers but neither Request nor fetch. The panel's fetch patch
-// asks `input instanceof Request` to find headers on a Request argument, and
+// jsdom ships Headers but neither Request nor fetch. The session bridge asks
+// `input instanceof Request` to find headers on a Request argument, and
 // without the global that line is a ReferenceError rather than a false.
 if (!window.Request) window.Request = class Request {};
 window.fetch = async (input, init) => {
-    window.__fetchCalls.push({ input, init });
-    return { ok: false, json: async () => ({}) };
+    const response = { ok: false, json: async () => ({}) };
+    window.__fetchCalls.push({ input, init, response });
+    return response;
 };
 window.__harnessFetch = window.fetch;
 window.requestAnimationFrame = (cb) => { cb(0); return 0; };        // run binding batches synchronously
@@ -127,8 +130,8 @@ async function loadPanel(entry) {
 }
 
 // Set once the panel has loaded, before any scenario runs.
-// panel.js replaced window.fetch with its credential-attaching wrapper. Held
-// here because a later scenario reassigns window.fetch for its own purposes,
+// The session bridge replaced window.fetch with its credential-attaching
+// wrapper when panel.js loaded. Held here because a later scenario reassigns window.fetch for its own purposes,
 // and the auth scenarios must exercise the real wrapper whatever ran first.
 let patchedFetch;
 let PanelApp;
@@ -4483,15 +4486,18 @@ const tests = {
                     window.__fetchCalls.length = 0;
                     const r = {};
                     let pending;
+                    let answered;
                     try { pending = rest.length ? patchedFetch(input, init) : patchedFetch(input); }
                     catch (e) { r.threw = String(e && e.message); }
                     if (pending) {
                         r.promise = pending instanceof window.Promise || pending instanceof Promise;
-                        try { await pending; } catch (e) { r.rejected = String(e && e.message); }
+                        try { answered = await pending; } catch (e) { r.rejected = String(e && e.message); }
                     }
                     r.calls = window.__fetchCalls.length;
                     const call = window.__fetchCalls[0];
                     if (call) {
+                        // What the caller got back is what the real fetch answered.
+                        r.sameResponse = answered === call.response;
                         r.input = call.input === input ? 'same' : snapshot(call.input);
                         if (call.init === init && init !== undefined) r.init = 'same';
                         else r.init = snapshot(call.init);

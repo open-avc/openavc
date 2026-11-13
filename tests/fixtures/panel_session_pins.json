@@ -5,6 +5,7 @@
       "path": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -23,6 +24,7 @@
       "bare_path": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -41,6 +43,7 @@
       "tunnel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -59,6 +62,7 @@
       "api_end": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -77,6 +81,7 @@
       "api_query": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -95,6 +100,7 @@
       "apis": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -103,6 +109,7 @@
       "myapi": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -111,6 +118,7 @@
       "panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -119,6 +127,7 @@
       "other_host": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -137,6 +146,7 @@
       "url_api": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -155,6 +165,7 @@
       "url_panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -163,6 +174,7 @@
       "request": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -185,6 +197,7 @@
       "request_own_auth": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -207,6 +220,7 @@
       "request_null_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -230,6 +244,7 @@
       "request_empty_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -249,6 +264,7 @@
       "request_panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -257,6 +273,7 @@
       "lower_auth": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -276,6 +293,7 @@
       "array_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -299,6 +317,7 @@
       "headers_object": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -322,6 +341,7 @@
       "other_fields": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "method": "\"POST\"",
@@ -343,6 +363,7 @@
       "fields_after_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -367,6 +388,7 @@
       "empty_init": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -385,6 +407,7 @@
       "null_init": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -417,6 +440,7 @@
       "plain_object": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -425,6 +449,7 @@
       "url_object_not_request": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": {
           "headers": [
@@ -443,6 +468,7 @@
       "number": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -462,6 +488,7 @@
       "path": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -470,6 +497,7 @@
       "bare_path": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -478,6 +506,7 @@
       "tunnel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -486,6 +515,7 @@
       "api_end": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -494,6 +524,7 @@
       "api_query": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -502,6 +533,7 @@
       "apis": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -510,6 +542,7 @@
       "myapi": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -518,6 +551,7 @@
       "panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -526,6 +560,7 @@
       "other_host": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -534,6 +569,7 @@
       "url_api": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -542,6 +578,7 @@
       "url_panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -550,6 +587,7 @@
       "request": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -558,6 +596,7 @@
       "request_own_auth": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -566,6 +605,7 @@
       "request_null_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -575,6 +615,7 @@
       "request_empty_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -584,6 +625,7 @@
       "request_panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -592,6 +634,7 @@
       "lower_auth": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -601,6 +644,7 @@
       "array_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -610,6 +654,7 @@
       "headers_object": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -619,6 +664,7 @@
       "other_fields": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "callerInitKept": true,
@@ -627,6 +673,7 @@
       "fields_after_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -636,6 +683,7 @@
       "empty_init": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "callerInitKept": true,
@@ -644,6 +692,7 @@
       "null_init": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "callerInitKept": true,
@@ -666,6 +715,7 @@
       "plain_object": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -674,6 +724,7 @@
       "url_object_not_request": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -682,6 +733,7 @@
       "number": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -698,6 +750,7 @@
       "path": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -706,6 +759,7 @@
       "bare_path": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -714,6 +768,7 @@
       "tunnel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -722,6 +777,7 @@
       "api_end": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -730,6 +786,7 @@
       "api_query": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -738,6 +795,7 @@
       "apis": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -746,6 +804,7 @@
       "myapi": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -754,6 +813,7 @@
       "panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -762,6 +822,7 @@
       "other_host": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -770,6 +831,7 @@
       "url_api": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -778,6 +840,7 @@
       "url_panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -786,6 +849,7 @@
       "request": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -794,6 +858,7 @@
       "request_own_auth": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -802,6 +867,7 @@
       "request_null_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -811,6 +877,7 @@
       "request_empty_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -820,6 +887,7 @@
       "request_panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -828,6 +896,7 @@
       "lower_auth": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -837,6 +906,7 @@
       "array_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -846,6 +916,7 @@
       "headers_object": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -855,6 +926,7 @@
       "other_fields": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "callerInitKept": true,
@@ -863,6 +935,7 @@
       "fields_after_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -872,6 +945,7 @@
       "empty_init": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "callerInitKept": true,
@@ -880,6 +954,7 @@
       "null_init": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "callerInitKept": true,
@@ -902,6 +977,7 @@
       "plain_object": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -910,6 +986,7 @@
       "url_object_not_request": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -918,6 +995,7 @@
       "number": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -934,6 +1012,7 @@
       "path": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -942,6 +1021,7 @@
       "bare_path": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -950,6 +1030,7 @@
       "tunnel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -958,6 +1039,7 @@
       "api_end": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -966,6 +1048,7 @@
       "api_query": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -974,6 +1057,7 @@
       "apis": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -982,6 +1066,7 @@
       "myapi": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -990,6 +1075,7 @@
       "panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -998,6 +1084,7 @@
       "other_host": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -1006,6 +1093,7 @@
       "url_api": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -1014,6 +1102,7 @@
       "url_panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -1022,6 +1111,7 @@
       "request": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -1030,6 +1120,7 @@
       "request_own_auth": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -1038,6 +1129,7 @@
       "request_null_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -1047,6 +1139,7 @@
       "request_empty_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -1056,6 +1149,7 @@
       "request_panel": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -1064,6 +1158,7 @@
       "lower_auth": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -1073,6 +1168,7 @@
       "array_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -1082,6 +1178,7 @@
       "headers_object": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -1091,6 +1188,7 @@
       "other_fields": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "callerInitKept": true,
@@ -1099,6 +1197,7 @@
       "fields_after_headers": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "headersSame": true,
@@ -1108,6 +1207,7 @@
       "empty_init": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "callerInitKept": true,
@@ -1116,6 +1216,7 @@
       "null_init": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "same",
         "callerInitKept": true,
@@ -1138,6 +1239,7 @@
       "plain_object": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -1146,6 +1248,7 @@
       "url_object_not_request": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
@@ -1154,6 +1257,7 @@
       "number": {
         "promise": true,
         "calls": 1,
+        "sameResponse": true,
         "input": "same",
         "init": "undefined",
         "callerInitKept": true,
