@@ -9791,6 +9791,30 @@ Object.assign(tests, {
             m.set({ 'var.v': 'after' });
         });
 
+        // A binding the change filter cannot read is logged and passed over;
+        // every binding after it, the action marks and the overrides still
+        // draw. A visible_when with no conditions reads no key, so no change
+        // reaches it.
+        run('malformed_binding', {
+            elements: [
+                { id: 'l_bad', type: 'list', items: [], bindings: { show: { items: { key_pattern: 5 } } } },
+                { id: 'v_empty', type: 'button', label: 'Empty', bindings: { show: { visible_when: { all: [] } } } },
+                { id: 't_after', type: 'label', text: '', bindings: { show: { value: { key: 'var.after' } } } },
+                { id: 'a_after', type: 'button', label: 'A', action_devices: ['d'] },
+            ],
+            state: { 'device.d.connected': true, 'var.after': 1 },
+        }, (m) => {
+            const quiet = console.error;
+            console.error = () => {};
+            try {
+                m.set({ 'var.after': 2 });
+                m.set({ 'device.d.connected': false, 'ui.a_after.bg_color': '#123456' });
+                m.set({ 'var.other': 1 });
+            } finally {
+                console.error = quiet;
+            }
+        });
+
         // The rules underneath, asked directly.
         withFakeTime(() => {
             const app = mkApp();
@@ -10112,6 +10136,8 @@ Object.assign(tests, {
             m.frame({ type: 'error', source_type: 'ui', message: 'High control' });
             m.at('low_btn', 381);
             m.frame({ type: 'error', source_type: 'ui', message: 'Just above the middle' });
+            m.at('low_btn', 380);
+            m.frame({ type: 'error', source_type: 'ui', message: 'Its middle on the middle' });
             m.at('low_btn', null);
             m.frame({ type: 'error', source_type: 'ui', message: 'No box' });
             m.app.elementMap.low_btn.el.getBoundingClientRect = () => ({ top: 700, height: 0, width: 0 });

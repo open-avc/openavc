@@ -3237,6 +3237,73 @@
     ]
    }
   ],
+  "malformed_binding": [
+   {
+    "c": {
+     "l_bad": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-list",
+      "r@data-element-id": "l_bad",
+      "r@data-element-type": "list",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "list-scroll"
+     },
+     "v_empty": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "v_empty",
+      "r@aria-label": "Empty",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Empty"
+     },
+     "t_after": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "t_after",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%;",
+      "r#": "1"
+     },
+     "a_after": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_after",
+      "r@aria-label": "A",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%;",
+      "r#": "A"
+     }
+    },
+    "e": [
+     "l_bad:list_items",
+     "v_empty:visible_when",
+     "t_after:text"
+    ]
+   },
+   {
+    "c": {
+     "t_after": {
+      "r#": "2"
+     }
+    },
+    "e": [
+     "t_after:text"
+    ]
+   },
+   {
+    "c": {
+     "a_after": {
+      "r@class": "panel-element panel-button action-offline",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%; background-color: rgb(18, 52, 86);"
+     }
+    }
+   },
+   {}
+  ],
   "direct": [
    {
     "keys": {

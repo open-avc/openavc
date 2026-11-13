@@ -772,6 +772,15 @@
      "r@id": "panel-failure-message",
      "r@role": "alert",
      "r@class": "visible",
+     "r#": "Its middle on the middle"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
      "r#": "No box"
     }
    },
