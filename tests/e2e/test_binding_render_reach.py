@@ -452,7 +452,7 @@ def test_a_page_nav_takes_its_appearance_and_lit_draws_over_the_colour(panel_pag
 # Render one group with a child inside it, stand in for placement (both get the
 # inline `position: absolute` the layout engine gives them), then walk states.
 GROUP_STEPS_JS = r"""
-([element, steps]) => {
+([element, steps, childLayer]) => {
   const app = window.__openavcPanel;
   const box = document.getElementById('box');
   box.innerHTML = '';
@@ -463,6 +463,12 @@ GROUP_STEPS_JS = r"""
   const child = document.createElement('div');
   child.style.position = 'absolute';
   child.textContent = 'child';
+  if (childLayer) {
+    const own = document.createElement('div');
+    own.className = 'panel-bg-image-layer';
+    own.style.backgroundImage = 'url("child.png")';
+    child.prepend(own);
+  }
   node.appendChild(child);
   box.appendChild(node);
   const seen = [];
@@ -477,6 +483,7 @@ GROUP_STEPS_JS = r"""
       layerImage: node.querySelector(':scope > .panel-bg-image-layer')?.style.backgroundImage || '',
       position: node.style.position,
       childPosition: child.style.position,
+      childLayers: [...child.querySelectorAll(':scope > .panel-bg-image-layer')].map(l => l.style.backgroundImage),
       offline: node.classList.contains('device-offline'),
     });
   }
@@ -485,8 +492,8 @@ GROUP_STEPS_JS = r"""
 """
 
 
-def _group_steps(page, element: dict, steps: list[dict]) -> list[dict]:
-    return page.evaluate(GROUP_STEPS_JS, [element, steps])
+def _group_steps(page, element: dict, steps: list[dict], child_layer: bool = False) -> list[dict]:
+    return page.evaluate(GROUP_STEPS_JS, [element, steps, child_layer])
 
 
 def _modes(key: str) -> dict:
@@ -522,6 +529,25 @@ def test_a_faded_state_picture_is_one_layer_and_moves_nothing(panel_page) -> Non
     assert CHRISTMAS[:20] in seen[0]["layerImage"]
     assert {s["position"] for s in seen} == {"absolute"}
     assert {s["childPosition"] for s in seen} == {"absolute"}
+
+
+def test_a_container_look_leaves_a_controls_own_faded_picture_alone(panel_page) -> None:
+    """The faded layer a Container's look draws and takes away is its own,
+    never the one a control inside it draws for its own faded picture: a
+    state with no picture leaves that one, and a faded state picture is drawn
+    on a layer of the Container's rather than into the control's."""
+    child = ['url("child.png")']
+    for style in ({}, {"background_opacity": 0.5}):
+        element = {"label": "Room", "style": style, **_modes("var.mode")}
+        seen = _group_steps(panel_page, element, [
+            {"var.mode": "combined"},
+            {"var.mode": "alarm"},
+            {"var.mode": "split"},
+            {"var.mode": "combined"},
+        ], child_layer=True)
+        assert [s["childLayers"] for s in seen] == [child] * 4, style
+        own = [1, 0, 0, 1] if style else [0, 0, 0, 0]
+        assert [s["layers"] for s in seen] == own, style
 
 
 def test_a_container_claims_no_state_and_drains_nothing_while_away(panel_page) -> None:

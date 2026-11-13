@@ -12573,6 +12573,9 @@ const imageControls = () => [
     pictured('states_word', { key: DEV_KEY, states: 'on', style_active: { button_image: 'assets://never.png' } }),
     // A faded background picture of its own, on a layer the picture is drawn in front of.
     pictured('st_faded', PICTURE_LOOK(), { style: { background_image: 'assets://bg.png', background_opacity: 0.5 } }),
+    // Both forms written on one look, a picture named in each, one of them twice.
+    pictured('both_forms', { ...PICTURE_LOOK(), style_active: { button_image: 'assets://first_half.png' },
+        style_inactive: { button_image: 'assets://on.png' } }),
 ];
 const PICTURE_READINGS = ['on', 'off', 'alt', 'dup', 'on', 'num', 'empty', 'junk', 'zzz', null, '=gone', 'On', 0, 'on'];
 const IMG = (id) => `[data-element-id="${id}"] > img`;
