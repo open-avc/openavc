@@ -11932,7 +11932,7 @@ const shownWhen = (id, when) => pinLabel(id, { bindings: { show: { visible_when:
 const OPERATOR_SPELLINGS = ['eq', 'equals', '==', 'ne', 'not_equals', '!=', 'gt', '>', 'lt', '<', 'gte', '>=', 'lte', '<=',
     'truthy', 'falsy', 'EQ', 'between', ''];
 /** The readings each operator is tried against, spelled for JSON where it cannot hold them. */
-const READINGS = ['=undefined', null, 0, 1, 5, 10, '5', '10', 'a', 'b', '', true, false, 'true', '=NaN'];
+const READINGS = ['=undefined', null, 0, 1, 5, 10, -1, '5', '10', '-1', 'a', 'b', '', true, false, 'true', '=NaN'];
 const VISIBLE = { raf: 'queued', fetch: {} };
 
 const VISIBILITY_CASES = {
@@ -12068,6 +12068,8 @@ const MESSAGE_CASES = {
             snapshot({ 'var.a': 'one' }),
             ['msg', { type: 'ui.definition', ui: { ...framesUi(), tag: 'second', settings: { idle_timeout_seconds: 0 } } }],
             ['msg', { type: 'ui.definition', ui: { tag: 'third', pages: [pinPage('home', { elements: [pinLabel('x1')] })] } }],
+            // A project with no settings: a refusal's band still reads them.
+            ['render'], ['msg', { type: 'error', source_type: 'ui', message: 'After the third' }], ['wait', 6000],
         ],
     },
     // In the Programmer's Preview a served project only says which devices
@@ -12130,7 +12132,9 @@ const MESSAGE_CASES = {
     connection: {
         ...FRAMES, ui: framesUi(),
         steps: [['nav', 'dlg'], ['connection', false], ['connection', false], ['wait', 3000], ['connection', true], ['wait', 2999], ['wait', 1],
-            ['connection', true], ['connection', false], ['connection', true], ['wait', 3000]],
+            ['connection', true], ['connection', false], ['connection', true], ['wait', 3000],
+            // Lost before the word is put away: the word stays up while it is lost.
+            ['connection', true], ['wait', 1000], ['connection', false], ['wait', 3000], ['connection', true], ['wait', 3000]],
     },
     connection_in_the_preview: {
         ...FRAMES, ui: framesUi(), embedded: true,
