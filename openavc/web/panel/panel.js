@@ -866,18 +866,7 @@ class PanelApp {
     // --- Navigation ---
 
     navigateToPage(pageId) {
-        // $dismiss — overlay only, no page-history fallback
-        if (pageId === '$dismiss') {
-            this.dismissOverlay();
-            return;
-        }
-        // $back — phone-style: if an overlay is open, dismiss it;
-        // otherwise pop the page-history stack and go there.
-        if (pageId === '$back') {
-            if (this.overlayStack.length > 0) this.dismissOverlay();
-            else this._goBack();
-            return;
-        }
+        if (this._followPageCommand(pageId)) return;
 
         const pages = this.uiDef?.pages || [];
         const targetPage = pages.find(p => p.id === pageId);
@@ -899,6 +888,21 @@ class PanelApp {
         this.dismissAllOverlays();
         this.currentPage = pageId;
         this.renderCurrentPage();
+    }
+
+    /** `$dismiss` and `$back`, which name no page: true when `pageId` was one of them. */
+    _followPageCommand(pageId) {
+        // $dismiss — overlay only, no page-history fallback
+        if (pageId === '$dismiss') {
+            this.dismissOverlay();
+            return true;
+        }
+        if (pageId !== '$back') return false;
+        // $back — phone-style: if an overlay is open, dismiss it;
+        // otherwise pop the page-history stack and go there.
+        if (this.overlayStack.length > 0) this.dismissOverlay();
+        else this._goBack();
+        return true;
     }
 
     /** `$back` with no overlay open: the page before this one, if there is one. */
@@ -1097,13 +1101,7 @@ class PanelApp {
 
         // Clean up overlays
         this.dismissAllOverlays();
-
-        this._endAllHolds();
-        for (const t of this.debounceTimers) clearTimeout(t);
-        this.debounceTimers = [];
-        endFaderDrags(this.root);
-        endMatrixGestures(this.root);
-        this._clocks.stop();
+        this._stopOldPageActivity();
 
         const motion = this._pageMotion();
         this.root.style.setProperty('--page-transition-duration', motion.duration + 'ms');
@@ -1151,6 +1149,16 @@ class PanelApp {
             new ThemeStudioPicker(surface, (msg) => this._postToParent(msg));
             this._reportTextDefaults();
         }
+    }
+
+    /** What the page being replaced was doing stops: holds, pending sends, drags, gestures, clocks. */
+    _stopOldPageActivity() {
+        this._endAllHolds();
+        for (const t of this.debounceTimers) clearTimeout(t);
+        this.debounceTimers = [];
+        endFaderDrags(this.root);
+        endMatrixGestures(this.root);
+        this._clocks.stop();
     }
 
     /** A project with no pages at all says so. */
@@ -1213,19 +1221,23 @@ class PanelApp {
         this._drawMasters(page, surface);
 
         if (!customFrame) this._renderPageElements(page, surface, motion);
+        this._noteEmptyPage(page, surface);
+    }
 
-        // A page nobody has put anything on says so, in the room's own terms.
-        // Deliberately says nothing about the Programmer: this same document is
-        // what a wall panel shows, and on a kiosk display the reader is an end
-        // user who has no business being sent to the IDE. Not in edit mode --
-        // the Builder canvas embeds this page with `edit=1`, and an empty page
-        // there is an author one drop away from their first control.
-        if (!this.editMode && pageDrawsNothing(page, this.uiDef?.master_elements)) {
-            const notice = document.createElement('div');
-            notice.className = 'panel-page-empty';
-            notice.textContent = 'This page has no controls yet.';
-            surface.appendChild(notice);
-        }
+    /**
+     * A page nobody has put anything on says so, in the room's own terms.
+     * Deliberately says nothing about the Programmer: this same document is
+     * what a wall panel shows, and on a kiosk display the reader is an end
+     * user who has no business being sent to the IDE. Not in edit mode -- the
+     * Builder canvas embeds this page with `edit=1`, and an empty page there
+     * is an author one drop away from their first control.
+     */
+    _noteEmptyPage(page, surface) {
+        if (this.editMode || !pageDrawsNothing(page, this.uiDef?.master_elements)) return;
+        const notice = document.createElement('div');
+        notice.className = 'panel-page-empty';
+        notice.textContent = 'This page has no controls yet.';
+        surface.appendChild(notice);
     }
 
     /**
