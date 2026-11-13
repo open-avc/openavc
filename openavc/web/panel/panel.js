@@ -60,78 +60,11 @@ import {
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
+import { installSessionBridge } from './modules/session.js';
 
-// --- Programmer session bridge ---------------------------------------------
-// When the panel is embedded as an iframe inside the Programmer IDE (the UI
-// Builder's canvas and its Preview), the IDE holds its session token in
-// sessionStorage. The iframe is same-origin and unsandboxed, so it shares the
-// tab's sessionStorage, and the token is what lets the iframe's /api fetches
-// and its WebSocket handshake pass on an instance with a password: without it
-// every call answers 401, which makes the browser pop its native sign-in
-// dialog inside the iframe, and the panel gate refuses the socket for want of
-// an approved cookie. The stored value is the bare token, URL-safe base64, so
-// it is valid as it is both in a header and as a subprotocol. See
-// openavc/web/programmer/src/api/auth.ts for the parent half.
-(function installProgrammerSessionBridge() {
-    const STORAGE_KEY = 'openavc.programmer.session';
-
-    function getSessionToken() {
-        try {
-            const token = sessionStorage.getItem(STORAGE_KEY);
-            return token || null;
-        } catch (_) {
-            return null;
-        }
-    }
-
-    function getAuthHeader() {
-        const token = getSessionToken();
-        return token ? `Bearer ${token}` : null;
-    }
-
-    // Mirrors getAuthSubprotocols() in the Programmer SPA. The server reads it
-    // in check_ws_auth().
-    function getAuthSubprotocol() {
-        const token = getSessionToken();
-        return token ? `auth.bearer.${token}` : null;
-    }
-
-    // Exposed so the PanelApp WebSocket constructor can pull the subprotocol.
-    window.__openavcGetAuthSubprotocol = getAuthSubprotocol;
-
-    function isApiUrl(url) {
-        // /api, /api/..., or /tunnel/<id>/api/...
-        return /(^|\/)api(\/|$|\?)/.test(url);
-    }
-
-    // Patch fetch unconditionally; the header is only attached when a session
-    // is actually present. A panel opened on its own holds none and this
-    // patch is a no-op.
-    const originalFetch = window.fetch.bind(window);
-    window.fetch = async (input, init) => {
-        let url;
-        if (typeof input === 'string') {
-            url = input;
-        } else if (input instanceof URL) {
-            url = input.toString();
-        } else {
-            url = input.url;
-        }
-        const auth = getAuthHeader();
-        if (auth && isApiUrl(url)) {
-            const headers = new Headers(
-                init?.headers ??
-                    (input instanceof Request ? input.headers : undefined),
-            );
-            if (!headers.has('Authorization')) {
-                headers.set('Authorization', auth);
-            }
-            init = { ...(init || {}), headers };
-        }
-        return originalFetch(input, init);
-    };
-})();
-// ---------------------------------------------------------------------------
+// The Programmer's sign-in, carried on every /api request and the socket
+// when the IDE embeds this panel; installed before anything fetches.
+installSessionBridge(window);
 
 /**
  * What the panel does with each frame the server sends, by its `type`: the
@@ -538,10 +471,10 @@ class PanelApp {
         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const url = `${protocol}//${location.host}${basePath()}/ws?client=${this.embedded ? "preview" : "panel"}&namespaces=device,var,ui,system,plugin`;
 
-        // When embedded in the Programmer IDE, attach the cached programmer
-        // password as a Sec-WebSocket-Protocol so the handshake authenticates
-        // without prompting. Standalone panels with no cached credentials fall
-        // back to the plain ctor (browser cache / open server).
+        // When embedded in the Programmer IDE, the Programmer's session rides
+        // as the socket's subprotocol (modules/session.js offers it) so the
+        // handshake authenticates without prompting. A panel opened on its own
+        // holds no session and opens the socket with no subprotocol.
         const authProto = typeof window.__openavcGetAuthSubprotocol === 'function'
             ? window.__openavcGetAuthSubprotocol()
             : null;
