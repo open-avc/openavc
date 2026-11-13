@@ -12294,6 +12294,8 @@ const toggles = () => [
     toggled('t_frameless', {}, { frameless: true, button_image: PIC }),
     toggled('t_icon', { on_label: 'Muted' }, { icon: 'mic', icon_position: 'left' }),
     toggled('t_styled', {}, { style: { bg_color: '#333333', text_color: '#cccccc', opacity: 0.9 } }),
+    // A border of its own, which the lit look leaves as it is.
+    toggled('t_bordered', {}, { style: { border_width: 0.2, border_color: '#00ff00' } }),
     pinButton('t_list', { action: 'device.command', mode: 'toggle', toggle_key: DEV_KEY, toggle_value: 'on', on_label: 'Single' }),
     pinButton('t_looked', [{ action: 'macro', macro: 'm1', mode: 'toggle', toggle_key: DEV_KEY, toggle_value: 'on' }],
         { bindings: { do: { press: [{ action: 'macro', macro: 'm1', mode: 'toggle', toggle_key: DEV_KEY, toggle_value: 'on' }] }, show: { look: TWO_LOOK() } } }),
