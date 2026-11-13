@@ -12576,6 +12576,9 @@ const imageControls = () => [
     // Both forms written on one look, a picture named in each, one of them twice.
     pictured('both_forms', { ...PICTURE_LOOK(), style_active: { button_image: 'assets://first_half.png' },
         style_inactive: { button_image: 'assets://on.png' } }),
+    // An empty label of its own, and one picture named as a number and as a word.
+    pinImage('own_blank_label', { src: 'assets://own.png', label: '' }),
+    pictured('num_and_word', { key: DEV_KEY, states: { a: { button_image: 7 }, b: { button_image: '7' } } }),
 ];
 const PICTURE_READINGS = ['on', 'off', 'alt', 'dup', 'on', 'num', 'empty', 'junk', 'zzz', null, '=gone', 'On', 0, 'on'];
 const IMG = (id) => `[data-element-id="${id}"] > img`;
@@ -12698,6 +12701,8 @@ const navControls = () => [
     pinNav('n_look_none', undefined, { bindings: { show: { look: STATES_LOOK() } }, highlight_current: true }),
     pinNav('n_lit_blank', '', { highlight_current: true }),
     pinNav('n_styled', 'home', { highlight_current: true, style: { bg_color: '#333333', text_color: '#cccccc', accent_color: '#00ff00' } }),
+    // A state whose words are written as null.
+    pinNav('n_null', 'other', { bindings: { show: { look: { key: DEV_KEY, states: { nul: { label: null, bg_color: '#010101' } } } } } }),
 ];
 const navUi = () => pinUi('navs', [
     pinPage('home', { elements: [...navControls(), pictured('n_pic', PICTURE_LOOK())] }),
@@ -12711,7 +12716,7 @@ const NAV_CASES = {
     navs_through_readings: {
         ...FACE,
         ui: navUi(),
-        steps: [...readingsOf(DEV_KEY, ['on', 'off', 'num', 'blank', 'zzz', null, '=gone', 'On', 'on']), ...drawn(AWAY),
+        steps: [...readingsOf(DEV_KEY, ['on', 'off', 'num', 'blank', 'zzz', null, '=gone', 'On', 'nul', 'on']), ...drawn(AWAY),
             ...drawn({ [DEV_KEY]: 'off' }), ...drawn(BACK), ...drawn(AWAY), ...drawn(BACK)],
     },
     // The same on the design canvas: where an edit of each word goes.
@@ -12747,7 +12752,8 @@ const NAV_CASES = {
         steps: [['nav', 'dlg'], ['edit', 'pages.0.elements.8.target_page', 5], ['dismiss'], ['render'],
             ...drawn({ [DEV_KEY]: 'on' }), ['msg', { type: 'error', source_type: 'macro', message: 'No luck', element_id: 'n_lit' }],
             // A nav with no words of its own left, whose page is taken away under it.
-            ['edit', 'pages.0.elements.10.target_page', ''], ...drawn({ [DEV_KEY]: 'zzz' }),
+            ['edit', 'pages.0.elements.10.target_page', 0], ...drawn({ [DEV_KEY]: 'zzz' }),
+            ['edit', 'pages.0.elements.10.target_page', ''], ...drawn({ [DEV_KEY]: 'blank' }),
             ['edit', 'pages.0.elements.10.bindings.show.look.states', null], ...drawn({ [DEV_KEY]: 'off' }),
             ['msg', { type: 'command.ack', success: false, error: 'Refused' }],
             ['edit', 'pages.0.elements.9.target_page', null], ['nav', 'dlg'], ['dismiss'],
