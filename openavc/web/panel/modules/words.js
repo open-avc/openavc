@@ -4,11 +4,14 @@
  *
  * The rule worth knowing before changing anything here: a control's words
  * are the text sitting in its node, or, once an icon stands beside them, the
- * one span this module draws them in (`LABEL_SPAN`). Everything that writes
- * or reads a control's words -- a look, a `ui.<id>.label` override, the
- * in-place editor -- finds them through `labelSpan` and `removeWords` here.
- * A second idea of where the words are is how a state's old words once stayed
- * on screen beside its new ones.
+ * one span this module draws them in (`LABEL_SPAN`). The span is found by
+ * `labelSpan` (a `ui.<id>.label` override and the in-place editor ask it) and
+ * taken away with the text by `removeWords`; `drawIcon` gathers the words it
+ * moves into a new span from the text and any span child, which today is only
+ * that one. A second idea of where the words are is how a state's old words
+ * once stayed on screen beside its new ones. What an override puts back and
+ * what the editor reads out of the node are theirs (modules/overrides.js,
+ * modules/text_edit.js).
  *
  * A button's accessible name follows its words (`nameAfterWords`), falling
  * back to the name it was drawn with when it shows none.
@@ -18,7 +21,7 @@ import { assetUrl, basePath } from './base_path.js';
 import { REM_BASE_PX } from './layout.js';
 
 /** The class of the span a control's words go in beside an icon. */
-export const LABEL_SPAN = 'panel-label-span';
+const LABEL_SPAN = 'panel-label-span';
 
 const SVG = 'http://www.w3.org/2000/svg';
 

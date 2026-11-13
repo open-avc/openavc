@@ -77,7 +77,7 @@ function toggleLookOf(pressBinding, isList) {
  * with no value, reads as off; a reading of null is compared as the word
  * "null".
  */
-export function toggleIsOn(stateValue, toggleValue) {
+function toggleIsOn(stateValue, toggleValue) {
     return stateValue !== undefined && toggleValue !== undefined && sameWords(stateValue, toggleValue);
 }
 

@@ -621,19 +621,21 @@ def test_the_guide_states_the_off_values_the_led_renderer_uses(
 
 # --- What a visibility operator means, and a keypad's defaults ---------------
 
-#: Readings tried against a target of 1, which tell every meaning apart.
-_PROBES = [0, 1, 2, -1]
+#: Readings tried against a target of 1, which tell every meaning apart: the
+#: numeric word "1" is equal to it (equality is loose, as the review reasons),
+#: and a null is never above or below it (a bound needs both sides set).
+_PROBES = [0, 1, 2, -1, "1", None]
 
 #: What each meaning answers for those readings.
 _MEANING_BY_ANSWERS = {
-    (False, True, False, False): "eq",
-    (True, False, True, True): "ne",
-    (False, False, True, False): ">",
-    (False, True, True, False): ">=",
-    (True, False, False, True): "<",
-    (True, True, False, True): "<=",
-    (False, True, True, True): "truthy",
-    (True, False, False, False): "falsy",
+    (False, True, False, False, True, False): "eq",
+    (True, False, True, True, False, True): "ne",
+    (False, False, True, False, False, False): ">",
+    (False, True, True, False, True, False): ">=",
+    (True, False, False, True, False, False): "<",
+    (True, True, False, True, True, False): "<=",
+    (False, True, True, True, True, False): "truthy",
+    (True, False, False, False, False, True): "falsy",
 }
 
 _OPERATORS_SCRIPT = """
