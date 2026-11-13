@@ -10448,6 +10448,13 @@ async function driveCase(spec) {
             m.probes.push(img);
             return img;
         };
+        // A browser writes a picture's `loading` onto its attribute; jsdom
+        // keeps it as a plain property nothing records.
+        Object.defineProperty(window.HTMLImageElement.prototype, 'loading', {
+            configurable: true,
+            get() { return this.getAttribute('loading') || 'eager'; },
+            set(v) { this.setAttribute('loading', v); },
+        });
     }
     if (c.raf === 'queued') window.requestAnimationFrame = (cb) => { m.frames.push(cb); return m.frames.length; };
     m.flushFrames = () => { for (const cb of m.frames.splice(0)) cb(0); };
@@ -10577,6 +10584,7 @@ async function driveCase(spec) {
         for (const [type, fn] of m.live) own.remove.call(window, type, fn);
         window.Audio = own.Audio;
         window.Image = own.Image;
+        if (c.images) delete window.HTMLImageElement.prototype.loading;
         window.addEventListener = own.add;
         window.removeEventListener = own.remove;
         window.requestAnimationFrame = own.raf;
@@ -12563,6 +12571,8 @@ const imageControls = () => [
     // States written as a list, and a look whose states are not an object.
     pictured('states_list', { key: DEV_KEY, states: [{ button_image: 'assets://zero.png' }, null] }),
     pictured('states_word', { key: DEV_KEY, states: 'on', style_active: { button_image: 'assets://never.png' } }),
+    // A faded background picture of its own, on a layer the picture is drawn in front of.
+    pictured('st_faded', PICTURE_LOOK(), { style: { background_image: 'assets://bg.png', background_opacity: 0.5 } }),
 ];
 const PICTURE_READINGS = ['on', 'off', 'alt', 'dup', 'on', 'num', 'empty', 'junk', 'zzz', null, '=gone', 'On', 0, 'on'];
 const IMG = (id) => `[data-element-id="${id}"] > img`;
@@ -12617,7 +12627,9 @@ const PICTURE_CASES = {
             ...drawn({ [DEV_KEY]: 'off' }), ...drawn({ [DEV_KEY]: 'alt' }),
             // A picture that answers after the Image has stopped showing it.
             ['keep', IMG('st_nosrc')], ...drawn({ [DEV_KEY]: 'off' }), ['keptEvent', 'error'], ['keptEvent', 'error'],
-            ['keptEvent', 'load'], ...drawn({ [DEV_KEY]: 'on' }), ['keptEvent', 'error']],
+            ['keptEvent', 'load'], ...drawn({ [DEV_KEY]: 'on' }), ['keptEvent', 'error'],
+            // ...and a new picture made while that note is up.
+            ['keep', IMG('st_nosrc')], ...drawn({ [DEV_KEY]: 'off' }), ['keptEvent', 'error'], ...drawn({ [DEV_KEY]: 'alt' })],
     },
     // A look that starts with its device away, and one that starts with a reading.
     image_looks_start_away: { ...PICTURES, state: { ...AWAY, [DEV_KEY]: 'on' }, ui: onePage('images', imageControls()) },
@@ -12685,7 +12697,7 @@ const navControls = () => [
     pinNav('n_styled', 'home', { highlight_current: true, style: { bg_color: '#333333', text_color: '#cccccc', accent_color: '#00ff00' } }),
 ];
 const navUi = () => pinUi('navs', [
-    pinPage('home', { elements: navControls() }),
+    pinPage('home', { elements: [...navControls(), pictured('n_pic', PICTURE_LOOK())] }),
     pinPage('other', { elements: [pinNav('o_home', 'home', { highlight_current: true }), pinNav('o_dlg', 'dlg', { highlight_current: true })] }),
     { ...pinPage('dlg', { elements: [pinNav('d_close', '$dismiss'), pinNav('d_dlg', 'dlg', { highlight_current: true })] }), page_type: 'overlay' },
 ]);
@@ -12734,7 +12746,13 @@ const NAV_CASES = {
             // A nav with no words of its own left, whose page is taken away under it.
             ['edit', 'pages.0.elements.10.target_page', ''], ...drawn({ [DEV_KEY]: 'zzz' }),
             ['edit', 'pages.0.elements.10.bindings.show.look.states', null], ...drawn({ [DEV_KEY]: 'off' }),
-            ['msg', { type: 'command.ack', success: false, error: 'Refused' }]],
+            ['msg', { type: 'command.ack', success: false, error: 'Refused' }],
+            ['edit', 'pages.0.elements.9.target_page', null], ['nav', 'dlg'], ['dismiss'],
+            // An Image beside the navs whose look fails: drawn with the page, not with the navs.
+            ...drawn({ [DEV_KEY]: 'num' }), ['nav', 'dlg'], ['dismiss'], ['render'],
+            // A reading that arrives while an overlay is open, drawn on the navs
+            // when it closes and on everything else at the next frame.
+            ['nav', 'dlg'], ['state', { [DEV_KEY]: 'alt' }], ['dismiss'], ['raf']],
     },
 };
 
