@@ -43,6 +43,9 @@ import {
     pageRunsAuthorMarkup, rememberPage,
 } from './modules/pages.js';
 import {
+    carries, definitionIn, demoStateOf, isBuilderFrame, listenToBuilder, postToBuilder, startingTextSizes,
+} from './modules/builder_link.js';
+import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
 
@@ -140,8 +143,7 @@ class PanelApp {
         // page that frames the panel (a signage player, a dashboard's card)
         // gets an ordinary panel, as a standalone tab does: the server's
         // definitions, the panel check-in, a panel connection.
-        const framed = !!(window.parent && window.parent !== window);
-        this.embedded = framed && (params.get('preview') === '1' || this.editMode);
+        this.embedded = isBuilderFrame(params, this.editMode);
         // An embedder pins the type scale by handing us the preset's vmin in px.
         applyVminOverride(params.get('vmin'));
         this.ws = null;
@@ -373,121 +375,99 @@ class PanelApp {
             .catch(err => console.warn('[panel-edit] fetch failed:', err));
     }
 
+    /** To the Builder, when this panel is its canvas or Preview (modules/builder_link.js). */
     _postToParent(msg) {
-        // Only to a parent on this panel's own origin. The Programmer always is
-        // (through the cloud too, where the difference is a path), and any page
-        // can frame the panel with ?preview=1, so '*' would hand that page the
-        // editor messages: text, element errors, file names.
-        if (this.embedded) {
-            try { window.parent.postMessage(msg, window.location.origin); } catch (_) { /* ignore */ }
-        }
+        if (this.embedded) postToBuilder(msg);
     }
 
+    /** What the Builder tells the canvas and Preview, from the parent on this origin only. */
     _setupEditModeListener() {
-        window.addEventListener('message', (event) => {
-            // Only accept messages from the parent programmer window, which is
-            // on this panel's own origin. Any page can frame /panel?preview=1,
-            // and is then the parent too.
-            if (event.source !== window.parent) return;
-            if (event.origin !== window.location.origin) return;
-            const msg = event.data;
-            if (!msg || typeof msg !== 'object') return;
-            switch (msg.type) {
-                case 'openavc:editor-init':
-                case 'openavc:editor-project': {
-                    const ui = msg.project?.ui || msg.ui || null;
-                    if (!ui) return;
-                    this.uiDef = ui;
-                    this.uiSettings = ui.settings || {};
-                    if (msg.pageId) this.currentPage = msg.pageId;
-                    if (typeof msg.showGrid === 'boolean') this._editShowGrid = msg.showGrid;
-                    // Bumped by the Builder every time a file lands in ui/. It
-                    // rides on the src of every custom control so a save is
-                    // visible in the canvas without reloading the IDE.
-                    if (Object.prototype.hasOwnProperty.call(msg, 'uiFilesVersion')) {
-                        this._uiFilesVersion = msg.uiFilesVersion;
-                    }
-                    // The builder sizes an overlay preview to the overlay box,
-                    // not the screen, so it hands us the preset's vmin to keep
-                    // preview type the size it will be at runtime.
-                    if (Object.prototype.hasOwnProperty.call(msg, 'vmin')) {
-                        applyVminOverride(msg.vmin);
-                    }
-                    // The Theme Studio's working copy of the theme, or word that there is none.
-                    this.theme.takeWorkingCopy(msg);
-                    // Edit mode has no WS, so the parent supplies state (or none).
-                    // Preview mode has a WS that manages state — don't clobber it.
-                    if (this.editMode) {
-                        this.state = msg.demoState && typeof msg.demoState === 'object'
-                            ? { ...msg.demoState }
-                            : {};
-                    }
-                    this.snapshotReceived = true;
-                    this._setupViewportListener();
-                    if (this.editMode) {
-                        this.renderCurrentPage();
-                    } else {
-                        // Preview: an overlay page has to go through the
-                        // navigation path or it draws as a flat page.
-                        this._showPageAsRuntimeWould(msg.pageId || this.currentPage);
-                        this.lock.reconcile();
-                        this.resetIdleTimer();
-                    }
-                    this._postToParent({ type: 'openavc:editor-ready' });
-                    break;
-                }
-                case 'openavc:editor-edit-text': {
-                    // A double-click on the Builder's overlay. The iframe takes
-                    // no pointer events in edit mode, so the element arrives by
-                    // id rather than by the click landing in here.
-                    if (this.editMode && msg.elementId) {
-                        this._textEditor.begin(String(msg.elementId));
-                    }
-                    break;
-                }
-                case 'openavc:editor-cancel-text': {
-                    this._textEditor.cancel();
-                    break;
-                }
-                case 'openavc:editor-placements': {
-                    // A drag in progress. The builder commits geometry to its
-                    // store once, on pointer-up, so between those it just tells
-                    // us where the boxes are and we move the nodes we already
-                    // have -- four inline styles instead of rebuilding a page
-                    // sixty times a second.
-                    if (this.editMode) applyLivePlacements(msg.placements);
-                    break;
-                }
-                case 'openavc:editor-page': {
-                    // A page change can move the preview between a full-screen
-                    // page and an overlay box, which is exactly when the vmin
-                    // the builder wants us to use changes.
-                    let rerender = false;
-                    if (Object.prototype.hasOwnProperty.call(msg, 'vmin')) {
-                        applyVminOverride(msg.vmin);
-                        rerender = true;
-                    }
-                    if (!this.editMode) {
-                        // Preview always rebuilds through the runtime's own
-                        // path, so a dialog stays a dialog. Going through
-                        // renderCurrentPage instead would tear it down: that
-                        // function opens by dismissing every overlay, so a bare
-                        // vmin nudge used to close an open dialog.
-                        const want = msg.pageId || this._previewPageId || this.currentPage;
-                        if (rerender || want !== this._previewPageId) {
-                            this._showPageAsRuntimeWould(want);
-                        }
-                        break;
-                    }
-                    if (msg.pageId && msg.pageId !== this.currentPage) {
-                        this.currentPage = msg.pageId;
-                        rerender = true;
-                    }
-                    if (rerender) this.renderCurrentPage();
-                    break;
-                }
-            }
+        listenToBuilder({
+            project: (msg) => this._takeEditorProject(msg),
+            page: (msg) => this._takeEditorPage(msg),
+            // A double-click on the Builder's overlay. The iframe takes no
+            // pointer events in edit mode, so the element arrives by id rather
+            // than by the click landing in here.
+            editText: (msg) => {
+                if (this.editMode && msg.elementId) this._textEditor.begin(String(msg.elementId));
+            },
+            cancelText: () => this._textEditor.cancel(),
+            // A drag in progress. The builder commits geometry to its store
+            // once, on pointer-up, so between those it just tells us where the
+            // boxes are and we move the nodes we already have -- four inline
+            // styles instead of rebuilding a page sixty times a second.
+            placements: (msg) => {
+                if (this.editMode) applyLivePlacements(msg.placements);
+            },
         });
+    }
+
+    /** A definition from the Builder (editor-init, editor-project), drawn as the canvas or Preview draws it. */
+    _takeEditorProject(msg) {
+        const ui = definitionIn(msg);
+        if (!ui) return;
+        this.uiDef = ui;
+        this.uiSettings = ui.settings || {};
+        this._takeEditorView(msg);
+        // Edit mode has no WS, so the parent supplies state (or none).
+        // Preview mode has a WS that manages state — don't clobber it.
+        if (this.editMode) this.state = demoStateOf(msg);
+        this.snapshotReceived = true;
+        this._setupViewportListener();
+        if (this.editMode) {
+            this.renderCurrentPage();
+        } else {
+            // Preview: an overlay page has to go through the
+            // navigation path or it draws as a flat page.
+            this._showPageAsRuntimeWould(msg.pageId || this.currentPage);
+            this.lock.reconcile();
+            this.resetIdleTimer();
+        }
+        this._postToParent({ type: 'openavc:editor-ready' });
+    }
+
+    /** What a definition message says about the view: the page, the grid, the files, the type scale, the theme. */
+    _takeEditorView(msg) {
+        if (msg.pageId) this.currentPage = msg.pageId;
+        if (typeof msg.showGrid === 'boolean') this._editShowGrid = msg.showGrid;
+        // Bumped by the Builder every time a file lands in ui/. It rides on the
+        // src of every custom control so a save is visible in the canvas
+        // without reloading the IDE.
+        if (carries(msg, 'uiFilesVersion')) this._uiFilesVersion = msg.uiFilesVersion;
+        // The builder sizes an overlay preview to the overlay box, not the
+        // screen, so it hands us the preset's vmin to keep preview type the
+        // size it will be at runtime.
+        if (carries(msg, 'vmin')) applyVminOverride(msg.vmin);
+        // The Theme Studio's working copy of the theme, or word that there is none.
+        this.theme.takeWorkingCopy(msg);
+    }
+
+    /**
+     * The Builder moved to a page (editor-page). A page change can move the
+     * preview between a full-screen page and an overlay box, which is exactly
+     * when the vmin the builder wants us to use changes.
+     */
+    _takeEditorPage(msg) {
+        const repinned = carries(msg, 'vmin');
+        if (repinned) applyVminOverride(msg.vmin);
+        if (!this.editMode) {
+            this._reshowPreviewPage(msg.pageId, repinned);
+            return;
+        }
+        const moved = !!msg.pageId && msg.pageId !== this.currentPage;
+        if (moved) this.currentPage = msg.pageId;
+        if (repinned || moved) this.renderCurrentPage();
+    }
+
+    /**
+     * Preview always rebuilds through the runtime's own path, so a dialog
+     * stays a dialog. Going through renderCurrentPage instead would tear it
+     * down: that function opens by dismissing every overlay, so a bare vmin
+     * nudge used to close an open dialog.
+     */
+    _reshowPreviewPage(pageId, repinned) {
+        const want = pageId || this._previewPageId || this.currentPage;
+        if (repinned || want !== this._previewPageId) this._showPageAsRuntimeWould(want);
     }
 
     // --- WebSocket ---
@@ -1269,19 +1249,11 @@ class PanelApp {
     }
 
     /**
-     * Tell the Builder what size each element's text STARTS at: the value the
-     * cascade gives it before the element's own font_size, if it has one, is
-     * applied inline. The Style panel shows that as the Font Size placeholder,
-     * so the number a person reads there is the number on the canvas, whatever
-     * the stylesheet, the theme or a project class decided it. The Builder
-     * keeps no copy of the panel's default; this message is how it knows.
-     *
-     * Read by clearing the inline size, asking, and putting it back. There is
-     * no other way to ask the cascade what it would have said, and nothing
-     * transitions font-size, so the read is exact and nothing flickers.
-     *
-     * In rem, the unit a project stores and the Builder converts for display.
-     * Pixels here would be the canvas preset's pixels, not the panel's.
+     * Tell the Builder what size each element's text STARTS at, in rem
+     * (`startingTextSizes` in modules/builder_link.js says how it is read),
+     * and which words can be edited in place. The Style panel shows the size
+     * as the Font Size placeholder; the Builder keeps no copy of the panel's
+     * default, so this message is how it knows.
      */
     _reportTextDefaults() {
         if (window.parent === window) return;
@@ -1292,16 +1264,7 @@ class PanelApp {
         // a button whose label a script is setting is a silent no-op. Runs
         // after evaluateAllBindings, so the records have settled.
         const { editableText, textRefusals } = this._textEditor.offers(this.root);
-        const fontSizeRem = {};
-        for (const el of this.root.querySelectorAll('[data-element-id]')) {
-            const own = el.style.fontSize;
-            if (own) el.style.fontSize = '';
-            const px = parseFloat(getComputedStyle(el).fontSize);
-            if (own) el.style.fontSize = own;
-            // Four decimals, the precision a project stores measurements at, so
-            // a size that IS the default compares equal to it in the Builder.
-            if (Number.isFinite(px)) fontSizeRem[el.dataset.elementId] = Math.round(px / rootPx * 1e4) / 1e4;
-        }
+        const fontSizeRem = startingTextSizes(this.root, rootPx);
         this._postToParent({
             type: 'openavc:editor-text-defaults', fontSizeRem, editableText,
             textRefusals,
