@@ -95,7 +95,7 @@ The portal states each of these where the data is shown.
 | Staff audit log | A year |
 | Billing records | 7 years |
 | Request logs (IP address, address requested) | 30 days |
-| Application log (sign-ins by email address) | Overwritten as newer entries fill it |
+| Application log (sign-ins by email address) | 30 days |
 
 Closing and deleting an account are described in the [privacy policy](https://openavc.com/privacy).
 An error a system returns through remote access is logged by its status and address only, never
