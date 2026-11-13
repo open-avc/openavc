@@ -39,6 +39,7 @@ import {
     drawFace, drawPicture, lookWords, redrawPicture, repaint, showsWords, toggleLit, toggleNamesWords, toggleWords,
 } from './modules/button.js';
 import { litStyle } from './modules/lit.js';
+import { richText, valueWords } from './modules/label.js';
 import { drawIcon, iconNode, removeWords, showWords } from './modules/words.js';
 import { isShown, visibilityOf } from './modules/visibility.js';
 import {
@@ -321,7 +322,7 @@ class PanelApp {
             state: () => this.state,
             holds: (el) => this._textEditor.holds(el),
             setLabelText: (node, text, path) => this._setLabelText(node, text, path),
-            richText: (text) => this._formatRichText(text),
+            richText,
             redraw: (elementId) => this._redrawElement(elementId),
         };
     }
@@ -1455,7 +1456,7 @@ class PanelApp {
         const text = element.text || '';
         const whiteSpace = element.style?.white_space;
         if (whiteSpace) {
-            el.innerHTML = this._formatRichText(text);
+            el.innerHTML = richText(text);
         } else {
             el.textContent = text;
         }
@@ -2189,21 +2190,6 @@ class PanelApp {
         return el;
     }
 
-    _formatRichText(text) {
-        // Sanitize HTML entities first — all user content is escaped before any tags are added
-        let html = String(text)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-        // Bold: **text**
-        html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-        // Italic: *text*
-        html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-        // Defense-in-depth: strip any tags that aren't our whitelisted strong/em
-        html = html.replace(/<(?!\/?(?:strong|em)>)[^>]*>/gi, '');
-        return html;
-    }
-
     // --- Keypad ---
 
     renderKeypad(element) {
@@ -2799,86 +2785,23 @@ class PanelApp {
     }
 
     /**
-     * A bound value as a label should print it.
-     *
-     * A device float arrives at float64 width, so a float32 reading of 0.06
-     * comes across as 0.06000000238418579 and a raw print is unreadable on a
-     * panel. `display_decimals` rounds it. Only real numbers are touched:
-     * most labels are bound to text — device names, input modes, firmware
-     * versions — and reformatting a version string of "2.10" would be wrong.
+     * Draw a label's bound value (modules/label.js), unless an edit in flight
+     * holds the words. What was written last is kept on the binding, so a
+     * batch that leaves the words as they were rewrites nothing.
      */
-    _labelValueText(value, elementDef) {
-        const dec = this._displayDecimals(elementDef);
-        if (dec == null || typeof value !== 'number' || !Number.isFinite(value)) return String(value);
-        return value.toFixed(dec);
-    }
-
     evaluateText(b) {
         const { element, elementDef, binding } = b;
         const value = this.state[binding.key];
-        const useRich = elementDef?.style?.white_space;
-
-        // `path` names the authored field this text came from, rooted at the
-        // element definition, or null where what is drawn is not authored
-        // anywhere -- a bare value, or the "--" an unreachable device earns.
-        const setText = (text, path) => {
-            // An edit in flight owns these words; see _setLabelText.
-            if (this._textEditor.holds(element)) return;
-            this._textEditor.recordSource(element, path);
-            if (b._lastText === text) return;
-            b._lastText = text;
-            if (useRich) {
-                element.innerHTML = this._formatRichText(text);
-            } else {
-                element.textContent = text;
-            }
-        };
-        const FORMAT = ['bindings', 'show', 'value', 'format'];
-
         const offline = this.availability.markReading(b);
-        if (offline) {
-            // The label keeps its sentence and loses its number: a format of
-            // "Amp draw: {value} A" reads "Amp draw: -- A". What was
-            // photographed for this fault was "Amp draw: 0.00 A" on an
-            // amplifier drawing 0.076 A through a port that was broken.
-            setText(binding.format
-                ? String(binding.format).split('{value}').join('--')
-                : '--', binding.format ? FORMAT : null);
-            return;
-        }
-
-        if (binding.condition) {
-            // Normalized compare (matches feedback/visible_when), so a numeric 1
-            // or boolean true matches a condition.equals of '1'/'true' instead of
-            // silently failing the strict-=== check and sticking on text_false.
-            const isMatch = value !== undefined && value !== null &&
-                sameWords(value, binding.condition.equals);
-            setText(isMatch ? (binding.text_true || '') : (binding.text_false || ''),
-                ['bindings', 'show', 'value', isMatch ? 'text_true' : 'text_false']);
-            return;
-        }
-
-        if (value === undefined || value === null) {
-            // Same sentence-without-the-number the offline branch draws: a
-            // label formatted "Amp draw: {value} A" reads "Amp draw: -- A"
-            // rather than vanishing, so the page keeps its shape and the reader
-            // can see which reading is missing.
-            setText(binding.format
-                ? String(binding.format).split('{value}').join('--')
-                : '--', binding.format ? FORMAT : null);
-            return;
-        }
-        const shown = this._labelValueText(value, elementDef);
-        if (binding.format) {
-            // split/join replaces every {value} and treats the value literally,
-            // so device values containing $-sequences (track titles, paths)
-            // aren't reinterpreted the way String.replace would.
-            setText(String(binding.format).split('{value}').join(shown), FORMAT);
+        const [text, path] = valueWords(binding, value, offline, this._displayDecimals(elementDef));
+        if (this._textEditor.holds(element)) return;
+        this._textEditor.recordSource(element, path);
+        if (b._lastText === text) return;
+        b._lastText = text;
+        if (elementDef?.style?.white_space) {
+            element.innerHTML = richText(text);
         } else {
-            // A bare value with no format around it is not authored text. The
-            // editor opens it seeded with the literal `{value}` instead, so
-            // typing a sentence around it CREATES the format.
-            setText(shown, null);
+            element.textContent = text;
         }
     }
 

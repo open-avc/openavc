@@ -4090,7 +4090,7 @@ const tests = {
     rich_text_escapes_markup_before_adding_its_own() {
         const app = mkApp();
         const host = document.createElement('div');
-        host.innerHTML = app._formatRichText(
+        host.innerHTML = panelModule('label.js').richText(
             '<img src=x onerror="alert(1)"> <script>bad()</script> **loud** and *soft* &amp;');
         assert(!host.querySelector('img, script'), `no element from the text, got ${host.innerHTML}`);
         const tags = [...host.querySelectorAll('*')].map(n => n.tagName).join(',');

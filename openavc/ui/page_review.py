@@ -2547,9 +2547,10 @@ def precision_review(
     """A label bound to a float with nothing telling it how to round.
 
     A float32 reading of 0.06 crosses the wire as 0.06000000238418579, and
-    ``_labelValueText`` prints a number unchanged when ``display_decimals`` is
-    absent. So the panel shows twenty characters of noise where a reading should
-    be -- visible from across a room, and on first look.
+    the panel's label (``printedValue``, web/panel/modules/label.js) prints a
+    number unchanged when ``display_decimals`` is absent. So the panel shows
+    twenty characters of noise where a reading should be -- visible from
+    across a room, and on first look.
 
     Only fires when the DRIVER says the value is a float. A label bound to text,
     or to a value nothing declares, is left alone: this is not an opinion about

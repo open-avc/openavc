@@ -28,6 +28,7 @@ from pathlib import Path
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
 GAUGE_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "modules" / "gauge.js"
+LABEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "modules" / "label.js"
 PROJECT_LOADER = OPENAVC_ROOT / "openavc" / "core" / "project_loader.py"
 TYPES_TS = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "api" / "types.ts"
 PROPERTY_SECTIONS = (
@@ -74,16 +75,15 @@ def _element_type_block(el_type: str) -> str:
 
 
 def test_panel_label_rounds_through_the_shared_helper() -> None:
-    src = _read(PANEL_JS)
-    assert "_labelValueText" in src, (
+    src = _read(LABEL_JS)
+    assert "printedValue" in src, (
         "the label's text evaluator must round a numeric value; it printed "
         "String(value) raw, so a device float showed all 17 digits"
     )
-    # Both paths: the {value} placeholder AND the bare no-format case. Matched
-    # without the closing paren because `setText` also carries the authored
-    # source path for in-place editing (`setText(shown, null)`); what is pinned
-    # here is that both paths pass the ROUNDED value, not the call's arity.
-    assert ".join(shown)" in src and "setText(shown" in src, (
+    # Both paths: the {value} placeholder AND the bare no-format case, each
+    # returned with the field an in-place edit writes; what is pinned here is
+    # that both paths carry the ROUNDED value.
+    assert "[filled(binding.format, shown), FORMAT]" in src and "[shown, null]" in src, (
         "both label paths (with and without a format string) must go through "
         "the rounding helper"
     )

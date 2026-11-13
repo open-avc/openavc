@@ -527,10 +527,11 @@ async def test_a_label_on_a_float_is_told_to_round_it(
 ):
     """A float32 reading of 0.06 arrives as 0.06000000238418579.
 
-    `_labelValueText` prints a number unchanged when display_decimals is
-    absent, and a label is the only type that does -- a fader falls back to 1,
-    a slider derives one from its step. So this is the one place the renderer's
-    own default cannot save the author, and it is visible from across a room.
+    `printedValue` (the panel's modules/label.js) prints a number unchanged
+    when display_decimals is absent, and a label is the only type that does --
+    a fader falls back to 1, a slider derives one from its step. So this is the
+    one place the renderer's own default cannot save the author, and it is
+    visible from across a room.
     """
     result = _result(await _run(handler, mock_engine, mock_agent, "add_ui_elements", {
         "page_id": "main",
