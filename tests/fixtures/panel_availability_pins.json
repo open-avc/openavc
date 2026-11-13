@@ -1133,6 +1133,22 @@
       "r@data-element-type": "label",
       "r@style": "position: absolute; left: 39%; top: 96%; width: 18%; height: 17%;",
       "r#": "v:o_empty_id"
+     },
+     "o_prop_child": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "o_prop_child",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 58%; top: 96%; width: 18%; height: 17%;",
+      "r#": "v:o_prop_child"
+     },
+     "o_prop_four": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "o_prop_four",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 77%; top: 96%; width: 18%; height: 17%;",
+      "r#": "v:o_prop_four"
      }
     },
     "e": [
@@ -1163,7 +1179,9 @@
      "o_var:text",
      "o_plugin:text",
      "o_short:text",
-     "o_empty_id:text"
+     "o_empty_id:text",
+     "o_prop_child:text",
+     "o_prop_four:text"
     ]
    },
    {
@@ -1194,6 +1212,14 @@
      "o_six": {
       "r@class": "panel-element panel-label device-offline",
       "r#": "--"
+     },
+     "o_prop_child": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     },
+     "o_prop_four": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
      }
     },
     "e": [
@@ -1203,7 +1229,9 @@
      "c_mute:text",
      "c_connected:text",
      "o_four:text",
-     "o_six:text"
+     "o_six:text",
+     "o_prop_child:text",
+     "o_prop_four:text"
     ]
    },
    {},
@@ -1235,6 +1263,14 @@
      "o_six": {
       "r@class": "panel-element panel-label",
       "r#": "v:o_six"
+     },
+     "o_prop_child": {
+      "r@class": "panel-element panel-label",
+      "r#": "v:o_prop_child"
+     },
+     "o_prop_four": {
+      "r@class": "panel-element panel-label",
+      "r#": "v:o_prop_four"
      }
     },
     "e": [
@@ -1244,7 +1280,9 @@
      "c_mute:text",
      "c_connected:text",
      "o_four:text",
-     "o_six:text"
+     "o_six:text",
+     "o_prop_child:text",
+     "o_prop_four:text"
     ]
    }
   ],
@@ -2050,6 +2088,19 @@
    },
    {
     "c": {
+     "w_power": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@aria-label": "Power",
+      "r@style": "position: absolute; left: 20%; top: 20%; width: 18%; height: 17%;",
+      "r#": "Power"
+     }
+    },
+    "e": [
+     "w_power:feedback"
+    ]
+   },
+   {
+    "c": {
      "a_one": {
       "r@class": "panel-element panel-button action-offline"
      }
@@ -2068,8 +2119,8 @@
    {
     "c": {
      "w_power": {
+      "r@class": "panel-element panel-button",
       "r@aria-label": "OFF",
-      "r@style": "position: absolute; left: 20%; top: 20%; width: 18%; height: 17%;",
       "r#": "OFF"
      }
     },
@@ -3133,6 +3184,11 @@
     ]
    },
    {
+    "e": [
+     "t_none:macro_progress"
+    ]
+   },
+   {
     "c": {
      "t_var": {
       "r#": "--"
@@ -3285,7 +3341,12 @@
       "cached": null,
       "same": true
      },
-     "no_binding": null
+     "no_binding": null,
+     "two_devices": [
+      true,
+      true,
+      false
+     ]
     },
     "marks": [
      "device-offline",

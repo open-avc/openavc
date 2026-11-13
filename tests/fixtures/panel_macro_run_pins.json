@@ -63,6 +63,16 @@
       "r@style": "position: absolute; left: 25%; top: 25%; width: 22%; height: 22%;",
       "r#": "b_num"
      },
+     "b_not_macro": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "b_not_macro",
+      "r@aria-label": "N",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 49%; top: 25%; width: 22%; height: 22%;",
+      "r#": "N"
+     },
      "b_ctor": {
       "r@": "button type class data-element-id aria-label data-element-type style",
       "r@type": "button",
@@ -70,7 +80,7 @@
       "r@data-element-id": "b_ctor",
       "r@aria-label": "b_ctor",
       "r@data-element-type": "button",
-      "r@style": "position: absolute; left: 49%; top: 25%; width: 22%; height: 22%;",
+      "r@style": "position: absolute; left: 73%; top: 25%; width: 22%; height: 22%;",
       "r#": "b_ctor"
      },
      "p_m1": {
@@ -78,7 +88,7 @@
       "r@class": "panel-element panel-label",
       "r@data-element-id": "p_m1",
       "r@data-element-type": "label",
-      "r@style": "position: absolute; left: 73%; top: 25%; width: 22%; height: 22%;",
+      "r@style": "position: absolute; left: 1%; top: 49%; width: 22%; height: 22%;",
       "r#": "Ready"
      },
      "p_m2": {
@@ -86,14 +96,14 @@
       "r@class": "panel-element panel-label",
       "r@data-element-id": "p_m2",
       "r@data-element-type": "label",
-      "r@style": "position: absolute; left: 1%; top: 49%; width: 22%; height: 22%;"
+      "r@style": "position: absolute; left: 25%; top: 49%; width: 22%; height: 22%;"
      },
      "p_num": {
       "r@": "div class data-element-id data-element-type style",
       "r@class": "panel-element panel-label",
       "r@data-element-id": "p_num",
       "r@data-element-type": "label",
-      "r@style": "position: absolute; left: 25%; top: 49%; width: 22%; height: 22%;",
+      "r@style": "position: absolute; left: 49%; top: 49%; width: 22%; height: 22%;",
       "r#": "Idle 7"
      }
     }
@@ -384,7 +394,37 @@
     ]
    },
    {},
-   {}
+   {},
+   {
+    "s": [
+     "{\"type\":\"ui.press\",\"element_id\":\"c_btn\"}"
+    ]
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Both claimed"
+    }
+   },
+   {},
+   {
+    "s": [
+     "{\"type\":\"ui.press\",\"element_id\":\"c_other\"}"
+    ]
+   },
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "m7 alone"
+    }
+   }
   ],
   "runs": [
    {
@@ -537,11 +577,13 @@
      "{\"type\":\"macro.execute\"}"
     ]
    },
+   {},
    {
     "s": [
      "{\"type\":\"macro.execute\",\"macro_id\":\"\"}"
     ]
    },
+   {},
    {
     "s": [
      "null"
@@ -731,6 +773,15 @@
      "r@role": "alert",
      "r@class": "visible",
      "r#": "No box"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "No size, low"
     }
    },
    {
@@ -1064,6 +1115,15 @@
       "r@data-element-type": "button",
       "r@style": "position: absolute; left: 1%; top: 1%; width: 22%; height: 22%;",
       "r#": "e_btn"
+     },
+     "e_p": {
+      "r@": "div class data-element-id data-avc-text-src data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "e_p",
+      "r@data-avc-text-src": "[\"bindings\",\"show\",\"value\",\"idle_text\"]",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 25%; top: 1%; width: 22%; height: 22%;",
+      "r#": "Idle"
      }
     }
    },
@@ -1076,6 +1136,18 @@
       "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-macro-busy",
       "r@class": "panel-element panel-button macro-busy",
       "r@data-macro-busy": "e1"
+     },
+     "e_p": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@data-avc-text-src": null,
+      "r#": "Step 1 of 2"
+     }
+    }
+   },
+   {
+    "c": {
+     "e_p": {
+      "r#": "Step words"
      }
     }
    },
@@ -1085,6 +1157,11 @@
       "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
       "r@class": "panel-element panel-button",
       "r@data-macro-busy": null
+     },
+     "e_p": {
+      "r@": "div class data-element-id data-element-type style data-avc-text-src",
+      "r#": "Idle",
+      "r@data-avc-text-src": "[\"bindings\",\"show\",\"value\",\"idle_text\"]"
      }
     }
    }

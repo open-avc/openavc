@@ -9622,6 +9622,7 @@ Object.assign(tests, {
         const oddLabels = [
             ['o_four', 'device.d.input.1'], ['o_six', 'device.d.input.1.sub.online'], ['o_var', 'var.d'],
             ['o_plugin', 'plugin.d.connected'], ['o_short', 'device.d'], ['o_empty_id', 'device..gain'],
+            ['o_prop_child', 'device.d.name.1.gain'], ['o_prop_four', 'device.d.enabled.x'],
         ].map(([id, key]) => ({ id, type: 'label', text: '', bindings: { show: { value: { key } } } }));
         const allLabels = [...platformLabels, ...childLabels, ...oddLabels];
         const valued = {};
@@ -9702,6 +9703,7 @@ Object.assign(tests, {
             state: { 'device.d.connected': false, 'device.e.connected': true, 'device.d.asleep': true, 'device.d.power': true, 'device.d.mute': 'on' },
         }, (m) => {
             m.frame({ type: 'ui.definition', ui: served({ a_one: ['e'], a_two: ['d'], a_none: ['d'] }, { w_power: [] }) });
+            m.set({ 'device.d.power': 'on' });
             m.set({ 'device.e.connected': false });
             m.frame({ type: 'ui.definition', ui: served({ a_one: [], a_two: ['d', 'e'] }, { w_power: ['d'], a_one: ['d'] }) });
             m.set({ 'device.d.power': false });
@@ -9770,6 +9772,7 @@ Object.assign(tests, {
             m.set({ 'device.d.asleep': true });
             m.set({ 'device.d.src.1.asleep': true });
             m.set({ 'device.d.power.connected': true });
+            m.set({ 'var.d.connected': false, 'plugin.e.asleep': true, 'system.d.connected': false });
             m.set({ 7: 'numeric key' });
             m.clear(['device.e.power', 'var.v']);
             m.clear([]);
@@ -9818,6 +9821,14 @@ Object.assign(tests, {
                 bindings[name] = { first, cached: devicesOfBinding(app, b), same: first === devicesOfBinding(app, b) };
             }
             bindings.no_binding = devicesOfBinding(app, {});
+            // A reading of two devices is spoiled while either is down.
+            const twoDevices = { elementDef: { id: 'two' }, binding: { key: 'device.a.v', key_pattern: 'device.b.*' } };
+            app.state = { 'device.a.connected': true, 'device.b.connected': false };
+            bindings.two_devices = [app._bindingOffline(twoDevices)];
+            app.state = { 'device.a.connected': false, 'device.b.connected': true };
+            bindings.two_devices.push(app._bindingOffline(twoDevices));
+            app.state = { 'device.a.connected': true, 'device.b.connected': true };
+            bindings.two_devices.push(app._bindingOffline(twoDevices));
             // The mark goes on the element the map knows, else the node the
             // binding draws into, else nowhere.
             const marks = [];
@@ -9955,6 +9966,7 @@ Object.assign(tests, {
                 { id: 'b_hold', type: 'button', label: 'H', bindings: { do: { hold: [{ action: 'macro', macro: 'm1' }] } } },
                 { id: 'b_mixed', type: 'button', label: 'X', bindings: { do: { press: [{ action: 'device.command', device: 'd', command: 'c' }, { action: 'macro', macro: 'm1' }] } } },
                 macroButton('b_num', '7'),
+                { id: 'b_not_macro', type: 'button', label: 'N', bindings: { do: { press: [{ action: 'device.command', device: 'd', command: 'c', macro: 'm1' }] } } },
                 macroButton('b_ctor', 'constructor'),
                 progressLabel('p_m1', 'm1', 'Ready'),
                 progressLabel('p_m2', 'm2'),
@@ -10020,6 +10032,14 @@ Object.assign(tests, {
             m.press('c_other');
             m.frame({ type: 'macro.step_error', macro_id: 'm7', call_chain: 'm7', message: '' });
             m.frame({ type: 'macro.step_error', macro_id: 'm7', message: 'Again' });
+            // A chain through two claims: said once, and both count as said.
+            m.press('c_btn');
+            m.frame({ type: 'macro.step_error', macro_id: 'm2', call_chain: ['m1', 'm2'], message: 'Both claimed' });
+            m.frame({ type: 'macro.step_error', macro_id: 'm2', message: 'm2 alone' });
+            // One said already, one fresh: nothing more.
+            m.press('c_other');
+            m.frame({ type: 'macro.step_error', macro_id: 'm7', call_chain: ['m1', 'm7'], message: 'One said, one fresh' });
+            m.frame({ type: 'macro.step_error', macro_id: 'm7', message: 'm7 alone' });
         });
 
         // Runs counted: a second run's end keeps the first one's claim, an end
@@ -10047,7 +10067,9 @@ Object.assign(tests, {
             m.run(5);
             m.frame({ type: 'macro.step_error', macro_id: 5, message: 'Numeric' });
             m.send({ type: 'macro.execute' });
+            m.frame({ type: 'macro.step_error', message: 'No id' });
             m.send({ type: 'macro.execute', macro_id: '' });
+            m.frame({ type: 'macro.step_error', macro_id: '', message: 'Empty id' });
             m.send(null);
             m.send({ type: 7, element_id: 'r_btn' });
             m.send({ type: 'ui.press' });
@@ -10092,6 +10114,8 @@ Object.assign(tests, {
             m.frame({ type: 'error', source_type: 'ui', message: 'Just above the middle' });
             m.at('low_btn', null);
             m.frame({ type: 'error', source_type: 'ui', message: 'No box' });
+            m.app.elementMap.low_btn.el.getBoundingClientRect = () => ({ top: 700, height: 0, width: 0 });
+            m.frame({ type: 'error', source_type: 'ui', message: 'No size, low' });
             m.at('low_btn', 700);
             m.app.renderCurrentPage();
             m.frame({ type: 'error', source_type: 'ui', message: 'Redrawn since' });
@@ -10144,11 +10168,12 @@ Object.assign(tests, {
         });
 
         // The design canvas sends nothing, so it claims nothing.
-        run('design_canvas', { elements: [macroButton('e_btn', 'e1')], edit: true }, (m) => {
+        run('design_canvas', { elements: [macroButton('e_btn', 'e1'), progressLabel('e_p', 'e1', 'Idle')], edit: true }, (m) => {
             m.press('e_btn');
             m.run('e2');
             m.frame({ type: 'macro.step_error', macro_id: 'e1', message: 'Canvas' });
-            m.frame({ type: 'macro.started', macro_id: 'e1' });
+            m.frame({ type: 'macro.started', macro_id: 'e1', total_steps: 2 });
+            m.frame({ type: 'macro.progress', macro_id: 'e1', description: 'Step words' });
             m.frame({ type: 'macro.completed', macro_id: 'e1' });
         });
 
