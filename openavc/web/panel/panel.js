@@ -7,11 +7,8 @@
 
 import { NOT_APPROVED_CLOSE, PanelAccess } from './modules/access.js';
 import { assetUrl, basePath } from './modules/base_path.js';
-import { pickLook, sameWords, withTwoStateWords } from './modules/looks.js';
-import {
-    applyStyle, clearStateColours, drawFadedPicture,
-    gradientCss, updateImageTint,
-} from './modules/paint.js';
+import { pickLook, withTwoStateWords } from './modules/looks.js';
+import { applyStyle, clearStateColours, updateImageTint } from './modules/paint.js';
 import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
