@@ -263,6 +263,36 @@ def test_every_type_reads_exactly_what_the_table_says(
     assert derived == HONORED_SHOW_SLOTS
 
 
+#: A binding a renderer registers: an object that opens with its type and then
+#: the element it draws on, the form every registration in panel.js takes.
+_REGISTRATION = re.compile(r"\{\s*type:\s*'([\w_]+)',\s*element\b")
+
+#: Binding types a renderer registers that the binding pass leaves alone, each
+#: with the panel module that draws them instead.
+_DRAWN_ELSEWHERE = {"macro_progress": "macro_runs.js"}
+
+
+def test_every_binding_a_renderer_registers_has_its_evaluator(evaluator_for: dict[str, str]) -> None:
+    """A binding registered without an evaluator is drawn once and never again.
+
+    The binding pass looks each binding's type up in EVALUATORS
+    (modules/dispatch.js) and passes over one it does not find. That is right
+    for a macro's progress line, which the macro module draws, and wrong for
+    anything else: a renderer that registers a new kind of binding without its
+    row draws the control from its definition and then ignores every change of
+    state. Nothing errors, and the look and property tables here derive what
+    that control honours as if the binding read nothing. The other way round,
+    a row no renderer registers is an evaluator nothing reaches.
+    """
+    registered = set(_REGISTRATION.findall(PANEL_JS.read_text(encoding="utf-8")))
+    assert len(registered) > 10, "registration scan found almost nothing -- the parse is wrong"
+    for bind_type, module in _DRAWN_ELSEWHERE.items():
+        assert bind_type in registered, f"nothing registers {bind_type} now: drop it from _DRAWN_ELSEWHERE"
+        drawer = (PANEL_JS.parent / "modules" / module).read_text(encoding="utf-8")
+        assert f"'{bind_type}'" in drawer, f"modules/{module} no longer draws {bind_type}"
+    assert registered - set(_DRAWN_ELSEWHERE) == set(evaluator_for)
+
+
 def _evaluator_reach(evaluator: str, bodies: dict[str, str]) -> str:
     """An evaluator's body and every helper it hands the element to, as one text.
 
