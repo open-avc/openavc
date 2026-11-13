@@ -12,15 +12,19 @@
  * The rule worth knowing before changing anything here: the storage key and
  * the two forms the token travels in -- `Authorization: Bearer <token>` on a
  * request, the `auth.bearer.<token>` WebSocket subprotocol -- are the IDE's
- * and the server's as well (auth.ts, and check_ws_auth() in
- * openavc/api/auth.py), so a change to one is a change to all three. The
- * stored value is the bare token, URL-safe base64, valid as it is in both.
+ * and the server's as well (auth.ts; in openavc/api/auth.py,
+ * programmer_authority reads the header and websocket_authority both), so a
+ * change to one is a change to all three. tests/test_session_bridge_parity.py
+ * holds the key and both forms equal to the IDE's and runs the server's own
+ * readers on what this module sends. The stored value is the bare token,
+ * URL-safe base64, valid as it is in both.
  *
  * The token is read at each request and never kept, so the IDE signing in or
  * out reaches the next one. A panel opened on its own holds no session, and
  * then nothing is added. A header the caller set is never replaced. Whether
- * an address is the API is read from its path alone, never its host: every
- * request the panel makes goes to its own server.
+ * a request goes to the API is read from its address as written, anywhere in
+ * it, with no check of its origin (the IDE's isSameOriginApiUrl has one):
+ * every request the panel makes goes to its own server.
  */
 
 const STORAGE_KEY = 'openavc.programmer.session';
@@ -71,7 +75,10 @@ function withAuthorization(input, init, auth) {
 /**
  * Carry the session on this window's /api requests, and offer it to the
  * socket as `window.__openavcGetAuthSubprotocol`, which the panel's connect
- * reads. Installed once, before anything fetches.
+ * reads. Installed once, before anything fetches. `win` is the window whose
+ * fetch is wrapped and where the subprotocol is published; the storage and
+ * the Headers, Request and URL it reads are this module's own (the same
+ * window, in the panel).
  */
 export function installSessionBridge(win) {
     win.__openavcGetAuthSubprotocol = authSubprotocol;

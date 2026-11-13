@@ -21,6 +21,10 @@
 import { CLIENT_HEADER, CLIENT_ID } from "./clientId";
 import { getTunnelPrefix } from "./base";
 
+/** A panel the UI Builder embeds reads this same key and sends the same two
+ *  forms as getAuthHeader and getAuthSubprotocols below
+ *  (openavc/web/panel/modules/session.js): a change here changes it there,
+ *  and tests/test_session_bridge_parity.py fails until it does. */
 const STORAGE_KEY = "openavc.programmer.session";
 
 /** Pre-token versions stored `{user, pass}` under this key. Never read it —
