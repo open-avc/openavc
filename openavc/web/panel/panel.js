@@ -30,6 +30,7 @@ import { PanelLock } from './modules/lock.js';
 import { SoundPlayer } from './modules/sound.js';
 import { PanelTheme, ThemeStudioPicker } from './modules/theme.js';
 import { UiOverrides } from './modules/overrides.js';
+import { Availability, changeReaches, devicesFlipped } from './modules/availability.js';
 import { ProjectStylesheet, applyCssClass } from './modules/stylesheet.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
@@ -135,32 +136,6 @@ const OVERLAY_DEFAULTS = {
 // The snap increment a page falls back to: the old 12x8 grid's spacing.
 const SNAP_FALLBACK = { x: 100 / 12, y: 100 / 8 };
 
-// The `device.<id>.*` properties the PLATFORM maintains rather than the device
-// reports. They describe the device -- whether it is reachable, what it is
-// called, whether it is enabled -- so they stay true while it is unreachable
-// and must keep rendering. `connected` above all: an LED bound to it IS the
-// offline report, and blanking that would hide the one honest thing on the
-// page. Everything else under `device.` came from the far end of a wire that
-// is no longer there. Kept in step with what core/device_manager.py writes.
-const DEVICE_PLATFORM_PROPS = new Set([
-    'connected', 'enabled', 'name', 'offline_detail', 'offline_reason',
-    'orphan_reason', 'orphaned', 'paused', 'paused_for', 'reconnect_attempt',
-    'reconnect_failed', 'restarting', 'asleep', 'wake_command',
-]);
-
-// The same set, for a child entity's reserved props. A child carries the
-// platform's own account of itself under `device.<id>.<type>.<local>.<prop>`,
-// and those four keep telling the truth while the parent is away exactly as
-// the device's own pair does -- so a label bound to one must keep rendering.
-//
-// Until this existed the split rule was accidental rather than decided: the
-// device's `offline_reason` is three segments and was exempt, its child's is
-// five and was not, so a panel bound to a child's fault drew `--` at precisely
-// the moment the child had something to say.
-const CHILD_PLATFORM_PROPS = new Set([
-    'online', 'offline_reason', 'offline_detail', 'label',
-]);
-
 class PanelApp {
     constructor() {
         const params = new URLSearchParams(window.location.search);
@@ -199,12 +174,14 @@ class PanelApp {
         this.statusEl = document.getElementById('connection-status');
         this.bindings = [];          // Active bindings to evaluate on state change
         this.elementMap = {};        // element_id -> {el, elementDef} for ui.* overrides
-        // Preview only: element_id -> the devices its press reaches, from the
-        // server's ui.definition (the Builder's copy never carries them).
-        this._servedActionDevices = null;
-        // Preview only: element_id -> the devices its press reaches through a
-        // command that works while they are offline (`wake_devices`).
-        this._servedWakeDevices = null;
+        // Whether what a control shows can be believed and whether a press on
+        // it can land, and Preview's copy of what each press reaches
+        // (modules/availability.js).
+        this.availability = new Availability({
+            state: () => this.state,
+            editMode: () => this.editMode,
+            elementMap: () => this.elementMap,
+        });
         // Editing words in place on the design canvas (modules/text_edit.js):
         // the edit in flight, and the gate both of its doors ask.
         this._textEditor = new TextEditor(this._textEditHost());
@@ -694,9 +671,8 @@ class PanelApp {
                 // can work out (`ui/action_devices.py`).
                 if (this.embedded) {
                     if (!this.editMode) {
-                        this._servedActionDevices = this._actionDevicesById(msg.ui);
-                        this._servedWakeDevices = this._actionDevicesById(msg.ui, 'wake_devices');
-                        this.evaluateActionAvailability();
+                        this.availability.takeServed(msg.ui);
+                        this.availability.markActions();
                     }
                     break;
                 }
@@ -2335,7 +2311,7 @@ class PanelApp {
             design: () => this.editMode,
             offline: () => {
                 const binding = bindingOf();
-                return !!binding && this._bindingOffline(binding);
+                return !!binding && this.availability.readingOffline(binding);
             },
         };
     }
@@ -2702,8 +2678,7 @@ class PanelApp {
 
     evaluateListSelected(b) {
         const value = this.state[b.binding.key];
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
         showListSelection(b._list, value, offline);
     }
 
@@ -2765,7 +2740,7 @@ class PanelApp {
                 this._lastTouchedElementId = element.id;
                 this.send(frame);
             },
-            offline: (key) => this._keyDeviceOffline(key),
+            offline: (key) => this.availability.keyOffline(key),
             orientation: this._drawnOrientation,
             remPx: REM_BASE_PX,
         };
@@ -2774,7 +2749,7 @@ class PanelApp {
     evaluateMatrixRoutes(b) {
         const matrix = b._matrix;
         const destOffline = matrix.offlineDestinations();
-        this._markMatrixAvailability(matrix, destOffline);
+        this.availability.markMatrixRows(matrix, destOffline);
         matrix.update(destOffline);
     }
 
@@ -2815,12 +2790,12 @@ class PanelApp {
 
     evaluateGaugeValue(b) {
         const raw = this.state[b.binding.key];
-        const offline = this._bindingOffline(b);
+        const offline = this.availability.readingOffline(b);
         // Memoize: skip if unchanged (also short-circuits the undefined steady state)
         if (b._lastGaugeRaw === raw && b._lastGaugeOffline === offline) return;
         b._lastGaugeRaw = raw;
         b._lastGaugeOffline = offline;
-        this._markBindingAvailability(b, offline);
+        this.availability.markReading(b, offline);
         b._gauge.show(raw, offline);
     }
 
@@ -2863,11 +2838,11 @@ class PanelApp {
 
     evaluateLevelMeterValue(b) {
         const raw = this.state[b.binding.key];
-        const offline = this._bindingOffline(b);
+        const offline = this.availability.readingOffline(b);
         if (b._lastMeterRaw === raw && b._lastMeterOffline === offline) return;
         b._lastMeterRaw = raw;
         b._lastMeterOffline = offline;
-        this._markBindingAvailability(b, offline);
+        this.availability.markReading(b, offline);
         b._meter.show(raw, offline);
     }
 
@@ -2927,13 +2902,13 @@ class PanelApp {
 
     evaluateFaderValue(b) {
         const raw = this.state[b.binding.key];
-        const offline = this._bindingOffline(b);
+        const offline = this.availability.readingOffline(b);
         // Connectivity is part of the memo: the value can be identical either
         // side of a device going away, and what it is worth is not.
         if (b._lastFaderRaw === raw && b._lastFaderOffline === offline) return;
         b._lastFaderRaw = raw;
         b._lastFaderOffline = offline;
-        this._markBindingAvailability(b, offline);
+        this.availability.markReading(b, offline);
         b._fader.show(raw, offline);
     }
 
@@ -3332,200 +3307,6 @@ class PanelApp {
     }
 
     /**
-     * The device a state key reports FROM, or null when it names none.
-     *
-     * `device.<id>.<prop>` is the whole rule, and a child key carries the same
-     * second segment (`device.<id>.<type>.<local>.<prop>`), so one split covers
-     * both. A key naming one of the platform-maintained props is deliberately
-     * not attributed to the device: those keep telling the truth when it is
-     * gone, and a panel bound to them is reporting the fault, not hiding it.
-     */
-    _deviceIdForKey(key) {
-        if (typeof key !== 'string' || !key.startsWith('device.')) return null;
-        const parts = key.split('.');
-        if (parts.length < 3) return null;
-        if (parts.length === 3 && DEVICE_PLATFORM_PROPS.has(parts[2])) return null;
-        // `device.<id>.<type>.<local>.<prop>` — the child's own reserved props
-        // are the platform's account of the child, not a reading from the far
-        // end of the wire, so they are exempt for the same reason.
-        if (parts.length === 5 && CHILD_PLATFORM_PROPS.has(parts[4])) return null;
-        return parts[1] || null;
-    }
-
-    /** Every device a binding reads from, or null. Cached: bindings are rebuilt with the page. */
-    _bindingDeviceIds(b) {
-        if (b._deviceIds !== undefined) return b._deviceIds;
-        const bd = b.binding || {};
-        const keys = [];
-        if (bd.key) keys.push(bd.key);
-        if (Array.isArray(bd._keys)) keys.push(...bd._keys);
-        if (Array.isArray(bd._patterns)) keys.push(...bd._patterns);
-        if (bd.key_pattern) keys.push(bd.key_pattern);
-        const ids = new Set();
-        for (const k of keys) {
-            const id = this._deviceIdForKey(k);
-            if (id) ids.add(id);
-        }
-        b._deviceIds = ids.size ? [...ids] : null;
-        return b._deviceIds;
-    }
-
-    /**
-     * Whether a device is known to be unreachable right now.
-     *
-     * Strictly `=== false`: an absent `connected` key means nobody has said
-     * either way -- a panel drawn before its first snapshot -- and that must
-     * render normally rather than as a page full of dead controls.
-     *
-     * NEVER in the design canvas. Everything below this is a RUNTIME
-     * condition, not a property of the page being drawn, and the canvas is fed
-     * the IDE's live state -- so on a bench where the gear is not plugged in
-     * yet, every bound control would draw dimmed and dashed and the author
-     * could not see the colours, the handle or the artwork they are placing.
-     * The treatment REPLACES the design, where a live value merely fills it
-     * in, which is what makes this different from showing real state on the
-     * canvas at all. The Preview button is the honest answer for "what does
-     * the room see": it runs the same renderer over a real WebSocket, so an
-     * author who wants to check how a page reads with a device down has a
-     * place to go, and the runtime panel is untouched either way.
-     */
-    _deviceOffline(deviceId) {
-        if (this.editMode) return false;
-        return this.state[`device.${deviceId}.connected`] === false;
-    }
-
-    /** True when a key's device is known to be unreachable right now. */
-    _keyDeviceOffline(key) {
-        const id = this._deviceIdForKey(key);
-        return id ? this._deviceOffline(id) : false;
-    }
-
-    /**
-     * Whether this binding's reading can be believed.
-     *
-     * One exception: a device put to sleep on purpose (`device.<id>.asleep`)
-     * keeps the readings of a control whose press wakes it. That press goes
-     * out with the device off the network (`wake_devices`, resolved on the
-     * server from the drivers' `available_offline`), and its feedback is the
-     * true "off", so the Power On button stays live while every other control
-     * bound to the device greys out.
-     */
-    _bindingOffline(b) {
-        const ids = this._bindingDeviceIds(b);
-        if (!ids) return false;
-        const wakes = this._elementWakeDevices(b.elementDef);
-        return ids.some(id => this._deviceOffline(id) && !(wakes.includes(id) && this._deviceAsleep(id)));
-    }
-
-    /** True while the device is asleep on purpose (never in the design canvas). */
-    _deviceAsleep(deviceId) {
-        if (this.editMode) return false;
-        return this.state[`device.${deviceId}.asleep`] === true;
-    }
-
-    /** The devices an element's press reaches through a command that works offline. */
-    _elementWakeDevices(elementDef) {
-        const list = this._servedWakeDevices
-            ? this._servedWakeDevices.get(elementDef?.id)
-            : elementDef?.wake_devices;
-        return Array.isArray(list) ? list : [];
-    }
-
-    /**
-     * Mark the element a binding draws into as unavailable, or clear it.
-     *
-     * Tallied per element rather than toggled, because one element can carry
-     * several bindings (a select's value and its look) which may name
-     * different devices -- the control is unavailable while ANY of them is.
-     */
-    _markBindingAvailability(b, offline) {
-        const host = this.elementMap[b.elementDef?.id]?.el || b.element;
-        if (!host || !host.classList) return;
-        const tally = host._offlineBindings || (host._offlineBindings = new Set());
-        if (offline) tally.add(b); else tally.delete(b);
-        host.classList.toggle('device-offline', tally.size > 0);
-    }
-
-    /**
-     * Mark controls whose ACTIONS cannot land, which is a different statement
-     * from a reading that cannot be trusted and gets a lighter treatment.
-     *
-     * The two axes, and why they are not the same mark:
-     *
-     * - A `show` binding on an unreachable device means "this number is not
-     *   worth believing": the value is masked and the element is drained of
-     *   colour, because a confident-looking reading is the lie.
-     * - A `do` action on an unreachable device means "pressing this will be
-     *   refused": the label, the colour and the artwork are all still correct,
-     *   and only the availability is not. It gets the same dashed edge and
-     *   keeps everything else, which is what stops a page going grey because
-     *   one device is rebooting.
-     *
-     * ANY vs ALL is the other difference, and it matters most on the button
-     * somebody actually built the page around. A reading is spoiled by ONE bad
-     * source, so `_bindingOffline` marks on any. An action still does
-     * something as long as one target is there -- a System On macro touching
-     * eight devices is not unavailable because a display is off -- so this
-     * marks only when NOTHING it can reach is up.
-     *
-     * `action_devices` is resolved on the server (`ui/action_devices.py`);
-     * following a macro into a group is not something the renderer can do.
-     * Preview draws the Builder's copy of the page, which never carries it, so
-     * there it comes from the server's own definition, matched by element id
-     * (`_servedActionDevices`): it follows an edit once the Builder saves it.
-     */
-    evaluateActionAvailability() {
-        for (const [id, entry] of Object.entries(this.elementMap)) {
-            const el = entry?.el;
-            if (!el || !el.classList) continue;
-            const devices = this._servedActionDevices
-                ? this._servedActionDevices.get(id)
-                : entry?.elementDef?.action_devices;
-            if (!Array.isArray(devices) || !devices.length) {
-                // Preview re-reads this without a re-render when the server's
-                // definition moves, so a control that now reaches nothing has
-                // to lose a mark it was drawn with.
-                el.classList.remove('action-offline');
-                continue;
-            }
-            const stranded = devices.every(id => this._deviceOffline(id));
-            // Never both: an element already carrying the reading mark has
-            // been drained, and adding a second dashed edge over it would draw
-            // the border twice.
-            el.classList.toggle(
-                'action-offline',
-                stranded && !el.classList.contains('device-offline'),
-            );
-        }
-    }
-
-    /** Element id -> the devices its press reaches, from a resolved definition. */
-    _actionDevicesById(ui, key = 'action_devices') {
-        const byId = new Map();
-        const pages = Array.isArray(ui?.pages) ? ui.pages : [];
-        const elements = pages.flatMap(p => (Array.isArray(p?.elements) ? p.elements : []))
-            .concat(Array.isArray(ui?.master_elements) ? ui.master_elements : []);
-        for (const element of elements) {
-            if (element?.id && Array.isArray(element[key])) {
-                byId.set(element.id, element[key]);
-            }
-        }
-        return byId;
-    }
-
-    /**
-     * The same unavailable mark, one destination at a time. A matrix is the
-     * one control that can be half true, so it is marked per row rather than
-     * per element: every node of a destination's row takes the mark.
-     */
-    _markMatrixAvailability(matrix, destOffline) {
-        for (const [index, nodes] of matrix.destinationRows()) {
-            const offline = !!destOffline[index];
-            for (const node of nodes) node.classList.toggle('device-offline', offline);
-        }
-    }
-
-    /**
      * Draw the artwork a button should show in its current state, after
      * applyStyle has decided background-image for the gradient.
      *
@@ -3607,47 +3388,12 @@ class PanelApp {
     }
 
     evaluateAllBindings(changedKeys = null) {
-        // Which devices just changed reachability. A binding reading one of
-        // them has to be re-evaluated even though its OWN key did not move:
-        // the value is the same and what it is worth has changed.
-        let flipped = null;
-        if (changedKeys) {
-            for (const k of changedKeys) {
-                // `asleep` too: it lands just after `connected` drops, and it
-                // decides whether a wake control's reading still counts.
-                if (typeof k === 'string' && k.startsWith('device.')
-                    && (k.endsWith('.connected')
-                        || (k.endsWith('.asleep') && k.split('.').length === 3))) {
-                    (flipped || (flipped = new Set())).add(k.split('.')[1]);
-                }
-            }
-        }
+        // Which devices just changed reachability: a binding reading one of
+        // them is drawn again even though its own key did not move.
+        const flipped = devicesFlipped(changedKeys);
         for (const b of this.bindings) {
             try {
-                // Skip bindings not affected by changed keys
-                const ids = flipped && this._bindingDeviceIds(b);
-                const reachChanged = ids ? ids.some(id => flipped.has(id)) : false;
-                if (changedKeys && !reachChanged) {
-                    const bKey = b.binding?.key;
-                    const bKeys = b.binding?._keys;        // visible_when: array of keys
-                    // matrix: the concrete keys it reads, one per entry. A concrete
-                    // key is its own prefix, so the test below matches it exactly.
-                    const bPatterns = b.binding?._patterns;
-                    const bPattern = b.binding?.key_pattern;
-                    if (bKeys && !bKeys.some(k => changedKeys.includes(k))) continue;
-                    if (bKey && !bKeys && !changedKeys.includes(bKey)) continue;
-                    if (bPatterns) {
-                        const hit = bPatterns.some(p => {
-                            const prefix = p.replace(/\*.*$/, '');
-                            return changedKeys.some(k => k.startsWith(prefix));
-                        });
-                        if (!hit) continue;
-                    } else if (bPattern) {
-                        const prefix = bPattern.replace(/\*.*$/, '');
-                        if (!changedKeys.some(k => k.startsWith(prefix))) continue;
-                    }
-                    if (!bKey && !bPattern && !bPatterns) { /* safety: evaluate anyway */ }
-                }
+                if (changedKeys && !changeReaches(b, changedKeys, flipped)) continue;
                 this._evaluateBinding(b);
             } catch (e) {
                 console.error('Binding error:', e);
@@ -3655,9 +3401,8 @@ class PanelApp {
         }
 
         // Controls whose ACTIONS cannot land. Not a binding, so it is not in
-        // the loop above: an action-only button pushes nothing onto
-        // this.bindings, which is exactly why it used to carry no mark at all.
-        this.evaluateActionAvailability();
+        // the loop above.
+        this.availability.markActions();
 
         // Apply ui.* state overrides (set by macros/scripts)
         // These take priority over feedback bindings for direct control.
@@ -3787,8 +3532,7 @@ class PanelApp {
         const stateValue = this.state[binding.key];
         const baseStyle = elementDef.style || {};
 
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
         if (offline) {
             // Back to the label's own colours and its own words, asserting no
             // state. Where a `show.value` binding owns the text instead, it is
@@ -3833,8 +3577,7 @@ class PanelApp {
         const { element, elementDef, binding } = b;
         const rest = this.theme.styleFor(elementDef.type, elementDef.style || {});
 
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
 
         const appearance = offline ? {} : pickLook(binding, this.state[binding.key]).appearance;
 
@@ -3857,8 +3600,7 @@ class PanelApp {
     evaluateNavLook(b) {
         const { element, elementDef, binding } = b;
         const rest = this.theme.styleFor(elementDef.type, elementDef.style || {});
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
 
         const { appearance, wordsPath } = binding.key && !offline
             ? withTwoStateWords(binding, pickLook(binding, this.state[binding.key]))
@@ -3899,7 +3641,7 @@ class PanelApp {
         const { element, elementDef, binding } = b;
         const rest = this.theme.styleFor(elementDef.type, elementDef.style || {});
 
-        const appearance = this._bindingOffline(b)
+        const appearance = this.availability.readingOffline(b)
             ? {}
             : pickLook(binding, this.state[binding.key]).appearance;
 
@@ -3916,8 +3658,7 @@ class PanelApp {
 
     evaluateFeedback(b) {
         const { element, elementDef, binding } = b;
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
         if (offline) {
             this._drawButtonClaimingNoState(element, elementDef);
             return;
@@ -4023,8 +3764,7 @@ class PanelApp {
         const { element, elementDef, binding } = b;
         const baseStyle = elementDef.style || {};
 
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
 
         const stateValue = this.state[binding.key];
         const on = !offline && stateValue != null && binding.value !== undefined &&
@@ -4188,8 +3928,7 @@ class PanelApp {
         };
         const FORMAT = ['bindings', 'show', 'value', 'format'];
 
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
         if (offline) {
             // The label keeps its sentence and loses its number: a format of
             // "Amp draw: {value} A" reads "Amp draw: -- A". What was
@@ -4238,8 +3977,7 @@ class PanelApp {
 
     evaluateColor(b) {
         const { element, binding } = b;
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
         // An unreachable device lights nothing. A status LED holding its last
         // colour is the smallest and most persuasive of these lies -- it is the
         // control an integrator puts on a page precisely to be glanced at.
@@ -4273,18 +4011,17 @@ class PanelApp {
         // readings or disconnection feedback; only an active drag does.
         if (b.element._dragging) return;
         const rawValue = this.state[b.binding.key];
-        const offline = this._bindingOffline(b);
+        const offline = this.availability.readingOffline(b);
         if (b._lastSliderRaw === rawValue && b._lastSliderOffline === offline) return;
         b._lastSliderRaw = rawValue;
         b._lastSliderOffline = offline;
-        this._markBindingAvailability(b, offline);
+        this.availability.markReading(b, offline);
         b._slider.show(rawValue, offline);
     }
 
     evaluateSelectValue(b) {
         const value = this.state[b.binding.key];
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
         showSelectValue(b.element, value, offline);
     }
 
@@ -4293,8 +4030,7 @@ class PanelApp {
     evaluateSelectLook(b) {
         const stateValue = this.state[b.binding.key];
         const styleMap = b.binding.style_map || {};
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
         showSelectLook(b.select, styleMap, stateValue, offline);
     }
 
@@ -4302,8 +4038,7 @@ class PanelApp {
         // Don't overwrite if user is actively editing (prevents cursor loss)
         if (document.activeElement === b.element) return;
         const value = this.state[b.binding.key];
-        const offline = this._bindingOffline(b);
-        this._markBindingAvailability(b, offline);
+        const offline = this.availability.markReading(b);
         showTextValue(b.element, value, offline);
     }
 

@@ -148,6 +148,8 @@ const clearColours = (node, rest) => paint().clearStateColours(node, rest);
 const sanitizeValue = (value) => paint().sanitizeCssValue(value);
 const sanitizeUrl = (url) => paint().sanitizeCssUrl(url);
 const assetUrl = (ref) => panelModule('base_path.js').assetUrl(ref);
+// Whether a reading can be believed, and the device a key reports from.
+const availability = () => panelModule('availability.js');
 
 // --- The level controls (slider and fader), as a page draws them -----------
 //
@@ -2746,16 +2748,16 @@ const tests = {
     // covers `device.<id>.<prop>` and `device.<id>.<type>.<local>.<prop>`.
     q213_child_entity_keys_belong_to_their_parent_device() {
         const app = mkApp();
-        assert(app._deviceIdForKey('device.amp.gain') === 'amp', 'device property');
-        assert(app._deviceIdForKey('device.amp.input.1.mute') === 'amp', 'child property');
-        assert(app._deviceIdForKey('var.volume') === null, 'a variable names no device');
-        assert(app._deviceIdForKey('plugin.x.y') === null, 'nor does a plugin key');
+        assert(availability().deviceIdForKey('device.amp.gain') === 'amp', 'device property');
+        assert(availability().deviceIdForKey('device.amp.input.1.mute') === 'amp', 'child property');
+        assert(availability().deviceIdForKey('var.volume') === null, 'a variable names no device');
+        assert(availability().deviceIdForKey('plugin.x.y') === null, 'nor does a plugin key');
         // The platform-maintained ones describe the device rather than report
         // from it, so a panel bound to them is reporting the fault.
         for (const prop of ['connected', 'name', 'offline_reason', 'offline_detail',
             'enabled', 'paused', 'orphaned', 'orphan_reason',
             'reconnect_attempt', 'reconnect_failed']) {
-            assert(app._deviceIdForKey(`device.amp.${prop}`) === null,
+            assert(availability().deviceIdForKey(`device.amp.${prop}`) === null,
                 `device.<id>.${prop} keeps telling the truth when the device is gone`);
         }
     },
@@ -3060,11 +3062,11 @@ const tests = {
             elementDef: { id: 'x' }, binding: { key: 'device.amp.gain' },
         };
         app.state = {};
-        assert(app._bindingOffline(b) === false, 'no key at all');
+        assert(app.availability.readingOffline(b) === false, 'no key at all');
         app.state = { 'device.amp.connected': true };
-        assert(app._bindingOffline(b) === false, 'connected');
+        assert(app.availability.readingOffline(b) === false, 'connected');
         app.state = { 'device.amp.connected': false };
-        assert(app._bindingOffline(b) === true, 'and only an explicit false counts');
+        assert(app.availability.readingOffline(b) === true, 'and only an explicit false counts');
     },
 
     // The design canvas never draws it. Being unreachable is a runtime
@@ -3116,10 +3118,10 @@ const tests = {
         app.elementMap = { e: { el: host, elementDef: { id: 'e' } } };
         const a = { elementDef: { id: 'e' }, element: host, binding: { key: 'device.a.v' } };
         const b = { elementDef: { id: 'e' }, element: host, binding: { key: 'device.b.v' } };
-        app._markBindingAvailability(a, true);
-        app._markBindingAvailability(b, false);
+        app.availability.markReading(a, true);
+        app.availability.markReading(b, false);
         assert(host.classList.contains('device-offline'), 'one gone is enough');
-        app._markBindingAvailability(a, false);
+        app.availability.markReading(a, false);
         assert(!host.classList.contains('device-offline'), 'and both back clears it');
     },
 
@@ -6098,7 +6100,7 @@ const tests = {
         app.evaluateAllBindings();
         const btn = app.root.querySelector('[data-element-id="btn"]');
         assert(!btn.classList.contains('action-offline'), `the canvas is unmarked, got "${btn.className}"`);
-        assert(!app._servedActionDevices, 'the canvas keeps nothing from the server');
+        assert(!app.availability.servedActionDevices, 'the canvas keeps nothing from the server');
     },
 
     // A signage player or a dashboard card that frames /panel gets an ordinary
@@ -9578,11 +9580,11 @@ function availabilityCase(got, name, opts, script) {
 }
 
 /** The device a key reports from, as the panel decides it. */
-const deviceOfKey = (app, key) => app._deviceIdForKey(key);
+const deviceOfKey = (app, key) => availability().deviceIdForKey(key);
 /** Every device a binding reads from, as the panel decides it. */
-const devicesOfBinding = (app, b) => app._bindingDeviceIds(b);
+const devicesOfBinding = (app, b) => availability().bindingDeviceIds(b);
 /** Mark (or clear) the element a binding draws into, as the panel does. */
-const markReading = (app, b, offline) => app._markBindingAvailability(b, offline);
+const markReading = (app, b, offline) => app.availability.markReading(b, offline);
 
 Object.assign(tests, {
     availability_marks_and_reach_as_today() {
@@ -9848,11 +9850,11 @@ Object.assign(tests, {
             // A reading of two devices is spoiled while either is down.
             const twoDevices = { elementDef: { id: 'two' }, binding: { key: 'device.a.v', key_pattern: 'device.b.*' } };
             app.state = { 'device.a.connected': true, 'device.b.connected': false };
-            bindings.two_devices = [app._bindingOffline(twoDevices)];
+            bindings.two_devices = [app.availability.readingOffline(twoDevices)];
             app.state = { 'device.a.connected': false, 'device.b.connected': true };
-            bindings.two_devices.push(app._bindingOffline(twoDevices));
+            bindings.two_devices.push(app.availability.readingOffline(twoDevices));
             app.state = { 'device.a.connected': true, 'device.b.connected': true };
-            bindings.two_devices.push(app._bindingOffline(twoDevices));
+            bindings.two_devices.push(app.availability.readingOffline(twoDevices));
             // The mark goes on the element the map knows, else the node the
             // binding draws into, else nowhere.
             const marks = [];
