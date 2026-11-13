@@ -49,17 +49,23 @@ export function showsOwnPicture(elementDef) {
  */
 export function drawFace(node, element, themedStyle) {
     if (element.frameless) applyFrameless(node);
-    const displayMode = element.display_mode || 'text';
     if (!showsWords(element)) node.textContent = '';
-    if (displayMode === 'icon_only' && !element.icon_position) {
+    if (element.display_mode === 'icon_only' && !element.icon_position) {
         element.icon_position = 'center';
     }
     drawIcon(node, element);
-    if (showsOwnPicture(element) && element.button_image) {
-        drawPicture(node, element, element.button_image, themedStyle.bg_color);
-        if (displayMode === 'image_text') {
-            node.style.textShadow = '0 1px 0.2143rem rgba(0,0,0,0.8)';
-        }
+    drawOwnPicture(node, element, themedStyle.bg_color);
+}
+
+/**
+ * A button's own picture, where its display mode draws one; words drawn over
+ * it (`image_text`) take a shadow so they read on it.
+ */
+function drawOwnPicture(node, element, tint) {
+    if (!showsOwnPicture(element) || !element.button_image) return;
+    drawPicture(node, element, element.button_image, tint);
+    if (element.display_mode === 'image_text') {
+        node.style.textShadow = '0 1px 0.2143rem rgba(0,0,0,0.8)';
     }
 }
 
