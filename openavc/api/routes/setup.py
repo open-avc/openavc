@@ -104,7 +104,8 @@ def _panel_has_content(engine) -> bool:
     The custom-page arm is what keeps a finished project off the setup
     screen: without it an integrator who builds the room entirely out of
     their own pages has a working panel that no appliance display will show.
-    ``panel.js::_isCustomPage`` reads the same two fields.
+    The panel's ``isCustomPage`` (``web/panel/modules/pages.js``) reads the
+    same two fields.
     """
     project = getattr(engine, "project", None)
     if project is None:

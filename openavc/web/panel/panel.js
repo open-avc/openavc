@@ -36,8 +36,12 @@ import { MacroRuns } from './modules/macro_runs.js';
 import { ProjectStylesheet } from './modules/stylesheet.js';
 import {
     applyCoordinateSpaces, applyLivePlacements, applyVminOverride, drawElementTree, drawSnapRuler,
-    masterOrientation, masterPlacement, pct, placeElement, selectLayout, viewportOrientation,
+    masterOrientation, masterPlacement, placeElement, selectLayout, viewportOrientation,
 } from './modules/layout.js';
+import {
+    drawOverlayFrame, fallbackPage, isCustomPage, namesPage, opensOver, pageBehind, pageDrawsNothing,
+    pageRunsAuthorMarkup, rememberPage,
+} from './modules/pages.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
@@ -122,16 +126,6 @@ const REM_BASE_PX = 14;
 // A button's display modes that draw no words, and those that draw its own picture.
 const WORDLESS_MODES = new Set(['image', 'icon_only']);
 const PICTURE_MODES = new Set(['image', 'image_text']);
-
-// Overlay and sidebar boxes, as percentages of the viewport. These are the
-// old hardcoded pixel defaults (400x300 dialog, 320-wide sidebar) measured
-// against the 1280x800 reference, so an overlay that never set a size keeps
-// the proportions it had.
-const OVERLAY_DEFAULTS = {
-    dialogWidth: 31.25,
-    dialogHeight: 37.5,
-    sidebarWidth: 25,
-};
 
 class PanelApp {
     constructor() {
@@ -716,7 +710,7 @@ class PanelApp {
                 // ui.definition is ignored there.
                 if (this.embedded) break;
                 this._uiFilesVersion = msg.version;
-                if (this.snapshotReceived && this._pageRunsAuthorMarkup()) {
+                if (this.snapshotReceived && pageRunsAuthorMarkup(this.uiDef, this.currentPage)) {
                     this.renderCurrentPage();
                 }
                 break;
@@ -900,15 +894,8 @@ class PanelApp {
         // $back — phone-style: if an overlay is open, dismiss it;
         // otherwise pop the page-history stack and go there.
         if (pageId === '$back') {
-            if (this.overlayStack.length > 0) {
-                this.dismissOverlay();
-                return;
-            }
-            const prev = this.pageHistory.pop();
-            if (!prev) return; // No history → no-op
-            this._navigatingBack = true;
-            try { this.navigateToPage(prev); }
-            finally { this._navigatingBack = false; }
+            if (this.overlayStack.length > 0) this.dismissOverlay();
+            else this._goBack();
             return;
         }
 
@@ -920,24 +907,27 @@ class PanelApp {
         // was avoiding is about to be gone.
         this._failureBand.dismiss();
 
-        const pageType = targetPage.page_type || 'page';
-
-        if (pageType === 'overlay' || pageType === 'sidebar') {
-            // Push onto overlay stack
+        if (opensOver(targetPage)) {
             this.overlayStack.push(pageId);
             this.renderOverlay(targetPage);
-        } else {
-            // Regular page — push current onto history (so $back can return to
-            // it), close all overlays, and switch. Skip the push when we're
-            // recursing for $back, and when the target is the same page.
-            if (!this._navigatingBack && this.currentPage && this.currentPage !== pageId) {
-                this.pageHistory.push(this.currentPage);
-                if (this.pageHistory.length > 50) this.pageHistory.shift();
-            }
-            this.dismissAllOverlays();
-            this.currentPage = pageId;
-            this.renderCurrentPage();
+            return;
         }
+        // Regular page — remember the current one (so $back can return to it),
+        // close all overlays, and switch. Not while going back: that is the
+        // walk the history is for.
+        if (!this._navigatingBack) rememberPage(this.pageHistory, this.currentPage, pageId);
+        this.dismissAllOverlays();
+        this.currentPage = pageId;
+        this.renderCurrentPage();
+    }
+
+    /** `$back` with no overlay open: the page before this one, if there is one. */
+    _goBack() {
+        const prev = this.pageHistory.pop();
+        if (!prev) return; // No history → no-op
+        this._navigatingBack = true;
+        try { this.navigateToPage(prev); }
+        finally { this._navigatingBack = false; }
     }
 
     dismissOverlay() {
@@ -949,23 +939,7 @@ class PanelApp {
         if (this._previewPageId === dismissed) this._previewPageId = null;
         // Remove the topmost overlay DOM element
         const overlayEl = document.querySelector(`.panel-overlay[data-page-id="${dismissed}"]`);
-        if (overlayEl) {
-            overlayEl.querySelectorAll('[data-element-id]').forEach(el => {
-                const eid = el.dataset.elementId;
-                if (eid) this._endHold(eid);
-            });
-            // Its clocks stop: removing the element alone would leave the
-            // shared interval showing them every second forever.
-            this._clocks.releaseIn(overlayEl);
-            // Remove window 'message' listeners registered by plugin iframes in
-            // this overlay — otherwise each open/dismiss cycle leaks one stale
-            // listener (retaining the removed iframe's closure).
-            releaseFramesIn(overlayEl, this._pluginMessageHandlers);
-            overlayEl.classList.add('dismissing');
-            overlayEl.addEventListener('transitionend', () => overlayEl.remove(), { once: true });
-            // Fallback in case transitionend doesn't fire (e.g., no transition defined)
-            setTimeout(() => { if (overlayEl.parentNode) overlayEl.remove(); }, 500);
-        }
+        if (overlayEl) this._takeDownOverlay(overlayEl);
         // Clean up bindings from the dismissed overlay
         this.bindings = this.bindings.filter(b => {
             const elId = b.elementDef?.id;
@@ -973,6 +947,25 @@ class PanelApp {
             return !overlayEl?.querySelector(`[data-element-id="${elId}"]`);
         });
         this._refreshPageNavs();
+    }
+
+    /** End what an overlay's controls were doing, then let it animate away. */
+    _takeDownOverlay(overlayEl) {
+        overlayEl.querySelectorAll('[data-element-id]').forEach(el => {
+            const eid = el.dataset.elementId;
+            if (eid) this._endHold(eid);
+        });
+        // Its clocks stop: removing the element alone would leave the
+        // shared interval showing them every second forever.
+        this._clocks.releaseIn(overlayEl);
+        // Remove window 'message' listeners registered by plugin iframes in
+        // this overlay — otherwise each open/dismiss cycle leaks one stale
+        // listener (retaining the removed iframe's closure).
+        releaseFramesIn(overlayEl, this._pluginMessageHandlers);
+        overlayEl.classList.add('dismissing');
+        overlayEl.addEventListener('transitionend', () => overlayEl.remove(), { once: true });
+        // Fallback in case transitionend doesn't fire (e.g., no transition defined)
+        setTimeout(() => { if (overlayEl.parentNode) overlayEl.remove(); }, 500);
     }
 
     dismissAllOverlays() {
@@ -985,47 +978,7 @@ class PanelApp {
     }
 
     renderOverlay(page) {
-        const overlay = page.overlay || {};
-        const pageType = page.page_type || 'overlay';
-        const backdrop = overlay.backdrop || 'dim';
-        const animation = overlay.animation || 'fade';
-        const dismissOnBackdrop = overlay.dismiss_on_backdrop !== false;
-
-        // Container
-        const container = document.createElement('div');
-        container.className = `panel-overlay panel-overlay-${animation}`;
-        container.dataset.pageId = page.id;
-
-        // Backdrop
-        const backdropEl = document.createElement('div');
-        backdropEl.className = `overlay-backdrop overlay-backdrop-${backdrop}`;
-        if (dismissOnBackdrop) {
-            backdropEl.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.dismissOverlay();
-            });
-        }
-        container.appendChild(backdropEl);
-
-        // Content panel
-        const content = document.createElement('div');
-
-        // The box itself is a percentage of the viewport now, so an overlay
-        // scales with the glass instead of being the one part of a panel still
-        // pinned to hard pixels.
-        if (pageType === 'sidebar') {
-            const side = overlay.side || 'right';
-            const width = pct(overlay.width, OVERLAY_DEFAULTS.sidebarWidth);
-            content.className = `overlay-content overlay-sidebar overlay-sidebar-${side}`;
-            content.style.width = width + '%';
-        } else {
-            const width = pct(overlay.width, OVERLAY_DEFAULTS.dialogWidth);
-            const height = pct(overlay.height, OVERLAY_DEFAULTS.dialogHeight);
-            const position = overlay.position || 'center';
-            content.className = `overlay-content overlay-dialog overlay-pos-${position}`;
-            content.style.width = width + '%';
-            content.style.height = height + '%';
-        }
+        const { container, content } = drawOverlayFrame(page, () => this.dismissOverlay());
 
         // The overlay's surface runs the same renderer as a full page. Its
         // elements are percentages of the overlay box, exactly like a
@@ -1038,7 +991,7 @@ class PanelApp {
         // A dialog can be hand-written too -- it is the same frame, sized to the
         // overlay box instead of the screen, so refusing it here would be a
         // special case to explain rather than one to write.
-        const customFrame = this._isCustomPage(page) ? this._renderCustomPageFrame(page) : null;
+        const customFrame = isCustomPage(page) ? this._renderCustomPageFrame(page) : null;
         if (customFrame) surface.appendChild(customFrame);
         else this._renderPageElements(page, surface);
 
@@ -1112,8 +1065,8 @@ class PanelApp {
      *
      * The builder hands the preview a page id, and for a regular page setting
      * `currentPage` and re-rendering IS what the runtime does. An overlay is
-     * the exception: at runtime it arrives through navigateToPage, which is the
-     * only place `page_type` is read, so assigning currentPage instead rendered
+     * the exception: at runtime it opens through navigateToPage (`opensOver`,
+     * modules/pages.js, says which pages do), so assigning currentPage rendered
      * a dialog as a flat page with no backdrop -- and left `overlayStack` empty,
      * so its Cancel button (`$back`) found nothing to dismiss and silently did
      * nothing. The dialog worked on real glass and looked broken in preview,
@@ -1127,19 +1080,17 @@ class PanelApp {
     _showPageAsRuntimeWould(pageId) {
         const pages = this.uiDef?.pages || [];
         const target = pages.find(p => p.id === pageId);
-        const type = target?.page_type || 'page';
         // What the embedder last asked for, which is NOT `currentPage` once an
         // overlay is open -- that holds the page drawn behind it. Without this
         // the next editor-page for the same dialog reads as a move and reopens
         // it, so a vmin nudge or an unrelated edit makes it flicker.
         this._previewPageId = pageId;
-        if (!target || (type !== 'overlay' && type !== 'sidebar')) {
+        if (!target || !opensOver(target)) {
             this.currentPage = pageId;
             this.renderCurrentPage();
             return;
         }
-        const behind = pages.find(p => p.id === this.currentPage && (p.page_type || 'page') === 'page')
-            || pages.find(p => (p.page_type || 'page') === 'page');
+        const behind = pageBehind(pages, this.currentPage);
         if (behind) {
             this.currentPage = behind.id;
             this.renderCurrentPage();
@@ -1156,17 +1107,12 @@ class PanelApp {
         const pages = this.uiDef.pages || [];
         let page = pages.find(p => p.id === this.currentPage);
         if (!page) {
-            if (pages.length > 0) {
-                page = pages.find(p => (p.page_type || 'page') === 'page') || pages[0];
-                this.currentPage = page.id;
-            } else {
-                this.root.textContent = '';
-                const emptyMsg = document.createElement('div');
-                emptyMsg.style.cssText = 'padding:2rem;text-align:center;color:var(--panel-text);opacity:0.5;';
-                emptyMsg.textContent = 'No panels configured';
-                this.root.appendChild(emptyMsg);
+            if (!pages.length) {
+                this._showNoPages();
                 return;
             }
+            page = fallbackPage(pages);
+            this.currentPage = page.id;
         }
 
         // Clean up overlays
@@ -1179,28 +1125,9 @@ class PanelApp {
         endMatrixGestures(this.root);
         this._clocks.stop();
 
-        // Page transition settings — disabled in edit mode so the designer isn't
-        // fighting re-entry animations on every live-preview rebuild.
-        const settings = this.uiSettings || {};
-        const pageTransition = this.editMode ? 'none' : (settings.page_transition || 'none');
-        const transitionDuration = settings.page_transition_duration || 200;
-        const entryAnimation = this.editMode ? 'none' : (settings.element_entry || 'none');
-        const staggerMs = settings.element_stagger_ms || 30;
-        const staggerStyle = settings.element_stagger_style;
-
-        // Set transition duration CSS variable
-        this.root.style.setProperty('--page-transition-duration', transitionDuration + 'ms');
-
-        // If page transition is enabled and there's existing content, animate out
-        const oldGrid = this.root.querySelector('.panel-page');
-        if (oldGrid && pageTransition !== 'none') {
-            oldGrid.classList.add(`page-exit-${pageTransition}`);
-            oldGrid.style.position = 'absolute';
-            oldGrid.style.inset = '0';
-            setTimeout(() => oldGrid.remove(), transitionDuration);
-        } else {
-            this.root.innerHTML = '';
-        }
+        const motion = this._pageMotion();
+        this.root.style.setProperty('--page-transition-duration', motion.duration + 'ms');
+        this._swapOutOldPage(motion);
 
         // Every frame on the page being replaced stops listening.
         releaseFrames(this._pluginMessageHandlers);
@@ -1229,66 +1156,10 @@ class PanelApp {
         // percentages, so the same design fills any screen of the same shape.
         const surface = document.createElement('div');
         surface.className = 'panel-page';
-
-        // Apply per-page background
         this.theme.paintBackground(surface, page.background);
+        if (motion.transition !== 'none') surface.classList.add(`page-enter-${motion.transition}`);
 
-        // Apply page enter animation
-        if (pageTransition !== 'none') {
-            surface.classList.add(`page-enter-${pageTransition}`);
-        }
-
-        // A custom page is the author's own markup filling the screen, so there
-        // is no ruler to draw on and nothing to snap to.
-        const customFrame = this._isCustomPage(page) ? this._renderCustomPageFrame(page) : null;
-        if (customFrame) {
-            // BEFORE the master elements, not after: every child of .panel-page
-            // gets the same z-index, so the later sibling wins, and a full-box
-            // frame appended last would paint over every master element on the
-            // page. A master nav bar is how somebody gets off a custom page.
-            surface.appendChild(customFrame);
-        } else {
-            // Design-time snap overlay. The grid is a ruler now rather than a
-            // container, so this only draws where things will snap to -- showing
-            // or hiding it moves nothing.
-            if (this.editMode && this._editShowGrid !== false) drawSnapRuler(page, surface);
-        }
-
-        // Master elements come before the page's own, so DOM order alone keeps
-        // them behind. They used to carry an inline z-index for that, which
-        // also dropped them behind the page's gradient layer. On a custom page
-        // that puts them AFTER the frame, which is the other half of the same
-        // rule: they draw over the author's markup, and are the way off it.
-        const masterElements = this.uiDef.master_elements || [];
-        for (const mEl of masterElements) {
-            const mPages = mEl.pages;
-            const showOnPage = mPages === '*' || (Array.isArray(mPages) && mPages.includes(page.id));
-            if (!showOnPage || mEl.hidden) continue;
-            this._drawnOrientation = masterOrientation(mEl, viewportOrientation());
-            const el = this.renderElement(mEl);
-            if (!el) continue;
-            el.dataset.elementType = mEl.type;
-            const node = placeElement(el, masterPlacement(mEl, viewportOrientation()), mEl);
-            this.registerVisibleWhen(node, mEl);
-            surface.appendChild(node);
-        }
-
-        if (!customFrame) {
-            this._renderPageElements(page, surface, { entryAnimation, staggerMs, staggerStyle });
-        }
-
-        // A page nobody has put anything on says so, in the room's own terms.
-        // Deliberately says nothing about the Programmer: this same document is
-        // what a wall panel shows, and on a kiosk display the reader is an end
-        // user who has no business being sent to the IDE. Not in edit mode --
-        // the Builder canvas embeds this page with `edit=1`, and an empty page
-        // there is an author one drop away from their first control.
-        if (!this.editMode && this._pageDrawsNothing(page)) {
-            const notice = document.createElement('div');
-            notice.className = 'panel-page-empty';
-            notice.textContent = 'This page has no controls yet.';
-            surface.appendChild(notice);
-        }
+        this._drawPageContent(page, surface, motion);
 
         this.root.appendChild(surface);
         applyCoordinateSpaces(surface);
@@ -1299,6 +1170,101 @@ class PanelApp {
         if (this.editMode) {
             new ThemeStudioPicker(surface, (msg) => this._postToParent(msg));
             this._reportTextDefaults();
+        }
+    }
+
+    /** A project with no pages at all says so. */
+    _showNoPages() {
+        this.root.textContent = '';
+        const emptyMsg = document.createElement('div');
+        emptyMsg.style.cssText = 'padding:2rem;text-align:center;color:var(--panel-text);opacity:0.5;';
+        emptyMsg.textContent = 'No panels configured';
+        this.root.appendChild(emptyMsg);
+    }
+
+    /**
+     * How a page arrives: the page transition and the elements' entry
+     * animation. Both are off on the design canvas, so the designer isn't
+     * fighting re-entry animations on every live-preview rebuild.
+     */
+    _pageMotion() {
+        const settings = this.uiSettings || {};
+        const still = this.editMode;
+        return {
+            transition: still ? 'none' : (settings.page_transition || 'none'),
+            duration: settings.page_transition_duration || 200,
+            entryAnimation: still ? 'none' : (settings.element_entry || 'none'),
+            staggerMs: settings.element_stagger_ms || 30,
+            staggerStyle: settings.element_stagger_style,
+        };
+    }
+
+    /** The page on screen leaves: animated out when there is a transition, else at once. */
+    _swapOutOldPage({ transition, duration }) {
+        const oldGrid = this.root.querySelector('.panel-page');
+        if (!oldGrid || transition === 'none') {
+            this.root.innerHTML = '';
+            return;
+        }
+        oldGrid.classList.add(`page-exit-${transition}`);
+        oldGrid.style.position = 'absolute';
+        oldGrid.style.inset = '0';
+        setTimeout(() => oldGrid.remove(), duration);
+    }
+
+    /** What draws on a page's surface, in the order that keeps each on top of the last. */
+    _drawPageContent(page, surface, motion) {
+        // A custom page is the author's own markup filling the screen, so there
+        // is no ruler to draw on and nothing to snap to.
+        const customFrame = isCustomPage(page) ? this._renderCustomPageFrame(page) : null;
+        if (customFrame) {
+            // BEFORE the master elements, not after: every child of .panel-page
+            // gets the same z-index, so the later sibling wins, and a full-box
+            // frame appended last would paint over every master element on the
+            // page. A master nav bar is how somebody gets off a custom page.
+            surface.appendChild(customFrame);
+        } else if (this.editMode && this._editShowGrid !== false) {
+            // Design-time snap overlay. The grid is a ruler now rather than a
+            // container, so this only draws where things will snap to -- showing
+            // or hiding it moves nothing.
+            drawSnapRuler(page, surface);
+        }
+
+        this._drawMasters(page, surface);
+
+        if (!customFrame) this._renderPageElements(page, surface, motion);
+
+        // A page nobody has put anything on says so, in the room's own terms.
+        // Deliberately says nothing about the Programmer: this same document is
+        // what a wall panel shows, and on a kiosk display the reader is an end
+        // user who has no business being sent to the IDE. Not in edit mode --
+        // the Builder canvas embeds this page with `edit=1`, and an empty page
+        // there is an author one drop away from their first control.
+        if (!this.editMode && pageDrawsNothing(page, this.uiDef?.master_elements)) {
+            const notice = document.createElement('div');
+            notice.className = 'panel-page-empty';
+            notice.textContent = 'This page has no controls yet.';
+            surface.appendChild(notice);
+        }
+    }
+
+    /**
+     * Master elements come before the page's own, so DOM order alone keeps
+     * them behind. They used to carry an inline z-index for that, which also
+     * dropped them behind the page's gradient layer. On a custom page that
+     * puts them AFTER the frame, which is the other half of the same rule:
+     * they draw over the author's markup, and are the way off it.
+     */
+    _drawMasters(page, surface) {
+        for (const mEl of (this.uiDef.master_elements || [])) {
+            if (!namesPage(mEl, page) || mEl.hidden) continue;
+            this._drawnOrientation = masterOrientation(mEl, viewportOrientation());
+            const el = this.renderElement(mEl);
+            if (!el) continue;
+            el.dataset.elementType = mEl.type;
+            const node = placeElement(el, masterPlacement(mEl, viewportOrientation()), mEl);
+            this.registerVisibleWhen(node, mEl);
+            surface.appendChild(node);
         }
     }
 
@@ -2557,64 +2523,6 @@ class PanelApp {
         } catch {
             return false;
         }
-    }
-
-    /** Whether this page hands the whole screen to markup the author wrote.
-     *
-     *  A page that says `custom` but names no file is not one: it would draw a
-     *  blank screen indistinguishable from a page with nothing on it, and the
-     *  elements it still carries are the better thing to show while somebody is
-     *  half way through setting it up. */
-    _isCustomPage(page) {
-        return !!page && page.render_mode === 'custom' && !!page.custom_file;
-    }
-
-    /** Will this page draw nothing at all?
-     *
-     *  Three things draw: the page's own elements, a master element that names
-     *  the page, and a custom page's frame. None of the three is a black
-     *  screen, and a black screen reads as a broken system rather than an
-     *  unbuilt one -- which is what the seed project's single empty page looked
-     *  like to anyone opening /panel to see what their client sees.
-     *
-     *  The same three are what `api/routes/setup.py::_panel_has_content` counts
-     *  before an appliance display leaves the setup screen for /panel. That one
-     *  asks the question of the whole project; this asks it of one page, so
-     *  they are not interchangeable, but they must agree on what "draws".
-     *
-     *  The master test is copied from the render loop rather than simplified:
-     *  a master element with no `pages` draws nowhere, and guessing otherwise
-     *  here would suppress the notice on a page that really is blank. */
-    _pageDrawsNothing(page) {
-        if (!page) return false;
-        if (this._isCustomPage(page)) return false;
-        const elements = Array.isArray(page.elements) ? page.elements : [];
-        if (elements.length) return false;
-        return !(this.uiDef?.master_elements || []).some(mEl => {
-            if (!mEl || mEl.hidden) return false;
-            const on = mEl.pages;
-            return on === '*' || (Array.isArray(on) && on.includes(page.id));
-        });
-    }
-
-    /** Is anything on screen right now drawn from a file in `ui/`?
-     *
-     *  Asked before re-rendering on a ui.files push, so a panel showing a page
-     *  with no author markup on it does not redraw -- a redraw is cheap but not
-     *  free, and it is visible: it restarts page-enter animations and drops any
-     *  transient state a control was holding. A master element can be a custom
-     *  control too, and one draws on every page it names, so a panel sitting on
-     *  a plain page still redraws when the logo strip's markup changes. */
-    _pageRunsAuthorMarkup() {
-        const pages = this.uiDef?.pages || [];
-        const page = pages.find(p => p.id === this.currentPage);
-        if (this._isCustomPage(page)) return true;
-        if ((page?.elements || []).some(el => el?.type === 'custom')) return true;
-        return (this.uiDef?.master_elements || []).some(mEl => {
-            if (mEl?.type !== 'custom') return false;
-            const on = mEl.pages;
-            return on === '*' || (Array.isArray(on) && page && on.includes(page.id));
-        });
     }
 
     /** A custom PAGE is a custom control sized to the page.

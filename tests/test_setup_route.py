@@ -354,7 +354,7 @@ async def test_custom_page_counts_as_panel_content(claimed, remote_client):
 
 async def test_custom_page_with_no_file_is_still_empty(claimed, remote_client):
     """Guards the guard. `render_mode: custom` with nothing to load draws
-    nothing, the same as `panel.js::_isCustomPage`, so it must not take an
+    nothing, the same as the panel's `isCustomPage`, so it must not take an
     appliance off the setup screen. Without this a fix that read only
     `render_mode` would pass."""
     project = dict(EMPTY_PROJECT)
