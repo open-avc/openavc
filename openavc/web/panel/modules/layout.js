@@ -35,6 +35,11 @@
 
 import { applyCssClass } from './stylesheet.js';
 
+// Every stored measurement is rem, and the root type scale makes 1rem equal
+// 14px at the 1280x800 reference. Runtime defaults are written as
+// <old px> / REM_BASE_PX so they still land on the pixel they always did.
+export const REM_BASE_PX = 14;
+
 // The snap increment a page falls back to: the old 12x8 grid's spacing.
 const SNAP_FALLBACK = { x: 100 / 12, y: 100 / 8 };
 

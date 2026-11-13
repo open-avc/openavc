@@ -5381,7 +5381,7 @@ const tests = {
                 soundAddress(app, { url: '/api/x.mp3' }),
                 soundAddress(app, { sound: 'chime 1' }),
                 assetUrl('assets://a b.png'),
-                app.renderIcon('play').querySelector('use').getAttribute('href'),
+                panelModule('words.js').iconNode('play').querySelector('use').getAttribute('href'),
                 app.renderCustomElement({ id: 'c', type: 'custom', custom_file: 'map/index.html' })
                     ._pluginIframe.getAttribute('src'),
                 app.renderPluginElement({ id: 'p', type: 'plugin', plugin_id: 'clock', plugin_type: 'face' })

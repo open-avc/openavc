@@ -208,6 +208,10 @@ def test_only_the_state_text_types_can_draw_a_state_label(
     assert derived == STATE_LABEL_TYPES
 
 
+#: A call that draws a control's icon. A module a renderer hands its element to
+#: is read whole, so its own ``function drawIcon(`` is left out.
+_DRAWS_ICON = re.compile(r"(?<!function )\bdrawIcon\(")
+
 def test_only_the_state_icon_types_can_draw_a_state_icon(
     panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
 ) -> None:
@@ -215,7 +219,8 @@ def test_only_the_state_icon_types_can_draw_a_state_icon(
 
     A state's appearance is merged into the element's style and applied, and an
     icon is not style -- it is content. It appears only where the evaluator
-    goes on to rebuild the icon+text layout, which is ``renderElementContent``.
+    goes on to rebuild the icon+text layout, which is ``drawIcon`` in the
+    panel's ``modules/words.js``.
     The button's evaluator does; the label's does colour and words and stops,
     so an icon picked per state on a label is written to the project and never
     drawn.
@@ -236,7 +241,7 @@ def test_only_the_state_icon_types_can_draw_a_state_icon(
     evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
     derived = frozenset(
         el_type for el_type, bind_type in look_binding_type.items()
-        if "this.renderElementContent(" in _evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies)
+        if _DRAWS_ICON.search(_evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies))
     )
     assert derived == STATE_ICON_TYPES
 
@@ -282,7 +287,7 @@ def test_only_the_state_image_types_can_draw_a_state_picture(
 #
 # Harder to derive than the slot table, because a render function is not where
 # the reading stops. It hands the element to shared helpers
-# (`renderElementContent` draws the icon for a dozen types) and it registers
+# (`drawIcon` in modules/words.js draws the icon for a dozen types) and it registers
 # bindings whose evaluators run later against `elementDef` -- which is how a
 # label's `display_decimals` is read two hops from `renderLabel`. Both hops are
 # followed here, or the table would call correct properties unread and the

@@ -35,8 +35,9 @@ import { FailureBand } from './modules/failure_band.js';
 import { MacroRuns } from './modules/macro_runs.js';
 import { ProjectStylesheet } from './modules/stylesheet.js';
 import { attachPress, pressOf } from './modules/press.js';
+import { drawIcon, iconNode, removeWords, showWords } from './modules/words.js';
 import {
-    applyCoordinateSpaces, applyLivePlacements, applyVminOverride, drawElementTree, drawSnapRuler,
+    REM_BASE_PX, applyCoordinateSpaces, applyLivePlacements, applyVminOverride, drawElementTree, drawSnapRuler,
     masterOrientation, masterPlacement, placeElement, selectLayout, viewportOrientation,
 } from './modules/layout.js';
 import {
@@ -122,14 +123,30 @@ import {
 })();
 // ---------------------------------------------------------------------------
 
-// Every stored measurement is rem, and the root type scale makes 1rem equal
-// 14px at the 1280x800 reference. Runtime defaults are written as
-// <old px> / REM_BASE_PX so they still land on the pixel they always did.
-const REM_BASE_PX = 14;
-
 // A button's display modes that draw no words, and those that draw its own picture.
 const WORDLESS_MODES = new Set(['image', 'icon_only']);
 const PICTURE_MODES = new Set(['image', 'image_text']);
+
+/**
+ * A Container's caption at its `label_position`: against the top or the
+ * bottom edge, and at the left, the middle or the right.
+ */
+function placeGroupCaption(label, labelPos) {
+    if (labelPos.startsWith('top')) {
+        label.style.top = '0';
+    } else {
+        label.style.bottom = '0';
+    }
+    if (labelPos.endsWith('left')) {
+        label.style.left = '0.5714rem';
+    } else if (labelPos.endsWith('center')) {
+        label.style.left = '50%';
+        label.style.transform = 'translateX(-50%)';
+    } else if (labelPos.endsWith('right')) {
+        label.style.right = '0.5714rem';
+    }
+    return label;
+}
 
 class PanelApp {
     constructor() {
@@ -1392,7 +1409,7 @@ class PanelApp {
 
         // Render icon+text content first (may call el.textContent = '' internally to rebuild).
         // Image layer must be prepended AFTER this so content rendering can't wipe it.
-        this.renderElementContent(el, element);
+        drawIcon(el, element);
 
         // Image effect last so its DOM layer isn't removed by other content rendering paths
         if (showImage) {
@@ -1462,7 +1479,7 @@ class PanelApp {
         this._textEditor.recordSource(el, ['text']);
 
         applyStyle(el, this.theme.styleFor(element.type, element.style));
-        this.renderElementContent(el, element);
+        drawIcon(el, element);
 
         // Text binding (the label's value)
         if (element.bindings?.show?.value) {
@@ -1517,13 +1534,7 @@ class PanelApp {
         dot.className = 'led-dot';
         el.appendChild(dot);
 
-        if (element.label) {
-            const label = document.createElement('label');
-            label.className = 'led-label';
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element, 'label', 'led-label'));
 
         // Color binding (status LED look)
         if (element.bindings?.show?.look) {
@@ -1555,12 +1566,7 @@ class PanelApp {
             (element.thumb_size ?? themedSliderStyle.thumb_size ?? 44 / REM_BASE_PX) + 'rem',
         );
 
-        if (element.label) {
-            const label = document.createElement('label');
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element));
         slider.mount(el);
 
         // Value binding (read; two-way when show.value.write_back)
@@ -1621,7 +1627,7 @@ class PanelApp {
         }
 
         applyStyle(el, this.theme.styleFor(element.type, element.style));
-        this.renderElementContent(el, element);
+        drawIcon(el, element);
 
         // Appearance, and lit while its page is showing. One binding and one
         // evaluator for both, because both write the same colours.
@@ -1682,12 +1688,7 @@ class PanelApp {
         el.className = 'panel-element panel-select';
         el.dataset.elementId = element.id;
 
-        if (element.label) {
-            const label = document.createElement('label');
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element));
 
         // Per-option colours from show.look.style_map (the Builder's Appearance card).
         const lookBinding = element.bindings?.show?.look;
@@ -1727,12 +1728,7 @@ class PanelApp {
         el.className = 'panel-element panel-text-input';
         el.dataset.elementId = element.id;
 
-        if (element.label) {
-            const label = document.createElement('label');
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element));
 
         const input = drawTextInput(this._choiceHost(), element.id, element.placeholder || '');
         el.appendChild(input);
@@ -1862,7 +1858,7 @@ class PanelApp {
         el.textContent = content;
 
         applyStyle(el, this.theme.styleFor(element.type, element.style));
-        this.renderElementContent(el, element);
+        drawIcon(el, element);
 
         const onPress = (e) => {
             e.preventDefault();
@@ -1908,13 +1904,7 @@ class PanelApp {
         const style = this.theme.styleFor('list', element.style);
         applyStyle(el, style);
 
-        if (element.label) {
-            const label = document.createElement('div');
-            label.className = 'list-label';
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element, 'div', 'list-label'));
 
         const list = new ListControl(this._choiceHost(), element, el, style);
 
@@ -1980,13 +1970,7 @@ class PanelApp {
         const matrix = createMatrix(element, style, this._matrixHost(element));
         applyStyle(el, style);
 
-        if (element.label) {
-            const label = document.createElement('div');
-            label.className = 'matrix-label';
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element, 'div', 'matrix-label'));
         matrix.mount(el);
 
         // The keys are listed by name rather than as a glob. The incremental
@@ -2045,13 +2029,7 @@ class PanelApp {
         const gauge = new GaugeControl(element, this.theme.styleFor('gauge', element.style), this._displayDecimals(element));
         gauge.mount(el);
 
-        if (element.label) {
-            const label = document.createElement('div');
-            label.className = 'gauge-label';
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element, 'div', 'gauge-label'));
 
         applyStyle(el, this.theme.styleFor(element.type, element.style));
 
@@ -2091,13 +2069,7 @@ class PanelApp {
         const meter = new LevelMeterControl(element, this.theme.styleFor('level_meter', element.style));
         el.classList.add(meter.horizontal ? 'horizontal' : 'vertical');
 
-        if (element.label) {
-            const label = document.createElement('div');
-            label.className = 'meter-label';
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element, 'div', 'meter-label'));
 
         meter.mount(el);
 
@@ -2144,13 +2116,7 @@ class PanelApp {
         el.classList.add(fader.horizontal ? 'horizontal' : 'vertical');
         applyStyle(el, style);
 
-        if (element.label) {
-            const label = document.createElement('div');
-            label.className = 'fader-label';
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element, 'div', 'fader-label'));
         fader.mount(el);
 
         // Value binding for state updates
@@ -2203,27 +2169,7 @@ class PanelApp {
         const labelPos = element.label_position || 'top-left';
 
         if (element.label) {
-            const label = document.createElement('div');
-            label.className = 'group-label';
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-
-            // Position
-            if (labelPos.startsWith('top')) {
-                label.style.top = '0';
-            } else {
-                label.style.bottom = '0';
-            }
-            if (labelPos.endsWith('left')) {
-                label.style.left = '0.5714rem';
-            } else if (labelPos.endsWith('center')) {
-                label.style.left = '50%';
-                label.style.transform = 'translateX(-50%)';
-            } else if (labelPos.endsWith('right')) {
-                label.style.right = '0.5714rem';
-            }
-
-            el.appendChild(label);
+            el.appendChild(placeGroupCaption(this._caption(el, element, 'div', 'group-label'), labelPos));
         }
 
         applyStyle(el, this.theme.styleFor(element.type, element.style));
@@ -2283,18 +2229,12 @@ class PanelApp {
         const keypad = new KeypadControl(element, {
             send: (frame) => this.send(frame),
             keepTimer: (timer) => this.debounceTimers.push(timer),
-            icon: (name) => this.renderIcon(name),
+            icon: (name) => iconNode(name),
         });
 
         applyStyle(el, this.theme.styleFor(element.type, element.style));
 
-        if (element.label) {
-            const label = document.createElement('div');
-            label.className = 'keypad-label';
-            label.textContent = element.label;
-            this._recordCaption(el, label, ['label']);
-            el.appendChild(label);
-        }
+        if (element.label) el.appendChild(this._caption(el, element, 'div', 'keypad-label'));
 
         keypad.mount(el);
         return el;
@@ -2542,7 +2482,7 @@ class PanelApp {
      */
     _drawButtonWords(element, elementDef, words) {
         if (!this._buttonShowsWords(elementDef)) {
-            this._removeTextNodes(element);
+            removeWords(element);
             this._textEditor.recordSource(element, null);
         } else if (words) {
             this._setLabelText(element, ...words);
@@ -2551,14 +2491,13 @@ class PanelApp {
 
     /**
      * Draw again the icon a look names, else the control's own, beside the
-     * words: renderElementContent rebuilds the icon and text layout from the
+     * words: drawIcon (modules/words.js) rebuilds the icon and text layout from the
      * words on the control, so they are written first, and draws nothing on a
      * control with no icon. With no look (`appearance` null) the control's own
      * definition is drawn as it is.
      */
     _drawLookIcon(element, elementDef, appearance) {
-        this.renderElementContent(element,
-            appearance ? this._withLookIcon(elementDef, appearance) : elementDef);
+        drawIcon(element, appearance ? this._withLookIcon(elementDef, appearance) : elementDef);
     }
 
     /** The control with the icon and icon colour a look names in place of its own. */
@@ -3247,155 +3186,38 @@ class PanelApp {
     // --- Helpers ---
 
     /**
-     * Remove text nodes from an element, leaving element children intact.
-     * Used to suppress labels on image/icon-only buttons without wiping the image layer.
-     */
-    _removeTextNodes(el) {
-        Array.from(el.childNodes).forEach((n) => {
-            if (n.nodeType === Node.TEXT_NODE) n.remove();
-            else if (n.classList?.contains('panel-label-span')) n.remove();
-        });
-    }
-
-    /**
-     * Set or replace an element's label text without touching element children
-     * (icons, image layer). Removes existing text nodes and appends a new one.
-     * A button's accessible name follows its words, retaining its configured
-     * name when the visible label is empty.
+     * Write a control's words (modules/words.js), unless an edit in flight
+     * holds them. Live state keeps arriving while somebody types -- the
+     * canvas seeds the real room's state and re-sends it on every repost --
+     * and a write here would wipe the caret, or worse, swap the slot being
+     * edited out from under it.
      *
      * `path` names the authored field this text came from, for the in-place
      * editor. Every caller passes one, or null where the words are not
      * authored anywhere (see `recordSource` in modules/text_edit.js).
      */
     _setLabelText(el, text, path) {
-        // An edit in flight owns this element's words. Live state keeps arriving
-        // while somebody types -- the canvas seeds the real room's state and
-        // re-sends it on every repost -- and a write here would wipe the caret,
-        // or worse, swap the slot being edited out from under it.
         if (this._textEditor.holds(el)) return;
-        this._removeTextNodes(el);
-        if (text != null && text !== '') {
-            el.appendChild(document.createTextNode(String(text)));
-        }
-        if (el.tagName === 'BUTTON') {
-            el.setAttribute('aria-label', text != null && text !== ''
-                ? String(text) : (el._baseAccessibleName || ''));
-        }
+        showWords(el, text);
         if (path !== undefined) this._textEditor.recordSource(el, path);
     }
 
     /**
-     * A caption: which field it came from, and which node holds it. Two facts
-     * only the renderer has. The field and the node's mark are the in-place
-     * editor's (modules/text_edit.js); the node is also where a
-     * `ui.<id>.label` override writes, which finds it here (`overrideWordsNode` in modules/overrides.js)
-     * because a caption is not findable by class.
+     * The caption a control carries, its `label` in a `tag` of `className`,
+     * returned for the renderer to place. Recorded as the words an in-place
+     * edit or a `ui.<id>.label` override changes: the field is the in-place
+     * editor's (modules/text_edit.js), and the node is kept on the control as
+     * `_captionNode` because a caption is not findable by class
+     * (`overrideWordsNode` in modules/overrides.js).
      */
-    _recordCaption(root, captionNode, path) {
-        this._textEditor.recordSource(root, path);
-        if (captionNode) root._captionNode = captionNode;
-        this._textEditor.markCaption(captionNode);
-    }
-
-    /** `size` is in rem, so an icon scales with the rest of the panel. Leave
-     *  it out and the stylesheet sizes the icon instead: an inline size would
-     *  beat any rule there. */
-    renderIcon(iconName, size, color) {
-        if (!iconName) return null;
-
-        // Custom icon from asset system
-        if (iconName.startsWith('assets://')) {
-            const img = document.createElement('img');
-            img.src = assetUrl(iconName);
-            if (size != null) {
-                img.style.width = `${size}rem`;
-                img.style.height = `${size}rem`;
-            }
-            img.style.flexShrink = '0';
-            if (color) img.style.filter = `brightness(0) saturate(100%)`;
-            return img;
-        }
-
-        // Built-in Lucide icon from sprite sheet
-        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-        const iconUrl = `${basePath()}/panel/icons.svg#${iconName}`;
-        use.setAttribute('href', iconUrl);
-        use.setAttributeNS('http://www.w3.org/1999/xlink', 'href', iconUrl);
-        svg.appendChild(use);
-        // Sized in CSS rather than the width/height attributes: SVG attributes
-        // are user units and can't carry rem, and CSS wins over them anyway.
-        if (size != null) {
-            svg.style.width = `${size}rem`;
-            svg.style.height = `${size}rem`;
-        }
-        svg.setAttribute('viewBox', '0 0 24 24');
-        svg.setAttribute('fill', 'none');
-        svg.setAttribute('stroke', color || 'currentColor');
-        svg.setAttribute('stroke-width', '2');
-        svg.setAttribute('stroke-linecap', 'round');
-        svg.setAttribute('stroke-linejoin', 'round');
-        svg.style.flexShrink = '0';
-        return svg;
-    }
-
-    renderElementContent(el, element) {
-        const icon = element.style?.icon || element.icon;
-        if (!icon) return; // No icon, text is already set
-
-        const iconPos = element.style?.icon_position || element.icon_position || 'left';
-        const iconSize = element.style?.icon_size || element.icon_size || 24 / REM_BASE_PX;
-        const iconColor = element.style?.icon_color || element.icon_color || null;
-
-        // Preserve the image layer (an element child) when rebuilding content.
-        const imageLayer = el.querySelector(':scope > .panel-button-image-layer');
-
-        // Capture label text from text nodes only (not from layer or other children)
-        let labelText = '';
-        Array.from(el.childNodes).forEach((n) => {
-            if (n.nodeType === Node.TEXT_NODE) labelText += n.textContent;
-            else if (n.nodeType === Node.ELEMENT_NODE && n !== imageLayer && n.tagName === 'SPAN') {
-                labelText += n.textContent;
-            }
-        });
-
-        // Clear existing content, then restore the image layer as first child
-        el.textContent = '';
-        if (imageLayer) el.prepend(imageLayer);
-
-        const iconEl = this.renderIcon(icon, iconSize, iconColor);
-        if (!iconEl) return;
-
-        if (iconPos === 'center') {
-            // Icon only, no text
-            el.appendChild(iconEl);
-            return;
-        }
-
-        const textSpan = document.createElement('span');
-        textSpan.className = 'panel-label-span';
-        textSpan.textContent = labelText;
-
-        if (iconPos === 'top' || iconPos === 'bottom') {
-            el.style.flexDirection = 'column';
-            el.style.gap = '0.2857rem';
-            if (iconPos === 'top') {
-                el.appendChild(iconEl);
-                el.appendChild(textSpan);
-            } else {
-                el.appendChild(textSpan);
-                el.appendChild(iconEl);
-            }
-        } else {
-            el.style.gap = '0.4286rem';
-            if (iconPos === 'left') {
-                el.appendChild(iconEl);
-                el.appendChild(textSpan);
-            } else {
-                el.appendChild(textSpan);
-                el.appendChild(iconEl);
-            }
-        }
+    _caption(el, element, tag = 'label', className = '') {
+        const label = document.createElement(tag);
+        if (className) label.className = className;
+        label.textContent = element.label;
+        this._textEditor.recordSource(el, ['label']);
+        el._captionNode = label;
+        this._textEditor.markCaption(label);
+        return label;
     }
 }
 

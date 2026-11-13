@@ -170,7 +170,8 @@ STATE_LABEL_TYPES = frozenset({"button", "camera_preset", "label", "page_nav"})
 #: A state's appearance is merged into the element's style and applied, and an
 #: icon is not a style property -- it is content, and something has to rebuild
 #: the icon+text layout for it to appear. The button's evaluator does
-#: (``evaluateFeedback`` calls ``renderElementContent``), and so does the page
+#: (``evaluateFeedback`` draws it with ``drawIcon`` in the panel's
+#: ``modules/words.js``), and so does the page
 #: nav's; the label's (``evaluateLabelLook``) deliberately does colour and words
 #: and nothing else.
 #:

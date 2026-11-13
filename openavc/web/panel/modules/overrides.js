@@ -24,6 +24,8 @@
  * one control's bindings), each at call time.
  */
 
+import { labelSpan, nameAfterWords } from './words.js';
+
 /** Words that came from no authored field: an override's own. */
 const NO_SOURCE = null;
 
@@ -93,11 +95,6 @@ const OWN_WORDS_TYPES = new Set(['button', 'page_nav', 'camera_preset', 'label']
 function overrideWordsNode(el, elementDef) {
     if (el._captionNode) return el._captionNode;
     return OWN_WORDS_TYPES.has(elementDef?.type) ? el : null;
-}
-
-/** The span a control with an icon keeps its words in (the panel's `renderElementContent`). */
-function labelSpan(node) {
-    return node.querySelector(':scope > .panel-label-span');
 }
 
 /**
@@ -215,9 +212,7 @@ export class UiOverrides {
         const span = labelSpan(node);
         if (span) {
             this._host.setLabelText(span, text, path);
-            if (node.tagName === 'BUTTON') {
-                node.setAttribute('aria-label', text !== '' ? text : (node._baseAccessibleName || ''));
-            }
+            if (node.tagName === 'BUTTON') nameAfterWords(node, text);
             return;
         }
         node.querySelectorAll(':scope > strong, :scope > em').forEach((n) => n.remove());

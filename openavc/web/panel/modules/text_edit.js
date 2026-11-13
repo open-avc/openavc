@@ -26,6 +26,8 @@
  * first and the words being edited are frozen against live state (`holds`).
  */
 
+import { labelSpan } from './words.js';
+
 const SOURCE = 'data-avc-text-src';
 const CAPTION = 'data-avc-text-host';
 
@@ -153,7 +155,7 @@ function scriptedWords(state, elementId) {
  */
 function textHostFor(el) {
     return el.querySelector(`[${CAPTION}]`)
-        || el.querySelector(':scope > .panel-label-span')
+        || labelSpan(el)
         || el;
 }
 
