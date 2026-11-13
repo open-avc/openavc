@@ -37,6 +37,8 @@ from openavc.api.models import CommunityDriverInstallRequest
 from openavc.api.routes.python_drivers import remove_python_companions
 from openavc.drivers.driver_loader import (
     COMPANION_SUFFIXES,
+    DISCOVERY_COMPANION_SUFFIX,
+    DRIVER_FILE_STEM,
     companion_relpath_from_def,
     declared_driver_info,
     driver_companions,
@@ -449,9 +451,22 @@ def _installed_yaml_companion(main_file: Path, driver_repo: Path) -> Path | None
         candidate.resolve().relative_to(driver_repo.resolve())
     except ValueError:
         return None
-    if candidate.exists() and candidate.name.endswith("_discovery.py"):
+    if candidate.exists() and candidate.name.endswith(DISCOVERY_COMPANION_SUFFIX):
         return candidate
     return None
+
+
+def _companion_name(suffixes: tuple[str, ...]) -> "re.Pattern[str]":
+    """A companion file name the catalog doors will write: a driver file stem,
+    then one of ``suffixes``."""
+    return re.compile(rf"^{DRIVER_FILE_STEM}({'|'.join(map(re.escape, suffixes))})$")
+
+
+# The companion a YAML driver declares is its discovery file, and a Python
+# driver's are found by name: one per suffix the loader knows, so a new kind
+# of companion is fetched where it is published without a second list here.
+_DECLARED_COMPANION_NAME = _companion_name((DISCOVERY_COMPANION_SUFFIX,))
+_CONVENTIONAL_COMPANION_NAME = _companion_name(COMPANION_SUFFIXES)
 
 
 class CompanionFetch(NamedTuple):
@@ -598,13 +613,13 @@ class _CatalogFiles:
         # arbitrary .py file in driver_repo. The uninstall path uses the
         # same suffix check before removing companion files, so this keeps
         # the install / uninstall contract symmetric.
-        if not re.match(r'^[a-zA-Z0-9_\-]+_discovery\.py$', companion_filename):
+        if not _DECLARED_COMPANION_NAME.match(companion_filename):
             raise HTTPException(
                 status_code=422,
                 detail=(
                     f"Driver '{self.driver_id}' declares companion "
                     f"{companion_relpath!r} with an invalid filename — must "
-                    "end in '_discovery.py' and use only letters, numbers, "
+                    f"end in '{DISCOVERY_COMPANION_SUFFIX}' and use only letters, numbers, "
                     "hyphens, and underscores."
                 ),
             )
@@ -656,9 +671,9 @@ class _CatalogFiles:
         import httpx
         from urllib.parse import urljoin
 
-        # Convention-named, but validate anyway: only the two documented suffixes,
+        # Convention-named, but validate anyway: only the documented suffixes,
         # so a redirect can't land an arbitrary .py in driver_repo.
-        if not re.match(r'^[a-zA-Z0-9_\-]+_(discovery|sim)\.py$', companion_filename):
+        if not _CONVENTIONAL_COMPANION_NAME.match(companion_filename):
             return CompanionFetch(None)
         companion_url = urljoin(self.url, companion_filename)
         if not _is_catalog_url(companion_url):
@@ -826,10 +841,10 @@ def _register_install(files: _CatalogFiles, companion: Path | None) -> None:
 
 
 # A driver id that can also be its file name.
-_FILE_NAME_ID = re.compile(r'^[a-zA-Z0-9_\-]+$')
+_FILE_NAME_ID = re.compile(rf"^{DRIVER_FILE_STEM}$")
 
 # A driver file name an upload may keep, and a bundle may hold.
-_DRIVER_FILE_NAME = re.compile(r'^[a-zA-Z0-9_\-]+\.(avcdriver|py)$')
+_DRIVER_FILE_NAME = re.compile(rf"^{DRIVER_FILE_STEM}\.(avcdriver|py)$")
 
 
 def _named_for_its_id(filename: str, content: bytes) -> str | None:

@@ -57,7 +57,14 @@ DRIVER_EXTENSION = ".avcdriver"
 # were standalone Python drivers. Filter them at the listing layer
 # alongside underscore-prefixed files (which are conventional
 # helpers / private modules).
-COMPANION_SUFFIXES: tuple[str, ...] = ("_discovery.py", "_sim.py")
+# A YAML driver has at most one companion, the discovery file its
+# ``discovery:`` block names; a Python driver's go by name, one per suffix.
+DISCOVERY_COMPANION_SUFFIX = "_discovery.py"
+COMPANION_SUFFIXES: tuple[str, ...] = (DISCOVERY_COMPANION_SUFFIX, "_sim.py")
+
+# What the name of a driver file the import and install doors write may be
+# made of, before its extension or companion suffix (a regular expression).
+DRIVER_FILE_STEM = r"[a-zA-Z0-9_\-]+"
 
 
 def declared_driver_info(filename: str, content: bytes) -> dict[str, Any]:
