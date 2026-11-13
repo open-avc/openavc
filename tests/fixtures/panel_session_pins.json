@@ -143,6 +143,63 @@
         "callerInitKept": true,
         "callerInputKept": true
       },
+      "query_names_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "fragment_names_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "host_named_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
       "url_api": {
         "promise": true,
         "calls": 1,
@@ -404,6 +461,27 @@
         "callerInitKept": true,
         "callerInputKept": true
       },
+      "headers_empty_string": {
+        "promise": true,
+        "rejected": "Failed to construct 'Headers': parameter 1 is not of any supported type.",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_zero": {
+        "promise": true,
+        "rejected": "Failed to construct 'Headers': parameter 1 is not of any supported type.",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_false": {
+        "promise": true,
+        "rejected": "Failed to construct 'Headers': parameter 1 is not of any supported type.",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
       "null_init": {
         "promise": true,
         "calls": 1,
@@ -566,6 +644,33 @@
         "callerInitKept": true,
         "callerInputKept": true
       },
+      "query_names_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "fragment_names_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "host_named_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
       "url_api": {
         "promise": true,
         "calls": 1,
@@ -686,6 +791,36 @@
         "sameResponse": true,
         "input": "same",
         "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_empty_string": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_zero": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_false": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
         "callerInitKept": true,
         "callerInputKept": true
       },
@@ -828,6 +963,33 @@
         "callerInitKept": true,
         "callerInputKept": true
       },
+      "query_names_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "fragment_names_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "host_named_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
       "url_api": {
         "promise": true,
         "calls": 1,
@@ -948,6 +1110,36 @@
         "sameResponse": true,
         "input": "same",
         "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_empty_string": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_zero": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_false": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
         "callerInitKept": true,
         "callerInputKept": true
       },
@@ -1090,6 +1282,33 @@
         "callerInitKept": true,
         "callerInputKept": true
       },
+      "query_names_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "fragment_names_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "host_named_api": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
       "url_api": {
         "promise": true,
         "calls": 1,
@@ -1210,6 +1429,36 @@
         "sameResponse": true,
         "input": "same",
         "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_empty_string": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_zero": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_false": {
+        "promise": true,
+        "calls": 1,
+        "sameResponse": true,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
         "callerInitKept": true,
         "callerInputKept": true
       },
