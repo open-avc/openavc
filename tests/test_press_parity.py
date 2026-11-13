@@ -55,9 +55,12 @@ SHAPES = [
 TOGGLE_VALUES = ["on", "ON", True, False, 1, 0, "1", "true", "", None, "null", 1.0, _MISSING]
 READINGS = ["on", "On", "off", True, False, 1, 0, 1.0, "1", "1.0", "true", "True", "", None, "null", _MISSING]
 
+# The corpus goes in on stdin: on the command line it is past the length
+# Windows allows (WinError 206).
 _SCRIPT = """
 const press = await import(process.argv[1]);
-const corpus = JSON.parse(process.argv[2]);
+const { readFileSync } = await import('node:fs');
+const corpus = JSON.parse(readFileSync(0, 'utf8'));
 const out = { modes: [], toggles: [] };
 for (const bindings of corpus.shapes) {
     out.modes.push(press.pressOf({ bindings: { do: { press: bindings } } }).mode);
@@ -93,8 +96,8 @@ def panel_answers() -> dict:
         "toggles": [{"action": _toggle_action(v), "state": _state(r)} for v, r in TOGGLES],
     })
     proc = subprocess.run(
-        ["node", "--input-type=module", "-e", _SCRIPT, (PANEL_MODULES / "press.js").as_uri(), corpus],
-        capture_output=True, text=True, timeout=60,
+        ["node", "--input-type=module", "-e", _SCRIPT, (PANEL_MODULES / "press.js").as_uri()],
+        input=corpus, capture_output=True, text=True, timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
     return json.loads(proc.stdout)
