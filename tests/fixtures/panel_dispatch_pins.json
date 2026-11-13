@@ -1,0 +1,862 @@
+{
+  "dispatch": {
+    "controls": {
+      "0": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: 0"
+        ]
+      },
+      "1": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: 1"
+        ]
+      },
+      "\"button\"": {
+        "calls": [
+          [
+            "renderButton",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderButton",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"label\"": {
+        "calls": [
+          [
+            "renderLabel",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderLabel",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"status_led\"": {
+        "calls": [
+          [
+            "renderStatusLed",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderStatusLed",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"slider\"": {
+        "calls": [
+          [
+            "renderSlider",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderSlider",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"page_nav\"": {
+        "calls": [
+          [
+            "renderPageNav",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderPageNav",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"select\"": {
+        "calls": [
+          [
+            "renderSelect",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderSelect",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"text_input\"": {
+        "calls": [
+          [
+            "renderTextInput",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderTextInput",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"image\"": {
+        "calls": [
+          [
+            "renderImage",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderImage",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"camera_preset\"": {
+        "calls": [
+          [
+            "renderCameraPreset",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderCameraPreset",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"list\"": {
+        "calls": [
+          [
+            "renderList",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderList",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"matrix\"": {
+        "calls": [
+          [
+            "renderMatrix",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderMatrix",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"gauge\"": {
+        "calls": [
+          [
+            "renderGauge",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderGauge",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"level_meter\"": {
+        "calls": [
+          [
+            "renderLevelMeter",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderLevelMeter",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"fader\"": {
+        "calls": [
+          [
+            "renderFader",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderFader",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"group\"": {
+        "calls": [
+          [
+            "renderGroup",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderGroup",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"clock\"": {
+        "calls": [
+          [
+            "renderClock",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderClock",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"keypad\"": {
+        "calls": [
+          [
+            "renderKeypad",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderKeypad",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"plugin\"": {
+        "calls": [
+          [
+            "renderPluginElement",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderPluginElement",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"custom\"": {
+        "calls": [
+          [
+            "renderCustomElement",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderCustomElement",
+        "mapped": [
+          "c1"
+        ],
+        "logged": []
+      },
+      "\"Button\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: Button"
+        ]
+      },
+      "\"BUTTON\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: BUTTON"
+        ]
+      },
+      "\" button\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type:  button"
+        ]
+      },
+      "\"button \"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: button "
+        ]
+      },
+      "\"feedback\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: feedback"
+        ]
+      },
+      "\"macro_progress\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: macro_progress"
+        ]
+      },
+      "\"\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: "
+        ]
+      },
+      "\"constructor\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: constructor"
+        ]
+      },
+      "\"__proto__\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: __proto__"
+        ]
+      },
+      "\"toString\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: toString"
+        ]
+      },
+      "\"hasOwnProperty\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: hasOwnProperty"
+        ]
+      },
+      "\"valueOf\"": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: valueOf"
+        ]
+      },
+      "undefined": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: "
+        ]
+      },
+      "null": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: null"
+        ]
+      },
+      "true": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: true"
+        ]
+      },
+      "false": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: false"
+        ]
+      },
+      "[\"x\"]": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: [\"x\"]"
+        ]
+      },
+      "{\"x\":1}": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: {\"x\":1}"
+        ]
+      },
+      "[\"button\"]": {
+        "calls": [],
+        "returned": "null",
+        "mapped": [],
+        "logged": [
+          "warn Unknown element type: [\"button\"]"
+        ]
+      },
+      "no id": {
+        "calls": [
+          [
+            "renderButton",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "renderButton",
+        "mapped": [],
+        "logged": []
+      },
+      "no definition": {
+        "calls": [],
+        "threw": "TypeError: Cannot read properties of null (reading 'type')",
+        "mapped": [],
+        "logged": []
+      },
+      "nothing": {
+        "calls": [],
+        "threw": "TypeError: Cannot read properties of undefined (reading 'type')",
+        "mapped": [],
+        "logged": []
+      }
+    },
+    "bindings": {
+      "0": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "1": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"visible_when\"": {
+        "calls": [
+          [
+            "evaluateVisibleWhen",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"feedback\"": {
+        "calls": [
+          [
+            "evaluateFeedback",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"toggle_look\"": {
+        "calls": [
+          [
+            "evaluateToggleLook",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"label_look\"": {
+        "calls": [
+          [
+            "evaluateLabelLook",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"image_look\"": {
+        "calls": [
+          [
+            "evaluateImageLook",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"nav_look\"": {
+        "calls": [
+          [
+            "evaluateNavLook",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"group_look\"": {
+        "calls": [
+          [
+            "evaluateGroupLook",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"text\"": {
+        "calls": [
+          [
+            "evaluateText",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"color\"": {
+        "calls": [
+          [
+            "evaluateColor",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"slider_value\"": {
+        "calls": [
+          [
+            "evaluateSliderValue",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"select_value\"": {
+        "calls": [
+          [
+            "evaluateSelectValue",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"select_look\"": {
+        "calls": [
+          [
+            "evaluateSelectLook",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"text_input_value\"": {
+        "calls": [
+          [
+            "evaluateTextInputValue",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"gauge_value\"": {
+        "calls": [
+          [
+            "evaluateGaugeValue",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"level_meter_value\"": {
+        "calls": [
+          [
+            "evaluateLevelMeterValue",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"fader_value\"": {
+        "calls": [
+          [
+            "evaluateFaderValue",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"matrix_routes\"": {
+        "calls": [
+          [
+            "evaluateMatrixRoutes",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"list_items\"": {
+        "calls": [
+          [
+            "evaluateListItems",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"list_selected\"": {
+        "calls": [
+          [
+            "evaluateListSelected",
+            true,
+            true,
+            1
+          ]
+        ],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"macro_progress\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"Feedback\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"FEEDBACK\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\" text\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"text \"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"button\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"custom\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"constructor\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"__proto__\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"toString\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"hasOwnProperty\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "\"valueOf\"": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "undefined": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "null": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "true": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "false": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "[\"x\"]": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "{\"x\":1}": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "[\"text\"]": {
+        "calls": [],
+        "returned": "undefined",
+        "logged": []
+      },
+      "no binding": {
+        "calls": [],
+        "threw": "TypeError: Cannot read properties of null (reading 'type')",
+        "logged": []
+      },
+      "nothing": {
+        "calls": [],
+        "threw": "TypeError: Cannot read properties of undefined (reading 'type')",
+        "logged": []
+      },
+      "the pass": {
+        "returned": "undefined",
+        "calls": [
+          "evaluateVisibleWhen",
+          "evaluateFeedback",
+          "evaluateToggleLook",
+          "evaluateLabelLook",
+          "evaluateImageLook",
+          "evaluateNavLook",
+          "evaluateGroupLook",
+          "evaluateText",
+          "evaluateColor",
+          "evaluateSliderValue",
+          "evaluateSelectValue",
+          "evaluateSelectLook",
+          "evaluateTextInputValue",
+          "evaluateGaugeValue",
+          "evaluateLevelMeterValue",
+          "evaluateFaderValue",
+          "evaluateMatrixRoutes",
+          "evaluateListItems",
+          "evaluateListSelected",
+          "evaluateUiOverrides"
+        ],
+        "logged": [
+          "error Binding error: Error: colour failed"
+        ]
+      }
+    }
+  }
+}

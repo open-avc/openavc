@@ -12905,6 +12905,130 @@ Object.assign(tests, {
     },
 });
 
+// --- Which method draws each control type and each binding ------------------
+//
+// The panel asks one lookup for every control it draws (by the control's
+// type) and another for every binding it draws again (by the binding's type).
+// Each is driven here with every renderer, or every evaluator, replaced on a
+// panel after it was made, the way a test replaces one, by a recorder that
+// notes its name, whether it was handed the definition or binding asked about,
+// whether it was called on the panel, and how many arguments it got. Recorded
+// for each type, the panel's own and ones that only look like one (another
+// case, a space, a name every object has, not a string at all): the calls,
+// what came back, what went into the element map, what was logged and what
+// was thrown; and every binding drawn together through the binding pass,
+// which logs a failure and goes on to the next. Compared with
+// panel_dispatch_pins.json, recorded from the code before the two lookups
+// moved.
+
+const DISPATCH_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_dispatch_pins.json'), 'utf8'));
+
+/** Types that only look like one of the panel's: another case, a space, a name every object has, not a string. */
+const NEAR_TYPES = ['', 'constructor', '__proto__', 'toString', 'hasOwnProperty', 'valueOf', undefined, null, 0, 1, true, false, ['x'], { x: 1 }];
+const DISPATCH_CONTROL_TYPES = [
+    'button', 'label', 'status_led', 'slider', 'page_nav', 'select', 'text_input', 'image', 'camera_preset',
+    'list', 'matrix', 'gauge', 'level_meter', 'fader', 'group', 'clock', 'keypad', 'plugin', 'custom',
+    'Button', 'BUTTON', ' button', 'button ', 'feedback', 'macro_progress', ...NEAR_TYPES, ['button'],
+];
+const DISPATCH_BINDING_TYPES = [
+    'visible_when', 'feedback', 'toggle_look', 'label_look', 'image_look', 'nav_look', 'group_look', 'text',
+    'color', 'slider_value', 'select_value', 'select_look', 'text_input_value', 'gauge_value',
+    'level_meter_value', 'fader_value', 'matrix_routes', 'list_items', 'list_selected', 'macro_progress',
+    'Feedback', 'FEEDBACK', ' text', 'text ', 'button', 'custom', ...NEAR_TYPES, ['text'],
+];
+
+/** A value as the pins spell it: JSON, or `undefined`. */
+const spelled = (v) => String(JSON.stringify(v));
+
+/**
+ * A panel whose methods named by `pattern` (less `keep`) are recorders, with
+ * what it logs collected. A recorder hands back `answer(name)`.
+ */
+function recordingPanel(pattern, keep, answer) {
+    const app = mkApp();
+    const calls = [];
+    const subject = { current: null };
+    for (const name of Object.getOwnPropertyNames(PanelApp.prototype)) {
+        if (!pattern.test(name) || keep.includes(name)) continue;
+        app[name] = function (...args) {
+            calls.push([name, args[0] === subject.current, this === app, args.length]);
+            return answer(name);
+        };
+    }
+    return { app, calls, subject };
+}
+
+/** Run `fn` with the panel's console collected into `logged`; what it returned or threw. */
+function loggingTo(logged, fn) {
+    const own = { log: window.console.log, warn: window.console.warn, error: window.console.error };
+    for (const level of Object.keys(own)) {
+        window.console[level] = (...args) => logged.push(`${level} ${args.map(loggedText).join(' ')}`);
+    }
+    try {
+        const value = fn();
+        return { returned: value === null || value === undefined ? spelled(value) : (value.dataset?.marker || typeof value) };
+    } catch (e) {
+        return { threw: `${e && e.name}: ${e && e.message}` };
+    } finally {
+        Object.assign(window.console, own);
+    }
+}
+
+function dispatchControls() {
+    const got = {};
+    const drawOne = (key, def) => {
+        const { app, calls, subject } = recordingPanel(/^render[A-Z]/, ['renderElement'], (name) => {
+            const node = document.createElement('div');
+            node.dataset.marker = name;
+            return node;
+        });
+        subject.current = def;
+        const logged = [];
+        const outcome = loggingTo(logged, () => app.renderElement(def));
+        got[key] = { calls, ...outcome, mapped: Object.keys(app.elementMap), logged };
+    };
+    for (const type of DISPATCH_CONTROL_TYPES) drawOne(spelled(type), { id: 'c1', type });
+    drawOne('no id', { type: 'button' });
+    drawOne('no definition', null);
+    drawOne('nothing', undefined);
+    return got;
+}
+
+function dispatchBindings() {
+    const got = {};
+    const binding = (type) => ({ type, element: document.createElement('div'), elementDef: { id: 'e1' }, binding: {} });
+    const keep = ['evaluateAllBindings'];
+    for (const type of DISPATCH_BINDING_TYPES) {
+        const { app, calls, subject } = recordingPanel(/^evaluate[A-Z]/, keep, () => 'drawn');
+        const b = binding(type);
+        subject.current = b;
+        const logged = [];
+        const outcome = loggingTo(logged, () => app._evaluateBinding(b));
+        got[spelled(type)] = { calls, ...outcome, logged };
+    }
+    for (const [key, b] of [['no binding', null], ['nothing', undefined]]) {
+        const { app, calls } = recordingPanel(/^evaluate[A-Z]/, keep, () => 'drawn');
+        const logged = [];
+        got[key] = { calls, ...loggingTo(logged, () => app._evaluateBinding(b)), logged };
+    }
+    // Every binding at once through the pass, the colour's evaluator failing:
+    // logged, and the bindings after it still drawn.
+    const { app, calls } = recordingPanel(/^evaluate[A-Z]/, keep, (name) => {
+        if (name === 'evaluateColor') throw new Error('colour failed');
+        return 'drawn';
+    });
+    app.bindings = DISPATCH_BINDING_TYPES.map(binding);
+    const logged = [];
+    got['the pass'] = { ...loggingTo(logged, () => app.evaluateAllBindings()), calls: calls.map(([name]) => name), logged };
+    return got;
+}
+
+Object.assign(tests, {
+    dispatch_draws_each_type_with_its_method_as_today() {
+        comparePins('dispatch', { controls: dispatchControls(), bindings: dispatchBindings() }, DISPATCH_PINS.dispatch);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

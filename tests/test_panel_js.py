@@ -417,6 +417,12 @@ SCENARIOS = [
     # overlay closes, and a look that fails logged while the rest draw,
     # pinned whole (tests/fixtures/panel_nav_pins.json).
     "page_navs_draw_as_today",
+    # Which method draws each control type and each binding type, the
+    # panel's own and ones that only look like one, with the renderers and
+    # evaluators replaced after the panel was made, and every binding through
+    # the pass with one failing, pinned whole
+    # (tests/fixtures/panel_dispatch_pins.json).
+    "dispatch_draws_each_type_with_its_method_as_today",
 ]
 
 
