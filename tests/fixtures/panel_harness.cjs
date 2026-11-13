@@ -150,6 +150,7 @@ const sanitizeUrl = (url) => paint().sanitizeCssUrl(url);
 const assetUrl = (ref) => panelModule('base_path.js').assetUrl(ref);
 // Whether a reading can be believed, and the device a key reports from.
 const availability = () => panelModule('availability.js');
+const layout = () => panelModule('layout.js');
 
 // --- The level controls (slider and fader), as a page draws them -----------
 //
@@ -2483,12 +2484,12 @@ const tests = {
     // The builder previews an overlay page in a box the size of the overlay,
     // not the screen, so it pins the type scale to the preset's vmin.
     layout_vmin_override_hook() {
-        const app = mkApp();
+        mkApp();
         const root = document.documentElement;
-        app._applyVminOverride('8');
+        layout().applyVminOverride('8');
         assert(root.style.getPropertyValue('--panel-vmin') === '8px',
             `override sets a concrete px vmin, got ${root.style.getPropertyValue('--panel-vmin')}`);
-        app._applyVminOverride(null);
+        layout().applyVminOverride(null);
         assert(root.style.getPropertyValue('--panel-vmin') === '',
             'clearing hands the scale back to the viewport');
     },
@@ -10306,7 +10307,7 @@ const PANEL_STEPS = {
     builder: (m, data, from) => m.fromParent(data, from),
     // The same message object delivered again.
     again: (m) => m.fromParent(m.lastData, m.lastFrom),
-    vmin: (m, value) => m.app._applyVminOverride(value),
+    vmin: (m, value) => layout().applyVminOverride(value),
     post: (m, msg) => m.app._postToParent(msg),
     start: (m) => { m.started = m.app.start(); },
     settle: async (m) => { await m.started; await settleTasks(); },

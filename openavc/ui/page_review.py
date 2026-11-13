@@ -1327,7 +1327,7 @@ def mutually_exclusive(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
 # --- A page's controls against the masters underneath them -----------------
 #
 # Masters are appended to the page surface BEFORE the page's own elements
-# (panel.js `renderPage`), and every child of `.panel-page` shares one z-index,
+# (panel.js `renderCurrentPage`), and every child of `.panel-page` shares one z-index,
 # so the later sibling wins: a control laid over a master hides it and takes the
 # touch. That is the whole failure. A master nav bar is how somebody gets off a
 # page -- decision 15 of the custom-UI plan makes it the ONLY way off a page
@@ -1345,7 +1345,7 @@ def mutually_exclusive(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
 def _stored_master_box(placements: Mapping[str, Any], orientation: str) -> Any:
     """Which of a master's stored boxes is drawn on a page arranged this way.
 
-    The panel's ``_masterPlacement``: this orientation's own box, then
+    The panel's ``masterPlacement``: this orientation's own box, then
     landscape, then portrait, then whatever is there. A master has to be valid
     on every page it appears on, so it carries its own orientation-keyed boxes
     rather than borrowing a layout's -- and the panel falls back rather than
@@ -1368,7 +1368,7 @@ def _stored_master_box(placements: Mapping[str, Any], orientation: str) -> Any:
 def _drawn_box(raw: Any) -> dict[str, float] | None:
     """A stored box as the panel draws it, or None when it is not numbers.
 
-    The same defaults ``_placeElement`` applies to a missing coordinate. A
+    The same defaults ``placeElement`` applies to a missing coordinate. A
     hand-edited file can carry a NaN, which compares False against every bound
     and would otherwise report an overlap measured in "nan px".
     """

@@ -15,7 +15,7 @@ import { referenceBox } from "./touchTarget";
 
 //
 // Masters are appended to the page surface BEFORE the page's own elements
-// (panel.js `renderPage`), and every child of `.panel-page` shares one z-index,
+// (panel.js `renderCurrentPage`), and every child of `.panel-page` shares one z-index,
 // so the later sibling wins: a control laid over a master hides it and takes the
 // touch. That is the whole failure. A master nav bar is how somebody gets off a
 // page -- decision 15 of the custom-UI plan makes it the ONLY way off a page
@@ -32,7 +32,7 @@ import { referenceBox } from "./touchTarget";
 /**
  * Which of a master's stored boxes is drawn on a page arranged this way.
  *
- * The panel's `_masterPlacement`: this orientation's own box, then landscape,
+ * The panel's `masterPlacement`: this orientation's own box, then landscape,
  * then portrait, then whatever is there. A master has to be valid on every page
  * it appears on, so it carries its own orientation-keyed boxes rather than
  * borrowing a layout's -- and the panel falls back rather than drawing nothing,
@@ -55,7 +55,7 @@ function storedMasterBox(placements: Record<string, Placement>, orientation: str
 }
 
 /** A stored box as the panel draws it, or null when it is not numbers: the same
- *  defaults `_placeElement` applies to a missing coordinate. */
+ *  defaults `placeElement` applies to a missing coordinate. */
 function drawnBox(raw: Placement): Placement | null {
   const box = {
     x: Number(raw.x || 0),

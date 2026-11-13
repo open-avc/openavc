@@ -33,7 +33,11 @@ import { UiOverrides } from './modules/overrides.js';
 import { Availability, changeReaches, devicesFlipped } from './modules/availability.js';
 import { FailureBand } from './modules/failure_band.js';
 import { MacroRuns } from './modules/macro_runs.js';
-import { ProjectStylesheet, applyCssClass } from './modules/stylesheet.js';
+import { ProjectStylesheet } from './modules/stylesheet.js';
+import {
+    applyCoordinateSpaces, applyLivePlacements, applyVminOverride, drawElementTree, drawSnapRuler,
+    masterOrientation, masterPlacement, pct, placeElement, selectLayout, viewportOrientation,
+} from './modules/layout.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
@@ -129,9 +133,6 @@ const OVERLAY_DEFAULTS = {
     sidebarWidth: 25,
 };
 
-// The snap increment a page falls back to: the old 12x8 grid's spacing.
-const SNAP_FALLBACK = { x: 100 / 12, y: 100 / 8 };
-
 class PanelApp {
     constructor() {
         const params = new URLSearchParams(window.location.search);
@@ -147,13 +148,8 @@ class PanelApp {
         // definitions, the panel check-in, a panel connection.
         const framed = !!(window.parent && window.parent !== window);
         this.embedded = framed && (params.get('preview') === '1' || this.editMode);
-        // Type scales with the panel via vmin, which resolves against the
-        // viewport. That is right on real glass and inside overlays, but wrong
-        // when the panel is embedded in a box smaller than the screen it stands
-        // for -- the builder previewing a 400px overlay would render text at a
-        // third of runtime size. An embedder pins the scale by handing us the
-        // preset's vmin in px.
-        this._applyVminOverride(params.get('vmin'));
+        // An embedder pins the type scale by handing us the preset's vmin in px.
+        applyVminOverride(params.get('vmin'));
         this.ws = null;
         this.state = {};
         this.uiDef = null;
@@ -421,7 +417,7 @@ class PanelApp {
                     // not the screen, so it hands us the preset's vmin to keep
                     // preview type the size it will be at runtime.
                     if (Object.prototype.hasOwnProperty.call(msg, 'vmin')) {
-                        this._applyVminOverride(msg.vmin);
+                        applyVminOverride(msg.vmin);
                     }
                     // The Theme Studio's working copy of the theme, or word that there is none.
                     this.theme.takeWorkingCopy(msg);
@@ -465,7 +461,7 @@ class PanelApp {
                     // us where the boxes are and we move the nodes we already
                     // have -- four inline styles instead of rebuilding a page
                     // sixty times a second.
-                    this._applyLivePlacements(msg.placements);
+                    if (this.editMode) applyLivePlacements(msg.placements);
                     break;
                 }
                 case 'openavc:editor-page': {
@@ -474,7 +470,7 @@ class PanelApp {
                     // the builder wants us to use changes.
                     let rerender = false;
                     if (Object.prototype.hasOwnProperty.call(msg, 'vmin')) {
-                        this._applyVminOverride(msg.vmin);
+                        applyVminOverride(msg.vmin);
                         rerender = true;
                     }
                     if (!this.editMode) {
@@ -1019,12 +1015,12 @@ class PanelApp {
         // pinned to hard pixels.
         if (pageType === 'sidebar') {
             const side = overlay.side || 'right';
-            const width = this._pct(overlay.width, OVERLAY_DEFAULTS.sidebarWidth);
+            const width = pct(overlay.width, OVERLAY_DEFAULTS.sidebarWidth);
             content.className = `overlay-content overlay-sidebar overlay-sidebar-${side}`;
             content.style.width = width + '%';
         } else {
-            const width = this._pct(overlay.width, OVERLAY_DEFAULTS.dialogWidth);
-            const height = this._pct(overlay.height, OVERLAY_DEFAULTS.dialogHeight);
+            const width = pct(overlay.width, OVERLAY_DEFAULTS.dialogWidth);
+            const height = pct(overlay.height, OVERLAY_DEFAULTS.dialogHeight);
             const position = overlay.position || 'center';
             content.className = `overlay-content overlay-dialog overlay-pos-${position}`;
             content.style.width = width + '%';
@@ -1052,7 +1048,7 @@ class PanelApp {
 
         // Append to root (on top of everything)
         document.body.appendChild(container);
-        this._applyCoordinateSpaces(surface);
+        applyCoordinateSpaces(surface);
 
         // Keep a newly-opened overlay non-interactive while offline; commands
         // would be silently dropped but local optimistic UI would still flip.
@@ -1068,347 +1064,24 @@ class PanelApp {
 
     // --- Layout ---
 
-    /** A number, or the fallback when the value isn't one. */
-    _pct(value, fallback) {
-        const n = typeof value === 'number' ? value : parseFloat(value);
-        return Number.isFinite(n) ? n : fallback;
-    }
-
-    /** Which way the glass is turned right now. */
-    _viewportOrientation() {
-        const w = window.innerWidth || document.documentElement.clientWidth || 0;
-        const h = window.innerHeight || document.documentElement.clientHeight || 0;
-        return w >= h ? 'landscape' : 'portrait';
-    }
-
     /**
-     * Move already-rendered elements to new boxes, without a re-render.
-     *
-     * Design-time only: this is what the builder sends while a control is
-     * actually under the pointer. The node to move is the placement box when
-     * the element is aspect-locked (that box is what holds the position) and
-     * the element itself otherwise.
-     */
-    _applyLivePlacements(placements) {
-        if (!this.editMode || !placements || typeof placements !== 'object') return;
-        for (const [id, p] of Object.entries(placements)) {
-            if (!p) continue;
-            const node = document.querySelector(
-                `[data-placement-for="${CSS.escape(id)}"]`,
-            ) || document.querySelector(`[data-element-id="${CSS.escape(id)}"]`);
-            if (!node) continue;
-            node.style.left = `${this._pct(p.x, 0)}%`;
-            node.style.top = `${this._pct(p.y, 0)}%`;
-            node.style.width = `${this._pct(p.w, 100)}%`;
-            node.style.height = `${this._pct(p.h, 100)}%`;
-        }
-    }
-
-    /**
-     * Pin the type scale to a fixed vmin instead of the live viewport.
-     * Pass nothing to hand it back to the viewport.
-     */
-    _applyVminOverride(value) {
-        const root = document.documentElement;
-        if (value == null || value === '') {
-            root.style.removeProperty('--panel-vmin');
-            return;
-        }
-        const px = parseFloat(value);
-        if (!Number.isFinite(px) || px <= 0) return;
-        root.style.setProperty('--panel-vmin', `${px}px`);
-    }
-
-    /**
-     * The arrangement this page should render in at this viewport.
-     *
-     * Pick the layout whose orientation matches the screen, fall back to the
-     * primary when none does, then fold the `inherits` chain down so a
-     * secondary layout only has to say what moved -- anything it leaves alone
-     * follows the layout it inherits from.
-     */
-    _selectLayout(page) {
-        const layouts = Array.isArray(page?.layouts) ? page.layouts : [];
-        const empty = { placements: {}, hidden: new Set(), id: null, orientation: null };
-        if (!layouts.length) return empty;
-
-        const primary = layouts.find(l => l && l.primary) || layouts[0];
-        const wanted = this._viewportOrientation();
-        const chosen = layouts.find(l => l && l.orientation === wanted) || primary;
-        if (!chosen) return empty;
-
-        // Walk to the root of the inherits chain, then apply from the base
-        // down so the chosen layout's own placements win. The seen-set is a
-        // cycle guard: a hand-edited project can point two layouts at each
-        // other, and the panel still has to draw something.
-        const chain = [];
-        const seen = new Set();
-        let cursor = chosen;
-        while (cursor && !seen.has(cursor.id)) {
-            seen.add(cursor.id);
-            chain.unshift(cursor);
-            cursor = cursor.inherits ? layouts.find(l => l && l.id === cursor.inherits) : null;
-        }
-
-        const placements = {};
-        const hidden = new Set();
-        for (const layout of chain) {
-            Object.assign(placements, layout.placements || {});
-            for (const id of (layout.hidden || [])) hidden.add(id);
-        }
-        return { placements, hidden, id: chosen.id, orientation: chosen.orientation };
-    }
-
-    /**
-     * A master element's box for this viewport. Masters carry their own
-     * orientation-keyed placements because they have to be valid on every page
-     * they appear on, whatever those pages are arranged like.
-     */
-    _masterPlacement(master) {
-        const placements = master?.placements || {};
-        return placements[this._viewportOrientation()]
-            || placements.landscape
-            || placements.portrait
-            || Object.values(placements)[0]
-            || null;
-    }
-
-    /**
-     * Which of a master's orientation-keyed boxes _masterPlacement resolved to.
-     *
-     * The same fallback chain, returning the KEY instead of the box. A tile
-     * wall inside a master has to be drawn the shape that key was reviewed
-     * against -- review_master_element measures each key against its own
-     * screen, so answering "landscape" here for a box picked from `portrait`
-     * would publish a floor for a wall nobody draws.
-     */
-    _masterOrientation(master) {
-        const placements = master?.placements || {};
-        const viewport = this._viewportOrientation();
-        if (placements[viewport]) return viewport;
-        if (placements.landscape) return 'landscape';
-        if (placements.portrait) return 'portrait';
-        return Object.keys(placements)[0] || 'landscape';
-    }
-
-    /**
-     * The ratio an element holds under a stretch, or null to stretch freely.
-     *
-     * Deliberately no per-type default here. A renderer that locked, say,
-     * every status LED to 1:1 would re-shape elements in a project that was
-     * migrated, not authored, against the promise that a migrated panel looks
-     * exactly like it used to. The default belongs where the element is
-     * created, so a *new* LED is locked and an existing one is left alone.
-     */
-    _aspectLockFor(element) {
-        if (!element || element.aspect_lock == null) return null;
-        const n = parseFloat(element.aspect_lock);
-        return Number.isFinite(n) && n > 0 ? n : null;
-    }
-
-    /**
-     * THE placement path. Page elements, container children, overlay contents
-     * and master elements all get their box from here: four percentages of
-     * whatever they sit inside. That is what makes a panel drawn once the same
-     * panel on any screen of the same shape.
-     *
-     * Returns the node to append, which is the element itself unless it is
-     * aspect-locked -- CSS can only hold a ratio when one axis is free, and
-     * "shrink to fit, stay centred" needs a box to shrink inside, so a locked
-     * element gets a placement box and sits within it.
-     */
-    _placeElement(el, placement, element) {
-        const p = placement || {};
-        const x = this._pct(p.x, 0);
-        const y = this._pct(p.y, 0);
-        const w = this._pct(p.w, 100);
-        const h = this._pct(p.h, 100);
-
-        // The author's own classes, for the project stylesheet to target. Every
-        // element type sets its own className, so this is the one place both
-        // page elements and master elements pass through. It lands on the
-        // element itself rather than the aspect-lock wrapper below, because the
-        // wrapper is the placement box and the element is what was styled.
-        applyCssClass(el, element);
-
-        const ratio = this._aspectLockFor(element);
-        if (ratio) {
-            const box = document.createElement('div');
-            box.className = 'panel-placement';
-            if (element?.id) box.dataset.placementFor = element.id;
-            box.style.position = 'absolute';
-            box.style.left = `${x}%`;
-            box.style.top = `${y}%`;
-            box.style.width = `${w}%`;
-            box.style.height = `${h}%`;
-            el.style.aspectRatio = String(ratio);
-            box.appendChild(el);
-            return box;
-        }
-
-        el.style.position = 'absolute';
-        el.style.left = `${x}%`;
-        el.style.top = `${y}%`;
-        el.style.width = `${w}%`;
-        el.style.height = `${h}%`;
-        return el;
-    }
-
-    /**
-     * Make a container's box and its contents' coordinate space the same box.
-     *
-     * A child's percentages are OF its container, and CSS resolves an absolutely
-     * positioned box against its ancestor's PADDING box -- which is the border
-     * box minus the border. So a container with the theme's 1px frame quietly
-     * moves everything inside it in by a pixel and shrinks it by two, while the
-     * builder measures against the rectangle it drew. The two disagree, and a
-     * control shuffles a little every time it moves in or out of a container.
-     *
-     * An outline draws the same rectangle and takes up no space at all, so the
-     * frame stays exactly where it was and the coordinate space becomes the
-     * whole box. Only containers need this; a leaf element's border is nobody's
-     * frame of reference.
-     *
-     * A themed or authored border arrives inline, but a stylesheet is just as
-     * capable of putting one there -- panel-elements.css does it today, and
-     * element css_class plus a project stylesheet is reserved (see the power-
-     * user hooks) -- and a border this never saw would shift every child inside
-     * it. So the inline value is tried first and the browser is asked second.
-     * Asking needs the node in the document, which is why this runs as a pass
-     * after the page is attached: computed style on a detached node is empty.
-     */
-    _applyCoordinateSpaces(root) {
-        if (!root || typeof root.querySelectorAll !== 'function') return;
-        for (const el of root.querySelectorAll('[data-coordinate-space]')) {
-            this._makeCoordinateSpace(el);
-        }
-    }
-
-    _makeCoordinateSpace(el) {
-        // Inline first, and verbatim: it is a CSS expression -- max(1px, Xrem)
-        // -- and re-emitting it keeps the frame scaling with the panel the way
-        // every other measurement does. Resolving it to px here would pin it
-        // until the next re-render.
-        let width = el.style.borderWidth;
-        let style = el.style.borderStyle;
-        let color = el.style.borderColor;
-        if (!width || width === '0' || width === '0px') {
-            const computed = (typeof getComputedStyle === 'function' && el.isConnected)
-                ? getComputedStyle(el)
-                : null;
-            if (!computed) return;
-            const px = Math.max(...[
-                computed.borderTopWidth, computed.borderRightWidth,
-                computed.borderBottomWidth, computed.borderLeftWidth,
-            ].map(v => parseFloat(v) || 0));
-            if (!px) return;
-            // Sides are uniform in every border the platform itself writes, so
-            // the widest is THE frame. An asymmetric one draws as a uniform
-            // frame rather than shifting its contents: the coordinate space is
-            // the invariant, the exact frame is cosmetic.
-            width = `${px}px`;
-            style = computed.borderTopStyle;
-            color = computed.borderTopColor;
-        }
-        el.style.outline = `${width} ${style || 'solid'} ${color || 'currentColor'}`;
-        el.style.outlineOffset = `calc(0px - ${width})`;
-        el.style.borderWidth = '0';
-    }
-
-    /**
-     * Render one element, and anything that names it as a parent, into `host`.
-     *
-     * A container is a real parent now: its children are percentages *of it*,
-     * so moving or resizing the container carries them along and one
-     * visible_when on the container hides the whole group.
-     */
-    _renderElementTree(element, ctx, host) {
-        if (!element || !element.id) return null;
-        // Guard against an element listed twice, or a parent cycle a
-        // hand-edited project could introduce.
-        if (ctx.rendered.has(element.id)) return null;
-        ctx.rendered.add(element.id);
-        if (ctx.layout.hidden.has(element.id)) return null;
-
-        const el = this.renderElement(element);
-        if (!el) return null;
-        el.dataset.elementType = element.type;
-
-        const children = ctx.byParent.get(element.id) || [];
-        if (children.length) {
-            // Containers do not clip. A child nudged past the edge stays
-            // visible -- the builder's out-of-bounds badge is what says so,
-            // consistent with free positioning warning rather than preventing.
-            el.style.overflow = 'visible';
-            el.style.pointerEvents = 'auto';
-            // Converted to an outline once the page is attached and the browser
-            // has resolved every border that reaches this box, inline or not.
-            el.dataset.coordinateSpace = '1';
-            for (const child of children) {
-                this._renderElementTree(child, ctx, el);
-            }
-        }
-
-        const node = this._placeElement(el, ctx.layout.placements[element.id], element);
-        if (ctx.entryAnimation && ctx.entryAnimation !== 'none') {
-            this._applyEntryAnimation(node, ctx);
-        }
-        this.registerVisibleWhen(node, element);
-        host.appendChild(node);
-        return node;
-    }
-
-    _applyEntryAnimation(node, ctx) {
-        const index = ctx.order++;
-        node.style.opacity = '0';
-        const staggerStyle = this.uiSettings.element_stagger_style || 'fade-up';
-        const animClass = ctx.entryAnimation === 'stagger'
-            ? `element-entry-${staggerStyle}`
-            : `element-entry-${ctx.entryAnimation}`;
-        setTimeout(() => {
-            node.style.opacity = '';
-            node.classList.add(animClass);
-        }, ctx.staggerMs * index);
-    }
-
-    /**
-     * Render every element of a page onto a surface, in the arrangement this
-     * viewport calls for. Shared by full pages and by overlays/sidebars, which
-     * used to carry their own copy of the placement math -- and were the last
-     * part of a panel still measured in hard pixels because of it.
+     * Draw every element of a page onto a surface, in the arrangement this
+     * viewport calls for (modules/layout.js). Shared by full pages and by
+     * overlays and sidebars. Returns the layout drawn.
      */
     _renderPageElements(page, surface, opts = {}) {
-        const layout = this._selectLayout(page);
+        const layout = selectLayout(page, viewportOrientation());
         // Which way round the arrangement being drawn is. A tile wall's grid
-        // follows it (matrixTileGridShape in modules/matrix.js), and it is the LAYOUT's orientation
-        // rather than the viewport's on purpose: a page with no portrait
-        // arrangement falls back to its landscape one, and the review measured
-        // that arrangement as landscape. The two have to agree.
+        // follows it (matrixTileGridShape in modules/matrix.js), and it is the
+        // LAYOUT's orientation rather than the viewport's on purpose: a page
+        // with no portrait arrangement falls back to its landscape one, and the
+        // review measured that arrangement as landscape. The two have to agree.
         this._drawnOrientation = layout.orientation || 'landscape';
-        const elements = Array.isArray(page.elements) ? page.elements : [];
-
-        // Group by parent. A parent id that names nothing on this page is
-        // treated as page-level, so an orphaned child still draws.
-        const ids = new Set(elements.map(e => e && e.id).filter(Boolean));
-        const byParent = new Map();
-        for (const element of elements) {
-            if (!element || !element.id) continue;
-            const key = (element.parent && ids.has(element.parent)) ? element.parent : null;
-            if (!byParent.has(key)) byParent.set(key, []);
-            byParent.get(key).push(element);
-        }
-
-        const ctx = {
-            layout,
-            byParent,
-            rendered: new Set(),
-            order: 0,
-            entryAnimation: opts.entryAnimation || 'none',
-            staggerMs: opts.staggerMs || 30,
-        };
-        for (const element of (byParent.get(null) || [])) {
-            this._renderElementTree(element, ctx, surface);
-        }
+        drawElementTree(page, layout, surface, {
+            ...opts,
+            element: def => this.renderElement(def),
+            visibleWhen: (node, def) => this.registerVisibleWhen(node, def),
+        });
         return layout;
     }
 
@@ -1421,9 +1094,9 @@ class PanelApp {
     _setupViewportListener() {
         if (this._viewportListenerSetup) return;
         this._viewportListenerSetup = true;
-        let last = this._viewportOrientation();
+        let last = viewportOrientation();
         const onChange = () => {
-            const now = this._viewportOrientation();
+            const now = viewportOrientation();
             if (now === last) return;
             last = now;
             if (this.uiDef) this.renderCurrentPage();
@@ -1513,6 +1186,7 @@ class PanelApp {
         const transitionDuration = settings.page_transition_duration || 200;
         const entryAnimation = this.editMode ? 'none' : (settings.element_entry || 'none');
         const staggerMs = settings.element_stagger_ms || 30;
+        const staggerStyle = settings.element_stagger_style;
 
         // Set transition duration CSS variable
         this.root.style.setProperty('--page-transition-duration', transitionDuration + 'ms');
@@ -1577,7 +1251,7 @@ class PanelApp {
             // Design-time snap overlay. The grid is a ruler now rather than a
             // container, so this only draws where things will snap to -- showing
             // or hiding it moves nothing.
-            this._renderSnapOverlay(page, surface);
+            if (this.editMode && this._editShowGrid !== false) drawSnapRuler(page, surface);
         }
 
         // Master elements come before the page's own, so DOM order alone keeps
@@ -1590,17 +1264,17 @@ class PanelApp {
             const mPages = mEl.pages;
             const showOnPage = mPages === '*' || (Array.isArray(mPages) && mPages.includes(page.id));
             if (!showOnPage || mEl.hidden) continue;
-            this._drawnOrientation = this._masterOrientation(mEl);
+            this._drawnOrientation = masterOrientation(mEl, viewportOrientation());
             const el = this.renderElement(mEl);
             if (!el) continue;
             el.dataset.elementType = mEl.type;
-            const node = this._placeElement(el, this._masterPlacement(mEl), mEl);
+            const node = placeElement(el, masterPlacement(mEl, viewportOrientation()), mEl);
             this.registerVisibleWhen(node, mEl);
             surface.appendChild(node);
         }
 
         if (!customFrame) {
-            this._renderPageElements(page, surface, { entryAnimation, staggerMs });
+            this._renderPageElements(page, surface, { entryAnimation, staggerMs, staggerStyle });
         }
 
         // A page nobody has put anything on says so, in the room's own terms.
@@ -1617,7 +1291,7 @@ class PanelApp {
         }
 
         this.root.appendChild(surface);
-        this._applyCoordinateSpaces(surface);
+        applyCoordinateSpaces(surface);
         this.evaluateAllBindings();
 
         // Theme Studio direct manipulation — click any element in the preview
@@ -1666,38 +1340,6 @@ class PanelApp {
             type: 'openavc:editor-text-defaults', fontSizeRem, editableText,
             textRefusals,
         });
-    }
-
-    /**
-     * Draw the snap increment behind the page while designing. Two repeating
-     * gradients rather than a div per cell: the increment is a float now
-     * (8.3333% is the old 12-column spacing), and a background-size in percent
-     * lands on it exactly at any page size.
-     */
-    _renderSnapOverlay(page, surface) {
-        if (!this.editMode || this._editShowGrid === false) return;
-        // The ruler draws whenever the builder asks for it, snapping on or
-        // off — the grid toggle controls what you SEE, the snap toggle what
-        // pulls. Keying this off snap.enabled made the grid button do nothing
-        // on a page with snapping switched off.
-        const snap = page.snap || {};
-        const stepX = this._pct(snap.x, SNAP_FALLBACK.x);
-        const stepY = this._pct(snap.y, SNAP_FALLBACK.y);
-        if (!(stepX > 0) || !(stepY > 0)) return;
-
-        const overlay = document.createElement('div');
-        overlay.className = 'panel-page-snap-overlay';
-        const line = 'rgba(255,255,255,0.18)';
-        overlay.style.cssText = [
-            'position: absolute',
-            'inset: 0',
-            'pointer-events: none',
-            'z-index: 0',
-            `background-image: linear-gradient(to right, ${line} 1px, transparent 1px),`
-                + ` linear-gradient(to bottom, ${line} 1px, transparent 1px)`,
-            `background-size: ${stepX}% ${stepY}%`,
-        ].join(';');
-        surface.appendChild(overlay);
     }
 
     /**
@@ -2978,7 +2620,7 @@ class PanelApp {
     /** A custom PAGE is a custom control sized to the page.
      *
      *  Same frame, same sandbox, same bridge, same grant -- the only difference
-     *  is the box, and `_placeElement` with no placement is already the full
+     *  is the box, and `placeElement` with no placement is already the full
      *  box. The synthetic element carries the page's own id, so the state
      *  pushes, the failure strip and `openavc:init`'s elementId all name the
      *  page. A second renderer here is how one of the two quietly loses a
@@ -2998,7 +2640,7 @@ class PanelApp {
         // Fills the screen, so it keeps square corners -- the rounded radius
         // every element carries would clip the author's own page.
         el.classList.add('panel-custom-page');
-        return this._placeElement(el, null, asElement);
+        return placeElement(el, null, asElement);
     }
 
     /** What a list, a dropdown or a text field asks of the panel (modules/list.js,

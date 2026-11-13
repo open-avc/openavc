@@ -12,8 +12,10 @@ Duck-typed on purpose: a page here is anything with ``.layouts`` and
 ``.elements``, so the loader's Pydantic models and a hand-built test page both
 work and this module imports nothing.
 
-The panel runtime's ``_selectLayout`` and the Builder's ``layoutChain`` /
-``absolutePlacements`` are the other two implementations of this arithmetic.
+The panel runtime's ``selectLayout`` (``web/panel/modules/layout.js``) and the
+Builder's ``layoutChain`` / ``absolutePlacements`` are the other two
+implementations of this arithmetic; ``tests/test_panel_layout_mirror.py``
+holds the panel's to this one.
 """
 
 from __future__ import annotations

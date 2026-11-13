@@ -14,8 +14,9 @@
  * The rule worth knowing before changing anything here: a stored box means
  * nothing without its container, so a write that changes a control's container
  * has to convert its box in the same edit (the container tree does that), and
- * the panel runtime reads all of this the same way (`_selectLayout`,
- * `_masterPlacement` and the grouping in `_renderPageElements`, in panel.js).
+ * the panel runtime reads all of this the same way (`selectLayout`,
+ * `masterPlacement` and the grouping in `drawElementTree`, in the panel's
+ * modules/layout.js).
  *
  * An edit aimed from the screen says which page and which arrangement as one
  * value, `OnScreen` (`PageSelection` adds the controls selected on it), which
@@ -118,7 +119,7 @@ export interface PageSelection extends OnScreen {
  *
  * The seen-set is a cycle guard -- a hand-edited project can point two layouts
  * at each other and the builder still has to draw something. Mirrors the panel
- * runtime's _selectLayout, which walks the same chain for the same reason.
+ * runtime's selectLayout, which walks the same chain for the same reason.
  */
 export function layoutChain(page: UIPage, layoutId?: string | null): Layout[] {
   const layouts = page.layouts ?? [];
@@ -337,7 +338,7 @@ export function withHidden(
  *
  * Masters carry their own orientation-keyed placements rather than living in any
  * page's layouts, because they render across pages that can be arranged
- * differently. Mirrors the panel runtime's _masterPlacement, fallbacks included.
+ * differently. Mirrors the panel runtime's masterPlacement, fallbacks included.
  */
 export function masterPlacement(
   master: Pick<MasterElement, "placements"> | undefined,
@@ -462,7 +463,7 @@ type OnPage = { has(id: string): boolean };
  * has to draw. A cycle is not this rule's concern: a walk up the chain stops
  * where it comes back round (`containersAbove`, and `absolutePlacements`' own).
  *
- * The panel groups a page the same way (`_renderPageElements` in panel.js),
+ * The panel groups a page the same way (`drawElementTree` in modules/layout.js),
  * except that it takes a self-parent at its word, so that element is drawn
  * nowhere. The page review asks this too, so a change here changes what the
  * review says and has to move `parent_of` in openavc/ui/page_review.py with it
