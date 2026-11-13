@@ -1618,12 +1618,12 @@ const tests = {
         assert(entry.elementDef === element, 'entry carries the element definition');
 
         // The payoff: macro-busy now reaches a plugin element.
-        app._runningMacros = { lights_up: true };
-        app._updateMacroBusyState('lights_up');
+        app.macroRuns.running = { lights_up: true };
+        app.macroRuns.showBusy('lights_up');
         assert(el.classList.contains('macro-busy'), 'plugin element picks up macro-busy');
         assert(el.getAttribute('data-macro-busy') === 'lights_up', 'busy attribute names the macro');
-        app._runningMacros = {};
-        app._updateMacroBusyState('lights_up');
+        app.macroRuns.running = {};
+        app.macroRuns.showBusy('lights_up');
         assert(!el.classList.contains('macro-busy'), 'busy state clears when the macro stops');
     },
 
@@ -4046,7 +4046,7 @@ const tests = {
             });
             renderProject(app, proj);
             const btn = app.elementMap['btn_ctor'].el;
-            app._updateMacroBusyState('constructor');
+            app.macroRuns.showBusy('constructor');
             assert(!btn.classList.contains('macro-busy'), 'a macro called constructor is idle until it runs');
             app.handleMessage({ type: 'macro.started', macro_id: 'constructor', total_steps: 1 });
             assert(btn.classList.contains('macro-busy'), 'and busy while it runs');

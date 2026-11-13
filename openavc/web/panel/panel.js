@@ -32,6 +32,7 @@ import { PanelTheme, ThemeStudioPicker } from './modules/theme.js';
 import { UiOverrides } from './modules/overrides.js';
 import { Availability, changeReaches, devicesFlipped } from './modules/availability.js';
 import { FailureBand } from './modules/failure_band.js';
+import { MacroRuns } from './modules/macro_runs.js';
 import { ProjectStylesheet, applyCssClass } from './modules/stylesheet.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
@@ -114,12 +115,6 @@ import {
 // <old px> / REM_BASE_PX so they still land on the pixel they always did.
 const REM_BASE_PX = 14;
 
-// How long a macro this panel started stays this panel's to report a failure
-// for, when nothing ever tells us its run ended. Matches the macro engine's own
-// ceiling for a queued start, which is the longest a press can legitimately sit
-// before it runs.
-const MACRO_CLAIM_MAX_AGE_MS = 5 * 60 * 1000;
-
 // A button's display modes that draw no words, and those that draw its own picture.
 const WORDLESS_MODES = new Set(['image', 'icon_only']);
 const PICTURE_MODES = new Set(['image', 'image_text']);
@@ -201,12 +196,15 @@ class PanelApp {
         this.pageHistory = [];       // Stack of previously-visited regular pages (newest on top) for $back
         this._previewPageId = null;  // Page the builder's preview last asked for (see _showPageAsRuntimeWould)
         this._navigatingBack = false; // Skip history push when navigateToPage is recursing for $back
-        // Keyed by macro id, which is whatever the author named it. No
-        // prototype, so an id like `constructor` reads as not running and
-        // `__proto__` is an ordinary key rather than Object.prototype.
-        this._runningMacros = Object.create(null);    // macro_id -> { description, step_index, total_steps }
-        this._startedMacros = Object.create(null);    // macro_id -> { at, reported, running } for macros THIS panel started
-        this._macroRuns = Object.create(null);        // macro_id -> how many runs of it are in flight (see _endMacroRun)
+        // The macro runs in flight and which of them this panel started
+        // (modules/macro_runs.js).
+        this.macroRuns = new MacroRuns({
+            elementMap: () => this.elementMap,
+            bindings: () => this.bindings,
+            recordSource: (node, path) => this._textEditor.recordSource(node, path),
+            showFailure: (text) => this._failureBand.show(text),
+            revert: () => this._revertRefusedInteraction(null),
+        });
         this.reconnectDelay = 1000;
         this.maxReconnectDelay = 30000; // matches the backoff cap used in onclose
         this.reconnectAttempts = 0;
@@ -568,7 +566,7 @@ class PanelApp {
         // to: one finger presses one thing at a time, and the only thing this
         // is used for is keeping the message off the control just pressed.
         if (msg && msg.element_id) this._lastTouchedElementId = msg.element_id;
-        this._claimMacros(msg);
+        this.macroRuns.claimFrom(msg);
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
             this.ws.send(JSON.stringify(msg));
         }
@@ -719,47 +717,21 @@ class PanelApp {
                 break;
 
             case 'macro.started':
-                this._macroRuns[msg.macro_id] = (this._macroRuns[msg.macro_id] || 0) + 1;
-                // A claim made before this frame is a press waiting for its
-                // run; now it has one. Until it does, an ending run belongs to
-                // somebody else and must not take the claim with it.
-                if (this._startedMacros[msg.macro_id]) {
-                    this._startedMacros[msg.macro_id].running = true;
-                }
-                this._runningMacros[msg.macro_id] = {
-                    description: '',
-                    step_index: 0,
-                    total_steps: msg.total_steps || 0,
-                };
-                this._updateMacroBusyState(msg.macro_id);
-                this._updateMacroProgressBindings(msg.macro_id);
+                this.macroRuns.started(msg);
                 break;
 
-            case 'macro.progress': {
-                // Only a step's own message says which step is running. A Wait
-                // Until's waiting / satisfied / timeout, a group command's result
-                // and a condition's answer carry none of it, and overwriting
-                // from them read "Step 1 of 0" for as long as the wait lasted.
-                const run = this._runningMacros[msg.macro_id];
-                if (run) {
-                    if ('description' in msg) run.description = msg.description || '';
-                    if (typeof msg.step_index === 'number') run.step_index = msg.step_index;
-                    if (typeof msg.total_steps === 'number') run.total_steps = msg.total_steps;
-                }
-                this._updateMacroProgressBindings(msg.macro_id);
+            case 'macro.progress':
+                this.macroRuns.progress(msg);
                 break;
-            }
 
             case 'macro.step_error':
-                this._reportMacroFailure(msg);
+                this.macroRuns.stepFailed(msg);
                 break;
 
             case 'macro.completed':
             case 'macro.error':
             case 'macro.cancelled':
-                this._endMacroRun(msg.macro_id);
-                this._updateMacroBusyState(msg.macro_id);
-                this._updateMacroProgressBindings(msg.macro_id);
+                this.macroRuns.ended(msg);
                 break;
 
             case 'error':
@@ -797,144 +769,6 @@ class PanelApp {
                 }
                 break;
         }
-    }
-
-    /**
-     * Remember that a macro was started FROM THIS PANEL.
-     *
-     * A macro failure is broadcast to every panel on the instance, because a
-     * running macro is a fact about the room rather than about one screen.
-     * That is right for the busy state on a button and wrong for a message:
-     * a band in a space where nobody touched anything is about somebody
-     * else's press, and the only panel that can act on it is the one it was
-     * made from. There is nothing on the wire that says who started a macro,
-     * and nothing needs to be -- the panel that sent it already knows.
-     *
-     * Both doors go through send(), so this is one hook rather than one per
-     * interaction: a preset and a custom control send `macro.execute`
-     * themselves, and a binding sends `ui.<interaction>` and lets the server
-     * look up what that control runs.
-     */
-    _claimMacros(msg) {
-        if (!msg || typeof msg.type !== 'string') return;
-        if (msg.type === 'macro.execute' && msg.macro_id) {
-            this._claimMacro(String(msg.macro_id));
-            return;
-        }
-        if (!msg.type.startsWith('ui.') || !msg.element_id) return;
-        const def = this.elementMap[msg.element_id]?.elementDef;
-        if (!def) return;
-        // Every macro this control can run, not just the one this interaction
-        // would have reached: a finger landed on it, so a failure from any
-        // macro it runs is that person's. Which slot fired is the server's
-        // business and it is not worth a second copy of the dispatch rules
-        // here -- an off_action, a hold and a value_map entry are all
-        // reachable and all theirs.
-        //
-        // matrix_config as well as the do bindings, because a destination row
-        // may carry its OWN route action list that runs instead of the
-        // element's. Nothing under `show` is walked: a label bound to a
-        // macro's progress is WATCHING it, which is not the same as having
-        // started it.
-        for (const macroId of this._macrosReachableFrom([
-            def.bindings?.do, def.matrix_config,
-        ])) {
-            this._claimMacro(macroId);
-        }
-    }
-
-    _claimMacro(macroId) {
-        // A fresh press re-arms the report: pressing again after a failure is
-        // somebody asking again, and silence would read as having fixed it.
-        this._startedMacros[macroId] = { at: Date.now(), reported: false, running: false };
-    }
-
-    /**
-     * One run of a macro ended. Forget it only when they all have.
-     *
-     * A macro is a fact about the room, so every panel sees every run of it --
-     * and nothing on the wire says which run a frame belongs to. Keyed by macro
-     * id alone, the first ending run cleared the busy state and, worse, threw
-     * away the claim: press "System On" while a schedule is already running it,
-     * that run finishes, and the failure of the run somebody is standing there
-     * waiting for arrives to a panel that has forgotten it ever asked. Silence,
-     * which is what this whole surface exists to end.
-     *
-     * Counting the starts is what tells them apart without a run id: every run
-     * announces itself on the same socket, so what is in flight is knowable
-     * even though which-is-which is not. A start that never happens -- the
-     * macro's own overlap guard refused it -- leaves the claim to age out, the
-     * case MACRO_CLAIM_MAX_AGE_MS was always for.
-     */
-    _endMacroRun(macroId) {
-        const left = Math.max(0, (this._macroRuns[macroId] || 0) - 1);
-        if (left) {
-            this._macroRuns[macroId] = left;
-            return;
-        }
-        delete this._macroRuns[macroId];
-        delete this._runningMacros[macroId];
-        // Only a claim that has seen its run start. One made a moment ago is a
-        // press whose run has not been announced yet, and the frame that just
-        // arrived is somebody else's.
-        const claim = this._startedMacros[macroId];
-        if (claim && claim.running) delete this._startedMacros[macroId];
-    }
-
-    _macrosReachableFrom(node, found) {
-        found = found || new Set();
-        if (Array.isArray(node)) {
-            for (const entry of node) this._macrosReachableFrom(entry, found);
-            return found;
-        }
-        if (!node || typeof node !== 'object') return found;
-        if (node.action === 'macro' && node.macro) found.add(String(node.macro));
-        for (const value of Object.values(node)) {
-            if (value && typeof value === 'object') this._macrosReachableFrom(value, found);
-        }
-        return found;
-    }
-
-    /**
-     * A step of a macro this panel started failed. Say so, once.
-     *
-     * ONE message per run, the first: a macro that cannot reach a device on
-     * step 2 usually cannot reach it on step 3 either, and three sentences
-     * swapping through one band in a tenth of a second is unreadable. The
-     * first names the thing to go and fix.
-     */
-    _reportMacroFailure(msg) {
-        // Anything this failure happened INSIDE, not just the macro the step
-        // belongs to: press "System On", which calls "Projector On", and the
-        // frame names the sub-macro nobody at the panel has heard of.
-        const chain = Array.isArray(msg.call_chain) && msg.call_chain.length
-            ? msg.call_chain
-            : [msg.macro_id];
-        const claims = [];
-        for (const macroId of chain) {
-            const claim = this._startedMacros[macroId];
-            if (!claim) continue;
-            // A claim is normally cleared when its run ends. This covers the
-            // one that never sees an end -- the start was throttled, or the
-            // socket dropped mid-run -- so a schedule firing the same macro
-            // hours later cannot draw a message nobody asked for.
-            if (Date.now() - claim.at > MACRO_CLAIM_MAX_AGE_MS) {
-                delete this._startedMacros[macroId];
-                continue;
-            }
-            claims.push(claim);
-        }
-        if (!claims.length) return;
-        if (claims.some(claim => claim.reported)) return;
-        for (const claim of claims) claim.reported = true;
-        this._failureBand.show(msg.message || msg.error);
-        // A step that never reached its device is the same failure as a refused
-        // command, arriving on a different frame: the fader that ran the macro
-        // is still showing the number somebody dragged it to. Nothing on a
-        // macro frame says which control started it, so this takes the
-        // last-touched fallback -- which is what claimed the macro in the first
-        // place.
-        this._revertRefusedInteraction(null);
     }
 
     /**
@@ -3191,46 +3025,6 @@ class PanelApp {
     }
 
     // --- Bindings ---
-
-    _updateMacroBusyState(macroId) {
-        // Apply or remove busy state on buttons whose press binding triggers this macro
-        for (const [elemId, entry] of Object.entries(this.elementMap)) {
-            const pressActions = entry.elementDef?.bindings?.do?.press;
-            if (!pressActions) continue;
-            const actions = Array.isArray(pressActions) ? pressActions : [pressActions];
-            const referencesMacro = actions.some(a => a.action === 'macro' && a.macro === macroId);
-            if (!referencesMacro) continue;
-            const isRunning = macroId in this._runningMacros;
-            if (isRunning) {
-                entry.el.classList.add('macro-busy');
-                entry.el.setAttribute('data-macro-busy', macroId);
-            } else {
-                entry.el.classList.remove('macro-busy');
-                entry.el.removeAttribute('data-macro-busy');
-            }
-        }
-    }
-
-    _updateMacroProgressBindings(macroId) {
-        // Update any text bindings with source: "macro_progress" for this macro
-        for (const b of this.bindings) {
-            if (b.type !== 'macro_progress') continue;
-            if (b.binding.macro !== macroId) continue;
-            const running = this._runningMacros[macroId];
-            // A run with no description and no step count to show (one whose
-            // steps are not known yet) keeps the idle text, never "of 0".
-            if (running && (running.description || running.total_steps > 0)) {
-                const text = running.description || `Step ${running.step_index + 1} of ${running.total_steps}`;
-                b.element.textContent = text;
-                // The step description comes from the macro, not the author.
-                this._textEditor.recordSource(b.element, null);
-            } else {
-                b.element.textContent = b.binding.idle_text || '';
-                this._textEditor.recordSource(b.element,
-                    ['bindings', 'show', 'value', 'idle_text']);
-            }
-        }
-    }
 
     _scheduleBindingEvaluation(keys) {
         // Batch multiple state updates into a single rAF evaluation
