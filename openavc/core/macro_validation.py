@@ -31,6 +31,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.core.condition_eval import _OPERATOR_ALIASES as _COND_ALIASES
+from openavc.drivers.param_labels import param_label as _readable_param
+from openavc.drivers.param_validation import required_param_sentence
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -39,6 +41,11 @@ log = get_logger(__name__)
 #: parameters its command declares required and it does not supply, or None
 #: when nothing can be said about it.
 MissingParams = Callable[[Mapping[str, Any]], "list[str] | None"]
+
+#: The same caller's sentence for one of those parameters: given a step and a
+#: parameter's key, the runtime's refusal, the command and the parameter named
+#: as the driver names them. See ``core/command_params.required_refusal``.
+RequiredSentence = Callable[[Mapping[str, Any], str], str]
 
 #: The same caller's other answer: given a step, the sentence saying its
 #: command cannot run from a macro at all (it takes or hands back a file), or
@@ -91,31 +98,50 @@ VALID_OVERLAP_MODES = frozenset(("skip", "queue", "allow"))
 ParamLabel = Callable[[Mapping[str, Any], str], "str | None"]
 
 
+@dataclass(frozen=True)
+class _Lookups:
+    """What only a caller holding the engine can say about a macro's steps,
+    handed to every check as one, by the keywords the public functions take.
+
+    ``extra_actions`` carries the action types plugins have registered with
+    the macro engine at runtime. They are as valid as the built-ins, but only
+    the engine knows them, so a caller that can reach it must pass them in --
+    otherwise a macro using a plugin action reads as malformed.
+
+    ``missing_params`` answers whether a chosen command can actually run -- the
+    driver's own required parameters, which nothing here can see. A caller that
+    cannot reach the driver registry must produce no finding rather than guess.
+    ``required_sentence`` words what it finds as the runtime refuses it, and
+    ``param_label`` names the parameter as the step's form does.
+    ``file_command`` answers for a command that takes or hands back a file,
+    which cannot run from a macro. See ``core/command_params``.
+    """
+
+    extra_actions: Collection[str] = ()
+    missing_params: MissingParams | None = None
+    param_label: ParamLabel | None = None
+    required_sentence: RequiredSentence | None = None
+    file_command: FileCommand | None = None
+
+
 def _finding(path: str, message: str, **where: Any) -> dict[str, Any]:
     """One finding: the sentence, the place it was written against, and what
     the editor needs to say it in the form's own words (``action``,
     ``missing``, ``param``, ``param_label``). The sentence itself is the one
-    the AI tools and the logs read, so it keeps the field keys."""
+    the AI tools and the logs read: it keeps the step's field keys, and names
+    a command's parameter as the runtime's refusal does, its key in ``param``."""
     return {"path": path, "message": message, **{k: v for k, v in where.items() if v is not None}}
 
 
-def _step_findings(
-    step: dict,
-    path: str,
-    *,
-    extra_actions: Collection[str] = (),
-    missing_params: MissingParams | None = None,
-    param_label: ParamLabel | None = None,
-    file_command: FileCommand | None = None,
-) -> list[dict[str, Any]]:
+def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, Any]]:
     """The findings :func:`validate_macro_step` writes, as records."""
     found: list[dict[str, Any]] = []
     action = step.get("action", "")
     if not action:
         found.append(_finding(path, "missing 'action' field"))
         return found
-    if action not in BUILTIN_STEP_ACTIONS and action not in extra_actions:
-        usable = ", ".join(sorted(BUILTIN_STEP_ACTIONS) + sorted(extra_actions))
+    if action not in BUILTIN_STEP_ACTIONS and action not in lookups.extra_actions:
+        usable = ", ".join(sorted(BUILTIN_STEP_ACTIONS) + sorted(lookups.extra_actions))
         found.append(_finding(
             path, f"step action '{action}' is not valid. Use: {usable}", action=action,
         ))
@@ -134,15 +160,9 @@ def _step_findings(
     # step read as complete while the device refused every run of it. The
     # sentence is the runtime's own, word for word, for the AI tools and the
     # logs; the editor names the parameter as its form does, from `param_label`.
-    if missing_params is not None:
-        for name in missing_params(step) or ():
-            found.append(_finding(
-                path, f"'{step.get('command')}': '{name}' is required",
-                action=action, missing="param", param=name,
-                param_label=param_label(step, name) if param_label else None,
-            ))
+    found.extend(_missing_param_findings(step, path, lookups))
     # And a command no step can run at all: it takes or hands back a file.
-    reason = file_command(step) if file_command is not None else None
+    reason = lookups.file_command(step) if lookups.file_command is not None else None
     if reason:
         found.append(_finding(path, reason, action=action, refused="file"))
 
@@ -174,13 +194,7 @@ def _step_findings(
             if isinstance(branch_steps, list):
                 for i, sub in enumerate(branch_steps):
                     if isinstance(sub, dict):
-                        found.extend(_step_findings(
-                            sub, f"{path}.{branch}[{i}]",
-                            extra_actions=extra_actions,
-                            missing_params=missing_params,
-                            param_label=param_label,
-                            file_command=file_command,
-                        ))
+                        found.extend(_step_findings(sub, f"{path}.{branch}[{i}]", lookups))
 
     if action == "wait_until":
         cond = step.get("condition")
@@ -234,35 +248,54 @@ def _step_findings(
     return found
 
 
-def validate_macro_step(
-    step: dict,
-    path: str,
-    *,
-    extra_actions: Collection[str] = (),
-    missing_params: MissingParams | None = None,
-    file_command: FileCommand | None = None,
-) -> list[str]:
+def _missing_param_findings(
+    step: dict, path: str, lookups: _Lookups,
+) -> list[dict[str, Any]]:
+    """One finding per parameter the step's command requires and the step
+    leaves empty: the runtime's refusal, its key in ``param`` and its label
+    on the form in ``param_label``. Nothing when the caller cannot ask."""
+    if lookups.missing_params is None:
+        return []
+    return [
+        _finding(
+            path, _required_sentence(step, name, lookups.required_sentence),
+            action=step.get("action", ""), missing="param", param=name,
+            param_label=lookups.param_label(step, name) if lookups.param_label else None,
+        )
+        for name in lookups.missing_params(step) or ()
+    ]
+
+
+def _required_sentence(
+    step: Mapping[str, Any], name: str, required_sentence: RequiredSentence | None,
+) -> str:
+    """The runtime's refusal of ``step`` for leaving ``name`` out; from the
+    command's id and the key made readable when the caller could not say."""
+    if required_sentence is not None:
+        return required_sentence(step, name)
+    return required_param_sentence(str(step.get("command") or ""), _readable_param(name))
+
+
+def _ai_line(issue: Mapping[str, Any]) -> str:
+    """One finding as the AI tools' refusal says it: where, then the sentence.
+    A missing parameter's place (only those carry ``param``) ends in its key,
+    the one thing the sentence does not say and the thing a corrected call has
+    to fill in."""
+    place = issue.get("path") or ""
+    if issue.get("param"):
+        place = f"{place}.params.{issue['param']}"
+    return f"{place}: {issue['message']}" if place else issue["message"]
+
+
+def validate_macro_step(step: dict, path: str, **lookups: Any) -> list[str]:
     """Validate a single macro step. Returns list of error strings.
 
-    ``extra_actions`` carries the action types plugins have registered with
-    the macro engine at runtime. They are as valid as the built-ins, but only
-    the engine knows them, so a caller that can reach it must pass them in —
-    otherwise a macro using a plugin action reads as malformed.
-
-    ``missing_params`` answers whether a chosen command can actually run — the
-    driver's own required parameters, which nothing here can see. Injected for
-    the same reason ``extra_actions`` is: only a caller holding the driver
-    registry knows, and a caller that does not must produce no finding rather
-    than guess. ``file_command`` likewise: a command that takes or hands back
-    a file cannot run from a macro. See ``core/command_params``.
+    ``lookups`` are the keywords :class:`_Lookups` names (``extra_actions``,
+    ``missing_params``, ``required_sentence``, ``file_command``): what only a
+    caller holding the engine and the driver registry can answer. A keyword it
+    does not name is a TypeError, as on any signature.
     """
-    return [
-        f"{f['path']}: {f['message']}"
-        for f in _step_findings(
-            step, path, extra_actions=extra_actions, missing_params=missing_params,
-            file_command=file_command,
-        )
-    ]
+    return [_ai_line(f) for f in _step_findings(step, path, _Lookups(**lookups))]
 
 
 def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
@@ -347,15 +380,7 @@ def validate_trigger(trigger: dict, path: str) -> list[str]:
     return [f"{f['path']}: {f['message']}" for f in _trigger_findings(trigger, path)]
 
 
-def macro_issues(
-    steps: Any,
-    triggers: Any,
-    *,
-    extra_actions: Collection[str] = (),
-    missing_params: MissingParams | None = None,
-    param_label: ParamLabel | None = None,
-    file_command: FileCommand | None = None,
-) -> list[dict[str, Any]]:
+def macro_issues(steps: Any, triggers: Any, **lookups: Any) -> list[dict[str, Any]]:
     """Everything wrong with a macro, placed where an editor can draw it.
 
     The same rules and the same traversal ``validate_macro`` runs -- it is
@@ -375,7 +400,9 @@ def macro_issues(
     wherever it is known, and, on a finding that a field is not filled in,
     ``missing`` (``device``, ``condition.key``, ``state_key``...; ``param`` for
     one of the command's parameters, with ``param`` naming it and, when
-    ``param_label`` can say, ``param_label`` its label on the form). A step
+    ``param_label`` can say, ``param_label`` its label on the form; its
+    ``message`` is the runtime's refusal, from ``required_sentence``; the
+    lookups are :class:`_Lookups`, by keyword). A step
     whose command no macro can run (``file_command``) carries
     ``refused: "file"``; its message is the runtime's own refusal.
 
@@ -393,17 +420,12 @@ def macro_issues(
     authored-in-advance case stays as quiet as it is for the id checks.
     """
     issues: list[dict[str, Any]] = []
+    bundle = _Lookups(**lookups)
 
     if isinstance(steps, list):
         for i, step in enumerate(steps):
             if isinstance(step, dict):
-                found = _step_findings(
-                    step, f"steps[{i}]",
-                    extra_actions=extra_actions,
-                    missing_params=missing_params,
-                    param_label=param_label,
-                    file_command=file_command,
-                )
+                found = _step_findings(step, f"steps[{i}]", bundle)
             else:
                 found = [_finding(f"steps[{i}]", f"expected an object, got {type(step).__name__}")]
             issues.extend({"scope": "step", "index": i, **f} for f in found)
@@ -422,32 +444,21 @@ def macro_issues(
 
 
 def validate_macro(
-    steps: list,
-    triggers: list,
-    project: Any = None,
-    *,
-    extra_actions: Collection[str] = (),
-    missing_params: MissingParams | None = None,
-    file_command: FileCommand | None = None,
+    steps: list, triggers: list, project: Any = None, **lookups: Any,
 ) -> str | None:
     """Validate macro steps and triggers. Returns error string or None.
 
     ``project`` enables soft reference checks (unknown device/group/macro ids,
     and a page move's page, are logged as warnings, not errors — a macro may
     legitimately be authored before the device it drives or the page it
-    opens). ``extra_actions`` and ``missing_params`` see validate_macro_step.
+    opens). ``lookups`` see validate_macro_step.
     """
     # One traversal, shared with the editor's lint door: what refuses a
     # generated macro and what marks a hand-built one are the same findings,
     # rendered two ways.
     errors: list[str] = [
-        f"{issue['path']}: {issue['message']}" if issue["path"] else issue["message"]
-        for issue in macro_issues(
-            steps, triggers,
-            extra_actions=extra_actions,
-            missing_params=missing_params,
-            file_command=file_command,
-        )
+        _ai_line(issue)
+        for issue in macro_issues(steps, triggers, **lookups)
     ]
     warnings: list[str] = []
     if project and not errors:

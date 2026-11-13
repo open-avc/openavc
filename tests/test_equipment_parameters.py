@@ -60,6 +60,6 @@ async def test_an_unset_optional_value_with_no_default_is_left_out():
 @pytest.mark.asyncio
 async def test_required_is_not_satisfied_by_an_optional_default():
     equipment = driver()
-    with pytest.raises(CommandParamError, match="'input' is required"):
+    with pytest.raises(CommandParamError, match=r"^route: Input is required\.$"):
         await equipment.send_command("route", {"output": "Main-L"})
     equipment._request.assert_not_called()

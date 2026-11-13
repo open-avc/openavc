@@ -356,7 +356,9 @@ class ConfigurableDriver(
         read-back that names another command passes the caller's values on,
         and that command maps them itself."""
         declared = cmd_def.get("params", {})
-        given = _normalize_and_validate_command_params(command, declared, params)
+        given = _normalize_and_validate_command_params(
+            command, declared, params, label=cmd_def.get("label"),
+        )
         return given, self._apply_param_wire_maps(declared, given)
 
     async def _send_in_form(

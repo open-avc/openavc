@@ -88,11 +88,11 @@ describe("elementCommandActions", () => {
 describe("validateProject with what the platform answered", () => {
   it("reports the refusal against the control that causes it", () => {
     const el = fader({ do: { change: [SET_FADER] } });
-    const answers = new Map([[SET_FADER, ["'set_fader': 'channel' is required"]]]);
+    const answers = new Map([[SET_FADER, ["Set Fader: Channel is required."]]]);
     const issues = validateProject(project([el]), answers as never);
     expect(issues).toContainEqual({
       severity: "error",
-      message: "'set_fader': 'channel' is required",
+      message: "Set Fader: Channel is required.",
       location: "Main > fader_1 > change",
       pageId: "main",
       elementId: "fader_1",
@@ -103,11 +103,11 @@ describe("validateProject with what the platform answered", () => {
     const step = { action: "device.command", device: "amp", command: "set_fader", params: {} };
     const p = project([]);
     p.macros = [{ id: "m", name: "Startup", steps: [step] }] as never;
-    const answers = new Map([[step, ["'set_fader': 'channel' is required"]]]);
+    const answers = new Map([[step, ["Set Fader: Channel is required."]]]);
     const issues = validateProject(p, answers as never);
     expect(issues).toContainEqual({
       severity: "error",
-      message: "'set_fader': 'channel' is required",
+      message: "Set Fader: Channel is required.",
       location: 'Macro "Startup" > device.command',
     });
   });

@@ -39,14 +39,14 @@ describe("the Test button on an action", () => {
     // Exactly what POST /api/devices/dsp1/command answers when a required
     // param is missing.
     vi.mocked(api.sendCommand).mockRejectedValue(
-      new ApiError(400, '{"detail":"\'set_fader\': \'channel\' is required"}'),
+      new ApiError(400, '{"detail":"Set Fader: Channel is required."}'),
     );
 
     render(<ActionTestButton action={action} />);
     await userEvent.click(screen.getByRole("button", { name: /Test/ }));
 
     expect(showError).toHaveBeenCalledWith(
-      "Test failed: 'set_fader': 'channel' is required",
+      "Test failed: Set Fader: Channel is required.",
     );
     // The envelope is the part an integrator cannot act on.
     const shown = vi.mocked(showError).mock.calls[0][0];

@@ -617,7 +617,7 @@ EXPECTED_ASKED_FINDINGS = [('mx',
  ('mx',
   'unrunnable_command',
   "mx (matrix) do.press[1] sends 'set_level' to 'acme_amp' without 'level'. Its driver "
-  'requires it, so the device refuses every press with "\'set_level\': \'level\' is required".',
+  'requires it, so the device refuses every press with "set_level: Level is required."',
   ('unrunnable_command', 'mx', 'do.press[1]')),
  ('mx',
   'dangling_reference',
@@ -644,14 +644,14 @@ EXPECTED_ASKED_LOG = [('undeclared_property', 'device.acme_amp.output.1.*.route'
 EXPECTED_NO_COMMAND_LIST = [('btn',
   'unrunnable_command',
   "btn (button) do.press[0] sends 'anything' to 'acme_amp' without 'level' and 'channel'. Its "
-  'driver requires them, so the device refuses every press with "\'anything\': \'level\' is '
-  'required".',
+  'driver requires them, so the device refuses every press with "anything: Level is '
+  'required."',
   ('unrunnable_command', 'btn', 'do.press[0]'))]
 
 EXPECTED_EMPTY_DEVICE = [('btn',
   'unrunnable_command',
   "btn (button) do.press[0] sends 'on' to '' without 'level'. Its driver requires it, so the "
-  'device refuses every press with "\'on\': \'level\' is required".',
+  'device refuses every press with "on: Level is required."',
   ('unrunnable_command', 'btn', 'do.press[0]'))]
 
 EXPECTED_LONGEST_DEVICE = [('lbl',

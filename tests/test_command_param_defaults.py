@@ -145,7 +145,7 @@ def test_a_required_param_with_a_default_is_still_refused_when_left_out() -> Non
     """The default on a required param is where the Programmer's form starts;
     leaving the param out is refused, never quietly sent as that value."""
     defs = {"level": {"type": "number", "required": True, "default": 0.75}}
-    with pytest.raises(CommandParamError, match="'set_level': 'level' is required"):
+    with pytest.raises(CommandParamError, match=r"^set_level: Level is required\.$"):
         normalize_and_validate_command_params("set_level", defs, {})
 
 

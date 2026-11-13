@@ -16,6 +16,14 @@ declared list is refused, while a command parameter's unrecognized value
 passes through (a ``$var`` may resolve to a wire value outside the authored
 set).
 
+A command left without a parameter it requires is refused in one sentence,
+:func:`required_param_sentence`, in the names the Programmer shows ("Set
+Level: Level Value is required."). The runtime raises it here; the macro lint,
+the Builder's Validate and the UI binding review say it through
+``core/command_params.required_refusal``. The key goes beside it, on
+:class:`CommandParamError`'s ``param``, for a caller that has to correct the
+call (the AI assistant).
+
 ``openavc.drivers.base`` re-exports the public names, and that is the path
 drivers and the rest of the platform import them from. Pure: no driver, no
 transport, no I/O.
@@ -26,6 +34,8 @@ from __future__ import annotations
 import math
 import re
 from typing import Any
+
+from openavc.drivers.param_labels import param_label
 
 # Tuples, not sets: a declared type is whatever the definition holds, and a
 # membership test must not raise on an unhashable one.
@@ -42,7 +52,22 @@ class CommandParamError(ValueError):
     request) with the message instead of a misleading 404 "device not found".
     Subclasses ValueError so existing ``except ValueError`` handlers still
     catch it. The message is user-facing and actionable — surface it verbatim.
+
+    ``param`` is the key of the parameter a required-parameter refusal names
+    by its label, for a caller that has to correct the call rather than read
+    the sentence; None on every other refusal.
     """
+
+    def __init__(self, message: str = "", *, param: str | None = None) -> None:
+        super().__init__(message)
+        self.param = param
+
+
+def required_param_sentence(command: str, param: str) -> str:
+    """The refusal of a command sent without a parameter its driver requires,
+    in the names a person sees: the command's label (else its id) and the
+    parameter's label (else its key made readable)."""
+    return f"{command}: {param} is required."
 
 
 class DeviceSettingValueError(ValueError):
@@ -389,6 +414,8 @@ def normalize_and_validate_command_params(
     command: str,
     param_defs: dict[str, Any],
     params: dict[str, Any],
+    *,
+    label: str | None = None,
 ) -> dict[str, Any]:
     """Trim and validate user-supplied command params against the command's
     declared param schema, returning a normalized copy.
@@ -426,7 +453,9 @@ def normalize_and_validate_command_params(
     caller passes through. Absent, ``None`` and -- on everything but a string
     param -- a blank all count as not supplied. Which ones are missing is
     :func:`missing_required_params` above, because the authoring gates have to
-    ask the same question before anything is sent.
+    ask the same question before anything is sent. The refusal is
+    :func:`required_param_sentence`, naming the command by ``label`` (its id
+    when the caller has none) and carrying the parameter's key as ``param``.
 
     An optional param the call leaves unsupplied gets its declared
     ``default`` here, and is then checked like a supplied value. The
@@ -440,9 +469,7 @@ def normalize_and_validate_command_params(
     """
     if not isinstance(param_defs, dict):
         return params
-    missing = missing_required_params(param_defs, params)
-    if missing:
-        raise CommandParamError(f"'{command}': '{missing[0]}' is required")
+    _refuse_missing_required(label or command, param_defs, params)
     params = _with_declared_defaults(param_defs, params)
     if not params:
         # Returned unchanged, not normalized to {}: a caller that passed None
@@ -453,6 +480,21 @@ def normalize_and_validate_command_params(
         if isinstance(pdef, dict) and name in out:
             out[name] = _normalized_param(command, name, pdef, out[name])
     return out
+
+
+def _refuse_missing_required(
+    command: str, param_defs: dict[str, Any], params: dict[str, Any] | None,
+) -> None:
+    """Raise the refusal for the first required parameter ``params`` leaves
+    out, naming ``command`` (its label, else its id) and the parameter by
+    their labels, with the parameter's key as ``param``."""
+    missing = missing_required_params(param_defs, params)
+    if missing:
+        name = missing[0]
+        raise CommandParamError(
+            required_param_sentence(command, param_label(name, param_defs.get(name))),
+            param=name,
+        )
 
 
 def _normalized_param(command: str, name: str, pdef: dict[str, Any], value: Any) -> Any:

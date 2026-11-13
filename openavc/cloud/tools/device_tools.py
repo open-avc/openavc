@@ -34,6 +34,7 @@ from openavc.core.required_config import (
 )
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers.param_labels import param_label
+from openavc.drivers.param_validation import CommandParamError
 from openavc.drivers.registry import (
     get_driver_class,
     is_driver_registered,
@@ -545,11 +546,17 @@ class DeviceToolsMixin:
             from openavc.api.error_messages import describe_command_failure
 
             engine = self._get_engine()
-            return {"error": describe_command_failure(
+            answer = {"error": describe_command_failure(
                 e, device_id, command, state=self._devices.state,
                 project=getattr(engine, "project", None),
                 driver=self._devices.get_driver(device_id),
             ).programmer}
+            # A missing parameter is named by its label; the key is what the
+            # next call has to fill in.
+            param = e.param if isinstance(e, CommandParamError) else None
+            if param:
+                answer["param"] = param
+            return answer
         return "OK"
 
     async def _test_device_connection(self, input: dict) -> Any:

@@ -11,6 +11,7 @@ from openavc.core.command_params import (
     file_command_check,
     missing_params_check,
     param_label_check,
+    required_refusal_check,
     unsaved_value_check,
 )
 from openavc.core.macro_validation import macro_issues
@@ -115,6 +116,11 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
     param_label = param_label_check(
         getattr(engine, "devices", None), getattr(engine, "project", None),
     )
+    # And the runtime's own refusal of such a step, in the same names, for the
+    # sentence the record carries.
+    required_sentence = required_refusal_check(
+        getattr(engine, "devices", None), getattr(engine, "project", None),
+    )
     # And a command no macro can run at all: one that takes or hands back a
     # file is refused at run time, in this same sentence.
     file_command = file_command_check(
@@ -141,6 +147,7 @@ async def validate_macros(body: Any = Body(...)) -> dict[str, Any]:
                 extra_actions=extra_actions,
                 missing_params=missing_params,
                 param_label=param_label,
+                required_sentence=required_sentence,
                 file_command=lambda step: file_command(step) or unsaved(step),
             )
         }

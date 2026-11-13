@@ -5,7 +5,7 @@
  * takes which parameters, and which of those the device refuses to do without.
  * So a fader bound to a real command with its required parameters left empty
  * saved clean, showed no badge, and passed Validate with "No Issues", while
- * every press on the wall was refused with `'set_fader': 'channel' is required`.
+ * every press on the wall was refused with "Set Fader: Channel is required."
  *
  * The rule is not brought over here to run. It is the platform's, asked for
  * over `POST /api/ui/validate-actions` -- the same rule the runtime enforces

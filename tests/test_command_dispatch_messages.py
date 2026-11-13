@@ -245,7 +245,8 @@ async def test_missing_required_param_names_the_param():
     dm, driver = await _device()
     with pytest.raises(CommandParamError) as exc:
         await dm.send_command("widget_1", "route", {"input": 3})
-    assert str(exc.value) == "'route': 'output' is required"
+    assert str(exc.value) == "Route: Output is required."
+    assert exc.value.param == "output"
     assert driver.seen == []
 
 
@@ -253,13 +254,13 @@ async def test_required_param_checked_when_no_params_supplied_at_all():
     """The case the old early-return on falsy params could never reach."""
     dm, _ = await _device()
     for params in (None, {}):
-        with pytest.raises(CommandParamError, match="'input' is required"):
+        with pytest.raises(CommandParamError, match=r"^Route: Input is required\.$"):
             await dm.send_command("widget_1", "route", params)
 
 
 async def test_explicit_null_counts_as_not_supplied():
     dm, _ = await _device()
-    with pytest.raises(CommandParamError, match="'output' is required"):
+    with pytest.raises(CommandParamError, match=r"^Route: Output is required\.$"):
         await dm.send_command("widget_1", "route", {"input": 1, "output": None})
 
 
@@ -287,7 +288,7 @@ async def test_blank_string_is_a_supplied_value():
 
 def test_required_check_runs_before_the_value_checks():
     """So an omitted param is never reported as a bad value of some other."""
-    with pytest.raises(CommandParamError, match="'output' is required"):
+    with pytest.raises(CommandParamError, match=r"^route: Output is required\.$"):
         normalize_and_validate_command_params(
             "route",
             {
@@ -463,7 +464,7 @@ def test_a_blank_is_not_a_value_for_anything_that_names_a_quantity(ptype, extra,
             {"level": {"type": ptype, "required": True, **extra}},
             {"level": blank},
         )
-    assert str(caught.value) == "'set_level': 'level' is required"
+    assert str(caught.value) == "set_level: Level is required."
 
 
 def test_a_blank_string_is_still_a_value_and_still_clears_a_name():

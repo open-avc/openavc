@@ -326,11 +326,11 @@ describe("Validate's report, row by row", () => {
     const p = makeProject();
     p.macros = [{ id: "m2", name: "Startup", steps: [{ action: "device.command", device: "amp", command: "set_fader", params: {} }] }] as never;
     seed(p);
-    commands.commandIssues.mockImplementationOnce(async (actions: unknown[]) => new Map([[actions[0], ["'set_fader': 'channel' is required"]]]));
+    commands.commandIssues.mockImplementationOnce(async (actions: unknown[]) => new Map([[actions[0], ["Set Fader: Channel is required."]]]));
     await renderPage(UIBuilderView);
     await act(async () => { await seen.CanvasToolbar.onValidate(); });
-    const row = screen.getByText("'set_fader': 'channel' is required").parentElement!.parentElement!;
-    expect(row.textContent).toBe(`ERR'set_fader': 'channel' is requiredMacro "Startup" > device.command`);
+    const row = screen.getByText("Set Fader: Channel is required.").parentElement!.parentElement!;
+    expect(row.textContent).toBe(`ERRSet Fader: Channel is required.Macro "Startup" > device.command`);
   });
 
   it("counts one issue in the singular, marks an error, and goes to a page-wide issue's page", async () => {

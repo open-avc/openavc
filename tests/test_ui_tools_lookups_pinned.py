@@ -172,8 +172,8 @@ REVIEW_FINDINGS = [
     "b_unknown (button) do.press[0] sends 'power_onn' to 'amp', which its driver "
     "does not have. Its commands are: export_log, power_on, set_input.",
     "b_params (button) do.press[0] sends 'set_input' to 'amp' without 'input'. Its "
-    "driver requires it, so the device refuses every press with \"'set_input': "
-    "'input' is required\".",
+    "driver requires it, so the device refuses every press with \"Set Input: "
+    "Input is required.\"",
     "b_file (button) do.press[0] sends 'export_log' to 'amp', and every press is "
     "refused with \"'Export Log' sends back a file, so it runs from Send Command on "
     "the device's page.\"",

@@ -26,7 +26,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from openavc.core.command_params import file_command_check, missing_params_check
+from openavc.core.command_params import (
+    file_command_check,
+    missing_params_check,
+    required_refusal_check,
+)
 from openavc.core.device_info import PLATFORM_DEVICE_KEYS
 from openavc.drivers.child_ids import coerce_child_local_id, declared_child_ids
 from openavc.ui.page_references import first_device_of, ids_longest_first
@@ -333,6 +337,7 @@ def reference_lookups(
         "undeclared_property": lambda key: undeclared_state_property(devices, device_ids, key),
         "unknown_child_id": lambda key: unknown_child_id(devices, device_ids, key),
         "missing_params": missing_params_check(devices, project),
+        "required_sentence": required_refusal_check(devices, project),
         "ui_files": project_ui_files(engine),
         "file_command": file_command_check(devices, project),
     }

@@ -3,8 +3,7 @@
 Every static gate in the product used to stop one question short. It checked
 that a device existed and that its driver had a command by that name, and then
 said the control was finished -- while the driver declared a parameter as
-required, nothing had filled it in, and the runtime refused every press with
-``'set_fader': 'channel' is required``.
+required, nothing had filled it in, and the runtime refused every press.
 
 So the Builder's Validate answered "No Issues" for a dead control, the macro
 editor's "won't run as built" banner cleared the moment a command was picked,
@@ -13,9 +12,12 @@ device knew, the driver contract knew, and the button beside the form knew --
 the gates somebody actually trusts at handover did not.
 
 What is pinned here is that the four gates now ask, that they ask the SAME
-question the runtime answers, and -- just as important -- that they all stay
-silent when the driver is not there to ask. A page is very often built before
-the hardware is on the bench, and a gate that complains then stops being read.
+question the runtime answers and say it in the SAME sentence -- the command and
+the parameter by the names the Programmer shows ("Set Fader: Channel is
+required."), the key only beside it for the AI assistant -- and, just as
+important, that they all stay silent when the driver is not there to ask. A
+page is very often built before the hardware is on the bench, and a gate that
+complains then stops being read.
 
 Every device, driver and command below is invented. This is a platform
 capability, not a driver.
@@ -30,11 +32,13 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from openavc.api.rest import router, set_engine
+from openavc.core.command_gates import validate_command_params
 from openavc.core.command_params import (
     device_groups,
     missing_params,
     missing_params_check,
     param_label_check,
+    required_refusal_check,
 )
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
@@ -53,6 +57,7 @@ from openavc.ui.page_references import reference_findings
 # three fields and two red "required" chips, and saving with all three empty
 # was reported as complete.
 SET_FADER = {
+    "label": "Set Fader",
     "params": {
         "channel": {"type": "child_id", "required": True},
         "level": {"type": "number", "required": True},
@@ -106,13 +111,48 @@ def test_the_rule_matches_what_the_runtime_does(params, expected):
     assert missing_required_params(SET_FADER["params"], params) == expected
 
     # The same call through the runtime gate: it refuses exactly when the rule
-    # above names something, and names the first one.
+    # above names something, and names the first one, by the names the
+    # Programmer shows. The key rides beside the sentence for the AI assistant.
     if expected:
         with pytest.raises(CommandParamError) as caught:
-            normalize_and_validate_command_params("set_fader", SET_FADER["params"], params)
-        assert str(caught.value) == f"'set_fader': '{expected[0]}' is required"
+            normalize_and_validate_command_params(
+                "set_fader", SET_FADER["params"], params, label="Set Fader",
+            )
+        assert str(caught.value) == f"Set Fader: {expected[0].title()} is required."
+        assert caught.value.param == expected[0]
     else:
         normalize_and_validate_command_params("set_fader", SET_FADER["params"], params)
+
+
+def test_the_dispatch_gate_names_the_command_by_its_label():
+    """What Send Command, a macro run, the panel and the AI assistant are told:
+    the gate every caller passes reads the label off the live driver."""
+    with pytest.raises(CommandParamError) as caught:
+        validate_command_params(AMP, "set_fader", {"level": -6})
+    assert str(caught.value) == "Set Fader: Channel is required."
+    assert caught.value.param == "channel"
+
+
+def test_a_label_the_driver_declares_wins_and_a_bare_key_is_made_readable():
+    defs = {
+        "input": {"type": "integer", "required": True, "label": "Input Number"},
+        "level_value": {"type": "number", "required": True},
+    }
+    with pytest.raises(CommandParamError) as caught:
+        normalize_and_validate_command_params("route", defs, {}, label="Route")
+    assert str(caught.value) == "Route: Input Number is required."
+    with pytest.raises(CommandParamError) as caught:
+        normalize_and_validate_command_params("route", defs, {"input": 2})
+    # A command that declares no label is named by its id, as every other
+    # sentence about a command names it.
+    assert str(caught.value) == "route: Level Value is required."
+    assert caught.value.param == "level_value"
+
+
+def test_the_other_refusals_carry_no_parameter_key():
+    """Only the missing-parameter refusal says which key; a range or format
+    refusal still names it in its own sentence."""
+    assert CommandParamError("anything").param is None
 
 
 def test_a_dollar_reference_is_a_supplied_value():
@@ -220,6 +260,7 @@ def _issue_messages(steps, devices, project=None):
         issue["message"]
         for issue in macro_issues(
             steps, [], missing_params=missing_params_check(devices, project),
+            required_sentence=required_refusal_check(devices, project),
         )
     ]
 
@@ -227,8 +268,20 @@ def _issue_messages(steps, devices, project=None):
 def test_the_macro_lint_reports_a_chosen_command_that_cannot_run():
     steps = [_action()]
     assert _issue_messages(steps, _devices(amp=AMP)) == [
-        "'set_fader': 'channel' is required",
-        "'set_fader': 'level' is required",
+        "Set Fader: Channel is required.",
+        "Set Fader: Level is required.",
+    ]
+
+
+def test_the_macro_lint_says_it_by_the_key_made_readable_when_not_told_the_labels():
+    """A caller that hands in no label lookup still gets the one sentence,
+    with the command's id and the key made readable."""
+    issues = macro_issues(
+        [_action()], [], missing_params=missing_params_check(_devices(amp=AMP), None),
+    )
+    assert [i["message"] for i in issues] == [
+        "set_fader: Channel is required.",
+        "set_fader: Level is required.",
     ]
 
 
@@ -252,7 +305,8 @@ def test_the_macro_lint_places_it_on_the_row_somebody_has_to_open():
 def test_the_macro_lint_names_each_missing_parameter_as_the_form_does():
     """The editor shows the finding under the step's form, so it names the
     parameter by the form's label: the driver's own, else the key made
-    readable. The sentence the AI tools read keeps the keys."""
+    readable. The sentence is the runtime's, in the same names; the key is
+    the record's ``param``."""
     info = {"commands": {"set_fader": {"params": {
         "channel": {"type": "child_id", "required": True, "label": "Input Channel"},
         "level_value": {"type": "number", "required": True},
@@ -262,14 +316,15 @@ def test_the_macro_lint_names_each_missing_parameter_as_the_form_does():
         [_action()], [],
         missing_params=missing_params_check(devices, None),
         param_label=param_label_check(devices, None),
+        required_sentence=required_refusal_check(devices, None),
     )
     assert [(i["missing"], i["param"], i["param_label"]) for i in issues] == [
         ("param", "channel", "Input Channel"),
         ("param", "level_value", "Level Value"),
     ]
     assert [i["message"] for i in issues] == [
-        "'set_fader': 'channel' is required",
-        "'set_fader': 'level_value' is required",
+        "set_fader: Input Channel is required.",
+        "set_fader: Level Value is required.",
     ]
 
 
@@ -281,8 +336,13 @@ def test_a_group_step_names_the_parameter_from_a_member_that_declares_it():
         [step], [],
         missing_params=missing_params_check(devices, project),
         param_label=param_label_check(devices, project),
+        required_sentence=required_refusal_check(devices, project),
     )
     assert [i["param_label"] for i in issues] == ["Channel", "Level"]
+    assert [i["message"] for i in issues] == [
+        "Set Fader: Channel is required.",
+        "Set Fader: Level is required.",
+    ]
 
 
 def test_the_macro_lint_is_silent_without_the_driver():
@@ -295,13 +355,20 @@ def test_a_filled_in_step_is_clean():
 
 
 def test_the_ai_refusal_and_the_editor_records_stay_one_traversal():
-    """``validate_macro`` is written over ``macro_issues``; keep it that way."""
+    """``validate_macro`` is written over ``macro_issues``; keep it that way.
+
+    The AI assistant is told the same sentence, at a place that ends in the
+    parameter's key, so it can correct the step it wrote."""
     steps = [_action()]
-    check = missing_params_check(_devices(amp=AMP), None)
-    err = validate_macro(steps, [], extra_actions=(), missing_params=check)
+    devices = _devices(amp=AMP)
+    err = validate_macro(
+        steps, [], extra_actions=(),
+        missing_params=missing_params_check(devices, None),
+        required_sentence=required_refusal_check(devices, None),
+    )
     assert err == (
-        "Macro validation failed: steps[0]: 'set_fader': 'channel' is required; "
-        "steps[0]: 'set_fader': 'level' is required"
+        "Macro validation failed: steps[0].params.channel: Set Fader: Channel is required.; "
+        "steps[0].params.level: Set Fader: Level is required."
     )
 
 
@@ -330,6 +397,7 @@ def _reference_messages(action, devices):
             macro_ids=set(),
             device_commands=lambda _id: set(DRIVER_INFO["commands"]),
             missing_params=missing_params_check(devices, None),
+            required_sentence=required_refusal_check(devices, None),
         )
     ]
 
@@ -338,7 +406,7 @@ def test_the_binding_review_names_the_parameters_and_quotes_the_refusal():
     assert _reference_messages(_action(), _devices(amp=AMP)) == [
         "fader_1 (fader) do.change[0] sends 'set_fader' to 'amp' without 'channel' and "
         "'level'. Its driver requires them, so the device refuses every press with "
-        "\"'set_fader': 'channel' is required\"."
+        "\"Set Fader: Channel is required.\""
     ]
 
 
@@ -348,7 +416,7 @@ def test_one_missing_parameter_reads_as_one_thing():
     ) == [
         "fader_1 (fader) do.change[0] sends 'set_fader' to 'amp' without 'channel'. "
         "Its driver requires it, so the device refuses every press with "
-        "\"'set_fader': 'channel' is required\"."
+        "\"Set Fader: Channel is required.\""
     ]
 
 
@@ -368,7 +436,7 @@ def test_the_binding_review_reaches_a_value_map_the_way_the_engine_does():
     assert messages == [
         "fader_1 (fader) do.change[0]['1'] sends 'set_fader' to 'amp' without 'channel' "
         "and 'level'. Its driver requires them, so the device refuses every press with "
-        "\"'set_fader': 'channel' is required\"."
+        "\"Set Fader: Channel is required.\""
     ]
 
 
@@ -415,8 +483,8 @@ def _validate(http, actions):
 def test_the_builder_gets_the_runtime_sentence_back(client):
     assert _validate(client, {"a": _action()}) == {
         "a": [
-            "'set_fader': 'channel' is required",
-            "'set_fader': 'level' is required",
+            "Set Fader: Channel is required.",
+            "Set Fader: Level is required.",
         ],
     }
 
@@ -427,8 +495,8 @@ def test_an_action_with_nothing_wrong_is_simply_absent(client):
         "unknown_device": _action(device="nope"),
         "bad": _action(),
     }) == {"bad": [
-        "'set_fader': 'channel' is required",
-        "'set_fader': 'level' is required",
+        "Set Fader: Channel is required.",
+        "Set Fader: Level is required.",
     ]}
 
 
@@ -441,6 +509,6 @@ def test_the_door_refuses_only_what_it_cannot_read(client):
     # A non-object entry is skipped rather than 400ing the whole request: one
     # malformed action must not cost the Builder every other answer.
     assert _validate(client, {"junk": "nope", "bad": _action()}) == {"bad": [
-        "'set_fader': 'channel' is required",
-        "'set_fader': 'level' is required",
+        "Set Fader: Channel is required.",
+        "Set Fader: Level is required.",
     ]}

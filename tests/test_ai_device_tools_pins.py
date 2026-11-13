@@ -44,7 +44,7 @@ from openavc.core.project_loader import (
     load_project,
     save_project,
 )
-from openavc.drivers.base import BaseDriver
+from openavc.drivers.base import BaseDriver, CommandParamError
 from openavc.drivers.registry import register_driver, unregister_driver
 
 
@@ -755,6 +755,21 @@ async def test_send_device_command_words_a_refusal_as_send_command_does(setup):
     handler._events.emit.assert_awaited_once_with(
         "ai.device_command", {"device_id": "dev1", "command": "power_on", "params": {"x": 1}},
     )
+
+
+async def test_send_device_command_names_the_missing_parameter_by_its_key(setup, monkeypatch):
+    """The refusal names the parameter by its label, as the Programmer shows
+    it; the key the assistant has to put in its next call rides beside it."""
+    handler, engine = setup
+    handler._events = MagicMock()
+    handler._events.emit = AsyncMock()
+    monkeypatch.setattr(engine.devices, "send_command", AsyncMock(
+        side_effect=CommandParamError("Set Level: Level Value is required.", param="level_value"),
+    ))
+
+    answer = await handler._send_device_command({"device_id": "dev1", "command": "set_level"})
+
+    assert answer == {"error": "Set Level: Level Value is required.", "param": "level_value"}
 
 
 async def test_list_and_info_answer_the_manager(setup):

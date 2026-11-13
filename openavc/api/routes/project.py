@@ -19,7 +19,12 @@ from openavc.api.models import (
     LoginsPassphraseRequest,
     PanelUnlockRequest,
 )
-from openavc.core.command_params import file_command_check, missing_params_check, unsaved_value_check
+from openavc.core.command_params import (
+    file_command_check,
+    missing_params_check,
+    required_refusal_check,
+    unsaved_value_check,
+)
 from openavc.core.device_config import resolve_device_config
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
@@ -127,7 +132,7 @@ async def validate_ui_actions(request: Request) -> dict[str, Any]:
     over, and until now it could not ask this question at all: it holds the
     project, not the drivers, so a control bound to a real command with its
     required parameters left empty passed as "No Issues" while every press was
-    refused with ``'set_fader': 'channel' is required``.
+    refused with "Set Fader: Channel is required."
 
     The rules are not sent to the browser to run, for the reason the macro
     lint already records: only this side knows what each installed driver
@@ -161,6 +166,9 @@ async def validate_ui_actions(request: Request) -> dict[str, Any]:
     unsaved = unsaved_value_check(
         getattr(engine, "devices", None), getattr(engine, "project", None),
     )
+    required = required_refusal_check(
+        getattr(engine, "devices", None), getattr(engine, "project", None),
+    )
     issues: dict[str, list[str]] = {}
     for key, action in actions.items():
         if not isinstance(action, dict):
@@ -177,8 +185,7 @@ async def validate_ui_actions(request: Request) -> dict[str, Any]:
             continue
         missing = check(action) or ()
         if missing:
-            command = action.get("command")
-            issues[str(key)] = [f"'{command}': '{name}' is required" for name in missing]
+            issues[str(key)] = [required(action, name) for name in missing]
     return {"issues": issues}
 
 

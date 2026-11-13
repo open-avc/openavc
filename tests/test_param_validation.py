@@ -159,7 +159,7 @@ def test_params_without_a_schema_come_back_as_they_were() -> None:
 def test_the_first_missing_required_param_is_named() -> None:
     defs = {"a": {"required": True}, "b": {"required": True, "type": "integer"}}
     assert missing_required_params(defs, {"b": " "}) == ["a", "b"]
-    with pytest.raises(CommandParamError, match=r"^'c': 'a' is required$"):
+    with pytest.raises(CommandParamError, match=r"^c: A is required\.$"):
         normalize_and_validate_command_params("c", defs, {"b": " "})
 
 

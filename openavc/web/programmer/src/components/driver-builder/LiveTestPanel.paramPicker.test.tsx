@@ -7,7 +7,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // never been chosen ("" — every required enum declaring no default) matched
 // nothing and the browser fell back to options[0]. The control read "Mic",
 // specific and plausible, while the wire preview directly beneath it said
-// 'source' is required. The harness disagreed with itself, on the one screen
+// Source is required. The harness disagreed with itself, on the one screen
 // whose whole job is explaining why a command will not send.
 //
 // It was never the falsy-zero bug: the enum below starts at wire value "0" on
@@ -97,8 +97,8 @@ describe("the Test harness's enum picker", () => {
   it("cannot contradict the refusal printed underneath it", () => {
     // The whole defect in one assertion: with the parameter unset, the wire
     // preview says so, and the picker must not simultaneously show a value.
-    renderForm(SET_SOURCE, { channel: "1", source: "" }, "'set_input_source': 'source' is required");
-    expect(screen.getByText(/'source' is required/)).toBeTruthy();
+    renderForm(SET_SOURCE, { channel: "1", source: "" }, "Set Input Source: Source is required.");
+    expect(screen.getByText(/Source is required/)).toBeTruthy();
     expect(sourceTrigger(/Select\.\.\./)).toBeTruthy();
   });
 

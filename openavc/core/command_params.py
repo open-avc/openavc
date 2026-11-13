@@ -8,7 +8,7 @@ because the driver declares a parameter as required and nothing filled it in.
 That gap is not academic. A fader bound to ``set_fader`` with ``params: {}``
 saved cleanly, the Builder's Validate answered "No Issues", the macro editor's
 "won't run as built" banner cleared the moment a command was picked, and the
-runtime refused every press with ``'set_fader': 'channel' is required``. Three
+runtime refused every press with "Set Fader: Channel is required." Three
 authoring surfaces agreed the control was finished and the device disagreed --
 and Validate is the check an integrator runs before handing a room over.
 
@@ -18,7 +18,8 @@ The rule itself is :func:`openavc.drivers.param_validation.missing_required_para
 the runtime gate that enforces it, so a static "this is fine" and a live refusal
 cannot come from two different readings of the same driver. What this module
 adds is the lookup around it: which driver, which command, and -- for a group --
-which devices the step actually fans out to.
+which devices the step actually fans out to. The sentence a gate reports is the
+runtime's too (:func:`required_refusal`), named from the same driver.
 
 Everything returns None for "no opinion", and that is load-bearing rather than
 defensive. A device that is disabled, not connected yet, or backed by a driver
@@ -31,12 +32,14 @@ how a warning stops being read.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from functools import partial
 from typing import Any
 
 from openavc.core import saved_params
 from openavc.drivers.base import missing_required_params
 from openavc.drivers.command_files import returns_file_sentence, takes_file_sentence
 from openavc.drivers.param_labels import param_label
+from openavc.drivers.param_validation import required_param_sentence
 from openavc.drivers.spec import file_param_names
 from openavc.utils.logger import get_logger
 
@@ -211,6 +214,24 @@ def param_label_of(
     return None
 
 
+def required_refusal(
+    action: Mapping[str, Any],
+    name: str,
+    *,
+    devices: Any,
+    groups: Mapping[str, Sequence[str]] | None = None,
+) -> str:
+    """The runtime's refusal of ``action`` for leaving ``name`` out, word for
+    word: the command and the parameter by the names the driver gives them
+    (``required_param_sentence``). A name no driver declares is its id, or
+    its key made readable."""
+    if not isinstance(action, Mapping):
+        action = {}
+    command = str(action.get("command") or "")
+    label = param_label_of(action, name, devices=devices, groups=groups) or param_label(name)
+    return required_param_sentence(_command_label_of(action, command, devices, groups), label)
+
+
 def unsaved_value_reason(
     action: Mapping[str, Any],
     *,
@@ -309,12 +330,27 @@ def file_command_check(
     return lambda action: file_command_reason(action, devices=devices, groups=groups)
 
 
+def _per_param(lookup: Callable[..., Any], devices: Any, project: Any) -> Callable[..., Any]:
+    """``lookup(action, name, devices=, groups=)`` with this project's devices
+    and groups bound, as the ``(action, name)`` callable a gate takes."""
+    return partial(
+        lookup, devices=devices,
+        groups=device_groups(project) if project is not None else None,
+    )
+
+
+def required_refusal_check(
+    devices: Any, project: Any = None
+) -> Callable[[Mapping[str, Any], str], str]:
+    """:func:`required_refusal` as one callable, injected the way
+    :func:`missing_params_check` is, for the gates that report a missing
+    parameter in the runtime's sentence."""
+    return _per_param(required_refusal, devices, project)
+
+
 def param_label_check(
     devices: Any, project: Any = None
 ) -> Callable[[Mapping[str, Any], str], str | None]:
     """:func:`param_label_of` as one callable, injected the way
     :func:`missing_params_check` is, for the macro lint's records."""
-    groups = device_groups(project) if project is not None else None
-    return lambda action, name: param_label_of(
-        action, name, devices=devices, groups=groups,
-    )
+    return _per_param(param_label_of, devices, project)

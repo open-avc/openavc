@@ -136,9 +136,9 @@ describe("validateProject: what a control's actions name", () => {
   it("says what the platform said about a command in a toggle's off action", () => {
     const off = { action: "device.command", device: "amp", command: "set_level" };
     const el = button({ press: [{ action: "macro", macro: "all_on", off_action: off }] });
-    const answers = new Map([[off as Record<string, unknown>, ["'set_level': 'level' is required"]]]);
+    const answers = new Map([[off as Record<string, unknown>, ["Set Level: Level is required."]]]);
     expect(checked(project({ elements: [el] }), answers)).toEqual([
-      { severity: "error", message: "'set_level': 'level' is required", ...at("b1", " > press > Off Action") },
+      { severity: "error", message: "Set Level: Level is required.", ...at("b1", " > press > Off Action") },
     ]);
   });
 

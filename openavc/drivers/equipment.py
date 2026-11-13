@@ -438,8 +438,11 @@ class EquipmentDriver(BaseDriver):
         return identifier
 
     async def send_command(self, command, params=None):
-        rules = self.DRIVER_INFO["commands"][command].get("params", {})
-        values = normalize_and_validate_command_params(command, rules, params or {})
+        definition = self.DRIVER_INFO["commands"][command]
+        rules = definition.get("params", {})
+        values = normalize_and_validate_command_params(
+            command, rules, params or {}, label=definition.get("label"),
+        )
         normalized = {}
         for key, value in values.items():
             rule = rules.get(key, {})

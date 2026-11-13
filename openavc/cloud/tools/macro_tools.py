@@ -212,6 +212,18 @@ class MacroToolsMixin:
             project if project is not None else getattr(engine, "project", None),
         )
 
+    def _required_refusal_check(self, project: Any = None) -> Any:
+        """How the runtime refuses a step for one of those parameters: the
+        command and the parameter by their labels. The refusal adds the key,
+        which is what the next call has to fill in."""
+        from openavc.core.command_params import required_refusal_check
+
+        engine = self._get_engine()
+        return required_refusal_check(
+            getattr(engine, "devices", None) if engine else None,
+            project if project is not None else getattr(engine, "project", None),
+        )
+
     def _file_command_check(self, project: Any = None) -> Any:
         """Whether a step's command can run from a macro at all: one that
         takes or hands back a file runs only from the device page. Refused
@@ -381,6 +393,7 @@ class MacroToolsMixin:
                 steps, triggers, project,
                 extra_actions=self._plugin_action_types(),
                 missing_params=self._missing_params_check(project),
+                required_sentence=self._required_refusal_check(project),
                 file_command=self._file_command_check(project),
             )
             if err:
@@ -432,6 +445,7 @@ class MacroToolsMixin:
                     project,
                     extra_actions=self._plugin_action_types(),
                     missing_params=self._missing_params_check(project),
+                    required_sentence=self._required_refusal_check(project),
                     file_command=self._file_command_check(project),
                 )
                 if err:

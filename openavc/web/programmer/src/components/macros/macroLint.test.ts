@@ -72,7 +72,7 @@ describe("issueText", () => {
   });
 
   it("names a command parameter as the step's form does", () => {
-    const missing = { message: "'set_level': 'level_value' is required", action: "device.command", missing: "param" };
+    const missing = { message: "Set Level: Level Value is required.", action: "device.command", missing: "param" };
     expect(issueText(issue({ ...missing, param: "level_value", param_label: "Level Value" })))
       .toBe("Level Value is required.");
     // A driver that is not loaded gives no label: the key made readable.

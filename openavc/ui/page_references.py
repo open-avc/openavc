@@ -84,6 +84,8 @@ from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.drivers.param_labels import param_label
+from openavc.drivers.param_validation import required_param_sentence
 from openavc.ui.matrix_model import resolve_axis
 from openavc.ui.page_review import _NESTED_ACTION_FIELDS, Finding, _entry_name
 
@@ -133,6 +135,7 @@ class _Project:
     undeclared_property: Callable[[str], set[str] | None] | None = None
     unknown_child_id: Callable[[str], set[str] | None] | None = None
     missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None
+    required_sentence: Callable[[Mapping[str, Any], str], str] | None = None
     file_command: Callable[[Mapping[str, Any]], str | None] | None = None
     ui_files: set[str] | None = None
 
@@ -504,6 +507,7 @@ def reference_findings(
     undeclared_property: Callable[[str], set[str] | None] | None = None,
     unknown_child_id: Callable[[str], set[str] | None] | None = None,
     missing_params: Callable[[Mapping[str, Any]], list[str] | None] | None = None,
+    required_sentence: Callable[[Mapping[str, Any], str], str] | None = None,
     ui_files: set[str] | None = None,
     file_command: Callable[[Mapping[str, Any]], str | None] | None = None,
 ) -> list[Finding]:
@@ -525,7 +529,8 @@ def reference_findings(
     ``missing_params`` answers the question after it: the command exists and is
     spelled right, and the driver still refuses it because a parameter it
     declares required was never filled in. Same "None is no opinion" contract,
-    and for the same reason. ``file_command`` answers the case no press can
+    and for the same reason. ``required_sentence`` is how the runtime refuses
+    that press, quoted in the finding. ``file_command`` answers the case no press can
     run: a command that takes or hands back a file, which runs only from the
     device page. See ``core/command_params``.
     """
@@ -533,7 +538,8 @@ def reference_findings(
         page_ids=page_ids, device_ids=device_ids, macro_ids=macro_ids,
         device_commands=device_commands, plugin_elements=plugin_elements,
         undeclared_property=undeclared_property, unknown_child_id=unknown_child_id,
-        missing_params=missing_params, file_command=file_command, ui_files=ui_files,
+        missing_params=missing_params, required_sentence=required_sentence,
+        file_command=file_command, ui_files=ui_files,
     )
     page_id = str(getattr(page, "id", "?"))
     # What the page itself names is not scoped by `touched`: the page is not one
@@ -916,7 +922,11 @@ def _refusal(action: Mapping[str, Any], site: _Site, project: _Project) -> Findi
         )
     unsupplied = project.missing_params(action) if project.missing_params else None
     if unsupplied:
-        return _unrunnable_finding(site, device, command, unsupplied)
+        if project.required_sentence is not None:
+            refused = project.required_sentence(action, unsupplied[0])
+        else:
+            refused = required_param_sentence(str(command), param_label(unsupplied[0]))
+        return _unrunnable_finding(site, action, unsupplied, refused)
     return None
 
 
@@ -966,23 +976,25 @@ _ACTION_CHECKS: dict[
 
 
 def _unrunnable_finding(
-    site: _Site, device: str, command: str, unsupplied: list[str],
+    site: _Site, action: Mapping[str, Any], unsupplied: list[str], refused: str,
 ) -> Finding:
     """A command the driver has, that the driver will still refuse.
 
     One finding for the action rather than one per parameter: they are filled in
     on the same form, in the same visit, and two sentences about one card would
-    read as two mistakes. The refusal is quoted verbatim because it is what
-    somebody sees on the panel when they finally press the control, and matching
-    the two makes the connection without explaining it.
+    read as two mistakes. The parameters are named by key, the names a binding
+    is written in; the refusal (``refused``, the runtime's own sentence for the
+    first of them) is quoted verbatim because it is what somebody sees on the
+    panel when they finally press the control, and matching the two makes the
+    connection without explaining it.
     """
     named = " and ".join(f"'{name}'" for name in unsupplied)
     them = "it" if len(unsupplied) == 1 else "them"
     return site.finding(
         "unrunnable_command",
-        f"sends '{command}' to '{device}' without {named}. "
+        f"sends '{action.get('command')}' to '{action.get('device')}' without {named}. "
         f"Its driver requires {them}, so the device refuses every press with "
-        f"\"'{command}': '{unsupplied[0]}' is required\".",
+        f"\"{refused}\"",
     )
 
 

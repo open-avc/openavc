@@ -64,7 +64,7 @@ def command_definition(driver: Any, command: str) -> dict[str, Any] | None:
 
 
 def command_label(cmd_def: dict[str, Any] | None, command: str) -> str:
-    """The name a file command's sentences give it: its label, else its id."""
+    """The name a command's refusals give it: its label, else its id."""
     return str((cmd_def or {}).get("label") or command)
 
 
@@ -238,7 +238,8 @@ def validate_command_params(
     pdefs = _param_defs(driver, command)
     if pdefs is None:
         return params
-    return normalize_and_validate_command_params(command, pdefs, params)
+    label = command_label(command_definition(driver, command), command)
+    return normalize_and_validate_command_params(command, pdefs, params, label=label)
 
 
 def coerce_child_id_params(
