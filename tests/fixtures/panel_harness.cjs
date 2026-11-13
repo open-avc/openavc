@@ -10338,6 +10338,10 @@ async function driveCase(spec) {
         steps, sent: [], posted: [], logged: [], fetched: [], frames: [], sockets: [], reads: null,
         listeners: { message: [], resize: [], orientationchange: [] },
         serials: new WeakMap(), nextSerial: 1, seen: {},
+        // The window listeners a case that counts them (`windowListeners`)
+        // has added and not removed, and the sounds a case that plays them
+        // (`audio`) started.
+        live: [], audio: [],
     };
     const own = {
         htmlStyle: doc.getAttribute('style'),
@@ -10353,6 +10357,7 @@ async function driveCase(spec) {
         raf: window.requestAnimationFrame,
         fetch: window.fetch,
         WebSocket: window.WebSocket,
+        Audio: window.Audio,
         console: { log: window.console.log, warn: window.console.warn, error: window.console.error },
         sheet: null,
     };
@@ -10388,6 +10393,7 @@ async function driveCase(spec) {
     else window.postMessage = record(true);
     window.addEventListener = function (type, fn, opts) {
         if (this === window && m.listeners[type]) { m.listeners[type].push(fn); return undefined; }
+        if (this === window && c.windowListeners) m.live.push([type, fn]);
         return own.add.call(this, type, fn, opts);
     };
     window.removeEventListener = function (type, fn, opts) {
@@ -10396,8 +10402,22 @@ async function driveCase(spec) {
             if (at >= 0) m.listeners[type].splice(at, 1);
             return undefined;
         }
+        if (this === window && c.windowListeners) {
+            const at = m.live.findIndex(([t, f]) => t === type && f === fn);
+            if (at >= 0) m.live.splice(at, 1);
+        }
         return own.remove.call(this, type, fn, opts);
     };
+    if (c.audio) {
+        window.Audio = class {
+            constructor(url) { this.n = m.audio.length; m.audio.push(`new ${url}`); }
+            set volume(v) { m.audio.push(`volume ${v}`); }
+            set currentTime(t) { m.audio.push(`time ${t}`); }
+            play() { m.audio.push('play'); return Promise.resolve(); }
+            pause() { m.audio.push('pause'); }
+            addEventListener(type) { m.audio.push(`listen ${type}`); }
+        };
+    }
     if (c.raf === 'queued') window.requestAnimationFrame = (cb) => { m.frames.push(cb); return m.frames.length; };
     m.flushFrames = () => { for (const cb of m.frames.splice(0)) cb(0); };
     window.WebSocket = class extends own.WebSocket {
@@ -10466,6 +10486,9 @@ async function driveCase(spec) {
             drawn: app._drawnOrientation,
             listening: Object.entries(m.listeners).map(([t, l]) => `${t}:${l.length}`).join(' '),
         }, step);
+        if (c.windowListeners) changed('wl', m.live.map(([t]) => t).join(' '), step);
+        if (c.recordDefs) changed('def', (app.uiDef?.pages || []).map((p) => p.elements), step);
+        if (m.audio.length) step.au = m.audio.splice(0);
         if (m.sent.length) step.s = m.sent.splice(0);
         if (m.posted.length) step.p = m.posted.splice(0);
         if (m.fetched.length) step.u = m.fetched.splice(0);
@@ -10484,7 +10507,10 @@ async function driveCase(spec) {
                 m.app = mkApp();
                 if ('edit' in c) m.app.editMode = c.edit;
                 if ('embedded' in c) m.app.embedded = c.embedded;
-                m.app.send = (frame) => m.sent.push(frame);
+                // `realSend`: the panel's own send, onto a socket that is open
+                // and records what went out.
+                if (c.realSend) m.app.ws = { readyState: 1, send: (raw) => m.sent.push(JSON.parse(raw)) };
+                else m.app.send = (frame) => m.sent.push(frame);
                 if (c.state) m.app.state = { ...c.state };
                 if (c.listen) m.app._setupEditModeListener();
                 if (c.ui) {
@@ -10516,6 +10542,8 @@ async function driveCase(spec) {
             await settleTasks();
         });
     } finally {
+        for (const [type, fn] of m.live) own.remove.call(window, type, fn);
+        window.Audio = own.Audio;
         window.addEventListener = own.add;
         window.removeEventListener = own.remove;
         window.requestAnimationFrame = own.raf;
@@ -11499,6 +11527,602 @@ Object.assign(tests, {
     async builder_link_takes_and_sends_as_today() {
         const got = await driveCases({}, BUILDER_LINK_CASES);
         comparePins('builder_link', got, BUILDER_LINK_PINS.builder_link);
+    },
+});
+
+// --- A button's press, a control's words, visibility and the server's frames -
+//
+// Four more groups driven the same way (driveCase). The press cases fire
+// pointer and touch events at a control the way a browser delivers them,
+// bubbling up to the window, and record the window listeners a press leaves
+// behind (`wl`) and the definition the panel was handed (`def`), which a
+// renderer may write to. The frame cases send through the panel's own `send`
+// onto an open socket that records what went out (`realSend`), with sounds
+// recorded (`au`) rather than played. Compared with panel_press_pins.json,
+// panel_words_pins.json, panel_visibility_pins.json and
+// panel_message_pins.json, recorded from the code before it moved.
+
+const PRESS_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_press_pins.json'), 'utf8'));
+const WORDS_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_words_pins.json'), 'utf8'));
+const VISIBILITY_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_visibility_pins.json'), 'utf8'));
+const MESSAGE_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_message_pins.json'), 'utf8'));
+
+/** The event a browser hands a listener for `type`: a mouse event for the pointer, a plain one for the rest. */
+function browserEvent(type, init) {
+    const Kind = type.startsWith('mouse') ? window.MouseEvent : window.Event;
+    return new Kind(type, init);
+}
+
+Object.assign(PANEL_STEPS, {
+    // A pointer or touch event at the first node the selector finds, bubbling
+    // up through the document to the window, cancelable, as a browser sends it.
+    fire: (m, selector, type, init) => {
+        const node = document.querySelector(selector);
+        if (!node) throw new Error(`nothing at ${selector}`);
+        node.dispatchEvent(browserEvent(type, { bubbles: true, cancelable: true, ...init }));
+    },
+    // The same at the window itself: a release the browser delivered
+    // somewhere else, or the window losing focus.
+    winfire: (m, type, init) => window.dispatchEvent(browserEvent(type, { bubbles: true, ...init })),
+    // The panel goes to the background (true), or comes back to the front.
+    hidden: (m, hidden) => {
+        Object.defineProperty(document, 'hidden', { value: hidden, configurable: true });
+        document.dispatchEvent(new window.Event('visibilitychange'));
+        delete document.hidden;
+    },
+    // What the frames on the page are sent from here on is recorded with the posts.
+    tapFrames: (m) => {
+        for (const frame of document.querySelectorAll('iframe')) {
+            const win = frame.contentWindow;
+            const owner = frame.closest('[data-element-id]')?.dataset.elementId;
+            if (win) win.postMessage = (msg, target) => m.posted.push({ frame: owner, msg, target });
+        }
+    },
+});
+
+// --- The press ---------------------------------------------------------------
+
+const pinButton = (id, press, extra) => ({ id, type: 'button', label: id, ...(press === undefined ? {} : { bindings: { do: { press } } }), ...extra });
+const onePage = (tag, elements, extra) => pinUi(tag, [pinPage('home', { elements })], extra);
+const atEl = (id) => `[data-element-id="${id}"]`;
+const PRESSING = { realSend: true, windowListeners: true, raf: 'queued', fetch: {} };
+const MACRO = { action: 'macro', macro: 'm1' };
+/** A press, the steps between, and a release, at one control. */
+const pressAndLetGo = (id, between = [], down = 'mousedown', up = 'mouseup') =>
+    [['fire', atEl(id), down], ...between, ['fire', atEl(id), up]];
+const snapshot = (state) => ['msg', { type: 'state.snapshot', state }];
+const toggle = (extra) => [{ ...MACRO, mode: 'toggle', toggle_key: 'var.t', toggle_value: 'on', ...extra }];
+
+const PRESS_CASES = {
+    // A tap by mouse: the press, the release at the button (which bubbles to
+    // the window and takes the window's fallbacks away), a second release
+    // nobody pressed for, a release delivered only to the window, and the
+    // pointer leaving before the release.
+    tap_mouse: {
+        ...PRESSING, ui: onePage('tap', [pinButton('b1', [MACRO])]),
+        steps: [
+            ...pressAndLetGo('b1'), ['fire', atEl('b1'), 'mouseup'], ['winfire', 'mouseup'],
+            ['fire', atEl('b1'), 'mousedown'], ['winfire', 'mouseup'],
+            ['fire', atEl('b1'), 'mousedown'], ['fire', atEl('b1'), 'mouseleave'], ['winfire', 'mouseup'],
+            ['fire', atEl('b1'), 'mousedown'], ['fire', atEl('b1'), 'mousedown'], ['fire', atEl('b1'), 'mouseup'],
+        ],
+    },
+    // A tap by touch: lifted, cancelled, lifted somewhere the button never
+    // heard, cancelled there, and the window losing focus mid-press.
+    tap_touch: {
+        ...PRESSING, ui: onePage('touch', [pinButton('b1', [MACRO])]),
+        steps: [
+            ...pressAndLetGo('b1', [], 'touchstart', 'touchend'),
+            ...pressAndLetGo('b1', [], 'touchstart', 'touchcancel'),
+            ['fire', atEl('b1'), 'touchstart'], ['winfire', 'touchend'],
+            ['fire', atEl('b1'), 'touchstart'], ['winfire', 'touchcancel'],
+            ['fire', atEl('b1'), 'touchstart'], ['winfire', 'blur'],
+            ['fire', atEl('b1'), 'touchstart'], ['fire', atEl('b1'), 'touchend', { cancelable: false }],
+        ],
+    },
+    // A release that cannot be cancelled is still a release.
+    tap_release_not_cancelable: {
+        ...PRESSING, ui: onePage('tap', [pinButton('b1', [MACRO])]),
+        steps: [['fire', atEl('b1'), 'mousedown'], ['fire', atEl('b1'), 'mouseup', { cancelable: false }]],
+    },
+    // A button with no press, an empty press list, a press that is one
+    // action rather than a list, and a mode nobody knows: each a tap, or nothing.
+    press_shapes: {
+        ...PRESSING,
+        ui: onePage('shapes', [
+            pinButton('none'), pinButton('empty', []), pinButton('one', { ...MACRO }),
+            pinButton('odd', [{ ...MACRO, mode: 'double' }]), pinButton('nul', [null]),
+            { id: 'nodo', type: 'button', label: 'nodo', bindings: { show: {} } },
+        ]),
+        steps: ['none', 'empty', 'one', 'odd', 'nul', 'nodo'].flatMap((id) => pressAndLetGo(id)),
+    },
+    // Hold to repeat: a press at once and one per interval while held, for as
+    // long as it is held, ended by the release, the pointer leaving, the
+    // panel going to the background, a redraw, and a second press of the same
+    // button (one timer, never two).
+    hold_repeat_default: {
+        ...PRESSING, ui: onePage('hold', [pinButton('h1', [{ ...MACRO, mode: 'hold_repeat' }]), pinButton('h2', [{ ...MACRO, mode: 'hold_repeat', hold_repeat_ms: 0 }])]),
+        steps: [
+            ['fire', atEl('h1'), 'mousedown'], ['wait', 199], ['wait', 1], ['wait', 400], ['fire', atEl('h1'), 'mouseup'], ['wait', 400],
+            ['fire', atEl('h1'), 'mousedown'], ['fire', atEl('h1'), 'mouseleave'], ['wait', 400], ['winfire', 'mouseup'],
+            ['fire', atEl('h1'), 'mousedown'], ['hidden', true], ['wait', 400], ['winfire', 'mouseup'],
+            ['fire', atEl('h1'), 'mousedown'], ['hidden', false], ['wait', 200], ['render'], ['wait', 400], ['winfire', 'mouseup'],
+            ['fire', atEl('h1'), 'touchstart'], ['fire', atEl('h1'), 'touchstart'], ['wait', 200], ['fire', atEl('h1'), 'touchend'], ['wait', 400],
+            ['fire', atEl('h2'), 'mousedown'], ['wait', 200], ['fire', atEl('h2'), 'mouseup'],
+        ],
+    },
+    // Its own interval, a press that is one action, and two held at once.
+    hold_repeat_own_interval: {
+        ...PRESSING,
+        ui: onePage('hold', [
+            pinButton('h1', [{ ...MACRO, mode: 'hold_repeat', hold_repeat_ms: 50 }]),
+            pinButton('h2', { ...MACRO, mode: 'hold_repeat', hold_repeat_ms: 75 }),
+        ]),
+        steps: [
+            ['fire', atEl('h1'), 'mousedown'], ['wait', 120], ['fire', atEl('h2'), 'touchstart'], ['wait', 160],
+            ['fire', atEl('h1'), 'mouseup'], ['wait', 100], ['winfire', 'touchcancel'], ['wait', 100],
+        ],
+    },
+    // A hold kept going while the socket drops, and on the design canvas.
+    hold_repeat_offline_and_canvas: {
+        ...PRESSING,
+        ui: onePage('hold', [pinButton('h1', [{ ...MACRO, mode: 'hold_repeat' }])]),
+        steps: [
+            ['fire', atEl('h1'), 'mousedown'], ['wait', 200], ['connection', false], ['wait', 200], ['winfire', 'mouseup'],
+            ['connection', true], ['set', 'editMode', true], ['fire', atEl('h1'), 'mousedown'], ['wait', 400], ['fire', atEl('h1'), 'mouseup'],
+        ],
+    },
+    // Tap or hold: decided at the release, by how long it was held.
+    tap_hold: {
+        ...PRESSING,
+        ui: onePage('taphold', [
+            pinButton('t1', [{ ...MACRO, mode: 'tap_hold' }]),
+            pinButton('t2', [{ ...MACRO, mode: 'tap_hold', hold_threshold_ms: 100 }]),
+            pinButton('t3', [{ ...MACRO, mode: 'tap_hold', hold_threshold_ms: 0 }]),
+        ]),
+        steps: [
+            ...pressAndLetGo('t1', [['wait', 499]]), ...pressAndLetGo('t1', [['wait', 500]]),
+            ...pressAndLetGo('t1', [['wait', 900]], 'touchstart', 'touchend'),
+            ['fire', atEl('t1'), 'mousedown'], ['wait', 600], ['winfire', 'blur'],
+            ['fire', atEl('t1'), 'mousedown'], ['wait', 600], ['fire', atEl('t1'), 'mouseleave'], ['winfire', 'mouseup'],
+            ...pressAndLetGo('t2', [['wait', 99]]), ...pressAndLetGo('t2', [['wait', 100]]),
+            ...pressAndLetGo('t3', [['wait', 499]]), ...pressAndLetGo('t3', [['wait', 500]]),
+        ],
+    },
+    // A toggle: pressed while off it presses, while on it turns off. The
+    // reading is compared as words apart from case, so a boolean, a number
+    // and a word in capitals all count; the button draws on and off too.
+    toggle_by_reading: {
+        ...PRESSING,
+        ui: onePage('toggle', [pinButton('t1', toggle()), pinButton('tb', toggle({ toggle_key: 'var.b', toggle_value: true })),
+            pinButton('tn', toggle({ toggle_key: 'var.n', toggle_value: '1' }))]),
+        steps: [
+            ...pressAndLetGo('t1'),
+            ...[['on'], ['ON'], ['off'], [null], [true], [0], ['']].flatMap(([v]) => [snapshot({ 'var.t': v, 'var.b': v, 'var.n': v }), ...pressAndLetGo('t1'), ...pressAndLetGo('tb')]),
+            snapshot({ 'var.b': 'TRUE', 'var.n': 1 }), ...pressAndLetGo('tb'), ...pressAndLetGo('tn'),
+            snapshot({ 'var.b': false, 'var.n': 1.0 }), ...pressAndLetGo('tb'), ...pressAndLetGo('tn'),
+            snapshot({ 'var.n': '1.0' }), ...pressAndLetGo('tn'),
+            ['fire', atEl('t1'), 'touchstart'], ['fire', atEl('t1'), 'touchend'],
+        ],
+    },
+    // A toggle with no key is a tap; one with no value, or a null value, a
+    // reading of null or the word "null", and a key nobody has reported.
+    toggle_edges: {
+        ...PRESSING,
+        ui: onePage('toggle', [
+            pinButton('nokey', toggle({ toggle_key: undefined })), pinButton('emptykey', toggle({ toggle_key: '' })),
+            pinButton('noval', toggle({ toggle_value: undefined })), pinButton('nulval', toggle({ toggle_value: null })),
+            pinButton('wordnull', toggle({ toggle_value: 'null' })),
+        ]),
+        steps: [
+            ...['nokey', 'emptykey', 'noval', 'nulval', 'wordnull'].flatMap((id) => pressAndLetGo(id)),
+            snapshot({ 'var.t': null }),
+            ...['nokey', 'emptykey', 'noval', 'nulval', 'wordnull'].flatMap((id) => pressAndLetGo(id)),
+            snapshot({ 'var.t': 'null' }),
+            ...['noval', 'nulval', 'wordnull'].flatMap((id) => pressAndLetGo(id)),
+        ],
+    },
+    // A toggle's own words and look against a look binding of its own (which
+    // takes the whole job), its words named on a press that is one action,
+    // and while its device is away.
+    toggle_words_and_look: {
+        ...PRESSING,
+        ui: onePage('toggle', [
+            pinButton('w1', toggle({ on_label: 'Muted', off_label: 'Live' })),
+            pinButton('w2', { ...toggle({ on_label: 'On', off_label: '' })[0] }),
+            pinButton('w3', toggle(), { bindings: { do: { press: toggle() }, show: { look: { key: 'var.t', condition: { equals: 'on' }, style_active: { bg_color: '#ff0000', label: 'Look on' } } } } }),
+            pinButton('w4', toggle({ toggle_key: 'device.amp.mute', toggle_value: true, on_label: 'Muted' }), { icon: 'volume-x' }),
+        ]),
+        steps: [
+            snapshot({ 'var.t': 'on', 'device.amp.mute': true, 'device.amp.connected': true }), ['raf'],
+            ...pressAndLetGo('w1'), ...pressAndLetGo('w2'), ...pressAndLetGo('w3'), ...pressAndLetGo('w4'),
+            ['state', { 'var.t': 'off', 'device.amp.mute': false }], ['raf'],
+            ['state', { 'device.amp.mute': true, 'device.amp.connected': false }], ['raf'],
+            ...pressAndLetGo('w4'),
+        ],
+    },
+    // On the design canvas: the press draws its pressed look and sends
+    // nothing; the words a toggle draws say where they were authored.
+    press_on_the_canvas: {
+        ...PRESSING, edit: true, embedded: true,
+        ui: onePage('canvas', [
+            pinButton('c1', [MACRO]), pinButton('c2', [{ ...MACRO, mode: 'hold_repeat' }]),
+            pinButton('c3', toggle({ on_label: 'On', off_label: 'Off' })), pinButton('c4', toggle({ on_label: 'On', off_label: 'Off' })[0]),
+        ]),
+        state: { 'var.t': 'on' },
+        steps: [...pressAndLetGo('c1'), ['fire', atEl('c2'), 'mousedown'], ['wait', 400], ['winfire', 'mouseup'], snapshot({ 'var.t': 'off' })],
+    },
+    // A button drawn icon-only takes its icon to the middle, written onto the
+    // definition it was handed; one that names a side keeps it.
+    icon_only_centres_its_icon: {
+        ...PRESSING, recordDefs: true,
+        ui: onePage('icons', [
+            pinButton('i1', [MACRO], { display_mode: 'icon_only', icon: 'power' }),
+            pinButton('i2', [MACRO], { display_mode: 'icon_only', icon: 'power', icon_position: 'top' }),
+            pinButton('i3', [MACRO], { display_mode: 'icon_only' }),
+            pinButton('i4', [MACRO], { display_mode: 'image', icon: 'power' }),
+        ]),
+        steps: [['render']],
+    },
+    // The camera preset's press: press and release, nothing at the window.
+    camera_preset_press: {
+        ...PRESSING,
+        ui: onePage('cam', [{ id: 'p1', type: 'camera_preset', label: 'Wide', preset_number: 2 }, { id: 'p2', type: 'camera_preset' }]),
+        steps: [
+            ...pressAndLetGo('p1'), ...pressAndLetGo('p1', [], 'touchstart', 'touchend'),
+            ['fire', atEl('p2'), 'mousedown'], ['fire', atEl('p2'), 'mouseleave'], ['winfire', 'mouseup'],
+        ],
+    },
+};
+
+Object.assign(tests, {
+    async button_press_sends_as_today() {
+        const got = await driveCases({}, PRESS_CASES);
+        comparePins('press', got, PRESS_PINS.press);
+    },
+});
+
+// --- A control's words and icon ----------------------------------------------
+
+const captioned = (type, extra) => ({ id: `c_${type}`, type, label: `${type} caption`, ...extra });
+const WORDS = { raf: 'queued', fetch: {} };
+/** An icon from the sprite, beside the words on each side. */
+const ICON_SIDES = ['left', 'right', 'top', 'bottom', 'center', 'middle'];
+
+const WORDS_CASES = {
+    // Every control that carries a caption, with one and without, and a
+    // `ui.<id>.label` override written into the caption and taken away.
+    captions: {
+        ...WORDS,
+        ui: onePage('captions', [
+            captioned('status_led'), captioned('slider'), captioned('select', { options: [{ label: 'A', value: 'a' }] }),
+            captioned('text_input'), captioned('list'), captioned('gauge'), captioned('level_meter'),
+            captioned('fader'), captioned('keypad'), captioned('matrix'),
+            ...['top-left', 'top-center', 'top-right', 'bottom-left', 'bottom-center', 'bottom-right', 'inside']
+                .map((pos) => captioned('group', { id: `g_${pos}`, label_position: pos, children: [] })),
+            captioned('group', { id: 'g_default', children: [] }),
+            { id: 'nocap_slider', type: 'slider' }, { id: 'nocap_gauge', type: 'gauge', label: '' },
+        ]),
+        steps: [
+            ['state', Object.fromEntries(['c_status_led', 'c_slider', 'c_gauge', 'c_fader', 'g_top-left', 'nocap_slider']
+                .map((id) => [`ui.${id}.label`, `${id} over`]))], ['raf'],
+            ['msg', { type: 'state.delete', keys: ['ui.c_slider.label', 'ui.g_top-left.label', 'ui.nocap_slider.label'] }], ['raf'],
+        ],
+    },
+    // The same captions on the design canvas, where each says which field it came from.
+    captions_on_the_canvas: {
+        ...WORDS, edit: true, embedded: true,
+        ui: onePage('captions', [captioned('slider'), captioned('gauge'), captioned('group', { children: [] }), captioned('status_led')]),
+    },
+    // An icon beside a button's words on every side, from its own fields or
+    // its style's, at its own size or the default, coloured or not, from the
+    // sprite or an uploaded file.
+    icons_on_buttons: {
+        ...WORDS,
+        ui: onePage('icons', [
+            ...ICON_SIDES.map((side) => pinButton(`b_${side}`, [MACRO], { icon: 'power', icon_position: side })),
+            pinButton('b_style', [MACRO], { style: { icon: 'mic', icon_position: 'top', icon_size: 2, icon_color: '#ff0000' } }),
+            pinButton('b_both', [MACRO], { icon: 'mic', icon_size: 1.5, icon_color: '#00ff00', style: { icon: 'power', icon_position: 'right' } }),
+            pinButton('b_asset', [MACRO], { icon: 'assets://my icon.svg', icon_color: '#0000ff' }),
+            pinButton('b_asset_plain', [MACRO], { icon: 'assets://plain.png', label: '' }),
+            pinButton('b_noicon', [MACRO]),
+            pinButton('b_empty', [MACRO], { icon: '' }),
+            pinButton('b_img_text', [MACRO], { icon: 'power', display_mode: 'image_text', button_image: 'assets://bg.png' }),
+            pinButton('b_img', [MACRO], { icon: 'power', display_mode: 'image', button_image: 'assets://bg.png', icon_position: 'left' }),
+            pinButton('b_icon_only', [MACRO], { icon: 'power', display_mode: 'icon_only' }),
+        ]),
+    },
+    // The other controls an icon draws on: a label, a page nav, a camera preset, a keypad.
+    icons_on_other_controls: {
+        ...WORDS,
+        ui: onePage('icons', [
+            pinLabel('l1', { icon: 'info', icon_position: 'right' }),
+            pinLabel('l2', { icon: 'info', style: { white_space: 'pre-wrap' }, text: '**Bold** words' }),
+            pinNav('n1', 'home', { icon: 'house', icon_position: 'top' }),
+            pinNav('n2', '', { icon: 'house' }),
+            { id: 'p1', type: 'camera_preset', label: 'Wide', preset_number: 3, icon: 'video', icon_position: 'bottom' },
+            { id: 'k1', type: 'keypad', label: 'Code' },
+        ]),
+    },
+    // The words a state's look draws beside an icon, changing and changing
+    // back, so the old words never stay beside the new ones; a toggle's
+    // words; and an override of a button's words beside its icon.
+    words_change_beside_an_icon: {
+        ...WORDS,
+        ui: onePage('change', [
+            pinButton('f1', [MACRO], { icon: 'power', bindings: { do: { press: [MACRO] }, show: { look: { key: 'var.s', states: { a: { label: 'Alpha', icon: 'mic' }, b: { label: 'Beta' }, c: { bg_color: '#123456' } } } } } }),
+            pinButton('f2', [MACRO], { icon: 'power', icon_position: 'top', bindings: { do: { press: [MACRO] }, show: { look: { key: 'var.s', condition: { equals: 'a' }, label_active: 'Is A', label_inactive: 'Not A' } } } }),
+            pinButton('t1', toggle({ on_label: 'On', off_label: 'Off' }), { icon: 'power', icon_position: 'right' }),
+            pinNav('n1', 'home', { icon: 'house', bindings: { show: { look: { key: 'var.s', states: { a: { label: 'Nav A', icon: 'star' } } } } } }),
+            pinLabel('l1', { icon: 'info', bindings: { show: { look: { key: 'var.s', states: { a: { label: 'Label A' } } } } } }),
+            pinButton('o1', [MACRO], { icon: 'power', icon_position: 'bottom' }),
+            pinButton('o2', [MACRO], { icon: 'power', icon_position: 'center' }),
+        ]),
+        steps: [
+            snapshot({ 'var.s': 'a', 'var.t': 'on' }), ['raf'],
+            ['state', { 'var.s': 'b', 'var.t': 'off' }], ['raf'],
+            ['state', { 'var.s': 'c' }], ['raf'],
+            ['state', { 'var.s': 'a', 'ui.o1.label': 'Over', 'ui.o2.label': 'Mid', 'ui.f1.label': 'F over' }], ['raf'],
+            ['msg', { type: 'state.delete', keys: ['ui.o1.label', 'ui.o2.label', 'ui.f1.label'] }], ['raf'],
+        ],
+    },
+    // A button's words and its accessible name: its own label, its id when
+    // it has none, and a state's words, empty words falling back to the name.
+    accessible_names: {
+        ...WORDS,
+        ui: onePage('names', [
+            pinButton('a1', [MACRO], { bindings: { do: { press: [MACRO] }, show: { look: { key: 'var.s', states: { a: { label: 'Alpha' }, e: { label: '' } } } } } }),
+            pinButton('a2', [MACRO], { label: '', bindings: { do: { press: [MACRO] }, show: { look: { key: 'var.s', states: { a: { label: 'Alpha' } } } } } }),
+            pinButton('a3', [MACRO], { label: undefined }),
+        ]),
+        steps: [snapshot({ 'var.s': 'a' }), ['state', { 'var.s': 'e' }], ['raf'], ['state', { 'var.s': 'zzz' }], ['raf']],
+    },
+    // A button with no id and no words of its own, a state's empty words on
+    // it, and an override emptying the words beside a page nav's icon.
+    nameless: {
+        ...WORDS,
+        ui: onePage('nameless', [
+            { type: 'button', label: '', icon: 'power', bindings: { show: { look: { key: 'var.s', states: { a: { label: '' }, b: { label: 'Bee' } } } } } },
+            pinNav('n1', 'home', { icon: 'house' }),
+        ]),
+        steps: [snapshot({ 'var.s': 'b' }), ['state', { 'var.s': 'a', 'ui.n1.label': '' }], ['raf'], ['state', { 'ui.n1.label': 'Back' }], ['raf']],
+    },
+    // The canvas: each control's words record where they were authored, and
+    // the in-place editor finds the words beside an icon.
+    words_on_the_canvas: {
+        ...WORDS, edit: true, embedded: true,
+        ui: onePage('canvas', [
+            pinButton('b1', [MACRO], { icon: 'power' }), pinButton('b2', [MACRO], { icon: 'power', display_mode: 'icon_only' }),
+            pinLabel('l1', { icon: 'info' }), pinNav('n1', 'home', { icon: 'house' }),
+        ]),
+        state: { 'var.s': 'a' },
+    },
+};
+
+Object.assign(tests, {
+    async control_words_and_icons_draw_as_today() {
+        const got = await driveCases({}, WORDS_CASES);
+        comparePins('words', got, WORDS_PINS.words);
+    },
+});
+
+// --- Visibility ----------------------------------------------------------------
+
+/** One label per condition, shown while its `visible_when` holds. */
+const shownWhen = (id, when) => pinLabel(id, { bindings: { show: { visible_when: when } } });
+const OPERATOR_SPELLINGS = ['eq', 'equals', '==', 'ne', 'not_equals', '!=', 'gt', '>', 'lt', '<', 'gte', '>=', 'lte', '<=',
+    'truthy', 'falsy', 'EQ', 'between', ''];
+/** The readings each operator is tried against, spelled for JSON where it cannot hold them. */
+const READINGS = ['=undefined', null, 0, 1, 5, 10, '5', '10', 'a', 'b', '', true, false, 'true', '=NaN'];
+const VISIBLE = { raf: 'queued', fetch: {} };
+
+const VISIBILITY_CASES = {
+    // Every operator spelling against a number, a numeric word and a word,
+    // over every kind of reading.
+    operators: {
+        ...VISIBLE,
+        ui: onePage('ops', OPERATOR_SPELLINGS.flatMap((op) => [5, '5', 'a', null, true].map((target, i) =>
+            shownWhen(`op_${op || 'none'}_${i}`, { key: 'var.v', operator: op || undefined, value: target })))),
+        steps: READINGS.map((v) => snapshot({ 'var.v': v })),
+    },
+    // `all` holds when every condition does, `any` when one does; a block with
+    // both is read as `all`'s conditions under `any`'s rule; an empty block;
+    // conditions with no key, or no operator.
+    blocks: {
+        ...VISIBLE,
+        ui: onePage('blocks', [
+            shownWhen('all', { all: [{ key: 'var.a', operator: 'eq', value: 1 }, { key: 'var.b', operator: 'truthy' }] }),
+            shownWhen('any', { any: [{ key: 'var.a', operator: 'eq', value: 1 }, { key: 'var.b', operator: 'truthy' }] }),
+            shownWhen('both', { all: [{ key: 'var.a', operator: 'eq', value: 1 }, { key: 'var.b', operator: 'truthy' }], any: [{ key: 'var.c', operator: 'truthy' }] }),
+            shownWhen('all_empty', { all: [] }), shownWhen('any_empty', { any: [] }),
+            shownWhen('nokey', { operator: 'falsy' }), shownWhen('noop', { key: 'var.a', value: 1 }),
+            shownWhen('mixed', { all: [{ operator: 'falsy' }, { key: 'var.a', operator: 'gte', value: 1 }] }),
+            pinLabel('none'), pinLabel('empty_show', { bindings: { show: {} } }),
+            pinLabel('vw_null', { bindings: { show: { visible_when: null } } }),
+        ]),
+        steps: [
+            snapshot({}), snapshot({ 'var.a': 1 }), snapshot({ 'var.a': 1, 'var.b': 'x' }), snapshot({ 'var.b': 0, 'var.c': 1 }),
+            ['state', { 'var.a': 2 }], ['raf'], ['state', { 'var.b': 1 }], ['raf'], ['state', { 'var.c': 0, 'var.z': 1 }], ['raf'],
+        ],
+    },
+    // Only a change to a key a condition reads draws it again; a condition
+    // with no key is drawn only when everything is.
+    redrawn_by_its_keys: {
+        ...VISIBLE,
+        ui: onePage('keys', [
+            shownWhen('k1', { key: 'var.a', operator: 'truthy' }),
+            shownWhen('k2', { all: [{ operator: 'falsy' }, { key: 'var.b', operator: 'falsy' }] }),
+        ]),
+        steps: [snapshot({ 'var.a': 1 }), ['state', { 'var.x': 1 }], ['raf'], ['state', { 'var.a': 0 }], ['raf'],
+            ['state', { 'var.b': 1 }], ['raf'], ['set', 'state', { 'var.a': 1 }], ['state', { 'var.q': 1 }], ['raf']],
+    },
+    // Master elements and an overlay's controls follow their conditions too.
+    masters_and_overlays: {
+        ...VISIBLE,
+        ui: pinUi('mo', [
+            pinPage('home', { elements: [shownWhen('h1', { key: 'var.a', operator: 'eq', value: 'x' })] }),
+            pinPage('dlg', { page_type: 'overlay', elements: [shownWhen('d1', { key: 'var.a', operator: 'ne', value: 'x' })] }),
+        ], { master_elements: [anyMaster('m1', '*', { bindings: { show: { visible_when: { key: 'var.a', operator: 'truthy' } } } })] }),
+        steps: [snapshot({ 'var.a': 'x' }), ['nav', 'dlg'], ['state', { 'var.a': '' }], ['raf'], ['dismiss'], ['transitionend']],
+    },
+};
+
+Object.assign(tests, {
+    async visibility_follows_conditions_as_today() {
+        const got = await driveCases({}, VISIBILITY_CASES);
+        comparePins('visibility', got, VISIBILITY_PINS.visibility);
+    },
+});
+
+// --- The server's frames ---------------------------------------------------------
+
+const FRAMES = { realSend: true, audio: true, raf: 'queued', fetch: {} };
+const PLAY_KEY = 'plugin.audio_player.play_request';
+const framesUi = () => pinUi('frames', [
+    pinPage('home', {
+        elements: [
+            pinLabel('l1', { bindings: { show: { value: { key: 'var.a' } } } }),
+            { id: 's1', type: 'slider', bindings: { show: { value: { key: 'var.level' } } } },
+            pinButton('b1', [MACRO]),
+            { id: 'cc', type: 'custom', custom_file: 'card.html', grant: { variables: ['a', 'level'] } },
+        ],
+    }),
+    pinPage('other', { elements: [pinLabel('o1')] }),
+    pinPage('dlg', { page_type: 'overlay', elements: [pinLabel('d1')] }),
+]);
+
+const MESSAGE_CASES = {
+    // A ping is answered; a frame of a kind the panel does not know, or with
+    // no kind at all, changes nothing.
+    ping_and_unknown: {
+        ...FRAMES, ui: framesUi(),
+        steps: [['msg', { type: 'ping' }], ['msg', { type: 'nothing.here' }], ['msg', {}], ['msg', { type: 'ping', extra: 1 }]],
+    },
+    // The whole state arriving: drawn at once, the loading note hidden, the
+    // Simulated tag, the last sound remembered rather than played; and
+    // arriving again, or with no state in it.
+    snapshot: {
+        ...FRAMES, ui: framesUi(), snapshot: false,
+        steps: [
+            ['tapFrames'],
+            snapshot({ 'var.a': 'one', 'var.level': 40, 'system.simulation_active': true, [PLAY_KEY]: JSON.stringify({ id: 'r1', url: '/x.mp3' }) }),
+            snapshot({ 'var.a': 'two', 'system.simulation_active': false }),
+            ['msg', { type: 'state.snapshot' }],
+            ['msg', { type: 'state.snapshot', state: null }],
+        ],
+    },
+    // State changing: drawn on the next frame, the Simulated tag following its
+    // key, every change told to the frames, a sound request played.
+    update: {
+        ...FRAMES, ui: framesUi(),
+        steps: [
+            snapshot({ 'var.a': 'one' }), ['raf'], ['tapFrames'],
+            ['state', { 'var.a': 'two', 'other.key': 1 }], ['raf'],
+            ['state', { 'system.simulation_active': true }], ['raf'],
+            ['state', { 'system.simulation_active': 'yes' }], ['raf'],
+            ['msg', { type: 'state.update' }], ['raf'],
+            ['msg', { type: 'state.update', changes: null }], ['raf'],
+            ['fire', atEl('b1'), 'mousedown'], ['fire', atEl('b1'), 'mouseup'],
+            ['state', { [PLAY_KEY]: JSON.stringify({ id: 'r2', url: '/chime.mp3' }) }], ['raf'],
+            ['state', { 'var.a': 'three' }], ['state', { 'var.level': 70 }], ['raf'],
+        ],
+    },
+    // Keys going away: drawn again, the frames told the value is gone, the
+    // Simulated tag following; an empty list, no list, or not a list, nothing.
+    delete: {
+        ...FRAMES, ui: framesUi(),
+        steps: [
+            snapshot({ 'var.a': 'one', 'var.level': 20, 'system.simulation_active': true }), ['raf'], ['tapFrames'],
+            ['msg', { type: 'state.delete', keys: ['var.a', 'nobody'] }], ['raf'],
+            ['msg', { type: 'state.delete', keys: ['system.simulation_active'] }], ['raf'],
+            ['msg', { type: 'state.delete', keys: [] }], ['raf'],
+            ['msg', { type: 'state.delete' }], ['raf'],
+            ['msg', { type: 'state.delete', keys: 'var.level' }], ['raf'],
+        ],
+    },
+    // A project arriving from the server: drawn once the state has, its
+    // settings taken; before the state, held.
+    definition: {
+        ...FRAMES, ui: framesUi(), snapshot: false, draw: false,
+        steps: [
+            ['msg', { type: 'ui.definition', ui: framesUi() }],
+            snapshot({ 'var.a': 'one' }),
+            ['msg', { type: 'ui.definition', ui: { ...framesUi(), tag: 'second', settings: { idle_timeout_seconds: 0 } } }],
+            ['msg', { type: 'ui.definition', ui: { tag: 'third', pages: [pinPage('home', { elements: [pinLabel('x1')] })] } }],
+        ],
+    },
+    // In the Programmer's Preview a served project only says which devices
+    // each press reaches; on the canvas it is ignored.
+    definition_embedded: {
+        ...FRAMES, ui: framesUi(), embedded: true,
+        steps: [['msg', { type: 'ui.definition', ui: { ...framesUi(), tag: 'served', action_devices: { b1: ['amp'] } } }]],
+    },
+    definition_on_the_canvas: {
+        ...FRAMES, ui: framesUi(), embedded: true, edit: true,
+        steps: [['msg', { type: 'ui.definition', ui: { ...framesUi(), tag: 'served' } }]],
+    },
+    // A file in the project's ui/ folder changed: a page running the
+    // author's own markup is drawn again; any other page, a panel before its
+    // state, and the Programmer's frames, are not.
+    files: {
+        ...FRAMES, ui: framesUi(),
+        steps: [['msg', { type: 'ui.files', version: 2 }], ['nav', 'other'], ['msg', { type: 'ui.files', version: 3 }]],
+    },
+    files_before_the_state: { ...FRAMES, ui: framesUi(), snapshot: false, steps: [['msg', { type: 'ui.files', version: 2 }]] },
+    files_embedded: { ...FRAMES, ui: framesUi(), embedded: true, steps: [['msg', { type: 'ui.files', version: 2 }]] },
+    // A page change the server asks for, and one that names no page.
+    navigate: {
+        ...FRAMES, ui: framesUi(),
+        steps: [['msg', { type: 'ui.navigate', page_id: 'dlg' }], ['msg', { type: 'ui.navigate' }], ['msg', { type: 'ui.navigate', page_id: '' }], ['msg', { type: 'ui.navigate', page_id: 'other' }]],
+    },
+    // A macro run, start to end, each way it can end.
+    macros: {
+        ...FRAMES,
+        ui: onePage('macros', [pinButton('mb', [MACRO]), pinLabel('mp', { bindings: { show: { value: { source: 'macro_progress', macro: 'm1', idle_text: 'Ready' } } } })]),
+        steps: [
+            ...pressAndLetGo('mb'),
+            ['msg', { type: 'macro.started', macro_id: 'm1', total_steps: 2 }], ['msg', { type: 'macro.progress', macro_id: 'm1', description: 'Step one', step_index: 0 }],
+            ['msg', { type: 'macro.step_error', macro_id: 'm1', message: 'Amp did not answer' }], ['msg', { type: 'macro.completed', macro_id: 'm1' }],
+            ['msg', { type: 'macro.started', macro_id: 'm1' }], ['msg', { type: 'macro.error', macro_id: 'm1', error: 'Failed' }],
+            ['msg', { type: 'macro.started', macro_id: 'm1' }], ['msg', { type: 'macro.cancelled', macro_id: 'm1' }],
+            ['wait', 6000],
+        ],
+    },
+    // A refusal: said in the band (unless the connection refused the frame
+    // before reading it) and the control put back, the one named or the one
+    // last touched; and an ack that failed, or did not.
+    refusals: {
+        ...FRAMES, ui: framesUi(),
+        steps: [
+            snapshot({ 'var.level': 30 }), ['raf'],
+            ['set', '_lastTouchedElementId', 's1'],
+            ['msg', { type: 'error', source_type: 'ui', message: 'Amp refused', element_id: 's1' }], ['wait', 6000],
+            ['msg', { type: 'error', message: 'Rate limit exceeded' }], ['wait', 6000],
+            ['msg', { type: 'error', source_type: 'command', message: 'No such device' }], ['wait', 6000],
+            ['msg', { type: 'command.ack', success: false, error: 'Busy' }], ['wait', 6000],
+            ['msg', { type: 'state.set.ack', success: false, error: 'Read only' }], ['wait', 6000],
+            ['msg', { type: 'command.ack', success: true }], ['msg', { type: 'state.set.ack' }],
+            ['set', '_lastTouchedElementId', null], ['msg', { type: 'error', source_type: 'ui', message: 'Nobody' }], ['wait', 6000],
+        ],
+    },
+    // The connection going and coming back: the status word, the offline
+    // cover, touches off on the page and on an open dialog, and back on; in
+    // the Programmer's Preview the word is never flashed.
+    connection: {
+        ...FRAMES, ui: framesUi(),
+        steps: [['nav', 'dlg'], ['connection', false], ['connection', false], ['wait', 3000], ['connection', true], ['wait', 2999], ['wait', 1],
+            ['connection', true], ['connection', false], ['connection', true], ['wait', 3000]],
+    },
+    connection_in_the_preview: {
+        ...FRAMES, ui: framesUi(), embedded: true,
+        steps: [['connection', true], ['wait', 3000], ['connection', false], ['connection', true]],
+    },
+};
+
+Object.assign(tests, {
+    async server_frames_handled_as_today() {
+        const got = await driveCases({}, MESSAGE_CASES);
+        comparePins('messages', got, MESSAGE_PINS.messages);
     },
 });
 

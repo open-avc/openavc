@@ -1,0 +1,583 @@
+{
+ "words": {
+  "captions": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-status-led\" data-element-id=\"c_status_led\" data-element-type=\"status_led\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"led-dot\"></div><label class=\"led-label\">status_led caption</label></div><div class=\"panel-element panel-slider\" data-element-id=\"c_slider\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><label>slider caption</label><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"slider caption\" min=\"0\" max=\"100\" step=\"1\" aria-valuetext=\"0\"></div></div><div class=\"panel-element panel-select\" data-element-id=\"c_select\" data-element-type=\"select\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><label>select caption</label><select><option value=\"a\">A</option></select></div><div class=\"panel-element panel-text-input\" data-element-id=\"c_text_input\" data-element-type=\"text_input\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><label>text_input caption</label><input type=\"text\" placeholder=\"\"></div><div class=\"panel-element panel-list\" data-element-id=\"c_list\" data-element-type=\"list\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"list-label\">list caption</div><div class=\"list-scroll\"></div></div><div class=\"panel-element panel-gauge\" data-element-id=\"c_gauge\" data-element-type=\"gauge\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg viewBox=\"0 0 120 120\" style=\"width: 100%; height: 100%; max-width: 100%; max-height: 100%;\"><path d=\"M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996\" fill=\"none\" stroke=\"#333333\" stroke-width=\"8\" stroke-linecap=\"round\"></path><path fill=\"none\" stroke=\"#4CAF50\" stroke-width=\"8\" stroke-linecap=\"round\" data-role=\"gauge-fg\"></path><line x1=\"21.894882233484694\" y1=\"82\" x2=\"11.50257738807143\" y2=\"88\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"18.15351328301324\" y1=\"46.40325224750232\" x2=\"6.740835087471396\" y2=\"42.69504831500295\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"42.10358770466476\" y1=\"19.80399986372558\" x2=\"37.22274798775515\" y2=\"8.841454372014368\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"77.89641229533515\" y1=\"19.803999863725537\" x2=\"82.77725201224474\" y2=\"8.841454372014319\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"101.84648671698676\" y1=\"46.40325224750231\" x2=\"113.2591649125286\" y2=\"42.695048315002936\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"98.10511776651532\" y1=\"81.99999999999997\" x2=\"108.49742261192858\" y2=\"87.99999999999996\" stroke=\"#666\" stroke-width=\"1\"></line><text x=\"60\" y=\"64\" text-anchor=\"middle\" fill=\"#ffffff\" font-size=\"16\" font-weight=\"600\" data-role=\"gauge-value\">--</text></svg><div class=\"gauge-label\">gauge caption</div></div><div class=\"panel-element panel-level-meter vertical\" data-element-id=\"c_level_meter\" data-element-type=\"level_meter\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"meter-label\">level_meter caption</div><div class=\"meter-bar\"><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"yellow\"></div><div class=\"meter-segment\" data-zone=\"yellow\"></div><div class=\"meter-segment\" data-zone=\"yellow\"></div><div class=\"meter-segment\" data-zone=\"red\"></div></div></div><div class=\"panel-element panel-fader vertical\" data-element-id=\"c_fader\" data-element-type=\"fader\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"fader-label\">fader caption</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"fader caption\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 0%;\" aria-valuenow=\"0\"></div></div></div><div class=\"fader-value\">0.0</div></div><div class=\"panel-element panel-keypad\" data-element-id=\"c_keypad\" data-element-type=\"keypad\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"keypad-label\">keypad caption</div><div class=\"keypad-display\"></div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div><div class=\"panel-element panel-matrix\" data-element-id=\"c_matrix\" data-element-type=\"matrix\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"matrix-label\">matrix caption</div><div class=\"matrix-scroll\"><div class=\"matrix-grid\" style=\"grid-template-columns: minmax(80px, max-content); grid-template-rows: auto; max-width: 80px;\"><div class=\"matrix-corner\"></div></div></div><div class=\"matrix-legend\"></div></div><div class=\"panel-element panel-group\" data-element-id=\"g_top-left\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_top-center\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; left: 50%; transform: translateX(-50%);\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_top-right\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; right: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_bottom-left\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px; left: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_bottom-center\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px; left: 50%; transform: translateX(-50%);\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_bottom-right\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px; right: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_inside\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_default\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-slider\" data-element-id=\"nocap_slider\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"nocap_slider\" min=\"0\" max=\"100\" step=\"1\" aria-valuetext=\"0\"></div></div><div class=\"panel-element panel-gauge\" data-element-id=\"nocap_gauge\" data-element-type=\"gauge\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg viewBox=\"0 0 120 120\" style=\"width: 100%; height: 100%; max-width: 100%; max-height: 100%;\"><path d=\"M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996\" fill=\"none\" stroke=\"#333333\" stroke-width=\"8\" stroke-linecap=\"round\"></path><path fill=\"none\" stroke=\"#4CAF50\" stroke-width=\"8\" stroke-linecap=\"round\" data-role=\"gauge-fg\"></path><line x1=\"21.894882233484694\" y1=\"82\" x2=\"11.50257738807143\" y2=\"88\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"18.15351328301324\" y1=\"46.40325224750232\" x2=\"6.740835087471396\" y2=\"42.69504831500295\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"42.10358770466476\" y1=\"19.80399986372558\" x2=\"37.22274798775515\" y2=\"8.841454372014368\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"77.89641229533515\" y1=\"19.803999863725537\" x2=\"82.77725201224474\" y2=\"8.841454372014319\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"101.84648671698676\" y1=\"46.40325224750231\" x2=\"113.2591649125286\" y2=\"42.695048315002936\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"98.10511776651532\" y1=\"81.99999999999997\" x2=\"108.49742261192858\" y2=\"87.99999999999996\" stroke=\"#666\" stroke-width=\"1\"></line><text x=\"60\" y=\"64\" text-anchor=\"middle\" fill=\"#ffffff\" font-size=\"16\" font-weight=\"600\" data-role=\"gauge-value\">--</text></svg></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "captions",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "captions",
+     "state": {
+      "ui.c_status_led.label": "c_status_led over",
+      "ui.c_slider.label": "c_slider over",
+      "ui.c_gauge.label": "c_gauge over",
+      "ui.c_fader.label": "c_fader over",
+      "ui.g_top-left.label": "g_top-left over",
+      "ui.nocap_slider.label": "nocap_slider over"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-status-led\" data-element-id=\"c_status_led\" data-element-type=\"status_led\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"led-dot\"></div><label class=\"led-label\">c_status_led over</label></div><div class=\"panel-element panel-slider\" data-element-id=\"c_slider\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><label>c_slider over</label><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"slider caption\" min=\"0\" max=\"100\" step=\"1\" aria-valuetext=\"0\"></div></div><div class=\"panel-element panel-select\" data-element-id=\"c_select\" data-element-type=\"select\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><label>select caption</label><select><option value=\"a\">A</option></select></div><div class=\"panel-element panel-text-input\" data-element-id=\"c_text_input\" data-element-type=\"text_input\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><label>text_input caption</label><input type=\"text\" placeholder=\"\"></div><div class=\"panel-element panel-list\" data-element-id=\"c_list\" data-element-type=\"list\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"list-label\">list caption</div><div class=\"list-scroll\"></div></div><div class=\"panel-element panel-gauge\" data-element-id=\"c_gauge\" data-element-type=\"gauge\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg viewBox=\"0 0 120 120\" style=\"width: 100%; height: 100%; max-width: 100%; max-height: 100%;\"><path d=\"M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996\" fill=\"none\" stroke=\"#333333\" stroke-width=\"8\" stroke-linecap=\"round\"></path><path fill=\"none\" stroke=\"#4CAF50\" stroke-width=\"8\" stroke-linecap=\"round\" data-role=\"gauge-fg\"></path><line x1=\"21.894882233484694\" y1=\"82\" x2=\"11.50257738807143\" y2=\"88\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"18.15351328301324\" y1=\"46.40325224750232\" x2=\"6.740835087471396\" y2=\"42.69504831500295\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"42.10358770466476\" y1=\"19.80399986372558\" x2=\"37.22274798775515\" y2=\"8.841454372014368\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"77.89641229533515\" y1=\"19.803999863725537\" x2=\"82.77725201224474\" y2=\"8.841454372014319\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"101.84648671698676\" y1=\"46.40325224750231\" x2=\"113.2591649125286\" y2=\"42.695048315002936\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"98.10511776651532\" y1=\"81.99999999999997\" x2=\"108.49742261192858\" y2=\"87.99999999999996\" stroke=\"#666\" stroke-width=\"1\"></line><text x=\"60\" y=\"64\" text-anchor=\"middle\" fill=\"#ffffff\" font-size=\"16\" font-weight=\"600\" data-role=\"gauge-value\">--</text></svg><div class=\"gauge-label\">c_gauge over</div></div><div class=\"panel-element panel-level-meter vertical\" data-element-id=\"c_level_meter\" data-element-type=\"level_meter\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"meter-label\">level_meter caption</div><div class=\"meter-bar\"><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"yellow\"></div><div class=\"meter-segment\" data-zone=\"yellow\"></div><div class=\"meter-segment\" data-zone=\"yellow\"></div><div class=\"meter-segment\" data-zone=\"red\"></div></div></div><div class=\"panel-element panel-fader vertical\" data-element-id=\"c_fader\" data-element-type=\"fader\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"fader-label\">c_fader over</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"fader caption\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 0%;\" aria-valuenow=\"0\"></div></div></div><div class=\"fader-value\">0.0</div></div><div class=\"panel-element panel-keypad\" data-element-id=\"c_keypad\" data-element-type=\"keypad\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"keypad-label\">keypad caption</div><div class=\"keypad-display\"></div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div><div class=\"panel-element panel-matrix\" data-element-id=\"c_matrix\" data-element-type=\"matrix\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"matrix-label\">matrix caption</div><div class=\"matrix-scroll\"><div class=\"matrix-grid\" style=\"grid-template-columns: minmax(80px, max-content); grid-template-rows: auto; max-width: 80px;\"><div class=\"matrix-corner\"></div></div></div><div class=\"matrix-legend\"></div></div><div class=\"panel-element panel-group\" data-element-id=\"g_top-left\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">g_top-left over</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_top-center\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; left: 50%; transform: translateX(-50%);\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_top-right\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; right: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_bottom-left\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px; left: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_bottom-center\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px; left: 50%; transform: translateX(-50%);\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_bottom-right\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px; right: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_inside\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_default\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-slider\" data-element-id=\"nocap_slider\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"nocap_slider\" min=\"0\" max=\"100\" step=\"1\" aria-valuetext=\"0\"></div></div><div class=\"panel-element panel-gauge\" data-element-id=\"nocap_gauge\" data-element-type=\"gauge\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg viewBox=\"0 0 120 120\" style=\"width: 100%; height: 100%; max-width: 100%; max-height: 100%;\"><path d=\"M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996\" fill=\"none\" stroke=\"#333333\" stroke-width=\"8\" stroke-linecap=\"round\"></path><path fill=\"none\" stroke=\"#4CAF50\" stroke-width=\"8\" stroke-linecap=\"round\" data-role=\"gauge-fg\"></path><line x1=\"21.894882233484694\" y1=\"82\" x2=\"11.50257738807143\" y2=\"88\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"18.15351328301324\" y1=\"46.40325224750232\" x2=\"6.740835087471396\" y2=\"42.69504831500295\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"42.10358770466476\" y1=\"19.80399986372558\" x2=\"37.22274798775515\" y2=\"8.841454372014368\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"77.89641229533515\" y1=\"19.803999863725537\" x2=\"82.77725201224474\" y2=\"8.841454372014319\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"101.84648671698676\" y1=\"46.40325224750231\" x2=\"113.2591649125286\" y2=\"42.695048315002936\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"98.10511776651532\" y1=\"81.99999999999997\" x2=\"108.49742261192858\" y2=\"87.99999999999996\" stroke=\"#666\" stroke-width=\"1\"></line><text x=\"60\" y=\"64\" text-anchor=\"middle\" fill=\"#ffffff\" font-size=\"16\" font-weight=\"600\" data-role=\"gauge-value\">--</text></svg></div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "captions",
+     "state": {
+      "ui.c_status_led.label": "c_status_led over",
+      "ui.c_gauge.label": "c_gauge over",
+      "ui.c_fader.label": "c_fader over"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-status-led\" data-element-id=\"c_status_led\" data-element-type=\"status_led\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"led-dot\"></div><label class=\"led-label\">c_status_led over</label></div><div class=\"panel-element panel-slider\" data-element-id=\"c_slider\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><label>slider caption</label><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"slider caption\" min=\"0\" max=\"100\" step=\"1\" aria-valuetext=\"0\"></div></div><div class=\"panel-element panel-select\" data-element-id=\"c_select\" data-element-type=\"select\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><label>select caption</label><select><option value=\"a\">A</option></select></div><div class=\"panel-element panel-text-input\" data-element-id=\"c_text_input\" data-element-type=\"text_input\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><label>text_input caption</label><input type=\"text\" placeholder=\"\"></div><div class=\"panel-element panel-list\" data-element-id=\"c_list\" data-element-type=\"list\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"list-label\">list caption</div><div class=\"list-scroll\"></div></div><div class=\"panel-element panel-gauge\" data-element-id=\"c_gauge\" data-element-type=\"gauge\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg viewBox=\"0 0 120 120\" style=\"width: 100%; height: 100%; max-width: 100%; max-height: 100%;\"><path d=\"M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996\" fill=\"none\" stroke=\"#333333\" stroke-width=\"8\" stroke-linecap=\"round\"></path><path fill=\"none\" stroke=\"#4CAF50\" stroke-width=\"8\" stroke-linecap=\"round\" data-role=\"gauge-fg\"></path><line x1=\"21.894882233484694\" y1=\"82\" x2=\"11.50257738807143\" y2=\"88\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"18.15351328301324\" y1=\"46.40325224750232\" x2=\"6.740835087471396\" y2=\"42.69504831500295\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"42.10358770466476\" y1=\"19.80399986372558\" x2=\"37.22274798775515\" y2=\"8.841454372014368\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"77.89641229533515\" y1=\"19.803999863725537\" x2=\"82.77725201224474\" y2=\"8.841454372014319\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"101.84648671698676\" y1=\"46.40325224750231\" x2=\"113.2591649125286\" y2=\"42.695048315002936\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"98.10511776651532\" y1=\"81.99999999999997\" x2=\"108.49742261192858\" y2=\"87.99999999999996\" stroke=\"#666\" stroke-width=\"1\"></line><text x=\"60\" y=\"64\" text-anchor=\"middle\" fill=\"#ffffff\" font-size=\"16\" font-weight=\"600\" data-role=\"gauge-value\">--</text></svg><div class=\"gauge-label\">c_gauge over</div></div><div class=\"panel-element panel-level-meter vertical\" data-element-id=\"c_level_meter\" data-element-type=\"level_meter\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"meter-label\">level_meter caption</div><div class=\"meter-bar\"><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"green\"></div><div class=\"meter-segment\" data-zone=\"yellow\"></div><div class=\"meter-segment\" data-zone=\"yellow\"></div><div class=\"meter-segment\" data-zone=\"yellow\"></div><div class=\"meter-segment\" data-zone=\"red\"></div></div></div><div class=\"panel-element panel-fader vertical\" data-element-id=\"c_fader\" data-element-type=\"fader\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"fader-label\">c_fader over</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"fader caption\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 0%;\" aria-valuenow=\"0\"></div></div></div><div class=\"fader-value\">0.0</div></div><div class=\"panel-element panel-keypad\" data-element-id=\"c_keypad\" data-element-type=\"keypad\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"keypad-label\">keypad caption</div><div class=\"keypad-display\"></div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div><div class=\"panel-element panel-matrix\" data-element-id=\"c_matrix\" data-element-type=\"matrix\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"matrix-label\">matrix caption</div><div class=\"matrix-scroll\"><div class=\"matrix-grid\" style=\"grid-template-columns: minmax(80px, max-content); grid-template-rows: auto; max-width: 80px;\"><div class=\"matrix-corner\"></div></div></div><div class=\"matrix-legend\"></div></div><div class=\"panel-element panel-group\" data-element-id=\"g_top-left\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_top-center\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; left: 50%; transform: translateX(-50%);\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_top-right\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; right: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_bottom-left\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px; left: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_bottom-center\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px; left: 50%; transform: translateX(-50%);\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_bottom-right\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px; right: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_inside\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"bottom: 0px;\">group caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"g_default\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" style=\"top: 0px; left: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-slider\" data-element-id=\"nocap_slider\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"nocap_slider\" min=\"0\" max=\"100\" step=\"1\" aria-valuetext=\"0\"></div></div><div class=\"panel-element panel-gauge\" data-element-id=\"nocap_gauge\" data-element-type=\"gauge\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg viewBox=\"0 0 120 120\" style=\"width: 100%; height: 100%; max-width: 100%; max-height: 100%;\"><path d=\"M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996\" fill=\"none\" stroke=\"#333333\" stroke-width=\"8\" stroke-linecap=\"round\"></path><path fill=\"none\" stroke=\"#4CAF50\" stroke-width=\"8\" stroke-linecap=\"round\" data-role=\"gauge-fg\"></path><line x1=\"21.894882233484694\" y1=\"82\" x2=\"11.50257738807143\" y2=\"88\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"18.15351328301324\" y1=\"46.40325224750232\" x2=\"6.740835087471396\" y2=\"42.69504831500295\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"42.10358770466476\" y1=\"19.80399986372558\" x2=\"37.22274798775515\" y2=\"8.841454372014368\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"77.89641229533515\" y1=\"19.803999863725537\" x2=\"82.77725201224474\" y2=\"8.841454372014319\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"101.84648671698676\" y1=\"46.40325224750231\" x2=\"113.2591649125286\" y2=\"42.695048315002936\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"98.10511776651532\" y1=\"81.99999999999997\" x2=\"108.49742261192858\" y2=\"87.99999999999996\" stroke=\"#666\" stroke-width=\"1\"></line><text x=\"60\" y=\"64\" text-anchor=\"middle\" fill=\"#ffffff\" font-size=\"16\" font-weight=\"600\" data-role=\"gauge-value\">--</text></svg></div></div></div>",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "captions_on_the_canvas": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-slider\" data-element-id=\"c_slider\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-avc-text-src=\"[&quot;label&quot;]\" data-element-type=\"slider\"><label data-avc-text-host=\"1\">slider caption</label><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 50%;\"></div></div><input type=\"range\" aria-label=\"slider caption\" min=\"0\" max=\"100\" step=\"1\" aria-valuetext=\"50\"></div></div><div class=\"panel-element panel-gauge\" data-element-id=\"c_gauge\" data-avc-text-src=\"[&quot;label&quot;]\" data-element-type=\"gauge\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg viewBox=\"0 0 120 120\" style=\"width: 100%; height: 100%; max-width: 100%; max-height: 100%;\"><path d=\"M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996\" fill=\"none\" stroke=\"#333333\" stroke-width=\"8\" stroke-linecap=\"round\"></path><path fill=\"none\" stroke=\"#4CAF50\" stroke-width=\"8\" stroke-linecap=\"round\" data-role=\"gauge-fg\"></path><line x1=\"21.894882233484694\" y1=\"82\" x2=\"11.50257738807143\" y2=\"88\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"18.15351328301324\" y1=\"46.40325224750232\" x2=\"6.740835087471396\" y2=\"42.69504831500295\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"42.10358770466476\" y1=\"19.80399986372558\" x2=\"37.22274798775515\" y2=\"8.841454372014368\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"77.89641229533515\" y1=\"19.803999863725537\" x2=\"82.77725201224474\" y2=\"8.841454372014319\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"101.84648671698676\" y1=\"46.40325224750231\" x2=\"113.2591649125286\" y2=\"42.695048315002936\" stroke=\"#666\" stroke-width=\"1\"></line><line x1=\"98.10511776651532\" y1=\"81.99999999999997\" x2=\"108.49742261192858\" y2=\"87.99999999999996\" stroke=\"#666\" stroke-width=\"1\"></line><text x=\"60\" y=\"64\" text-anchor=\"middle\" fill=\"#ffffff\" font-size=\"16\" font-weight=\"600\" data-role=\"gauge-value\">--</text></svg><div class=\"gauge-label\" data-avc-text-host=\"1\">gauge caption</div></div><div class=\"panel-element panel-group\" data-element-id=\"c_group\" data-avc-text-src=\"[&quot;label&quot;]\" data-element-type=\"group\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"group-label\" data-avc-text-host=\"1\" style=\"top: 0px; left: 0.5714rem;\">group caption</div></div><div class=\"panel-element panel-status-led\" data-element-id=\"c_status_led\" data-avc-text-src=\"[&quot;label&quot;]\" data-element-type=\"status_led\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"led-dot\"></div><label class=\"led-label\" data-avc-text-host=\"1\">status_led caption</label></div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "captions",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   }
+  ],
+  "icons_on_buttons": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_left\" aria-label=\"b_left\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">b_left</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_right\" aria-label=\"b_right\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">b_right</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_top\" aria-label=\"b_top\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">b_top</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_bottom\" aria-label=\"b_bottom\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">b_bottom</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_center\" aria-label=\"b_center\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_middle\" aria-label=\"b_middle\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">b_middle</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_style\" aria-label=\"b_style\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 2rem; height: 2rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#ff0000\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#mic\" href=\"/panel/icons.svg#mic\"></use></svg><span class=\"panel-label-span\">b_style</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_both\" aria-label=\"b_both\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">b_both</span><svg style=\"width: 1.5rem; height: 1.5rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"#00ff00\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_asset\" aria-label=\"b_asset\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><img src=\"/api/projects/default/assets/my%20icon.svg\" style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0; filter: brightness(0) saturate(100%);\"><span class=\"panel-label-span\">b_asset</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_asset_plain\" aria-label=\"b_asset_plain\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><img src=\"/api/projects/default/assets/plain.png\" style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\"><span class=\"panel-label-span\"></span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_noicon\" aria-label=\"b_noicon\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b_noicon</button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_empty\" aria-label=\"b_empty\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b_empty</button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_img_text\" aria-label=\"b_img_text\" style=\"gap: 0.4286rem; background-image: url(&quot;/api/projects/default/assets/bg.png&quot;); background-size: cover; background-position: center; background-repeat: no-repeat; text-shadow: 0 1px 0.2143rem rgba(0,0,0,0.8); position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">b_img_text</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_img\" aria-label=\"b_img\" style=\"gap: 0.4286rem; background-image: url(&quot;/api/projects/default/assets/bg.png&quot;); background-size: cover; background-position: center; background-repeat: no-repeat; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\"></span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_icon_only\" aria-label=\"b_icon_only\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "icons",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   }
+  ],
+  "icons_on_other_controls": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"label\"><span class=\"panel-label-span\">l1</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#info\" href=\"/panel/icons.svg#info\"></use></svg></div><div class=\"panel-element panel-label\" data-element-id=\"l2\" style=\"white-space: pre-wrap; gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"label\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#info\" href=\"/panel/icons.svg#info\"></use></svg><span class=\"panel-label-span\"> words</span></div><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"Navigate to n1\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#house\" href=\"/panel/icons.svg#house\"></use></svg><span class=\"panel-label-span\">n1</span></button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n2\" disabled=\"\" style=\"opacity: 0.5; gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#house\" href=\"/panel/icons.svg#house\"></use></svg><span class=\"panel-label-span\">n2</span></button><div class=\"panel-element panel-button\" data-element-id=\"p1\" style=\"white-space: pre-line; line-height: 1.15; flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"camera_preset\"><span class=\"panel-label-span\">3\nWide</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#video\" href=\"/panel/icons.svg#video\"></use></svg></div><div class=\"panel-element panel-keypad\" data-element-id=\"k1\" data-element-type=\"keypad\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><div class=\"keypad-label\">Code</div><div class=\"keypad-display\"></div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "icons",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   }
+  ],
+  "words_change_beside_an_icon": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f1\" aria-label=\"f1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">f1</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f2\" aria-label=\"Not A\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">Not A</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"t1\" aria-label=\"Off\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">Off</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"n1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#house\" href=\"/panel/icons.svg#house\"></use></svg><span class=\"panel-label-span\">n1</span></button><div class=\"panel-element panel-label\" data-element-id=\"l1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"label\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#info\" href=\"/panel/icons.svg#info\"></use></svg><span class=\"panel-label-span\">l1</span></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o1\" aria-label=\"o1\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">o1</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o2\" aria-label=\"o2\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "f1:feedback f2:feedback t1:toggle_look n1:nav_look l1:label_look",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "change",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f1\" aria-label=\"Alpha\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#mic\" href=\"/panel/icons.svg#mic\"></use></svg><span class=\"panel-label-span\">Alpha</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f2\" aria-label=\"Is A\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">Is A</span></button><button type=\"button\" class=\"panel-element panel-button toggle-on\" data-element-id=\"t1\" aria-label=\"On\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17);\" data-element-type=\"button\"><span class=\"panel-label-span\">On</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"Nav A\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#star\" href=\"/panel/icons.svg#star\"></use></svg><span class=\"panel-label-span\">Nav A</span></button><div class=\"panel-element panel-label\" data-element-id=\"l1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"label\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#info\" href=\"/panel/icons.svg#info\"></use></svg>Label A</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o1\" aria-label=\"o1\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">o1</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o2\" aria-label=\"o2\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button></div></div>",
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "change",
+     "state": {
+      "var.s": "a",
+      "var.t": "on"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "change",
+     "state": {
+      "var.s": "b",
+      "var.t": "off"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f1\" aria-label=\"Beta\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">Beta</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f2\" aria-label=\"Not A\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">Not A</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"t1\" aria-label=\"Off\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">Off</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"n1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#house\" href=\"/panel/icons.svg#house\"></use></svg><span class=\"panel-label-span\">n1</span></button><div class=\"panel-element panel-label\" data-element-id=\"l1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"label\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#info\" href=\"/panel/icons.svg#info\"></use></svg>Label A</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o1\" aria-label=\"o1\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">o1</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o2\" aria-label=\"o2\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "change",
+     "state": {
+      "var.s": "c",
+      "var.t": "off"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f1\" aria-label=\"f1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%; background-color: rgb(18, 52, 86);\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">f1</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f2\" aria-label=\"Not A\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">Not A</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"t1\" aria-label=\"Off\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">Off</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"n1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#house\" href=\"/panel/icons.svg#house\"></use></svg><span class=\"panel-label-span\">n1</span></button><div class=\"panel-element panel-label\" data-element-id=\"l1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"label\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#info\" href=\"/panel/icons.svg#info\"></use></svg>Label A</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o1\" aria-label=\"o1\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">o1</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o2\" aria-label=\"o2\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "change",
+     "state": {
+      "var.s": "a",
+      "var.t": "off",
+      "ui.o1.label": "Over",
+      "ui.o2.label": "Mid",
+      "ui.f1.label": "F over"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f1\" aria-label=\"F over\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#mic\" href=\"/panel/icons.svg#mic\"></use></svg><span class=\"panel-label-span\">F over</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f2\" aria-label=\"Is A\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">Is A</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"t1\" aria-label=\"Off\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">Off</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"Nav A\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#star\" href=\"/panel/icons.svg#star\"></use></svg><span class=\"panel-label-span\">Nav A</span></button><div class=\"panel-element panel-label\" data-element-id=\"l1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"label\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#info\" href=\"/panel/icons.svg#info\"></use></svg>Label A</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o1\" aria-label=\"Over\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">Over</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o2\" aria-label=\"Mid\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg>Mid</button></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "change",
+     "state": {
+      "var.s": "a",
+      "var.t": "off"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f1\" aria-label=\"Alpha\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#mic\" href=\"/panel/icons.svg#mic\"></use></svg><span class=\"panel-label-span\">Alpha</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"f2\" aria-label=\"Is A\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">Is A</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"t1\" aria-label=\"Off\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">Off</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"Nav A\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#star\" href=\"/panel/icons.svg#star\"></use></svg><span class=\"panel-label-span\">Nav A</span></button><div class=\"panel-element panel-label\" data-element-id=\"l1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"label\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#info\" href=\"/panel/icons.svg#info\"></use></svg>Label A</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o1\" aria-label=\"o1\" style=\"flex-direction: column; gap: 0.2857rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><span class=\"panel-label-span\">o1</span><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"o2\" aria-label=\"o2\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button></div></div>",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "accessible_names": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a1\" aria-label=\"a1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">a1</button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a2\" aria-label=\"a2\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a3\" aria-label=\"a3\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"></button></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "a1:feedback a2:feedback",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "names",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a1\" aria-label=\"Alpha\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Alpha</button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a2\" aria-label=\"Alpha\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Alpha</button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a3\" aria-label=\"a3\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"></button></div></div>",
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "names",
+     "state": {
+      "var.s": "a"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "names",
+     "state": {
+      "var.s": "e"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a1\" aria-label=\"a1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a2\" aria-label=\"Alpha\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Alpha</button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a3\" aria-label=\"a3\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"></button></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "names",
+     "state": {
+      "var.s": "zzz"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a1\" aria-label=\"a1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">a1</button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a2\" aria-label=\"Alpha\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Alpha</button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"a3\" aria-label=\"a3\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"></button></div></div>",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "nameless": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"Navigate to n1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#house\" href=\"/panel/icons.svg#house\"></use></svg><span class=\"panel-label-span\">n1</span></button></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "nameless",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   },
+   {
+    "op": "msg",
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "nameless",
+     "state": {
+      "var.s": "b"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "nameless",
+     "state": {
+      "var.s": "a",
+      "ui.n1.label": ""
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#house\" href=\"/panel/icons.svg#house\"></use></svg><span class=\"panel-label-span\"></span></button></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "nameless",
+     "state": {
+      "var.s": "a",
+      "ui.n1.label": "Back"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"Back\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#house\" href=\"/panel/icons.svg#house\"></use></svg><span class=\"panel-label-span\">Back</span></button></div></div>",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "words_on_the_canvas": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"b1\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"button\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg><span class=\"panel-label-span\">b1</span></button><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b2\" aria-label=\"b2\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#power\" href=\"/panel/icons.svg#power\"></use></svg></button><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-avc-text-src=\"[&quot;text&quot;]\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"label\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#info\" href=\"/panel/icons.svg#info\"></use></svg><span class=\"panel-label-span\">l1</span></div><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"n1\" aria-label=\"Navigate to n1\" data-avc-text-src=\"[&quot;label&quot;]\" style=\"gap: 0.4286rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"page_nav\"><svg style=\"width: 1.7142857142857142rem; height: 1.7142857142857142rem; flex-shrink: 0;\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><use href=\"/panel/icons.svg#house\" href=\"/panel/icons.svg#house\"></use></svg><span class=\"panel-label-span\">n1</span></button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "canvas",
+     "state": {
+      "var.s": "a"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   }
+  ]
+ }
+}

@@ -379,6 +379,21 @@ SCENARIOS = [
     # reports and which framings count as the Programmer's, pinned whole
     # (tests/fixtures/panel_builder_link_pins.json).
     "builder_link_takes_and_sends_as_today",
+    # What a button's press sends: tap, toggle, hold to repeat, tap or hold,
+    # the release that cannot be missed, on the canvas, and the camera
+    # preset's own press, pinned whole (tests/fixtures/panel_press_pins.json).
+    "button_press_sends_as_today",
+    # A control's caption, the icon beside its words on every side, words a
+    # look or an override changes beside an icon, and the accessible name,
+    # pinned whole (tests/fixtures/panel_words_pins.json).
+    "control_words_and_icons_draw_as_today",
+    # visible_when: every operator spelling over every kind of reading, all
+    # and any blocks, which changes draw it again, masters and overlays,
+    # pinned whole (tests/fixtures/panel_visibility_pins.json).
+    "visibility_follows_conditions_as_today",
+    # Every frame the server sends, and the connection going and coming
+    # back, pinned whole (tests/fixtures/panel_message_pins.json).
+    "server_frames_handled_as_today",
 ]
 
 

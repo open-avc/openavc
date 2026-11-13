@@ -1,0 +1,1567 @@
+{
+ "messages": {
+  "ping_and_unknown": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||",
+    "s": [
+     {
+      "type": "pong"
+     }
+    ]
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||",
+    "s": [
+     {
+      "type": "pong"
+     }
+    ]
+   }
+  ],
+  "snapshot": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "tapFrames",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">one</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 40%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"\" aria-valuetext=\"40\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div id=\"simulation-tag\" class=\"visible\">Simulated</div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "one",
+      "var.level": 40,
+      "system.simulation_active": true,
+      "plugin.audio_player.play_request": "{\"id\":\"r1\",\"url\":\"/x.mp3\"}"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">two</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div id=\"simulation-tag\" class=\"\">Simulated</div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "two",
+      "system.simulation_active": false
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "update": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">one</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "one"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "tapFrames",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "two",
+      "other.key": 1
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "frame": "cc",
+      "msg": {
+       "type": "openavc:state",
+       "key": "var.a",
+       "value": "two"
+      },
+      "target": "*"
+     }
+    ]
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">two</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "o": [
+     "<div id=\"simulation-tag\" class=\"visible\">Simulated</div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "two",
+      "other.key": 1,
+      "system.simulation_active": true
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "o": [
+     "<div id=\"simulation-tag\" class=\"\">Simulated</div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "two",
+      "other.key": 1,
+      "system.simulation_active": "yes"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">two</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button pressing\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.press",
+      "element_id": "b1"
+     }
+    ]
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">two</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.release",
+      "element_id": "b1"
+     }
+    ]
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "two",
+      "other.key": 1,
+      "system.simulation_active": "yes",
+      "plugin.audio_player.play_request": "{\"id\":\"r2\",\"url\":\"/chime.mp3\"}"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "au": [
+     "new /chime.mp3",
+     "volume 1",
+     "listen ended",
+     "listen error",
+     "play"
+    ]
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "three",
+      "other.key": 1,
+      "system.simulation_active": "yes",
+      "plugin.audio_player.play_request": "{\"id\":\"r2\",\"url\":\"/chime.mp3\"}"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "frame": "cc",
+      "msg": {
+       "type": "openavc:state",
+       "key": "var.a",
+       "value": "three"
+      },
+      "target": "*"
+     }
+    ]
+   },
+   {
+    "op": "state",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "three",
+      "other.key": 1,
+      "system.simulation_active": "yes",
+      "plugin.audio_player.play_request": "{\"id\":\"r2\",\"url\":\"/chime.mp3\"}",
+      "var.level": 70
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "frame": "cc",
+      "msg": {
+       "type": "openavc:state",
+       "key": "var.level",
+       "value": 70
+      },
+      "target": "*"
+     }
+    ]
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">three</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 70%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"\" aria-valuetext=\"70\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "delete": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">one</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 20%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"\" aria-valuetext=\"20\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div id=\"simulation-tag\" class=\"visible\">Simulated</div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "one",
+      "var.level": 20,
+      "system.simulation_active": true
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "tapFrames",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.level": 20,
+      "system.simulation_active": true
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "frame": "cc",
+      "msg": {
+       "type": "openavc:state",
+       "key": "var.a",
+       "value": null
+      },
+      "target": "*"
+     }
+    ]
+   },
+   {
+    "op": "raf",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 20%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"\" aria-valuetext=\"20\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "o": [
+     "<div id=\"simulation-tag\" class=\"\">Simulated</div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.level": 20
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "definition": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "msg",
+    "f": "",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:1 orientationchange:1"
+    }
+   },
+   {
+    "op": "msg",
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.a": "one"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:1 orientationchange:1"
+    }
+   },
+   {
+    "op": "msg",
+    "f": "",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "second",
+     "state": {
+      "var.a": "one"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:1 orientationchange:1"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   },
+   {
+    "op": "msg",
+    "f": "",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "third",
+     "state": {
+      "var.a": "one"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:1 orientationchange:1"
+    }
+   }
+  ],
+  "definition_embedded": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "definition_on_the_canvas": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 50%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" aria-valuetext=\"50\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "files": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html?v=2\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "f": "2",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": 2,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html?v=2"
+    ]
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"o1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">o1</div></div></div>",
+    "f": "3",
+    "n": "other||home",
+    "b": "",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": 2,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   },
+   {
+    "op": "msg",
+    "f": "3",
+    "n": "other||home",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": 3,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "files_before_the_state": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": 2,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "files_embedded": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "navigate": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "msg",
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "msg",
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"o1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">o1</div></div></div>",
+    "o": [],
+    "f": "3",
+    "n": "other||home",
+    "b": "",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   }
+  ],
+  "macros": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Ready</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "mp:macro_progress",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "macros",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button pressing\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Ready</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.press",
+      "element_id": "mb"
+     }
+    ]
+   },
+   {
+    "op": "fire",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Ready</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.release",
+      "element_id": "mb"
+     }
+    ]
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button macro-busy\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-macro-busy=\"m1\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Step 1 of 2</div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button macro-busy\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-macro-busy=\"m1\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Step one</div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"visible\">Amp did not answer</div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Ready</div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button macro-busy\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-macro-busy=\"m1\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Ready</div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Ready</div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button macro-busy\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-macro-busy=\"m1\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Ready</div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"mb\" aria-label=\"mb\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">mb</button><div class=\"panel-element panel-label\" data-element-id=\"mp\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">Ready</div></div></div>",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"\">Amp did not answer</div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "refusals": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 30%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"\" aria-valuetext=\"30\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "var.level": 30
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "set",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"visible\">Amp refused</div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "w": [
+     "warn [WS Error] ui: Amp refused"
+    ]
+   },
+   {
+    "op": "wait",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"\">Amp refused</div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||",
+    "w": [
+     "warn [WS Error] Rate limit exceeded"
+    ]
+   },
+   {
+    "op": "wait",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"visible\">No such device</div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "w": [
+     "warn [WS Error] command: No such device"
+    ]
+   },
+   {
+    "op": "wait",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"\">No such device</div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"visible\">Busy</div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"\">Busy</div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"visible\">Read only</div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"\">Read only</div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "set",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"visible\">Nobody</div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "w": [
+     "warn [WS Error] ui: Nobody"
+    ]
+   },
+   {
+    "op": "wait",
+    "o": [
+     "<div id=\"panel-failure-message\" role=\"alert\" class=\"\">Nobody</div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "connection": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "connection",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden; pointer-events: none;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade\" data-page-id=\"dlg\" style=\"pointer-events: none;\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\" class=\"disconnected\">Disconnected</div>",
+     "<div id=\"offline-overlay\" class=\"visible\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "connection",
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "wait",
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "connection",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade\" data-page-id=\"dlg\" style=\"\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\" class=\"connected\">Connected</div>",
+     "<div id=\"offline-overlay\" class=\"\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "wait",
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "wait",
+    "d": [
+     "<div id=\"connection-status\" class=\"connected hidden\">Connected</div>",
+     "<div id=\"offline-overlay\" class=\"\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "connection",
+    "d": [
+     "<div id=\"connection-status\" class=\"connected\">Connected</div>",
+     "<div id=\"offline-overlay\" class=\"\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "connection",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden; pointer-events: none;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade\" data-page-id=\"dlg\" style=\"pointer-events: none;\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\" class=\"disconnected\">Disconnected</div>",
+     "<div id=\"offline-overlay\" class=\"visible\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "connection",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade\" data-page-id=\"dlg\" style=\"\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\" class=\"connected\">Connected</div>",
+     "<div id=\"offline-overlay\" class=\"\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "wait",
+    "d": [
+     "<div id=\"connection-status\" class=\"connected hidden\">Connected</div>",
+     "<div id=\"offline-overlay\" class=\"\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   }
+  ],
+  "connection_in_the_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "l1:text s1:slider_value",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "frames",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/themes/dark-default",
+     "/api/projects/default/ui/card.html"
+    ]
+   },
+   {
+    "op": "connection",
+    "d": [
+     "<div id=\"connection-status\" class=\"connected hidden\">Connected</div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "connection",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden; pointer-events: none;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "d": [
+     "<div id=\"connection-status\" class=\"disconnected\">Disconnected</div>",
+     "<div id=\"offline-overlay\" class=\"visible\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "connection",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "d": [
+     "<div id=\"connection-status\" class=\"connected hidden\">Connected</div>",
+     "<div id=\"offline-overlay\" class=\"\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||"
+   }
+  ]
+ }
+}
