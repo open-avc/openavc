@@ -453,6 +453,52 @@ async def test_patch_keeps_the_id_strips_the_listing_keys_and_saves_the_merge(en
     assert _saved(env, "acme_widget.avcdriver") == {**WIDGET, "name": "Patched"}
 
 
+@pytest.mark.parametrize("door", ["replace", "patch"])
+async def test_a_built_in_that_does_not_load_is_not_found_before_it_is_read_only(env, door):
+    """The not-found answer reads the listing, which skips a file that does
+    not load; the read-only refusal reads the files, and comes second."""
+    (env.builtin / "acme_widget.avcdriver").write_text(
+        yaml.safe_dump({**WIDGET, "transport": 7}), encoding="utf-8")
+
+    with pytest.raises(HTTPException) as exc:
+        if door == "replace":
+            await ROUTES.update_driver_definition("acme_widget", DriverDefinitionRequest(**WIDGET))
+        else:
+            await ROUTES.patch_driver_definition("acme_widget", {"name": "Renamed"})
+
+    assert (exc.value.status_code, exc.value.detail) == (
+        404, "Driver definition 'acme_widget' not found",
+    )
+
+
+@pytest.mark.parametrize("door", ["create", "replace", "patch"])
+async def test_the_engine_is_asked_only_once_the_class_is_registered(env, monkeypatch, door):
+    asked: list[list] = []
+    engine = SimpleNamespace(devices=SimpleNamespace(reload_driver=ROUTES._get_engine().devices.reload_driver))
+
+    def _get_engine():
+        asked.append(list(env.events))
+        return engine
+
+    monkeypatch.setattr(ROUTES, "_get_engine", _get_engine)
+    if door != "create":
+        save_driver_definition(dict(WIDGET), env.repo)
+
+    async def _save(body):
+        if door == "create":
+            return await ROUTES.create_driver_definition(DriverDefinitionRequest(**body))
+        if door == "replace":
+            return await ROUTES.update_driver_definition("acme_widget", DriverDefinitionRequest(**body))
+        return await ROUTES.patch_driver_definition("acme_widget", body)
+
+    with pytest.raises(HTTPException):
+        await _save({**WIDGET, "min_platform_version": TOO_NEW})
+    assert asked == []
+
+    await _save({**WIDGET, "name": "Saved"})
+    assert asked == [[("register", "acme_widget", ("acme_widget.avcdriver",))]]
+
+
 # --- DELETE /driver-definitions/{id} -------------------------------------------
 
 
