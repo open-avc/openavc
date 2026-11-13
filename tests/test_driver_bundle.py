@@ -7,7 +7,7 @@ community install pulled only the main ``.py`` (companions are fetched for
 YAML drivers only), so installed Python drivers silently lost simulation and
 the discovery backup path. These tests cover:
 
-  * ``_try_download_python_companion`` in isolation (writes / 404 / allowlist /
+  * ``_CatalogFiles.conventional_companion`` in isolation (writes / 404 / allowlist /
     filename validation).
   * ``install_community_driver`` on a ``.py`` driver pulling the conventional
     ``_discovery.py`` + ``_sim.py`` siblings (and tolerating their absence).
@@ -24,7 +24,7 @@ import pytest
 from fastapi import HTTPException
 
 from openavc.api.routes.drivers import (
-    _try_download_python_companion,
+    _CatalogFiles,
     install_community_driver,
     uninstall_driver,
     update_driver,
@@ -136,7 +136,7 @@ def _request_with_file(filename: str | None, data: bytes = b"") -> MagicMock:
     return req
 
 
-# --- _try_download_python_companion ---------------------------------------
+# --- _CatalogFiles.conventional_companion ---------------------------------------
 
 
 @pytest.mark.asyncio
@@ -151,10 +151,8 @@ async def test_companion_writes_on_200(tmp_path):
         client.__aexit__ = AsyncMock(return_value=False)
         client.get = AsyncMock(return_value=resp)
         cls.return_value = client
-        out = await _try_download_python_companion(
-            main_url=main_url,
-            companion_filename="foo_discovery.py",
-            driver_repo=tmp_path,
+        out = await _CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
+            "foo_discovery.py"
         )
     assert out.path == tmp_path / "foo_discovery.py"
     assert out.path.read_text(encoding="utf-8") == "async def probe(ctx): pass\n"
@@ -171,10 +169,8 @@ async def test_companion_reports_not_published_on_404(tmp_path):
         client.__aexit__ = AsyncMock(return_value=False)
         client.get = AsyncMock(return_value=resp)
         cls.return_value = client
-        out = await _try_download_python_companion(
-            main_url=main_url,
-            companion_filename="foo_sim.py",
-            driver_repo=tmp_path,
+        out = await _CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
+            "foo_sim.py"
         )
     assert out.path is None
     # The one case update may act on: a definite 404 means this version
@@ -187,10 +183,8 @@ async def test_companion_reports_not_published_on_404(tmp_path):
 async def test_companion_rejects_bad_filename(tmp_path):
     # Not a documented companion suffix -> refused before any fetch.
     main_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/switchers/foo.py"
-    out = await _try_download_python_companion(
-        main_url=main_url,
-        companion_filename="foo.py",
-        driver_repo=tmp_path,
+    out = await _CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
+        "foo.py"
     )
     assert out.path is None
     # Not a 404 — we never asked. `published` stays True so update leaves any
@@ -200,10 +194,8 @@ async def test_companion_rejects_bad_filename(tmp_path):
 
 @pytest.mark.asyncio
 async def test_companion_rejects_off_allowlist_host(tmp_path):
-    out = await _try_download_python_companion(
-        main_url="https://attacker.example/switchers/foo.py",
-        companion_filename="foo_discovery.py",
-        driver_repo=tmp_path,
+    out = await _CatalogFiles("foo", "https://attacker.example/switchers/foo.py", tmp_path, None).conventional_companion(
+        "foo_discovery.py"
     )
     assert out.path is None
     assert out.published is True

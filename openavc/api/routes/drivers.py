@@ -454,86 +454,6 @@ def _installed_yaml_companion(main_file: Path, driver_repo: Path) -> Path | None
     return None
 
 
-async def _download_companion(
-    *,
-    yaml_url: str,
-    companion_relpath: str,
-    driver_repo: Path,
-    driver_id: str,
-    catalog=None,
-) -> Path:
-    """Download a YAML driver's sibling Python companion.
-
-    Resolves ``companion_relpath`` against the YAML's URL via
-    ``urljoin`` and holds the result to the same catalog rule as the
-    YAML itself (the path comes from downloaded content, so a host
-    check would let it name any repository on GitHub), sanitizes the
-    filename the same way the upload endpoint does, and writes the
-    file to ``driver_repo``. Returns the local path.
-
-    Raises ``HTTPException`` with a descriptive 422 / 502 on any
-    failure so callers can roll back partial state.
-    """
-    import re
-    import httpx
-    from pathlib import PurePosixPath
-    from urllib.parse import urljoin
-
-    companion_filename = PurePosixPath(companion_relpath).name
-    # Require the documented ``_discovery.py`` suffix. Anything else is
-    # either a typo or an attempt to use the companion path to land an
-    # arbitrary .py file in driver_repo. The uninstall path uses the
-    # same suffix check before removing companion files, so this keeps
-    # the install / uninstall contract symmetric.
-    if not re.match(r'^[a-zA-Z0-9_\-]+_discovery\.py$', companion_filename):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Driver '{driver_id}' declares companion "
-                f"{companion_relpath!r} with an invalid filename — must "
-                "end in '_discovery.py' and use only letters, numbers, "
-                "hyphens, and underscores."
-            ),
-        )
-
-    companion_url = urljoin(yaml_url, companion_relpath)
-    if not _is_catalog_url(companion_url):
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Driver '{driver_id}' references companion at "
-                f"{companion_url!r}, which is not a file in the official "
-                f"community driver catalog ({_drivers_owner_repo()})."
-            ),
-        )
-
-    companion_filepath = driver_repo / companion_filename
-    try:
-        async with internet_client(timeout=15.0) as client:
-            resp = await client.get(companion_url)
-            resp.raise_for_status()
-            await _verify_against_catalog(catalog, companion_url, resp.content)
-            companion_filepath.write_bytes(resp.content)
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                f"Driver '{driver_id}' references companion "
-                f"{companion_filename!r}, but GitHub returned "
-                f"{e.response.status_code} for it. Install aborted."
-            ),
-        )
-    except httpx.RequestError as e:
-        raise _api_error(
-            502,
-            f"Driver '{driver_id}' references companion "
-            f"{companion_filename!r} but the download failed",
-            e,
-        )
-
-    return companion_filepath
-
-
 class CompanionFetch(NamedTuple):
     """Outcome of a best-effort companion fetch.
 
@@ -551,77 +471,6 @@ class CompanionFetch(NamedTuple):
     published: bool = True
 
 
-async def _try_download_python_companion(
-    *,
-    main_url: str,
-    companion_filename: str,
-    driver_repo: Path,
-    catalog=None,
-) -> CompanionFetch:
-    """Best-effort fetch of a Python driver's conventional sibling companion.
-
-    Unlike ``_download_companion`` (YAML drivers, where the companion is
-    declared and required), Python-driver companions (``*_discovery.py`` /
-    ``*_sim.py``) are located by naming convention and are OPTIONAL: a missing
-    one must not fail the install, because the main ``.py`` controls hardware
-    and auto-identifies from its inline ``tcp_probe`` without them, and the
-    simulator is a bonus.
-    """
-    import re
-    import httpx
-    from urllib.parse import urljoin
-
-    # Convention-named, but validate anyway: only the two documented suffixes,
-    # so a redirect can't land an arbitrary .py in driver_repo.
-    if not re.match(r'^[a-zA-Z0-9_\-]+_(discovery|sim)\.py$', companion_filename):
-        return CompanionFetch(None)
-    companion_url = urljoin(main_url, companion_filename)
-    if not _is_catalog_url(companion_url):
-        return CompanionFetch(None)
-
-    companion_filepath = driver_repo / companion_filename
-    try:
-        async with internet_client(timeout=15.0) as client:
-            resp = await client.get(companion_url)
-            if resp.status_code == 404:
-                # The one case we can be sure about: this version ships without
-                # that companion.
-                return CompanionFetch(None, published=False)
-            resp.raise_for_status()
-            # A companion that fails the catalog check is NOT swallowed like a
-            # fetch error below: "optional" means it may be absent, not that a
-            # wrong-bytes copy may be installed. Raises past this handler.
-            await _verify_against_catalog(catalog, companion_url, resp.content)
-            companion_filepath.write_bytes(resp.content)
-    except (httpx.HTTPStatusError, httpx.RequestError, OSError) as e:
-        log.warning(
-            "Optional companion %s not installed: %s", companion_filename, e
-        )
-        return CompanionFetch(None)
-    return CompanionFetch(companion_filepath)
-
-
-async def _download_driver(url: str, driver_id: str) -> Any:
-    """The catalog's response for a driver's main file, or the 502 a person
-    sees: GitHub's own status when it refused, else why the request failed."""
-    import httpx
-
-    try:
-        async with internet_client(timeout=15.0) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            return resp
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
-    except httpx.RequestError as e:
-        raise _api_error(
-            502,
-            internet_failure(e, "raw.githubusercontent.com")
-            or f"Failed to download driver '{driver_id}'",
-            e,
-        )
-
-
 def _driver_file_kind(url: str) -> str:
     """The kind of driver a catalog URL names, by its extension."""
     if url.endswith(".avcdriver"):
@@ -636,13 +485,14 @@ class _CatalogFiles:
 
     The install and the update bring a catalog driver onto this server the
     same way, so the rules they share live here: the kind of driver the URL
-    names and the file it lands in (named for the id, not the URL), the main
-    file's download and how it fails, the companion a YAML driver names
-    (required: a failure fails the door) and a Python driver's conventional
-    companions (optional: only a definite 404 says one is not published).
-    Every file is checked against the catalog before it is written. What each
-    door does around them, the version floor, the rollback and the registry,
-    is the door's own.
+    names and the file it lands in (named for the id, not the URL), how every
+    file is fetched (``_fetch``: an internet request, then the catalog check
+    before anything is written), and the three files an install may bring,
+    each with its own answer to a failure: the main file (a 502 naming the
+    driver), the companion a YAML driver names (required: a 502 naming the
+    companion) and a Python driver's conventional companions (optional: only
+    a definite 404 says one is not published). What each door does around
+    them, the version floor, the rollback and the registry, is the door's own.
     """
 
     def __init__(self, driver_id: str, url: str, driver_repo: Path, catalog: Any) -> None:
@@ -655,11 +505,38 @@ class _CatalogFiles:
         self.file_name = f"{safe_id}{self.kind}"
         self.path = driver_repo / self.file_name
 
+    async def _fetch(self, url: str, *, absent_ok: bool = False) -> Any:
+        """One catalog file's response, checked against the catalog before
+        any caller writes it. ``None`` for a 404 when ``absent_ok``; otherwise
+        a refused status raises ``httpx.HTTPStatusError`` and a failed request
+        ``httpx.RequestError``, for the caller to word, and a file the catalog
+        does not publish the 502 that says so."""
+        async with internet_client(timeout=15.0) as client:
+            resp = await client.get(url)
+            if absent_ok and resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+        await _verify_against_catalog(self.catalog, url, resp.content)
+        return resp
+
     async def main_file(self) -> tuple[str, bytes]:
         """The driver file's text and bytes, checked against the catalog and
-        refused for a protected id, both before anything is written."""
-        resp = await _download_driver(self.url, self.driver_id)
-        await _verify_against_catalog(self.catalog, self.url, resp.content)
+        refused for a protected id, both before anything is written. A failed
+        download is the 502 a person sees: GitHub's own status when it refused,
+        else why the request failed."""
+        import httpx
+
+        try:
+            resp = await self._fetch(self.url)
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=502, detail=f"GitHub returned {e.response.status_code}")
+        except httpx.RequestError as e:
+            raise _api_error(
+                502,
+                internet_failure(e, "raw.githubusercontent.com")
+                or f"Failed to download driver '{self.driver_id}'",
+                e,
+            )
         require_mutable_driver_file(self.file_name, resp.content)
         return resp.text, resp.content
 
@@ -672,13 +549,77 @@ class _CatalogFiles:
         relpath = _companion_relpath_from_yaml(yaml_text)
         if not relpath:
             return None
-        return await _download_companion(
-            yaml_url=self.url,
-            companion_relpath=relpath,
-            driver_repo=self.driver_repo,
-            driver_id=self.driver_id,
-            catalog=self.catalog,
-        )
+        return await self.declared_companion(relpath)
+
+    async def declared_companion(self, companion_relpath: str) -> Path:
+        """Download the companion a YAML driver declares and write it to the
+        driver folder; its local path. Any failure raises a descriptive 422 or
+        502 so the door can roll back what it wrote."""
+        import httpx
+
+        companion_filename, companion_url = self._declared_companion_source(companion_relpath)
+        try:
+            resp = await self._fetch(companion_url)
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    f"Driver '{self.driver_id}' references companion "
+                    f"{companion_filename!r}, but GitHub returned "
+                    f"{e.response.status_code} for it. Install aborted."
+                ),
+            )
+        except httpx.RequestError as e:
+            raise _api_error(
+                502,
+                f"Driver '{self.driver_id}' references companion "
+                f"{companion_filename!r} but the download failed",
+                e,
+            )
+        companion_filepath = self.driver_repo / companion_filename
+        companion_filepath.write_bytes(resp.content)
+        return companion_filepath
+
+    def _declared_companion_source(self, companion_relpath: str) -> tuple[str, str]:
+        """The file name and catalog address a YAML's companion declaration
+        resolves to, refused (422) before anything is asked for.
+
+        ``companion_relpath`` is resolved against the YAML's URL and held to
+        the same catalog rule as the YAML itself (the path comes from
+        downloaded content, so a host check would let it name any repository
+        on GitHub), and its file name to the documented ``_discovery.py``
+        suffix and safe characters.
+        """
+        from urllib.parse import urljoin
+
+        companion_filename = PurePosixPath(companion_relpath).name
+        # Require the documented ``_discovery.py`` suffix. Anything else is
+        # either a typo or an attempt to use the companion path to land an
+        # arbitrary .py file in driver_repo. The uninstall path uses the
+        # same suffix check before removing companion files, so this keeps
+        # the install / uninstall contract symmetric.
+        if not re.match(r'^[a-zA-Z0-9_\-]+_discovery\.py$', companion_filename):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Driver '{self.driver_id}' declares companion "
+                    f"{companion_relpath!r} with an invalid filename — must "
+                    "end in '_discovery.py' and use only letters, numbers, "
+                    "hyphens, and underscores."
+                ),
+            )
+
+        companion_url = urljoin(self.url, companion_relpath)
+        if not _is_catalog_url(companion_url):
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Driver '{self.driver_id}' references companion at "
+                    f"{companion_url!r}, which is not a file in the official "
+                    f"community driver catalog ({_drivers_owner_repo()})."
+                ),
+            )
+        return companion_filename, companion_url
 
     async def python_companions(
         self, on_unpublished: Callable[[Path], None] | None = None
@@ -698,14 +639,48 @@ class _CatalogFiles:
             return
         for suffix in COMPANION_SUFFIXES:
             name = f"{stem}{suffix}"
-            fetched = await _try_download_python_companion(
-                main_url=self.url,
-                companion_filename=name,
-                driver_repo=self.driver_repo,
-                catalog=self.catalog,
-            )
+            fetched = await self.conventional_companion(name)
             if not fetched.published and on_unpublished is not None:
                 on_unpublished(self.driver_repo / name)
+
+    async def conventional_companion(self, companion_filename: str) -> CompanionFetch:
+        """Best-effort fetch of one of a Python driver's sibling companions.
+
+        Unlike ``declared_companion`` (YAML drivers, where the companion is
+        declared and required), Python-driver companions (``*_discovery.py`` /
+        ``*_sim.py``) are located by naming convention and are OPTIONAL: a
+        missing one must not fail the install, because the main ``.py``
+        controls hardware and auto-identifies from its inline ``tcp_probe``
+        without them, and the simulator is a bonus.
+        """
+        import httpx
+        from urllib.parse import urljoin
+
+        # Convention-named, but validate anyway: only the two documented suffixes,
+        # so a redirect can't land an arbitrary .py in driver_repo.
+        if not re.match(r'^[a-zA-Z0-9_\-]+_(discovery|sim)\.py$', companion_filename):
+            return CompanionFetch(None)
+        companion_url = urljoin(self.url, companion_filename)
+        if not _is_catalog_url(companion_url):
+            return CompanionFetch(None)
+
+        companion_filepath = self.driver_repo / companion_filename
+        try:
+            # A companion that fails the catalog check is NOT swallowed like a
+            # fetch error below: "optional" means it may be absent, not that a
+            # wrong-bytes copy may be installed. Raises past this handler.
+            resp = await self._fetch(companion_url, absent_ok=True)
+            if resp is None:
+                # The one case we can be sure about: this version ships without
+                # that companion.
+                return CompanionFetch(None, published=False)
+            companion_filepath.write_bytes(resp.content)
+        except (httpx.HTTPStatusError, httpx.RequestError, OSError) as e:
+            log.warning(
+                "Optional companion %s not installed: %s", companion_filename, e
+            )
+            return CompanionFetch(None)
+        return CompanionFetch(companion_filepath)
 
 
 def _driver_class_from(path: Path) -> Any:

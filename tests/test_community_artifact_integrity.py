@@ -317,7 +317,7 @@ async def test_companion_with_wrong_bytes_refused_and_rolled_back(
 async def test_optional_python_companion_with_wrong_bytes_is_not_swallowed(
     driver_repo, monkeypatch
 ):
-    # _try_download_python_companion treats fetch failures as "ships without
+    # _CatalogFiles.conventional_companion treats fetch failures as "ships without
     # one" and moves on. A hash mismatch must NOT go down that path: optional
     # means it may be absent, not that a wrong copy may be installed.
     main = "class AcmeWidget:\n    DRIVER_INFO = {'id': 'acme_widget'}\n"

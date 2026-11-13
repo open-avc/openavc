@@ -26,7 +26,7 @@ from fastapi import HTTPException
 
 from openavc.api.routes.drivers import (
     _companion_relpath_from_yaml,
-    _download_companion,
+    _CatalogFiles,
     install_community_driver,
     uninstall_driver,
     update_driver,
@@ -85,7 +85,7 @@ def test_relpath_handles_non_dict_yaml():
     assert _companion_relpath_from_yaml("- just\n- a\n- list\n") is None
 
 
-# --- _download_companion --------------------------------------------------
+# --- _CatalogFiles.declared_companion --------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -104,11 +104,8 @@ async def test_download_companion_writes_to_repo(tmp_path):
         mock_client.get = AsyncMock(return_value=mock_resp)
         mock_client_cls.return_value = mock_client
 
-        local = await _download_companion(
-            yaml_url=yaml_url,
-            companion_relpath="./foo_discovery.py",
-            driver_repo=tmp_path,
-            driver_id="foo",
+        local = await _CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
+            "./foo_discovery.py"
         )
 
     assert local == tmp_path / "foo_discovery.py"
@@ -121,11 +118,8 @@ async def test_download_companion_rejects_off_allowlist_url(tmp_path):
     # URL pointing at attacker.example), fail before any fetch.
     yaml_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/foo.avcdriver"
     with pytest.raises(HTTPException) as exc:
-        await _download_companion(
-            yaml_url=yaml_url,
-            companion_relpath="https://attacker.example/evil_discovery.py",
-            driver_repo=tmp_path,
-            driver_id="foo",
+        await _CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
+            "https://attacker.example/evil_discovery.py"
         )
     assert exc.value.status_code == 422
     assert "official community driver catalog" in exc.value.detail
@@ -141,11 +135,8 @@ async def test_download_companion_rejects_filename_without_discovery_suffix(tmp_
     yaml_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/foo.avcdriver"
     for bad in ["../../etc/passwd.py", "./foo.py", "./foo bar_discovery.py"]:
         with pytest.raises(HTTPException) as exc:
-            await _download_companion(
-                yaml_url=yaml_url,
-                companion_relpath=bad,
-                driver_repo=tmp_path,
-                driver_id="foo",
+            await _CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
+                bad
             )
         assert exc.value.status_code == 422
         assert "invalid filename" in exc.value.detail
@@ -167,11 +158,8 @@ async def test_download_companion_propagates_404_as_502(tmp_path):
         mock_client_cls.return_value = mock_client
 
         with pytest.raises(HTTPException) as exc:
-            await _download_companion(
-                yaml_url=yaml_url,
-                companion_relpath="./foo_discovery.py",
-                driver_repo=tmp_path,
-                driver_id="foo",
+            await _CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
+                "./foo_discovery.py"
             )
     assert exc.value.status_code == 502
     assert "404" in exc.value.detail
