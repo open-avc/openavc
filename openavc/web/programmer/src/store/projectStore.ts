@@ -23,6 +23,47 @@ export function saveFailureMessage(e: unknown): string {
   return parseApiError(e);
 }
 
+interface ServerCopy {
+  project: ProjectConfig;
+  etag: string | null;
+  revision: string | null;
+}
+
+/**
+ * The project as the server holds it, for `load` and `forceReload`, or null
+ * when it could not be had, with why written to `loadError` through `fail`.
+ */
+async function fetchServerCopy(
+  fail: (patch: { loadError: string; loading: false }) => void,
+): Promise<ServerCopy | null> {
+  try {
+    const raw = await api.getProject();
+    const etag = raw._etag ?? null;
+    delete raw._etag;
+    // The ETag is an opaque token — compared for equality and nothing else.
+    // It used to be a counter this parsed to a number; that counter restarted
+    // at 0 every boot, so a tab left open across a restart held one the
+    // server agreed with.
+    const revision = etag ? etag.replace(/"/g, "") : null;
+    return { project: raw, etag, revision };
+  } catch (e) {
+    fail({ loadError: parseApiError(e), loading: false });
+    return null;
+  }
+}
+
+/** The store once it holds the server's copy: nothing unsaved, nothing failed. */
+function adopted(copy: ServerCopy, loadGeneration: number) {
+  return {
+    ...copy,
+    loading: false,
+    loadError: null,
+    dirty: false,
+    loadGeneration: loadGeneration + 1,
+    conflictDetected: false,
+  };
+}
+
 interface UndoEntry {
   description: string;
   snapshot: Partial<ProjectConfig>;
@@ -106,26 +147,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     // Skip reload if we have local unsaved changes (prevents save/reload race)
     if (get().dirty) return false;
     set({ loading: true, error: null });
-    try {
-      const raw = await api.getProject();
-      const etag = (raw as any)._etag ?? null;
-      delete (raw as any)._etag;
-      // The ETag is an opaque token — compared for equality and nothing else.
-      // It used to be a counter this parsed to a number; that counter restarted
-      // at 0 every boot, so a tab left open across a restart held one the
-      // server agreed with.
-      const revision = etag ? etag.replace(/"/g, "") : null;
-      if (!get().dirty) {
-        set({ project: raw, loading: false, loadError: null, dirty: false, etag, revision, loadGeneration: get().loadGeneration + 1, conflictDetected: false });
-        return true;
-      } else {
-        set({ loading: false });
-        return false;
-      }
-    } catch (e) {
-      set({ loadError: parseApiError(e), loading: false });
+    const copy = await fetchServerCopy(set);
+    if (!copy) return false;
+    if (get().dirty) {
+      set({ loading: false });
       return false;
     }
+    set(adopted(copy, get().loadGeneration));
+    return true;
   },
 
   retryLoad: async () => {
@@ -241,19 +270,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   forceReload: async () => {
     set({ loading: true, error: null, dirty: false, conflictDetected: false });
-    try {
-      const raw = await api.getProject();
-      const etag = (raw as any)._etag ?? null;
-      delete (raw as any)._etag;
-      // The ETag is an opaque token — compared for equality and nothing else.
-      // It used to be a counter this parsed to a number; that counter restarted
-      // at 0 every boot, so a tab left open across a restart held one the
-      // server agreed with.
-      const revision = etag ? etag.replace(/"/g, "") : null;
-      set({ project: raw, loading: false, loadError: null, dirty: false, etag, revision, loadGeneration: get().loadGeneration + 1, conflictDetected: false, undoStack: [], redoStack: [] });
-    } catch (e) {
-      set({ loadError: parseApiError(e), loading: false });
-    }
+    const copy = await fetchServerCopy(set);
+    if (copy) set({ ...adopted(copy, get().loadGeneration), undoStack: [], redoStack: [] });
   },
 
   undo: () => {
