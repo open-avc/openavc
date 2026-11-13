@@ -2992,7 +2992,7 @@
       {
         "f": null,
         "pg": "details ov0 h[]",
-        "t": 1
+        "t": 2
       },
       {
         "f": null,
@@ -3152,7 +3152,7 @@
           "GET /api/themes/dark-default",
           "GET /api/themes/dark-default"
         ],
-        "t": 65
+        "t": 66
       },
       {
         "v": "9",
@@ -3160,7 +3160,7 @@
         "dis": false,
         "f": "lock-input",
         "pg": "details ov0 h[]",
-        "t": 65
+        "t": 66
       },
       {
         "c": {
@@ -3172,7 +3172,7 @@
         "dis": true,
         "f": "lock-input",
         "pg": "details ov0 h[]",
-        "t": 65
+        "t": 66
       },
       {
         "c": {
@@ -3208,12 +3208,12 @@
         },
         "f": null,
         "pg": "details ov0 h[]",
-        "t": 66
+        "t": 67
       },
       {
         "f": null,
         "pg": "details ov0 h[]",
-        "t": 66
+        "t": 67
       },
       {
         "c": {
@@ -3252,6 +3252,7 @@
         "f": "lock-input",
         "pg": "main ov0 h[]",
         "fx": [
+          "GET /api/themes/dark-default",
           "GET /api/themes/dark-default",
           "GET /api/themes/dark-default",
           "GET /api/themes/dark-default",
@@ -3628,34 +3629,34 @@
       {
         "f": null,
         "pg": "main ov0 h[]",
-        "t": 1
+        "t": 2
       },
       {
         "f": null,
         "pg": "main ov0 h[]",
-        "t": 1,
+        "t": 2,
         "n": 3
       },
       {
         "f": null,
         "pg": "main ov0 h[]",
-        "t": 1
+        "t": 2
       },
       {
         "f": null,
         "pg": "main ov0 h[]",
-        "t": 1,
+        "t": 2,
         "n": 4
       },
       {
         "f": null,
         "pg": "main ov0 h[]",
-        "t": 1
+        "t": 2
       },
       {
         "f": null,
         "pg": "main ov0 h[]",
-        "t": 1,
+        "t": 2,
         "n": 4
       }
     ],
@@ -3752,12 +3753,16 @@
       {
         "f": null,
         "pg": "details ov0 h[]",
-        "t": 64
+        "t": 68
       },
       {
         "f": null,
         "pg": "details ov0 h[]",
         "fx": [
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
+          "GET /api/themes/dark-default",
           "GET /api/themes/dark-default",
           "GET /api/themes/dark-default",
           "GET /api/themes/dark-default",

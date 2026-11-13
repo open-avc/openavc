@@ -7433,6 +7433,12 @@ const PLUGIN_EXTENSIONS = {
 // any machine. `advance(ms)` runs every timer and interval that falls due, in
 // time order.
 
+// One count of timer ids for every fake clock. A panel an earlier scenario
+// made can still clear the timer it holds, by id, from a listener left on the
+// document; ids counted afresh per clock would let it clear a timer the
+// scenario now running set.
+let fakeTimerSeq = 0;
+
 function withFakeTime(run, { start = Date.UTC(2026, 0, 15, 14, 5, 9, 250), tz = 'UTC' } = {}) {
     const RealDate = window.Date;
     const real = {
@@ -7442,17 +7448,16 @@ function withFakeTime(run, { start = Date.UTC(2026, 0, 15, 14, 5, 9, 250), tz = 
     const realTz = process.env.TZ;
     process.env.TZ = tz;
     let now = start;
-    let seq = 0;
     const timers = new Map();
     class FakeDate extends RealDate {
         constructor(...args) { if (args.length === 0) super(now); else super(...args); }
         static now() { return now; }
     }
     const schedule = (fn, ms, every) => {
-        seq += 1;
+        fakeTimerSeq += 1;
         const step = Math.max(0, Number(ms) || 0);
-        timers.set(seq, { at: now + step, fn, every: every ? Math.max(1, step) : 0 });
-        return seq;
+        timers.set(fakeTimerSeq, { at: now + step, fn, every: every ? Math.max(1, step) : 0 });
+        return fakeTimerSeq;
     };
     window.Date = FakeDate;
     window.setTimeout = (fn, ms) => schedule(fn, ms, false);
@@ -11553,13 +11558,16 @@ function browserEvent(type, init) {
     return new Kind(type, init);
 }
 
+/** The pointer leaving or entering a node is the one event here a browser does not bubble. */
+const NOT_BUBBLED = new Set(['mouseleave', 'mouseenter']);
+
 Object.assign(PANEL_STEPS, {
     // A pointer or touch event at the first node the selector finds, bubbling
     // up through the document to the window, cancelable, as a browser sends it.
     fire: (m, selector, type, init) => {
         const node = document.querySelector(selector);
         if (!node) throw new Error(`nothing at ${selector}`);
-        node.dispatchEvent(browserEvent(type, { bubbles: true, cancelable: true, ...init }));
+        node.dispatchEvent(browserEvent(type, { bubbles: !NOT_BUBBLED.has(type), cancelable: true, ...init }));
     },
     // The same at the window itself: a release the browser delivered
     // somewhere else, or the window losing focus.
@@ -11618,6 +11626,11 @@ const PRESS_CASES = {
             ['fire', atEl('b1'), 'touchstart'], ['winfire', 'touchcancel'],
             ['fire', atEl('b1'), 'touchstart'], ['winfire', 'blur'],
             ['fire', atEl('b1'), 'touchstart'], ['fire', atEl('b1'), 'touchend', { cancelable: false }],
+            // Each release heard by the button alone, never reaching the window.
+            ...pressAndLetGo('b1', [], 'touchstart', 'touchend').map((s, i) => (i ? [...s, { bubbles: false }] : s)),
+            ...pressAndLetGo('b1', [], 'touchstart', 'touchcancel').map((s, i) => (i ? [...s, { bubbles: false }] : s)),
+            ...pressAndLetGo('b1').map((s, i) => (i ? [...s, { bubbles: false }] : s)),
+            ['winfire', 'blur'],
         ],
     },
     // A release that cannot be cancelled is still a release.
@@ -11633,8 +11646,11 @@ const PRESS_CASES = {
             pinButton('none'), pinButton('empty', []), pinButton('one', { ...MACRO }),
             pinButton('odd', [{ ...MACRO, mode: 'double' }]), pinButton('nul', [null]),
             { id: 'nodo', type: 'button', label: 'nodo', bindings: { show: {} } },
+            // The mode is the first action's, whatever the others say.
+            pinButton('first_holds', [{ ...MACRO, mode: 'hold_repeat' }, { ...MACRO, mode: 'tap' }]),
+            pinButton('first_taps', [{ ...MACRO }, { ...MACRO, mode: 'hold_repeat' }]),
         ]),
-        steps: ['none', 'empty', 'one', 'odd', 'nul', 'nodo'].flatMap((id) => pressAndLetGo(id)),
+        steps: ['none', 'empty', 'one', 'odd', 'nul', 'nodo', 'first_holds', 'first_taps'].flatMap((id) => pressAndLetGo(id, [['wait', 250]])),
     },
     // Hold to repeat: a press at once and one per interval while held, for as
     // long as it is held, ended by the release, the pointer leaving, the
@@ -11719,6 +11735,9 @@ const PRESS_CASES = {
             snapshot({ 'var.t': null }),
             ...['nokey', 'emptykey', 'noval', 'nulval', 'wordnull'].flatMap((id) => pressAndLetGo(id)),
             snapshot({ 'var.t': 'null' }),
+            ...['noval', 'nulval', 'wordnull'].flatMap((id) => pressAndLetGo(id)),
+            // A toggle with no value is never on, even for the word "undefined".
+            snapshot({ 'var.t': 'undefined' }),
             ...['noval', 'nulval', 'wordnull'].flatMap((id) => pressAndLetGo(id)),
         ],
     },
@@ -11822,7 +11841,7 @@ const WORDS_CASES = {
         ui: onePage('icons', [
             ...ICON_SIDES.map((side) => pinButton(`b_${side}`, [MACRO], { icon: 'power', icon_position: side })),
             pinButton('b_style', [MACRO], { style: { icon: 'mic', icon_position: 'top', icon_size: 2, icon_color: '#ff0000' } }),
-            pinButton('b_both', [MACRO], { icon: 'mic', icon_size: 1.5, icon_color: '#00ff00', style: { icon: 'power', icon_position: 'right' } }),
+            pinButton('b_both', [MACRO], { icon: 'mic', icon_size: 1.5, icon_color: '#00ff00', icon_position: 'bottom', style: { icon: 'power', icon_position: 'right', icon_size: 2.5 } }),
             pinButton('b_asset', [MACRO], { icon: 'assets://my icon.svg', icon_color: '#0000ff' }),
             pinButton('b_asset_plain', [MACRO], { icon: 'assets://plain.png', label: '' }),
             pinButton('b_noicon', [MACRO]),
