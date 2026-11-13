@@ -1,7 +1,8 @@
 /**
  * A button's face: which of its parts its display mode draws, its picture
- * after every paint, whether a toggle is lit, and the words each kind of
- * look puts on it together with the field an in-place edit of them writes.
+ * after every paint, and the words each kind of look puts on it together
+ * with the field an in-place edit of them writes. A toggle's own light and
+ * words are modules/toggle.js.
  *
  * The panel keeps everything that borrows its own state: the node, the
  * press, the binding records, the theme, the unavailable mark and every
@@ -16,15 +17,11 @@
  */
 
 import { applyFrameless, applyImageEffect, applyStyle, clearStateColours } from './paint.js';
-import { sameWords } from './looks.js';
 import { drawIcon } from './words.js';
 
 /** The display modes that draw no words, and those that draw the button's own picture. */
 const WORDLESS_MODES = new Set(['image', 'icon_only']);
 const PICTURE_MODES = new Set(['image', 'image_text']);
-
-/** Where a toggle's two words are authored when its press says nothing else. */
-const PRESS_WORDS = ['bindings', 'do', 'press', 0];
 
 /**
  * Whether a button's display mode draws its words (not `image` or
@@ -133,32 +130,4 @@ function twoStateWords(binding, { appearance, wordsPath, isActive }, style) {
     if (binding[half]) return [binding[half], ['bindings', 'show', 'look', half]];
     if (style.label === undefined) return null;
     return [style.label, appearance.label !== undefined ? wordsPath : ['style', 'label']];
-}
-
-/**
- * Whether a toggle is lit: its device answers, it has a reading, and the
- * reading's words are the value that means on, apart from case. The press
- * decides the same question its own way (modules/press.js).
- */
-export function toggleLit(binding, stateValue, offline) {
-    return !offline && stateValue != null && binding.value !== undefined &&
-        sameWords(stateValue, binding.value);
-}
-
-/** Whether a toggle names words of its own for on or off. */
-export function toggleNamesWords(binding) {
-    return binding.on_label != null || binding.off_label != null;
-}
-
-/**
- * A toggle's words and the field an edit of them writes: its on or off
- * word; an empty one, or none while its device is away, falls back to the
- * button's own label, so an edit of what is showing belongs to whichever one
- * actually drew.
- */
-export function toggleWords(elementDef, binding, on, offline) {
-    const word = offline ? null : (on ? binding.on_label : binding.off_label);
-    if (word == null || word === '') return [elementDef.label || '', ['label']];
-    const labelBase = binding._labelBase || PRESS_WORDS;
-    return [word, [...labelBase, on ? 'on_label' : 'off_label']];
 }

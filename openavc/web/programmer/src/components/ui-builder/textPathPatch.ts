@@ -12,11 +12,11 @@ import type { UIElement } from "../../api/types";
  * empty string there does not blank the text -- it falls through to the next
  * thing in the chain.
  *
- * `evaluateFeedback`'s binary branch tests `isActive && binding.label_active`
- * and `evaluateToggleLook` tests `word !== ''`, both falling back to the
- * element's own `label`. Its multi-state branch, by contrast, tests
- * `appearance.label !== undefined`, so an empty string there really does blank
- * it. Clearing one of these four is therefore the author asking for the
+ * A button look's binary form tests `binding[half]` (`twoStateWords` in the
+ * panel's modules/button.js) and a toggle tests `word !== ''` (`toggleWords`
+ * in modules/toggle.js), both falling back to the element's own `label`. A
+ * look with states, by contrast, tests `appearance.label !== undefined`
+ * (`stateWords`), so an empty string there really does blank it. Clearing one of these four is therefore the author asking for the
  * fallback, and the honest write is to REMOVE the key rather than store a ""
  * that reads as a different word on screen.
  */

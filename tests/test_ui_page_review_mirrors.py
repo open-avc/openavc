@@ -134,11 +134,18 @@ def _module_reach(path: Path, seen: frozenset[Path] = frozenset()) -> str:
         handed = any(
             _TAKES_ELEMENT.search(_positional_args(text, match.end()))
             for name in re.split(r"[\s,]+", names.strip()) if name
-            for match in re.finditer(rf"(?<![\w.$]){re.escape(name)}\(", text)
+            for match in _calls_of(name, text)
         )
         if handed:
             parts.append(_module_reach(sibling, seen | {path}))
     return "\n".join(parts)
+
+
+def _calls_of(name: str, text: str):
+    """Every call of the function ``name`` in ``text``: a bare call, or one spread
+    into another call's arguments (``...name(``), never a method of something
+    else (``x.name(``)."""
+    return re.finditer(rf"(?<![\w$])(?<![^.]\.){re.escape(name)}\(", text)
 
 
 def _modules_handed_the_element(body: str, imported: dict[str, str]) -> set[str]:
@@ -151,7 +158,7 @@ def _modules_handed_the_element(body: str, imported: dict[str, str]) -> set[str]
     """
     found: set[str] = set()
     for name, text in imported.items():
-        for match in re.finditer(rf"(?<![\w.$]){re.escape(name)}\(", body):
+        for match in _calls_of(name, body):
             if _TAKES_ELEMENT.search(_positional_args(body, match.end())):
                 found.add(text)
     return found

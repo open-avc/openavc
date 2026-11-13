@@ -36,8 +36,9 @@ import { MacroRuns } from './modules/macro_runs.js';
 import { ProjectStylesheet } from './modules/stylesheet.js';
 import { attachPress, pressOf } from './modules/press.js';
 import {
-    drawFace, drawPicture, lookWords, redrawPicture, repaint, showsWords, toggleLit, toggleNamesWords, toggleWords,
+    drawFace, drawPicture, lookWords, redrawPicture, repaint, showsWords,
 } from './modules/button.js';
+import { toggleLit, toggleNamesWords, toggleWords } from './modules/toggle.js';
 import { litStyle } from './modules/lit.js';
 import { richText, valueWords } from './modules/label.js';
 import { drawIcon, iconNode, removeWords, showWords } from './modules/words.js';
@@ -322,7 +323,6 @@ class PanelApp {
             state: () => this.state,
             holds: (el) => this._textEditor.holds(el),
             setLabelText: (node, text, path) => this._setLabelText(node, text, path),
-            richText,
             redraw: (elementId) => this._redrawElement(elementId),
         };
     }
@@ -2779,7 +2779,8 @@ class PanelApp {
         // label every pass would fight a `ui.<id>.label` override and rebuild
         // an icon layout for nothing.
         if (toggleNamesWords(binding) && showsWords(elementDef)) {
-            this._setLabelText(element, ...toggleWords(elementDef, binding, on, offline));
+            const [words, path] = toggleWords(elementDef, binding, on, offline);
+            this._setLabelText(element, words, path);
             this._drawLookIcon(element, elementDef, null);
         }
     }

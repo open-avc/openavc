@@ -16,9 +16,9 @@
 
 import { sameWords } from './looks.js';
 
-/** Where a bound value's words are authored. */
-const VALUE = ['bindings', 'show', 'value'];
-const FORMAT = [...VALUE, 'format'];
+/** Where a bound value's words are authored; frozen, since every caller is handed the same one. */
+const VALUE = Object.freeze(['bindings', 'show', 'value']);
+const FORMAT = Object.freeze([...VALUE, 'format']);
 /** What a label shows in place of a number it does not have. */
 const NO_READING = '--';
 

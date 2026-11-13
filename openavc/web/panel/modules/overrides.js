@@ -25,6 +25,7 @@
  */
 
 import { labelSpan, nameAfterWords } from './words.js';
+import { richText } from './label.js';
 
 /** Words that came from no authored field: an override's own. */
 const NO_SOURCE = null;
@@ -217,6 +218,6 @@ export class UiOverrides {
         }
         node.querySelectorAll(':scope > strong, :scope > em').forEach((n) => n.remove());
         this._host.setLabelText(node, rich ? '' : text, path);
-        if (rich) node.insertAdjacentHTML('beforeend', this._host.richText(text));
+        if (rich) node.insertAdjacentHTML('beforeend', richText(text));
     }
 }
