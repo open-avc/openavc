@@ -5,8 +5,8 @@ import { ApiError, parseApiError } from "../api/errors";
 import { runSaveWithRetry } from "./projectStoreSave";
 
 /**
- * The sentence a failed save shows the user, rendered by the UI Builder as
- * "Save failed: <this>".
+ * The sentence a failed save shows the user, rendered across the top of the
+ * app as "Save failed: <this>" (components/shared/SaveFailedBanner.tsx).
  *
  * A 401 gets its own, because it is the one failure the user has already
  * lived through by the time they read it: the fetch interceptor shows the
@@ -47,7 +47,12 @@ interface ProjectStore {
   loading: boolean;
   saving: boolean;
   savePending: boolean;  // true while debouncedSave timer is pending
+  /** Why the last save failed, or the version conflict's sentence: the
+   *  save's alone. A failed load is `loadError`, so it never reads as a
+   *  failed save. */
   error: string | null;
+  /** Why the last project load failed, until a load gets the project. */
+  loadError: string | null;
   dirty: boolean;
   revision: string | null;  // kept for WebSocket project.reloaded detection
   loadGeneration: number;  // invalidates project resources after an accepted load
@@ -63,6 +68,10 @@ interface ProjectStore {
    *  store's project was actually replaced — false when the fetch was
    *  skipped or discarded because local unsaved changes exist. */
   load: () => Promise<boolean>;
+  /** The failed-load line's Retry: saves unsaved edits first (a load skips
+   *  while they exist, and dropping them is never a retry's to do), then
+   *  loads. A save that fails or conflicts leaves its own line and no load. */
+  retryLoad: () => Promise<void>;
   save: (retryCount?: number) => Promise<void>;
   debouncedSave: (delay?: number) => void;
   flushSave: () => void;
@@ -82,6 +91,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
   saving: false,
   savePending: false,
   error: null,
+  loadError: null,
   dirty: false,
   revision: null,
   loadGeneration: 0,
@@ -106,16 +116,21 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // server agreed with.
       const revision = etag ? etag.replace(/"/g, "") : null;
       if (!get().dirty) {
-        set({ project: raw, loading: false, dirty: false, etag, revision, loadGeneration: get().loadGeneration + 1, conflictDetected: false });
+        set({ project: raw, loading: false, loadError: null, dirty: false, etag, revision, loadGeneration: get().loadGeneration + 1, conflictDetected: false });
         return true;
       } else {
         set({ loading: false });
         return false;
       }
     } catch (e) {
-      set({ error: parseApiError(e), loading: false });
+      set({ loadError: parseApiError(e), loading: false });
       return false;
     }
+  },
+
+  retryLoad: async () => {
+    if (get().dirty) await get().save();
+    await get().load();
   },
 
   save: async (retryCount = 0): Promise<void> => {
@@ -235,9 +250,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // at 0 every boot, so a tab left open across a restart held one the
       // server agreed with.
       const revision = etag ? etag.replace(/"/g, "") : null;
-      set({ project: raw, loading: false, dirty: false, etag, revision, loadGeneration: get().loadGeneration + 1, conflictDetected: false, undoStack: [], redoStack: [] });
+      set({ project: raw, loading: false, loadError: null, dirty: false, etag, revision, loadGeneration: get().loadGeneration + 1, conflictDetected: false, undoStack: [], redoStack: [] });
     } catch (e) {
-      set({ error: parseApiError(e), loading: false });
+      set({ loadError: parseApiError(e), loading: false });
     }
   },
 

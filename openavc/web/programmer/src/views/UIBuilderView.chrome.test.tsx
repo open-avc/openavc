@@ -32,7 +32,6 @@ import {
   project,
   renderPage,
   resetMocks,
-  saves,
   seed,
   seen,
   settle,
@@ -50,21 +49,13 @@ beforeEach(() => {
 });
 
 describe("the save banner", () => {
-  it("says why the save failed, retries and dismisses", async () => {
+  // The app draws it above every view (App.projectBanners.test.tsx), so the
+  // Builder drawing its own would say a failed save twice.
+  it("is not the Builder's to draw", async () => {
     useProjectStore.setState({ error: "disk full" });
     await renderPage(UIBuilderView);
-    expect(screen.getByText("Save failed: disk full")).toBeInTheDocument();
-    call(() => fireEvent.click(screen.getByRole("button", { name: "Retry" })));
-    expect(saves.save).toHaveBeenCalledTimes(1);
-    call(() => fireEvent.click(screen.getByRole("button", { name: "Dismiss" })));
     expect(screen.queryByText(/Save failed/)).toBeNull();
-    expect(useProjectStore.getState().error).toBeNull();
-  });
-
-  it("stays away while a version conflict has its own banner", async () => {
-    useProjectStore.setState({ error: "conflict", conflictDetected: true });
-    await renderPage(UIBuilderView);
-    expect(screen.queryByText(/Save failed/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });
 

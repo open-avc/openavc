@@ -23,7 +23,6 @@ vi.mock("../components/ui-builder/ThemeStudio", async () => (await import("../te
 vi.mock("../components/ui-builder/StylesheetEditor", async () => (await import("../test/uiBuilderMocks")).stubs.StylesheetEditor);
 
 import { UIBuilderView } from "./UIBuilderView";
-import { useProjectStore } from "../store/projectStore";
 import {
   builder,
   installFetch,
@@ -46,7 +45,6 @@ const props = () => seen.PropertiesPanel;
 const menu = () => seen.ContextMenu;
 const outline = () => seen.OutlinePanel;
 const showOutline = () => call(() => fireEvent.click(screen.getByRole("button", { name: "Outline" })));
-const useProjectStoreSet = (state: Record<string, unknown>) => useProjectStore.setState(state as never);
 const menuOn = (elementId: string, isMaster = false) => ({ contextMenu: { x: 1, y: 2, elementId, isMaster } });
 
 beforeEach(() => {
@@ -297,20 +295,6 @@ describe("the toolbar's own buttons and the save banner, as drawn", () => {
     expect(screen.getByRole("dialog", { name: "Panel Settings" })).toBeTruthy();
   });
 
-  it("draws the save failure across the top in the error colour, Retry the stronger of its two buttons", async () => {
-    seed(makeProject(), { selectedPageId: "main" });
-    act(() => useProjectStoreSet({ error: "disk full" }));
-    await renderPage(UIBuilderView);
-    const banner = screen.getByText("Save failed: disk full").parentElement as HTMLElement;
-    expect(banner.style.background).toBe("rgba(244, 67, 54, 0.15)");
-    expect(banner.style.color).toBe("var(--color-error)");
-    expect(banner.style.borderBottom).toBe("1px solid var(--color-error)");
-    const retry = screen.getByRole("button", { name: "Retry" }) as HTMLButtonElement;
-    const dismiss = screen.getByRole("button", { name: "Dismiss" }) as HTMLButtonElement;
-    expect([retry.style.padding, retry.style.fontWeight, retry.style.border, retry.style.color]).toEqual(["2px 10px", "600", "1px solid var(--color-error)", "var(--color-error)"]);
-    expect([dismiss.style.padding, dismiss.style.fontWeight, dismiss.style.border, dismiss.style.color]).toEqual(["2px 10px", "", "1px solid var(--border-color)", "var(--text-secondary)"]);
-    expect(banner.nextElementSibling).toBe(screen.getByTestId("stub-CanvasToolbar"));
-  });
 });
 
 describe("the left panel", () => {

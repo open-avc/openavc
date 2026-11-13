@@ -1,6 +1,6 @@
 /**
- * The UI Builder's frame: the save banner and the toolbar across the top, and
- * below them three columns side by side (the left panel, the canvas and the
+ * The UI Builder's frame: the toolbar across the top, and below it three
+ * columns side by side (the left panel, the canvas and the
  * right panel), each side panel resizable within its limits by the handle
  * between it and the canvas.
  *
@@ -19,7 +19,6 @@
  */
 import type { ReactNode } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { SaveFailedBanner } from "./SaveFailedBanner";
 
 export interface FrameParts {
   /** The left panel: the palette and the outline. */
@@ -58,7 +57,6 @@ export function BuilderFrame({ parts, toolbar, left, canvas, right }: BuilderFra
         overflow: "hidden",
       }}
     >
-      <SaveFailedBanner />
       {toolbar}
       <PanelGroup direction="horizontal" style={{ flex: 1 }}>
         {parts.left && (

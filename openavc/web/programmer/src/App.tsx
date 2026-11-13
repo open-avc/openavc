@@ -9,6 +9,8 @@ import { PanelRequestBanner } from "./components/shared/PanelRequestBanner";
 import { PanelAccessNotice } from "./components/shared/PanelAccessNotice";
 import { ListenNotice } from "./components/shared/ListenNotice";
 import { SimulationBar } from "./components/shared/SimulationBar";
+import { ProjectLoadFailedBanner } from "./components/shared/ProjectLoadFailedBanner";
+import { SaveFailedBanner } from "./components/shared/SaveFailedBanner";
 import { DeviceAuditHost } from "./views/devices/audit/DeviceAuditHost";
 import { Login } from "./components/Login";
 import { Setup } from "./components/Setup";
@@ -305,6 +307,9 @@ function AuthedApp() {
             </div>
           </div>
         )}
+        {/* The project could not be loaded, or the last save failed, on every view */}
+        <ProjectLoadFailedBanner />
+        <SaveFailedBanner />
         {/* A panel waiting for approval, on every view */}
         <PanelRequestBanner />
         {/* Once, on a system updated with its panels connected: it is still open */}

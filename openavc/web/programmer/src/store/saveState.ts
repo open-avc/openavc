@@ -1,10 +1,13 @@
 /**
- * What the UI Builder says about saving the project, and its Save now.
+ * What the IDE says about saving the project, and the UI Builder's Save now.
  *
- * A failed save is shown (the banner across the Builder, the toolbar's status
+ * A failed save is shown (the line across the top of the app on every view,
+ * components/shared/SaveFailedBanner.tsx, and the Builder toolbar's status
  * word) unless it was a version conflict: that has its own banner above the
  * whole app (App.tsx) with the only two answers that can work, and saying it
- * again here would offer a retry that can only conflict again.
+ * again here would offer a retry that can only conflict again. A failed
+ * project load is the store's `loadError`, never `error`, so it is never said
+ * as a failed save.
  *
  * Saving now is what Ctrl+S and the toolbar's Save button do: the save waiting
  * on its timer goes now, and a direct one while changes are unsaved and none is

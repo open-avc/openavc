@@ -115,6 +115,7 @@ export function seed(project: ProjectConfig | null = makeProject(), builder: Rec
     dirty: false,
     saving: false,
     error: null,
+    loadError: null,
     conflictDetected: false,
     ...saves,
   } as never);
