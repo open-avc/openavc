@@ -11760,6 +11760,29 @@ const PRESS_CASES = {
             ...pressAndLetGo('w4'),
         ],
     },
+    // A definition edited in place after it was drawn: a press reads the
+    // toggle's key and value, and the control's id, as they are when pressed.
+    edited_in_place: {
+        ...PRESSING,
+        ui: onePage('edited', [pinButton('t1', toggle()), pinButton('t2', [MACRO])]),
+        state: { 'var.t': 'off', 'var.u': 'on' },
+        steps: [
+            ...pressAndLetGo('t1'),
+            ['edit', 'pages.0.elements.0.bindings.do.press.0.toggle_value', 'off'], ...pressAndLetGo('t1'),
+            ['edit', 'pages.0.elements.0.bindings.do.press.0.toggle_key', 'var.u'], ...pressAndLetGo('t1'),
+            ['edit', 'pages.0.elements.1.id', 'renamed'], ...pressAndLetGo('t2'),
+        ],
+    },
+    // A two-state look whose value is the word "undefined", on a key nobody
+    // has reported: inactive, as a missing reading always is.
+    look_equals_the_word_undefined: {
+        ...PRESSING,
+        ui: onePage('word', [
+            pinButton('u1', [MACRO], { bindings: { do: { press: [MACRO] }, show: { look: { key: 'var.none', condition: { equals: 'undefined' }, style_active: { bg_color: '#00ff00', label: 'Active' } } } } }),
+            pinLabel('u2', { bindings: { show: { look: { key: 'var.none', condition: { equals: 'undefined' }, style_active: { label: 'Active' } }, value: { key: 'var.none', condition: { equals: 'undefined' }, text_true: 'Yes', text_false: 'No' } } } }),
+        ]),
+        steps: [snapshot({}), snapshot({ 'var.none': 'undefined' })],
+    },
     // On the design canvas: the press draws its pressed look and sends
     // nothing; the words a toggle draws say where they were authored.
     press_on_the_canvas: {
@@ -12041,6 +12064,9 @@ const MESSAGE_CASES = {
             ['state', { 'system.simulation_active': 'yes' }], ['raf'],
             ['msg', { type: 'state.update' }], ['raf'],
             ['msg', { type: 'state.update', changes: null }], ['raf'],
+            // Changes that are not an object: a list's items are keys, a string throws.
+            ['msg', { type: 'state.update', changes: ['x'] }], ['raf'],
+            ['msg', { type: 'state.update', changes: 'ab' }], ['raf'],
             ['fire', atEl('b1'), 'mousedown'], ['fire', atEl('b1'), 'mouseup'],
             ['state', { [PLAY_KEY]: JSON.stringify({ id: 'r2', url: '/chime.mp3' }) }], ['raf'],
             ['state', { 'var.a': 'three' }], ['state', { 'var.level': 70 }], ['raf'],

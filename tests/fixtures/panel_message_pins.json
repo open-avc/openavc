@@ -349,6 +349,60 @@
     "n": "home||"
    },
    {
+    "op": "msg",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "0": "x",
+      "var.a": "two",
+      "other.key": 1,
+      "system.simulation_active": "yes"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "frames",
+     "state": {
+      "0": "a",
+      "1": "b",
+      "var.a": "two",
+      "other.key": 1,
+      "system.simulation_active": "yes"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "threw": "Cannot use 'in' operator to search for 'system.simulation_active' in ab"
+   },
+   {
+    "op": "raf",
+    "f": "1",
+    "n": "home||"
+   },
+   {
     "op": "fire",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"l1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">two</div><div class=\"panel-element panel-slider\" data-element-id=\"s1\" style=\"--thumb-size: 3.142857142857143rem; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"slider\"><div class=\"slider-track-wrapper\"><div class=\"slider-track\"><div class=\"slider-fill\" style=\"width: 0%;\"></div></div><input type=\"range\" aria-label=\"s1\" min=\"0\" max=\"100\" step=\"1\" class=\"no-reading\"></div></div><button type=\"button\" class=\"panel-element panel-button pressing\" data-element-id=\"b1\" aria-label=\"b1\" data-element-type=\"button\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">b1</button><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
     "f": "1",
@@ -381,6 +435,8 @@
      "embedded": false,
      "ui": "frames",
      "state": {
+      "0": "a",
+      "1": "b",
       "var.a": "two",
       "other.key": 1,
       "system.simulation_active": "yes",
@@ -414,6 +470,8 @@
      "embedded": false,
      "ui": "frames",
      "state": {
+      "0": "a",
+      "1": "b",
       "var.a": "three",
       "other.key": 1,
       "system.simulation_active": "yes",
@@ -446,6 +504,8 @@
      "embedded": false,
      "ui": "frames",
      "state": {
+      "0": "a",
+      "1": "b",
       "var.a": "three",
       "other.key": 1,
       "system.simulation_active": "yes",
