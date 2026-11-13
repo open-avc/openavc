@@ -646,7 +646,7 @@ async def test_browse_community_lists_what_the_catalog_answered(cat):
 
 @pytest.mark.asyncio
 async def test_browse_community_and_an_install_read_one_copy_of_the_index(cat, monkeypatch):
-    # One cache on this server: the listing's fetch answers the next listing
+    # One cache for Browse Community and installs: the listing's fetch answers the next listing
     # and the install's hash lookup until it ages out.
     import json
 
@@ -654,11 +654,12 @@ async def test_browse_community_and_an_install_read_one_copy_of_the_index(cat, m
 
     monkeypatch.setattr(CommunityIndexCache, "get_drivers", _REAL_GET_DRIVERS)
     fetched: list[str] = []
-    index = {"drivers": [_entry(_hashes(**{
+    index_drivers = [_entry(_hashes(**{
         "acme_widget.py": _python(),
         "acme_widget_discovery.py": COMPANION,
         "acme_widget_sim.py": SIMULATOR,
-    }))]}
+    }))]
+    index = {"drivers": index_drivers}
 
     async def _fetch_raw(path):
         fetched.append(path)
@@ -667,10 +668,16 @@ async def test_browse_community_and_an_install_read_one_copy_of_the_index(cat, m
     monkeypatch.setattr(community_index, "_fetch_raw_with_retry", _fetch_raw)
     _python_catalog(cat)
 
-    listed = await routes.get_community_drivers(refresh=True)
-    again = await routes.get_community_drivers()
-    answer = await _install("acme_widget.py")
+    try:
+        listed = await routes.get_community_drivers(refresh=True)
+        again = await routes.get_community_drivers()
+        answer = await _install("acme_widget.py")
+    finally:
+        # The cache outlives this test: leave it holding an empty index, which
+        # the next reader fetches again, not this one's hashes for ten minutes.
+        index = {"drivers": []}
+        await routes.get_community_drivers(refresh=True)
 
-    assert listed == again == {"drivers": index["drivers"], "error": None}
+    assert listed == again == {"drivers": index_drivers, "error": None}
     assert answer["status"] == "installed"
-    assert fetched == ["index.json"]
+    assert fetched == ["index.json", "index.json"]

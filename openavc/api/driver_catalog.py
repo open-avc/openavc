@@ -9,8 +9,9 @@ the check against the hashes the catalog publishes for that file's own path,
 before anything is written. The hashes are looked up here from the community
 index, never taken from the request, and a disagreement fetches the index once
 more past the cached copy before refusing (``utils/community_integrity.py``
-``CatalogCheck``). The index is one cache on this server (``index_cache``), so
-Browse Community and an install's check read the same copy.
+``CatalogCheck``). Browse Community and every install's check read the same
+cached copy of the index (``index_cache``); a device page's missing-driver
+list and Discovery keep caches of their own.
 
 Each of the three files an install may bring answers a failure in its own
 words (the main file, a YAML driver's declared companion, a Python driver's
@@ -39,17 +40,17 @@ from openavc.drivers.driver_loader import (
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import internet_client, internet_failure
 
-# Logs as the driver routes, where these lines were filed before the catalog
-# had a module of its own (the Log view's source column shows the name).
+# The Log view shows a line's logger name, and these lines are the driver
+# routes' to a reader.
 log = get_logger("openavc.api.routes.drivers")
 
-# This server's one copy of the community index (``index_cache``).
+# The community index Browse Community and the installs read (``index_cache``).
 _index_cache: Any = None
 
 
 def index_cache() -> Any:
-    """The community index this server reads, made on first use: Browse
-    Community lists it and every install's hash lookup reads it."""
+    """The cached community index, made on first use: Browse Community lists
+    it and every install's hash lookup reads it."""
     global _index_cache
     if _index_cache is None:
         from openavc.discovery.community_index import CommunityIndexCache
