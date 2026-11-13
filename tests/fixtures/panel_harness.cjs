@@ -12186,6 +12186,296 @@ Object.assign(tests, {
     },
 });
 
+// --- A button's face, its looks and the lit look -------------------------------
+//
+// One more group driven the same way (driveCase): every display mode with and
+// without its picture, icon and chrome; the button's look in both of its forms
+// through every kind of reading, with its device away and back, on the panel
+// and on the design canvas; the camera preset, which borrows that look; a
+// toggle's light and its words; and the lit look's accent with the text colour
+// picked to read on it, on a toggle and on a page nav. Compared with
+// panel_button_pins.json, recorded from the code before it moved.
+
+const BUTTON_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_button_pins.json'), 'utf8'));
+const FACE = { raf: 'queued', fetch: {}, recordDefs: true };
+const PIC = 'assets://bg.png';
+const DEV_KEY = 'device.d1.mode';
+const AWAY = { 'device.d1.connected': false };
+const BACK = { 'device.d1.connected': true };
+
+Object.assign(PANEL_STEPS, {
+    // The element defaults a theme gives each control type.
+    themeDefaults: (m, defaults) => { m.app.theme.elementDefaults = defaults; },
+    // The accent the theme writes on the document, or none.
+    accent: (m, colour) => {
+        if (colour == null) document.documentElement.style.removeProperty('--panel-accent');
+        else document.documentElement.style.setProperty('--panel-accent', colour);
+    },
+});
+
+/** A state change drawn at the next frame. */
+const drawn = (changes) => [['state', changes], ['raf']];
+/** Each reading of `key` in turn, drawn. */
+const readingsOf = (key, values) => values.flatMap((v) => (v === '=gone'
+    ? [['msg', { type: 'state.delete', keys: [key] }], ['raf']]
+    : drawn({ [key]: v })));
+
+const DISPLAY_MODES = ['text', 'image', 'image_text', 'icon_only', undefined, 'bogus'];
+/** One button per display mode for each way its own parts can be set. */
+const modeButtons = () => DISPLAY_MODES.flatMap((mode, i) => [
+    pinButton(`m${i}`, [MACRO], { display_mode: mode }),
+    pinButton(`m${i}_pic`, [MACRO], { display_mode: mode, button_image: PIC }),
+    pinButton(`m${i}_icon`, [MACRO], { display_mode: mode, icon: 'power' }),
+    pinButton(`m${i}_iconpos`, [MACRO], { display_mode: mode, icon: 'power', icon_position: 'top' }),
+    pinButton(`m${i}_bare`, [MACRO], { display_mode: mode, label: '', button_image: PIC, icon: 'mic' }),
+    pinButton(`m${i}_frameless`, [MACRO], { display_mode: mode, frameless: true, button_image: PIC, style: { bg_color: '#123456' } }),
+]);
+
+/** A look with states: words, colours, an icon and a picture of its own, an empty and a numeric word, a blank state. */
+const STATES_LOOK = (extra) => ({
+    key: DEV_KEY,
+    states: {
+        on: { label: 'ON', bg_color: '#00ff00', icon: 'mic', icon_color: '#ff0000', button_image: 'assets://on.png' },
+        off: { bg_color: '#ff0000', text_color: '#ffffff', opacity: 0.5 },
+        blank: { label: '' },
+        num: { label: 7, icon: 'power' },
+        '': { label: 'NOTHING', bg_color: '#0000ff' },
+    },
+    default_state: 'off',
+    ...extra,
+});
+/** The two-state form, with whichever words are given. */
+const TWO_LOOK = (extra) => ({
+    key: DEV_KEY, condition: { equals: 'On' },
+    style_active: { bg_color: '#00ff00', label: 'Styled on', icon: 'mic', button_image: 'assets://on.png' },
+    style_inactive: { bg_color: '#ff0000' },
+    ...extra,
+});
+const looked = (id, look, extra) => pinButton(id, [MACRO], { bindings: { do: { press: [MACRO] }, show: { look } }, ...extra });
+/** A button and a camera preset with each kind of look and own parts. */
+const lookedControls = () => [
+    looked('st', STATES_LOOK()),
+    looked('st_nolabel', STATES_LOOK(), { label: '' }),
+    looked('st_nodefault', STATES_LOOK({ default_state: undefined })),
+    looked('st_img', STATES_LOOK(), { display_mode: 'image', button_image: PIC }),
+    looked('st_imgtext', STATES_LOOK(), { display_mode: 'image_text', button_image: PIC, image_blend_mode: 'mask', image_fit: 'contain' }),
+    looked('st_icononly', STATES_LOOK(), { display_mode: 'icon_only', icon: 'power' }),
+    looked('st_frameless', STATES_LOOK(), { frameless: true, button_image: PIC, style: { bg_color: '#222222', text_color: '#eeeeee' } }),
+    looked('st_icon', STATES_LOOK(), { icon: 'power', icon_color: '#00ffff', icon_position: 'right' }),
+    looked('two', TWO_LOOK()),
+    looked('two_words', TWO_LOOK({ label_active: 'Live', label_inactive: 'Idle' })),
+    looked('two_empty_words', TWO_LOOK({ label_active: '', label_inactive: '' })),
+    looked('two_nostyle', TWO_LOOK({ style_active: { bg_color: '#00ff00' } })),
+    looked('two_nostyle_nolabel', TWO_LOOK({ style_active: { bg_color: '#00ff00' } }), { label: '' }),
+    looked('two_inactive_label', TWO_LOOK({ style_inactive: { label: 'Rest' } }), { label: '' }),
+    looked('two_style_label', TWO_LOOK(), { style: { label: 'Own style words' } }),
+    looked('two_frameless', TWO_LOOK(), { frameless: true, display_mode: 'image', button_image: PIC, image_opacity: 0.4 }),
+    { id: 'cp', type: 'camera_preset', label: 'Cam', preset_number: 3, icon: 'power', bindings: { show: { look: STATES_LOOK() } } },
+    { id: 'cp_two', type: 'camera_preset', bindings: { show: { look: TWO_LOOK({ label_active: 'Cam on' }) } } },
+];
+const LOOK_READINGS = ['on', 'off', 'blank', 'num', 'zzz', null, 'on', '=gone', 'On', 'ON', 'on'];
+
+/** A toggle pressing a device command, with whatever words and value it names. */
+const toggled = (id, extra, own) => pinButton(id, [{
+    action: 'device.command', device: 'd1', command: 'power', mode: 'toggle', toggle_key: DEV_KEY, toggle_value: 'on', ...extra,
+}], own);
+const toggles = () => [
+    toggled('t'),
+    toggled('t_words', { on_label: 'Muted', off_label: 'Live' }),
+    toggled('t_on_only', { on_label: 'Muted' }),
+    toggled('t_off_only', { off_label: 'Live' }, { label: '' }),
+    toggled('t_empty', { on_label: '', off_label: '' }),
+    toggled('t_nullwords', { on_label: null, off_label: 'Live' }),
+    toggled('t_novalue', { toggle_value: undefined, on_label: 'Muted' }),
+    toggled('t_true', { toggle_value: true, on_label: 'T' }),
+    toggled('t_num', { toggle_value: 1, on_label: 'One' }),
+    toggled('t_img', { on_label: 'Muted' }, { display_mode: 'image', button_image: PIC }),
+    toggled('t_imgtext', { on_label: 'Muted' }, { display_mode: 'image_text', button_image: PIC, image_blend_mode: 'multiply' }),
+    toggled('t_frameless', {}, { frameless: true, button_image: PIC }),
+    toggled('t_icon', { on_label: 'Muted' }, { icon: 'mic', icon_position: 'left' }),
+    toggled('t_styled', {}, { style: { bg_color: '#333333', text_color: '#cccccc', opacity: 0.9 } }),
+    pinButton('t_list', { action: 'device.command', mode: 'toggle', toggle_key: DEV_KEY, toggle_value: 'on', on_label: 'Single' }),
+    pinButton('t_looked', [{ action: 'macro', macro: 'm1', mode: 'toggle', toggle_key: DEV_KEY, toggle_value: 'on' }],
+        { bindings: { do: { press: [{ action: 'macro', macro: 'm1', mode: 'toggle', toggle_key: DEV_KEY, toggle_value: 'on' }] }, show: { look: TWO_LOOK() } } }),
+];
+const TOGGLE_READINGS = ['on', 'off', 'ON', true, 1, '1', 1.0, null, 'on', '=gone', 'on', 'true'];
+
+/** Accents a lit control may wear: every way a colour is written, and some that cannot be read. */
+const ACCENTS = ['#fff', '#000', '#1976D2', '#00E676', '#ffff00', '#80808080', '#abcd', ' #FF0000 ', 'rgb(255, 255, 255)',
+    'rgba(0, 0, 0, 0.5)', 'rgb(100% 0% 0% / 50%)', 'rgb(10,20)', 'rgb(a, b, c)', 'red', 'hsl(0, 100%, 50%)', '#12', '',
+    // Near where white and near-black read equally well, a slash with no
+    // space, channels out of range, a dark channel, and a number.
+    '#787878', '#07e', 'rgb(100%/1 0 0)', 'rgb(0, 0, 999)', '#018690', 255];
+const litToggles = () => ACCENTS.map((accent, i) => toggled(`lit${i}`, {}, { style: { accent_color: accent } }));
+
+const BUTTON_CASES = {
+    // Every display mode, with its picture, its icon (where it was put and
+    // where it was not), no words and its picture and icon, and frameless.
+    display_modes: { ...FACE, ui: onePage('modes', modeButtons()) },
+    // The same on the design canvas, where each says which field its words came from.
+    display_modes_on_the_canvas: { ...FACE, edit: true, embedded: true, ui: onePage('modes', modeButtons()) },
+    // How the picture is drawn: its fit, blend and opacity, tinted by the
+    // button's own colour or the theme's.
+    picture_options: {
+        ...FACE,
+        ui: onePage('pics', [
+            ['cover', 'none', undefined], ['contain', 'mask', 0.4], ['fill', 'multiply', 1], [undefined, 'screen', 0.5],
+            ['contain', 'normal', 0.75], [undefined, undefined, '0.3'],
+        ].map(([fit, blend, opacity], i) => pinButton(`p${i}`, [MACRO], {
+            display_mode: i % 2 ? 'image' : 'image_text', button_image: PIC, image_fit: fit, image_blend_mode: blend,
+            image_opacity: opacity, ...(i > 2 ? { style: { bg_color: '#336699' } } : {}),
+        }))),
+    },
+    // Each kind of look through every kind of reading, the device away and back.
+    looks_through_readings: {
+        ...FACE,
+        ui: onePage('looks', lookedControls()),
+        steps: [...readingsOf(DEV_KEY, LOOK_READINGS), ...drawn(AWAY), ...drawn({ [DEV_KEY]: 'off' }), ...drawn(BACK),
+            ...drawn({ [DEV_KEY]: 'num' }), ...drawn(AWAY), ...drawn(BACK)],
+    },
+    // The same on the design canvas: where an edit of each word goes.
+    looks_on_the_canvas: {
+        ...FACE, edit: true, embedded: true,
+        ui: onePage('looks', lookedControls()),
+        steps: [...readingsOf(DEV_KEY, ['on', 'blank', 'num', 'zzz', 'On', null]), ...drawn(AWAY), ...drawn(BACK)],
+    },
+    // A look that starts with its device away, and one that starts with a reading.
+    looks_start_away: { ...FACE, state: { ...AWAY, [DEV_KEY]: 'on' }, ui: onePage('looks', lookedControls()) },
+    looks_start_on: { ...FACE, state: { [DEV_KEY]: 'On' }, ui: onePage('looks', lookedControls()), steps: [...drawn({ [DEV_KEY]: 'blank' })] },
+    // A toggle's light and words through every kind of reading, away and back.
+    toggles_through_readings: {
+        ...FACE,
+        ui: onePage('toggles', toggles()),
+        steps: [...readingsOf(DEV_KEY, TOGGLE_READINGS), ...drawn(AWAY), ...drawn({ [DEV_KEY]: 'off' }), ...drawn(BACK),
+            ...drawn(AWAY), ...drawn({ [DEV_KEY]: 'on' }), ...drawn(BACK)],
+    },
+    toggles_on_the_canvas: {
+        ...FACE, edit: true, embedded: true,
+        ui: onePage('toggles', toggles()),
+        steps: [...readingsOf(DEV_KEY, ['on', 'off', null]), ...drawn(AWAY), ...drawn(BACK)],
+    },
+    // The lit look: the toggle's own accent written every way, then the
+    // theme's accent, then none.
+    lit_accents: {
+        ...FACE, state: { [DEV_KEY]: 'off' },
+        ui: onePage('lit', [...litToggles(), toggled('lit_theme'), toggled('lit_theme_styled', {}, { style: { text_color: '#00ff00' } })]),
+        steps: [...drawn({ [DEV_KEY]: 'on' }), ['accent', '#00E676'], ...drawn({ [DEV_KEY]: 'off' }), ...drawn({ [DEV_KEY]: 'on' }),
+            ['accent', 'rgb(25, 118, 210)'], ...drawn({ [DEV_KEY]: 'ON' }), ['accent', 'nonsense'], ...drawn({ [DEV_KEY]: 'on' }),
+            ['accent', null], ...drawn({ [DEV_KEY]: 'On' }), ...drawn(AWAY)],
+    },
+    // The looks and toggles over a theme that gives each type its own
+    // colours, opacity and accent, which a state or the lit look replaces
+    // and its device going away puts back.
+    looks_over_a_theme: {
+        ...FACE, draw: false,
+        ui: onePage('themed', [...lookedControls(), ...toggles()]),
+        steps: [
+            ['themeDefaults', {
+                button: { bg_color: '#101010', text_color: '#f0f0f0', opacity: 0.8, accent_color: '#ff00ff', image_fit: 'contain' },
+                camera_preset: { bg_color: '#202020', text_color: '#e0e0e0' },
+            }],
+            ['render'], ...readingsOf(DEV_KEY, ['on', 'off', 'On', null, 'blank']), ...drawn(AWAY), ...drawn(BACK),
+            ...drawn({ [DEV_KEY]: 'on' }), ...drawn(AWAY),
+        ],
+    },
+    // A page nav lit while its page shows, in its own accent or the theme's.
+    lit_navs: {
+        ...FACE,
+        ui: pinUi('navs', [
+            pinPage('home', {
+                elements: [
+                    ...['#fff', '#1976D2', 'rgb(0 0 0)', 'teal', undefined].map((accent, i) =>
+                        pinNav(`n${i}`, 'home', { highlight_current: true, style: accent === undefined ? undefined : { accent_color: accent } })),
+                    pinNav('n_look', 'home', { highlight_current: true, style: { accent_color: '#ffff00' }, bindings: { show: { look: STATES_LOOK() } } }),
+                    pinNav('n_other', 'other', { highlight_current: true }),
+                ],
+            }),
+            pinPage('other', { elements: [pinNav('o1', 'home', { highlight_current: true })] }),
+        ]),
+        steps: [['accent', '#00E676'], ['render'], ...drawn({ [DEV_KEY]: 'on' }), ['nav', 'other'], ['accent', null], ['nav', 'home']],
+    },
+};
+
+Object.assign(tests, {
+    async button_faces_and_looks_draw_as_today() {
+        const got = await driveCases({}, BUTTON_CASES);
+        comparePins('button', got, BUTTON_PINS.button);
+    },
+});
+
+// --- What a label's words say ---------------------------------------------------
+//
+// A label's own text, plain and rich; a bound value through every kind of
+// reading with and without a format, rounded or not; a text condition; the
+// device away and back; on the panel and on the design canvas, where each
+// word says which field it came from; and a script's override of a rich
+// label. Compared with panel_label_pins.json, recorded from the code before
+// it moved.
+
+const LABEL_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_label_pins.json'), 'utf8'));
+const VALUE_KEY = 'device.d1.level';
+const valued = (id, value, extra) => pinLabel(id, { bindings: { show: { value: { key: VALUE_KEY, ...value } } }, ...extra });
+const RICH = { white_space: 'pre-wrap' };
+const labelControls = () => [
+    pinLabel('own_plain', { text: 'Plain <b>not bold</b> & **stars**' }),
+    pinLabel('own_rich', { text: 'Rich **bold** and *it* <script>x</script> a<b & c>d **un*closed', style: RICH }),
+    pinLabel('own_rich_nl', { text: 'line one\n**two**', style: { white_space: 'pre-line' } }),
+    pinLabel('own_empty', { text: '' }), pinLabel('own_none', { text: undefined }),
+    valued('bare', {}), valued('bare_rich', {}, { style: RICH }),
+    valued('fmt', { format: 'Amp draw: {value} A' }), valued('fmt_twice', { format: '{value}/{value} $& $1' }),
+    valued('fmt_none', { format: 'No placeholder' }), valued('fmt_rich', { format: '**{value}** dB' }, { style: RICH }),
+    valued('fmt_num', { format: 5 }),
+    valued('dec2', { format: '{value} A' }, { display_decimals: 2 }), valued('dec0', {}, { display_decimals: 0 }),
+    valued('dec_neg', {}, { display_decimals: -3 }), valued('dec_huge', {}, { display_decimals: 999 }),
+    valued('dec_word', {}, { display_decimals: 'lots' }), valued('dec_str', {}, { display_decimals: '1' }),
+    valued('dec_frac', {}, { display_decimals: 1.6 }),
+    valued('cond', { condition: { equals: '1' }, text_true: 'ON', text_false: 'OFF' }),
+    valued('cond_word', { condition: { equals: 'True' }, text_true: 'Yes' }),
+    valued('cond_null', { condition: { equals: 'null' }, text_true: 'is null', text_false: 'not null' }),
+    valued('cond_fmt', { condition: { equals: 'on' }, text_true: 'On', text_false: 'Off', format: 'ignored {value}' }),
+    valued('cond_rich', { condition: { equals: 1 }, text_true: '**hot**', text_false: '*cold*' }, { style: RICH }),
+    valued('cond_empty', { condition: {}, text_true: 'T', text_false: 'F' }),
+    valued('cond_false', { condition: false, format: '{value}!' }),
+    // A rich label whose condition names no words, and decimals set to null.
+    valued('cond_rich_none', { condition: { equals: 1 } }, { style: RICH }),
+    valued('dec_null', {}, { display_decimals: null }),
+];
+const LABEL_READINGS = [0.06000000238418579, 1, '1', 0, -2.5, 'text 2.10', true, false, null, '=gone', 1e21, -0, 'True', 'on',
+    'null', '', '$&', 3, 3, NaN, Infinity, 'on'];
+
+const LABEL_CASES = {
+    // Every label through every kind of reading, the device away and back.
+    labels_through_readings: {
+        ...FACE,
+        ui: onePage('labels', labelControls()),
+        steps: [...readingsOf(VALUE_KEY, LABEL_READINGS), ...drawn(AWAY), ...drawn({ [VALUE_KEY]: 7 }), ...drawn(BACK),
+            ...drawn(AWAY), ...drawn(BACK)],
+    },
+    // The same on the design canvas: where an edit of each word goes.
+    labels_on_the_canvas: {
+        ...FACE, edit: true, embedded: true,
+        ui: onePage('labels', labelControls()),
+        steps: [...readingsOf(VALUE_KEY, [1, null, 'on', 0.5]), ...drawn(AWAY), ...drawn(BACK)],
+    },
+    // A label that starts with its device away, and one that starts with a reading.
+    labels_start_away: { ...FACE, state: { ...AWAY, [VALUE_KEY]: 1 }, ui: onePage('labels', labelControls()) },
+    labels_start_read: { ...FACE, state: { [VALUE_KEY]: 2.345 }, ui: onePage('labels', labelControls()) },
+    // A script writes a rich label's words and takes them away again.
+    rich_label_overridden: {
+        ...FACE,
+        ui: onePage('labels', [pinLabel('r1', { text: '**own**', style: RICH }), pinLabel('r2', { text: 'plain' })]),
+        steps: [...drawn({ 'ui.r1.label': 'A **b** <i>c</i>', 'ui.r2.label': '**not** rich' }),
+            ['msg', { type: 'state.delete', keys: ['ui.r1.label', 'ui.r2.label'] }], ['raf']],
+    },
+};
+
+Object.assign(tests, {
+    async label_words_draw_as_today() {
+        const got = await driveCases({}, LABEL_CASES);
+        comparePins('label', got, LABEL_PINS.label);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

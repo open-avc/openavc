@@ -394,6 +394,16 @@ SCENARIOS = [
     # Every frame the server sends, and the connection going and coming
     # back, pinned whole (tests/fixtures/panel_message_pins.json).
     "server_frames_handled_as_today",
+    # A button's face in every display mode, its look in both forms through
+    # every kind of reading and with its device away, the camera preset that
+    # borrows it, a toggle's light and words, and the lit look's accent and
+    # text colour on a toggle and a page nav, pinned whole
+    # (tests/fixtures/panel_button_pins.json).
+    "button_faces_and_looks_draw_as_today",
+    # A label's own text, plain and rich, and a bound value with and without a
+    # format, rounded or not, a text condition, the device away, on the panel
+    # and the canvas, pinned whole (tests/fixtures/panel_label_pins.json).
+    "label_words_draw_as_today",
 ]
 
 
