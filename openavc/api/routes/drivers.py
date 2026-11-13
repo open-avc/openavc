@@ -832,13 +832,14 @@ def _register_bundle_main(main_path: Path) -> str:
 
 def _installed_definition_entry(filepath: Path) -> dict[str, Any] | None:
     """An ``.avcdriver`` in the driver folder as Installed lists it: by its own
-    id, name and version; by its file name when it cannot be read or parsed;
-    and not at all when it parses to something other than a mapping."""
+    id, name and version; by its file name when it cannot be read, decoded as
+    UTF-8 (``UnicodeDecodeError`` is a ``ValueError``) or parsed; and not at
+    all when it parses to something other than a mapping."""
     import yaml
 
     try:
         data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError):
+    except (yaml.YAMLError, OSError, ValueError):
         data = {}
     else:
         if not isinstance(data, dict):

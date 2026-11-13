@@ -687,11 +687,21 @@ async def test_installed_matches_a_python_driver_by_its_name_inside_the_module_n
     ]}
 
 
-async def test_installed_raises_on_a_definition_that_is_not_utf8(installed):
+async def test_installed_lists_a_definition_that_is_not_utf8_by_its_file_name(installed):
+    """A definition saved in another encoding is listed the way an unreadable
+    one is, and the rest of the list still answers."""
     (installed.repo / "acme_widget.avcdriver").write_bytes(b"id: acme_widget\nname: Caf\xe9\n")
+    (installed.repo / "acme_gadget.avcdriver").write_text(
+        yaml.safe_dump({"id": "acme_gadget", "name": "Acme Gadget", "version": "1.0.0"}), encoding="utf-8")
 
-    with pytest.raises(UnicodeDecodeError):
-        await INSTALL_ROUTES.list_installed_community_drivers()
+    answer = await INSTALL_ROUTES.list_installed_community_drivers()
+
+    assert answer == {"drivers": [
+        {"id": "acme_gadget", "name": "Acme Gadget", "format": "avcdriver", "filename": "acme_gadget.avcdriver",
+         "version": "1.0.0"},
+        {"id": "acme_widget", "name": "acme_widget", "format": "avcdriver", "filename": "acme_widget.avcdriver",
+         "version": ""},
+    ]}
 
 
 # --- GET /drivers/{id}/help ------------------------------------------------------
