@@ -180,21 +180,24 @@ const { RENDERERS, EVALUATORS } = await import(process.argv[1]);
 const reached = (table) => {
     const out = {};
     for (const [type, draw] of table) {
-        const calls = [];
+        const steps = [];
         // What the row was handed says when anything looks at it or writes to it.
-        const touch = (how) => (_, name) => { calls.push([`${how} ${String(name)} of what it was handed`, false, false]); return undefined; };
+        const touch = (how, answer) => (_, name) => { steps.push([`${how} ${String(name)} of what it was handed`]); return answer; };
         const handed = new Proxy({}, {
-            get: touch('read'), has: touch('asked for'), set: touch('wrote'), deleteProperty: touch('deleted'),
-            defineProperty: touch('defined'), getOwnPropertyDescriptor: touch('described'),
-            ownKeys: () => { calls.push(['listed the keys of what it was handed', false, false]); return []; },
+            get: touch('read', undefined), has: touch('asked for', false), getOwnPropertyDescriptor: touch('described', undefined),
+            set: touch('wrote', true), deleteProperty: touch('deleted', true), defineProperty: touch('defined', true),
+            ownKeys: () => { steps.push(['listed the keys of what it was handed']); return []; },
+            getPrototypeOf: () => { steps.push(['asked the prototype of what it was handed']); return null; },
         });
+        // The panel says every name a row looks up on it, and every call.
         const app = new Proxy({}, {
-            get: (_, name) => function (...args) {
-                calls.push([String(name), this === app, args.length === 1 && args[0] === handed]);
+            get: (_, name) => {
+                steps.push(['looked up', String(name)]);
+                return function (...args) { steps.push(['called', String(name), this === app, args.length === 1 && args[0] === handed]); };
             },
         });
         draw(app, handed);
-        out[type] = calls;
+        out[type] = steps;
     }
     return out;
 };
@@ -206,25 +209,26 @@ console.log(JSON.stringify({ renderers: reached(RENDERERS), evaluators: reached(
 def dispatch_tables(panel_method_bodies: dict[str, str]) -> dict[str, dict[str, str]]:
     """The panel's two lookups (modules/dispatch.js), run: the method each type reaches.
 
-    Run under Node against a stand-in panel that notes every method a row
-    calls, and a stand-in definition or binding that notes anything a row
-    reads from it or writes to it. A row has to call one method of the panel,
-    on the panel, with what it was handed, without looking at it: a row that
-    did more, or chose its method by what it was handed, would draw something
-    these tables cannot see, so it fails here by name, as does a row naming a
-    method the panel does not have. Only the path a row takes for this
-    stand-in is seen; a row that branched on something other than what it was
-    handed would still be read along one branch.
+    Run under Node against a stand-in panel that notes every name a row looks
+    up on it and every call, and a stand-in definition or binding that notes
+    anything a row reads from it or writes to it. A row has to look up one
+    method of the panel and call it, on the panel, with what it was handed,
+    without looking at it: a row that did more, or chose its method by what it
+    was handed or by the panel's state, would draw something these tables
+    cannot see, so it fails here by name, as does a row naming a method the
+    panel does not have. Only the path a row takes for these stand-ins is
+    seen; a row that branched on something outside both would still be read
+    along one branch.
     """
     tables: dict[str, dict[str, str]] = {}
     for table, rows in _run_panel_module(_DISPATCH_SCRIPT, "dispatch.js").items():
         named: dict[str, str] = {}
-        for bind_type, calls in rows.items():
-            assert len(calls) == 1 and calls[0][1:] == [True, True], (
-                f"{table} row {bind_type!r} must call one panel method with what it "
-                f"was handed and nothing else; it called {calls}"
+        for bind_type, steps in rows.items():
+            method = steps[0][1] if steps and steps[0][0] == "looked up" else None
+            assert steps == [["looked up", method], ["called", method, True, True]], (
+                f"{table} row {bind_type!r} must look up one panel method and call it, on "
+                f"the panel, with what it was handed, without looking at it; it did {steps}"
             )
-            method = calls[0][0]
             assert method in panel_method_bodies, (
                 f"{table} row {bind_type!r} calls {method}, which panel.js does not have"
             )

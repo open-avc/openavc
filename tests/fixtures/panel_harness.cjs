@@ -13027,27 +13027,59 @@ function dispatchBindings() {
 //
 // A binding registered with no evaluator is drawn once, from the definition,
 // and never again: the binding pass looks each binding's type up in EVALUATORS
-// (modules/dispatch.js) and passes over one it does not find. Every control
-// type is drawn here on a page, its show slots and its visibility bound, in
-// each form that registers something different (a toggle with no look of its
-// own, a label following a macro's progress, a Page Nav lit by its own page,
-// a dropdown coloured per option), and what the panel registered is compared
-// with the table, however the renderer wrote the registration. A macro's
-// progress line is the one type the pass leaves alone on purpose:
-// modules/macro_runs.js draws it. A row nothing here registered fails too: it
-// is an evaluator nothing reaches, or a control needs one more form below.
+// (modules/dispatch.js) and passes over one it does not find. Two nets, each
+// covering what the other cannot see, and both compared with the table:
+//
+// * what the panel registers when it draws. Every control type on a page,
+//   every show slot the page review says any control reads bound on it (from
+//   the generated table CI holds to page_review.py, so a new slot is bound
+//   without editing this), its visibility bound, and the forms that register
+//   something else (a toggle with no look of its own, a label following a
+//   macro's progress, a Page Nav lit by its own page, a routed matrix). It
+//   sees a registration however and wherever it is written, but only on the
+//   paths these controls take.
+// * every type written into a registration anywhere in the panel's code, a
+//   statement naming `elementDef` and a `type:`, panel.js and its modules
+//   alike. It sees a path nothing here draws, but only registrations written
+//   that way.
+//
+// A macro's progress line is the one type the pass leaves alone on purpose:
+// modules/macro_runs.js draws it. A row nothing drawn here registered fails
+// too: it is an evaluator nothing reaches, or a control needs one more form.
 
 /** Types a control registers that the binding pass leaves to someone else. */
 const DRAWN_ELSEWHERE = ['macro_progress'];
 
-/** Every control type, each slot bound, and the forms that register something else. */
+/** Each control type's show slots, as the page review says the panel reads them (uiBindingReach.gen.ts). */
+function honoredShowSlots() {
+    const gen = fs.readFileSync(path.join(__dirname, '..', '..', 'openavc', 'web', 'programmer', 'src', 'api', 'uiBindingReach.gen.ts'), 'utf8');
+    const start = gen.indexOf('{', gen.indexOf('export const HONORED_SHOW_SLOTS'));
+    return JSON.parse(gen.slice(start, gen.indexOf('\n}', start) + 2));
+}
+
+/** Every binding type written into a registration in the panel's code: a statement naming `elementDef` and a `type:`. */
+function typesWrittenIntoRegistrations() {
+    const modules = path.join(panelDir, 'modules');
+    const files = [panelPath, ...fs.readdirSync(modules).filter((f) => f.endsWith('.js')).map((f) => path.join(modules, f))];
+    const found = new Set();
+    for (const file of files) {
+        for (const statement of fs.readFileSync(file, 'utf8').split(';')) {
+            if (!/\belementDef\b/.test(statement)) continue;
+            for (const m of statement.matchAll(/\btype:\s*'([\w_]+)'/g)) found.add(m[1]);
+        }
+    }
+    return found;
+}
+
+/** Every control type, every slot any control reads bound on it, and the forms that register something else. */
 function everyRegistration(types) {
-    const show = {
+    const BOUND = {
         value: { key: 'var.v' },
         look: { key: 'var.l', states: { on: { bg_color: '#123456' } }, style_map: { on: { bg_color: '#123456' } } },
         items: { key_pattern: 'var.item_*' },
-        visible_when: { key: 'var.shown', operator: 'eq', value: true },
     };
+    const show = { visible_when: { key: 'var.shown', operator: 'eq', value: true } };
+    for (const slot of new Set(Object.values(honoredShowSlots()).flat())) show[slot] = BOUND[slot] || { key: `var.${slot}` };
     const elements = types.map((type) => ({ id: `all_${type}`, type, label: type, target_page: 'main', bindings: { show } }));
     elements.push(
         { id: 'toggle', type: 'button', label: 't', bindings: { do: { press: [{ action: 'state.set', key: 'var.t', mode: 'toggle', toggle_key: 'var.t', toggle_value: 'on' }] } } },
@@ -13067,10 +13099,13 @@ Object.assign(tests, {
         const app = mkApp();
         app.send = () => {};
         const logged = [];
-        loggingTo(logged, () => renderProject(app, project({ elements: everyRegistration([...RENDERERS.keys()]) })));
+        const drawn = loggingTo(logged, () => renderProject(app, project({ elements: everyRegistration([...RENDERERS.keys()]) })));
+        assert(!drawn.threw && logged.length === 0, `drawing every control threw or logged: ${drawn.threw} ${logged.join(' | ')}`);
         const registered = new Set(app.bindings.map((b) => b.type));
-        assert(registered.size > 10, `drew almost nothing: ${[...registered]} ${logged.join(' | ')}`);
-        const missing = [...registered].filter((t) => !EVALUATORS.has(t) && !DRAWN_ELSEWHERE.includes(t));
+        assert(registered.size > 10, `drew almost nothing: ${[...registered]}`);
+        const written = typesWrittenIntoRegistrations();
+        assert(written.size > 10, `the registration scan found almost nothing: ${[...written]}`);
+        const missing = [...new Set([...registered, ...written])].filter((t) => !EVALUATORS.has(t) && !DRAWN_ELSEWHERE.includes(t));
         assert(missing.length === 0, `registered with no evaluator: ${missing.join(', ')}`);
         const unreached = [...EVALUATORS.keys()].filter((t) => !registered.has(t));
         assert(unreached.length === 0, `an evaluator no control drawn here registered: ${unreached.join(', ')}`);
