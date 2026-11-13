@@ -24,10 +24,34 @@ import pytest
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
 from openavc.drivers.command_outcome import CommandOutcomeError
-from openavc.drivers.equipment import EquipmentDriver
+from openavc.drivers.equipment import _RESULT_POLL_S, EquipmentDriver
 from openavc.drivers.equipment_protocol import PROTOCOL
 
 ANSWER_WINDOW = 0.2
+# A wait, and a hardware delay, no test here lasts: a test that sets one can
+# only be ended by what it is about, never by a timer running out.
+LONGER_THAN_THE_TEST = 60
+# How long a test waits for something that should happen at once. It catches a
+# hang and nothing else: every command commits its ID to disk before it is
+# sent, which a loaded CI runner has taken more than three seconds over.
+HANG = 30
+
+
+async def first_read(command, state):
+    """Wait until the equipment is asked for ``command``'s outcome.
+
+    A command that ends first fails the test with its own error, not as a
+    timeout.
+    """
+    reading = asyncio.ensure_future(state["read_ids"].get())
+    await asyncio.wait({reading, command}, timeout=HANG, return_when=asyncio.FIRST_COMPLETED)
+    if reading.done():
+        return reading.result()
+    reading.cancel()
+    if command.done():
+        command.result()
+        raise AssertionError("the command finished before its outcome was read")
+    raise AssertionError("the command's outcome was never read")
 
 
 @pytest.fixture
@@ -171,7 +195,11 @@ async def test_the_wait_is_the_devices_own_setting(peer):
     started = time.monotonic()
     with pytest.raises(CommandOutcomeError) as unconfirmed:
         await driver.send_command("increment")
-    assert 0.4 < time.monotonic() - started < 1.5
+    assert time.monotonic() - started > 0.4
+    # It stopped at its own half second, not the 5 s default. Counted, not
+    # timed: the outcome is read about once per poll, so the default would read
+    # some fifty times, and a slow runner only ever reads fewer.
+    assert 1 <= len(state["reads"]) <= 2 * 0.5 / _RESULT_POLL_S
     assert unconfirmed.value.outcome == "uncertain"
     assert str(unconfirmed.value) == (
         "The product did not confirm the command finished within 0.5 seconds. "
@@ -195,15 +223,13 @@ async def test_a_wait_of_zero_answers_with_the_products_first_reply(peer):
 @pytest.mark.asyncio
 async def test_a_new_equipment_session_ends_the_wait_without_sending_again(peer):
     connect, state = peer
-    driver = await connect()
-    state["delay"] = 5
-    restarted_at = []
+    driver = await connect(completion_wait=LONGER_THAN_THE_TEST)
+    state["delay"] = LONGER_THAN_THE_TEST
 
     async def restart():
         # Change the session only after a command was accepted and the client
         # is reading its pending outcome, never during durable ID reservation.
-        await asyncio.wait_for(state["read_ids"].get(), 5)
-        restarted_at.append(time.monotonic())
+        await asyncio.wait_for(state["read_ids"].get(), HANG)
         state["session"] = "second"
 
     restarting = asyncio.create_task(restart())
@@ -211,31 +237,35 @@ async def test_a_new_equipment_session_ends_the_wait_without_sending_again(peer)
         await driver.send_command("increment")
     await restarting
     assert unconfirmed.value.outcome == "uncertain"
-    assert time.monotonic() - restarted_at[0] < 2
+    # The new session ended it: only a wait that runs out says how long it waited.
+    assert "within" not in str(unconfirmed.value)
     assert len(state["posts"]) == 1
 
 
 @pytest.mark.asyncio
 async def test_a_result_the_equipment_no_longer_holds_is_unconfirmed(peer):
     connect, state = peer
-    driver = await connect()
-    state.update(delay=5, forget=True)
-    started = time.monotonic()
+    driver = await connect(completion_wait=LONGER_THAN_THE_TEST)
+    state.update(delay=LONGER_THAN_THE_TEST, forget=True)
     with pytest.raises(CommandOutcomeError) as unconfirmed:
         await driver.send_command("increment")
     assert unconfirmed.value.outcome == "uncertain"
-    assert time.monotonic() - started < 1
+    # The equipment's answer ended it: only a wait that runs out says how long
+    # it waited.
+    assert "within" not in str(unconfirmed.value)
+    assert state["reads"]
     assert len(state["posts"]) == 1
 
 
 @pytest.mark.asyncio
 async def test_a_second_command_is_sent_while_the_first_is_waiting(peer):
     connect, state = peer
-    driver = await connect()
+    # Only the release below may end the first command's wait.
+    driver = await connect(completion_wait=LONGER_THAN_THE_TEST)
     completion = state["completion_gate"] = asyncio.Event()
     first = asyncio.create_task(driver.send_command("increment"))
     try:
-        await asyncio.wait_for(state["read_ids"].get(), 5)
+        await first_read(first, state)
         state["completion_gate"] = None
         # The first result cannot complete before this explicit release. This
         # tests lock ownership rather than scheduler/filesystem speed.

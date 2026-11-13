@@ -183,7 +183,10 @@ async def test_open_cancellation_closes_on_the_worker_and_releases_lease(tmp_pat
     journal = AsyncRequestJournal()
     opening = asyncio.create_task(journal.open(tmp_path, 'unit'))
     try:
-        assert await asyncio.to_thread(entered.wait, 3)
+        # Set only once the real open has created and committed the journal on
+        # disk, which a loaded CI runner has taken more than three seconds
+        # over: the timeout catches a hang, never the disk's speed.
+        assert await asyncio.to_thread(entered.wait, 30)
         opening.cancel()
         with pytest.raises(asyncio.CancelledError):
             await opening

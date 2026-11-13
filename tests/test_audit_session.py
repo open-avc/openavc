@@ -355,11 +355,18 @@ async def test_an_idle_session_ends_and_resumes_its_devices(dm, core):
 
 
 async def test_a_request_keeps_a_session_alive():
-    manager = AuditManager(None, idle_timeout=0.15, idle_check_seconds=0.02)
+    # The idle clock is the test's: six steps of 0.1 s, each under the timeout
+    # but four times past it in all, so only the touches keep it alive however
+    # slowly the runner wakes the watch. The real sleeps only let the watch look.
+    now = [0.0]
+    manager = AuditManager(None, idle_timeout=0.15, idle_check_seconds=0.02,
+                           clock=lambda: now[0])
     session = await manager.start(TARGET)
     for _ in range(6):
+        now[0] += 0.1
         await asyncio.sleep(0.05)
         session.touch()
+    await asyncio.sleep(0.05)
     assert session.status == ACTIVE
     await manager.shutdown()
     assert session.status == SHUTDOWN
