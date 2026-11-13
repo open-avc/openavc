@@ -41,6 +41,9 @@ import { toggleLit, toggleNamesWords, toggleWords } from './modules/toggle.js';
 import { litStyle } from './modules/lit.js';
 import { richText, valueWords } from './modules/label.js';
 import { showPicture } from './modules/image.js';
+import {
+    drawNavFace, markCurrent, navLook, navWords, showsItsPage,
+} from './modules/nav.js';
 import { drawIcon, iconNode, removeWords, showWords } from './modules/words.js';
 import { isShown, visibilityOf } from './modules/visibility.js';
 import {
@@ -1595,22 +1598,14 @@ class PanelApp {
         el.className = 'panel-element panel-page-nav';
         el.dataset.elementId = element.id;
 
-        if (element.target_page) {
-            el.textContent = element.label || element.target_page;
-            el.setAttribute('aria-label', `Navigate to ${element.label || element.target_page}`);
-            this._textEditor.recordSource(el, ['label']);
-            el.addEventListener('click', () => {
-                // The server replies with ui.navigate to this panel only.
-                // Moving here too opens overlays twice and consumes two Back
-                // steps. All moves use the reply handler, including $back.
-                this.send({ type: 'ui.page', page_id: element.target_page });
-            });
-        } else {
-            el.textContent = element.label || 'No Target';
-            this._textEditor.recordSource(el, ['label']);
-            el.disabled = true;
-            el.style.opacity = '0.5';
-        }
+        // Its name and its press (modules/nav.js).
+        drawNavFace(el, element, {
+            wordsFrom: (node) => this._textEditor.recordSource(node, ['label']),
+            // The server replies with ui.navigate to this panel only. Moving
+            // here too opens overlays twice and consumes two Back steps. All
+            // moves use the reply handler, including $back.
+            go: (pageId) => this.send({ type: 'ui.page', page_id: pageId }),
+        });
 
         applyStyle(el, this.theme.styleFor(element.type, element.style));
         drawIcon(el, element);
@@ -1637,22 +1632,6 @@ class PanelApp {
             }
         }
         return el;
-    }
-
-    /**
-     * Whether a Page Nav set to light up has its page on this panel's screen:
-     * the page itself, or an overlay or sidebar open over it.
-     *
-     * From this panel's own `currentPage` and overlay stack, never from state.
-     * State reaches every panel in the building, and one tablet changing page
-     * must not light the tabs on another.
-     */
-    _navShowsItsPage(elementDef) {
-        if (!elementDef.highlight_current) return false;
-        const target = elementDef.target_page;
-        // `$back` and `$dismiss` are moves, not places.
-        if (!target || target.startsWith('$')) return false;
-        return this.currentPage === target || this.overlayStack.includes(target);
     }
 
     /**
@@ -2567,29 +2546,22 @@ class PanelApp {
         const { element, elementDef, binding } = b;
         const rest = this.theme.styleFor(elementDef.type, elementDef.style || {});
         const offline = this.availability.markReading(b);
+        const look = navLook(binding, this.state[binding.key], offline);
 
-        const { appearance, wordsPath } = binding.key && !offline
-            ? withTwoStateWords(binding, pickLook(binding, this.state[binding.key]))
-            : { appearance: {}, wordsPath: ['label'] };
-
-        const lit = this._navShowsItsPage(elementDef);
+        const lit = showsItsPage(elementDef, this.currentPage, this.overlayStack);
         clearStateColours(element, rest);
         applyStyle(element, {
-            ...rest, ...appearance, ...(lit ? litStyle(elementDef.style) : {}),
+            ...rest, ...look.appearance, ...(lit ? litStyle(elementDef.style) : {}),
         });
-        element.classList.toggle('nav-current', lit);
-        if (lit) element.setAttribute('aria-current', 'page');
-        else element.removeAttribute('aria-current');
+        markCurrent(element, lit);
 
         // Words and icon only where a look can change them. A nav that only
         // lights keeps what it drew, so a `ui.<id>.label` a script set is not
         // written over on every page change.
         if (!binding.key) return;
-        const named = appearance.label !== undefined;
-        this._setLabelText(element,
-            named ? String(appearance.label) : (elementDef.label || elementDef.target_page || ''),
-            named ? wordsPath : ['label']);
-        this._drawLookIcon(element, elementDef, appearance);
+        const [words, path] = navWords(elementDef, look);
+        this._setLabelText(element, words, path);
+        this._drawLookIcon(element, elementDef, look.appearance);
     }
 
     /**
