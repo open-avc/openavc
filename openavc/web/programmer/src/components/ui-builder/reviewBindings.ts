@@ -29,8 +29,8 @@ import { showOf, type ReviewFinding } from "./reviewFinding";
 /** Every type the panel has a renderer for.
  *
  *  Read off the generated binding-reach table rather than listed again: a test
- *  re-derives that table's keys from `renderElement`'s dispatch in panel.js, so
- *  this IS the renderer's own set. */
+ *  re-derives that table's keys from the panel's renderer table (`RENDERERS` in
+ *  openavc/web/panel/modules/dispatch.js), so this IS the renderer's own set. */
 const RENDERED_TYPES = new Set(Object.keys(HONORED_SHOW_SLOTS));
 
 /**

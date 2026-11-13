@@ -61,6 +61,7 @@ import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
 } from './modules/fields.js';
 import { installSessionBridge } from './modules/session.js';
+import { EVALUATORS, RENDERERS } from './modules/dispatch.js';
 
 // The Programmer's sign-in, carried on every /api request and the socket
 // when the IDE embeds this panel; installed before anything fetches.
@@ -1285,31 +1286,12 @@ class PanelApp {
         return el;
     }
 
+    /** The control drawn by its type's renderer (modules/dispatch.js); an unknown type is logged and draws nothing. */
     _renderElementOfType(element) {
-        switch (element.type) {
-            case 'button':        return this.renderButton(element);
-            case 'label':         return this.renderLabel(element);
-            case 'status_led':    return this.renderStatusLed(element);
-            case 'slider':        return this.renderSlider(element);
-            case 'page_nav':      return this.renderPageNav(element);
-            case 'select':        return this.renderSelect(element);
-            case 'text_input':    return this.renderTextInput(element);
-            case 'image':         return this.renderImage(element);
-            case 'camera_preset': return this.renderCameraPreset(element);
-            case 'list':          return this.renderList(element);
-            case 'matrix':        return this.renderMatrix(element);
-            case 'gauge':         return this.renderGauge(element);
-            case 'level_meter':   return this.renderLevelMeter(element);
-            case 'fader':         return this.renderFader(element);
-            case 'group':         return this.renderGroup(element);
-            case 'clock':         return this.renderClock(element);
-            case 'keypad':        return this.renderKeypad(element);
-            case 'plugin':        return this.renderPluginElement(element);
-            case 'custom':        return this.renderCustomElement(element);
-            default:
-                console.warn('Unknown element type:', element.type);
-                return null;
-        }
+        const render = RENDERERS.get(element.type);
+        if (render) return render(this, element);
+        console.warn('Unknown element type:', element.type);
+        return null;
     }
 
     /** End a button's hold-repeat: a held button sends its press on a timer
@@ -2324,71 +2306,14 @@ class PanelApp {
     }
 
     /**
-     * Draw one binding from current state.
+     * Draw one binding from current state, by its type's evaluator
+     * (modules/dispatch.js); a type with no evaluator draws nothing.
      *
      * Shared with the refusal revert, which needs exactly this and none of the
      * incremental filtering around it. Each renderer protects active gestures.
      */
     _evaluateBinding(b) {
-        switch (b.type) {
-            case 'visible_when':
-                this.evaluateVisibleWhen(b);
-                break;
-            case 'feedback':
-                this.evaluateFeedback(b);
-                break;
-            case 'toggle_look':
-                this.evaluateToggleLook(b);
-                break;
-            case 'label_look':
-                this.evaluateLabelLook(b);
-                break;
-            case 'image_look':
-                this.evaluateImageLook(b);
-                break;
-            case 'nav_look':
-                this.evaluateNavLook(b);
-                break;
-            case 'group_look':
-                this.evaluateGroupLook(b);
-                break;
-            case 'text':
-                this.evaluateText(b);
-                break;
-            case 'color':
-                this.evaluateColor(b);
-                break;
-            case 'slider_value':
-                this.evaluateSliderValue(b);
-                break;
-            case 'select_value':
-                this.evaluateSelectValue(b);
-                break;
-            case 'select_look':
-                this.evaluateSelectLook(b);
-                break;
-            case 'text_input_value':
-                this.evaluateTextInputValue(b);
-                break;
-            case 'gauge_value':
-                this.evaluateGaugeValue(b);
-                break;
-            case 'level_meter_value':
-                this.evaluateLevelMeterValue(b);
-                break;
-            case 'fader_value':
-                this.evaluateFaderValue(b);
-                break;
-            case 'matrix_routes':
-                this.evaluateMatrixRoutes(b);
-                break;
-            case 'list_items':
-                this.evaluateListItems(b);
-                break;
-            case 'list_selected':
-                this.evaluateListSelected(b);
-                break;
-        }
+        EVALUATORS.get(b.type)?.(this, b);
     }
 
     /** Draw every control's ui.<id>.* overrides from current state (modules/overrides.js). */

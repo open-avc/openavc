@@ -149,8 +149,9 @@ HONORED_SHOW_SLOTS: dict[str, frozenset[str]] = {
 #:
 #: Derived from the table above rather than written out again:
 #: ``tests/test_ui_page_review_mirrors.py`` re-derives that table's keys from
-#: ``renderElement``'s dispatch, so this IS the renderer's own set, and a type
-#: added to the panel without a row above fails that test before it reaches here.
+#: the panel's renderer table (``RENDERERS`` in openavc/web/panel/modules/dispatch.js),
+#: so this IS the renderer's own set, and a type added to the panel without a
+#: row above fails that test before it reaches here.
 RENDERED_TYPES = frozenset(HONORED_SHOW_SLOTS)
 
 #: Types whose ``look`` binding renders per-state TEXT. Everything else that

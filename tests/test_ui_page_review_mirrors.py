@@ -66,7 +66,6 @@ BUILDER_DIR = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "compone
 # the end of the file and picks up every `show.` in every evaluator.
 _METHOD = re.compile(r"^    (?:async\s+)?([A-Za-z_$][\w$]*)\s*\(")
 _SHOW_SLOT = re.compile(r"bindings\??\.\s*show\??\.\s*(\w+)")
-_DISPATCH = re.compile(r"case '([\w_]+)':\s*return this\.(\w+)\(element\);")
 
 # `visible_when` is registered for every element from the page tree rather than
 # from any render function, so it is honored everywhere and is not in the table.
@@ -164,15 +163,84 @@ def _modules_handed_the_element(body: str, imported: dict[str, str]) -> set[str]
     return found
 
 
+def _run_panel_module(script: str, module: str, *args: str):
+    """What ``script`` prints, as JSON, run under Node with the panel module's URL and ``args`` after it."""
+    if shutil.which("node") is None:
+        gates.skip_or_fail(gates.NODE, "node not installed")
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", script, (PANEL_JS.parent / "modules" / module).as_uri(), *args],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+_DISPATCH_SCRIPT = """
+const { RENDERERS, EVALUATORS } = await import(process.argv[1]);
+const reached = (table) => {
+    const out = {};
+    for (const [type, draw] of table) {
+        const handed = {};
+        const calls = [];
+        const app = new Proxy({}, {
+            get: (_, name) => function (...args) {
+                calls.push([String(name), this === app, args.length === 1 && args[0] === handed]);
+            },
+        });
+        draw(app, handed);
+        out[type] = calls;
+    }
+    return out;
+};
+console.log(JSON.stringify({ renderers: reached(RENDERERS), evaluators: reached(EVALUATORS) }));
+"""
+
+
 @pytest.fixture(scope="module")
-def renderer_by_type(panel_method_bodies: dict[str, str]) -> dict[str, str]:
-    # renderElement registers what it draws; the per-type switch is its helper.
-    dispatch = dict(_DISPATCH.findall(panel_method_bodies["_renderElementOfType"]))
+def dispatch_tables(panel_method_bodies: dict[str, str]) -> dict[str, dict[str, str]]:
+    """The panel's two lookups (modules/dispatch.js), run: the method each type reaches.
+
+    Run under Node against a stand-in panel that notes every method a row
+    calls, rather than read out of the source, so a row is seen exactly as the
+    panel will use it however it is written. A row has to call one method of
+    the panel, on the panel, with what it was handed, and nothing else:
+    anything more would be drawing these tables cannot see, so it fails here
+    by name, as does a row naming a method the panel does not have.
+    """
+    tables: dict[str, dict[str, str]] = {}
+    for table, rows in _run_panel_module(_DISPATCH_SCRIPT, "dispatch.js").items():
+        named: dict[str, str] = {}
+        for bind_type, calls in rows.items():
+            assert len(calls) == 1 and calls[0][1:] == [True, True], (
+                f"{table} row {bind_type!r} must call one panel method with what it "
+                f"was handed and nothing else; it called {calls}"
+            )
+            method = calls[0][0]
+            assert method in panel_method_bodies, (
+                f"{table} row {bind_type!r} calls {method}, which panel.js does not have"
+            )
+            named[bind_type] = method
+        tables[table] = named
+    return tables
+
+
+@pytest.fixture(scope="module")
+def renderer_by_type(dispatch_tables: dict[str, dict[str, str]]) -> dict[str, str]:
+    # renderElement registers what it draws; RENDERERS says which renderer draws it.
+    dispatch = dispatch_tables["renderers"]
     assert len(dispatch) == len(HONORED_SHOW_SLOTS), (
         "the renderer dispatches "
         f"{sorted(dispatch)}, the review table covers {sorted(HONORED_SHOW_SLOTS)}"
     )
     return dispatch
+
+
+@pytest.fixture(scope="module")
+def evaluator_for(dispatch_tables: dict[str, dict[str, str]]) -> dict[str, str]:
+    """Each binding type's evaluator, from EVALUATORS."""
+    evaluators = dispatch_tables["evaluators"]
+    assert len(evaluators) > 10, "the evaluator table is almost empty -- the run is wrong"
+    return evaluators
 
 
 def test_every_type_reads_exactly_what_the_table_says(
@@ -211,6 +279,7 @@ def _evaluator_reach(evaluator: str, bodies: dict[str, str]) -> str:
 
 def test_only_the_state_text_types_can_draw_a_state_label(
     panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
+    evaluator_for: dict[str, str],
 ) -> None:
     """A look binding is honored for colour far more widely than for text.
 
@@ -239,7 +308,6 @@ def test_only_the_state_text_types_can_draw_a_state_label(
                 look_binding_type[el_type] = m.group(1)
     assert look_binding_type, "no renderer registers a show.look binding"
 
-    evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
     derived = frozenset(
         el_type for el_type, bind_type in look_binding_type.items()
         if "this._setLabelText(" in _evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies)
@@ -253,6 +321,7 @@ _DRAWS_ICON = re.compile(r"(?<!function )\bdrawIcon\(")
 
 def test_only_the_state_icon_types_can_draw_a_state_icon(
     panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
+    evaluator_for: dict[str, str],
 ) -> None:
     """Narrower again than the text one, and for a structural reason.
 
@@ -277,7 +346,6 @@ def test_only_the_state_icon_types_can_draw_a_state_icon(
                 look_binding_type[el_type] = m.group(1)
     assert look_binding_type, "no renderer registers a show.look binding"
 
-    evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
     derived = frozenset(
         el_type for el_type, bind_type in look_binding_type.items()
         if _DRAWS_ICON.search(_evaluator_reach(evaluator_for.get(bind_type, ""), panel_method_bodies))
@@ -294,6 +362,7 @@ _STATE_PICTURE_READ = re.compile(r"(?<!elementDef)(?<!elementDef\?)\.button_imag
 
 def test_only_the_state_image_types_can_draw_a_state_picture(
     panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
+    evaluator_for: dict[str, str],
 ) -> None:
     """A per-state picture appears only where the look's evaluator reads one.
 
@@ -312,7 +381,6 @@ def test_only_the_state_image_types_can_draw_a_state_picture(
                 look_binding_type[el_type] = m.group(1)
     assert look_binding_type, "no renderer registers a show.look binding"
 
-    evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
     derived = frozenset(
         el_type for el_type, bind_type in look_binding_type.items()
         if _STATE_PICTURE_READ.search(
@@ -351,7 +419,6 @@ _REGISTERED_BINDING = re.compile(r"type:\s*'([\w_]+)'")
 #: One ``this.bindings.push({ ... })`` call, so a registration's binding type
 #: can be read together with the slot it was registered from.
 _PUSH_BLOCK = re.compile(r"this\.bindings\.push\(\{.*?\}\);", re.S)
-_EVALUATOR = re.compile(r"case '([\w_]+)':\s*this\.(evaluate\w+)\(b\);", re.S)
 
 
 def _calls(body: str) -> list[tuple[str, str]]:
@@ -399,6 +466,7 @@ def _reachable(entry: str, bodies: dict[str, str], seen: set[str] | None = None)
 
 def test_every_type_reads_exactly_the_properties_the_table_says(
     panel_method_bodies: dict[str, str], renderer_by_type: dict[str, str],
+    evaluator_for: dict[str, str],
 ) -> None:
     """The property table, re-derived from the renderer it describes.
 
@@ -413,9 +481,6 @@ def test_every_type_reads_exactly_the_properties_the_table_says(
     about working authoring, which teaches the caller to ignore the field;
     one the table calls read that is NOT leaves the original silence in place.
     """
-    evaluator_for = dict(_EVALUATOR.findall("\n".join(panel_method_bodies.values())))
-    assert len(evaluator_for) > 10, "evaluator dispatch scan found almost nothing"
-
     derived: dict[str, frozenset[str]] = {}
     for el_type, fn_name in renderer_by_type.items():
         methods = _reachable(fn_name, panel_method_bodies)
@@ -686,15 +751,7 @@ console.log(JSON.stringify(out));
 
 def _panel_meanings() -> dict[str, str]:
     """Each spelling the panel's visible_when evaluates, by what it answers when run."""
-    if shutil.which("node") is None:
-        gates.skip_or_fail(gates.NODE, "node not installed")
-    proc = subprocess.run(
-        ["node", "--input-type=module", "-e", _OPERATORS_SCRIPT,
-         (PANEL_JS.parent / "modules" / "visibility.js").as_uri(), json.dumps(_PROBES)],
-        capture_output=True, text=True, timeout=60,
-    )
-    assert proc.returncode == 0, proc.stderr
-    answers = json.loads(proc.stdout)
+    answers = _run_panel_module(_OPERATORS_SCRIPT, "visibility.js", json.dumps(_PROBES))
     return {spelling: _MEANING_BY_ANSWERS.get(tuple(got), f"unread: {got}") for spelling, got in answers.items()}
 
 
