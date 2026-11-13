@@ -15,7 +15,10 @@ each row naming the attribute that holds its target and the method that sends.
 ``_sends_notifications`` (whether the device counts as pushing) and
 ``_deliver_notification`` (where a notification goes) both ask it, so the two
 cannot disagree. The targets are read when a notification goes out, never
-cached, so a target set after construction takes effect.
+cached, so a target set after construction takes effect. The one socket held
+for a channel by number is a stream device's listener sender, on its own
+number (start_listener_sender), which yaml_auto starts beside the stream
+server.
 
 ``PushChannels`` is a mixin of ``YAMLAutoSimulator``; the server bases provide
 the sends (``push``, ``push_datagram``, ``push_sse_event``,
@@ -86,6 +89,7 @@ class PushChannels:
     _last_client_addr: tuple[str, int] | None
     _udp_transport: Any
     _state: dict
+    _port: int
 
     # Before __init__ reaches its assignment (set_state can fire during
     # construction).
@@ -131,6 +135,9 @@ class PushChannels:
         # to the control link: a device set to send its changes to an address
         # sends them only there.
         self._push_udp_listener = self._resolve_push_udp_listener()
+        # The socket a stream device sends them from, held on its own number
+        # while it runs (start_listener_sender).
+        self._listener_sock: socket.socket | None = None
 
     # ── Resolving the push block ──
 
@@ -378,7 +385,7 @@ class PushChannels:
 
     def _close_push_channels(self) -> None:
         """Abandon in-flight dial-out notifications and close the multicast
-        socket."""
+        and listener senders."""
         for task in list(self._push_tcp_tasks):
             task.cancel()
         self._push_tcp_tasks.clear()
@@ -388,6 +395,34 @@ class PushChannels:
             except OSError:
                 pass
             self._mcast_sock = None
+        self._close_listener_sender()
+
+    async def start_listener_sender(self, port: int) -> None:
+        """Hold a UDP socket on ``port`` (0 = pick one) for a stream device's
+        listener packets to leave from, and take its number as this device's.
+
+        yaml_auto starts it as the UDP side of the device's one number
+        (side_receiver.start_on_one_port), because each packet must leave from
+        the number the stream server answers on, and Windows keeps blocks of
+        numbers for itself on UDP that are free on TCP: held from the start, a
+        refused number is traded for another before the device runs, where a
+        socket opened for each send would have every send refused."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.bind(("127.0.0.1", port))
+        except OSError:
+            sock.close()
+            raise
+        self._listener_sock = sock
+        self._port = sock.getsockname()[1]
+
+    async def stop_listener_sender(self) -> None:
+        self._close_listener_sender()
+
+    def _close_listener_sender(self) -> None:
+        if self._listener_sock is not None:
+            self._listener_sock.close()
+            self._listener_sock = None
 
     # ── Notifications ──
 

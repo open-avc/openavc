@@ -4,8 +4,9 @@ it holds, pinned as they behave today.
 
 The side receiver: a TCP or HTTP device with ``udp:`` commands also listens
 for datagrams on its own port number. ``start(0)`` promises one number both
-servers answer on, so the side that refuses a number picks the next one, up
-to five times; a number the caller named gets one try. A Wake-on-LAN magic
+servers answer on, so the side that refuses a number picks the next one, and
+once both picks are refused, numbers are drawn, up to twenty tries in all; a
+number the caller named gets one try. A Wake-on-LAN magic
 packet applies the ``sets`` of every magic-packet command; any other datagram
 runs through the command pipeline, its reply discarded.
 
@@ -22,10 +23,12 @@ check the order of calls and the error that escapes, not sockets.
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 
 import pytest
 
+from openavc.simulator import side_receiver
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 
 MAGIC = b"\xff" * 6 + bytes.fromhex("aabbccddeeff") * 16
@@ -140,31 +143,46 @@ def test_a_named_port_is_tried_once_and_the_refusal_escapes_with_the_stream_serv
     assert servers.calls == [("push_open",), ("stream", 4100), ("datagram", 4100)]
 
 
-def test_start_0_alternates_the_side_that_picks_and_gives_up_after_five_tries():
+@pytest.fixture
+def draws(monkeypatch):
+    """The numbers start(0) draws, in order from 50000."""
+    numbers = itertools.count(50000)
+    monkeypatch.setattr(side_receiver, "_draw_port", lambda: next(numbers))
+
+
+def test_start_0_draws_after_both_picks_and_gives_up_after_twenty_tries(draws):
     sim = _sim(_definition())
-    servers = _Servers(sim, refuse={"datagram": {1, 3, 5}, "stream": {2, 4}})
-    with pytest.raises(OSError, match="refused 40005"):
+    servers = _Servers(sim, refuse={"datagram": set(range(1, 21)) - {2}, "stream": {2}})
+    with pytest.raises(OSError, match="refused 50017"):
         _start(sim, 0)
-    # The last refusal escapes with the fifth pick's stream server still up.
+    # Each side picks once; then eighteen drawn numbers, the stream server
+    # first. The last refusal escapes with that number's stream server up.
+    drawn = [call for n in range(50000, 50018)
+             for call in (("stream", n), ("datagram", n), ("stop_stream",))]
     assert servers.calls == [
         ("push_open",),
         ("stream", 0), ("datagram", 40001), ("stop_stream",),
         ("datagram", 0), ("stream", 40002), ("stop_datagram",),
-        ("stream", 0), ("datagram", 40003), ("stop_stream",),
-        ("datagram", 0), ("stream", 40004), ("stop_datagram",),
-        ("stream", 0), ("datagram", 40005),
+        *drawn[:-1],
     ]
 
 
-def test_start_0_succeeds_on_its_fifth_try(caplog):
+def test_start_0_succeeds_on_a_drawn_number(caplog, draws):
     sim = _sim(_definition())
-    servers = _Servers(sim, refuse={"datagram": {1, 3}, "stream": {2, 4}})
+    servers = _Servers(sim, refuse={"datagram": {1, 3}, "stream": {2}})
     with caplog.at_level(logging.INFO, logger="openavc.simulator.yaml_auto"):
         _start(sim, 0)
-    assert servers.calls[-3:] == [("stop_datagram",), ("stream", 0), ("datagram", 40005)]
-    assert sim.port == 40005
-    assert sum(1 for c in servers.calls if c[0] in ("stream", "datagram")) == 10
-    assert f"{sim.name} also receives UDP side-sends on port 40005" in caplog.text
+    assert servers.calls[-3:] == [("stop_stream",), ("stream", 50001), ("datagram", 50001)]
+    assert sim.port == 50001
+    assert f"{sim.name} also receives UDP side-sends on port 50001" in caplog.text
+
+
+def test_a_drawn_number_the_stream_server_refuses_is_passed_over(draws):
+    sim = _sim(_definition())
+    servers = _Servers(sim, refuse={"datagram": {1}, "stream": {2, 3}})
+    _start(sim, 0)
+    assert servers.calls[-3:] == [("stream", 50000), ("stream", 50001), ("datagram", 50001)]
+    assert sim.port == 50001
 
 
 def test_a_refused_pick_of_the_first_server_escapes_at_once():

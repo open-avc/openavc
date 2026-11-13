@@ -14,8 +14,11 @@ knowing before changing anything here:
   in order, so when one server's pick sits in a block the other refuses, so
   do its next several picks; asking the same side again only walks the
   block. The side that refused picks the next number instead: a number a
-  protocol hands out itself is never one it keeps. A number the caller named
-  gets one try and is never traded.
+  protocol hands out itself is never one it keeps. When that pick is refused
+  too, both protocols' next numbers sit in blocks the other keeps, so the
+  rest are drawn at random from the dynamic range, which those blocks cover
+  only a small part of. A number the caller named gets one try and is never
+  traded.
 * **The last refusal escapes as it came**, with the server that picked that
   number still running; the caller's stop() closes it.
 * **A magic packet applies, a payload runs as a command.** A magic packet
@@ -33,12 +36,18 @@ for a number and what a magic packet applies, and yaml_auto runs the rest
 
 from __future__ import annotations
 
+import random
 import re
 from collections.abc import Awaitable, Callable, Iterator
 from typing import Any, NamedTuple
 
-#: How many numbers start(0) tries before a refusal stands.
-SIDE_PORT_ATTEMPTS = 5
+#: How many numbers start(0) tries before a refusal stands: one each server
+#: picks, then the rest drawn (DRAWN_PORTS).
+SIDE_PORT_ATTEMPTS = 20
+
+#: Where a drawn number comes from: the dynamic range Windows and macOS hand
+#: numbers out from.
+DRAWN_PORTS = (49152, 65535)
 
 #: What every Wake-on-LAN magic packet starts with: six 0xFF bytes, then the
 #: MAC sixteen times.
@@ -67,29 +76,67 @@ class Server(NamedTuple):
     stop: Callable[[], Awaitable[None]]
 
 
+class _Try(NamedTuple):
+    """One try at a number: ``picks`` starts on ``number``, then ``joins`` on
+    the number it bound."""
+
+    picks: Server
+    joins: Server
+    number: int
+
+
 async def start_on_one_port(
     stream: Server, datagram: Server, port: int, bound_port: Callable[[], int],
 ) -> None:
     """Start both servers on one number: the stream server on ``port``, then
     the datagram server on the number it bound (``bound_port``, read after
-    each start). On a refusal of that number the server that picked it is
-    stopped and the side that refused picks next, up to SIDE_PORT_ATTEMPTS
-    times for ``port`` 0 and once for a named number. The roles swap only
-    when ``port`` is 0, so whichever side picks asks for ``port``; letting a
-    named number retry would have the datagram side bind it first."""
-    attempts = SIDE_PORT_ATTEMPTS if port == 0 else 1
-    picks, joins = stream, datagram
-    for attempt in range(attempts):
-        await picks.start(port)
-        try:
-            await joins.start(bound_port())
-        except OSError:
-            if attempt == attempts - 1:
-                raise
-            await picks.stop()
-            picks, joins = joins, picks
-            continue
+    each start). A named number gets that one try. For ``port`` 0, on a
+    refusal of that number the server that picked it is stopped and the side
+    that refused picks next; when that is refused too, each further number
+    is drawn from DRAWN_PORTS and asked of the stream server, then the
+    datagram server, up to SIDE_PORT_ATTEMPTS numbers in all."""
+    if port != 0:
+        await _one_try(_Try(stream, datagram, port), bound_port, last=True)
         return
+    for attempt, one in enumerate(_tries(stream, datagram)):
+        last = attempt == SIDE_PORT_ATTEMPTS - 1
+        if await _one_try(one, bound_port, last=last):
+            return
+
+
+def _tries(stream: Server, datagram: Server) -> Iterator[_Try]:
+    """Who starts first and on which number, try by try for ``port`` 0: the
+    stream server picks, then the datagram server, then drawn numbers."""
+    yield _Try(stream, datagram, 0)
+    yield _Try(datagram, stream, 0)
+    for _ in range(SIDE_PORT_ATTEMPTS - 2):
+        yield _Try(stream, datagram, _draw_port())
+
+
+def _draw_port() -> int:
+    return random.randint(*DRAWN_PORTS)
+
+
+async def _one_try(
+    one: _Try, bound_port: Callable[[], int], *, last: bool,
+) -> bool:
+    """One try (_Try). False on a refusal, with ``picks`` stopped; the last
+    try's refusal escapes as it came, and so does a refused pick of 0 (a
+    server that may not pick any number)."""
+    try:
+        await one.picks.start(one.number)
+    except OSError:
+        if last or one.number == 0:
+            raise
+        return False
+    try:
+        await one.joins.start(bound_port())
+    except OSError:
+        if last:
+            raise
+        await one.picks.stop()
+        return False
+    return True
 
 
 def is_magic_packet(data: bytes) -> bool:

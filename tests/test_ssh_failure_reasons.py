@@ -304,8 +304,10 @@ class AcmeSshShellDriver(BaseDriver):
 
 
 class AcmeSshConsoleDriver(AcmeSshShellDriver):
-    """An invented device with no verify step whose handshake waits for its
-    prompt."""
+    """An invented device with no verify step whose handshake waits for a
+    prompt that never comes, so only the connection dropping ends it (a drop
+    cancels the handshake). A deadline of its own would race the refusal,
+    which Windows reports two seconds after the dial."""
 
     DRIVER_INFO = {
         **AcmeSshShellDriver.DRIVER_INFO,
@@ -316,8 +318,7 @@ class AcmeSshConsoleDriver(AcmeSshShellDriver):
     }
 
     async def _post_connect(self) -> None:
-        await asyncio.sleep(3.0)
-        raise ConnectionError(f"[{self.device_id}] No prompt")
+        await asyncio.Event().wait()
 
 
 @pytest.fixture
@@ -354,6 +355,12 @@ async def test_a_closed_ssh_port_reads_refused_from_the_first_attempt(
             **driver.DRIVER_INFO["default_config"],
             "host": "127.0.0.1", "port": port,
             "known_hosts_path": str(tmp_path / "known_hosts"),
+            # Windows refuses a closed port two seconds after the dial, and
+            # the client here is a Python process, so the default three-second
+            # verify can end first and read a refused device as connected.
+            # Verify returns the moment the client exits, so this only bounds
+            # a client that never does.
+            "verify_timeout": 60,
         },
     })
     # The refusal is read when the ssh client exits, which a slow machine

@@ -402,39 +402,58 @@ def test_start_0_lets_the_udp_side_pick_when_it_refuses_the_stream_servers_numbe
     assert woke, "the datagram reached the side receiver on the reported number"
 
 
-def test_start_0_goes_back_to_the_stream_side_when_it_refuses_the_udp_sides_number():
-    """The side that refused a number picks the next one, in either direction."""
+def test_start_0_draws_a_number_when_both_sides_refused_the_others_pick():
+    """The side that refused a number picks the next one; when that pick is
+    refused too, numbers are drawn and asked of both servers.
+
+    The test refuses the first datagram bind and the second stream bind, so
+    both picks are refused. Windows hands out each protocol's numbers in
+    order, so from there both sides' next picks would sit in the blocks just
+    refused; a drawn number does not. The machine may refuse a drawn number
+    too, so the order is checked on every round there was."""
     async def scenario():
         sim = YAMLAutoSimulator("d1", {}, driver_def=_definition())
-        real_datagram = sim.start_datagram_server
-        real_stream = sim._start_stream_server
-        datagram_asked: list[int] = []
-        stream_asked: list[int] = []
+        real = {"datagram": sim.start_datagram_server, "stream": sim._start_stream_server}
+        # Each bind in order: (side, number asked for, number bound or None).
+        binds: list[tuple[str, int, int | None]] = []
+        injected = {("datagram", 1), ("stream", 2)}  # (side, its nth bind)
 
-        async def refuse_the_first_datagram_bind(port):
-            datagram_asked.append(port)
-            if len(datagram_asked) == 1:
-                raise _refused(port)
-            await real_datagram(port)
+        def bind_on(side):
+            async def bind(port):
+                nth = 1 + sum(1 for s, _, _ in binds if s == side)
+                try:
+                    if (side, nth) in injected:
+                        raise _refused(port)
+                    await real[side](port)
+                except OSError:
+                    binds.append((side, port, None))
+                    raise
+                binds.append((side, port, sim.port))
+            return bind
 
-        async def refuse_the_second_stream_bind(port):
-            stream_asked.append(port)
-            if len(stream_asked) == 2:
-                raise _refused(port)
-            await real_stream(port)
-
-        sim.start_datagram_server = refuse_the_first_datagram_bind
-        sim._start_stream_server = refuse_the_second_stream_bind
+        sim.start_datagram_server = bind_on("datagram")
+        sim._start_stream_server = bind_on("stream")
         await sim.start(0)
         try:
-            return datagram_asked, stream_asked, sim.port, await _both_answer_on(sim)
+            return binds, sim.port, await _both_answer_on(sim)
         finally:
             await sim.stop()
 
-    datagram_asked, stream_asked, port, woke = asyncio.run(scenario())
-    # Stream picks, UDP refuses; UDP picks, stream refuses; stream picks again.
-    assert stream_asked[0] == 0 and stream_asked[1] != 0 and stream_asked[2:] == [0], stream_asked
-    assert datagram_asked[1] == 0 and datagram_asked[2:] == [port], datagram_asked
+    binds, port, woke = asyncio.run(scenario())
+    # Stream picks, UDP refuses; UDP picks, stream refuses.
+    s1, s2, s3, s4 = binds[:4]
+    assert s1[:2] == ("stream", 0) and s2 == ("datagram", s1[2], None), binds
+    assert s3[:2] == ("datagram", 0) and s4 == ("stream", s3[2], None), binds
+    # Then each drawn number: the stream server, and the datagram server on
+    # it when the stream server took it.
+    drawn = binds[4:]
+    assert drawn and all(asked != 0 for _, asked, _ in drawn), binds
+    for before, after in zip(drawn, drawn[1:]):
+        if before[0] == "stream" and before[2]:
+            assert after[:2] == ("datagram", before[2]), binds
+        else:
+            assert after[0] == "stream", binds
+    assert drawn[-1] == ("datagram", port, port), binds
     assert woke, "the datagram reached the side receiver on the reported number"
 
 

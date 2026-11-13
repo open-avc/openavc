@@ -411,27 +411,40 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
     async def start(self, port: int) -> None:
         """Start the server the driver's transport calls for (TCP, UDP, OSC, HTTP).
 
-        A device with udp: side-send commands and a stream transport also
-        listens for datagrams on the same port number (UDP and TCP ports are
-        separate namespaces, so nothing collides); which side picks the
-        number is side_receiver.start_on_one_port.
+        A stream device that needs its number on UDP too holds both: one
+        with udp: side-send commands listens for datagrams on it, and one
+        that pushes to a udp_listener sends its packets from it (UDP and TCP
+        ports are separate namespaces, so nothing collides). Which side picks
+        the number is side_receiver.start_on_one_port.
         """
         self._open_push_channels()
         if self._is_udp or self._is_osc:
             await self.start_datagram_server(port)
             return
-        if not self._side_receiver:
+        udp_side = self._udp_side()
+        if udp_side is None:
             await self._start_stream_server(port)
             return
         await start_on_one_port(
             Server(self._start_stream_server, self._stop_stream_server),
-            Server(self.start_datagram_server, self.stop_datagram_server),
+            udp_side,
             port,
             lambda: self.port,
         )
-        logger.info(
-            "%s also receives UDP side-sends on port %d", self.name, self.port
-        )
+        if self._side_receiver:
+            logger.info(
+                "%s also receives UDP side-sends on port %d", self.name, self.port
+            )
+
+    def _udp_side(self) -> Server | None:
+        """What holds a stream device's number on UDP, if anything: the side
+        receiver for udp: commands, else the socket a udp_listener push sends
+        from (its packets leave from the device's own number)."""
+        if self._side_receiver:
+            return Server(self.start_datagram_server, self.stop_datagram_server)
+        if self._push_udp_listener:
+            return Server(self.start_listener_sender, self.stop_listener_sender)
+        return None
 
     async def _start_stream_server(self, port: int) -> None:
         if self._is_http:

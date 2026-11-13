@@ -250,19 +250,33 @@ class SimulatorManager:
         # Add change listener for broadcasting
         simulator.add_change_listener(self._on_simulator_change)
 
-        # Allocate a port and start on it, moving to the next one if the bind
-        # loses a race with something else claiming it in between.
-        #
-        # A bind/startup failure must release the reserved port so a transient
-        # collision doesn't permanently burn a slot from the pool. That release
-        # is why the retry lives here: without it, the caller's next device
-        # asks for the lowest free port and is handed the same one back.
-        # ``_allocate_port`` now screens for bindability, so reaching this
-        # retry at all means the port went bad between the probe and the bind —
-        # rare, and precisely the case a single attempt cannot survive.
-        #
-        # Only an auto-allocated port may be moved: a caller that named one
-        # asked for that port specifically and gets its error.
+        port = await self._start_on_a_port(simulator, device_id, port)
+        self._instances[device_id] = simulator
+
+        logger.info(
+            "Started simulator for %s (driver=%s, port=%d)",
+            device_id, driver_id, port,
+        )
+        return simulator
+
+    async def _start_on_a_port(
+        self, simulator: BaseSimulator, device_id: str, port: int,
+    ) -> int:
+        """Start ``simulator`` on ``port`` (0 = allocate one) and return the
+        number it started on, moving to the next one if the bind loses a race
+        with something else claiming it in between.
+
+        A bind/startup failure must release the reserved port so a transient
+        collision doesn't permanently burn a slot from the pool. That release
+        is why the retry lives here: without it, the caller's next device asks
+        for the lowest free port and is handed the same one back.
+        ``_allocate_port`` screens for bindability, so reaching this retry at
+        all means the port went bad between the probe and the bind -- rare, and
+        precisely the case a single attempt cannot survive.
+
+        Only an auto-allocated port may be moved: a caller that named one
+        asked for that port specifically and gets its error.
+        """
         auto = port == 0
         attempts = _BIND_RACE_RETRIES if auto else 1
         # A port that just failed to bind stays marked allocated for the rest
@@ -279,6 +293,7 @@ class SimulatorManager:
                     await simulator.start(chosen)
                     break
                 except OSError as e:
+                    await self._stop_failed_start(simulator, device_id)
                     if not auto or attempt == attempts - 1:
                         raise
                     logger.warning(
@@ -289,14 +304,18 @@ class SimulatorManager:
             self._allocated_ports -= tried
             raise
         self._allocated_ports -= tried - {chosen}
-        port = chosen
-        self._instances[device_id] = simulator
+        return chosen
 
-        logger.info(
-            "Started simulator for %s (driver=%s, port=%d)",
-            device_id, driver_id, port,
-        )
-        return simulator
+    @staticmethod
+    async def _stop_failed_start(simulator: BaseSimulator, device_id: str) -> None:
+        """A start can fail halfway: a stream server listening, the UDP side
+        of its number refused (side_receiver). What it opened is closed before
+        the next number or the error, or that server keeps the number it was
+        refused on."""
+        try:
+            await simulator.stop()
+        except Exception:
+            logger.exception("Stopping %s after its start failed", device_id)
 
     async def stop_device(self, device_id: str) -> None:
         """Stop a simulator instance."""

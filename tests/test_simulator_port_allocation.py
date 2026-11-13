@@ -30,6 +30,7 @@ class _FakeSim:
         self._unbindable = unbindable or set()
         self.port = 0
         self.attempts: list[int] = []
+        self.stops: list[int] = []
 
     def set_child_entities(self, _children):
         pass
@@ -44,7 +45,7 @@ class _FakeSim:
             raise OSError("address already in use")
 
     async def stop(self):
-        pass
+        self.stops.append(self.port)
 
 
 @pytest.fixture
@@ -74,7 +75,8 @@ def _register(mgr: SimulatorManager, sim: _FakeSim) -> None:
 
 async def test_failed_start_releases_reserved_port(all_ports_bindable):
     mgr = SimulatorManager()
-    _register(mgr, _FakeSim(fail=True))
+    sim = _FakeSim(fail=True)
+    _register(mgr, sim)
 
     with pytest.raises(OSError):
         await mgr.start_device("acme_probe", "dev1")
@@ -82,6 +84,8 @@ async def test_failed_start_releases_reserved_port(all_ports_bindable):
     # The reserved port is returned to the pool and no ghost instance lingers.
     assert mgr._allocated_ports == set()
     assert "dev1" not in mgr._instances
+    # Nor does anything a failed start left running, the last one included.
+    assert sim.stops == sim.attempts
     # ...so the very next allocation hands the same slot back out.
     assert mgr._allocate_port() == PORT_RANGE_START
 
@@ -104,6 +108,10 @@ async def test_one_device_moves_past_a_port_that_will_not_bind(all_ports_bindabl
     assert mgr._instances["dev1"].port == PORT_RANGE_START + 2
     # Only the winner stays reserved.
     assert mgr._allocated_ports == {PORT_RANGE_START + 2}
+    # A start can fail with part of the device running (a stream server whose
+    # UDP side was refused): each failed one is stopped before the next port,
+    # and the one that started is left running.
+    assert sim.stops == [PORT_RANGE_START, PORT_RANGE_START + 1]
 
 
 @pytest.mark.asyncio

@@ -398,10 +398,12 @@ class BaseSimulator(ABC):
 
         It leaves from this device's own port number, because that is how the
         platform tells simulated devices apart (all of them send from
-        127.0.0.1). A datagram simulator sends from its own socket; any other
-        opens a UDP socket on the same number for the one send (UDP and TCP
-        numbers are separate). Nothing is sent while the device is not
-        responding, or before it has started. Returns whether it was sent.
+        127.0.0.1). A datagram simulator sends from its own socket, and a
+        generated stream device from the one it holds on its number
+        (push_channels.start_listener_sender); any other opens a UDP socket on
+        the same number for the one send (UDP and TCP numbers are separate).
+        Nothing is sent while the device is not responding, or before it has
+        started. Returns whether it was sent.
         """
         if self._silenced or not self.port:
             return False
@@ -417,13 +419,7 @@ class BaseSimulator(ABC):
             return False
         target = ("127.0.0.1", target_port)
         try:
-            udp = getattr(self, "_udp_transport", None)
-            if udp is not None:
-                udp.sendto(data, target)
-            else:
-                with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                    sock.bind(("127.0.0.1", self.port))
-                    sock.sendto(data, target)
+            self._send_from_own_number(data, target)
         except OSError as e:
             logger.warning(
                 "%s: could not send to the UDP listener on port %d from "
@@ -432,6 +428,20 @@ class BaseSimulator(ABC):
             return False
         self.log_protocol("out", data)
         return True
+
+    def _send_from_own_number(self, data: bytes, target: tuple[str, int]) -> None:
+        """One datagram from this device's own port number: the datagram
+        server's socket, else the one held for listener packets, else a UDP
+        socket opened on the number for this send."""
+        sender = getattr(self, "_udp_transport", None)
+        if sender is None:
+            sender = getattr(self, "_listener_sock", None)
+        if sender is not None:
+            sender.sendto(data, target)
+            return
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.bind(("127.0.0.1", self.port))
+            sock.sendto(data, target)
 
     # ── Change Listeners ──
 

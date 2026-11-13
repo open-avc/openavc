@@ -481,7 +481,7 @@ _BUILD_ORDER = [
     "_handling_osc", "_osc_state_to_address", "_child_roster", "_child_state_responses",
     "_child_list_answers", "_child_query_handlers", "_push_state", "_push_multicast", "_mcast_sock",
     "sse_paths", "sse_session", "_push_tcp", "_push_tcp_subscribers", "_push_tcp_tasks",
-    "_push_http", "_http_push_callbacks", "_push_udp_listener",
+    "_push_http", "_http_push_callbacks", "_push_udp_listener", "_listener_sock",
 ]
 
 

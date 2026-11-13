@@ -367,7 +367,7 @@ async def test_start_refuses_when_no_port_in_the_span_will_bind(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_the_chosen_port_is_the_one_handed_to_the_child(monkeypatch):
+async def test_the_chosen_port_is_the_one_handed_to_the_child(monkeypatch, probe_answers):
     """The child must be told where to listen, and the proxy must follow it.
 
     A moved port that only half the system knows about is worse than not
@@ -402,4 +402,4 @@ async def test_the_chosen_port_is_the_one_handed_to_the_child(monkeypatch):
             await mgr.start()
 
     assert captured["ui_port"] != held, "the held port must not be handed on"
-    assert _port_is_bindable(captured["ui_port"])
+    assert probe_answers[captured["ui_port"]] is True
