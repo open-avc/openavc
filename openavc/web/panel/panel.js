@@ -31,6 +31,7 @@ import { SoundPlayer } from './modules/sound.js';
 import { PanelTheme, ThemeStudioPicker } from './modules/theme.js';
 import { UiOverrides } from './modules/overrides.js';
 import { Availability, changeReaches, devicesFlipped } from './modules/availability.js';
+import { FailureBand } from './modules/failure_band.js';
 import { ProjectStylesheet, applyCssClass } from './modules/stylesheet.js';
 import {
     drawSelect, drawTextInput, showSelectLook, showSelectValue, showTextValue,
@@ -211,7 +212,16 @@ class PanelApp {
         this.reconnectAttempts = 0;
         this._offline = false;           // true while the WS is disconnected
         this._lastTouchedElementId = null; // control the next failure is about
-        this._errorMessageTimer = null;    // auto-dismiss for the failure band
+        // Why the last press did not work (modules/failure_band.js).
+        this._failureBand = new FailureBand({
+            settings: () => this.uiSettings,
+            touchedNode: () => {
+                const entry = this._lastTouchedElementId
+                    ? this.elementMap[this._lastTouchedElementId]
+                    : null;
+                return entry && entry.el;
+            },
+        });
         // The PIN lock and the idle timer (modules/lock.js).
         this.lock = new PanelLock(this._lockHost());
         this.access = new PanelAccess({
@@ -769,7 +779,7 @@ class PanelApp {
                 // would have been useful. The revert still runs, which is the
                 // half that matters there: the control stops showing a value
                 // the device never took.
-                if (msg.source_type) this.showFailureMessage(msg.message);
+                if (msg.source_type) this._failureBand.show(msg.message);
                 this._revertRefusedInteraction(msg.element_id);
                 break;
 
@@ -782,7 +792,7 @@ class PanelApp {
                 // standing in the room can tell which kind of control they just
                 // pressed.
                 if (msg.success === false) {
-                    this.showFailureMessage(msg.error);
+                    this._failureBand.show(msg.error);
                     this._revertRefusedInteraction(null);
                 }
                 break;
@@ -917,7 +927,7 @@ class PanelApp {
         if (!claims.length) return;
         if (claims.some(claim => claim.reported)) return;
         for (const claim of claims) claim.reported = true;
-        this.showFailureMessage(msg.message || msg.error);
+        this._failureBand.show(msg.message || msg.error);
         // A step that never reached its device is the same failure as a refused
         // command, arriving on a different frame: the fader that ran the macro
         // is still showing the number somebody dragged it to. Nothing on a
@@ -948,55 +958,6 @@ class PanelApp {
             document.body.appendChild(tag);
         }
         tag.classList.add('visible');
-    }
-
-    /**
-     * Say why the last thing somebody pressed did not work.
-     *
-     * The reason has always existed -- the server answers a failed interaction
-     * with a sentence written for a person -- and it used to go to a browser
-     * console, on a panel screwed to a wall, in kiosk mode, with no keyboard.
-     * Everything about how this draws is for that room rather than for a
-     * desktop: a band across the whole width instead of a corner card, text
-     * sized like the controls around it, and about five seconds to read it.
-     *
-     * One message at a time, replaced rather than stacked: somebody pressing a
-     * dead button four times has one problem, not four, and a wall of cards is
-     * how a panel stops being usable at the exact moment it is failing.
-     */
-    showFailureMessage(text) {
-        // One project-level switch, on by default. Off is for a room that draws
-        // its own status and would rather we kept quiet -- not a per-element
-        // setting, which would be authoring work for something that only ever
-        // happens when something is already wrong.
-        if (this.uiSettings && this.uiSettings.show_error_messages === false) return;
-        const message = String(text == null ? '' : text).trim();
-        if (!message) return;
-
-        let band = document.getElementById('panel-failure-message');
-        if (!band) {
-            band = document.createElement('div');
-            band.id = 'panel-failure-message';
-            // Announced rather than only drawn: a panel is the whole interface,
-            // so somebody using a screen reader on one has nowhere else to find
-            // out that the press did nothing.
-            band.setAttribute('role', 'alert');
-            band.addEventListener('click', () => this.dismissFailureMessage());
-            document.body.appendChild(band);
-        }
-        band.textContent = message;
-        band.classList.toggle('at-top', this._lastTouchedIsLow());
-        band.classList.add('visible');
-
-        clearTimeout(this._errorMessageTimer);
-        this._errorMessageTimer = setTimeout(() => this.dismissFailureMessage(), 5000);
-    }
-
-    dismissFailureMessage() {
-        clearTimeout(this._errorMessageTimer);
-        this._errorMessageTimer = null;
-        const band = document.getElementById('panel-failure-message');
-        if (band) band.classList.remove('visible');
     }
 
     /**
@@ -1059,26 +1020,6 @@ class PanelApp {
         }
     }
 
-    /**
-     * Is the control that was just pressed in the bottom half of the screen?
-     *
-     * The band sits at the bottom, and moves to the top when the answer is yes.
-     * A message drawn over the button somebody still has a finger on is the one
-     * place it must not be: they cannot read it, and it looks like the button
-     * changed under them. Unknown control -- nothing pressed yet, or it has
-     * been re-rendered since -- keeps the default.
-     */
-    _lastTouchedIsLow() {
-        const entry = this._lastTouchedElementId
-            ? this.elementMap[this._lastTouchedElementId]
-            : null;
-        const el = entry && entry.el;
-        if (!el || !el.getBoundingClientRect) return false;
-        const box = el.getBoundingClientRect();
-        if (!box.height && !box.width) return false;
-        return (box.top + box.height / 2) > (window.innerHeight / 2);
-    }
-
     _hideLoadingState() {
         const loading = document.getElementById('loading-state');
         if (loading) loading.style.display = 'none';
@@ -1132,7 +1073,7 @@ class PanelApp {
 
         // The message names a press on the page being left, and the control it
         // was avoiding is about to be gone.
-        this.dismissFailureMessage();
+        this._failureBand.dismiss();
 
         const pageType = targetPage.page_type || 'page';
 
