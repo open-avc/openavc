@@ -23,6 +23,10 @@ What is never sent:
   are shown to it as `***`.
 - The Programmer password or API key, and the system's cloud key.
 
+One exception on 0.40.0: a stream key, password or PIN typed into a macro step or a control's
+action is saved in the project, so the assistant can read it with the macro or the page that
+holds it.
+
 Anything typed into the conversation is sent as typed, a password included. The assistant is
 instructed never to ask for a login in the chat.
 

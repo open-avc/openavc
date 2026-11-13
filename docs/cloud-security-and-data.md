@@ -47,7 +47,8 @@ is restored from the hosting provider's database backups, normally within one bu
   tokens.
 - **Device logins:** on OpenAVC 0.40.0 and later they stay on the system, and the project copies
   it sends hold a placeholder in place of each one. A system on an earlier version includes them
-  in its copies until it is updated.
+  in its copies until it is updated. One exception on 0.40.0: a stream key, password or PIN
+  typed into a macro step or a control's action is saved in the project, so the copies include it.
 
 ## Who at OpenAVC can reach your data
 
