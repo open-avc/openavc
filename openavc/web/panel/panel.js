@@ -178,6 +178,18 @@ function placeGroupCaption(label, labelPos) {
     return label;
 }
 
+/**
+ * Forget what a binding last drew. A binding's renderer remembers its last
+ * value on the binding (`_last*`) and skips a write that would change
+ * nothing; a redraw that has to put the control back whatever is on screen
+ * forgets it first.
+ */
+function forgetDrawn(b) {
+    for (const k of Object.keys(b)) {
+        if (k.startsWith('_last')) delete b[k];
+    }
+}
+
 class PanelApp {
     constructor() {
         const params = new URLSearchParams(window.location.search);
@@ -867,11 +879,8 @@ class PanelApp {
     _redrawElement(id) {
         for (const b of this.bindings) {
             if (b.elementDef?.id !== id) continue;
-            for (const k of Object.keys(b)) {
-                if (k.startsWith('_last')) delete b[k];
-            }
-            try { this._evaluateBinding(b); }
-            catch (e) { console.error('Binding error:', e); }
+            forgetDrawn(b);
+            this._drawBinding(b);
         }
     }
 
@@ -1641,9 +1650,7 @@ class PanelApp {
      */
     _refreshPageNavs() {
         for (const b of this.bindings) {
-            if (b.type !== 'nav_look') continue;
-            try { this._evaluateBinding(b); }
-            catch (e) { console.error('Binding error:', e); }
+            if (b.type === 'nav_look') this._drawBinding(b);
         }
         this.evaluateUiOverrides();
     }
@@ -2375,6 +2382,12 @@ class PanelApp {
         // Apply ui.* state overrides (set by macros/scripts)
         // These take priority over feedback bindings for direct control.
         this.evaluateUiOverrides();
+    }
+
+    /** Draw one binding from current state; one that fails is logged, and the others still draw. */
+    _drawBinding(b) {
+        try { this._evaluateBinding(b); }
+        catch (e) { console.error('Binding error:', e); }
     }
 
     /**
