@@ -39,7 +39,9 @@ from openavc.drivers.driver_loader import (
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import internet_client, internet_failure
 
-log = get_logger(__name__)
+# Logs as the driver routes, where these lines were filed before the catalog
+# had a module of its own (the Log view's source column shows the name).
+log = get_logger("openavc.api.routes.drivers")
 
 # This server's one copy of the community index (``index_cache``).
 _index_cache: Any = None
