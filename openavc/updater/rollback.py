@@ -341,14 +341,15 @@ def confirm_startup(data_dir: Path) -> None:
     helper aborted, version unchanged) must not log "confirmed successful"
     against the target it never reached.
 
-    On Windows a confirmed update is also when the installer cache is trimmed
-    to what a rollback can use (``prune_installer_cache``).
+    A confirmed update is also when the update cache is trimmed to what can
+    still be used (``_trim_update_cache``).
     """
     from openavc.version import __version__
 
     marker = read_pending_marker(data_dir)
     if not marker:
         return
+    started = _marker_written_at(data_dir)
     clear_pending_marker(data_dir)
     from_version = marker.get("from_version", "")
     to_version = marker.get("to_version", "")
@@ -364,7 +365,7 @@ def confirm_startup(data_dir: Path) -> None:
             "Update confirmed successful after startup (v%s -> v%s)",
             from_version, __version__,
         )
-        _trim_installer_cache_on_windows(data_dir, from_version)
+        _trim_update_cache(data_dir, from_version, started)
     else:
         log.warning(
             "Update to v%s did not take effect (still running v%s); "
@@ -396,7 +397,7 @@ def prune_installer_cache(data_dir: Path, from_version: str) -> list[str]:
     except OSError:
         log.warning("Could not read the installer cache; leaving it as it is", exc_info=True)
         return []
-    removed = _remove_installers(_installers_no_rollback_uses(installers, from_version))
+    removed = _remove_cached_files(_installers_no_rollback_uses(installers, from_version))
     if removed:
         log.info(
             "Removed %d cached installer(s) no rollback uses: %s",
@@ -405,17 +406,91 @@ def prune_installer_cache(data_dir: Path, from_version: str) -> list[str]:
     return removed
 
 
-def _trim_installer_cache_on_windows(data_dir: Path, from_version: str) -> None:
-    """``prune_installer_cache`` after a confirmed update, on Windows only.
+def _marker_written_at(data_dir: Path) -> float | None:
+    """When the pending-update marker was last written: at the latest, the
+    start of this boot, which counts its attempt before anything can download."""
+    try:
+        return (data_dir / PENDING_UPDATE_MARKER).stat().st_mtime
+    except OSError:
+        return None
+
+
+def _trim_update_cache(data_dir: Path, from_version: str, started: float | None) -> None:
+    """After a confirmed update: on Windows the installers no rollback uses go
+    (``prune_installer_cache``), elsewhere the update archives written before
+    ``started`` (``prune_update_archives``).
 
     A failure in it never reaches startup, whatever the cache holds.
     """
-    if sys.platform != "win32":
-        return
     try:
-        prune_installer_cache(data_dir, from_version)
+        if sys.platform == "win32":
+            prune_installer_cache(data_dir, from_version)
+        elif started is not None:
+            prune_update_archives(data_dir, written_by=started)
     except Exception:
-        log.exception("Could not trim the installer cache")
+        log.exception("Could not trim the update cache")
+
+
+# The records that name an archive the root helper will still apply: the
+# instruction it reads on the next start, and the one it set aside to retry.
+_ARCHIVE_RECORDS = ("apply-update.json", "apply-update.retry")
+
+
+def prune_update_archives(data_dir: Path, written_by: float) -> list[str]:
+    """Linux and macOS: delete the update archives and their ``.sig``; return their names.
+
+    Every in-app update downloads its ``.tar.gz`` and the archive's ``.sig``
+    into ``update-cache``, and the root helper that applies it
+    (update-helper.sh, openavc-macos-run.sh) never deletes them. A rollback on
+    these platforms restores the ``.previous`` tree, never an archive, so once
+    an update is confirmed none is used again, except one the helper will
+    still apply: an archive ``apply-update.json`` or ``apply-update.retry``
+    names stays, with its ``.sig``. So does a file written after
+    ``written_by``: an update the cloud pushed while the engine started may
+    still be downloading it, under its final name. A record that cannot be
+    read leaves every archive in place. Nothing here can stop the server
+    starting.
+    """
+    keep = _archives_still_named(data_dir)
+    if keep is None:
+        log.warning("An update record could not be read; leaving the update archives as they are")
+        return []
+    cache_dir = data_dir / "update-cache"
+    try:
+        archives = [*cache_dir.glob("*.tar.gz"), *cache_dir.glob("*.tar.gz.sig")]
+    except OSError:
+        log.warning("Could not read the update cache; leaving it as it is", exc_info=True)
+        return []
+    removed = _remove_cached_files(sorted(
+        a for a in archives
+        if a.name.removesuffix(".sig") not in keep and _written_by(a, written_by)
+    ))
+    if removed:
+        log.info("Removed %d update archive file(s) no longer used: %s", len(removed), ", ".join(removed))
+    return removed
+
+
+def _written_by(path: Path, moment: float) -> bool:
+    try:
+        return path.stat().st_mtime <= moment
+    except OSError:
+        return False
+
+
+def _archives_still_named(data_dir: Path) -> set[str] | None:
+    """The file names of the archives an update record names; None when a
+    record is there but cannot be read."""
+    names: set[str] = set()
+    for record in _ARCHIVE_RECORDS:
+        path = data_dir / record
+        if not path.exists():
+            continue
+        try:
+            artifact = json.loads(path.read_text(encoding="utf-8")).get("artifact") or ""
+        except (OSError, ValueError, AttributeError):
+            return None
+        names.add(Path(str(artifact)).name)
+    return names
 
 
 def _cached_installers(cache_dir: Path) -> list[Path]:
@@ -442,15 +517,15 @@ def _installers_no_rollback_uses(installers: list[Path], from_version: str) -> l
     return [inst for inst in others if inst not in keep]
 
 
-def _remove_installers(installers: list[Path]) -> list[str]:
-    """Delete each one; return the names that went. One that cannot be
-    deleted (an installer still running holds its file open) is logged and kept."""
+def _remove_cached_files(installers: list[Path]) -> list[str]:
+    """Delete each cached file; return the names that went. One that cannot
+    be deleted (an installer still running holds its file open) is logged and kept."""
     removed = []
     for inst in installers:
         try:
             inst.unlink()
         except OSError as e:
-            log.warning("Could not remove cached installer %s: %s", inst.name, e)
+            log.warning("Could not remove cached file %s: %s", inst.name, e)
         else:
             removed.append(inst.name)
     return removed

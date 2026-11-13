@@ -119,7 +119,7 @@ def test_an_update_that_did_not_take_effect_deletes_nothing(tmp_path):
     assert len(_cached(tmp_path)) == 3
 
 
-def test_other_platforms_leave_the_folder_alone(tmp_path):
+def test_other_platforms_leave_the_installers_alone(tmp_path):
     _cache(tmp_path, "0.38.0", "0.39.0", "0.40.0")
     write_pending_marker(tmp_path, "0.39.0", "0.40.0")
 

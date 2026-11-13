@@ -170,6 +170,8 @@ From the Updates view, scroll to the **Rollback** section and click **Rollback t
 
 On Windows, rollback runs an installer kept in `C:\ProgramData\OpenAVC\update-cache`. Once an update has started up, that folder holds two installers: the running version's and the version the update came from, which is the one **Rollback** restores. Older installers are deleted.
 
+On Linux, the Raspberry Pi and macOS, an update downloads its archive to the `update-cache` folder in the data folder (`/var/lib/openavc/update-cache` on Linux). Rollback there restores a copy of the previous version kept beside the installation, not an archive, so once an update has started up its archive is deleted. An archive for an update that is still waiting to be retried stays.
+
 When the system is running an older version than its last update installed, for example because an older installer was run by hand or a disk image was restored, the Updates view names both versions. Nothing is blocked, and the notice clears after the next update or rollback. This needs the older version to be later than v0.40.0.
 
 ### Rolling back to a version older than v0.40.0
