@@ -1529,5 +1529,3 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
         "devices_reconnected": reconnected,
         "devices_not_reconnected": not_reconnected,
     }
-
-# --- Driver Definitions ---
