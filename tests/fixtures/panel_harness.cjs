@@ -9448,6 +9448,714 @@ Object.assign(tests, {
     },
 });
 
+// --- Availability pins ------------------------------------------------------
+//
+// Whether a reading can be believed and whether a press can land: the device
+// a state key reports from, the platform's own keys that keep rendering, the
+// asleep device a wake control still reads, the reading mark tallied per
+// element, the action mark, a matrix marked row by row, Preview's copy of
+// what each press reaches, and which bindings a change of state reaches. Each
+// case draws a page, sends state the way the server does and records, step by
+// step, what changed on every control's nodes and which bindings were drawn
+// again (`e`), in panel_availability_pins.json, recorded from the code before
+// it moved.
+
+const AVAILABILITY_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_availability_pins.json'), 'utf8'));
+
+/** One control of each kind that draws a reading, all reading device `d` (the select's look reads `e`). */
+const READING_ELEMENTS = [
+    { id: 'r_feedback', type: 'button', label: 'Mute',
+      bindings: { show: { look: { key: 'device.d.mute', default_state: 'off',
+          states: { on: { label: 'MUTED', bg_color: '#cc0000' }, off: { label: 'LIVE', bg_color: '#111111' } } } } } },
+    toggleButton('r_toggle', 'device.d.power', true),
+    { id: 'r_text', type: 'label', text: '', bindings: { show: { value: { key: 'device.d.input' } } } },
+    { id: 'r_label_look', type: 'label', text: 'Amp',
+      bindings: { show: { look: { key: 'device.d.mute', default_state: 'off',
+          states: { on: { label: 'MUTED', text_color: '#ff0000' } } } } } },
+    { id: 'r_led', type: 'status_led',
+      bindings: { show: { look: { key: 'device.d.power', map: { true: '#00ff00', false: '#ff0000' }, default: '#9E9E9E' } } } },
+    { id: 'r_slider', type: 'slider', min: 0, max: 100, bindings: { show: { value: { key: 'device.d.v' } } } },
+    { id: 'r_fader', type: 'fader', min: 0, max: 100, bindings: { show: { value: { key: 'device.d.v' } } } },
+    { id: 'r_gauge', type: 'gauge', min: 0, max: 100, bindings: { show: { value: { key: 'device.d.v' } } } },
+    { id: 'r_meter', type: 'level_meter', min: 0, max: 100, style: { meter_segments: 4 },
+      bindings: { show: { value: { key: 'device.d.v' } } } },
+    { id: 'r_select', type: 'select', options: [{ label: 'A', value: 'a' }, { label: 'B', value: 'b' }],
+      bindings: { show: { value: { key: 'device.d.input' },
+          look: { key: 'device.e.input', style_map: { a: { bg_color: '#123456' }, b: { bg_color: '#654321' } } } } } },
+    { id: 'r_textin', type: 'text_input', bindings: { show: { value: { key: 'device.d.field' } } } },
+    { id: 'r_list', type: 'list', items: [{ label: 'One', value: '1' }],
+      bindings: { show: { items: { key_pattern: 'device.d.src.*.name' }, value: { key: 'device.d.sel' } } } },
+    { id: 'r_image', type: 'image',
+      bindings: { show: { look: { key: 'device.d.mute', default_state: 'off',
+          states: { on: { image: '/on.png' }, off: { image: '/off.png' } } } } } },
+    { id: 'r_nav', type: 'page_nav', label: 'Go', target_page: 'main',
+      bindings: { show: { look: { key: 'device.d.mute', default_state: 'off',
+          states: { on: { bg_color: '#00aa00' } } } } } },
+    { id: 'r_group', type: 'group', label: 'G',
+      bindings: { show: { look: { key: 'device.d.mute', default_state: 'off',
+          states: { on: { bg_color: '#0000aa' } } } } } },
+    { id: 'r_visible', type: 'button', label: 'Shown',
+      bindings: { show: { visible_when: { key: 'device.d.power', operator: 'eq', value: true } } } },
+    { id: 'r_progress', type: 'label', text: '', bindings: { show: { value: { source: 'macro_progress', macro: 'm1', idle_text: 'Idle' } } } },
+];
+
+const READING_STATE = {
+    'device.d.connected': true, 'device.e.connected': true,
+    'device.d.mute': 'on', 'device.d.power': true, 'device.d.input': 'b', 'device.d.v': 40,
+    'device.d.field': 'Podium', 'device.d.sel': '1', 'device.e.input': 'a',
+    'device.d.src.1.name': 'Laptop', 'device.d.src.2.name': 'Camera',
+};
+
+/**
+ * A page of `elements` with `state` in place first, drawn live (or on the
+ * design canvas with `edit`, or as Preview with `embedded`), with a recorder:
+ * `look()` notes what changed on each control's nodes since the last look
+ * (`c`) and which bindings were drawn since (`e`, element:type); `set`,
+ * `clear`, `snapshot` and `frame` drive it the way the server does.
+ */
+function availabilityMount({ elements, state, edit, embedded, masters }) {
+    const app = mkApp();
+    app.editMode = !!edit;
+    if (embedded) app.embedded = true;
+    app.send = () => {};
+    const drawn = [];
+    const evaluate = app._evaluateBinding.bind(app);
+    app._evaluateBinding = (b) => { drawn.push(`${b.elementDef?.id}:${b.type}`); return evaluate(b); };
+    const placements = {};
+    elements.forEach((e, i) => { placements[e.id] = { x: 1 + (i % 5) * 19, y: 1 + Math.floor(i / 5) * 19, w: 18, h: 17 }; });
+    const proj = project({ elements, placements });
+    if (masters) proj.ui.master_elements = masters;
+    app.state = { ...(state || {}) };
+    renderProject(app, proj);
+    const ids = [...elements, ...(masters || [])].map((e) => e.id);
+    const m = { app, proj, seen: {}, steps: [] };
+    m.look = (extra) => {
+        const step = {};
+        const changed = {};
+        for (const id of ids) {
+            const node = app.root.querySelector(`[data-element-id="${window.CSS.escape(id)}"]`);
+            const now = node ? nodeSnapshot(node) : { gone: '1' };
+            const was = m.seen[id] || {};
+            const diff = {};
+            for (const k of new Set([...Object.keys(was), ...Object.keys(now)])) {
+                if (was[k] !== now[k]) diff[k] = now[k] ?? null;
+            }
+            m.seen[id] = now;
+            if (Object.keys(diff).length) changed[id] = diff;
+        }
+        if (Object.keys(changed).length) step.c = changed;
+        if (drawn.length) step.e = drawn.splice(0);
+        if (extra) Object.assign(step, extra);
+        m.steps.push(step);
+    };
+    m.set = (changes) => { app.handleMessage({ type: 'state.update', changes }); m.look(); };
+    m.clear = (keys) => { app.handleMessage({ type: 'state.delete', keys }); m.look(); };
+    m.snapshot = (s) => { app.handleMessage({ type: 'state.snapshot', state: s }); m.look(); };
+    m.frame = (msg) => { app.handleMessage(msg); m.look(); };
+    m.redraw = () => { app.renderCurrentPage(); m.look(); };
+    m.look();
+    return m;
+}
+
+/** One availability case, on the harness's clock (a control may draw the time); jsdom has no scrolling. */
+function availabilityCase(got, name, opts, script) {
+    const realScroll = window.Element.prototype.scrollIntoView;
+    window.Element.prototype.scrollIntoView = function () {};
+    try {
+        withFakeTime(() => {
+            let m;
+            try {
+                m = availabilityMount(opts);
+                script(m);
+            } catch (e) {
+                (m ? m.steps : (got[name] = [])).push({ threw: String(e && e.message) });
+            }
+            if (m) got[name] = m.steps;
+        });
+    } finally {
+        window.Element.prototype.scrollIntoView = realScroll;
+    }
+}
+
+/** The device a key reports from, as the panel decides it. */
+const deviceOfKey = (app, key) => app._deviceIdForKey(key);
+/** Every device a binding reads from, as the panel decides it. */
+const devicesOfBinding = (app, b) => app._bindingDeviceIds(b);
+/** Mark (or clear) the element a binding draws into, as the panel does. */
+const markReading = (app, b, offline) => app._markBindingAvailability(b, offline);
+
+Object.assign(tests, {
+    availability_marks_and_reach_as_today() {
+        const got = {};
+        const run = (name, opts, script) => availabilityCase(got, name, opts, script);
+
+        // Every kind of reading: the device goes, sleeps, comes back, is
+        // forgotten; a key nothing reads; a key one control reads; a second
+        // device under one control; the whole state replaced.
+        run('every_reading', { elements: READING_ELEMENTS, state: READING_STATE }, (m) => {
+            m.set({ 'device.d.connected': false });
+            m.set({ 'device.d.asleep': true });
+            m.set({ 'var.nothing': 1 });
+            m.set({ 'device.d.v': 55 });
+            m.set({ 'device.d.connected': true });
+            m.clear(['device.d.connected']);
+            m.set({ 'device.e.connected': false });
+            m.set({ 'device.d.connected': false });
+            m.set({ 'device.e.connected': true });
+            m.set({ 'device.d.src.3.name': 'Doc cam', 'device.d.mute': 'off' });
+            m.set({ 'device.d.input.1.connected': false });
+            m.set({ 'device.d.asleep': false, 'device.x.connected': false });
+            m.snapshot({ ...READING_STATE, 'device.d.connected': false });
+            m.snapshot({ 'device.d.connected': true });
+            m.redraw();
+        });
+
+        // The platform's own account of a device and of a child keeps
+        // rendering while the device is gone; a reading does not.
+        const platformLabels = [
+            'connected', 'enabled', 'name', 'offline_detail', 'offline_reason', 'orphan_reason', 'orphaned',
+            'paused', 'paused_for', 'reconnect_attempt', 'reconnect_failed', 'restarting', 'asleep',
+            'wake_command', 'web_ui_url', 'gain',
+        ].map((prop) => ({ id: `p_${prop}`, type: 'label', text: '', bindings: { show: { value: { key: `device.d.${prop}` } } } }));
+        const childLabels = ['online', 'offline_reason', 'offline_detail', 'label', 'mute', 'connected']
+            .map((prop) => ({ id: `c_${prop}`, type: 'label', text: '', bindings: { show: { value: { key: `device.d.input.1.${prop}` } } } }));
+        const oddLabels = [
+            ['o_four', 'device.d.input.1'], ['o_six', 'device.d.input.1.sub.online'], ['o_var', 'var.d'],
+            ['o_plugin', 'plugin.d.connected'], ['o_short', 'device.d'], ['o_empty_id', 'device..gain'],
+        ].map(([id, key]) => ({ id, type: 'label', text: '', bindings: { show: { value: { key } } } }));
+        const allLabels = [...platformLabels, ...childLabels, ...oddLabels];
+        const valued = {};
+        for (const e of allLabels) valued[e.bindings.show.value.key] = `v:${e.id}`;
+        run('platform_keys', { elements: allLabels, state: { ...valued, 'device.d.connected': true, '': 1 } }, (m) => {
+            m.set({ 'device.d.connected': false });
+            m.set({ 'device..connected': false });
+            m.set({ 'device.d.connected': true });
+        });
+
+        // A wake control keeps its reading while its device is asleep on
+        // purpose; one that does not wake it greys like any other.
+        const wakeElements = [
+            { id: 'w_power', type: 'button', label: 'Power', wake_devices: ['d'],
+              bindings: { show: { look: { key: 'device.d.power', default_state: 'false',
+                  states: { true: { label: 'ON', bg_color: '#00aa00' }, false: { label: 'OFF' } } } } } },
+            { id: 'w_other', type: 'button', label: 'Input',
+              bindings: { show: { look: { key: 'device.d.input', default_state: 'a', states: { a: { label: 'A' } } } } } },
+            { id: 'w_two', type: 'label', text: '', wake_devices: ['d'],
+              bindings: { show: { value: { key: 'device.e.v' } } } },
+            { id: 'w_bad', type: 'label', text: '', wake_devices: 'd',
+              bindings: { show: { value: { key: 'device.d.v' } } } },
+        ];
+        const wakeState = { 'device.d.connected': true, 'device.e.connected': true, 'device.d.power': false, 'device.d.input': 'a', 'device.e.v': 3, 'device.d.v': 4 };
+        run('wake', { elements: wakeElements, state: wakeState }, (m) => {
+            m.set({ 'device.d.connected': false });
+            m.set({ 'device.d.asleep': true });
+            m.set({ 'device.e.connected': false, 'device.e.asleep': true });
+            m.set({ 'device.d.asleep': 'true' });
+            m.set({ 'device.d.input.1.asleep': true });
+            m.set({ 'device.d.asleep': false });
+            m.set({ 'device.d.connected': true });
+        });
+
+        // The design canvas draws the control as designed, whatever the room says.
+        run('design_canvas', { elements: [...READING_ELEMENTS, ...wakeElements.slice(0, 1)], state: { ...READING_STATE, 'device.d.connected': false, 'device.d.asleep': true }, edit: true }, (m) => {
+            m.set({ 'device.d.connected': true });
+            m.set({ 'device.d.connected': false });
+        });
+
+        // A press that cannot land: nothing it reaches is up. A reading mark
+        // already there wins; a control reaching nothing carries no mark.
+        const actionElements = [
+            { id: 'a_one', type: 'button', label: 'One', action_devices: ['d'] },
+            { id: 'a_two', type: 'button', label: 'Two', action_devices: ['d', 'e'] },
+            { id: 'a_none', type: 'button', label: 'None', action_devices: [] },
+            { id: 'a_unset', type: 'button', label: 'Unset' },
+            { id: 'a_odd', type: 'button', label: 'Odd', action_devices: 'd' },
+            { id: 'a_both', type: 'button', label: 'Both', action_devices: ['d'],
+              bindings: { show: { look: { key: 'device.d.mute', default_state: 'off', states: { on: { label: 'M' } } } } } },
+        ];
+        run('actions', { elements: actionElements, state: { 'device.d.connected': true, 'device.e.connected': true, 'device.d.mute': 'on' } }, (m) => {
+            m.set({ 'device.d.connected': false });
+            m.set({ 'device.e.connected': false });
+            m.set({ 'device.d.connected': true });
+            m.set({ 'device.d.connected': false, 'device.e.connected': true });
+            m.clear(['device.d.connected']);
+            m.set({ 'device.e.connected': false, 'device.d.connected': false });
+            m.redraw();
+            // An entry with no node to mark is passed over.
+            m.app.elementMap.no_node = { elementDef: { id: 'no_node', action_devices: ['d'] } };
+            m.app.elementMap.no_class = { el: {}, elementDef: { id: 'no_class', action_devices: ['d'] } };
+            m.set({ 'device.e.connected': true });
+        });
+
+        // Preview draws the Builder's copy, so what each press reaches comes
+        // from the server's own definition, matched by id, and follows it.
+        const served = (actions, wakes) => ({
+            pages: [{ id: 'main', elements: [
+                { id: 'a_one', action_devices: actions.a_one, wake_devices: wakes.a_one },
+                { id: 'a_two', action_devices: actions.a_two },
+                { id: 'w_power', wake_devices: wakes.w_power },
+            ] }, { id: 'other' }, null, { id: 'bad', elements: 'x' }],
+            master_elements: [{ id: 'a_none', action_devices: actions.a_none }],
+        });
+        run('preview_served', {
+            elements: [...actionElements, wakeElements[0]], embedded: true,
+            state: { 'device.d.connected': false, 'device.e.connected': true, 'device.d.asleep': true, 'device.d.power': true, 'device.d.mute': 'on' },
+        }, (m) => {
+            m.frame({ type: 'ui.definition', ui: served({ a_one: ['e'], a_two: ['d'], a_none: ['d'] }, { w_power: [] }) });
+            m.set({ 'device.e.connected': false });
+            m.frame({ type: 'ui.definition', ui: served({ a_one: [], a_two: ['d', 'e'] }, { w_power: ['d'], a_one: ['d'] }) });
+            m.set({ 'device.d.power': false });
+            m.frame({ type: 'ui.definition', ui: { pages: 'none', master_elements: null } });
+            m.set({ 'device.d.connected': true });
+            m.frame({ type: 'ui.definition', ui: null });
+        });
+        // The design canvas keeps nothing from the server.
+        run('canvas_served', { elements: actionElements, embedded: true, edit: true, state: { 'device.d.connected': false } }, (m) => {
+            m.frame({ type: 'ui.definition', ui: served({ a_unset: ['d'] }, {}) });
+            m.set({ 'device.e.connected': false });
+        });
+
+        // A matrix is marked one destination at a time, and reads its route keys by name.
+        const matrixElements = (style) => [{
+            id: `mx_${style}`, type: 'matrix', matrix_style: style,
+            matrix_config: {
+                sources: [{ value: 1, label: 'Laptop' }, { value: 2, label: 'Cam' }],
+                destinations: [
+                    { value: 1, label: 'Left', route_key: 'device.sw_a.route_1' },
+                    { value: 2, label: 'Right', route_key: 'device.sw_b.route_1' },
+                    { value: 3, label: 'Var', route_key: 'var.route_3' },
+                ],
+            },
+        }];
+        for (const style of ['dropdown', 'crosspoint', 'tile_wall']) {
+            run(`matrix_${style}`, {
+                elements: [...matrixElements(style), { id: 'mx_other', type: 'label', text: '', bindings: { show: { value: { key: 'device.sw_a.name' } } } }],
+                state: { 'device.sw_a.connected': true, 'device.sw_a.route_1': 1, 'device.sw_b.connected': true, 'device.sw_b.route_1': 2, 'var.route_3': 1 },
+            }, (m) => {
+                m.set({ 'device.sw_b.connected': false });
+                m.set({ 'device.sw_a.route_1': 2 });
+                m.set({ 'device.sw_a.connected': false });
+                m.set({ 'var.route_3': 2 });
+                m.set({ 'device.sw_a.name': 'Switcher' });
+                m.set({ 'device.sw_a.connected': true, 'device.sw_b.connected': true });
+            });
+        }
+
+        // Which bindings a change reaches: by a key read whole, by a key under
+        // a pattern, by any of several conditions' keys, and by a device whose
+        // reachability moved even though the binding's own key did not.
+        const reachElements = [
+            { id: 'v_all', type: 'button', label: 'All',
+              bindings: { show: { visible_when: { all: [{ key: 'device.d.power', value: true }, { key: 'var.mode', value: 'x' }] } } } },
+            { id: 'v_any', type: 'button', label: 'Any',
+              bindings: { show: { visible_when: { any: [{ key: 'device.e.power', operator: 'truthy' }, { key: 'var.mode', operator: 'eq', value: 'y' }] } } } },
+            { id: 'v_var', type: 'button', label: 'Var',
+              bindings: { show: { visible_when: { key: 'var.mode', operator: 'ne', value: 'z' } } } },
+            { id: 'l_items', type: 'list', items: [], bindings: { show: { items: { key_pattern: 'device.d.src.*.name' } } } },
+            { id: 'l_var', type: 'list', items: [], bindings: { show: { items: { key_pattern: 'var.row_*' } } } },
+            { id: 't_key', type: 'label', text: '', bindings: { show: { value: { key: 'device.e.v' } } } },
+            { id: 't_var', type: 'label', text: '', bindings: { show: { value: { key: 'var.v' } } } },
+            { id: 't_none', type: 'label', text: '', bindings: { show: { value: { source: 'macro_progress', macro: 'm' } } } },
+        ];
+        run('reach', { elements: reachElements, state: { 'device.d.connected': true, 'device.e.connected': true, 'device.d.power': true, 'var.mode': 'x' } }, (m) => {
+            m.set({ 'var.unread': 1 });
+            m.set({ 'var.mode': 'y' });
+            m.set({ 'device.d.src.1.name': 'A' });
+            m.set({ 'device.d.src': 'flat' });
+            m.set({ 'var.row_1': 'R' });
+            m.set({ 'var.row': 'no star' });
+            m.set({ 'device.d.connected': false });
+            m.set({ 'device.e.connected': false });
+            m.set({ 'device.e.v': 9, 'var.v': 8 });
+            m.set({ 'device.d.asleep': true });
+            m.set({ 'device.d.src.1.asleep': true });
+            m.set({ 'device.d.power.connected': true });
+            m.set({ 7: 'numeric key' });
+            m.clear(['device.e.power', 'var.v']);
+            m.clear([]);
+            m.frame({ type: 'state.delete' });
+            m.frame({ type: 'state.update' });
+            // A binding that throws is logged and the rest still draw.
+            const quiet = console.error;
+            console.error = () => {};
+            m.app.evaluateText = () => { throw new Error('broken'); };
+            try {
+                m.set({ 'var.v': 'thrown', 'var.mode': 'z', 'device.e.v': 'too' });
+            } finally {
+                delete m.app.evaluateText;
+                console.error = quiet;
+            }
+            m.set({ 'var.v': 'after' });
+        });
+
+        // The rules underneath, asked directly.
+        withFakeTime(() => {
+            const app = mkApp();
+            const keys = {};
+            for (const key of [
+                'device.amp.gain', 'device.amp.input.1.mute', 'device.amp.input.1.online', 'device.amp.input.1.label',
+                'device.amp.input.1.offline_reason', 'device.amp.input.1', 'device.amp.a.b.c.d', 'device.amp',
+                'device.', 'device..gain', 'device.amp.connected', 'device.amp.web_ui_url', 'device.amp.asleep',
+                'devices.amp.gain', 'var.volume', 'plugin.x.y', '', 'device.amp.gain.', 'device.amp.*.name',
+            ]) keys[key] = deviceOfKey(app, key);
+            for (const odd of [null, undefined, 7, ['device.a.b'], { k: 1 }]) keys[`odd:${JSON.stringify(odd)}`] = deviceOfKey(app, odd);
+            const bindings = {};
+            const shapes = {
+                key: { key: 'device.a.v' },
+                keys: { _keys: ['device.a.v', 'var.x', 'device.b.input.1.mute'] },
+                patterns: { _patterns: ['device.c.route_1', 'device.a.route_2'] },
+                pattern: { key_pattern: 'device.d.src.*.name' },
+                all: { key: 'device.a.v', _keys: ['device.b.v'], _patterns: ['device.c.v'], key_pattern: 'device.d.*' },
+                platform_only: { key: 'device.a.connected' },
+                vars: { key: 'var.a', key_pattern: 'var.*' },
+                none: {},
+                keys_not_array: { _keys: 'device.a.v', _patterns: 'device.b.v' },
+            };
+            for (const [name, binding] of Object.entries(shapes)) {
+                const b = { binding };
+                const first = devicesOfBinding(app, b);
+                binding.key = 'device.z.v';
+                bindings[name] = { first, cached: devicesOfBinding(app, b), same: first === devicesOfBinding(app, b) };
+            }
+            bindings.no_binding = devicesOfBinding(app, {});
+            // The mark goes on the element the map knows, else the node the
+            // binding draws into, else nowhere.
+            const marks = [];
+            const host = document.createElement('div');
+            const a = { elementDef: { id: 'ghost' }, element: host };
+            const b = { elementDef: { id: 'ghost' }, element: host };
+            markReading(app, a, true); marks.push(host.className);
+            markReading(app, b, true); marks.push(host.className);
+            markReading(app, a, false); marks.push(host.className);
+            markReading(app, b, false); marks.push(host.className);
+            markReading(app, { elementDef: { id: 'ghost' }, element: null }, true);
+            markReading(app, { elementDef: { id: 'ghost' }, element: {} }, true);
+            marks.push('no host: no throw');
+            got.direct = [{ keys, bindings, marks }];
+        });
+
+        comparePins('availability', got, AVAILABILITY_PINS.availability);
+    },
+});
+
+// --- Macro run and failure band pins -----------------------------------------
+//
+// Which macro runs are this panel's: a press claims every macro its control can
+// run, a run is counted from its start to its end, a step that fails inside a
+// claimed run says so once, a claim nobody ever answers ages out. What a run
+// shows: busy on the buttons whose press runs it, its step on a progress label.
+// The failure band: one message, replaced, kept off the control just pressed,
+// gone after five seconds or a tap or a page change, and the refused control
+// put back. Each case draws a page and records, step by step, what changed on
+// every control's nodes (`c`), on the band (`band`) and what the panel sent
+// (`s`), in panel_macro_run_pins.json, recorded from the code before it moved.
+
+const MACRO_RUN_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_macro_run_pins.json'), 'utf8'));
+
+/** The band, as a node snapshot, or that there is none. */
+function bandSnapshot() {
+    const band = document.getElementById('panel-failure-message');
+    return band ? nodeSnapshot(band) : { none: '1' };
+}
+
+/**
+ * A page of `elements` drawn live (or on the design canvas with `edit`), on
+ * the harness's clock, with `settings` on the definition and a socket that
+ * records what is sent. `look()` notes what changed on each control, on the
+ * band, and the frames sent since; `frame`, `press`, `run`, `send`, `advance`
+ * and `at` drive it.
+ */
+function macroMount({ elements, state, settings, edit, pages }, advance) {
+    clearFailureBand();
+    const app = mkApp();
+    app.editMode = !!edit;
+    const sent = [];
+    app.ws = { readyState: 1, send: (text) => sent.push(JSON.parse(text)) };
+    const placements = {};
+    elements.forEach((e, i) => { placements[e.id] = { x: 1 + (i % 4) * 24, y: 1 + Math.floor(i / 4) * 24, w: 22, h: 22 }; });
+    const proj = project({ elements, placements });
+    proj.ui.settings = settings || {};
+    if (pages) proj.ui.pages.push(...pages);
+    app.state = { ...(state || {}) };
+    renderProject(app, proj);
+    const ids = elements.map((e) => e.id);
+    const m = { app, seen: {}, band: bandSnapshot(), steps: [] };
+    m.look = (extra) => {
+        const step = {};
+        const changed = {};
+        for (const id of ids) {
+            const node = app.root.querySelector(`[data-element-id="${window.CSS.escape(id)}"]`);
+            const now = node ? nodeSnapshot(node) : { gone: '1' };
+            const was = m.seen[id] || {};
+            const diff = {};
+            for (const k of new Set([...Object.keys(was), ...Object.keys(now)])) {
+                if (was[k] !== now[k]) diff[k] = now[k] ?? null;
+            }
+            m.seen[id] = now;
+            if (Object.keys(diff).length) changed[id] = diff;
+        }
+        if (Object.keys(changed).length) step.c = changed;
+        const band = bandSnapshot();
+        if (JSON.stringify(band) !== JSON.stringify(m.band)) step.band = band;
+        m.band = band;
+        if (sent.length) step.s = sent.splice(0).map((f) => JSON.stringify(f));
+        if (extra) Object.assign(step, extra);
+        m.steps.push(step);
+    };
+    m.frame = (msg) => { app.handleMessage(msg); m.look(); };
+    m.send = (msg) => { app.send(msg); m.look(); };
+    m.press = (id, interaction = 'press') => m.send({ type: `ui.${interaction}`, element_id: id });
+    m.run = (macroId) => m.send({ type: 'macro.execute', macro_id: macroId });
+    m.advance = (ms) => { advance(ms); m.look(); };
+    /** Put a control's box `top` px down an 800 px screen (`null`: no box at all). */
+    m.at = (id, top) => {
+        const node = app.elementMap[id].el;
+        node.getBoundingClientRect = () => (top == null
+            ? { top: 0, height: 0, width: 0 }
+            : { top, height: 40, width: 100 });
+    };
+    m.look();
+    return m;
+}
+
+function macroCase(got, name, opts, script) {
+    withFakeTime((advance) => {
+        let m;
+        try {
+            m = macroMount(opts, advance);
+            script(m);
+        } catch (e) {
+            (m ? m.steps : (got[name] = [])).push({ threw: String(e && e.message) });
+        }
+        if (m) got[name] = m.steps;
+        clearFailureBand();
+    });
+}
+
+/** A button whose press runs `macro` (as a list, or `single` as one action). */
+const macroButton = (id, macro, extra) => Object.assign({
+    id, type: 'button', label: id, bindings: { do: { press: [{ action: 'macro', macro }] } },
+}, extra || {});
+/** A label showing a macro's progress. */
+const progressLabel = (id, macro, idle) => ({
+    id, type: 'label', text: '', bindings: { show: { value: { source: 'macro_progress', macro, ...(idle === undefined ? {} : { idle_text: idle }) } } },
+});
+
+Object.assign(tests, {
+    macro_runs_and_failures_as_today() {
+        const got = {};
+        const run = (name, opts, script) => macroCase(got, name, opts, script);
+
+        // A run's busy state and its progress line, one run and two at once.
+        run('progress_and_busy', {
+            elements: [
+                macroButton('b_list', 'm1'),
+                { id: 'b_single', type: 'button', label: 'S', bindings: { do: { press: { action: 'macro', macro: 'm1' } } } },
+                macroButton('b_other', 'm2'),
+                { id: 'b_hold', type: 'button', label: 'H', bindings: { do: { hold: [{ action: 'macro', macro: 'm1' }] } } },
+                { id: 'b_mixed', type: 'button', label: 'X', bindings: { do: { press: [{ action: 'device.command', device: 'd', command: 'c' }, { action: 'macro', macro: 'm1' }] } } },
+                macroButton('b_num', '7'),
+                macroButton('b_ctor', 'constructor'),
+                progressLabel('p_m1', 'm1', 'Ready'),
+                progressLabel('p_m2', 'm2'),
+                progressLabel('p_num', '7', 'Idle 7'),
+            ],
+        }, (m) => {
+            m.frame({ type: 'macro.started', macro_id: 'm1', total_steps: 3 });
+            m.frame({ type: 'macro.progress', macro_id: 'm1', description: 'Warming up', step_index: 0, total_steps: 3 });
+            m.frame({ type: 'macro.progress', macro_id: 'm1', status: 'waiting' });
+            m.frame({ type: 'macro.progress', macro_id: 'm1', description: '', step_index: 1 });
+            m.frame({ type: 'macro.progress', macro_id: 'm1', step_index: 2, total_steps: 4 });
+            m.frame({ type: 'macro.progress', macro_id: 'm1', step_index: '3', total_steps: '9', description: null });
+            m.frame({ type: 'macro.started', macro_id: 'm1', total_steps: 5 });
+            m.frame({ type: 'macro.completed', macro_id: 'm1' });
+            m.frame({ type: 'macro.progress', macro_id: 'm1', description: 'Second run' });
+            m.frame({ type: 'macro.error', macro_id: 'm1' });
+            m.frame({ type: 'macro.progress', macro_id: 'm1', description: 'After the end' });
+            m.frame({ type: 'macro.started', macro_id: 'm2' });
+            m.frame({ type: 'macro.progress', macro_id: 'm2', step_index: 0 });
+            m.frame({ type: 'macro.progress', macro_id: 'm2', total_steps: 0, description: 'Named' });
+            m.frame({ type: 'macro.cancelled', macro_id: 'm2' });
+            m.frame({ type: 'macro.cancelled', macro_id: 'm2' });
+            m.frame({ type: 'macro.started', macro_id: 7, total_steps: 2 });
+            m.frame({ type: 'macro.completed', macro_id: '7' });
+            m.frame({ type: 'macro.started', macro_id: 'constructor' });
+            m.frame({ type: 'macro.completed', macro_id: 'constructor' });
+            m.frame({ type: 'macro.started', macro_id: '__proto__', total_steps: 1 });
+            m.frame({ type: 'macro.completed', macro_id: '__proto__' });
+        });
+
+        // Claims: what a press claims, once per run, aged out, re-armed.
+        const claimer = {
+            id: 'c_btn', type: 'button', label: 'Claim',
+            bindings: {
+                do: {
+                    press: [{ action: 'macro', macro: 'm1' }],
+                    hold: { action: 'macro', macro: 'm2' },
+                    release: [{ action: 'device.command', device: 'd', command: 'x', off_action: { action: 'macro', macro: 'm3' } }],
+                    change: { value_map: { a: [{ action: 'macro', macro: 4 }], b: { action: 'macro', macro: '' } } },
+                },
+                show: { value: { source: 'macro_progress', macro: 'm5' } },
+            },
+            matrix_config: { destinations: [{ route_action: [{ action: 'macro', macro: 'm6' }] }] },
+        };
+        const claimLabel = { id: 'c_val', type: 'label', text: '', bindings: { show: { value: { key: 'var.v' } } } };
+        run('claims', { elements: [claimer, claimLabel, macroButton('c_other', 'm7')], state: { 'var.v': 'ten' } }, (m) => {
+            m.frame({ type: 'macro.step_error', macro_id: 'm1', message: 'Nobody pressed this' });
+            m.press('c_btn');
+            m.frame({ type: 'macro.step_error', macro_id: 'm1', message: 'Projector unreachable' });
+            m.frame({ type: 'macro.step_error', macro_id: 'm1', message: 'Second step' });
+            m.frame({ type: 'macro.started', macro_id: 'm1' });
+            m.frame({ type: 'macro.step_error', macro_id: 'm1', message: 'Still reported' });
+            m.frame({ type: 'macro.completed', macro_id: 'm1' });
+            m.frame({ type: 'macro.step_error', macro_id: 'm1', message: 'Claim gone' });
+            for (const id of ['m2', 'm3', '4', 'm6']) m.frame({ type: 'macro.step_error', macro_id: id, message: `From ${id}` });
+            m.frame({ type: 'macro.step_error', macro_id: 'm5', message: 'Only watched' });
+            m.frame({ type: 'macro.step_error', macro_id: '', message: 'Empty id' });
+            m.advance(6000);
+            m.press('c_btn', 'hold');
+            m.frame({ type: 'macro.step_error', macro_id: 'm9', call_chain: ['m8', 'm2'], message: 'Inside m2' });
+            m.press('c_btn');
+            m.frame({ type: 'macro.step_error', macro_id: 'm1', call_chain: [], error: 'Chain empty, error only' });
+            m.press('c_other');
+            m.frame({ type: 'macro.step_error', macro_id: 'm7', call_chain: 'm7', message: '' });
+            m.frame({ type: 'macro.step_error', macro_id: 'm7', message: 'Again' });
+        });
+
+        // Runs counted: a second run's end keeps the first one's claim, an end
+        // before any start is somebody else's, and a claim nobody answers ages out.
+        run('runs', { elements: [macroButton('r_btn', 'r1'), progressLabel('r_p', 'r1', 'Idle')] }, (m) => {
+            m.run('r1');
+            m.frame({ type: 'macro.started', macro_id: 'r1', total_steps: 2 });
+            m.frame({ type: 'macro.started', macro_id: 'r1', total_steps: 2 });
+            m.frame({ type: 'macro.completed', macro_id: 'r1' });
+            m.frame({ type: 'macro.step_error', macro_id: 'r1', message: 'First run still ours' });
+            m.frame({ type: 'macro.completed', macro_id: 'r1' });
+            m.frame({ type: 'macro.step_error', macro_id: 'r1', message: 'Both ended' });
+            m.run('r2');
+            m.frame({ type: 'macro.completed', macro_id: 'r2' });
+            m.frame({ type: 'macro.step_error', macro_id: 'r2', message: 'Waiting for its start' });
+            m.run('r3');
+            m.advance(5 * 60 * 1000);
+            m.frame({ type: 'macro.step_error', macro_id: 'r3', message: 'Right at the limit' });
+            m.run('r4');
+            m.advance(5 * 60 * 1000 + 1);
+            m.frame({ type: 'macro.step_error', macro_id: 'r4', message: 'Too old' });
+            m.frame({ type: 'macro.step_error', macro_id: 'r4', message: 'Still too old' });
+            m.run('r4');
+            m.frame({ type: 'macro.step_error', macro_id: 'r4', message: 'Asked again' });
+            m.run(5);
+            m.frame({ type: 'macro.step_error', macro_id: 5, message: 'Numeric' });
+            m.send({ type: 'macro.execute' });
+            m.send({ type: 'macro.execute', macro_id: '' });
+            m.send(null);
+            m.send({ type: 7, element_id: 'r_btn' });
+            m.send({ type: 'ui.press' });
+            m.send({ type: 'ui.press', element_id: 'ghost' });
+            m.send({ type: 'state.set', element_id: 'r_btn', key: 'var.x', value: 1 });
+            m.frame({ type: 'macro.step_error', macro_id: 'r1', message: 'Not from ui.' });
+        });
+
+        // The band: which frames draw it, the switch that silences it, one at a
+        // time, its timer, a tap, a page change, and where it sits.
+        const bandElements = [
+            macroButton('top_btn', 'x1'),
+            { id: 'v_lbl', type: 'label', text: '', bindings: { show: { value: { key: 'var.v' } } } },
+            { id: 'low_btn', type: 'button', label: 'Low' },
+            { id: 'go', type: 'page_nav', label: 'Go', target_page: 'second' },
+        ];
+        const second = { id: 'second', name: 'Second', page_type: 'page', elements: [], layouts: [{ id: 'landscape', orientation: 'landscape', primary: true, placements: {}, hidden: [] }] };
+        run('band', { elements: bandElements, state: { 'var.v': 'set' }, pages: [second] }, (m) => {
+            m.frame({ type: 'error', source_type: 'ui', message: 'That did not work' });
+            m.advance(4999);
+            m.advance(1);
+            m.frame({ type: 'error', message: 'Rate limit exceeded' });
+            m.frame({ type: 'error', source_type: 'command', message: '   ' });
+            m.frame({ type: 'error', source_type: 'command', message: null });
+            m.frame({ type: 'error', source_type: 'command', message: 'First' });
+            m.advance(3000);
+            m.frame({ type: 'error', source_type: 'command', message: 'Replaced' });
+            m.advance(3000);
+            m.advance(2000);
+            m.frame({ type: 'command.ack', success: false, error: 'Refused by the device' });
+            document.getElementById('panel-failure-message').click();
+            m.look();
+            m.frame({ type: 'state.set.ack', success: false, error: 'Not allowed' });
+            m.frame({ type: 'command.ack', success: true, error: 'ignored' });
+            m.frame({ type: 'command.ack', error: 'no success field' });
+            m.press('low_btn');
+            m.at('low_btn', 700);
+            m.frame({ type: 'error', source_type: 'ui', message: 'Low control' });
+            m.at('low_btn', 300);
+            m.frame({ type: 'error', source_type: 'ui', message: 'High control' });
+            m.at('low_btn', 381);
+            m.frame({ type: 'error', source_type: 'ui', message: 'Just above the middle' });
+            m.at('low_btn', null);
+            m.frame({ type: 'error', source_type: 'ui', message: 'No box' });
+            m.at('low_btn', 700);
+            m.app.renderCurrentPage();
+            m.frame({ type: 'error', source_type: 'ui', message: 'Redrawn since' });
+            m.app.navigateToPage('second');
+            m.look();
+            m.app.navigateToPage('main');
+            m.look();
+            m.app.uiSettings = { show_error_messages: false };
+            m.frame({ type: 'error', source_type: 'ui', message: 'Switched off' });
+            m.frame({ type: 'command.ack', success: false, error: 'Also off' });
+            m.app.uiSettings = { show_error_messages: 0 };
+            m.frame({ type: 'error', source_type: 'ui', message: 'Zero is not off' });
+            m.app.uiSettings = null;
+            m.frame({ type: 'error', source_type: 'ui', message: 'No settings' });
+            m.frame({ type: 'error', source_type: 'ui', message: 42 });
+        });
+
+        // A refusal puts the control back to what state says, whichever frame
+        // carries it and whatever the control was showing.
+        run('revert', { elements: bandElements, state: { 'var.v': 'from state' } }, (m) => {
+            const lbl = m.app.elementMap.v_lbl.el;
+            const scribble = () => { lbl.textContent = 'operator wrote this'; m.look(); };
+            scribble();
+            m.frame({ type: 'error', source_type: 'ui', message: 'Refused', element_id: 'v_lbl' });
+            scribble();
+            m.press('v_lbl');
+            m.frame({ type: 'error', message: 'Rate limit' });
+            scribble();
+            m.frame({ type: 'command.ack', success: false, error: 'No' });
+            scribble();
+            m.frame({ type: 'macro.step_error', macro_id: 'x1', message: 'Not claimed' });
+            m.press('top_btn');
+            m.app._lastTouchedElementId = 'v_lbl';
+            m.frame({ type: 'macro.step_error', macro_id: 'x1', message: 'Claimed, revert falls back' });
+            m.frame({ type: 'error', source_type: 'ui', message: 'Other', element_id: 'ghost' });
+            m.app._lastTouchedElementId = null;
+            scribble();
+            m.frame({ type: 'command.ack', success: false, error: 'Nothing touched' });
+            // A redraw whose binding throws is logged and leaves the control as it was.
+            const quiet = console.error;
+            console.error = () => {};
+            m.app.evaluateText = () => { throw new Error('broken'); };
+            try {
+                m.frame({ type: 'error', source_type: 'ui', message: 'Throws', element_id: 'v_lbl' });
+            } finally {
+                delete m.app.evaluateText;
+                console.error = quiet;
+            }
+            m.frame({ type: 'error', source_type: 'ui', message: 'Draws again', element_id: 'v_lbl' });
+        });
+
+        // The design canvas sends nothing, so it claims nothing.
+        run('design_canvas', { elements: [macroButton('e_btn', 'e1')], edit: true }, (m) => {
+            m.press('e_btn');
+            m.run('e2');
+            m.frame({ type: 'macro.step_error', macro_id: 'e1', message: 'Canvas' });
+            m.frame({ type: 'macro.started', macro_id: 'e1' });
+            m.frame({ type: 'macro.completed', macro_id: 'e1' });
+        });
+
+        comparePins('macro_runs', got, MACRO_RUN_PINS.macro_runs);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

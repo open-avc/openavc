@@ -1,0 +1,3300 @@
+{
+ "availability": {
+  "every_reading": [
+   {
+    "c": {
+     "r_feedback": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "r_feedback",
+      "r@aria-label": "MUTED",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%; background-color: rgb(204, 0, 0);",
+      "r#": "MUTED"
+     },
+     "r_toggle": {
+      "r@": "button type class data-element-id aria-label style data-element-type",
+      "r@type": "button",
+      "r@class": "panel-element panel-button toggle-on",
+      "r@data-element-id": "r_toggle",
+      "r@aria-label": "r_toggle",
+      "r@style": "background-color: rgb(33, 150, 243); position: absolute; left: 20%; top: 1%; width: 18%; height: 17%; color: rgb(17, 17, 17);",
+      "r@data-element-type": "button",
+      "r#": "r_toggle"
+     },
+     "r_text": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "r_text",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%;",
+      "r#": "b"
+     },
+     "r_label_look": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "r_label_look",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%; color: rgb(255, 0, 0);",
+      "r#": "MUTED"
+     },
+     "r_led": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-status-led",
+      "r@data-element-id": "r_led",
+      "r@data-element-type": "status_led",
+      "r@style": "position: absolute; left: 77%; top: 1%; width: 18%; height: 17%;",
+      "r.0@": "div class style",
+      "r.0@class": "led-dot active",
+      "r.0@style": "background-color: rgb(0, 255, 0); color: rgb(0, 255, 0); box-shadow: 0 0 0.7143rem #00ff00;"
+     },
+     "r_slider": {
+      "r@": "div class data-element-id style data-element-type",
+      "r@class": "panel-element panel-slider",
+      "r@data-element-id": "r_slider",
+      "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 1%; top: 20%; width: 18%; height: 17%;",
+      "r@data-element-type": "slider",
+      "r.0@": "div class",
+      "r.0@class": "slider-track-wrapper",
+      "r.0.0@": "div class",
+      "r.0.0@class": "slider-track",
+      "r.0.0.0@": "div class style",
+      "r.0.0.0@class": "slider-fill",
+      "r.0.0.0@style": "width: 40%;",
+      "r.0.1@": "input type aria-label min max step aria-valuetext",
+      "r.0.1@type": "range",
+      "r.0.1@aria-label": "r_slider",
+      "r.0.1@min": "0",
+      "r.0.1@max": "100",
+      "r.0.1@step": "1",
+      "r.0.1@aria-valuetext": "40"
+     },
+     "r_fader": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-fader vertical",
+      "r@data-element-id": "r_fader",
+      "r@data-element-type": "fader",
+      "r@style": "position: absolute; left: 20%; top: 20%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "fader-body",
+      "r.0.0@": "div class",
+      "r.0.0@class": "fader-scale",
+      "r.0.0.0@": "div class style",
+      "r.0.0.0@class": "fader-mark",
+      "r.0.0.0@style": "bottom: 0%;",
+      "r.0.0.0#": "0",
+      "r.0.0.1@": "div class style",
+      "r.0.0.1@class": "fader-mark",
+      "r.0.0.1@style": "bottom: 20%;",
+      "r.0.0.1#": "20",
+      "r.0.0.2@": "div class style",
+      "r.0.0.2@class": "fader-mark",
+      "r.0.0.2@style": "bottom: 40%;",
+      "r.0.0.2#": "40",
+      "r.0.0.3@": "div class style",
+      "r.0.0.3@class": "fader-mark",
+      "r.0.0.3@style": "bottom: 60%;",
+      "r.0.0.3#": "60",
+      "r.0.0.4@": "div class style",
+      "r.0.0.4@class": "fader-mark",
+      "r.0.0.4@style": "bottom: 80%;",
+      "r.0.0.4#": "80",
+      "r.0.0.5@": "div class style",
+      "r.0.0.5@class": "fader-mark",
+      "r.0.0.5@style": "bottom: 100%;",
+      "r.0.0.5#": "100",
+      "r.0.1@": "div class",
+      "r.0.1@class": "fader-track-wrap",
+      "r.0.1.0@": "div class",
+      "r.0.1.0@class": "fader-track",
+      "r.0.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow",
+      "r.0.1.1@class": "fader-handle",
+      "r.0.1.1@role": "slider",
+      "r.0.1.1@aria-label": "Fader r_fader",
+      "r.0.1.1@aria-valuemin": "0",
+      "r.0.1.1@aria-valuemax": "100",
+      "r.0.1.1@tabindex": "0",
+      "r.0.1.1@style": "bottom: 40%;",
+      "r.0.1.1@aria-valuenow": "40",
+      "r.1@": "div class",
+      "r.1@class": "fader-value",
+      "r.1#": "40.0"
+     },
+     "r_gauge": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-gauge",
+      "r@data-element-id": "r_gauge",
+      "r@data-element-type": "gauge",
+      "r@style": "position: absolute; left: 39%; top: 20%; width: 18%; height: 17%;",
+      "r.0@": "svg viewBox style",
+      "r.0@viewBox": "0 0 120 120",
+      "r.0@style": "width: 100%; height: 100%; max-width: 100%; max-height: 100%;",
+      "r.0.0@": "path d fill stroke stroke-width stroke-linecap",
+      "r.0.0@d": "M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996",
+      "r.0.0@fill": "none",
+      "r.0.0@stroke": "#333333",
+      "r.0.0@stroke-width": "8",
+      "r.0.0@stroke-linecap": "round",
+      "r.0.1@": "path fill stroke stroke-width stroke-linecap data-role d",
+      "r.0.1@fill": "none",
+      "r.0.1@stroke": "#4CAF50",
+      "r.0.1@stroke-width": "8",
+      "r.0.1@stroke-linecap": "round",
+      "r.0.1@data-role": "gauge-fg",
+      "r.0.1@d": "M 14.966679003209187 86 A 52 52 0 0 1 38.84969456005835 12.49563620258477",
+      "r.0.2@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.2@x1": "21.894882233484694",
+      "r.0.2@y1": "82",
+      "r.0.2@x2": "11.50257738807143",
+      "r.0.2@y2": "88",
+      "r.0.2@stroke": "#666",
+      "r.0.2@stroke-width": "1",
+      "r.0.3@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.3@x1": "18.15351328301324",
+      "r.0.3@y1": "46.40325224750232",
+      "r.0.3@x2": "6.740835087471396",
+      "r.0.3@y2": "42.69504831500295",
+      "r.0.3@stroke": "#666",
+      "r.0.3@stroke-width": "1",
+      "r.0.4@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.4@x1": "42.10358770466476",
+      "r.0.4@y1": "19.80399986372558",
+      "r.0.4@x2": "37.22274798775515",
+      "r.0.4@y2": "8.841454372014368",
+      "r.0.4@stroke": "#666",
+      "r.0.4@stroke-width": "1",
+      "r.0.5@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.5@x1": "77.89641229533515",
+      "r.0.5@y1": "19.803999863725537",
+      "r.0.5@x2": "82.77725201224474",
+      "r.0.5@y2": "8.841454372014319",
+      "r.0.5@stroke": "#666",
+      "r.0.5@stroke-width": "1",
+      "r.0.6@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.6@x1": "101.84648671698676",
+      "r.0.6@y1": "46.40325224750231",
+      "r.0.6@x2": "113.2591649125286",
+      "r.0.6@y2": "42.695048315002936",
+      "r.0.6@stroke": "#666",
+      "r.0.6@stroke-width": "1",
+      "r.0.7@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.7@x1": "98.10511776651532",
+      "r.0.7@y1": "81.99999999999997",
+      "r.0.7@x2": "108.49742261192858",
+      "r.0.7@y2": "87.99999999999996",
+      "r.0.7@stroke": "#666",
+      "r.0.7@stroke-width": "1",
+      "r.0.8@": "text x y text-anchor fill font-size font-weight data-role",
+      "r.0.8@x": "60",
+      "r.0.8@y": "64",
+      "r.0.8@text-anchor": "middle",
+      "r.0.8@fill": "#ffffff",
+      "r.0.8@font-size": "16",
+      "r.0.8@font-weight": "600",
+      "r.0.8@data-role": "gauge-value",
+      "r.0.8#": "40"
+     },
+     "r_meter": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-level-meter vertical",
+      "r@data-element-id": "r_meter",
+      "r@data-element-type": "level_meter",
+      "r@style": "position: absolute; left: 58%; top: 20%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "meter-bar",
+      "r.0.0@": "div class data-zone",
+      "r.0.0@class": "meter-segment lit",
+      "r.0.0@data-zone": "red",
+      "r.0.1@": "div class data-zone",
+      "r.0.1@class": "meter-segment lit",
+      "r.0.1@data-zone": "red",
+      "r.0.2@": "div class data-zone",
+      "r.0.2@class": "meter-segment",
+      "r.0.2@data-zone": "red",
+      "r.0.3@": "div class data-zone",
+      "r.0.3@class": "meter-segment",
+      "r.0.3@data-zone": "red"
+     },
+     "r_select": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-select",
+      "r@data-element-id": "r_select",
+      "r@data-element-type": "select",
+      "r@style": "position: absolute; left: 77%; top: 20%; width: 18%; height: 17%;",
+      "r.0@": "select style",
+      "r.0@style": "background-color: rgb(18, 52, 86);",
+      "r.0.0@": "option value style",
+      "r.0.0@value": "a",
+      "r.0.0@style": "background-color: rgb(18, 52, 86);",
+      "r.0.0#": "A",
+      "r.0.1@": "option value style",
+      "r.0.1@value": "b",
+      "r.0.1@style": "background-color: rgb(101, 67, 33);",
+      "r.0.1#": "B"
+     },
+     "r_textin": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-text-input",
+      "r@data-element-id": "r_textin",
+      "r@data-element-type": "text_input",
+      "r@style": "position: absolute; left: 1%; top: 39%; width: 18%; height: 17%;",
+      "r.0@": "input type placeholder",
+      "r.0@type": "text",
+      "r.0@placeholder": ""
+     },
+     "r_list": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-list",
+      "r@data-element-id": "r_list",
+      "r@data-element-type": "list",
+      "r@style": "position: absolute; left: 20%; top: 39%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "list-scroll",
+      "r.0.0@": "div class style data-value",
+      "r.0.0@class": "list-item active",
+      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
+      "r.0.0@data-value": "1",
+      "r.0.0#": "Laptop",
+      "r.0.1@": "div class style data-value",
+      "r.0.1@class": "list-item",
+      "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+      "r.0.1@data-value": "2",
+      "r.0.1#": "Camera"
+     },
+     "r_image": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-image",
+      "r@data-element-id": "r_image",
+      "r@data-element-type": "image",
+      "r@style": "position: absolute; left: 39%; top: 39%; width: 18%; height: 17%;"
+     },
+     "r_nav": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-page-nav",
+      "r@data-element-id": "r_nav",
+      "r@aria-label": "Go",
+      "r@data-element-type": "page_nav",
+      "r@style": "position: absolute; left: 58%; top: 39%; width: 18%; height: 17%; background-color: rgb(0, 170, 0);",
+      "r#": "Go"
+     },
+     "r_group": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-group",
+      "r@data-element-id": "r_group",
+      "r@data-element-type": "group",
+      "r@style": "position: absolute; left: 77%; top: 39%; width: 18%; height: 17%; background-color: rgb(0, 0, 170);",
+      "r.0@": "div class style",
+      "r.0@class": "group-label",
+      "r.0@style": "top: 0px; left: 0.5714rem;",
+      "r.0#": "G"
+     },
+     "r_visible": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "r_visible",
+      "r@aria-label": "Shown",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 58%; width: 18%; height: 17%;",
+      "r#": "Shown"
+     },
+     "r_progress": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "r_progress",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 58%; width: 18%; height: 17%;",
+      "r#": "Idle"
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_select:select_look",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_feedback": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@aria-label": "Mute",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Mute"
+     },
+     "r_toggle": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@style": "background-color: rgb(66, 66, 66); position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;"
+     },
+     "r_text": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     },
+     "r_label_look": {
+      "r@class": "panel-element panel-label device-offline",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Amp"
+     },
+     "r_led": {
+      "r@class": "panel-element panel-status-led device-offline",
+      "r.0@class": "led-dot",
+      "r.0@style": "background-color: rgb(158, 158, 158); color: rgb(158, 158, 158); box-shadow: 0 0 0.4286rem rgba(0,0,0,0.3);"
+     },
+     "r_slider": {
+      "r@class": "panel-element panel-slider device-offline",
+      "r.0.0.0@style": "width: 0%;",
+      "r.0.1@": "input type aria-label min max step class",
+      "r.0.1@aria-valuetext": null,
+      "r.0.1@class": "no-reading"
+     },
+     "r_fader": {
+      "r@class": "panel-element panel-fader vertical device-offline",
+      "r.0.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style",
+      "r.0.1.1@class": "fader-handle no-reading",
+      "r.0.1.1@style": "bottom: 0%;",
+      "r.0.1.1@aria-valuenow": null,
+      "r.1#": "--"
+     },
+     "r_gauge": {
+      "r@class": "panel-element panel-gauge device-offline",
+      "r.0.1@d": "",
+      "r.0.8#": "--"
+     },
+     "r_meter": {
+      "r@class": "panel-element panel-level-meter vertical device-offline",
+      "r.0.0@class": "meter-segment",
+      "r.0.1@class": "meter-segment"
+     },
+     "r_select": {
+      "r@class": "panel-element panel-select device-offline"
+     },
+     "r_textin": {
+      "r@class": "panel-element panel-text-input device-offline"
+     },
+     "r_list": {
+      "r@class": "panel-element panel-list device-offline",
+      "r.0.0@class": "list-item",
+      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+     },
+     "r_image": {
+      "r@class": "panel-element panel-image device-offline"
+     },
+     "r_nav": {
+      "r@class": "panel-element panel-page-nav device-offline",
+      "r@style": "position: absolute; left: 58%; top: 39%; width: 18%; height: 17%;"
+     },
+     "r_group": {
+      "r@style": "position: absolute; left: 77%; top: 39%; width: 18%; height: 17%;"
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_feedback": {
+      "r@class": "panel-element panel-button",
+      "r@aria-label": "MUTED",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%; background-color: rgb(204, 0, 0);",
+      "r#": "MUTED"
+     },
+     "r_toggle": {
+      "r@class": "panel-element panel-button toggle-on",
+      "r@style": "background-color: rgb(33, 150, 243); position: absolute; left: 20%; top: 1%; width: 18%; height: 17%; color: rgb(17, 17, 17);"
+     },
+     "r_text": {
+      "r@class": "panel-element panel-label",
+      "r#": "b"
+     },
+     "r_label_look": {
+      "r@class": "panel-element panel-label",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%; color: rgb(255, 0, 0);",
+      "r#": "MUTED"
+     },
+     "r_led": {
+      "r@class": "panel-element panel-status-led",
+      "r.0@class": "led-dot active",
+      "r.0@style": "background-color: rgb(0, 255, 0); color: rgb(0, 255, 0); box-shadow: 0 0 0.7143rem #00ff00;"
+     },
+     "r_slider": {
+      "r@class": "panel-element panel-slider",
+      "r.0.0.0@style": "width: 55.00000000000001%;",
+      "r.0.1@": "input type aria-label min max step class aria-valuetext",
+      "r.0.1@class": "",
+      "r.0.1@aria-valuetext": "55"
+     },
+     "r_fader": {
+      "r@class": "panel-element panel-fader vertical",
+      "r.0.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow",
+      "r.0.1.1@class": "fader-handle",
+      "r.0.1.1@style": "bottom: 55.00000000000001%;",
+      "r.1#": "55.0",
+      "r.0.1.1@aria-valuenow": "55"
+     },
+     "r_gauge": {
+      "r@class": "panel-element panel-gauge",
+      "r.0.1@d": "M 14.966679003209187 86 A 52 52 0 0 1 70.81140792252344 9.136324761842097",
+      "r.0.8#": "55"
+     },
+     "r_meter": {
+      "r@class": "panel-element panel-level-meter vertical",
+      "r.0.0@class": "meter-segment lit",
+      "r.0.1@class": "meter-segment lit",
+      "r.0.2@class": "meter-segment peak"
+     },
+     "r_select": {
+      "r@class": "panel-element panel-select"
+     },
+     "r_textin": {
+      "r@class": "panel-element panel-text-input"
+     },
+     "r_list": {
+      "r@class": "panel-element panel-list",
+      "r.0.0@class": "list-item active",
+      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);"
+     },
+     "r_image": {
+      "r@class": "panel-element panel-image"
+     },
+     "r_nav": {
+      "r@class": "panel-element panel-page-nav",
+      "r@style": "position: absolute; left: 58%; top: 39%; width: 18%; height: 17%; background-color: rgb(0, 170, 0);"
+     },
+     "r_group": {
+      "r@style": "position: absolute; left: 77%; top: 39%; width: 18%; height: 17%; background-color: rgb(0, 0, 170);"
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_select": {
+      "r@class": "panel-element panel-select device-offline",
+      "r.0@style": ""
+     }
+    },
+    "e": [
+     "r_select:select_look",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_feedback": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@aria-label": "Mute",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Mute"
+     },
+     "r_toggle": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@style": "background-color: rgb(66, 66, 66); position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;"
+     },
+     "r_text": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     },
+     "r_label_look": {
+      "r@class": "panel-element panel-label device-offline",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Amp"
+     },
+     "r_led": {
+      "r@class": "panel-element panel-status-led device-offline",
+      "r.0@class": "led-dot",
+      "r.0@style": "background-color: rgb(158, 158, 158); color: rgb(158, 158, 158); box-shadow: 0 0 0.4286rem rgba(0,0,0,0.3);"
+     },
+     "r_slider": {
+      "r@class": "panel-element panel-slider device-offline",
+      "r.0.0.0@style": "width: 0%;",
+      "r.0.1@": "input type aria-label min max step class",
+      "r.0.1@class": "no-reading",
+      "r.0.1@aria-valuetext": null
+     },
+     "r_fader": {
+      "r@class": "panel-element panel-fader vertical device-offline",
+      "r.0.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style",
+      "r.0.1.1@class": "fader-handle no-reading",
+      "r.0.1.1@style": "bottom: 0%;",
+      "r.0.1.1@aria-valuenow": null,
+      "r.1#": "--"
+     },
+     "r_gauge": {
+      "r@class": "panel-element panel-gauge device-offline",
+      "r.0.1@d": "",
+      "r.0.8#": "--"
+     },
+     "r_meter": {
+      "r@class": "panel-element panel-level-meter vertical device-offline",
+      "r.0.0@class": "meter-segment",
+      "r.0.1@class": "meter-segment",
+      "r.0.2@class": "meter-segment"
+     },
+     "r_textin": {
+      "r@class": "panel-element panel-text-input device-offline"
+     },
+     "r_list": {
+      "r@class": "panel-element panel-list device-offline",
+      "r.0.0@class": "list-item",
+      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+     },
+     "r_image": {
+      "r@class": "panel-element panel-image device-offline"
+     },
+     "r_nav": {
+      "r@class": "panel-element panel-page-nav device-offline",
+      "r@style": "position: absolute; left: 58%; top: 39%; width: 18%; height: 17%;"
+     },
+     "r_group": {
+      "r@style": "position: absolute; left: 77%; top: 39%; width: 18%; height: 17%;"
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_select": {
+      "r.0@style": "background-color: rgb(18, 52, 86);"
+     }
+    },
+    "e": [
+     "r_select:select_look",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_list": {
+      "r.0.0@class": "list-item active",
+      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
+      "r.0.2@": "div class style data-value",
+      "r.0.2@class": "list-item",
+      "r.0.2@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+      "r.0.2@data-value": "3",
+      "r.0.2#": "Doc cam"
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_label_look:label_look",
+     "r_list:list_items",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_list": {
+      "r.0.0@class": "list-item",
+      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);"
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_list": {
+      "r.0.2@": null,
+      "r.0.2@class": null,
+      "r.0.2@style": null,
+      "r.0.2@data-value": null,
+      "r.0.2#": null
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_select:select_look",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_feedback": {
+      "r@class": "panel-element panel-button",
+      "r@aria-label": "LIVE",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%; background-color: rgb(17, 17, 17);",
+      "r#": "LIVE"
+     },
+     "r_toggle": {
+      "r@class": "panel-element panel-button"
+     },
+     "r_text": {
+      "r@class": "panel-element panel-label"
+     },
+     "r_label_look": {
+      "r@class": "panel-element panel-label"
+     },
+     "r_led": {
+      "r@class": "panel-element panel-status-led"
+     },
+     "r_slider": {
+      "r@class": "panel-element panel-slider"
+     },
+     "r_fader": {
+      "r@class": "panel-element panel-fader vertical"
+     },
+     "r_gauge": {
+      "r@class": "panel-element panel-gauge"
+     },
+     "r_meter": {
+      "r@class": "panel-element panel-level-meter vertical"
+     },
+     "r_select": {
+      "r@class": "panel-element panel-select",
+      "r.0@style": ""
+     },
+     "r_textin": {
+      "r@class": "panel-element panel-text-input"
+     },
+     "r_list": {
+      "r@class": "panel-element panel-list",
+      "r.0.0#": "One",
+      "r.0.1@": null,
+      "r.0.1@class": null,
+      "r.0.1@style": null,
+      "r.0.1@data-value": null,
+      "r.0.1#": null
+     },
+     "r_image": {
+      "r@class": "panel-element panel-image"
+     },
+     "r_nav": {
+      "r@class": "panel-element panel-page-nav"
+     },
+     "r_visible": {
+      "r@style": "position: absolute; left: 1%; top: 58%; width: 18%; height: 17%; display: none;"
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_select:select_look",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "r_select": {
+      "r.0@": "select",
+      "r.0@style": null
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_select:select_look",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress"
+    ]
+   }
+  ],
+  "platform_keys": [
+   {
+    "c": {
+     "p_connected": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_connected",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r#": "true"
+     },
+     "p_enabled": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_enabled",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;",
+      "r#": "v:p_enabled"
+     },
+     "p_name": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_name",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%;",
+      "r#": "v:p_name"
+     },
+     "p_offline_detail": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_offline_detail",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%;",
+      "r#": "v:p_offline_detail"
+     },
+     "p_offline_reason": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_offline_reason",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 77%; top: 1%; width: 18%; height: 17%;",
+      "r#": "v:p_offline_reason"
+     },
+     "p_orphan_reason": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_orphan_reason",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 1%; top: 20%; width: 18%; height: 17%;",
+      "r#": "v:p_orphan_reason"
+     },
+     "p_orphaned": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_orphaned",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 20%; width: 18%; height: 17%;",
+      "r#": "v:p_orphaned"
+     },
+     "p_paused": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_paused",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 20%; width: 18%; height: 17%;",
+      "r#": "v:p_paused"
+     },
+     "p_paused_for": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_paused_for",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 58%; top: 20%; width: 18%; height: 17%;",
+      "r#": "v:p_paused_for"
+     },
+     "p_reconnect_attempt": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_reconnect_attempt",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 77%; top: 20%; width: 18%; height: 17%;",
+      "r#": "v:p_reconnect_attempt"
+     },
+     "p_reconnect_failed": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_reconnect_failed",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 1%; top: 39%; width: 18%; height: 17%;",
+      "r#": "v:p_reconnect_failed"
+     },
+     "p_restarting": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_restarting",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 39%; width: 18%; height: 17%;",
+      "r#": "v:p_restarting"
+     },
+     "p_asleep": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_asleep",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 39%; width: 18%; height: 17%;",
+      "r#": "v:p_asleep"
+     },
+     "p_wake_command": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_wake_command",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 58%; top: 39%; width: 18%; height: 17%;",
+      "r#": "v:p_wake_command"
+     },
+     "p_web_ui_url": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_web_ui_url",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 77%; top: 39%; width: 18%; height: 17%;",
+      "r#": "v:p_web_ui_url"
+     },
+     "p_gain": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_gain",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 1%; top: 58%; width: 18%; height: 17%;",
+      "r#": "v:p_gain"
+     },
+     "c_online": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "c_online",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 58%; width: 18%; height: 17%;",
+      "r#": "v:c_online"
+     },
+     "c_offline_reason": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "c_offline_reason",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 58%; width: 18%; height: 17%;",
+      "r#": "v:c_offline_reason"
+     },
+     "c_offline_detail": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "c_offline_detail",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 58%; top: 58%; width: 18%; height: 17%;",
+      "r#": "v:c_offline_detail"
+     },
+     "c_label": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "c_label",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 77%; top: 58%; width: 18%; height: 17%;",
+      "r#": "v:c_label"
+     },
+     "c_mute": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "c_mute",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 1%; top: 77%; width: 18%; height: 17%;",
+      "r#": "v:c_mute"
+     },
+     "c_connected": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "c_connected",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 77%; width: 18%; height: 17%;",
+      "r#": "v:c_connected"
+     },
+     "o_four": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "o_four",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 77%; width: 18%; height: 17%;",
+      "r#": "v:o_four"
+     },
+     "o_six": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "o_six",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 58%; top: 77%; width: 18%; height: 17%;",
+      "r#": "v:o_six"
+     },
+     "o_var": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "o_var",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 77%; top: 77%; width: 18%; height: 17%;",
+      "r#": "v:o_var"
+     },
+     "o_plugin": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "o_plugin",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 1%; top: 96%; width: 18%; height: 17%;",
+      "r#": "v:o_plugin"
+     },
+     "o_short": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "o_short",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 96%; width: 18%; height: 17%;",
+      "r#": "v:o_short"
+     },
+     "o_empty_id": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "o_empty_id",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 96%; width: 18%; height: 17%;",
+      "r#": "v:o_empty_id"
+     }
+    },
+    "e": [
+     "p_connected:text",
+     "p_enabled:text",
+     "p_name:text",
+     "p_offline_detail:text",
+     "p_offline_reason:text",
+     "p_orphan_reason:text",
+     "p_orphaned:text",
+     "p_paused:text",
+     "p_paused_for:text",
+     "p_reconnect_attempt:text",
+     "p_reconnect_failed:text",
+     "p_restarting:text",
+     "p_asleep:text",
+     "p_wake_command:text",
+     "p_web_ui_url:text",
+     "p_gain:text",
+     "c_online:text",
+     "c_offline_reason:text",
+     "c_offline_detail:text",
+     "c_label:text",
+     "c_mute:text",
+     "c_connected:text",
+     "o_four:text",
+     "o_six:text",
+     "o_var:text",
+     "o_plugin:text",
+     "o_short:text",
+     "o_empty_id:text"
+    ]
+   },
+   {
+    "c": {
+     "p_connected": {
+      "r#": "false"
+     },
+     "p_web_ui_url": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     },
+     "p_gain": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     },
+     "c_mute": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     },
+     "c_connected": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     },
+     "o_four": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     },
+     "o_six": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     }
+    },
+    "e": [
+     "p_connected:text",
+     "p_web_ui_url:text",
+     "p_gain:text",
+     "c_mute:text",
+     "c_connected:text",
+     "o_four:text",
+     "o_six:text"
+    ]
+   },
+   {},
+   {
+    "c": {
+     "p_connected": {
+      "r#": "true"
+     },
+     "p_web_ui_url": {
+      "r@class": "panel-element panel-label",
+      "r#": "v:p_web_ui_url"
+     },
+     "p_gain": {
+      "r@class": "panel-element panel-label",
+      "r#": "v:p_gain"
+     },
+     "c_mute": {
+      "r@class": "panel-element panel-label",
+      "r#": "v:c_mute"
+     },
+     "c_connected": {
+      "r@class": "panel-element panel-label",
+      "r#": "v:c_connected"
+     },
+     "o_four": {
+      "r@class": "panel-element panel-label",
+      "r#": "v:o_four"
+     },
+     "o_six": {
+      "r@class": "panel-element panel-label",
+      "r#": "v:o_six"
+     }
+    },
+    "e": [
+     "p_connected:text",
+     "p_web_ui_url:text",
+     "p_gain:text",
+     "c_mute:text",
+     "c_connected:text",
+     "o_four:text",
+     "o_six:text"
+    ]
+   }
+  ],
+  "wake": [
+   {
+    "c": {
+     "w_power": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "w_power",
+      "r@aria-label": "OFF",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r#": "OFF"
+     },
+     "w_other": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "w_other",
+      "r@aria-label": "A",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;",
+      "r#": "A"
+     },
+     "w_two": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "w_two",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%;",
+      "r#": "3"
+     },
+     "w_bad": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "w_bad",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%;",
+      "r#": "4"
+     }
+    },
+    "e": [
+     "w_power:feedback",
+     "w_other:feedback",
+     "w_two:text",
+     "w_bad:text"
+    ]
+   },
+   {
+    "c": {
+     "w_power": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@aria-label": "Power",
+      "r#": "Power"
+     },
+     "w_other": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@aria-label": "Input",
+      "r#": "Input"
+     },
+     "w_bad": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     }
+    },
+    "e": [
+     "w_power:feedback",
+     "w_other:feedback",
+     "w_bad:text"
+    ]
+   },
+   {
+    "c": {
+     "w_power": {
+      "r@class": "panel-element panel-button",
+      "r@aria-label": "OFF",
+      "r#": "OFF"
+     }
+    },
+    "e": [
+     "w_power:feedback",
+     "w_other:feedback",
+     "w_bad:text"
+    ]
+   },
+   {
+    "c": {
+     "w_two": {
+      "r@class": "panel-element panel-label device-offline",
+      "r#": "--"
+     }
+    },
+    "e": [
+     "w_two:text"
+    ]
+   },
+   {
+    "c": {
+     "w_power": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@aria-label": "Power",
+      "r#": "Power"
+     }
+    },
+    "e": [
+     "w_power:feedback",
+     "w_other:feedback",
+     "w_bad:text"
+    ]
+   },
+   {},
+   {
+    "e": [
+     "w_power:feedback",
+     "w_other:feedback",
+     "w_bad:text"
+    ]
+   },
+   {
+    "c": {
+     "w_power": {
+      "r@class": "panel-element panel-button",
+      "r@aria-label": "OFF",
+      "r#": "OFF"
+     },
+     "w_other": {
+      "r@class": "panel-element panel-button",
+      "r@aria-label": "A",
+      "r#": "A"
+     },
+     "w_bad": {
+      "r@class": "panel-element panel-label",
+      "r#": "4"
+     }
+    },
+    "e": [
+     "w_power:feedback",
+     "w_other:feedback",
+     "w_bad:text"
+    ]
+   }
+  ],
+  "design_canvas": [
+   {
+    "c": {
+     "r_feedback": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "r_feedback",
+      "r@data-avc-text-src": "[\"bindings\",\"show\",\"look\",\"states\",\"on\",\"label\"]",
+      "r@aria-label": "MUTED",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%; background-color: rgb(204, 0, 0);",
+      "r#": "MUTED"
+     },
+     "r_toggle": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label style data-element-type",
+      "r@type": "button",
+      "r@class": "panel-element panel-button toggle-on",
+      "r@data-element-id": "r_toggle",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@aria-label": "r_toggle",
+      "r@style": "background-color: rgb(33, 150, 243); position: absolute; left: 20%; top: 1%; width: 18%; height: 17%; color: rgb(17, 17, 17);",
+      "r@data-element-type": "button",
+      "r#": "r_toggle"
+     },
+     "r_text": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "r_text",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%;",
+      "r#": "b"
+     },
+     "r_label_look": {
+      "r@": "div class data-element-id data-avc-text-src data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "r_label_look",
+      "r@data-avc-text-src": "[\"bindings\",\"show\",\"look\",\"states\",\"on\",\"label\"]",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%; color: rgb(255, 0, 0);",
+      "r#": "MUTED"
+     },
+     "r_led": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-status-led",
+      "r@data-element-id": "r_led",
+      "r@data-element-type": "status_led",
+      "r@style": "position: absolute; left: 77%; top: 1%; width: 18%; height: 17%;",
+      "r.0@": "div class style",
+      "r.0@class": "led-dot active",
+      "r.0@style": "background-color: rgb(0, 255, 0); color: rgb(0, 255, 0); box-shadow: 0 0 0.7143rem #00ff00;"
+     },
+     "r_slider": {
+      "r@": "div class data-element-id style data-element-type",
+      "r@class": "panel-element panel-slider",
+      "r@data-element-id": "r_slider",
+      "r@style": "--thumb-size: 3.142857142857143rem; position: absolute; left: 1%; top: 20%; width: 18%; height: 17%;",
+      "r@data-element-type": "slider",
+      "r.0@": "div class",
+      "r.0@class": "slider-track-wrapper",
+      "r.0.0@": "div class",
+      "r.0.0@class": "slider-track",
+      "r.0.0.0@": "div class style",
+      "r.0.0.0@class": "slider-fill",
+      "r.0.0.0@style": "width: 40%;",
+      "r.0.1@": "input type aria-label min max step aria-valuetext",
+      "r.0.1@type": "range",
+      "r.0.1@aria-label": "r_slider",
+      "r.0.1@min": "0",
+      "r.0.1@max": "100",
+      "r.0.1@step": "1",
+      "r.0.1@aria-valuetext": "40"
+     },
+     "r_fader": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-fader vertical",
+      "r@data-element-id": "r_fader",
+      "r@data-element-type": "fader",
+      "r@style": "position: absolute; left: 20%; top: 20%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "fader-body",
+      "r.0.0@": "div class",
+      "r.0.0@class": "fader-scale",
+      "r.0.0.0@": "div class style",
+      "r.0.0.0@class": "fader-mark",
+      "r.0.0.0@style": "bottom: 0%;",
+      "r.0.0.0#": "0",
+      "r.0.0.1@": "div class style",
+      "r.0.0.1@class": "fader-mark",
+      "r.0.0.1@style": "bottom: 20%;",
+      "r.0.0.1#": "20",
+      "r.0.0.2@": "div class style",
+      "r.0.0.2@class": "fader-mark",
+      "r.0.0.2@style": "bottom: 40%;",
+      "r.0.0.2#": "40",
+      "r.0.0.3@": "div class style",
+      "r.0.0.3@class": "fader-mark",
+      "r.0.0.3@style": "bottom: 60%;",
+      "r.0.0.3#": "60",
+      "r.0.0.4@": "div class style",
+      "r.0.0.4@class": "fader-mark",
+      "r.0.0.4@style": "bottom: 80%;",
+      "r.0.0.4#": "80",
+      "r.0.0.5@": "div class style",
+      "r.0.0.5@class": "fader-mark",
+      "r.0.0.5@style": "bottom: 100%;",
+      "r.0.0.5#": "100",
+      "r.0.1@": "div class",
+      "r.0.1@class": "fader-track-wrap",
+      "r.0.1.0@": "div class",
+      "r.0.1.0@class": "fader-track",
+      "r.0.1.1@": "div class role aria-label aria-valuemin aria-valuemax tabindex style aria-valuenow",
+      "r.0.1.1@class": "fader-handle",
+      "r.0.1.1@role": "slider",
+      "r.0.1.1@aria-label": "Fader r_fader",
+      "r.0.1.1@aria-valuemin": "0",
+      "r.0.1.1@aria-valuemax": "100",
+      "r.0.1.1@tabindex": "0",
+      "r.0.1.1@style": "bottom: 40%;",
+      "r.0.1.1@aria-valuenow": "40",
+      "r.1@": "div class",
+      "r.1@class": "fader-value",
+      "r.1#": "40.0"
+     },
+     "r_gauge": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-gauge",
+      "r@data-element-id": "r_gauge",
+      "r@data-element-type": "gauge",
+      "r@style": "position: absolute; left: 39%; top: 20%; width: 18%; height: 17%;",
+      "r.0@": "svg viewBox style",
+      "r.0@viewBox": "0 0 120 120",
+      "r.0@style": "width: 100%; height: 100%; max-width: 100%; max-height: 100%;",
+      "r.0.0@": "path d fill stroke stroke-width stroke-linecap",
+      "r.0.0@d": "M 14.966679003209187 86 A 52 52 0 1 1 105.03332099679082 85.99999999999996",
+      "r.0.0@fill": "none",
+      "r.0.0@stroke": "#333333",
+      "r.0.0@stroke-width": "8",
+      "r.0.0@stroke-linecap": "round",
+      "r.0.1@": "path fill stroke stroke-width stroke-linecap data-role d",
+      "r.0.1@fill": "none",
+      "r.0.1@stroke": "#4CAF50",
+      "r.0.1@stroke-width": "8",
+      "r.0.1@stroke-linecap": "round",
+      "r.0.1@data-role": "gauge-fg",
+      "r.0.1@d": "M 14.966679003209187 86 A 52 52 0 0 1 38.84969456005835 12.49563620258477",
+      "r.0.2@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.2@x1": "21.894882233484694",
+      "r.0.2@y1": "82",
+      "r.0.2@x2": "11.50257738807143",
+      "r.0.2@y2": "88",
+      "r.0.2@stroke": "#666",
+      "r.0.2@stroke-width": "1",
+      "r.0.3@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.3@x1": "18.15351328301324",
+      "r.0.3@y1": "46.40325224750232",
+      "r.0.3@x2": "6.740835087471396",
+      "r.0.3@y2": "42.69504831500295",
+      "r.0.3@stroke": "#666",
+      "r.0.3@stroke-width": "1",
+      "r.0.4@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.4@x1": "42.10358770466476",
+      "r.0.4@y1": "19.80399986372558",
+      "r.0.4@x2": "37.22274798775515",
+      "r.0.4@y2": "8.841454372014368",
+      "r.0.4@stroke": "#666",
+      "r.0.4@stroke-width": "1",
+      "r.0.5@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.5@x1": "77.89641229533515",
+      "r.0.5@y1": "19.803999863725537",
+      "r.0.5@x2": "82.77725201224474",
+      "r.0.5@y2": "8.841454372014319",
+      "r.0.5@stroke": "#666",
+      "r.0.5@stroke-width": "1",
+      "r.0.6@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.6@x1": "101.84648671698676",
+      "r.0.6@y1": "46.40325224750231",
+      "r.0.6@x2": "113.2591649125286",
+      "r.0.6@y2": "42.695048315002936",
+      "r.0.6@stroke": "#666",
+      "r.0.6@stroke-width": "1",
+      "r.0.7@": "line x1 y1 x2 y2 stroke stroke-width",
+      "r.0.7@x1": "98.10511776651532",
+      "r.0.7@y1": "81.99999999999997",
+      "r.0.7@x2": "108.49742261192858",
+      "r.0.7@y2": "87.99999999999996",
+      "r.0.7@stroke": "#666",
+      "r.0.7@stroke-width": "1",
+      "r.0.8@": "text x y text-anchor fill font-size font-weight data-role",
+      "r.0.8@x": "60",
+      "r.0.8@y": "64",
+      "r.0.8@text-anchor": "middle",
+      "r.0.8@fill": "#ffffff",
+      "r.0.8@font-size": "16",
+      "r.0.8@font-weight": "600",
+      "r.0.8@data-role": "gauge-value",
+      "r.0.8#": "40"
+     },
+     "r_meter": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-level-meter vertical",
+      "r@data-element-id": "r_meter",
+      "r@data-element-type": "level_meter",
+      "r@style": "position: absolute; left: 58%; top: 20%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "meter-bar",
+      "r.0.0@": "div class data-zone",
+      "r.0.0@class": "meter-segment lit",
+      "r.0.0@data-zone": "red",
+      "r.0.1@": "div class data-zone",
+      "r.0.1@class": "meter-segment lit",
+      "r.0.1@data-zone": "red",
+      "r.0.2@": "div class data-zone",
+      "r.0.2@class": "meter-segment",
+      "r.0.2@data-zone": "red",
+      "r.0.3@": "div class data-zone",
+      "r.0.3@class": "meter-segment",
+      "r.0.3@data-zone": "red"
+     },
+     "r_select": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-select",
+      "r@data-element-id": "r_select",
+      "r@data-element-type": "select",
+      "r@style": "position: absolute; left: 77%; top: 20%; width: 18%; height: 17%;",
+      "r.0@": "select style",
+      "r.0@style": "background-color: rgb(18, 52, 86);",
+      "r.0.0@": "option value style",
+      "r.0.0@value": "a",
+      "r.0.0@style": "background-color: rgb(18, 52, 86);",
+      "r.0.0#": "A",
+      "r.0.1@": "option value style",
+      "r.0.1@value": "b",
+      "r.0.1@style": "background-color: rgb(101, 67, 33);",
+      "r.0.1#": "B"
+     },
+     "r_textin": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-text-input",
+      "r@data-element-id": "r_textin",
+      "r@data-element-type": "text_input",
+      "r@style": "position: absolute; left: 1%; top: 39%; width: 18%; height: 17%;",
+      "r.0@": "input type placeholder",
+      "r.0@type": "text",
+      "r.0@placeholder": ""
+     },
+     "r_list": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-list",
+      "r@data-element-id": "r_list",
+      "r@data-element-type": "list",
+      "r@style": "position: absolute; left: 20%; top: 39%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "list-scroll",
+      "r.0.0@": "div class style data-value",
+      "r.0.0@class": "list-item active",
+      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(66, 165, 245);",
+      "r.0.0@data-value": "1",
+      "r.0.0#": "Laptop",
+      "r.0.1@": "div class style data-value",
+      "r.0.1@class": "list-item",
+      "r.0.1@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+      "r.0.1@data-value": "2",
+      "r.0.1#": "Camera"
+     },
+     "r_image": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-image",
+      "r@data-element-id": "r_image",
+      "r@data-element-type": "image",
+      "r@style": "position: absolute; left: 39%; top: 39%; width: 18%; height: 17%;"
+     },
+     "r_nav": {
+      "r@": "button type class data-element-id aria-label data-avc-text-src data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-page-nav",
+      "r@data-element-id": "r_nav",
+      "r@aria-label": "Go",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@data-element-type": "page_nav",
+      "r@style": "position: absolute; left: 58%; top: 39%; width: 18%; height: 17%; background-color: rgb(0, 170, 0);",
+      "r#": "Go"
+     },
+     "r_group": {
+      "r@": "div class data-element-id data-avc-text-src data-element-type style",
+      "r@class": "panel-element panel-group",
+      "r@data-element-id": "r_group",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@data-element-type": "group",
+      "r@style": "position: absolute; left: 77%; top: 39%; width: 18%; height: 17%; background-color: rgb(0, 0, 170);",
+      "r.0@": "div class data-avc-text-host style",
+      "r.0@class": "group-label",
+      "r.0@data-avc-text-host": "1",
+      "r.0@style": "top: 0px; left: 0.5714rem;",
+      "r.0#": "G"
+     },
+     "r_visible": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "r_visible",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@aria-label": "Shown",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 58%; width: 18%; height: 17%;",
+      "r#": "Shown"
+     },
+     "r_progress": {
+      "r@": "div class data-element-id data-avc-text-src data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "r_progress",
+      "r@data-avc-text-src": "[\"bindings\",\"show\",\"value\",\"idle_text\"]",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 58%; width: 18%; height: 17%;",
+      "r#": "Idle"
+     },
+     "w_power": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "w_power",
+      "r@data-avc-text-src": "[\"bindings\",\"show\",\"look\",\"states\",\"true\",\"label\"]",
+      "r@aria-label": "ON",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 39%; top: 58%; width: 18%; height: 17%; background-color: rgb(0, 170, 0);",
+      "r#": "ON"
+     }
+    },
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_select:select_look",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress",
+     "w_power:feedback"
+    ]
+   },
+   {
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress",
+     "w_power:feedback"
+    ]
+   },
+   {
+    "e": [
+     "r_feedback:feedback",
+     "r_toggle:toggle_look",
+     "r_text:text",
+     "r_label_look:label_look",
+     "r_led:color",
+     "r_slider:slider_value",
+     "r_fader:fader_value",
+     "r_gauge:gauge_value",
+     "r_meter:level_meter_value",
+     "r_select:select_value",
+     "r_textin:text_input_value",
+     "r_list:list_items",
+     "r_list:list_selected",
+     "r_image:image_look",
+     "r_nav:nav_look",
+     "r_group:group_look",
+     "r_visible:visible_when",
+     "r_progress:macro_progress",
+     "w_power:feedback"
+    ]
+   }
+  ],
+  "actions": [
+   {
+    "c": {
+     "a_one": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_one",
+      "r@aria-label": "One",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r#": "One"
+     },
+     "a_two": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_two",
+      "r@aria-label": "Two",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Two"
+     },
+     "a_none": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_none",
+      "r@aria-label": "None",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%;",
+      "r#": "None"
+     },
+     "a_unset": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_unset",
+      "r@aria-label": "Unset",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Unset"
+     },
+     "a_odd": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_odd",
+      "r@aria-label": "Odd",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 77%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Odd"
+     },
+     "a_both": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_both",
+      "r@aria-label": "M",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 20%; width: 18%; height: 17%;",
+      "r#": "M"
+     }
+    },
+    "e": [
+     "a_both:feedback"
+    ]
+   },
+   {
+    "c": {
+     "a_one": {
+      "r@class": "panel-element panel-button action-offline"
+     },
+     "a_both": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@aria-label": "Both",
+      "r#": "Both"
+     }
+    },
+    "e": [
+     "a_both:feedback"
+    ]
+   },
+   {
+    "c": {
+     "a_two": {
+      "r@class": "panel-element panel-button action-offline"
+     }
+    }
+   },
+   {
+    "c": {
+     "a_one": {
+      "r@class": "panel-element panel-button"
+     },
+     "a_two": {
+      "r@class": "panel-element panel-button"
+     },
+     "a_both": {
+      "r@class": "panel-element panel-button",
+      "r@aria-label": "M",
+      "r#": "M"
+     }
+    },
+    "e": [
+     "a_both:feedback"
+    ]
+   },
+   {
+    "c": {
+     "a_one": {
+      "r@class": "panel-element panel-button action-offline"
+     },
+     "a_both": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@aria-label": "Both",
+      "r#": "Both"
+     }
+    },
+    "e": [
+     "a_both:feedback"
+    ]
+   },
+   {
+    "c": {
+     "a_one": {
+      "r@class": "panel-element panel-button"
+     },
+     "a_both": {
+      "r@class": "panel-element panel-button",
+      "r@aria-label": "M",
+      "r#": "M"
+     }
+    },
+    "e": [
+     "a_both:feedback"
+    ]
+   },
+   {
+    "c": {
+     "a_one": {
+      "r@class": "panel-element panel-button action-offline"
+     },
+     "a_two": {
+      "r@class": "panel-element panel-button action-offline"
+     },
+     "a_both": {
+      "r@class": "panel-element panel-button device-offline",
+      "r@aria-label": "Both",
+      "r#": "Both"
+     }
+    },
+    "e": [
+     "a_both:feedback"
+    ]
+   },
+   {
+    "e": [
+     "a_both:feedback"
+    ]
+   },
+   {
+    "c": {
+     "a_two": {
+      "r@class": "panel-element panel-button"
+     }
+    }
+   }
+  ],
+  "preview_served": [
+   {
+    "c": {
+     "a_one": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button action-offline",
+      "r@data-element-id": "a_one",
+      "r@aria-label": "One",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r#": "One"
+     },
+     "a_two": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_two",
+      "r@aria-label": "Two",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Two"
+     },
+     "a_none": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_none",
+      "r@aria-label": "None",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%;",
+      "r#": "None"
+     },
+     "a_unset": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_unset",
+      "r@aria-label": "Unset",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Unset"
+     },
+     "a_odd": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_odd",
+      "r@aria-label": "Odd",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 77%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Odd"
+     },
+     "a_both": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button device-offline",
+      "r@data-element-id": "a_both",
+      "r@aria-label": "Both",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 20%; width: 18%; height: 17%;",
+      "r#": "Both"
+     },
+     "w_power": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "w_power",
+      "r@aria-label": "ON",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 20%; top: 20%; width: 18%; height: 17%; background-color: rgb(0, 170, 0);",
+      "r#": "ON"
+     }
+    },
+    "e": [
+     "a_both:feedback",
+     "w_power:feedback"
+    ]
+   },
+   {
+    "c": {
+     "a_one": {
+      "r@class": "panel-element panel-button"
+     },
+     "a_two": {
+      "r@class": "panel-element panel-button action-offline"
+     },
+     "a_none": {
+      "r@class": "panel-element panel-button action-offline"
+     }
+    }
+   },
+   {
+    "c": {
+     "a_one": {
+      "r@class": "panel-element panel-button action-offline"
+     }
+    }
+   },
+   {
+    "c": {
+     "a_one": {
+      "r@class": "panel-element panel-button"
+     },
+     "a_none": {
+      "r@class": "panel-element panel-button"
+     }
+    }
+   },
+   {
+    "c": {
+     "w_power": {
+      "r@aria-label": "OFF",
+      "r@style": "position: absolute; left: 20%; top: 20%; width: 18%; height: 17%;",
+      "r#": "OFF"
+     }
+    },
+    "e": [
+     "w_power:feedback"
+    ]
+   },
+   {
+    "c": {
+     "a_two": {
+      "r@class": "panel-element panel-button"
+     }
+    }
+   },
+   {
+    "c": {
+     "a_both": {
+      "r@class": "panel-element panel-button",
+      "r@aria-label": "M",
+      "r#": "M"
+     }
+    },
+    "e": [
+     "a_both:feedback",
+     "w_power:feedback"
+    ]
+   },
+   {}
+  ],
+  "canvas_served": [
+   {
+    "c": {
+     "a_one": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_one",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@aria-label": "One",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r#": "One"
+     },
+     "a_two": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_two",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@aria-label": "Two",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Two"
+     },
+     "a_none": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_none",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@aria-label": "None",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%;",
+      "r#": "None"
+     },
+     "a_unset": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_unset",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@aria-label": "Unset",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Unset"
+     },
+     "a_odd": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_odd",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@aria-label": "Odd",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 77%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Odd"
+     },
+     "a_both": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "a_both",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@aria-label": "Both",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 20%; width: 18%; height: 17%;",
+      "r#": "Both"
+     }
+    },
+    "e": [
+     "a_both:feedback"
+    ]
+   },
+   {},
+   {}
+  ],
+  "matrix_dropdown": [
+   {
+    "c": {
+     "mx_dropdown": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-matrix",
+      "r@data-element-id": "mx_dropdown",
+      "r@data-element-type": "matrix",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "matrix-scroll",
+      "r.0.0@": "div class style",
+      "r.0.0@class": "matrix-grid",
+      "r.0.0@style": "grid-template-columns: minmax(80px, max-content) repeat(2, minmax(44px, 1fr)); grid-template-rows: auto repeat(3, minmax(44px, 72px)); max-width: 226px;",
+      "r.0.0.0@": "div class",
+      "r.0.0.0@class": "matrix-corner",
+      "r.0.0.1@": "div class",
+      "r.0.0.1@class": "matrix-header matrix-input-header",
+      "r.0.0.1#": "1",
+      "r.0.0.2@": "div class",
+      "r.0.0.2@class": "matrix-header matrix-input-header",
+      "r.0.0.2#": "2",
+      "r.0.0.3@": "div class data-output-idx",
+      "r.0.0.3@class": "matrix-header matrix-output-header",
+      "r.0.0.3@data-output-idx": "0",
+      "r.0.0.3.0@": "span data-label-text",
+      "r.0.0.3.0@data-label-text": "",
+      "r.0.0.3.0#": "Left",
+      "r.0.0.3.1@": "span class data-unlisted-idx hidden",
+      "r.0.0.3.1@class": "matrix-unlisted",
+      "r.0.0.3.1@data-unlisted-idx": "0",
+      "r.0.0.3.1@hidden": "",
+      "r.0.0.4@": "div class aria-label",
+      "r.0.0.4@class": "matrix-cell",
+      "r.0.0.4@aria-label": "Route Laptop to Left",
+      "r.0.0.4.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.4.0@class": "matrix-crosspoint active",
+      "r.0.0.4.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.4.0@data-input": "1",
+      "r.0.0.4.0@data-output": "1",
+      "r.0.0.4.0@data-source-idx": "0",
+      "r.0.0.4.0@data-dest-idx": "0",
+      "r.0.0.4.0@data-reports": "1",
+      "r.0.0.4.0@aria-label": "Active: 1 to 1",
+      "r.0.0.5@": "div class aria-label",
+      "r.0.0.5@class": "matrix-cell",
+      "r.0.0.5@aria-label": "Route Cam to Left",
+      "r.0.0.5.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.5.0@class": "matrix-crosspoint",
+      "r.0.0.5.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.5.0@data-input": "2",
+      "r.0.0.5.0@data-output": "1",
+      "r.0.0.5.0@data-source-idx": "1",
+      "r.0.0.5.0@data-dest-idx": "0",
+      "r.0.0.5.0@data-reports": "2",
+      "r.0.0.5.0@aria-label": "Inactive: 2 to 1",
+      "r.0.0.6@": "div class data-output-idx",
+      "r.0.0.6@class": "matrix-header matrix-output-header",
+      "r.0.0.6@data-output-idx": "1",
+      "r.0.0.6.0@": "span data-label-text",
+      "r.0.0.6.0@data-label-text": "",
+      "r.0.0.6.0#": "Right",
+      "r.0.0.6.1@": "span class data-unlisted-idx hidden",
+      "r.0.0.6.1@class": "matrix-unlisted",
+      "r.0.0.6.1@data-unlisted-idx": "1",
+      "r.0.0.6.1@hidden": "",
+      "r.0.0.7@": "div class aria-label",
+      "r.0.0.7@class": "matrix-cell",
+      "r.0.0.7@aria-label": "Route Laptop to Right",
+      "r.0.0.7.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.7.0@class": "matrix-crosspoint",
+      "r.0.0.7.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.7.0@data-input": "1",
+      "r.0.0.7.0@data-output": "2",
+      "r.0.0.7.0@data-source-idx": "0",
+      "r.0.0.7.0@data-dest-idx": "1",
+      "r.0.0.7.0@data-reports": "1",
+      "r.0.0.7.0@aria-label": "Inactive: 1 to 2",
+      "r.0.0.8@": "div class aria-label",
+      "r.0.0.8@class": "matrix-cell",
+      "r.0.0.8@aria-label": "Route Cam to Right",
+      "r.0.0.8.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.8.0@class": "matrix-crosspoint active",
+      "r.0.0.8.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.8.0@data-input": "2",
+      "r.0.0.8.0@data-output": "2",
+      "r.0.0.8.0@data-source-idx": "1",
+      "r.0.0.8.0@data-dest-idx": "1",
+      "r.0.0.8.0@data-reports": "2",
+      "r.0.0.8.0@aria-label": "Active: 2 to 2",
+      "r.0.0.9@": "div class data-output-idx",
+      "r.0.0.9@class": "matrix-header matrix-output-header",
+      "r.0.0.9@data-output-idx": "2",
+      "r.0.0.9.0@": "span data-label-text",
+      "r.0.0.9.0@data-label-text": "",
+      "r.0.0.9.0#": "Var",
+      "r.0.0.9.1@": "span class data-unlisted-idx hidden",
+      "r.0.0.9.1@class": "matrix-unlisted",
+      "r.0.0.9.1@data-unlisted-idx": "2",
+      "r.0.0.9.1@hidden": "",
+      "r.0.0.10@": "div class aria-label",
+      "r.0.0.10@class": "matrix-cell",
+      "r.0.0.10@aria-label": "Route Laptop to Var",
+      "r.0.0.10.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.10.0@class": "matrix-crosspoint active",
+      "r.0.0.10.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.10.0@data-input": "1",
+      "r.0.0.10.0@data-output": "3",
+      "r.0.0.10.0@data-source-idx": "0",
+      "r.0.0.10.0@data-dest-idx": "2",
+      "r.0.0.10.0@data-reports": "1",
+      "r.0.0.10.0@aria-label": "Active: 1 to 3",
+      "r.0.0.11@": "div class aria-label",
+      "r.0.0.11@class": "matrix-cell",
+      "r.0.0.11@aria-label": "Route Cam to Var",
+      "r.0.0.11.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.11.0@class": "matrix-crosspoint",
+      "r.0.0.11.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.11.0@data-input": "2",
+      "r.0.0.11.0@data-output": "3",
+      "r.0.0.11.0@data-source-idx": "1",
+      "r.0.0.11.0@data-dest-idx": "2",
+      "r.0.0.11.0@data-reports": "2",
+      "r.0.0.11.0@aria-label": "Inactive: 2 to 3",
+      "r.1@": "div class",
+      "r.1@class": "matrix-legend",
+      "r.1.0@": "span class data-input-idx",
+      "r.1.0@class": "matrix-legend-item",
+      "r.1.0@data-input-idx": "0",
+      "r.1.0.0@": "span class",
+      "r.1.0.0@class": "matrix-legend-num",
+      "r.1.0.0#": "1",
+      "r.1.0.1@": "span data-label-text",
+      "r.1.0.1@data-label-text": "",
+      "r.1.0.1#": "Laptop",
+      "r.1.1@": "span class data-input-idx",
+      "r.1.1@class": "matrix-legend-item",
+      "r.1.1@data-input-idx": "1",
+      "r.1.1.0@": "span class",
+      "r.1.1.0@class": "matrix-legend-num",
+      "r.1.1.0#": "2",
+      "r.1.1.1@": "span data-label-text",
+      "r.1.1.1@data-label-text": "",
+      "r.1.1.1#": "Cam"
+     },
+     "mx_other": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "mx_other",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;",
+      "r#": "--"
+     }
+    },
+    "e": [
+     "mx_dropdown:matrix_routes",
+     "mx_other:text"
+    ]
+   },
+   {
+    "c": {
+     "mx_dropdown": {
+      "r.0.0.6@class": "matrix-header matrix-output-header device-offline",
+      "r.0.0.7@class": "matrix-cell device-offline",
+      "r.0.0.8@class": "matrix-cell device-offline",
+      "r.0.0.8.0@class": "matrix-crosspoint",
+      "r.0.0.8.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.8.0@aria-label": "Inactive: 2 to 2"
+     }
+    },
+    "e": [
+     "mx_dropdown:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_dropdown": {
+      "r.0.0.4.0@class": "matrix-crosspoint",
+      "r.0.0.4.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.4.0@aria-label": "Inactive: 1 to 1",
+      "r.0.0.5.0@class": "matrix-crosspoint active",
+      "r.0.0.5.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.5.0@aria-label": "Active: 2 to 1"
+     }
+    },
+    "e": [
+     "mx_dropdown:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_dropdown": {
+      "r.0.0.3@class": "matrix-header matrix-output-header device-offline",
+      "r.0.0.4@class": "matrix-cell device-offline",
+      "r.0.0.5@class": "matrix-cell device-offline",
+      "r.0.0.5.0@class": "matrix-crosspoint",
+      "r.0.0.5.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.5.0@aria-label": "Inactive: 2 to 1"
+     }
+    },
+    "e": [
+     "mx_dropdown:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_dropdown": {
+      "r.0.0.10.0@class": "matrix-crosspoint",
+      "r.0.0.10.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.10.0@aria-label": "Inactive: 1 to 3",
+      "r.0.0.11.0@class": "matrix-crosspoint active",
+      "r.0.0.11.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.11.0@aria-label": "Active: 2 to 3"
+     }
+    },
+    "e": [
+     "mx_dropdown:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_other": {
+      "r#": "Switcher"
+     }
+    },
+    "e": [
+     "mx_other:text"
+    ]
+   },
+   {
+    "c": {
+     "mx_dropdown": {
+      "r.0.0.3@class": "matrix-header matrix-output-header",
+      "r.0.0.4@class": "matrix-cell",
+      "r.0.0.5@class": "matrix-cell",
+      "r.0.0.5.0@class": "matrix-crosspoint active",
+      "r.0.0.5.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.5.0@aria-label": "Active: 2 to 1",
+      "r.0.0.6@class": "matrix-header matrix-output-header",
+      "r.0.0.7@class": "matrix-cell",
+      "r.0.0.8@class": "matrix-cell",
+      "r.0.0.8.0@class": "matrix-crosspoint active",
+      "r.0.0.8.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.8.0@aria-label": "Active: 2 to 2"
+     }
+    },
+    "e": [
+     "mx_dropdown:matrix_routes"
+    ]
+   }
+  ],
+  "matrix_crosspoint": [
+   {
+    "c": {
+     "mx_crosspoint": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-matrix",
+      "r@data-element-id": "mx_crosspoint",
+      "r@data-element-type": "matrix",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "matrix-scroll",
+      "r.0.0@": "div class style",
+      "r.0.0@class": "matrix-grid",
+      "r.0.0@style": "grid-template-columns: minmax(80px, max-content) repeat(2, minmax(44px, 1fr)); grid-template-rows: auto repeat(3, minmax(44px, 72px)); max-width: 226px;",
+      "r.0.0.0@": "div class",
+      "r.0.0.0@class": "matrix-corner",
+      "r.0.0.1@": "div class",
+      "r.0.0.1@class": "matrix-header matrix-input-header",
+      "r.0.0.1#": "1",
+      "r.0.0.2@": "div class",
+      "r.0.0.2@class": "matrix-header matrix-input-header",
+      "r.0.0.2#": "2",
+      "r.0.0.3@": "div class data-output-idx",
+      "r.0.0.3@class": "matrix-header matrix-output-header",
+      "r.0.0.3@data-output-idx": "0",
+      "r.0.0.3.0@": "span data-label-text",
+      "r.0.0.3.0@data-label-text": "",
+      "r.0.0.3.0#": "Left",
+      "r.0.0.3.1@": "span class data-unlisted-idx hidden",
+      "r.0.0.3.1@class": "matrix-unlisted",
+      "r.0.0.3.1@data-unlisted-idx": "0",
+      "r.0.0.3.1@hidden": "",
+      "r.0.0.4@": "div class aria-label",
+      "r.0.0.4@class": "matrix-cell",
+      "r.0.0.4@aria-label": "Route Laptop to Left",
+      "r.0.0.4.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.4.0@class": "matrix-crosspoint active",
+      "r.0.0.4.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.4.0@data-input": "1",
+      "r.0.0.4.0@data-output": "1",
+      "r.0.0.4.0@data-source-idx": "0",
+      "r.0.0.4.0@data-dest-idx": "0",
+      "r.0.0.4.0@data-reports": "1",
+      "r.0.0.4.0@aria-label": "Active: 1 to 1",
+      "r.0.0.5@": "div class aria-label",
+      "r.0.0.5@class": "matrix-cell",
+      "r.0.0.5@aria-label": "Route Cam to Left",
+      "r.0.0.5.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.5.0@class": "matrix-crosspoint",
+      "r.0.0.5.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.5.0@data-input": "2",
+      "r.0.0.5.0@data-output": "1",
+      "r.0.0.5.0@data-source-idx": "1",
+      "r.0.0.5.0@data-dest-idx": "0",
+      "r.0.0.5.0@data-reports": "2",
+      "r.0.0.5.0@aria-label": "Inactive: 2 to 1",
+      "r.0.0.6@": "div class data-output-idx",
+      "r.0.0.6@class": "matrix-header matrix-output-header",
+      "r.0.0.6@data-output-idx": "1",
+      "r.0.0.6.0@": "span data-label-text",
+      "r.0.0.6.0@data-label-text": "",
+      "r.0.0.6.0#": "Right",
+      "r.0.0.6.1@": "span class data-unlisted-idx hidden",
+      "r.0.0.6.1@class": "matrix-unlisted",
+      "r.0.0.6.1@data-unlisted-idx": "1",
+      "r.0.0.6.1@hidden": "",
+      "r.0.0.7@": "div class aria-label",
+      "r.0.0.7@class": "matrix-cell",
+      "r.0.0.7@aria-label": "Route Laptop to Right",
+      "r.0.0.7.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.7.0@class": "matrix-crosspoint",
+      "r.0.0.7.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.7.0@data-input": "1",
+      "r.0.0.7.0@data-output": "2",
+      "r.0.0.7.0@data-source-idx": "0",
+      "r.0.0.7.0@data-dest-idx": "1",
+      "r.0.0.7.0@data-reports": "1",
+      "r.0.0.7.0@aria-label": "Inactive: 1 to 2",
+      "r.0.0.8@": "div class aria-label",
+      "r.0.0.8@class": "matrix-cell",
+      "r.0.0.8@aria-label": "Route Cam to Right",
+      "r.0.0.8.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.8.0@class": "matrix-crosspoint active",
+      "r.0.0.8.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.8.0@data-input": "2",
+      "r.0.0.8.0@data-output": "2",
+      "r.0.0.8.0@data-source-idx": "1",
+      "r.0.0.8.0@data-dest-idx": "1",
+      "r.0.0.8.0@data-reports": "2",
+      "r.0.0.8.0@aria-label": "Active: 2 to 2",
+      "r.0.0.9@": "div class data-output-idx",
+      "r.0.0.9@class": "matrix-header matrix-output-header",
+      "r.0.0.9@data-output-idx": "2",
+      "r.0.0.9.0@": "span data-label-text",
+      "r.0.0.9.0@data-label-text": "",
+      "r.0.0.9.0#": "Var",
+      "r.0.0.9.1@": "span class data-unlisted-idx hidden",
+      "r.0.0.9.1@class": "matrix-unlisted",
+      "r.0.0.9.1@data-unlisted-idx": "2",
+      "r.0.0.9.1@hidden": "",
+      "r.0.0.10@": "div class aria-label",
+      "r.0.0.10@class": "matrix-cell",
+      "r.0.0.10@aria-label": "Route Laptop to Var",
+      "r.0.0.10.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.10.0@class": "matrix-crosspoint active",
+      "r.0.0.10.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.10.0@data-input": "1",
+      "r.0.0.10.0@data-output": "3",
+      "r.0.0.10.0@data-source-idx": "0",
+      "r.0.0.10.0@data-dest-idx": "2",
+      "r.0.0.10.0@data-reports": "1",
+      "r.0.0.10.0@aria-label": "Active: 1 to 3",
+      "r.0.0.11@": "div class aria-label",
+      "r.0.0.11@class": "matrix-cell",
+      "r.0.0.11@aria-label": "Route Cam to Var",
+      "r.0.0.11.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.11.0@class": "matrix-crosspoint",
+      "r.0.0.11.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.11.0@data-input": "2",
+      "r.0.0.11.0@data-output": "3",
+      "r.0.0.11.0@data-source-idx": "1",
+      "r.0.0.11.0@data-dest-idx": "2",
+      "r.0.0.11.0@data-reports": "2",
+      "r.0.0.11.0@aria-label": "Inactive: 2 to 3",
+      "r.1@": "div class",
+      "r.1@class": "matrix-legend",
+      "r.1.0@": "span class data-input-idx",
+      "r.1.0@class": "matrix-legend-item",
+      "r.1.0@data-input-idx": "0",
+      "r.1.0.0@": "span class",
+      "r.1.0.0@class": "matrix-legend-num",
+      "r.1.0.0#": "1",
+      "r.1.0.1@": "span data-label-text",
+      "r.1.0.1@data-label-text": "",
+      "r.1.0.1#": "Laptop",
+      "r.1.1@": "span class data-input-idx",
+      "r.1.1@class": "matrix-legend-item",
+      "r.1.1@data-input-idx": "1",
+      "r.1.1.0@": "span class",
+      "r.1.1.0@class": "matrix-legend-num",
+      "r.1.1.0#": "2",
+      "r.1.1.1@": "span data-label-text",
+      "r.1.1.1@data-label-text": "",
+      "r.1.1.1#": "Cam"
+     },
+     "mx_other": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "mx_other",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;",
+      "r#": "--"
+     }
+    },
+    "e": [
+     "mx_crosspoint:matrix_routes",
+     "mx_other:text"
+    ]
+   },
+   {
+    "c": {
+     "mx_crosspoint": {
+      "r.0.0.6@class": "matrix-header matrix-output-header device-offline",
+      "r.0.0.7@class": "matrix-cell device-offline",
+      "r.0.0.8@class": "matrix-cell device-offline",
+      "r.0.0.8.0@class": "matrix-crosspoint",
+      "r.0.0.8.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.8.0@aria-label": "Inactive: 2 to 2"
+     }
+    },
+    "e": [
+     "mx_crosspoint:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_crosspoint": {
+      "r.0.0.4.0@class": "matrix-crosspoint",
+      "r.0.0.4.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.4.0@aria-label": "Inactive: 1 to 1",
+      "r.0.0.5.0@class": "matrix-crosspoint active",
+      "r.0.0.5.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.5.0@aria-label": "Active: 2 to 1"
+     }
+    },
+    "e": [
+     "mx_crosspoint:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_crosspoint": {
+      "r.0.0.3@class": "matrix-header matrix-output-header device-offline",
+      "r.0.0.4@class": "matrix-cell device-offline",
+      "r.0.0.5@class": "matrix-cell device-offline",
+      "r.0.0.5.0@class": "matrix-crosspoint",
+      "r.0.0.5.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.5.0@aria-label": "Inactive: 2 to 1"
+     }
+    },
+    "e": [
+     "mx_crosspoint:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_crosspoint": {
+      "r.0.0.10.0@class": "matrix-crosspoint",
+      "r.0.0.10.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.10.0@aria-label": "Inactive: 1 to 3",
+      "r.0.0.11.0@class": "matrix-crosspoint active",
+      "r.0.0.11.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.11.0@aria-label": "Active: 2 to 3"
+     }
+    },
+    "e": [
+     "mx_crosspoint:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_other": {
+      "r#": "Switcher"
+     }
+    },
+    "e": [
+     "mx_other:text"
+    ]
+   },
+   {
+    "c": {
+     "mx_crosspoint": {
+      "r.0.0.3@class": "matrix-header matrix-output-header",
+      "r.0.0.4@class": "matrix-cell",
+      "r.0.0.5@class": "matrix-cell",
+      "r.0.0.5.0@class": "matrix-crosspoint active",
+      "r.0.0.5.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.5.0@aria-label": "Active: 2 to 1",
+      "r.0.0.6@class": "matrix-header matrix-output-header",
+      "r.0.0.7@class": "matrix-cell",
+      "r.0.0.8@class": "matrix-cell",
+      "r.0.0.8.0@class": "matrix-crosspoint active",
+      "r.0.0.8.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.8.0@aria-label": "Active: 2 to 2"
+     }
+    },
+    "e": [
+     "mx_crosspoint:matrix_routes"
+    ]
+   }
+  ],
+  "matrix_tile_wall": [
+   {
+    "c": {
+     "mx_tile_wall": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-matrix",
+      "r@data-element-id": "mx_tile_wall",
+      "r@data-element-type": "matrix",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "matrix-scroll",
+      "r.0.0@": "div class style",
+      "r.0.0@class": "matrix-grid",
+      "r.0.0@style": "grid-template-columns: minmax(80px, max-content) repeat(2, minmax(44px, 1fr)); grid-template-rows: auto repeat(3, minmax(44px, 72px)); max-width: 226px;",
+      "r.0.0.0@": "div class",
+      "r.0.0.0@class": "matrix-corner",
+      "r.0.0.1@": "div class",
+      "r.0.0.1@class": "matrix-header matrix-input-header",
+      "r.0.0.1#": "1",
+      "r.0.0.2@": "div class",
+      "r.0.0.2@class": "matrix-header matrix-input-header",
+      "r.0.0.2#": "2",
+      "r.0.0.3@": "div class data-output-idx",
+      "r.0.0.3@class": "matrix-header matrix-output-header",
+      "r.0.0.3@data-output-idx": "0",
+      "r.0.0.3.0@": "span data-label-text",
+      "r.0.0.3.0@data-label-text": "",
+      "r.0.0.3.0#": "Left",
+      "r.0.0.3.1@": "span class data-unlisted-idx hidden",
+      "r.0.0.3.1@class": "matrix-unlisted",
+      "r.0.0.3.1@data-unlisted-idx": "0",
+      "r.0.0.3.1@hidden": "",
+      "r.0.0.4@": "div class aria-label",
+      "r.0.0.4@class": "matrix-cell",
+      "r.0.0.4@aria-label": "Route Laptop to Left",
+      "r.0.0.4.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.4.0@class": "matrix-crosspoint active",
+      "r.0.0.4.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.4.0@data-input": "1",
+      "r.0.0.4.0@data-output": "1",
+      "r.0.0.4.0@data-source-idx": "0",
+      "r.0.0.4.0@data-dest-idx": "0",
+      "r.0.0.4.0@data-reports": "1",
+      "r.0.0.4.0@aria-label": "Active: 1 to 1",
+      "r.0.0.5@": "div class aria-label",
+      "r.0.0.5@class": "matrix-cell",
+      "r.0.0.5@aria-label": "Route Cam to Left",
+      "r.0.0.5.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.5.0@class": "matrix-crosspoint",
+      "r.0.0.5.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.5.0@data-input": "2",
+      "r.0.0.5.0@data-output": "1",
+      "r.0.0.5.0@data-source-idx": "1",
+      "r.0.0.5.0@data-dest-idx": "0",
+      "r.0.0.5.0@data-reports": "2",
+      "r.0.0.5.0@aria-label": "Inactive: 2 to 1",
+      "r.0.0.6@": "div class data-output-idx",
+      "r.0.0.6@class": "matrix-header matrix-output-header",
+      "r.0.0.6@data-output-idx": "1",
+      "r.0.0.6.0@": "span data-label-text",
+      "r.0.0.6.0@data-label-text": "",
+      "r.0.0.6.0#": "Right",
+      "r.0.0.6.1@": "span class data-unlisted-idx hidden",
+      "r.0.0.6.1@class": "matrix-unlisted",
+      "r.0.0.6.1@data-unlisted-idx": "1",
+      "r.0.0.6.1@hidden": "",
+      "r.0.0.7@": "div class aria-label",
+      "r.0.0.7@class": "matrix-cell",
+      "r.0.0.7@aria-label": "Route Laptop to Right",
+      "r.0.0.7.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.7.0@class": "matrix-crosspoint",
+      "r.0.0.7.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.7.0@data-input": "1",
+      "r.0.0.7.0@data-output": "2",
+      "r.0.0.7.0@data-source-idx": "0",
+      "r.0.0.7.0@data-dest-idx": "1",
+      "r.0.0.7.0@data-reports": "1",
+      "r.0.0.7.0@aria-label": "Inactive: 1 to 2",
+      "r.0.0.8@": "div class aria-label",
+      "r.0.0.8@class": "matrix-cell",
+      "r.0.0.8@aria-label": "Route Cam to Right",
+      "r.0.0.8.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.8.0@class": "matrix-crosspoint active",
+      "r.0.0.8.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.8.0@data-input": "2",
+      "r.0.0.8.0@data-output": "2",
+      "r.0.0.8.0@data-source-idx": "1",
+      "r.0.0.8.0@data-dest-idx": "1",
+      "r.0.0.8.0@data-reports": "2",
+      "r.0.0.8.0@aria-label": "Active: 2 to 2",
+      "r.0.0.9@": "div class data-output-idx",
+      "r.0.0.9@class": "matrix-header matrix-output-header",
+      "r.0.0.9@data-output-idx": "2",
+      "r.0.0.9.0@": "span data-label-text",
+      "r.0.0.9.0@data-label-text": "",
+      "r.0.0.9.0#": "Var",
+      "r.0.0.9.1@": "span class data-unlisted-idx hidden",
+      "r.0.0.9.1@class": "matrix-unlisted",
+      "r.0.0.9.1@data-unlisted-idx": "2",
+      "r.0.0.9.1@hidden": "",
+      "r.0.0.10@": "div class aria-label",
+      "r.0.0.10@class": "matrix-cell",
+      "r.0.0.10@aria-label": "Route Laptop to Var",
+      "r.0.0.10.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.10.0@class": "matrix-crosspoint active",
+      "r.0.0.10.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.10.0@data-input": "1",
+      "r.0.0.10.0@data-output": "3",
+      "r.0.0.10.0@data-source-idx": "0",
+      "r.0.0.10.0@data-dest-idx": "2",
+      "r.0.0.10.0@data-reports": "1",
+      "r.0.0.10.0@aria-label": "Active: 1 to 3",
+      "r.0.0.11@": "div class aria-label",
+      "r.0.0.11@class": "matrix-cell",
+      "r.0.0.11@aria-label": "Route Cam to Var",
+      "r.0.0.11.0@": "div class style data-input data-output data-source-idx data-dest-idx data-reports aria-label",
+      "r.0.0.11.0@class": "matrix-crosspoint",
+      "r.0.0.11.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.11.0@data-input": "2",
+      "r.0.0.11.0@data-output": "3",
+      "r.0.0.11.0@data-source-idx": "1",
+      "r.0.0.11.0@data-dest-idx": "2",
+      "r.0.0.11.0@data-reports": "2",
+      "r.0.0.11.0@aria-label": "Inactive: 2 to 3",
+      "r.1@": "div class",
+      "r.1@class": "matrix-legend",
+      "r.1.0@": "span class data-input-idx",
+      "r.1.0@class": "matrix-legend-item",
+      "r.1.0@data-input-idx": "0",
+      "r.1.0.0@": "span class",
+      "r.1.0.0@class": "matrix-legend-num",
+      "r.1.0.0#": "1",
+      "r.1.0.1@": "span data-label-text",
+      "r.1.0.1@data-label-text": "",
+      "r.1.0.1#": "Laptop",
+      "r.1.1@": "span class data-input-idx",
+      "r.1.1@class": "matrix-legend-item",
+      "r.1.1@data-input-idx": "1",
+      "r.1.1.0@": "span class",
+      "r.1.1.0@class": "matrix-legend-num",
+      "r.1.1.0#": "2",
+      "r.1.1.1@": "span data-label-text",
+      "r.1.1.1@data-label-text": "",
+      "r.1.1.1#": "Cam"
+     },
+     "mx_other": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "mx_other",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;",
+      "r#": "--"
+     }
+    },
+    "e": [
+     "mx_tile_wall:matrix_routes",
+     "mx_other:text"
+    ]
+   },
+   {
+    "c": {
+     "mx_tile_wall": {
+      "r.0.0.6@class": "matrix-header matrix-output-header device-offline",
+      "r.0.0.7@class": "matrix-cell device-offline",
+      "r.0.0.8@class": "matrix-cell device-offline",
+      "r.0.0.8.0@class": "matrix-crosspoint",
+      "r.0.0.8.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.8.0@aria-label": "Inactive: 2 to 2"
+     }
+    },
+    "e": [
+     "mx_tile_wall:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_tile_wall": {
+      "r.0.0.4.0@class": "matrix-crosspoint",
+      "r.0.0.4.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.4.0@aria-label": "Inactive: 1 to 1",
+      "r.0.0.5.0@class": "matrix-crosspoint active",
+      "r.0.0.5.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.5.0@aria-label": "Active: 2 to 1"
+     }
+    },
+    "e": [
+     "mx_tile_wall:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_tile_wall": {
+      "r.0.0.3@class": "matrix-header matrix-output-header device-offline",
+      "r.0.0.4@class": "matrix-cell device-offline",
+      "r.0.0.5@class": "matrix-cell device-offline",
+      "r.0.0.5.0@class": "matrix-crosspoint",
+      "r.0.0.5.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.5.0@aria-label": "Inactive: 2 to 1"
+     }
+    },
+    "e": [
+     "mx_tile_wall:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_tile_wall": {
+      "r.0.0.10.0@class": "matrix-crosspoint",
+      "r.0.0.10.0@style": "background-color: rgb(51, 51, 51);",
+      "r.0.0.10.0@aria-label": "Inactive: 1 to 3",
+      "r.0.0.11.0@class": "matrix-crosspoint active",
+      "r.0.0.11.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.11.0@aria-label": "Active: 2 to 3"
+     }
+    },
+    "e": [
+     "mx_tile_wall:matrix_routes"
+    ]
+   },
+   {
+    "c": {
+     "mx_other": {
+      "r#": "Switcher"
+     }
+    },
+    "e": [
+     "mx_other:text"
+    ]
+   },
+   {
+    "c": {
+     "mx_tile_wall": {
+      "r.0.0.3@class": "matrix-header matrix-output-header",
+      "r.0.0.4@class": "matrix-cell",
+      "r.0.0.5@class": "matrix-cell",
+      "r.0.0.5.0@class": "matrix-crosspoint active",
+      "r.0.0.5.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.5.0@aria-label": "Active: 2 to 1",
+      "r.0.0.6@class": "matrix-header matrix-output-header",
+      "r.0.0.7@class": "matrix-cell",
+      "r.0.0.8@class": "matrix-cell",
+      "r.0.0.8.0@class": "matrix-crosspoint active",
+      "r.0.0.8.0@style": "background-color: rgb(76, 175, 80);",
+      "r.0.0.8.0@aria-label": "Active: 2 to 2"
+     }
+    },
+    "e": [
+     "mx_tile_wall:matrix_routes"
+    ]
+   }
+  ],
+  "reach": [
+   {
+    "c": {
+     "v_all": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "v_all",
+      "r@aria-label": "All",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%;",
+      "r#": "All"
+     },
+     "v_any": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "v_any",
+      "r@aria-label": "Any",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%; display: none;",
+      "r#": "Any"
+     },
+     "v_var": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "v_var",
+      "r@aria-label": "Var",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%;",
+      "r#": "Var"
+     },
+     "l_items": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-list",
+      "r@data-element-id": "l_items",
+      "r@data-element-type": "list",
+      "r@style": "position: absolute; left: 58%; top: 1%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "list-scroll"
+     },
+     "l_var": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-list",
+      "r@data-element-id": "l_var",
+      "r@data-element-type": "list",
+      "r@style": "position: absolute; left: 77%; top: 1%; width: 18%; height: 17%;",
+      "r.0@": "div class",
+      "r.0@class": "list-scroll"
+     },
+     "t_key": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "t_key",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 1%; top: 20%; width: 18%; height: 17%;",
+      "r#": "--"
+     },
+     "t_var": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "t_var",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 20%; top: 20%; width: 18%; height: 17%;",
+      "r#": "--"
+     },
+     "t_none": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "t_none",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 39%; top: 20%; width: 18%; height: 17%;"
+     }
+    },
+    "e": [
+     "v_all:visible_when",
+     "v_any:visible_when",
+     "v_var:visible_when",
+     "l_items:list_items",
+     "l_var:list_items",
+     "t_key:text",
+     "t_var:text",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "v_all": {
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 18%; height: 17%; display: none;"
+     },
+     "v_any": {
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%;"
+     }
+    },
+    "e": [
+     "v_all:visible_when",
+     "v_any:visible_when",
+     "v_var:visible_when",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "l_items": {
+      "r.0.0@": "div class style data-value",
+      "r.0.0@class": "list-item",
+      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+      "r.0.0@data-value": "1",
+      "r.0.0#": "A"
+     }
+    },
+    "e": [
+     "l_items:list_items",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "l_var": {
+      "r.0.0@": "div class style data-value",
+      "r.0.0@class": "list-item",
+      "r.0.0@style": "min-height: 3.142857142857143rem; background-color: rgb(42, 42, 78);",
+      "r.0.0@data-value": "1",
+      "r.0.0#": "R"
+     }
+    },
+    "e": [
+     "l_var:list_items",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "v_all:visible_when",
+     "l_items:list_items",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "t_key": {
+      "r@class": "panel-element panel-label device-offline"
+     }
+    },
+    "e": [
+     "v_any:visible_when",
+     "t_key:text",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "t_var": {
+      "r#": "8"
+     }
+    },
+    "e": [
+     "t_key:text",
+     "t_var:text",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "v_all:visible_when",
+     "l_items:list_items",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "l_items:list_items",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "v_all:visible_when",
+     "l_items:list_items",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "e": [
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "t_var": {
+      "r#": "--"
+     }
+    },
+    "e": [
+     "v_any:visible_when",
+     "t_var:text",
+     "t_none:macro_progress"
+    ]
+   },
+   {},
+   {},
+   {
+    "e": [
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "v_any": {
+      "r@style": "position: absolute; left: 20%; top: 1%; width: 18%; height: 17%; display: none;"
+     },
+     "v_var": {
+      "r@style": "position: absolute; left: 39%; top: 1%; width: 18%; height: 17%; display: none;"
+     }
+    },
+    "e": [
+     "v_all:visible_when",
+     "v_any:visible_when",
+     "v_var:visible_when",
+     "t_key:text",
+     "t_var:text",
+     "t_none:macro_progress"
+    ]
+   },
+   {
+    "c": {
+     "t_var": {
+      "r#": "after"
+     }
+    },
+    "e": [
+     "t_var:text",
+     "t_none:macro_progress"
+    ]
+   }
+  ],
+  "direct": [
+   {
+    "keys": {
+     "device.amp.gain": "amp",
+     "device.amp.input.1.mute": "amp",
+     "device.amp.input.1.online": null,
+     "device.amp.input.1.label": null,
+     "device.amp.input.1.offline_reason": null,
+     "device.amp.input.1": "amp",
+     "device.amp.a.b.c.d": "amp",
+     "device.amp": null,
+     "device.": null,
+     "device..gain": null,
+     "device.amp.connected": null,
+     "device.amp.web_ui_url": "amp",
+     "device.amp.asleep": null,
+     "devices.amp.gain": null,
+     "var.volume": null,
+     "plugin.x.y": null,
+     "": null,
+     "device.amp.gain.": "amp",
+     "device.amp.*.name": "amp",
+     "odd:null": null,
+     "odd:undefined": null,
+     "odd:7": null,
+     "odd:[\"device.a.b\"]": null,
+     "odd:{\"k\":1}": null
+    },
+    "bindings": {
+     "key": {
+      "first": [
+       "a"
+      ],
+      "cached": [
+       "a"
+      ],
+      "same": true
+     },
+     "keys": {
+      "first": [
+       "a",
+       "b"
+      ],
+      "cached": [
+       "a",
+       "b"
+      ],
+      "same": true
+     },
+     "patterns": {
+      "first": [
+       "c",
+       "a"
+      ],
+      "cached": [
+       "c",
+       "a"
+      ],
+      "same": true
+     },
+     "pattern": {
+      "first": [
+       "d"
+      ],
+      "cached": [
+       "d"
+      ],
+      "same": true
+     },
+     "all": {
+      "first": [
+       "a",
+       "b",
+       "c",
+       "d"
+      ],
+      "cached": [
+       "a",
+       "b",
+       "c",
+       "d"
+      ],
+      "same": true
+     },
+     "platform_only": {
+      "first": null,
+      "cached": null,
+      "same": true
+     },
+     "vars": {
+      "first": null,
+      "cached": null,
+      "same": true
+     },
+     "none": {
+      "first": null,
+      "cached": null,
+      "same": true
+     },
+     "keys_not_array": {
+      "first": null,
+      "cached": null,
+      "same": true
+     },
+     "no_binding": null
+    },
+    "marks": [
+     "device-offline",
+     "device-offline",
+     "device-offline",
+     "",
+     "no host: no throw"
+    ]
+   }
+  ]
+ }
+}

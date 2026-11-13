@@ -1,0 +1,1093 @@
+{
+ "macro_runs": {
+  "progress_and_busy": [
+   {
+    "c": {
+     "b_list": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "b_list",
+      "r@aria-label": "b_list",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 22%; height: 22%;",
+      "r#": "b_list"
+     },
+     "b_single": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "b_single",
+      "r@aria-label": "S",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 25%; top: 1%; width: 22%; height: 22%;",
+      "r#": "S"
+     },
+     "b_other": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "b_other",
+      "r@aria-label": "b_other",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 49%; top: 1%; width: 22%; height: 22%;",
+      "r#": "b_other"
+     },
+     "b_hold": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "b_hold",
+      "r@aria-label": "H",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 73%; top: 1%; width: 22%; height: 22%;",
+      "r#": "H"
+     },
+     "b_mixed": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "b_mixed",
+      "r@aria-label": "X",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 25%; width: 22%; height: 22%;",
+      "r#": "X"
+     },
+     "b_num": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "b_num",
+      "r@aria-label": "b_num",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 25%; top: 25%; width: 22%; height: 22%;",
+      "r#": "b_num"
+     },
+     "b_ctor": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "b_ctor",
+      "r@aria-label": "b_ctor",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 49%; top: 25%; width: 22%; height: 22%;",
+      "r#": "b_ctor"
+     },
+     "p_m1": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_m1",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 73%; top: 25%; width: 22%; height: 22%;",
+      "r#": "Ready"
+     },
+     "p_m2": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_m2",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 1%; top: 49%; width: 22%; height: 22%;"
+     },
+     "p_num": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "p_num",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 25%; top: 49%; width: 22%; height: 22%;",
+      "r#": "Idle 7"
+     }
+    }
+   },
+   {
+    "c": {
+     "b_list": {
+      "r@": "button type class data-element-id aria-label data-element-type style data-macro-busy",
+      "r@class": "panel-element panel-button macro-busy",
+      "r@data-macro-busy": "m1"
+     },
+     "b_single": {
+      "r@": "button type class data-element-id aria-label data-element-type style data-macro-busy",
+      "r@class": "panel-element panel-button macro-busy",
+      "r@data-macro-busy": "m1"
+     },
+     "b_mixed": {
+      "r@": "button type class data-element-id aria-label data-element-type style data-macro-busy",
+      "r@class": "panel-element panel-button macro-busy",
+      "r@data-macro-busy": "m1"
+     },
+     "p_m1": {
+      "r#": "Step 1 of 3"
+     }
+    }
+   },
+   {
+    "c": {
+     "p_m1": {
+      "r#": "Warming up"
+     }
+    }
+   },
+   {},
+   {
+    "c": {
+     "p_m1": {
+      "r#": "Step 2 of 3"
+     }
+    }
+   },
+   {
+    "c": {
+     "p_m1": {
+      "r#": "Step 3 of 4"
+     }
+    }
+   },
+   {},
+   {
+    "c": {
+     "p_m1": {
+      "r#": "Step 1 of 5"
+     }
+    }
+   },
+   {},
+   {
+    "c": {
+     "p_m1": {
+      "r#": "Second run"
+     }
+    }
+   },
+   {
+    "c": {
+     "b_list": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@class": "panel-element panel-button",
+      "r@data-macro-busy": null
+     },
+     "b_single": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@class": "panel-element panel-button",
+      "r@data-macro-busy": null
+     },
+     "b_mixed": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@class": "panel-element panel-button",
+      "r@data-macro-busy": null
+     },
+     "p_m1": {
+      "r#": "Ready"
+     }
+    }
+   },
+   {},
+   {
+    "c": {
+     "b_other": {
+      "r@": "button type class data-element-id aria-label data-element-type style data-macro-busy",
+      "r@class": "panel-element panel-button macro-busy",
+      "r@data-macro-busy": "m2"
+     }
+    }
+   },
+   {},
+   {
+    "c": {
+     "p_m2": {
+      "r#": "Named"
+     }
+    }
+   },
+   {
+    "c": {
+     "b_other": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@class": "panel-element panel-button",
+      "r@data-macro-busy": null
+     },
+     "p_m2": {
+      "r#": null
+     }
+    }
+   },
+   {},
+   {},
+   {},
+   {
+    "c": {
+     "b_ctor": {
+      "r@": "button type class data-element-id aria-label data-element-type style data-macro-busy",
+      "r@class": "panel-element panel-button macro-busy",
+      "r@data-macro-busy": "constructor"
+     }
+    }
+   },
+   {
+    "c": {
+     "b_ctor": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@class": "panel-element panel-button",
+      "r@data-macro-busy": null
+     }
+    }
+   },
+   {},
+   {}
+  ],
+  "claims": [
+   {
+    "c": {
+     "c_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "c_btn",
+      "r@aria-label": "Claim",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 22%; height: 22%;",
+      "r#": "Claim"
+     },
+     "c_val": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "c_val",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 25%; top: 1%; width: 22%; height: 22%;",
+      "r#": "ten"
+     },
+     "c_other": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "c_other",
+      "r@aria-label": "c_other",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 49%; top: 1%; width: 22%; height: 22%;",
+      "r#": "c_other"
+     }
+    }
+   },
+   {},
+   {
+    "s": [
+     "{\"type\":\"ui.press\",\"element_id\":\"c_btn\"}"
+    ]
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Projector unreachable"
+    }
+   },
+   {},
+   {
+    "c": {
+     "c_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style data-macro-busy",
+      "r@class": "panel-element panel-button macro-busy",
+      "r@data-macro-busy": "m1"
+     }
+    }
+   },
+   {},
+   {
+    "c": {
+     "c_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@class": "panel-element panel-button",
+      "r@data-macro-busy": null
+     }
+    }
+   },
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "From m2"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "From m3"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "From 4"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "From m6"
+    }
+   },
+   {},
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "",
+     "r#": "From m6"
+    }
+   },
+   {
+    "s": [
+     "{\"type\":\"ui.hold\",\"element_id\":\"c_btn\"}"
+    ]
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Inside m2"
+    }
+   },
+   {
+    "s": [
+     "{\"type\":\"ui.press\",\"element_id\":\"c_btn\"}"
+    ]
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Chain empty, error only"
+    }
+   },
+   {
+    "s": [
+     "{\"type\":\"ui.press\",\"element_id\":\"c_other\"}"
+    ]
+   },
+   {},
+   {}
+  ],
+  "runs": [
+   {
+    "c": {
+     "r_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "r_btn",
+      "r@aria-label": "r_btn",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 22%; height: 22%;",
+      "r#": "r_btn"
+     },
+     "r_p": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "r_p",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 25%; top: 1%; width: 22%; height: 22%;",
+      "r#": "Idle"
+     }
+    }
+   },
+   {
+    "s": [
+     "{\"type\":\"macro.execute\",\"macro_id\":\"r1\"}"
+    ]
+   },
+   {
+    "c": {
+     "r_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style data-macro-busy",
+      "r@class": "panel-element panel-button macro-busy",
+      "r@data-macro-busy": "r1"
+     },
+     "r_p": {
+      "r#": "Step 1 of 2"
+     }
+    }
+   },
+   {},
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "First run still ours"
+    }
+   },
+   {
+    "c": {
+     "r_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@class": "panel-element panel-button",
+      "r@data-macro-busy": null
+     },
+     "r_p": {
+      "r#": "Idle"
+     }
+    }
+   },
+   {},
+   {
+    "s": [
+     "{\"type\":\"macro.execute\",\"macro_id\":\"r2\"}"
+    ]
+   },
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Waiting for its start"
+    }
+   },
+   {
+    "s": [
+     "{\"type\":\"macro.execute\",\"macro_id\":\"r3\"}"
+    ]
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "",
+     "r#": "Waiting for its start"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Right at the limit"
+    }
+   },
+   {
+    "s": [
+     "{\"type\":\"macro.execute\",\"macro_id\":\"r4\"}"
+    ]
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "",
+     "r#": "Right at the limit"
+    }
+   },
+   {},
+   {},
+   {
+    "s": [
+     "{\"type\":\"macro.execute\",\"macro_id\":\"r4\"}"
+    ]
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Asked again"
+    }
+   },
+   {
+    "s": [
+     "{\"type\":\"macro.execute\",\"macro_id\":5}"
+    ]
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Numeric"
+    }
+   },
+   {
+    "s": [
+     "{\"type\":\"macro.execute\"}"
+    ]
+   },
+   {
+    "s": [
+     "{\"type\":\"macro.execute\",\"macro_id\":\"\"}"
+    ]
+   },
+   {
+    "s": [
+     "null"
+    ]
+   },
+   {
+    "s": [
+     "{\"type\":7,\"element_id\":\"r_btn\"}"
+    ]
+   },
+   {
+    "s": [
+     "{\"type\":\"ui.press\"}"
+    ]
+   },
+   {
+    "s": [
+     "{\"type\":\"ui.press\",\"element_id\":\"ghost\"}"
+    ]
+   },
+   {
+    "s": [
+     "{\"type\":\"state.set\",\"element_id\":\"r_btn\",\"key\":\"var.x\",\"value\":1}"
+    ]
+   },
+   {}
+  ],
+  "band": [
+   {
+    "c": {
+     "top_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "top_btn",
+      "r@aria-label": "top_btn",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 22%; height: 22%;",
+      "r#": "top_btn"
+     },
+     "v_lbl": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "v_lbl",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 25%; top: 1%; width: 22%; height: 22%;",
+      "r#": "set"
+     },
+     "low_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "low_btn",
+      "r@aria-label": "Low",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 49%; top: 1%; width: 22%; height: 22%;",
+      "r#": "Low"
+     },
+     "go": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-page-nav",
+      "r@data-element-id": "go",
+      "r@aria-label": "Navigate to Go",
+      "r@data-element-type": "page_nav",
+      "r@style": "position: absolute; left: 73%; top: 1%; width: 22%; height: 22%;",
+      "r#": "Go"
+     }
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "That did not work"
+    }
+   },
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "",
+     "r#": "That did not work"
+    }
+   },
+   {},
+   {},
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "First"
+    }
+   },
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Replaced"
+    }
+   },
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "",
+     "r#": "Replaced"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Refused by the device"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "",
+     "r#": "Refused by the device"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Not allowed"
+    }
+   },
+   {},
+   {},
+   {
+    "s": [
+     "{\"type\":\"ui.press\",\"element_id\":\"low_btn\"}"
+    ]
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible at-top",
+     "r#": "Low control"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "High control"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible at-top",
+     "r#": "Just above the middle"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "No box"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Redrawn since"
+    }
+   },
+   {
+    "c": {
+     "top_btn": {
+      "r@": null,
+      "r@type": null,
+      "r@class": null,
+      "r@data-element-id": null,
+      "r@aria-label": null,
+      "r@data-element-type": null,
+      "r@style": null,
+      "r#": null,
+      "gone": "1"
+     },
+     "v_lbl": {
+      "r@": null,
+      "r@class": null,
+      "r@data-element-id": null,
+      "r@data-element-type": null,
+      "r@style": null,
+      "r#": null,
+      "gone": "1"
+     },
+     "low_btn": {
+      "r@": null,
+      "r@type": null,
+      "r@class": null,
+      "r@data-element-id": null,
+      "r@aria-label": null,
+      "r@data-element-type": null,
+      "r@style": null,
+      "r#": null,
+      "gone": "1"
+     },
+     "go": {
+      "r@": null,
+      "r@type": null,
+      "r@class": null,
+      "r@data-element-id": null,
+      "r@aria-label": null,
+      "r@data-element-type": null,
+      "r@style": null,
+      "r#": null,
+      "gone": "1"
+     }
+    },
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "",
+     "r#": "Redrawn since"
+    }
+   },
+   {
+    "c": {
+     "top_btn": {
+      "gone": null,
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "top_btn",
+      "r@aria-label": "top_btn",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 22%; height: 22%;",
+      "r#": "top_btn"
+     },
+     "v_lbl": {
+      "gone": null,
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "v_lbl",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 25%; top: 1%; width: 22%; height: 22%;",
+      "r#": "set"
+     },
+     "low_btn": {
+      "gone": null,
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "low_btn",
+      "r@aria-label": "Low",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 49%; top: 1%; width: 22%; height: 22%;",
+      "r#": "Low"
+     },
+     "go": {
+      "gone": null,
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-page-nav",
+      "r@data-element-id": "go",
+      "r@aria-label": "Navigate to Go",
+      "r@data-element-type": "page_nav",
+      "r@style": "position: absolute; left: 73%; top: 1%; width: 22%; height: 22%;",
+      "r#": "Go"
+     }
+    }
+   },
+   {},
+   {},
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Zero is not off"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "No settings"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "42"
+    }
+   }
+  ],
+  "revert": [
+   {
+    "c": {
+     "top_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "top_btn",
+      "r@aria-label": "top_btn",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 22%; height: 22%;",
+      "r#": "top_btn"
+     },
+     "v_lbl": {
+      "r@": "div class data-element-id data-element-type style",
+      "r@class": "panel-element panel-label",
+      "r@data-element-id": "v_lbl",
+      "r@data-element-type": "label",
+      "r@style": "position: absolute; left: 25%; top: 1%; width: 22%; height: 22%;",
+      "r#": "from state"
+     },
+     "low_btn": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "low_btn",
+      "r@aria-label": "Low",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 49%; top: 1%; width: 22%; height: 22%;",
+      "r#": "Low"
+     },
+     "go": {
+      "r@": "button type class data-element-id aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-page-nav",
+      "r@data-element-id": "go",
+      "r@aria-label": "Navigate to Go",
+      "r@data-element-type": "page_nav",
+      "r@style": "position: absolute; left: 73%; top: 1%; width: 22%; height: 22%;",
+      "r#": "Go"
+     }
+    }
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "operator wrote this"
+     }
+    }
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "from state"
+     }
+    },
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Refused"
+    }
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "operator wrote this"
+     }
+    }
+   },
+   {
+    "s": [
+     "{\"type\":\"ui.press\",\"element_id\":\"v_lbl\"}"
+    ]
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "from state"
+     }
+    }
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "operator wrote this"
+     }
+    }
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "from state"
+     }
+    },
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "No"
+    }
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "operator wrote this"
+     }
+    }
+   },
+   {},
+   {
+    "s": [
+     "{\"type\":\"ui.press\",\"element_id\":\"top_btn\"}"
+    ]
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "from state"
+     }
+    },
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Claimed, revert falls back"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Other"
+    }
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "operator wrote this"
+     }
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Nothing touched"
+    }
+   },
+   {
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Throws"
+    }
+   },
+   {
+    "c": {
+     "v_lbl": {
+      "r#": "from state"
+     }
+    },
+    "band": {
+     "r@": "div id role class",
+     "r@id": "panel-failure-message",
+     "r@role": "alert",
+     "r@class": "visible",
+     "r#": "Draws again"
+    }
+   }
+  ],
+  "design_canvas": [
+   {
+    "c": {
+     "e_btn": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@type": "button",
+      "r@class": "panel-element panel-button",
+      "r@data-element-id": "e_btn",
+      "r@data-avc-text-src": "[\"label\"]",
+      "r@aria-label": "e_btn",
+      "r@data-element-type": "button",
+      "r@style": "position: absolute; left: 1%; top: 1%; width: 22%; height: 22%;",
+      "r#": "e_btn"
+     }
+    }
+   },
+   {},
+   {},
+   {},
+   {
+    "c": {
+     "e_btn": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style data-macro-busy",
+      "r@class": "panel-element panel-button macro-busy",
+      "r@data-macro-busy": "e1"
+     }
+    }
+   },
+   {
+    "c": {
+     "e_btn": {
+      "r@": "button type class data-element-id data-avc-text-src aria-label data-element-type style",
+      "r@class": "panel-element panel-button",
+      "r@data-macro-busy": null
+     }
+    }
+   }
+  ]
+ }
+}

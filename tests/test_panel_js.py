@@ -356,6 +356,14 @@ SCENARIOS = [
     # raised to !important past quotes, parentheses and @keyframes, pinned whole
     # (tests/fixtures/panel_stylesheet_pins.json).
     "project_stylesheet_applies_as_today",
+    # Whether a reading can be believed and a press can land: the marks, the
+    # platform's own keys, a wake control, Preview's copy, and which bindings
+    # a change reaches, pinned whole (tests/fixtures/panel_availability_pins.json).
+    "availability_marks_and_reach_as_today",
+    # Which macro runs are this panel's, what a run shows, and the failure band
+    # with the refused control put back, pinned whole
+    # (tests/fixtures/panel_macro_run_pins.json).
+    "macro_runs_and_failures_as_today",
 ]
 
 
