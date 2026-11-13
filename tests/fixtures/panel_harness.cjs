@@ -11929,6 +11929,17 @@ const WORDS_CASES = {
         ]),
         steps: [snapshot({ 'var.s': 'b' }), ['state', { 'var.s': 'a', 'ui.n1.label': '' }], ['raf'], ['state', { 'ui.n1.label': 'Back' }], ['raf']],
     },
+    // Words that are null: a label's text condition against the word "null"
+    // with a null reading (no match), and a button whose own style names a
+    // null label under a two-state look (no words; named after itself).
+    null_words: {
+        ...WORDS,
+        ui: onePage('nulls', [
+            pinLabel('t1', { bindings: { show: { value: { key: 'var.n', condition: { equals: 'null' }, text_true: 'Matched', text_false: 'Not matched' } } } }),
+            pinButton('b1', [MACRO], { style: { label: null }, bindings: { do: { press: [MACRO] }, show: { look: { key: 'var.n', condition: { equals: 'on' } } } } }),
+        ]),
+        steps: [snapshot({ 'var.n': null }), snapshot({ 'var.n': 'null' }), snapshot({ 'var.n': 'on' })],
+    },
     // The canvas: each control's words record where they were authored, and
     // the in-place editor finds the words beside an icon.
     words_on_the_canvas: {
