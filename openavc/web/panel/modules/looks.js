@@ -7,8 +7,16 @@
  * label, an image, a page nav, a container), so one state value picks the
  * same entry on all of them. What each control then draws from that entry is
  * its own business, in panel.js. No DOM and no panel state. A look's two
- * forms, `states` and the two halves, are read here and nowhere else: a new
- * form is taught to `pickLook` and `lookPictures` together.
+ * forms, `states` and the two halves, are read here (`pickLook`,
+ * `lookPictures`, `withTwoStateWords`) and by a button's words (`lookWords`
+ * in modules/button.js, which reads a two-state look's own word fields): a
+ * new form is taught to both modules.
+ *
+ * Every caller hands this module a look binding, never a control's
+ * definition, and that has to stay so: the page review's renderer scan
+ * (tests/test_ui_page_review_mirrors.py) credits a module's whole text to
+ * any control that hands it the element, and the picture `lookPictures`
+ * reads would then count that control as one that draws a state's picture.
  */
 
 const LOOK = ['bindings', 'show', 'look'];
