@@ -1151,7 +1151,7 @@ async def test_simulate_says_why_nothing_ran(handler, mock_agent, mock_engine):
 
 # --- Simulating a toggle, and simulating without firing ---------------------
 #
-# A real press on a toggle button is resolved in the browser: panel.js compares
+# A real press on a toggle button is resolved in the browser: the panel compares
 # the bound key against toggle_value and sends press or toggle_off. Simulating
 # a press server-side skipped that entirely and always fired the on-branch, so
 # a working toggle reported the same command twice in a row -- which is exactly
@@ -1210,7 +1210,7 @@ async def test_simulate_resolves_a_toggle_the_way_the_panel_does(
     assert on_when_locked["dispatched_as"] == "toggle_off"
     assert "off_action" in on_when_locked["toggle"]
     # The boolean state matched a boolean toggle_value through the string
-    # compare panel.js uses -- the case that makes every real toggle work.
+    # compare the panel uses -- the case that makes every real toggle work.
     assert "True == toggle_value True" in on_when_locked["toggle"]
     assert "dispatched_as" not in on_when_unlocked  # press stayed press
 

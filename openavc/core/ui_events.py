@@ -103,7 +103,8 @@ def find_element(project: Any, element_id: str) -> Any | None:
 def press_mode(element: Any) -> tuple[str, dict[str, Any]]:
     """A button's interaction mode, and the action carrying it.
 
-    Mirrors the panel: mode lives on the FIRST action of ``do.press``, and a
+    Mirrors the panel's ``pressOf`` (``modules/press.js``): mode lives on the
+    FIRST action of ``do.press``, and a
     toggle without a ``toggle_key`` has nothing to compare, so it degrades to
     tap rather than doing nothing.
     """
@@ -130,11 +131,12 @@ def resolve_press(element: Any, state: Any) -> tuple[str, str | None]:
     checked twice reports the same command twice and there is no way to tell a
     broken toggle from a simulation that cannot see one.
 
-    So this is a mirror, and it is a mirror of four lines. The comparison is
-    string and case-insensitive, matching panel.js exactly -- that is what lets
-    ``toggle_value: true`` match a driver's boolean ``True``, which is how
-    nearly every toggle in a real project is written.
-    ``tests/test_ui_page_review_mirrors.py`` pins the spelling.
+    So this is a mirror, and it is a mirror of a few lines. The comparison is
+    string and case-insensitive, matching the panel's ``modules/press.js`` --
+    that is what lets ``toggle_value: true`` match a driver's boolean ``True``,
+    which is how nearly every toggle in a real project is written.
+    ``tests/test_press_parity.py`` runs both over one corpus, and names the
+    two places they still disagree (a null, and a whole number written 1.0).
 
     Returns the event type plus a sentence explaining the choice, or None when
     the element is not a toggle and there was no choice to make.

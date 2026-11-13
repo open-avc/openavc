@@ -7,7 +7,7 @@
 
 import { NOT_APPROVED_CLOSE, PanelAccess } from './modules/access.js';
 import { assetUrl, basePath } from './modules/base_path.js';
-import { pickLook, withTwoStateWords } from './modules/looks.js';
+import { pickLook, sameWords, withTwoStateWords } from './modules/looks.js';
 import {
     applyFrameless, applyImageEffect, applyStyle, clearStateColours, drawFadedPicture,
     gradientCss, updateImageTint,
@@ -34,6 +34,7 @@ import { Availability, changeReaches, devicesFlipped } from './modules/availabil
 import { FailureBand } from './modules/failure_band.js';
 import { MacroRuns } from './modules/macro_runs.js';
 import { ProjectStylesheet } from './modules/stylesheet.js';
+import { attachPress, pressOf } from './modules/press.js';
 import {
     applyCoordinateSpaces, applyLivePlacements, applyVminOverride, drawElementTree, drawSnapRuler,
     masterOrientation, masterPlacement, placeElement, selectLayout, viewportOrientation,
@@ -1401,104 +1402,9 @@ class PanelApp {
             }
         }
 
-        // Button mode: tap (default), toggle, hold_repeat, tap_hold
-        // Press binding is an array of actions; mode properties come from the first action
-        const pressActions = element.bindings?.do?.press || [];
-        const pressBinding = (Array.isArray(pressActions) ? pressActions[0] : pressActions) || {};
-        const mode = pressBinding.mode || 'tap';
-        const holdRepeatMs = pressBinding.hold_repeat_ms || 200;
-        const holdThresholdMs = pressBinding.hold_threshold_ms || 500;
-
-        // Toggle without toggle_key falls back to tap mode
-        const effectiveMode = (mode === 'toggle' && !pressBinding.toggle_key) ? 'tap' : mode;
-
-        let pressTime = 0;
-        let pressActive = false;
-
-        const onPress = (e) => {
-            e.preventDefault();
-            el.classList.add('pressing');
-            pressTime = Date.now();
-            pressActive = true;
-
-            // The release must be un-missable: kiosk WebViews and mobile
-            // browsers sometimes swallow the element-level touchend (gesture
-            // interception, system dialogs), and a hold-repeat interval that
-            // outlives the physical press fires its action forever. Window-
-            // level one-shot fallbacks end the press no matter where (or
-            // whether) the browser delivers the release event.
-            const winEnd = (ev) => {
-                winCleanup();
-                onRelease(ev);
-            };
-            const winCleanup = () => {
-                window.removeEventListener('mouseup', winEnd);
-                window.removeEventListener('touchend', winEnd);
-                window.removeEventListener('touchcancel', winEnd);
-                window.removeEventListener('blur', winEnd);
-            };
-            window.addEventListener('mouseup', winEnd);
-            window.addEventListener('touchend', winEnd, { passive: true });
-            window.addEventListener('touchcancel', winEnd, { passive: true });
-            window.addEventListener('blur', winEnd);
-
-            if (effectiveMode === 'hold_repeat') {
-                this.send({ type: 'ui.press', element_id: element.id });
-                // Clear any existing timer before starting a new one
-                this._endHold(element.id);
-                this.holdTimers[element.id] = setInterval(() => {
-                    this.send({ type: 'ui.press', element_id: element.id });
-                }, holdRepeatMs);
-            } else if (effectiveMode === 'tap') {
-                this.send({ type: 'ui.press', element_id: element.id });
-            } else if (effectiveMode === 'toggle') {
-                const toggleKey = pressBinding.toggle_key;
-                const toggleValue = pressBinding.toggle_value;
-                const stateValue = this.state[toggleKey];
-                const isActive = stateValue !== undefined && toggleValue !== undefined &&
-                    String(stateValue).toLowerCase() === String(toggleValue).toLowerCase();
-                if (isActive) {
-                    this.send({ type: 'ui.toggle_off', element_id: element.id });
-                } else {
-                    this.send({ type: 'ui.press', element_id: element.id });
-                }
-            }
-            // tap_hold: nothing on press — decided on release
-        };
-        const onRelease = (e) => {
-            // Element handler and window fallback both route here; only the
-            // first one for a given press does anything.
-            if (!pressActive) return;
-            pressActive = false;
-            if (e && e.cancelable && e.preventDefault) e.preventDefault();
-            el.classList.remove('pressing');
-
-            if (effectiveMode === 'hold_repeat') {
-                this._endHold(element.id);
-            } else if (effectiveMode === 'tap_hold') {
-                const held = Date.now() - pressTime;
-                if (held >= holdThresholdMs) {
-                    this.send({ type: 'ui.hold', element_id: element.id });
-                } else {
-                    this.send({ type: 'ui.press', element_id: element.id });
-                }
-            }
-
-            this.send({ type: 'ui.release', element_id: element.id });
-        };
-
-        el.addEventListener('mousedown', onPress);
-        el.addEventListener('mouseup', onRelease);
-        el.addEventListener('mouseleave', () => {
-            // Hold ends when the pointer leaves; the press cycle itself is
-            // closed by the window-level mouseup fallback.
-            el.classList.remove('pressing');
-            this._endHold(element.id);
-        });
-        el.style.touchAction = 'none';
-        el.addEventListener('touchstart', onPress);
-        el.addEventListener('touchend', onRelease);
-        el.addEventListener('touchcancel', onRelease);
+        // What a press sends, in its mode (modules/press.js).
+        const press = pressOf(element);
+        attachPress(el, element, press, this._pressHost());
 
         // Appearance (state-driven look) binding
         if (element.bindings?.show?.look) {
@@ -1508,7 +1414,7 @@ class PanelApp {
                 elementDef: element,
                 binding: element.bindings.show.look,
             });
-        } else if (effectiveMode === 'toggle') {
+        } else if (press.mode === 'toggle') {
             // A toggle button's own indication. Registered ONLY when the
             // element has no look binding of its own: that binding is the
             // author saying what this button looks like, and two bindings
@@ -1518,22 +1424,25 @@ class PanelApp {
                 type: 'toggle_look',
                 element: el,
                 elementDef: element,
-                binding: {
-                    key: pressBinding.toggle_key,
-                    value: pressBinding.toggle_value,
-                    on_label: pressBinding.on_label,
-                    off_label: pressBinding.off_label,
-                    // Where those two words are authored, so an in-place edit
-                    // writes the one the button is actually showing. The press
-                    // binding is an array whose first action carries the mode.
-                    _labelBase: Array.isArray(pressActions)
-                        ? ['bindings', 'do', 'press', 0]
-                        : ['bindings', 'do', 'press'],
-                },
+                binding: press.toggleLook,
             });
         }
 
         return el;
+    }
+
+    /** What a button's press borrows from the panel, each at call time: its
+     *  send, its state, and the hold timers every page change ends. */
+    _pressHost() {
+        return {
+            send: (msg) => this.send(msg),
+            read: (key) => this.state[key],
+            repeat: (elementId, ms, fn) => {
+                this._endHold(elementId);
+                this.holdTimers[elementId] = setInterval(fn, ms);
+            },
+            endHold: (elementId) => this._endHold(elementId),
+        };
     }
 
     renderLabel(element) {
@@ -3042,7 +2951,7 @@ class PanelApp {
 
         const stateValue = this.state[binding.key];
         const on = !offline && stateValue != null && binding.value !== undefined &&
-            String(stateValue).toLowerCase() === String(binding.value).toLowerCase();
+            sameWords(stateValue, binding.value);
 
         // applyStyle only ever writes a property it has a value for, so going
         // off has to drop the lit colours first or a button whose own style
@@ -3219,7 +3128,7 @@ class PanelApp {
             // or boolean true matches a condition.equals of '1'/'true' instead of
             // silently failing the strict-=== check and sticking on text_false.
             const isMatch = value !== undefined && value !== null &&
-                String(value).toLowerCase() === String(binding.condition.equals).toLowerCase();
+                sameWords(value, binding.condition.equals);
             setText(isMatch ? (binding.text_true || '') : (binding.text_false || ''),
                 ['bindings', 'show', 'value', isMatch ? 'text_true' : 'text_false']);
             return;

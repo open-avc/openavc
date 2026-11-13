@@ -44,14 +44,24 @@ function pickState(binding, stateValue) {
  */
 function pickTwoState(binding, stateValue) {
     const condition = binding.condition || {};
-    const isActive = stateValue !== undefined &&
-        String(stateValue).toLowerCase() === String(condition.equals).toLowerCase();
+    const isActive = stateValue !== undefined && sameWords(stateValue, condition.equals);
     const half = isActive ? 'style_active' : 'style_inactive';
     return {
         appearance: binding[half] || {},
         wordsPath: [...LOOK, half, 'label'],
         isActive,
     };
+}
+
+/**
+ * Two readings compared as words apart from case, so a driver's boolean
+ * `true`, the word "True" and a value written as "true" are the same. Every
+ * rule that asks whether a reading is "on" compares this way: a look's
+ * two-state form, a toggle's press (modules/press.js) and its indication, a
+ * label's text condition. What a missing reading is stays each rule's own.
+ */
+export function sameWords(a, b) {
+    return String(a).toLowerCase() === String(b).toLowerCase();
 }
 
 /**

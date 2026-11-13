@@ -439,31 +439,12 @@ def test_the_matrix_config_keys_match_the_renderer(
     assert derived == set(MATRIX_CONFIG_KEYS)
 
 
-def test_the_toggle_comparison_is_still_the_one_the_server_mirrors(
-    panel_method_bodies: dict[str, str],
-) -> None:
-    """`resolve_press` is a copy of four lines of the button renderer.
-
-    It has to be: the panel decides a toggle's branch in the browser and the
-    server only ever sees the verdict, so anything trying to VERIFY a toggle has
-    to reach the same verdict independently. The rule worth pinning is the
-    comparison -- string, case-insensitive -- because it is what lets
-    `toggle_value: true` match a driver's boolean True, which is how nearly
-    every toggle in a real project is written. A change to strict equality here
-    would break most of them, and quietly.
-    """
-    body = panel_method_bodies["renderButton"]
-    normalized = re.sub(r"\s+", "", body)
-    assert "String(stateValue).toLowerCase()===String(toggleValue).toLowerCase()" in normalized
-    # ...and that a toggle with nothing to compare degrades to tap rather than
-    # doing nothing, which resolve_press also mirrors.
-    assert "mode==='toggle'&&!pressBinding.toggle_key" in normalized
-    # The two events the branch chooses between.
-    assert "ui.toggle_off" in body and "ui.press" in body
-
-
 def test_resolve_press_agrees_with_that_rule() -> None:
-    """The server side of the same comparison, exercised rather than read."""
+    """The server's copy of the panel's toggle comparison, exercised.
+
+    The panel's own decision (`modules/press.js`) is run against this one over
+    a wider corpus in tests/test_press_parity.py.
+    """
     from openavc.core.ui_events import resolve_press
 
     class _El:
