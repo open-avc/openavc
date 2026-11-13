@@ -129,6 +129,30 @@ const WORDLESS_MODES = new Set(['image', 'icon_only']);
 const PICTURE_MODES = new Set(['image', 'image_text']);
 
 /**
+ * What the panel does with each frame the server sends, by its `type`: the
+ * whole state, a change, keys going away, the project and its ui/ files, a
+ * page change, a macro run's progress, and a refusal or a failed ack.
+ */
+const FRAMES = new Map([
+    ['ping', (app) => app.send({ type: 'pong' })],
+    ['state.snapshot', (app, msg) => app._takeSnapshot(msg)],
+    ['state.update', (app, msg) => app._takeChanges(msg)],
+    ['state.delete', (app, msg) => app._dropKeys(msg)],
+    ['ui.definition', (app, msg) => app._takeDefinition(msg)],
+    ['ui.files', (app, msg) => app._takeFilesVersion(msg)],
+    ['ui.navigate', (app, msg) => { if (msg.page_id) app.navigateToPage(msg.page_id); }],
+    ['macro.started', (app, msg) => app.macroRuns.started(msg)],
+    ['macro.progress', (app, msg) => app.macroRuns.progress(msg)],
+    ['macro.step_error', (app, msg) => app.macroRuns.stepFailed(msg)],
+    ['macro.completed', (app, msg) => app.macroRuns.ended(msg)],
+    ['macro.error', (app, msg) => app.macroRuns.ended(msg)],
+    ['macro.cancelled', (app, msg) => app.macroRuns.ended(msg)],
+    ['error', (app, msg) => app._takeRefusal(msg)],
+    ['command.ack', (app, msg) => app._takeAck(msg)],
+    ['state.set.ack', (app, msg) => app._takeAck(msg)],
+]);
+
+/**
  * A Container's caption at its `label_position`: against the top or the
  * bottom edge, and at the left, the middle or the right.
  */
@@ -577,6 +601,23 @@ class PanelApp {
     }
 
     setConnectionStatus(connected) {
+        this._showConnectionWord(connected);
+        this._takeTouches(connected);
+        this._offline = !connected;
+        if (!connected) {
+            // Don't let a previously-scheduled idle timer fire while offline —
+            // it would navigate the dead panel and stack a lock screen over the
+            // offline overlay. resetIdleTimer re-arms it on reconnect.
+            this.lock.stopIdle();
+            // Stop any in-flight notification audio; stale chimes on reconnect
+            // are worse than missed ones.
+            this._sound.stopAll();
+        }
+    }
+
+    /** The connection's word in the corner: shown while it is lost, flashed
+     *  for three seconds when it comes back. */
+    _showConnectionWord(connected) {
         if (this._statusHideTimer) {
             clearTimeout(this._statusHideTimer);
             this._statusHideTimer = null;
@@ -594,13 +635,14 @@ class PanelApp {
                 this.statusEl.classList.add('hidden');
             }, 3000);
         }
+    }
 
-        // Offline overlay
+    /** The offline cover, and the page taking touches only while connected. */
+    _takeTouches(connected) {
         const overlay = document.getElementById('offline-overlay');
         if (overlay) {
             overlay.classList.toggle('visible', !connected);
         }
-        // Disable panel interaction when offline
         if (this.root) {
             this.root.style.pointerEvents = connected ? '' : 'none';
         }
@@ -611,167 +653,138 @@ class PanelApp {
         document.querySelectorAll('.panel-overlay').forEach(o => {
             o.style.pointerEvents = connected ? '' : 'none';
         });
-
-        this._offline = !connected;
-        if (!connected) {
-            // Don't let a previously-scheduled idle timer fire while offline —
-            // it would navigate the dead panel and stack a lock screen over the
-            // offline overlay. resetIdleTimer re-arms it on reconnect.
-            this.lock.stopIdle();
-            // Stop any in-flight notification audio; stale chimes on reconnect
-            // are worse than missed ones.
-            this._sound.stopAll();
-        }
     }
 
     // --- Message Handling ---
 
+    /** A frame from the server, handled by its type (FRAMES); any other type is ignored. */
     handleMessage(msg) {
-        switch (msg.type) {
-            case 'ping':
-                this.send({ type: 'pong' });
-                break;
+        const handle = FRAMES.get(msg.type);
+        if (handle) handle(this, msg);
+    }
 
-            case 'state.snapshot':
-                this.state = msg.state || {};
-                this.snapshotReceived = true;
-                this._hideLoadingState();
-                this.evaluateAllBindings();
-                this._updateSimulationTag();
-                // Seed audio dedupe id from current state so we don't replay
-                // the most recent sound when (re)connecting.
-                this._sound.seed();
-                break;
+    /** The whole state: drawn at once, and the loading note taken away. */
+    _takeSnapshot(msg) {
+        this.state = msg.state || {};
+        this.snapshotReceived = true;
+        this._hideLoadingState();
+        this.evaluateAllBindings();
+        this._updateSimulationTag();
+        // Seed audio dedupe id from current state so we don't replay
+        // the most recent sound when (re)connecting.
+        this._sound.seed();
+    }
 
-            case 'state.update':
-                Object.assign(this.state, msg.changes || {});
-                this._scheduleBindingEvaluation(Object.keys(msg.changes || {}));
-                if ('system.simulation_active' in (msg.changes || {})) {
-                    this._updateSimulationTag();
-                }
-                // Notify plugin iframes of state changes
-                for (const [k, v] of Object.entries(msg.changes || {})) {
-                    this._notifyPluginIframes(k, v);
-                    this._sound.noteChange(k, v);
-                }
-                break;
+    /** State that changed: drawn on the next frame, told to the frames and the sound player. */
+    _takeChanges(msg) {
+        const changes = msg.changes || {};
+        Object.assign(this.state, changes);
+        this._scheduleBindingEvaluation(Object.keys(changes));
+        if ('system.simulation_active' in changes) {
+            this._updateSimulationTag();
+        }
+        for (const [k, v] of Object.entries(changes)) {
+            this._notifyPluginIframes(k, v);
+            this._sound.noteChange(k, v);
+        }
+    }
 
-            case 'state.delete':
-                if (Array.isArray(msg.keys) && msg.keys.length > 0) {
-                    for (const key of msg.keys) {
-                        delete this.state[key];
-                    }
-                    this._scheduleBindingEvaluation(msg.keys);
-                    if (msg.keys.includes('system.simulation_active')) {
-                        this._updateSimulationTag();
-                    }
-                    // Plugin iframes get a null value notification — preserves
-                    // their existing contract (they saw value=null before the
-                    // server emitted explicit state.delete messages).
-                    for (const key of msg.keys) {
-                        this._notifyPluginIframes(key, null);
-                    }
-                }
-                break;
+    /** Keys that went away: drawn again, and the frames told their value is gone. */
+    _dropKeys(msg) {
+        if (!Array.isArray(msg.keys) || msg.keys.length === 0) return;
+        for (const key of msg.keys) {
+            delete this.state[key];
+        }
+        this._scheduleBindingEvaluation(msg.keys);
+        if (msg.keys.includes('system.simulation_active')) {
+            this._updateSimulationTag();
+        }
+        // Plugin iframes get a null value notification — preserves
+        // their existing contract (they saw value=null before the
+        // server emitted explicit state.delete messages).
+        for (const key of msg.keys) {
+            this._notifyPluginIframes(key, null);
+        }
+    }
 
-            case 'ui.definition':
-                // Embedded iframes take their definition from the parent
-                // programmer window via postMessage — ignore server-pushed
-                // definitions so in-flight builder edits aren't clobbered by
-                // the last-saved project. All Preview keeps of it is which
-                // devices each control's press reaches, which only the server
-                // can work out (`ui/action_devices.py`).
-                if (this.embedded) {
-                    if (!this.editMode) {
-                        this.availability.takeServed(msg.ui);
-                        this.availability.markActions();
-                    }
-                    break;
-                }
-                this.uiDef = msg.ui;
-                this.uiSettings = msg.ui?.settings || {};
-                this._setupViewportListener();
-                // The first draw waits for the theme (see drawWhenReady).
-                if (this.snapshotReceived) this.theme.drawWhenReady();
-                this.lock.reconcile();
-                this.resetIdleTimer();
-                break;
+    /**
+     * The project the server holds. Embedded iframes take their definition
+     * from the parent programmer window via postMessage, so a served one is
+     * ignored there and in-flight builder edits aren't clobbered by the
+     * last-saved project. All Preview keeps of it is which devices each
+     * control's press reaches, which only the server can work out
+     * (`ui/action_devices.py`).
+     */
+    _takeDefinition(msg) {
+        if (this.embedded) {
+            if (!this.editMode) {
+                this.availability.takeServed(msg.ui);
+                this.availability.markActions();
+            }
+            return;
+        }
+        this.uiDef = msg.ui;
+        this.uiSettings = msg.ui?.settings || {};
+        this._setupViewportListener();
+        // The first draw waits for the theme (see drawWhenReady).
+        if (this.snapshotReceived) this.theme.drawWhenReady();
+        this.lock.reconcile();
+        this.resetIdleTimer();
+    }
 
-            case 'ui.files':
-                // A file in the project's ui/ tree changed. Nothing about the
-                // project moved, so no ui.definition follows and this page
-                // would keep drawing the control the browser already has --
-                // for as long as nobody navigated away and back. The version
-                // rides onto each frame's src, so a re-render re-fetches.
-                //
-                // Embedded is the Builder's canvas, which runs its own counter
-                // over postMessage and would fight this one. Same reason
-                // ui.definition is ignored there.
-                if (this.embedded) break;
-                this._uiFilesVersion = msg.version;
-                if (this.snapshotReceived && pageRunsAuthorMarkup(this.uiDef, this.currentPage)) {
-                    this.renderCurrentPage();
-                }
-                break;
+    /**
+     * A file in the project's ui/ tree changed. Nothing about the project
+     * moved, so no ui.definition follows and this page would keep drawing the
+     * control the browser already has -- for as long as nobody navigated away
+     * and back. The version rides onto each frame's src, so a re-render
+     * re-fetches.
+     *
+     * Embedded is the Builder's canvas, which runs its own counter over
+     * postMessage and would fight this one. Same reason ui.definition is
+     * ignored there.
+     */
+    _takeFilesVersion(msg) {
+        if (this.embedded) return;
+        this._uiFilesVersion = msg.version;
+        if (this.snapshotReceived && pageRunsAuthorMarkup(this.uiDef, this.currentPage)) {
+            this.renderCurrentPage();
+        }
+    }
 
-            case 'ui.navigate':
-                if (msg.page_id) {
-                    this.navigateToPage(msg.page_id);
-                }
-                break;
+    /**
+     * A refusal: logged, said in the failure band, and the control it was
+     * about put back.
+     *
+     * source_type is absent for connection-level errors (rate limit,
+     * malformed JSON) -- printing it unconditionally put a literal
+     * "undefined" in front of every one of those. The band only ever carries
+     * a failure of something somebody did; a frame with no source_type is the
+     * connection refusing a message before anything was read off it, and it
+     * cannot name what failed because nothing was parsed. "Rate limit
+     * exceeded" on a wall panel is a fact about our protocol in front of a
+     * room that can do nothing with it, and it displaces the sentence that
+     * would have been useful. The revert still runs, which is the half that
+     * matters there: the control stops showing a value the device never took.
+     */
+    _takeRefusal(msg) {
+        console.warn(msg.source_type
+            ? `[WS Error] ${msg.source_type}: ${msg.message}`
+            : `[WS Error] ${msg.message}`);
+        if (msg.source_type) this._failureBand.show(msg.message);
+        this._revertRefusedInteraction(msg.element_id);
+    }
 
-            case 'macro.started':
-                this.macroRuns.started(msg);
-                break;
-
-            case 'macro.progress':
-                this.macroRuns.progress(msg);
-                break;
-
-            case 'macro.step_error':
-                this.macroRuns.stepFailed(msg);
-                break;
-
-            case 'macro.completed':
-            case 'macro.error':
-            case 'macro.cancelled':
-                this.macroRuns.ended(msg);
-                break;
-
-            case 'error':
-                // source_type is absent for connection-level errors (rate
-                // limit, malformed JSON) — printing it unconditionally put a
-                // literal "undefined" in front of every one of those.
-                console.warn(msg.source_type
-                    ? `[WS Error] ${msg.source_type}: ${msg.message}`
-                    : `[WS Error] ${msg.message}`);
-                // The band only ever carries a failure of something somebody
-                // did. A frame with no source_type is the connection refusing a
-                // message before anything was read off it -- a rate limit, a
-                // frame that was not JSON -- and it cannot name what failed
-                // because nothing was parsed. "Rate limit exceeded" on a wall
-                // panel is a fact about our protocol in front of a room that
-                // can do nothing with it, and it displaces the sentence that
-                // would have been useful. The revert still runs, which is the
-                // half that matters there: the control stops showing a value
-                // the device never took.
-                if (msg.source_type) this._failureBand.show(msg.message);
-                this._revertRefusedInteraction(msg.element_id);
-                break;
-
-            case 'command.ack':
-            case 'state.set.ack':
-                // A control somebody wrote themselves sends its commands and
-                // its writes straight down this socket, and so does the lock on
-                // a matrix row, so those failures come back on an ack rather
-                // than as an error frame. Same sentence either way, and nobody
-                // standing in the room can tell which kind of control they just
-                // pressed.
-                if (msg.success === false) {
-                    this._failureBand.show(msg.error);
-                    this._revertRefusedInteraction(null);
-                }
-                break;
+    /**
+     * A command's or a state write's answer. A control somebody wrote
+     * themselves sends its commands and its writes straight down this socket,
+     * and so does the lock on a matrix row, so those failures come back on an
+     * ack rather than as an error frame. Same sentence either way, and nobody
+     * standing in the room can tell which kind of control they just pressed.
+     */
+    _takeAck(msg) {
+        if (msg.success === false) {
+            this._failureBand.show(msg.error);
+            this._revertRefusedInteraction(null);
         }
     }
 
