@@ -1289,7 +1289,7 @@ class PanelApp {
     /** The control drawn by its type's renderer (modules/dispatch.js); an unknown type is logged and draws nothing. */
     _renderElementOfType(element) {
         const render = RENDERERS.get(element.type);
-        if (render) return render(this, element);
+        if (typeof render === 'function') return render(this, element);
         console.warn('Unknown element type:', element.type);
         return null;
     }
@@ -2313,7 +2313,8 @@ class PanelApp {
      * incremental filtering around it. Each renderer protects active gestures.
      */
     _evaluateBinding(b) {
-        EVALUATORS.get(b.type)?.(this, b);
+        const evaluate = EVALUATORS.get(b.type);
+        if (typeof evaluate === 'function') evaluate(this, b);
     }
 
     /** Draw every control's ui.<id>.* overrides from current state (modules/overrides.js). */
