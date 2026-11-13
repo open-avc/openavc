@@ -102,15 +102,43 @@ def panel_method_bodies() -> dict[str, str]:
 _MODULE_IMPORT = re.compile(r"import\s*\{([^}]*)\}\s*from\s*'\./(modules/[\w./-]+\.js)'", re.S)
 
 
+#: The named imports one panel module takes from another beside it.
+_SIBLING_IMPORT = re.compile(r"import\s*\{([^}]*)\}\s*from\s*'\./([\w-]+\.js)'", re.S)
+
+
 def _module_imports(panel_source: str) -> dict[str, str]:
     """Each function panel.js imports from a module under web/panel/, with that module's source."""
     found: dict[str, str] = {}
     for names, rel in _MODULE_IMPORT.findall(panel_source):
-        text = (PANEL_JS.parent / rel).read_text(encoding="utf-8")
+        text = _module_reach(PANEL_JS.parent / rel)
         for name in re.split(r"[\s,]+", names.strip()):
             if name:
                 found[name] = text
     return found
+
+
+def _module_reach(path: Path, seen: frozenset[Path] = frozenset()) -> str:
+    """A module's source, with the source of each module beside it that it hands the element to.
+
+    A module given the element reads whatever it passes the element on to:
+    the button's face (modules/button.js) draws its icon through
+    ``drawIcon`` in modules/words.js. Followed by the same argument rule as
+    everything else here, and never back into a module already on the way.
+    """
+    text = path.read_text(encoding="utf-8")
+    parts = [text]
+    for names, rel in _SIBLING_IMPORT.findall(text):
+        sibling = path.parent / rel
+        if sibling in seen or sibling == path:
+            continue
+        handed = any(
+            _TAKES_ELEMENT.search(_positional_args(text, match.end()))
+            for name in re.split(r"[\s,]+", names.strip()) if name
+            for match in re.finditer(rf"(?<![\w.$]){re.escape(name)}\(", text)
+        )
+        if handed:
+            parts.append(_module_reach(sibling, seen | {path}))
+    return "\n".join(parts)
 
 
 def _modules_handed_the_element(body: str, imported: dict[str, str]) -> set[str]:
@@ -308,8 +336,8 @@ _TAKES_ELEMENT = re.compile(r"\belement(Def)?\b")
 _PROP_READ = re.compile(r"\b(?:element|elementDef)\??\.([a-z_][a-z0-9_]*)")
 #: Inside an evaluator `element` is the DOM node and `elementDef` is the
 #: definition, so reading both there collects `value`, `_dragging` and `class`.
-#: The same holds in any helper that is handed both: `_reapplyButtonImage`
-#: calls `element.querySelector`, which the wider pattern reads as `query`.
+#: The same holds in any helper that is handed both: one that calls
+#: `element.querySelector` would have the wider pattern read it as `query`.
 _PROP_READ_DEF = re.compile(r"\belementDef\??\.([a-z_][a-z0-9_]*)")
 _NAMES_ELEMENT_DEF = re.compile(r"\belementDef\b")
 _REGISTERED_BINDING = re.compile(r"type:\s*'([\w_]+)'")

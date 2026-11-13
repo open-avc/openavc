@@ -9,7 +9,7 @@ import { NOT_APPROVED_CLOSE, PanelAccess } from './modules/access.js';
 import { assetUrl, basePath } from './modules/base_path.js';
 import { pickLook, sameWords, withTwoStateWords } from './modules/looks.js';
 import {
-    applyFrameless, applyImageEffect, applyStyle, clearStateColours, drawFadedPicture,
+    applyStyle, clearStateColours, drawFadedPicture,
     gradientCss, updateImageTint,
 } from './modules/paint.js';
 import {
@@ -35,6 +35,10 @@ import { FailureBand } from './modules/failure_band.js';
 import { MacroRuns } from './modules/macro_runs.js';
 import { ProjectStylesheet } from './modules/stylesheet.js';
 import { attachPress, pressOf } from './modules/press.js';
+import {
+    drawFace, drawPicture, lookWords, redrawPicture, repaint, showsWords, toggleLit, toggleNamesWords, toggleWords,
+} from './modules/button.js';
+import { litStyle } from './modules/lit.js';
 import { drawIcon, iconNode, removeWords, showWords } from './modules/words.js';
 import { isShown, visibilityOf } from './modules/visibility.js';
 import {
@@ -123,10 +127,6 @@ import {
     };
 })();
 // ---------------------------------------------------------------------------
-
-// A button's display modes that draw no words, and those that draw its own picture.
-const WORDLESS_MODES = new Set(['image', 'icon_only']);
-const PICTURE_MODES = new Set(['image', 'image_text']);
 
 /**
  * What the panel does with each frame the server sends, by its `type`: the
@@ -1394,38 +1394,15 @@ class PanelApp {
         el._baseAccessibleName = element.label || element.id;
         el.setAttribute('aria-label', el._baseAccessibleName);
 
-        // Apply static styles (theme defaults merged)
+        // Its themed style, then its face (modules/button.js).
         const themedStyle = this.theme.styleFor('button', element.style);
         applyStyle(el, themedStyle);
-
-        // Frameless: hide chrome so the image acts as the button
-        if (element.frameless) applyFrameless(el);
-
-        const displayMode = element.display_mode || 'text';
-        const showImage = this._buttonShowsOwnPicture(element) && element.button_image;
-
-        // Clear label text for image-only/icon-only modes BEFORE content/layer rendering
-        if (!this._buttonShowsWords(element)) {
-            el.textContent = '';
+        if (!showsWords(element)) {
             // The label still exists in data and is still the accessible name,
             // but nothing is on screen to put a caret in.
             this._textEditor.recordSource(el, null);
         }
-        if (displayMode === 'icon_only' && !element.icon_position) {
-            element.icon_position = 'center';
-        }
-
-        // Render icon+text content first (may call el.textContent = '' internally to rebuild).
-        // Image layer must be prepended AFTER this so content rendering can't wipe it.
-        drawIcon(el, element);
-
-        // Image effect last so its DOM layer isn't removed by other content rendering paths
-        if (showImage) {
-            applyImageEffect(el, element.button_image, this._pictureOptions(element, themedStyle.bg_color));
-            if (displayMode === 'image_text') {
-                el.style.textShadow = '0 1px 0.2143rem rgba(0,0,0,0.8)';
-            }
-        }
+        drawFace(el, element, themedStyle);
 
         // What a press sends, in its mode (modules/press.js).
         const press = pressOf(element);
@@ -2438,58 +2415,13 @@ class PanelApp {
     }
 
     /**
-     * Draw the artwork a button should show in its current state, after
-     * applyStyle has decided background-image for the gradient.
-     *
-     * applyStyle sets background-image on every call (the gradient, or empty),
-     * and the button's own image lives in the same property, so every look or
-     * toggle pass wiped it unless something drew it again. A state's own
-     * artwork wins; otherwise the button's, where its display mode draws one.
-     * The tint falls back to the text colour inside applyImageEffect, so a
-     * masked image stays visible when the state carries no colour.
-     */
-    _reapplyButtonImage(element, elementDef, stateImage, tint) {
-        const image = stateImage
-            || (this._buttonShowsOwnPicture(elementDef) ? elementDef.button_image : null);
-        if (!image) {
-            // A previous state's artwork on an effect layer goes with it.
-            element.querySelector(':scope > .panel-button-image-layer')?.remove();
-            return;
-        }
-        applyImageEffect(element, image, this._pictureOptions(elementDef, tint));
-    }
-
-    /**
-     * Whether a button's display mode draws its words (not `image` or
-     * `icon_only`) and its own picture (`image` or `image_text`). A picture a
-     * state names shows in any mode: the Builder offers it on every button.
-     */
-    _buttonShowsWords(elementDef) {
-        return !WORDLESS_MODES.has(elementDef.display_mode || 'text');
-    }
-
-    _buttonShowsOwnPicture(elementDef) {
-        return PICTURE_MODES.has(elementDef.display_mode || 'text');
-    }
-
-    /** How a button draws its picture: its fit, blend and opacity, tinted with `tint`. */
-    _pictureOptions(elementDef, tint) {
-        return {
-            fit: elementDef.image_fit,
-            blend: elementDef.image_blend_mode,
-            opacity: elementDef.image_opacity,
-            tintColor: tint,
-        };
-    }
-
-    /**
      * Draw a button's words, or take them off where its display mode draws
      * none. Only the text goes: the picture layer and an icon are children of
      * their own. `words` is [text, where an edit of it goes], or null to leave
      * the words as they are.
      */
     _drawButtonWords(element, elementDef, words) {
-        if (!this._buttonShowsWords(elementDef)) {
+        if (!showsWords(elementDef)) {
             removeWords(element);
             this._textEditor.recordSource(element, null);
         } else if (words) {
@@ -2716,7 +2648,7 @@ class PanelApp {
         const lit = this._navShowsItsPage(elementDef);
         clearStateColours(element, rest);
         applyStyle(element, {
-            ...rest, ...appearance, ...(lit ? this._toggleOnStyle(elementDef) : {}),
+            ...rest, ...appearance, ...(lit ? litStyle(elementDef.style) : {}),
         });
         element.classList.toggle('nav-current', lit);
         if (lit) element.setAttribute('aria-current', 'page');
@@ -2774,12 +2706,9 @@ class PanelApp {
         const look = pickLook(binding, this.state[binding.key]);
         const rest = this.theme.styleFor(elementDef.type, elementDef.style || {});
         const style = { ...rest, ...look.appearance };
-        clearStateColours(element, rest);
-        applyStyle(element, style);
-        // Again after the state's colours, which would bring the chrome back.
-        if (elementDef.frameless) applyFrameless(element);
-        this._reapplyButtonImage(element, elementDef, look.appearance.button_image, style.bg_color);
-        this._drawButtonWords(element, elementDef, this._feedbackWords(elementDef, binding, look, style));
+        repaint(element, elementDef, rest, style);
+        redrawPicture(element, elementDef, look.appearance.button_image, style.bg_color);
+        this._drawButtonWords(element, elementDef, lookWords(elementDef, binding, look, style));
         this._drawLookIcon(element, elementDef, look.appearance);
     }
 
@@ -2799,41 +2728,13 @@ class PanelApp {
      */
     _drawButtonClaimingNoState(element, elementDef) {
         const own = elementDef.style || {};
-        clearStateColours(element, own);
-        applyStyle(element, this.theme.styleFor(elementDef.type, own));
-        if (elementDef.frameless) applyFrameless(element);
+        repaint(element, elementDef, own, this.theme.styleFor(elementDef.type, own));
         if (own.bg_color) updateImageTint(element, own.bg_color);
         this._drawButtonWords(element, elementDef, [elementDef.label || '', ['label']]);
         this._drawLookIcon(element, elementDef, null);
         if (elementDef.button_image) {
-            applyImageEffect(element, elementDef.button_image, this._pictureOptions(elementDef, own.bg_color));
+            drawPicture(element, elementDef, elementDef.button_image, own.bg_color);
         }
-    }
-
-    /**
-     * The words a button's look draws, with where an edit of them goes: what
-     * the look's form names (`_stateWords`, `_twoStateWords`), else the
-     * button's own label. Null leaves the words as they are.
-     */
-    _feedbackWords(elementDef, binding, look, style) {
-        const named = binding.states ? this._stateWords(look) : this._twoStateWords(binding, look, style);
-        return named || (elementDef.label ? [elementDef.label, ['label']] : null);
-    }
-
-    /** A state's own words, when it names any. */
-    _stateWords({ appearance, wordsPath }) {
-        return appearance.label !== undefined ? [String(appearance.label), wordsPath] : null;
-    }
-
-    /**
-     * The two-state form's words: the active or inactive label, else a label
-     * in the style, where whichever half supplied it is the half an edit writes.
-     */
-    _twoStateWords(binding, { appearance, wordsPath, isActive }, style) {
-        const half = isActive ? 'label_active' : 'label_inactive';
-        if (binding[half]) return [binding[half], ['bindings', 'show', 'look', half]];
-        if (style.label === undefined) return null;
-        return [style.label, appearance.label !== undefined ? wordsPath : ['style', 'label']];
     }
 
     /**
@@ -2873,129 +2774,28 @@ class PanelApp {
 
         const offline = this.availability.markReading(b);
 
-        const stateValue = this.state[binding.key];
-        const on = !offline && stateValue != null && binding.value !== undefined &&
-            sameWords(stateValue, binding.value);
+        const on = toggleLit(binding, this.state[binding.key], offline);
 
-        // applyStyle only ever writes a property it has a value for, so going
-        // off has to drop the lit colours first or a button whose own style
+        // Going off drops the lit colours first, or a button whose own style
         // names none stays lit for good.
-        clearStateColours(element, baseStyle);
         const style = this.theme.styleFor(elementDef.type, on
-            ? { ...baseStyle, ...this._toggleOnStyle(elementDef) }
+            ? { ...baseStyle, ...litStyle(elementDef.style) }
             : baseStyle);
-        applyStyle(element, style);
-        element.classList.toggle('toggle-on', on);
+        repaint(element, elementDef, baseStyle, style);
         // Frameless and image buttons take their fill from artwork, so the
-        // class above is the whole indication there -- an outline, which no
-        // inline write of ours ever clobbers.
-        if (elementDef.frameless) applyFrameless(element);
-        this._reapplyButtonImage(element, elementDef, null, style.bg_color);
+        // class is the whole indication there: an outline, which no inline
+        // write of ours ever clobbers.
+        element.classList.toggle('toggle-on', on);
+        redrawPicture(element, elementDef, null, style.bg_color);
 
         // The words, only where the author asked for them. A toggle that names
         // neither label keeps whatever it is already showing: rewriting the
         // label every pass would fight a `ui.<id>.label` override and rebuild
         // an icon layout for nothing.
-        const named = binding.on_label != null || binding.off_label != null;
-        if (named && this._buttonShowsWords(elementDef)) {
-            this._setLabelText(element, ...this._toggleWords(elementDef, binding, on, offline));
+        if (toggleNamesWords(binding) && showsWords(elementDef)) {
+            this._setLabelText(element, ...toggleWords(elementDef, binding, on, offline));
             this._drawLookIcon(element, elementDef, null);
         }
-    }
-
-    /**
-     * A toggle's words and where an edit of them goes: its on or off word;
-     * an empty one, or none while its device is away, falls back to the
-     * button's own label, so an edit of what is showing belongs to whichever
-     * one actually drew.
-     */
-    _toggleWords(elementDef, binding, on, offline) {
-        const word = offline ? null : (on ? binding.on_label : binding.off_label);
-        if (word == null || word === '') return [elementDef.label || '', ['label']];
-        const labelBase = binding._labelBase || ['bindings', 'do', 'press', 0];
-        return [word, [...labelBase, on ? 'on_label' : 'off_label']];
-    }
-
-    /**
-     * The look a toggle takes while it is on: the accent, filled.
-     *
-     * The accent rather than a colour of our own, so it follows the theme and
-     * the panel's own accent setting, and so an element that names its own
-     * `accent_color` lights in that. Deliberately no border colour: the off
-     * pass restores the element's own style, and `clearStateColours` drops
-     * only what a state look may write (background, text colour, opacity)
-     * -- adding another here without teaching that helper about it is how a
-     * button ends up wearing half of a state it is no longer in.
-     */
-    _toggleOnStyle(elementDef) {
-        const accent = elementDef.style?.accent_color
-            // Read from the inline custom property the theme sets rather than
-            // through getComputedStyle: this runs in the binding pass, and a
-            // computed read there costs a style flush on every state batch.
-            // The fallback is the same colour the :root rule in
-            // panel-elements.css carries, so a panel that never loaded a theme
-            // lights in the accent it is already drawn with.
-            || document.documentElement.style.getPropertyValue('--panel-accent').trim()
-            || '#2196F3';
-        const style = { bg_color: accent };
-        const text = this._readableTextOn(accent);
-        if (text) style.text_color = text;
-        return style;
-    }
-
-    /**
-     * Near-black or white, whichever reads on this background -- picked by
-     * WCAG contrast rather than a lightness guess, because the built-in
-     * accents run from #1976D2 to #00E676 and one answer cannot serve both.
-     *
-     * Returns null when the colour cannot be read, and the button then keeps
-     * its own text colour: hex and rgb()/rgba() are what every theme variable
-     * and every colour picker in the IDE write, and resolving a named colour
-     * or hsl() would mean asking the browser through a canvas, which this path
-     * cannot afford.
-     */
-    _readableTextOn(color) {
-        const rgb = this._parseRgbChannels(color);
-        if (!rgb) return null;
-        const lum = this._relativeLuminance(rgb);
-        const DARK = 0.00518;              // relative luminance of #111111
-        const onWhite = 1.05 / (lum + 0.05);
-        const onDark = (lum + 0.05) / (DARK + 0.05);
-        return onDark >= onWhite ? '#111111' : '#ffffff';
-    }
-
-    /** [r, g, b] 0-255 from a hex or rgb()/rgba() colour, or null. */
-    _parseRgbChannels(color) {
-        if (typeof color !== 'string') return null;
-        const v = color.trim().toLowerCase();
-        const hex = v.match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/);
-        if (hex) {
-            const h = hex[1];
-            const wide = h.length > 4;
-            const pair = (i) => wide ? h.slice(i * 2, i * 2 + 2) : h[i] + h[i];
-            return [0, 1, 2].map(i => parseInt(pair(i), 16));
-        }
-        const rgb = v.match(/^rgba?\(([^)]+)\)$/);
-        if (rgb) {
-            const parts = rgb[1].split(/[,/\s]+/).filter(Boolean);
-            if (parts.length < 3) return null;
-            const chan = (s) => {
-                const n = s.endsWith('%') ? (parseFloat(s) / 100) * 255 : parseFloat(s);
-                return isNaN(n) ? null : Math.max(0, Math.min(255, Math.round(n)));
-            };
-            const out = parts.slice(0, 3).map(chan);
-            return out.every(c => c !== null) ? out : null;
-        }
-        return null;
-    }
-
-    /** WCAG relative luminance of [r, g, b]. */
-    _relativeLuminance([r, g, b]) {
-        const lin = [r, g, b].map(c => {
-            const s = c / 255;
-            return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
-        });
-        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
     }
 
     /**
