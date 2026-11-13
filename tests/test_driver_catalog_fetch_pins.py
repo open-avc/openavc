@@ -29,6 +29,7 @@ from fastapi import HTTPException
 from openavc.api.models import CommunityDriverInstallRequest
 from openavc.api.routes import drivers as routes
 from openavc.api.routes.drivers import install_community_driver, update_driver
+from openavc.discovery.community_index import CommunityIndexCache
 from openavc.utils.outbound import internet_failure
 
 CATALOG = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/"
@@ -38,6 +39,7 @@ NOT_YET = (
     "Try again in five minutes."
 )
 CERT_REFUSED = "[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed"
+_REAL_GET_DRIVERS = CommunityIndexCache.get_drivers
 
 
 class _Response:
@@ -395,7 +397,9 @@ async def test_a_yaml_driver_naming_a_simulator_as_its_companion_is_refused_unas
     assert _tree(cat.repo) == {}
 
 
-@pytest.mark.parametrize("name", ["acme widget_discovery.py", "acme.widget_discovery.py"])
+@pytest.mark.parametrize(
+    "name", ["acme widget_discovery.py", "acme.widget_discovery.py", "acme_widget_discoveryxpy"]
+)
 @pytest.mark.asyncio
 async def test_a_yaml_companion_name_outside_the_safe_characters_is_refused(cat, name):
     cat.network.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(companion=f"./{name}")
@@ -638,3 +642,35 @@ async def test_browse_community_lists_what_the_catalog_answered(cat):
 
     assert answer == {"drivers": [_entry(None)], "error": None}
     assert cat.index.forces == [False]
+
+
+@pytest.mark.asyncio
+async def test_browse_community_and_an_install_read_one_copy_of_the_index(cat, monkeypatch):
+    # One cache on this server: the listing's fetch answers the next listing
+    # and the install's hash lookup until it ages out.
+    import json
+
+    from openavc.discovery import community_index
+
+    monkeypatch.setattr(CommunityIndexCache, "get_drivers", _REAL_GET_DRIVERS)
+    fetched: list[str] = []
+    index = {"drivers": [_entry(_hashes(**{
+        "acme_widget.py": _python(),
+        "acme_widget_discovery.py": COMPANION,
+        "acme_widget_sim.py": SIMULATOR,
+    }))]}
+
+    async def _fetch_raw(path):
+        fetched.append(path)
+        return json.dumps(index).encode(), ""
+
+    monkeypatch.setattr(community_index, "_fetch_raw_with_retry", _fetch_raw)
+    _python_catalog(cat)
+
+    listed = await routes.get_community_drivers(refresh=True)
+    again = await routes.get_community_drivers()
+    answer = await _install("acme_widget.py")
+
+    assert listed == again == {"drivers": index["drivers"], "error": None}
+    assert answer["status"] == "installed"
+    assert fetched == ["index.json"]
