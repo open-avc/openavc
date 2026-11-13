@@ -1,0 +1,1173 @@
+{
+  "session": {
+    "token": {
+      "subprotocol": "auth.bearer.tok-abc_123",
+      "path": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "bare_path": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "tunnel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "api_end": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "api_query": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "apis": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "myapi": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "other_host": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_api": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ],
+              [
+                "x-a",
+                "1"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_own_auth": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer other"
+              ],
+              [
+                "x-a",
+                "1"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_null_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ],
+              [
+                "x-a",
+                "1"
+              ]
+            ]
+          ]
+        },
+        "headersSame": false,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_empty_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "headersSame": false,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "lower_auth": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Basic x"
+              ]
+            ]
+          ]
+        },
+        "headersSame": false,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "array_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ],
+              [
+                "x-b",
+                "2"
+              ]
+            ]
+          ]
+        },
+        "headersSame": false,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_object": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ],
+              [
+                "x-c",
+                "3"
+              ]
+            ]
+          ]
+        },
+        "headersSame": false,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "other_fields": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "method": "\"POST\"",
+          "body": "\"b\"",
+          "cache": "\"no-store\"",
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "fields_after_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ],
+              [
+                "x-d",
+                "4"
+              ]
+            ]
+          ],
+          "method": "\"PUT\""
+        },
+        "headersSame": false,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "empty_init": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "null_init": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "null_input": {
+        "promise": true,
+        "rejected": "Cannot read properties of null (reading 'url')",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "undefined_input": {
+        "promise": true,
+        "rejected": "Cannot read properties of undefined (reading 'url')",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "plain_object": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_object_not_request": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": {
+          "headers": [
+            "Headers",
+            [
+              [
+                "authorization",
+                "Bearer tok-abc_123"
+              ]
+            ]
+          ]
+        },
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "number": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "socket": [
+        [
+          2,
+          [
+            "auth.bearer.tok-abc_123"
+          ]
+        ]
+      ]
+    },
+    "none": {
+      "subprotocol": null,
+      "path": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "bare_path": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "tunnel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "api_end": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "api_query": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "apis": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "myapi": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "other_host": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_api": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_own_auth": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_null_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_empty_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "lower_auth": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "array_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_object": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "other_fields": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "fields_after_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "empty_init": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "null_init": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "null_input": {
+        "promise": true,
+        "rejected": "Cannot read properties of null (reading 'url')",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "undefined_input": {
+        "promise": true,
+        "rejected": "Cannot read properties of undefined (reading 'url')",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "plain_object": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_object_not_request": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "number": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "socket": [
+        [
+          1
+        ]
+      ]
+    },
+    "empty": {
+      "subprotocol": null,
+      "path": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "bare_path": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "tunnel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "api_end": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "api_query": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "apis": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "myapi": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "other_host": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_api": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_own_auth": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_null_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_empty_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "lower_auth": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "array_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_object": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "other_fields": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "fields_after_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "empty_init": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "null_init": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "null_input": {
+        "promise": true,
+        "rejected": "Cannot read properties of null (reading 'url')",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "undefined_input": {
+        "promise": true,
+        "rejected": "Cannot read properties of undefined (reading 'url')",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "plain_object": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_object_not_request": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "number": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "socket": [
+        [
+          1
+        ]
+      ]
+    },
+    "unreadable": {
+      "subprotocol": null,
+      "path": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "bare_path": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "tunnel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "api_end": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "api_query": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "apis": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "myapi": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "other_host": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_api": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_own_auth": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_null_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_empty_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "request_panel": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "lower_auth": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "array_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "headers_object": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "other_fields": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "fields_after_headers": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "headersSame": true,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "empty_init": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "null_init": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "same",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "null_input": {
+        "promise": true,
+        "rejected": "Cannot read properties of null (reading 'url')",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "undefined_input": {
+        "promise": true,
+        "rejected": "Cannot read properties of undefined (reading 'url')",
+        "calls": 0,
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "plain_object": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "url_object_not_request": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "number": {
+        "promise": true,
+        "calls": 1,
+        "input": "same",
+        "init": "undefined",
+        "callerInitKept": true,
+        "callerInputKept": true
+      },
+      "socket": [
+        [
+          1
+        ]
+      ]
+    },
+    "installed": {
+      "global": "function",
+      "patched": true
+    }
+  }
+}

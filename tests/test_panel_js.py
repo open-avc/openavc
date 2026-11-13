@@ -229,6 +229,10 @@ SCENARIOS = [
     # The Programmer's session reaches the embedded panel's requests and socket.
     "bridge_sends_the_programmer_session_as_a_bearer_token",
     "bridge_attaches_nothing_without_a_session",
+    # The bridge pinned whole: every request form, header form and address,
+    # the session there, absent, empty or unreadable, and the socket's
+    # subprotocol (tests/fixtures/panel_session_pins.json).
+    "session_bridge_carries_the_sign_in_as_today",
     "q139_a_connection_level_refusal_is_not_put_on_the_glass",
     # Panel access: the check-in comes first, and a device that is not
     # approved waits on a screen with its code.

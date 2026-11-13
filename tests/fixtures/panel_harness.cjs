@@ -53,6 +53,7 @@ window.fetch = async (input, init) => {
     window.__fetchCalls.push({ input, init });
     return { ok: false, json: async () => ({}) };
 };
+window.__harnessFetch = window.fetch;
 window.requestAnimationFrame = (cb) => { cb(0); return 0; };        // run binding batches synchronously
 window.cancelAnimationFrame = () => {};
 class FakeWS { constructor() { this.readyState = 1; } send() {} close() {} }
@@ -4408,6 +4409,122 @@ const tests = {
         }
     },
 
+    // The bridge pinned whole: every way a request can be asked for (a path,
+    // a URL, a Request, something else), every form its headers can take, the
+    // addresses that do and do not count as the API, and the session there,
+    // absent, empty or unreadable; what reached the real fetch, what the
+    // caller's own objects were left as, and the socket's subprotocol.
+    // Compared with panel_session_pins.json, recorded from the code before it
+    // moved.
+    async session_bridge_carries_the_sign_in_as_today() {
+        const got = {};
+        const KEY = 'openavc.programmer.session';
+        const storage = window.Storage.prototype;
+        const realGetItem = storage.getItem;
+        const sessions = {
+            token: () => window.sessionStorage.setItem(KEY, 'tok-abc_123'),
+            none: () => window.sessionStorage.removeItem(KEY),
+            empty: () => window.sessionStorage.setItem(KEY, ''),
+            unreadable: () => {
+                window.sessionStorage.setItem(KEY, 'tok-abc_123');
+                storage.getItem = function () { throw new Error('storage refused'); };
+            },
+        };
+        const request = (url, headers) => Object.assign(new window.Request(), {
+            url, headers: new window.Headers(headers),
+        });
+        const headersOf = (h) => (h instanceof window.Headers ? ['Headers', [...h.entries()]] : ['raw', JSON.stringify(h)]);
+        const snapshot = (v) => {
+            if (v === undefined) return 'undefined';
+            if (v === null || typeof v !== 'object') return JSON.stringify(v);
+            if (v instanceof window.Headers) return headersOf(v);
+            const out = {};
+            for (const k of Object.keys(v)) out[k] = snapshot(v[k]);
+            return out;
+        };
+        const cases = () => [
+            ['path', '/api/status'],
+            ['bare_path', 'api/status'],
+            ['tunnel', '/tunnel/abc/api/x'],
+            ['api_end', '/api'],
+            ['api_query', '/api?x=1'],
+            ['apis', '/apis/x'],
+            ['myapi', '/myapi/x'],
+            ['panel', '/panel/index.html'],
+            ['other_host', 'http://other.host/api/x'],
+            ['url_api', new window.URL('http://localhost:8080/api/status')],
+            ['url_panel', new window.URL('http://localhost:8080/panel/')],
+            ['request', request('/api/x', { 'X-A': '1' })],
+            ['request_own_auth', request('/api/x', { Authorization: 'Bearer other', 'X-A': '1' })],
+            ['request_null_headers', request('/api/x', { 'X-A': '1' }), { headers: null }],
+            ['request_empty_headers', request('/api/x', { 'X-A': '1' }), { headers: {} }],
+            ['request_panel', request('/panel/x', { 'X-A': '1' })],
+            ['lower_auth', '/api/x', { headers: { authorization: 'Basic x' } }],
+            ['array_headers', '/api/x', { headers: [['X-B', '2']] }],
+            ['headers_object', '/api/x', { headers: new window.Headers({ 'X-C': '3' }) }],
+            ['other_fields', '/api/x', { method: 'POST', body: 'b', cache: 'no-store' }],
+            ['fields_after_headers', '/api/x', { headers: { 'X-D': '4' }, method: 'PUT' }],
+            ['empty_init', '/api/x', {}],
+            ['null_init', '/api/x', null],
+            ['null_input', null],
+            ['undefined_input', undefined],
+            ['plain_object', {}],
+            ['url_object_not_request', { url: '/api/x', headers: new window.Headers({ 'X-E': '5' }) }],
+            ['number', 42],
+        ];
+        try {
+            for (const [state, enter] of Object.entries(sessions)) {
+                enter();
+                const row = { subprotocol: window.__openavcGetAuthSubprotocol() };
+                for (const [name, input, ...rest] of cases()) {
+                    const init = rest[0];
+                    const before = snapshot(init);
+                    const inputBefore = snapshot(input);
+                    window.__fetchCalls.length = 0;
+                    const r = {};
+                    let pending;
+                    try { pending = rest.length ? patchedFetch(input, init) : patchedFetch(input); }
+                    catch (e) { r.threw = String(e && e.message); }
+                    if (pending) {
+                        r.promise = pending instanceof window.Promise || pending instanceof Promise;
+                        try { await pending; } catch (e) { r.rejected = String(e && e.message); }
+                    }
+                    r.calls = window.__fetchCalls.length;
+                    const call = window.__fetchCalls[0];
+                    if (call) {
+                        r.input = call.input === input ? 'same' : snapshot(call.input);
+                        if (call.init === init && init !== undefined) r.init = 'same';
+                        else r.init = snapshot(call.init);
+                        if (init && call.init && init.headers !== undefined) {
+                            r.headersSame = call.init.headers === init.headers;
+                        }
+                    }
+                    r.callerInitKept = JSON.stringify(snapshot(init)) === JSON.stringify(before);
+                    r.callerInputKept = JSON.stringify(snapshot(input)) === JSON.stringify(inputBefore);
+                    row[name] = r;
+                }
+                // The socket: the subprotocol rides as the only one offered, or
+                // the socket is opened with no protocol argument at all.
+                const realWS = window.WebSocket;
+                const opened = [];
+                window.WebSocket = class { constructor(...a) { opened.push(a.length === 1 ? [a.length] : [a.length, a[1]]); this.readyState = 0; } close() {} send() {} };
+                try { mkApp().connect(); } finally { window.WebSocket = realWS; }
+                row.socket = opened;
+                got[state] = row;
+                storage.getItem = realGetItem;
+            }
+            got.installed = {
+                global: typeof window.__openavcGetAuthSubprotocol,
+                patched: patchedFetch !== window.__harnessFetch,
+            };
+        } finally {
+            storage.getItem = realGetItem;
+            window.sessionStorage.removeItem(KEY);
+            window.__fetchCalls.length = 0;
+        }
+        comparePins('session', got, SESSION_PINS.session);
+    },
+
     // --- Panel access: the check-in comes first, and a refusal waits --------
 
     // Even on an instance that admits anyone, the check-in is the first
@@ -7157,6 +7274,10 @@ const tests = {
 // recorded from the code before the frames moved, the way the paint and level
 // pins are.
 const FRAME_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_frame_pins.json'), 'utf8'));
+
+// The Programmer session bridge, compared with panel_session_pins.json,
+// recorded from the code before it moved.
+const SESSION_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_session_pins.json'), 'utf8'));
 
 const FRAME_STATE = {
     'device.dsp1.mute': true, 'device.dsp10.mute': false, 'device.dsp1.zone.2.level': -10,
