@@ -423,6 +423,11 @@ SCENARIOS = [
     # the pass with one failing, pinned whole
     # (tests/fixtures/panel_dispatch_pins.json).
     "dispatch_draws_each_type_with_its_method_as_today",
+    # Every control type drawn on a page with each of its slots bound, in each
+    # form that registers something different: every binding type it
+    # registers has its evaluator (modules/dispatch.js), apart from a macro's
+    # progress line, and every evaluator is reached.
+    "every_binding_a_control_registers_has_its_evaluator",
 ]
 
 

@@ -13023,6 +13023,63 @@ function dispatchBindings() {
     return got;
 }
 
+// --- Every binding a control registers has its evaluator --------------------
+//
+// A binding registered with no evaluator is drawn once, from the definition,
+// and never again: the binding pass looks each binding's type up in EVALUATORS
+// (modules/dispatch.js) and passes over one it does not find. Every control
+// type is drawn here on a page, its show slots and its visibility bound, in
+// each form that registers something different (a toggle with no look of its
+// own, a label following a macro's progress, a Page Nav lit by its own page,
+// a dropdown coloured per option), and what the panel registered is compared
+// with the table, however the renderer wrote the registration. A macro's
+// progress line is the one type the pass leaves alone on purpose:
+// modules/macro_runs.js draws it. A row nothing here registered fails too: it
+// is an evaluator nothing reaches, or a control needs one more form below.
+
+/** Types a control registers that the binding pass leaves to someone else. */
+const DRAWN_ELSEWHERE = ['macro_progress'];
+
+/** Every control type, each slot bound, and the forms that register something else. */
+function everyRegistration(types) {
+    const show = {
+        value: { key: 'var.v' },
+        look: { key: 'var.l', states: { on: { bg_color: '#123456' } }, style_map: { on: { bg_color: '#123456' } } },
+        items: { key_pattern: 'var.item_*' },
+        visible_when: { key: 'var.shown', operator: 'eq', value: true },
+    };
+    const elements = types.map((type) => ({ id: `all_${type}`, type, label: type, target_page: 'main', bindings: { show } }));
+    elements.push(
+        { id: 'toggle', type: 'button', label: 't', bindings: { do: { press: [{ action: 'state.set', key: 'var.t', mode: 'toggle', toggle_key: 'var.t', toggle_value: 'on' }] } } },
+        { id: 'progress', type: 'label', text: 'p', bindings: { show: { value: { source: 'macro_progress', macro: 'm1' } } } },
+        { id: 'lit_nav', type: 'page_nav', label: 'n', target_page: 'main', highlight_current: true },
+        { id: 'routed', type: 'matrix', matrix_style: 'list', matrix_config: {
+            sources: [{ value: 1, label: 'A' }],
+            destinations: [{ value: 1, label: 'B', route_key: 'device.sw.route_1' }],
+        } },
+    );
+    return elements;
+}
+
+Object.assign(tests, {
+    every_binding_a_control_registers_has_its_evaluator() {
+        const { RENDERERS, EVALUATORS } = panelModule('dispatch.js');
+        const app = mkApp();
+        app.send = () => {};
+        const logged = [];
+        loggingTo(logged, () => renderProject(app, project({ elements: everyRegistration([...RENDERERS.keys()]) })));
+        const registered = new Set(app.bindings.map((b) => b.type));
+        assert(registered.size > 10, `drew almost nothing: ${[...registered]} ${logged.join(' | ')}`);
+        const missing = [...registered].filter((t) => !EVALUATORS.has(t) && !DRAWN_ELSEWHERE.includes(t));
+        assert(missing.length === 0, `registered with no evaluator: ${missing.join(', ')}`);
+        const unreached = [...EVALUATORS.keys()].filter((t) => !registered.has(t));
+        assert(unreached.length === 0, `an evaluator no control drawn here registered: ${unreached.join(', ')}`);
+        for (const t of DRAWN_ELSEWHERE) {
+            assert(registered.has(t) && !EVALUATORS.has(t), `${t} is drawn by the pass now, or no longer registered`);
+        }
+    },
+});
+
 Object.assign(tests, {
     dispatch_draws_each_type_with_its_method_as_today() {
         comparePins('dispatch', { controls: dispatchControls(), bindings: dispatchBindings() }, DISPATCH_PINS.dispatch);

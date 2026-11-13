@@ -180,8 +180,14 @@ const { RENDERERS, EVALUATORS } = await import(process.argv[1]);
 const reached = (table) => {
     const out = {};
     for (const [type, draw] of table) {
-        const handed = {};
         const calls = [];
+        // What the row was handed says when anything looks at it or writes to it.
+        const touch = (how) => (_, name) => { calls.push([`${how} ${String(name)} of what it was handed`, false, false]); return undefined; };
+        const handed = new Proxy({}, {
+            get: touch('read'), has: touch('asked for'), set: touch('wrote'), deleteProperty: touch('deleted'),
+            defineProperty: touch('defined'), getOwnPropertyDescriptor: touch('described'),
+            ownKeys: () => { calls.push(['listed the keys of what it was handed', false, false]); return []; },
+        });
         const app = new Proxy({}, {
             get: (_, name) => function (...args) {
                 calls.push([String(name), this === app, args.length === 1 && args[0] === handed]);
@@ -201,11 +207,14 @@ def dispatch_tables(panel_method_bodies: dict[str, str]) -> dict[str, dict[str, 
     """The panel's two lookups (modules/dispatch.js), run: the method each type reaches.
 
     Run under Node against a stand-in panel that notes every method a row
-    calls, rather than read out of the source, so a row is seen exactly as the
-    panel will use it however it is written. A row has to call one method of
-    the panel, on the panel, with what it was handed, and nothing else:
-    anything more would be drawing these tables cannot see, so it fails here
-    by name, as does a row naming a method the panel does not have.
+    calls, and a stand-in definition or binding that notes anything a row
+    reads from it or writes to it. A row has to call one method of the panel,
+    on the panel, with what it was handed, without looking at it: a row that
+    did more, or chose its method by what it was handed, would draw something
+    these tables cannot see, so it fails here by name, as does a row naming a
+    method the panel does not have. Only the path a row takes for this
+    stand-in is seen; a row that branched on something other than what it was
+    handed would still be read along one branch.
     """
     tables: dict[str, dict[str, str]] = {}
     for table, rows in _run_panel_module(_DISPATCH_SCRIPT, "dispatch.js").items():
@@ -261,36 +270,6 @@ def test_every_type_reads_exactly_what_the_table_says(
         for el_type, fn_name in renderer_by_type.items()
     }
     assert derived == HONORED_SHOW_SLOTS
-
-
-#: A binding a renderer registers: an object that opens with its type and then
-#: the element it draws on, the form every registration in panel.js takes.
-_REGISTRATION = re.compile(r"\{\s*type:\s*'([\w_]+)',\s*element\b")
-
-#: Binding types a renderer registers that the binding pass leaves alone, each
-#: with the panel module that draws them instead.
-_DRAWN_ELSEWHERE = {"macro_progress": "macro_runs.js"}
-
-
-def test_every_binding_a_renderer_registers_has_its_evaluator(evaluator_for: dict[str, str]) -> None:
-    """A binding registered without an evaluator is drawn once and never again.
-
-    The binding pass looks each binding's type up in EVALUATORS
-    (modules/dispatch.js) and passes over one it does not find. That is right
-    for a macro's progress line, which the macro module draws, and wrong for
-    anything else: a renderer that registers a new kind of binding without its
-    row draws the control from its definition and then ignores every change of
-    state. Nothing errors, and the look and property tables here derive what
-    that control honours as if the binding read nothing. The other way round,
-    a row no renderer registers is an evaluator nothing reaches.
-    """
-    registered = set(_REGISTRATION.findall(PANEL_JS.read_text(encoding="utf-8")))
-    assert len(registered) > 10, "registration scan found almost nothing -- the parse is wrong"
-    for bind_type, module in _DRAWN_ELSEWHERE.items():
-        assert bind_type in registered, f"nothing registers {bind_type} now: drop it from _DRAWN_ELSEWHERE"
-        drawer = (PANEL_JS.parent / "modules" / module).read_text(encoding="utf-8")
-        assert f"'{bind_type}'" in drawer, f"modules/{module} no longer draws {bind_type}"
-    assert registered - set(_DRAWN_ELSEWHERE) == set(evaluator_for)
 
 
 def _evaluator_reach(evaluator: str, bodies: dict[str, str]) -> str:
