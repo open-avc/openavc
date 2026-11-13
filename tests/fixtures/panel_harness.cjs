@@ -12237,7 +12237,7 @@ const STATES_LOOK = (extra) => ({
     states: {
         on: { label: 'ON', bg_color: '#00ff00', icon: 'mic', icon_color: '#ff0000', button_image: 'assets://on.png' },
         off: { bg_color: '#ff0000', text_color: '#ffffff', opacity: 0.5 },
-        blank: { label: '' },
+        blank: { label: '', button_image: '' },
         num: { label: 7, icon: 'power' },
         '': { label: 'NOTHING', bg_color: '#0000ff' },
     },
@@ -12262,6 +12262,8 @@ const lookedControls = () => [
     looked('st_icononly', STATES_LOOK(), { display_mode: 'icon_only', icon: 'power' }),
     looked('st_frameless', STATES_LOOK(), { frameless: true, button_image: PIC, style: { bg_color: '#222222', text_color: '#eeeeee' } }),
     looked('st_icon', STATES_LOOK(), { icon: 'power', icon_color: '#00ffff', icon_position: 'right' }),
+    // Words in its own style, which a look with states never draws.
+    looked('st_style_label', STATES_LOOK(), { style: { label: 'Style words' } }),
     looked('two', TWO_LOOK()),
     looked('two_words', TWO_LOOK({ label_active: 'Live', label_inactive: 'Idle' })),
     looked('two_empty_words', TWO_LOOK({ label_active: '', label_inactive: '' })),
@@ -12394,7 +12396,9 @@ const BUTTON_CASES = {
             }),
             pinPage('other', { elements: [pinNav('o1', 'home', { highlight_current: true })] }),
         ]),
-        steps: [['accent', '#00E676'], ['render'], ...drawn({ [DEV_KEY]: 'on' }), ['nav', 'other'], ['accent', null], ['nav', 'home']],
+        steps: [['accent', '#00E676'], ['render'], ...drawn({ [DEV_KEY]: 'on' }), ['nav', 'other'], ['accent', null], ['nav', 'home'],
+            // A theme that gives a page nav its own accent and colours, which its lit look does not take.
+            ['themeDefaults', { page_nav: { accent_color: '#ff8800', bg_color: '#222222' } }], ['render']],
     },
 };
 
