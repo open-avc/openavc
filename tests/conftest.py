@@ -224,6 +224,11 @@ def _reset_global_state():
             (get_data_dir() / name).unlink()
         except FileNotFoundError:
             pass
+    # The process-wide registry of what to mask: a login or saved command
+    # parameter a test leaves in it is read as every later test's secret on
+    # the same worker, whatever device that test names.
+    from openavc.utils.log_redaction import get_secret_registry
+    get_secret_registry().clear()
 
 
 @pytest.fixture(autouse=True)
