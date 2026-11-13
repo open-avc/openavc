@@ -1,11 +1,14 @@
 /**
  * Which appearance a look binding (`bindings.show.look`) shows for a state
- * value, and where the words it draws were authored.
+ * value, where the words it draws were authored, and every picture its
+ * entries name.
  *
  * Every control with a look picks its entry here (a button's feedback, a
  * label, an image, a page nav, a container), so one state value picks the
  * same entry on all of them. What each control then draws from that entry is
- * its own business, in panel.js. No DOM and no panel state.
+ * its own business, in panel.js. No DOM and no panel state. A look's two
+ * forms, `states` and the two halves, are read here and nowhere else: a new
+ * form is taught to `pickLook` and `lookPictures` together.
  */
 
 const LOOK = ['bindings', 'show', 'look'];
@@ -51,6 +54,25 @@ function pickTwoState(binding, stateValue) {
         wordsPath: [...LOOK, half, 'label'],
         isActive,
     };
+}
+
+/** An entry a look can draw from: an object, never null, a word or a number. */
+const isEntry = (value) => typeof value === 'object' && value !== null;
+
+/**
+ * Every picture a look's entries name (an entry's `button_image`), in the
+ * order they are written, each once and as a word: the states', then the
+ * active half's and the inactive half's. A control fetches them all when it
+ * is drawn, so a state change swaps its picture at once.
+ */
+export function lookPictures(look) {
+    const entries = [
+        ...(isEntry(look.states) ? Object.values(look.states) : []),
+        look.style_active,
+        look.style_inactive,
+    ];
+    const named = entries.filter(isEntry).map((entry) => entry.button_image).filter(Boolean);
+    return [...new Set(named.map(String))];
 }
 
 /**

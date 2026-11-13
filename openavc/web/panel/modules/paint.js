@@ -126,7 +126,7 @@ export function drawFadedPicture(layer, { url, size, position, opacity }) {
  */
 function drawFadedBackground(node, picture) {
     if (!node.style.position) node.style.position = 'relative';
-    let layer = node.querySelector(':scope > .panel-bg-image-layer');
+    let layer = fadedLayerOf(node);
     if (!layer) {
         layer = document.createElement('div');
         layer.className = 'panel-bg-image-layer';
@@ -138,6 +138,18 @@ function drawFadedBackground(node, picture) {
         child.style.position = 'relative';
         child.style.zIndex = '1';
     }
+}
+
+/** The layer a node's faded background picture is drawn on, or null. */
+const fadedLayerOf = (node) => node.querySelector(':scope > .panel-bg-image-layer');
+
+/**
+ * Take a node's faded background picture away. applyStyle reuses the layer
+ * but never removes it, so a look whose next style names no background
+ * picture (a Container's state with none) asks for it here.
+ */
+export function dropFadedBackground(node) {
+    fadedLayerOf(node)?.remove();
 }
 
 /** A child that is stacked or positioned already, and paints above the layer as it is. */

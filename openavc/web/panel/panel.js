@@ -7,8 +7,10 @@
 
 import { NOT_APPROVED_CLOSE, PanelAccess } from './modules/access.js';
 import { assetUrl, basePath } from './modules/base_path.js';
-import { pickLook, withTwoStateWords } from './modules/looks.js';
-import { applyStyle, clearStateColours, updateImageTint } from './modules/paint.js';
+import { lookPictures, pickLook, withTwoStateWords } from './modules/looks.js';
+import {
+    applyStyle, clearStateColours, dropFadedBackground, updateImageTint,
+} from './modules/paint.js';
 import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
@@ -38,6 +40,7 @@ import {
 import { toggleLit, toggleNamesWords, toggleWords } from './modules/toggle.js';
 import { litStyle } from './modules/lit.js';
 import { richText, valueWords } from './modules/label.js';
+import { showPicture } from './modules/image.js';
 import { drawIcon, iconNode, removeWords, showWords } from './modules/words.js';
 import { isShown, visibilityOf } from './modules/visibility.js';
 import {
@@ -1735,7 +1738,7 @@ class PanelApp {
         el.className = 'panel-element panel-image';
         el.dataset.elementId = element.id;
 
-        this._showImagePicture(el, element, element.src);
+        showPicture(el, element, element.src);
         applyStyle(el, this.theme.styleFor(element.type, element.style));
 
         // Appearance: a picture per state, so a variable a script sets (the
@@ -1756,71 +1759,12 @@ class PanelApp {
     }
 
     /**
-     * Show one picture in an Image, or say it could not be loaded.
-     *
-     * The Image keeps ONE <img> and at most one "Image not found" note for its
-     * whole life, because a state look swaps the picture many times: a new
-     * note per failure would stack them, and a picture that loads after one
-     * that failed has to take the note away again. No picture at all removes
-     * both, so an Image whose pictures all live in its states draws nothing
-     * until one of them is chosen.
-     */
-    _showImagePicture(el, elementDef, src) {
-        if (el._pictureSrc === src) return;
-        el._pictureSrc = src;
-        let img = el._pictureImg;
-        if (!src) {
-            img?.remove();
-            el._pictureImg = null;
-            el._pictureMissing?.remove();
-            el._pictureMissing = null;
-            return;
-        }
-        if (!img) {
-            img = document.createElement('img');
-            img.alt = elementDef.label || 'Panel image';
-            img.loading = 'lazy';
-            if (elementDef.object_fit) img.style.objectFit = elementDef.object_fit;
-            img.onload = () => {
-                img.style.display = '';
-                el._pictureMissing?.remove();
-                el._pictureMissing = null;
-            };
-            img.onerror = () => {
-                img.style.display = 'none';
-                let note = el._pictureMissing;
-                if (!note) {
-                    note = document.createElement('div');
-                    note.textContent = 'Image not found';
-                    note.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:0.8571rem;';
-                    el.appendChild(note);
-                    el._pictureMissing = note;
-                }
-                note.title = el._pictureSrc || '';
-            };
-            el.prepend(img);
-            el._pictureImg = img;
-        }
-        img.src = assetUrl(src);
-    }
-
-    /**
-     * Fetch every picture a look can show, once, so a state change swaps the
-     * picture at once instead of leaving the Image blank while it downloads.
+     * Fetch every picture a look can show (`lookPictures`, modules/looks.js),
+     * once, so a state change swaps an Image's picture or a Container's
+     * background at once instead of leaving it blank while it downloads.
      */
     _preloadStatePictures(look) {
-        const pictures = new Set();
-        const take = (appearance) => {
-            if (appearance && typeof appearance === 'object' && appearance.button_image) {
-                pictures.add(String(appearance.button_image));
-            }
-        };
-        if (look.states && typeof look.states === 'object') {
-            Object.values(look.states).forEach(take);
-        }
-        take(look.style_active);
-        take(look.style_inactive);
-        for (const ref of pictures) {
+        for (const ref of lookPictures(look)) {
             const probe = new Image();
             probe.src = assetUrl(ref);
         }
@@ -2605,7 +2549,7 @@ class PanelApp {
 
         clearStateColours(element, rest);
         applyStyle(element, { ...rest, ...appearance });
-        this._showImagePicture(element, elementDef, appearance.button_image || elementDef.src);
+        showPicture(element, elementDef, appearance.button_image || elementDef.src);
     }
 
     /**
@@ -2671,11 +2615,9 @@ class PanelApp {
         if (appearance.button_image) style.background_image = appearance.button_image;
         clearStateColours(element, rest);
         applyStyle(element, style);
-        // A faded picture is a layer of its own, which applyStyle reuses but
-        // never takes away: a state with no picture removes it here.
-        if (!style.background_image) {
-            element.querySelector(':scope > .panel-bg-image-layer')?.remove();
-        }
+        // A faded picture is a layer of its own: a state with no picture
+        // takes it away.
+        if (!style.background_image) dropFadedBackground(element);
     }
 
     evaluateFeedback(b) {
