@@ -10284,6 +10284,21 @@ const PANEL_STEPS = {
         if (!node) throw new Error(`nothing at ${selector}`);
         node.click();
     },
+    // An event of `type` at the first node the selector finds: a picture
+    // that loaded or could not be, which jsdom never fires by itself.
+    event: (m, selector, type) => {
+        const node = document.querySelector(selector);
+        if (!node) throw new Error(`nothing at ${selector}`);
+        node.dispatchEvent(new window.Event(type));
+    },
+    // Hold on to the first node the selector finds, for an event that comes
+    // to it once it is off the page (`keptEvent`): a picture still loading
+    // when the control stopped showing it.
+    keep: (m, selector) => {
+        m.kept = document.querySelector(selector);
+        if (!m.kept) throw new Error(`nothing at ${selector}`);
+    },
+    keptEvent: (m, type) => m.kept.dispatchEvent(new window.Event(type)),
     // The CSS transition a dismissed overlay runs comes to its end (jsdom runs none).
     transitionend: () => {
         for (const o of document.querySelectorAll('.panel-overlay.dismissing')) {
@@ -10344,9 +10359,10 @@ async function driveCase(spec) {
         listeners: { message: [], resize: [], orientationchange: [] },
         serials: new WeakMap(), nextSerial: 1, seen: {},
         // The window listeners a case that counts them (`windowListeners`)
-        // has added and not removed, and the sounds a case that plays them
-        // (`audio`) started.
-        live: [], audio: [],
+        // has added and not removed, the sounds a case that plays them
+        // (`audio`) started, and the pictures a case that watches them
+        // (`images`) fetched with no node to draw them in.
+        live: [], audio: [], probes: [],
     };
     const own = {
         htmlStyle: doc.getAttribute('style'),
@@ -10363,6 +10379,7 @@ async function driveCase(spec) {
         fetch: window.fetch,
         WebSocket: window.WebSocket,
         Audio: window.Audio,
+        Image: window.Image,
         console: { log: window.console.log, warn: window.console.warn, error: window.console.error },
         sheet: null,
     };
@@ -10421,6 +10438,15 @@ async function driveCase(spec) {
             play() { m.audio.push('play'); return Promise.resolve(); }
             pause() { m.audio.push('pause'); }
             addEventListener(type) { m.audio.push(`listen ${type}`); }
+        };
+    }
+    if (c.images) {
+        // jsdom fetches no picture, so a probe is only seen by what it was
+        // given: its src is read when the step ends.
+        window.Image = function (...args) {
+            const img = new own.Image(...args);
+            m.probes.push(img);
+            return img;
         };
     }
     if (c.raf === 'queued') window.requestAnimationFrame = (cb) => { m.frames.push(cb); return m.frames.length; };
@@ -10494,6 +10520,7 @@ async function driveCase(spec) {
         if (c.windowListeners) changed('wl', m.live.map(([t]) => t).join(' '), step);
         if (c.recordDefs) changed('def', (app.uiDef?.pages || []).map((p) => p.elements), step);
         if (m.audio.length) step.au = m.audio.splice(0);
+        if (m.probes.length) step.im = m.probes.splice(0).map((img) => img.getAttribute('src'));
         if (m.sent.length) step.s = m.sent.splice(0);
         if (m.posted.length) step.p = m.posted.splice(0);
         if (m.fetched.length) step.u = m.fetched.splice(0);
@@ -10549,6 +10576,7 @@ async function driveCase(spec) {
     } finally {
         for (const [type, fn] of m.live) own.remove.call(window, type, fn);
         window.Audio = own.Audio;
+        window.Image = own.Image;
         window.addEventListener = own.add;
         window.removeEventListener = own.remove;
         window.requestAnimationFrame = own.raf;
@@ -12479,6 +12507,241 @@ Object.assign(tests, {
     async label_words_draw_as_today() {
         const got = await driveCases({}, LABEL_CASES);
         comparePins('label', got, LABEL_PINS.label);
+    },
+});
+
+// --- The picture looks: an Image's picture and a Container's ----------------------
+//
+// An Image's own picture, the one note it shows when a picture cannot be
+// loaded and takes away when one can, through a look's pictures in both of
+// its forms, every reading, its device away and back; every picture a look
+// names, fetched once when the control is drawn; and a Container's state
+// picture drawn as its background, faded or not, over its own background
+// picture or none, taken away by a state with none. Compared with
+// panel_picture_pins.json, recorded from the code before it moved.
+
+const PICTURE_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_picture_pins.json'), 'utf8'));
+const PICTURES = { ...FACE, images: true };
+const pinImage = (id, extra) => ({ id, type: 'image', ...extra });
+const pinGroup = (id, extra) => ({ id, type: 'group', ...extra });
+/** A look with states naming pictures every way: an asset, a URL, the same one twice, a number, none, and an entry that is not one. */
+const PICTURE_LOOK = (extra) => ({
+    key: DEV_KEY,
+    states: {
+        on: { button_image: 'assets://on.png', bg_color: '#00ff00' },
+        off: { bg_color: '#ff0000', opacity: 0.5 },
+        alt: { button_image: 'https://example.com/alt.png', text_color: '#ffffff' },
+        dup: { button_image: 'assets://on.png' },
+        num: { button_image: 7 },
+        empty: { button_image: '' },
+        junk: 'not an appearance',
+        '': { text_color: '#0000ff' },
+    },
+    default_state: 'off',
+    ...extra,
+});
+/** The two-state form, a picture on each half. */
+const PICTURE_TWO = (extra) => ({
+    key: DEV_KEY, condition: { equals: 'On' },
+    style_active: { button_image: 'assets://active.png', bg_color: '#00ff00' },
+    style_inactive: { button_image: 'assets://inactive.png' },
+    ...extra,
+});
+const pictured = (id, look, extra) => pinImage(id, { bindings: { show: { look } }, ...extra });
+const imageControls = () => [
+    pinImage('own', { src: 'assets://own.png' }),
+    pinImage('own_label', { src: 'assets://own.png', label: 'Room photo', object_fit: 'contain' }),
+    pinImage('own_url', { src: 'https://example.com/x.png', style: { bg_color: '#123456' } }),
+    pinImage('none'),
+    pinImage('empty_src', { src: '' }),
+    pictured('st', PICTURE_LOOK(), { src: 'assets://own.png' }),
+    pictured('st_nosrc', PICTURE_LOOK()),
+    pictured('st_nodefault', PICTURE_LOOK({ default_state: undefined }), { src: 'assets://own.png', object_fit: 'fill' }),
+    pictured('two', PICTURE_TWO(), { src: 'assets://own.png' }),
+    pictured('two_half', PICTURE_TWO({ style_inactive: { bg_color: '#111111' } })),
+    pictured('two_none', { key: DEV_KEY, condition: { equals: 'On' } }),
+    // States written as a list, and a look whose states are not an object.
+    pictured('states_list', { key: DEV_KEY, states: [{ button_image: 'assets://zero.png' }, null] }),
+    pictured('states_word', { key: DEV_KEY, states: 'on', style_active: { button_image: 'assets://never.png' } }),
+];
+const PICTURE_READINGS = ['on', 'off', 'alt', 'dup', 'on', 'num', 'empty', 'junk', 'zzz', null, '=gone', 'On', 0, 'on'];
+const IMG = (id) => `[data-element-id="${id}"] > img`;
+/** A Container's look: a picture over a colour, a colour alone, a faded picture, nothing. */
+const ZONE_LOOK = (extra) => ({
+    key: DEV_KEY,
+    states: {
+        on: { button_image: 'assets://zone.png', bg_color: '#330000' },
+        off: { bg_color: '#003300' },
+        faded: { button_image: 'assets://faded.png', background_opacity: 0.4, background_size: 'contain' },
+        '': {},
+    },
+    default_state: 'off',
+    ...extra,
+});
+const zoned = (id, extra, look) => pinGroup(id, { label: id, bindings: { show: { look: look || ZONE_LOOK() } }, ...extra });
+const containerControls = () => [
+    zoned('g'),
+    zoned('g_own', { style: { background_image: 'assets://own_bg.png', background_opacity: 0.5, bg_color: '#222222' } }),
+    zoned('g_own_full', { style: { background_image: 'assets://own_bg.png', background_position: 'top' } }),
+    zoned('g_fading', { style: { background_opacity: 0.3, background_size: 'stretch' } }),
+    zoned('g_two', {}, PICTURE_TWO()),
+    pinLabel('g_child', { parent: 'g_own' }),
+    pinButton('g_child2', [MACRO], { parent: 'g_fading' }),
+];
+const ZONE_READINGS = ['on', 'faded', 'off', 'faded', 'on', '', 'zzz', null, '=gone', 'faded', 'On', 'on'];
+
+const PICTURE_CASES = {
+    // Each Image's own picture: drawn, not found, not found again, found, lost again.
+    own_pictures: {
+        ...PICTURES,
+        ui: onePage('images', imageControls()),
+        steps: [['event', IMG('own'), 'error'], ['event', IMG('own'), 'error'], ['event', IMG('own'), 'load'],
+            ['event', IMG('own'), 'error'], ['event', IMG('own_label'), 'load'], ['event', IMG('own_url'), 'error']],
+    },
+    // Each Image's look through every kind of reading, the device away and back.
+    image_looks_through_readings: {
+        ...PICTURES,
+        ui: onePage('images', imageControls()),
+        steps: [...readingsOf(DEV_KEY, PICTURE_READINGS), ...drawn(AWAY), ...drawn({ [DEV_KEY]: 'alt' }), ...drawn(BACK),
+            ...drawn(AWAY), ...drawn(BACK)],
+    },
+    // A state's picture not found, then another state's, then found; a
+    // state with no picture where the Image has none of its own.
+    image_looks_and_their_notes: {
+        ...PICTURES,
+        state: { [DEV_KEY]: 'on' },
+        ui: onePage('images', imageControls()),
+        steps: [['event', IMG('st'), 'error'], ['event', IMG('st_nosrc'), 'error'], ...drawn({ [DEV_KEY]: 'alt' }),
+            ['event', IMG('st'), 'error'], ['event', IMG('st_nosrc'), 'load'], ...drawn({ [DEV_KEY]: 'off' }),
+            ['event', IMG('st'), 'load'], ...drawn({ [DEV_KEY]: 'on' }), ['event', IMG('st_nosrc'), 'error'],
+            ...drawn({ [DEV_KEY]: 'off' }), ...drawn({ [DEV_KEY]: 'alt' }),
+            // A picture that answers after the Image has stopped showing it.
+            ['keep', IMG('st_nosrc')], ...drawn({ [DEV_KEY]: 'off' }), ['keptEvent', 'error'], ['keptEvent', 'error'],
+            ['keptEvent', 'load'], ...drawn({ [DEV_KEY]: 'on' }), ['keptEvent', 'error']],
+    },
+    // A look that starts with its device away, and one that starts with a reading.
+    image_looks_start_away: { ...PICTURES, state: { ...AWAY, [DEV_KEY]: 'on' }, ui: onePage('images', imageControls()) },
+    image_looks_start_on: { ...PICTURES, state: { [DEV_KEY]: 'On' }, ui: onePage('images', imageControls()) },
+    // The looks over a theme that gives an Image and a Container their own colours.
+    picture_looks_over_a_theme: {
+        ...PICTURES, draw: false,
+        ui: onePage('themed', [...imageControls(), ...containerControls()]),
+        steps: [
+            ['themeDefaults', { image: { bg_color: '#101010', opacity: 0.8 }, group: { bg_color: '#202020', text_color: '#e0e0e0' } }],
+            ['render'], ...readingsOf(DEV_KEY, ['on', 'off', 'faded', null]), ...drawn(AWAY), ...drawn(BACK),
+        ],
+    },
+    // Each Container's look through every kind of reading, the device away and back.
+    container_looks_through_readings: {
+        ...PICTURES,
+        ui: onePage('zones', containerControls()),
+        steps: [...readingsOf(DEV_KEY, ZONE_READINGS), ...drawn(AWAY), ...drawn({ [DEV_KEY]: 'on' }), ...drawn(BACK),
+            ...drawn(AWAY), ...drawn(BACK)],
+    },
+    container_looks_start_away: { ...PICTURES, state: { ...AWAY, [DEV_KEY]: 'faded' }, ui: onePage('zones', containerControls()) },
+    container_looks_on_the_canvas: {
+        ...PICTURES, edit: true, embedded: true,
+        ui: onePage('zones', containerControls()),
+        steps: [...readingsOf(DEV_KEY, ['on', 'faded', 'off'])],
+    },
+};
+
+Object.assign(tests, {
+    async picture_looks_draw_as_today() {
+        const got = await driveCases({}, PICTURE_CASES);
+        comparePins('picture', got, PICTURE_PINS.picture);
+    },
+});
+
+// --- A Page Nav -------------------------------------------------------------------
+//
+// What a Page Nav is called and says, with and without a page to go to; its
+// press; its look's words and icon in both forms through every reading, its
+// device away and back, on the panel and the canvas; lit while its page, or
+// the overlay it opens, is on this panel's screen, and drawn again when an
+// overlay closes; and a nav whose look fails in that redraw, in a full draw
+// and in a refusal's redraw, logged while every other control still draws.
+// Compared with panel_nav_pins.json, recorded from the code before it moved.
+
+const NAV_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_nav_pins.json'), 'utf8'));
+const navControls = () => [
+    pinNav('n_label', 'other'),
+    pinNav('n_nolabel', 'other', { label: '' }),
+    pinNav('n_undef', 'other', { label: undefined }),
+    pinNav('n_none', undefined),
+    pinNav('n_none_nolabel', undefined, { label: '' }),
+    pinNav('n_back', '$back', { highlight_current: true }),
+    pinNav('n_dismiss', '$dismiss', { highlight_current: true }),
+    pinNav('n_icon', 'other', { icon: 'power', icon_position: 'right', highlight_current: true }),
+    pinNav('n_lit', 'home', { highlight_current: true }),
+    pinNav('n_dlg', 'dlg', { highlight_current: true, label: '' }),
+    pinNav('n_look', 'other', { label: '', highlight_current: true, bindings: { show: { look: STATES_LOOK() } } }),
+    pinNav('n_look_home', 'home', { icon: 'mic', highlight_current: true, bindings: { show: { look: STATES_LOOK() } } }),
+    pinNav('n_two', 'other', { bindings: { show: { look: TWO_LOOK({ label_active: 'Live', label_inactive: '' }) } } }),
+    pinNav('n_two_bare', 'dlg', { bindings: { show: { look: TWO_LOOK({ style_active: { bg_color: '#00ff00' } }) } } }),
+    pinNav('n_keyless', 'home', { highlight_current: true, bindings: { show: { look: { states: { '': { bg_color: '#ff00ff', label: 'never' } } } } } }),
+    pinNav('n_look_none', undefined, { bindings: { show: { look: STATES_LOOK() } }, highlight_current: true }),
+    pinNav('n_lit_blank', '', { highlight_current: true }),
+    pinNav('n_styled', 'home', { highlight_current: true, style: { bg_color: '#333333', text_color: '#cccccc', accent_color: '#00ff00' } }),
+];
+const navUi = () => pinUi('navs', [
+    pinPage('home', { elements: navControls() }),
+    pinPage('other', { elements: [pinNav('o_home', 'home', { highlight_current: true }), pinNav('o_dlg', 'dlg', { highlight_current: true })] }),
+    { ...pinPage('dlg', { elements: [pinNav('d_close', '$dismiss'), pinNav('d_dlg', 'dlg', { highlight_current: true })] }), page_type: 'overlay' },
+]);
+const NAV = (id) => `[data-element-id="${id}"]`;
+
+const NAV_CASES = {
+    // Every nav through every kind of reading, the device away and back.
+    navs_through_readings: {
+        ...FACE,
+        ui: navUi(),
+        steps: [...readingsOf(DEV_KEY, ['on', 'off', 'num', 'blank', 'zzz', null, '=gone', 'On', 'on']), ...drawn(AWAY),
+            ...drawn({ [DEV_KEY]: 'off' }), ...drawn(BACK), ...drawn(AWAY), ...drawn(BACK)],
+    },
+    // The same on the design canvas: where an edit of each word goes.
+    navs_on_the_canvas: {
+        ...FACE, edit: true, embedded: true,
+        ui: navUi(),
+        steps: [...readingsOf(DEV_KEY, ['on', 'blank', 'On', null]), ...drawn(AWAY), ...drawn(BACK)],
+    },
+    // A press on each kind of nav, and the moves the server answers with:
+    // to an overlay, closed, opened again, back, to another page and back.
+    navs_pressed_and_moved: {
+        ...FACE,
+        state: { [DEV_KEY]: 'on' },
+        ui: navUi(),
+        steps: [['click', NAV('n_label')], ['click', NAV('n_none')], ['click', NAV('n_back')], ['click', NAV('n_dismiss')],
+            ['click', NAV('n_look')], ['nav', 'dlg'], ['click', NAV('d_close')], ['dismiss'], ['transitionend'],
+            ['nav', 'dlg'], ['nav', 'dlg'], ['nav', '$back'], ['transitionend'], ['nav', 'other'], ['nav', 'dlg'],
+            ['dismiss'], ['nav', '$back'], ['nav', 'dlg'], ['nav', '$dismiss'], ['dismissAll']],
+    },
+    // Lit in each control's own accent, the theme's, and none.
+    navs_lit_over_a_theme: {
+        ...FACE, draw: false,
+        ui: navUi(),
+        steps: [['themeDefaults', { page_nav: { bg_color: '#222222', text_color: '#eeeeee', accent_color: '#ff8800', opacity: 0.9 } }],
+            ['accent', '#00E676'], ['render'], ...drawn({ [DEV_KEY]: 'on' }), ['nav', 'dlg'], ['dismiss'], ['accent', null],
+            ['nav', 'other'], ...drawn(AWAY)],
+    },
+    // A nav whose look fails (its page id is not a word): in the redraw after
+    // an overlay closes, in a full draw, and in a refusal's redraw of it.
+    nav_looks_that_fail: {
+        ...FACE,
+        ui: navUi(),
+        steps: [['nav', 'dlg'], ['edit', 'pages.0.elements.8.target_page', 5], ['dismiss'], ['render'],
+            ...drawn({ [DEV_KEY]: 'on' }), ['msg', { type: 'error', source_type: 'macro', message: 'No luck', element_id: 'n_lit' }],
+            // A nav with no words of its own left, whose page is taken away under it.
+            ['edit', 'pages.0.elements.10.target_page', ''], ...drawn({ [DEV_KEY]: 'zzz' }),
+            ['edit', 'pages.0.elements.10.bindings.show.look.states', null], ...drawn({ [DEV_KEY]: 'off' }),
+            ['msg', { type: 'command.ack', success: false, error: 'Refused' }]],
+    },
+};
+
+Object.assign(tests, {
+    async page_navs_draw_as_today() {
+        const got = await driveCases({}, NAV_CASES);
+        comparePins('nav', got, NAV_PINS.nav);
     },
 });
 

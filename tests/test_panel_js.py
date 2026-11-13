@@ -404,6 +404,15 @@ SCENARIOS = [
     # format, rounded or not, a text condition, the device away, on the panel
     # and the canvas, pinned whole (tests/fixtures/panel_label_pins.json).
     "label_words_draw_as_today",
+    # An Image's own picture and its not-found note through a look's
+    # pictures, the pictures a look names fetched when it is drawn, and a
+    # Container's state picture as its background, pinned whole
+    # (tests/fixtures/panel_picture_pins.json).
+    "picture_looks_draw_as_today",
+    # A Page Nav's name, press, look and lit look, drawn again when an
+    # overlay closes, and a look that fails logged while the rest draw,
+    # pinned whole (tests/fixtures/panel_nav_pins.json).
+    "page_navs_draw_as_today",
 ]
 
 
