@@ -24,17 +24,17 @@ import pytest
 import yaml as _yaml
 from fastapi import HTTPException
 
+from openavc.api.driver_catalog import CatalogFiles
 from openavc.api.routes.drivers import (
-    _companion_relpath_from_yaml,
-    _CatalogFiles,
     install_community_driver,
     uninstall_driver,
     update_driver,
 )
 from openavc.api.models import CommunityDriverInstallRequest
+from openavc.drivers.driver_loader import companion_relpath_from_yaml
 
 
-# --- _companion_relpath_from_yaml -----------------------------------------
+# --- companion_relpath_from_yaml -----------------------------------------
 
 
 def test_relpath_from_string_form():
@@ -44,7 +44,7 @@ def test_relpath_from_string_form():
         "transport": "tcp",
         "discovery": {"python": "./x_discovery.py"},
     })
-    assert _companion_relpath_from_yaml(yaml_text) == "./x_discovery.py"
+    assert companion_relpath_from_yaml(yaml_text) == "./x_discovery.py"
 
 
 def test_relpath_from_dict_form():
@@ -56,12 +56,12 @@ def test_relpath_from_dict_form():
             "python": {"file": "./x_discovery.py", "cross_vendor": True},
         },
     })
-    assert _companion_relpath_from_yaml(yaml_text) == "./x_discovery.py"
+    assert companion_relpath_from_yaml(yaml_text) == "./x_discovery.py"
 
 
 def test_relpath_missing_when_no_discovery():
     yaml_text = _yaml.safe_dump({"id": "x", "name": "X", "transport": "tcp"})
-    assert _companion_relpath_from_yaml(yaml_text) is None
+    assert companion_relpath_from_yaml(yaml_text) is None
 
 
 def test_relpath_missing_when_no_python_block():
@@ -71,21 +71,21 @@ def test_relpath_missing_when_no_python_block():
         "transport": "tcp",
         "discovery": {"oui": ["aa:bb:cc"]},
     })
-    assert _companion_relpath_from_yaml(yaml_text) is None
+    assert companion_relpath_from_yaml(yaml_text) is None
 
 
 def test_relpath_handles_malformed_yaml():
     # Invalid YAML — helper returns None instead of raising; the actual
     # YAML validator on register flags malformed content downstream.
-    assert _companion_relpath_from_yaml("not: valid: yaml: :") is None
+    assert companion_relpath_from_yaml("not: valid: yaml: :") is None
 
 
 def test_relpath_handles_non_dict_yaml():
     # YAML parses, but the result isn't a mapping at the top level.
-    assert _companion_relpath_from_yaml("- just\n- a\n- list\n") is None
+    assert companion_relpath_from_yaml("- just\n- a\n- list\n") is None
 
 
-# --- _CatalogFiles.declared_companion --------------------------------------------------
+# --- CatalogFiles.declared_companion --------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -104,7 +104,7 @@ async def test_download_companion_writes_to_repo(tmp_path):
         mock_client.get = AsyncMock(return_value=mock_resp)
         mock_client_cls.return_value = mock_client
 
-        local = await _CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
+        local = await CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
             "./foo_discovery.py"
         )
 
@@ -118,7 +118,7 @@ async def test_download_companion_rejects_off_allowlist_url(tmp_path):
     # URL pointing at attacker.example), fail before any fetch.
     yaml_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/foo.avcdriver"
     with pytest.raises(HTTPException) as exc:
-        await _CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
+        await CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
             "https://attacker.example/evil_discovery.py"
         )
     assert exc.value.status_code == 422
@@ -135,7 +135,7 @@ async def test_download_companion_rejects_filename_without_discovery_suffix(tmp_
     yaml_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/foo.avcdriver"
     for bad in ["../../etc/passwd.py", "./foo.py", "./foo bar_discovery.py"]:
         with pytest.raises(HTTPException) as exc:
-            await _CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
+            await CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
                 bad
             )
         assert exc.value.status_code == 422
@@ -158,7 +158,7 @@ async def test_download_companion_propagates_404_as_502(tmp_path):
         mock_client_cls.return_value = mock_client
 
         with pytest.raises(HTTPException) as exc:
-            await _CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
+            await CatalogFiles("foo", yaml_url, tmp_path, None).declared_companion(
                 "./foo_discovery.py"
             )
     assert exc.value.status_code == 502
@@ -233,7 +233,7 @@ def no_catalog_hashes(monkeypatch):
     async def _none(driver_id, force=False):
         return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
 
-    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _none)
+    monkeypatch.setattr("openavc.api.driver_catalog._catalog_hashes", _none)
 
 
 @pytest.fixture(autouse=True)

@@ -7,7 +7,7 @@ community install pulled only the main ``.py`` (companions are fetched for
 YAML drivers only), so installed Python drivers silently lost simulation and
 the discovery backup path. These tests cover:
 
-  * ``_CatalogFiles.conventional_companion`` in isolation (writes / 404 / allowlist /
+  * ``CatalogFiles.conventional_companion`` in isolation (writes / 404 / allowlist /
     filename validation).
   * ``install_community_driver`` on a ``.py`` driver pulling the conventional
     ``_discovery.py`` + ``_sim.py`` siblings (and tolerating their absence).
@@ -23,8 +23,8 @@ import httpx
 import pytest
 from fastapi import HTTPException
 
+from openavc.api.driver_catalog import CatalogFiles
 from openavc.api.routes.drivers import (
-    _CatalogFiles,
     install_community_driver,
     uninstall_driver,
     update_driver,
@@ -102,7 +102,7 @@ def stub_engine_wiring(monkeypatch):
     async def _no_hashes(driver_id, force=False):
         return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
 
-    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _no_hashes)
+    monkeypatch.setattr("openavc.api.driver_catalog._catalog_hashes", _no_hashes)
     yield fake_engine
 
 
@@ -136,7 +136,7 @@ def _request_with_file(filename: str | None, data: bytes = b"") -> MagicMock:
     return req
 
 
-# --- _CatalogFiles.conventional_companion ---------------------------------------
+# --- CatalogFiles.conventional_companion ---------------------------------------
 
 
 @pytest.mark.asyncio
@@ -151,7 +151,7 @@ async def test_companion_writes_on_200(tmp_path):
         client.__aexit__ = AsyncMock(return_value=False)
         client.get = AsyncMock(return_value=resp)
         cls.return_value = client
-        out = await _CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
+        out = await CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
             "foo_discovery.py"
         )
     assert out.path == tmp_path / "foo_discovery.py"
@@ -169,7 +169,7 @@ async def test_companion_reports_not_published_on_404(tmp_path):
         client.__aexit__ = AsyncMock(return_value=False)
         client.get = AsyncMock(return_value=resp)
         cls.return_value = client
-        out = await _CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
+        out = await CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
             "foo_sim.py"
         )
     assert out.path is None
@@ -183,7 +183,7 @@ async def test_companion_reports_not_published_on_404(tmp_path):
 async def test_companion_rejects_bad_filename(tmp_path):
     # Not a documented companion suffix -> refused before any fetch.
     main_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/switchers/foo.py"
-    out = await _CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
+    out = await CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
         "foo.py"
     )
     assert out.path is None
@@ -194,7 +194,7 @@ async def test_companion_rejects_bad_filename(tmp_path):
 
 @pytest.mark.asyncio
 async def test_companion_rejects_off_allowlist_host(tmp_path):
-    out = await _CatalogFiles("foo", "https://attacker.example/switchers/foo.py", tmp_path, None).conventional_companion(
+    out = await CatalogFiles("foo", "https://attacker.example/switchers/foo.py", tmp_path, None).conventional_companion(
         "foo_discovery.py"
     )
     assert out.path is None
@@ -644,7 +644,7 @@ async def test_update_refuses_a_companion_that_fails_the_catalog_hash(
             source="the community driver catalog",
         )
 
-    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _hashes)
+    monkeypatch.setattr("openavc.api.driver_catalog._catalog_hashes", _hashes)
     client = _update_client(
         _ok(main_src),
         _missing(),

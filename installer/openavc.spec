@@ -203,6 +203,7 @@ hiddenimports = [
     'openavc.api.themes',
     'openavc.api.auth',
     'openavc.api.models',
+    'openavc.api.driver_catalog',
     # Every module under openavc/api/routes/ — keep this in step when adding one.
     'openavc.api.routes.auth',
     'openavc.api.routes.cloud',

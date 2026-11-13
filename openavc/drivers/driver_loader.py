@@ -219,6 +219,26 @@ def companion_relpath_from_def(driver_def: dict[str, Any]) -> str | None:
     return None
 
 
+def companion_relpath_from_yaml(yaml_text: str | bytes) -> str | None:
+    """The discovery companion a YAML driver's text names, as written.
+
+    The driver routes' install, update, upload and uninstall use it to find
+    the sibling Python file that goes with a YAML driver (``python:
+    ./<id>_discovery.py`` in its ``discovery:`` block), from a download or a
+    file not yet loaded; the loader refuses the driver without that file
+    beside it. What counts as a declaration is ``companion_relpath_from_def``;
+    this only reads the text first.
+
+    ``None`` when the text does not parse to a mapping or names no companion;
+    the caller decides what that means in context.
+    """
+    try:
+        parsed = yaml.safe_load(yaml_text)
+    except yaml.YAMLError:
+        return None
+    return companion_relpath_from_def(parsed) if isinstance(parsed, dict) else None
+
+
 def count_comment_lines(filepath: Path) -> int:
     """How many comment lines a driver file carries.
 

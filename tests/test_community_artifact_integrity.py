@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from openavc.api import driver_catalog
 from openavc.api.models import CommunityDriverInstallRequest
 from openavc.api.routes.drivers import install_community_driver
 
@@ -107,7 +108,7 @@ def _catalog_says(monkeypatch, files):
             f"Driver '{driver_id}'", files, source="the community driver catalog"
         )
 
-    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _hashes)
+    monkeypatch.setattr("openavc.api.driver_catalog._catalog_hashes", _hashes)
 
 
 # --- Source pinning --------------------------------------------------------
@@ -317,7 +318,7 @@ async def test_companion_with_wrong_bytes_refused_and_rolled_back(
 async def test_optional_python_companion_with_wrong_bytes_is_not_swallowed(
     driver_repo, monkeypatch
 ):
-    # _CatalogFiles.conventional_companion treats fetch failures as "ships without
+    # CatalogFiles.conventional_companion treats fetch failures as "ships without
     # one" and moves on. A hash mismatch must NOT go down that path: optional
     # means it may be absent, not that a wrong copy may be installed.
     main = "class AcmeWidget:\n    DRIVER_INFO = {'id': 'acme_widget'}\n"
@@ -372,7 +373,7 @@ def _catalog_answers(monkeypatch, *copies):
             f"Driver '{driver_id}'", files, source="the community driver catalog"
         )
 
-    monkeypatch.setattr("openavc.api.routes.drivers._catalog_hashes", _hashes)
+    monkeypatch.setattr("openavc.api.driver_catalog._catalog_hashes", _hashes)
     return calls
 
 
@@ -440,7 +441,7 @@ async def test_refresh_driver_list_fetches_the_catalog_past_the_cache():
 
     cache = MagicMock()
     cache.get_drivers = AsyncMock(return_value=[{"id": "acme_widget"}])
-    with patch.object(drivers.get_community_drivers, "_cache", cache, create=True):
+    with patch.object(driver_catalog, "_index_cache", cache):
         await drivers.get_community_drivers()
         await drivers.get_community_drivers(refresh=True)
     assert [c.kwargs["force"] for c in cache.get_drivers.await_args_list] == [False, True]
@@ -455,7 +456,7 @@ async def test_an_unreachable_library_says_so_and_a_cached_one_is_kept():
     cache = MagicMock()
     cache.get_drivers = AsyncMock(return_value=[])
     cache.failure_sentence = ""
-    with patch.object(drivers.get_community_drivers, "_cache", cache, create=True):
+    with patch.object(driver_catalog, "_index_cache", cache):
         empty = await drivers.get_community_drivers()
     assert empty == {
         "drivers": [],
@@ -464,7 +465,7 @@ async def test_an_unreachable_library_says_so_and_a_cached_one_is_kept():
     }
 
     cache.get_drivers = AsyncMock(return_value=[{"id": "acme_widget"}])
-    with patch.object(drivers.get_community_drivers, "_cache", cache, create=True):
+    with patch.object(driver_catalog, "_index_cache", cache):
         cached = await drivers.get_community_drivers(refresh=True)
     assert cached == {"drivers": [{"id": "acme_widget"}], "error": None}
 

@@ -113,8 +113,7 @@ async def list_missing_drivers() -> dict[str, Any]:
 
     Declared before /devices/{device_id} so the literal path wins routing.
     """
-    from openavc.discovery.community_index import CommunityIndexCache
-    from openavc.api.routes.drivers import COMMUNITY_REPO_URL
+    from openavc.discovery.community_index import COMMUNITY_REPO_URL, CommunityIndexCache
 
     engine = _get_engine()
     missing_ids = engine.devices.get_missing_drivers()
@@ -198,8 +197,8 @@ async def install_missing_drivers(body: InstallMissingDriversRequest) -> dict[st
     succeeded vs. failed.
     """
     from openavc.api.models import CommunityDriverInstallRequest
-    from openavc.api.routes.drivers import COMMUNITY_REPO_URL, install_community_driver
-    from openavc.discovery.community_index import CommunityIndexCache
+    from openavc.api.routes.drivers import install_community_driver
+    from openavc.discovery.community_index import COMMUNITY_REPO_URL, CommunityIndexCache
 
     if not body.driver_ids:
         return {"installed": [], "failed": [], "activated_devices": []}

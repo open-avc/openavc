@@ -25,9 +25,9 @@ import yaml
 from fastapi import HTTPException
 
 from openavc.api.models import CommunityDriverInstallRequest
+from openavc.api import driver_catalog
 from openavc.api.routes import drivers as routes
 from openavc.api.routes.drivers import (
-    _companion_relpath_from_yaml,
     _remove_other_copies,
     install_community_driver,
     uninstall_driver,
@@ -35,6 +35,7 @@ from openavc.api.routes.drivers import (
     upload_driver,
     upload_driver_bundle,
 )
+from openavc.drivers.driver_loader import companion_relpath_from_yaml
 from openavc.utils.community_integrity import ArtifactHashes
 
 CATALOG = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/"
@@ -108,7 +109,7 @@ def world(tmp_path, monkeypatch):
     async def _no_hashes(driver_id, force=False):
         return ArtifactHashes(f"Driver '{driver_id}'", None, source="catalog")
 
-    monkeypatch.setattr(routes, "_catalog_hashes", _no_hashes)
+    monkeypatch.setattr(driver_catalog, "_catalog_hashes", _no_hashes)
 
     async def _refresh():
         events.append(("refresh",))
@@ -273,7 +274,7 @@ def _update(file_name: str | None, **body):
     ],
 )
 def test_the_companion_a_yaml_driver_names(text, expected):
-    assert _companion_relpath_from_yaml(text) == expected
+    assert companion_relpath_from_yaml(text) == expected
 
 
 # --- install -----------------------------------------------------------------
