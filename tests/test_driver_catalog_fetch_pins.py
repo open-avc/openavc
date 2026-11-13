@@ -28,7 +28,7 @@ from fastapi import HTTPException
 
 from openavc.api.models import CommunityDriverInstallRequest
 from openavc.api.routes import drivers as routes
-from openavc.api.routes.drivers import install_community_driver, update_driver
+from openavc.api.routes.drivers import install_community_driver, uninstall_driver, update_driver
 from openavc.discovery.community_index import CommunityIndexCache
 from openavc.utils.outbound import internet_failure
 
@@ -102,9 +102,11 @@ class _Index:
         self.refetched: list | None = None
         self.forces: list[bool] = []
         self.failure_sentence = ""
+        self.caches: list = []
 
     async def get_drivers(self, cache, force: bool = False):
         self.forces.append(force)
+        self.caches.append(cache)
         cache.failure_sentence = self.failure_sentence
         if force and self.refetched is not None:
             return self.refetched
@@ -158,6 +160,9 @@ def cat(tmp_path, monkeypatch):
 
     monkeypatch.setattr(routes, "announce_drivers_changed", _announce)
     yield SimpleNamespace(repo=repo, events=events, network=network, index=index)
+    # The cache outlives the test: hand back the ones this fake wrote on as found.
+    for cache in index.caches:
+        cache.failure_sentence = ""
     for name in [n for n in sys.modules if n.startswith("openavc_driver_")]:
         if "acme" in name:
             sys.modules.pop(name, None)
@@ -398,7 +403,13 @@ async def test_a_yaml_driver_naming_a_simulator_as_its_companion_is_refused_unas
 
 
 @pytest.mark.parametrize(
-    "name", ["acme widget_discovery.py", "acme.widget_discovery.py", "acme_widget_discoveryxpy"]
+    "name",
+    [
+        "acme widget_discovery.py",
+        "acme.widget_discovery.py",
+        "acme_widget_discoveryxpy",
+        "acme_widget_discovery.py.bak",
+    ],
 )
 @pytest.mark.asyncio
 async def test_a_yaml_companion_name_outside_the_safe_characters_is_refused(cat, name):
@@ -681,3 +692,52 @@ async def test_browse_community_and_an_install_read_one_copy_of_the_index(cat, m
     assert listed == again == {"drivers": index_drivers, "error": None}
     assert answer["status"] == "installed"
     assert fetched == ["index.json", "index.json"]
+
+
+@pytest.mark.parametrize("status", [410, 403, 500])
+@pytest.mark.asyncio
+async def test_only_a_404_says_a_python_companion_is_no_longer_published(cat, status):
+    _python_catalog(cat)
+    cat.network.pages[CATALOG + "acme_widget_sim.py"] = status
+    (cat.repo / "acme_widget.py").write_bytes(_python("old"))
+    (cat.repo / "acme_widget_sim.py").write_bytes(b"old simulator\n")
+
+    answer = await _update("acme_widget.py")
+
+    assert answer["status"] == "updated"
+    assert (cat.repo / "acme_widget_sim.py").read_bytes() == b"old simulator\n"
+
+
+@pytest.mark.asyncio
+async def test_the_catalog_s_warnings_are_filed_under_the_driver_routes(cat, monkeypatch, caplog):
+    # The Log view shows each line's logger name.
+    async def _down(self, force=False):
+        raise RuntimeError("catalog down")
+
+    monkeypatch.setattr(
+        "openavc.discovery.community_index.CommunityIndexCache.get_drivers", _down
+    )
+    _python_catalog(cat)
+    cat.network.pages[CATALOG + "acme_widget_sim.py"] = httpx.ConnectError("down")
+
+    with caplog.at_level(logging.WARNING):
+        await _install("acme_widget.py")
+
+    by_message = {r.getMessage(): r.name for r in caplog.records}
+    assert by_message["Could not read community catalog hashes for 'acme_widget'"] == (
+        "openavc.api.routes.drivers"
+    )
+    assert by_message["Optional companion acme_widget_sim.py not installed: down"] == (
+        "openavc.api.routes.drivers"
+    )
+
+
+@pytest.mark.asyncio
+async def test_uninstalling_a_yaml_takes_only_a_discovery_companion_with_it(cat):
+    (cat.repo / "acme_widget.avcdriver").write_bytes(_yaml(companion="./acme_widget_sim.py"))
+    (cat.repo / "acme_widget_sim.py").write_bytes(SIMULATOR)
+
+    answer = await uninstall_driver(DRIVER_ID)
+
+    assert answer == {"status": "uninstalled", "driver_id": DRIVER_ID}
+    assert _tree(cat.repo) == {"acme_widget_sim.py": SIMULATOR}
