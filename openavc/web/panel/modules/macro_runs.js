@@ -32,8 +32,11 @@
 // before it runs.
 const MACRO_CLAIM_MAX_AGE_MS = 5 * 60 * 1000;
 
+// Where a progress label's idle words come from, for the in-place editor.
+const IDLE_TEXT_PATH = ['bindings', 'show', 'value', 'idle_text'];
+
 /** Every macro id a binding tree can run, as strings, wherever it sits in the tree. */
-export function macrosReachableFrom(node, found = new Set()) {
+function macrosReachableFrom(node, found = new Set()) {
     if (Array.isArray(node)) {
         for (const entry of node) macrosReachableFrom(entry, found);
     } else if (node && typeof node === 'object') {
@@ -263,9 +266,14 @@ export class MacroRuns {
                 // The step description comes from the macro, not the author.
                 this._host.recordSource(b.element, null);
             } else {
-                b.element.textContent = b.binding.idle_text || '';
-                this._host.recordSource(b.element, ['bindings', 'show', 'value', 'idle_text']);
+                this.showIdle(b.element, b.binding);
             }
         }
+    }
+
+    /** A progress label's words while its macro is not running (drawn too when the label is). */
+    showIdle(node, binding) {
+        node.textContent = binding.idle_text || '';
+        this._host.recordSource(node, IDLE_TEXT_PATH);
     }
 }

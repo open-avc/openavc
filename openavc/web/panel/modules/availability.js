@@ -48,7 +48,9 @@
 // and must keep rendering. `connected` above all: an LED bound to it IS the
 // offline report, and blanking that would hide the one honest thing on the
 // page. Everything else under `device.` came from the far end of a wire that
-// is no longer there. Kept in step with what core/device_manager.py writes.
+// is no longer there. Held to core/device_info.PLATFORM_DEVICE_KEYS, every key
+// the platform writes for every device, by tests/test_panel_platform_keys_mirror.py,
+// which names the one key this list does not keep.
 const DEVICE_PLATFORM_PROPS = new Set([
     'connected', 'enabled', 'name', 'offline_detail', 'offline_reason',
     'orphan_reason', 'orphaned', 'paused', 'paused_for', 'reconnect_attempt',
@@ -63,7 +65,8 @@ const DEVICE_PLATFORM_PROPS = new Set([
 // Until this existed the split rule was accidental rather than decided: the
 // device's `offline_reason` is three segments and was exempt, its child's is
 // five and was not, so a panel bound to a child's fault drew `--` at precisely
-// the moment the child had something to say.
+// the moment the child had something to say. Held to drivers/spec.CHILD_RESERVED_PROPS
+// by the same test.
 const CHILD_PLATFORM_PROPS = new Set([
     'online', 'offline_reason', 'offline_detail', 'label',
 ]);

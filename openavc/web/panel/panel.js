@@ -173,11 +173,7 @@ class PanelApp {
         // Whether what a control shows can be believed and whether a press on
         // it can land, and Preview's copy of what each press reaches
         // (modules/availability.js).
-        this.availability = new Availability({
-            state: () => this.state,
-            editMode: () => this.editMode,
-            elementMap: () => this.elementMap,
-        });
+        this.availability = new Availability(this._availabilityHost());
         // Editing words in place on the design canvas (modules/text_edit.js):
         // the edit in flight, and the gate both of its doors ask.
         this._textEditor = new TextEditor(this._textEditHost());
@@ -198,28 +194,14 @@ class PanelApp {
         this._navigatingBack = false; // Skip history push when navigateToPage is recursing for $back
         // The macro runs in flight and which of them this panel started
         // (modules/macro_runs.js).
-        this.macroRuns = new MacroRuns({
-            elementMap: () => this.elementMap,
-            bindings: () => this.bindings,
-            recordSource: (node, path) => this._textEditor.recordSource(node, path),
-            showFailure: (text) => this._failureBand.show(text),
-            revert: () => this._revertRefusedInteraction(null),
-        });
+        this.macroRuns = new MacroRuns(this._macroRunsHost());
         this.reconnectDelay = 1000;
         this.maxReconnectDelay = 30000; // matches the backoff cap used in onclose
         this.reconnectAttempts = 0;
         this._offline = false;           // true while the WS is disconnected
         this._lastTouchedElementId = null; // control the next failure is about
         // Why the last press did not work (modules/failure_band.js).
-        this._failureBand = new FailureBand({
-            settings: () => this.uiSettings,
-            touchedNode: () => {
-                const entry = this._lastTouchedElementId
-                    ? this.elementMap[this._lastTouchedElementId]
-                    : null;
-                return entry && entry.el;
-            },
-        });
+        this._failureBand = new FailureBand(this._failureBandHost());
         // The PIN lock and the idle timer (modules/lock.js).
         this.lock = new PanelLock(this._lockHost());
         this.access = new PanelAccess({
@@ -240,6 +222,39 @@ class PanelApp {
         this._pluginExtensions = {};
         // What each frame's own request answered, for its file check.
         this._frameStatus = new FrameStatusWatch();
+    }
+
+    /** What the availability rule reads from the panel, each at call time. */
+    _availabilityHost() {
+        return {
+            state: () => this.state,
+            editMode: () => this.editMode,
+            elementMap: () => this.elementMap,
+        };
+    }
+
+    /** What the macro runs read from the panel and ask of it, each at call time. */
+    _macroRunsHost() {
+        return {
+            elementMap: () => this.elementMap,
+            bindings: () => this.bindings,
+            recordSource: (node, path) => this._textEditor.recordSource(node, path),
+            showFailure: (text) => this._failureBand.show(text),
+            revert: () => this._revertRefusedInteraction(null),
+        };
+    }
+
+    /** What the failure band reads from the panel, each at call time. */
+    _failureBandHost() {
+        return {
+            settings: () => this.uiSettings,
+            touchedNode: () => {
+                const entry = this._lastTouchedElementId
+                    ? this.elementMap[this._lastTouchedElementId]
+                    : null;
+                return entry && entry.el;
+            },
+        };
     }
 
     /** What the in-place text editor reads from the panel, each at call time. */
@@ -1969,8 +1984,7 @@ class PanelApp {
                     binding: textBinding,
                 });
                 // Set initial idle text
-                el.textContent = textBinding.idle_text || '';
-                this._textEditor.recordSource(el, ['bindings', 'show', 'value', 'idle_text']);
+                this.macroRuns.showIdle(el, textBinding);
             } else {
                 this.bindings.push({
                     type: 'text',
