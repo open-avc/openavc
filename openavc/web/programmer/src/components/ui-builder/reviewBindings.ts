@@ -38,7 +38,7 @@ const RENDERED_TYPES = new Set(Object.keys(HONORED_SHOW_SLOTS));
  *
  * `UIElement.type` is a free-form string and every layer downstream treats it as
  * one: the loader accepts anything, this review used to return early on a type it
- * did not know, and `renderElement`'s switch falls through to a `console.warn`
+ * did not know, and `renderElement` finds no renderer for it, logs a `console.warn`
  * and returns null. So the element has an id, a placement and bindings, the write
  * comes back created, and it is simply absent from the screen.
  *

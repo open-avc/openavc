@@ -22,7 +22,10 @@
  * The page review's mirror test (tests/test_ui_page_review_mirrors.py) runs
  * both tables to learn which method each type reaches, and from that which
  * properties and show slots each control honours. A row calls one method on
- * the panel with what it was handed, and does nothing else.
+ * the panel with what it was handed, and does nothing else. That test is why
+ * the tables are a module of their own: it imports this file under Node,
+ * where panel.js itself cannot be imported. The server frames' table (FRAMES)
+ * has no such reader and stays in panel.js.
  */
 
 export const RENDERERS = new Map([

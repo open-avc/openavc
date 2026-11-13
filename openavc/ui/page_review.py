@@ -1606,7 +1606,7 @@ def element_type_finding(element: Mapping[str, Any]) -> Finding | None:
 
     ``UIElement.type`` is a free-form ``str`` and every layer downstream treats
     it as one: the loader accepts anything, this module used to return early on
-    a type it did not know, and ``renderElement``'s switch falls through to a
+    a type it did not know, and ``renderElement`` finds no renderer for it, logs a
     ``console.warn`` and returns null. So the element has an id, a placement and
     bindings, the write comes back created, and it is simply absent from the
     screen -- a defect with a file entry and no symptom.
