@@ -364,6 +364,21 @@ SCENARIOS = [
     # with the refused control put back, pinned whole
     # (tests/fixtures/panel_macro_run_pins.json).
     "macro_runs_and_failures_as_today",
+    # Which page draws, what opens over it and how it goes again: page
+    # changes, back and dismiss, the overlay box, the empty page, master
+    # elements, a ui/ file changing, the idle page and the Preview naming a
+    # page, pinned whole (tests/fixtures/panel_page_pins.json).
+    "pages_navigate_and_overlay_as_today",
+    # Where an element goes: the arrangement for the way the glass is
+    # turned, master boxes, aspect locks, containers, entry animations, the
+    # coordinate space, a drag on the canvas, the vmin, the snap ruler and a
+    # turn of the glass, pinned whole (tests/fixtures/panel_layout_pins.json).
+    "layout_places_elements_as_today",
+    # What the Programmer's frames take and send: who may speak to the panel,
+    # every message it takes, the canvas starting up, the text sizes it
+    # reports and which framings count as the Programmer's, pinned whole
+    # (tests/fixtures/panel_builder_link_pins.json).
+    "builder_link_takes_and_sends_as_today",
 ]
 
 

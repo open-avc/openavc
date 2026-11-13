@@ -1,0 +1,4277 @@
+{
+ "builder_link": {
+  "refusals_in_order": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "definition_shapes": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "A",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">m1</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "2",
+    "n": "main||",
+    "b": "",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "B",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "m1"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "3",
+    "n": "main||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "C",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "m1"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "4",
+    "n": "dlg||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "E",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "d1"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "4",
+    "n": "dlg||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "4",
+    "n": "dlg||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "4",
+    "n": "dlg||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "4",
+    "n": "dlg||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "5",
+    "n": "dlg||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "F",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "d1"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div style=\"padding: 2rem; text-align: center; color: var(--panel-text); opacity: 0.5;\">No panels configured</div></div>",
+    "f": "",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "untagged",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "6",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "G",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "show_grid": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": false,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "2",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "3",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "4",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": true,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "5",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "6",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": false,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "7",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "files_version": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "p||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "files",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:2 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html?v=3\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "2",
+    "n": "p||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "files",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": 3,
+     "drawn": "landscape",
+     "listening": "message:2 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "3",
+    "n": "p||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html?v=a%2Fb%20c\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "4",
+    "n": "p||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "files",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": "a/b c",
+     "drawn": "landscape",
+     "listening": "message:2 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "5",
+    "n": "p||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "files",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:2 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html?v=4\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "6",
+    "n": "p||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "files",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": 4,
+     "drawn": "landscape",
+     "listening": "message:2 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "7",
+    "n": "p||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "files",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:2 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "8",
+    "n": "p||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "files",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": 0,
+     "drawn": "landscape",
+     "listening": "message:2 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html?v=x\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "9",
+    "n": "p||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "files",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": "x",
+     "drawn": "landscape",
+     "listening": "message:2 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "vmin_in_messages": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "v": "font-size: 14px; --panel-vmin: 9px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "2",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "3",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "4",
+    "n": "home||",
+    "v": "font-size: 14px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "5",
+    "n": "home||",
+    "v": "font-size: 14px; --panel-vmin: 4.5px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "6",
+    "n": "home||",
+    "v": "font-size: 14px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "7",
+    "n": "home||",
+    "v": "font-size: 14px; --panel-vmin: 3px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "7",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "theme_working_copy": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" style=\"color: rgb(0, 255, 0); position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-element-type=\"label\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" style=\"color: rgb(0, 255, 0); position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-element-type=\"label\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1,2",
+    "n": "home||",
+    "b": "h1:text h1:text",
+    "v": "font-size: 14px; --panel-bg: #010203; --panel-accent: #123456;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn",
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" style=\"color: rgb(0, 255, 0); position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-element-type=\"label\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "3",
+    "n": "home||",
+    "b": "h1:text",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "4",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "5",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "6",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "demo_state_on_the_canvas": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Hello</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {
+      "var.demo": "Hello"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "state",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Changed</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {
+      "var.demo": "Changed"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    }
+   },
+   {
+    "op": "again",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Hello</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "2",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {
+      "var.demo": "Hello"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "3",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Again</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "4",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {
+      "var.demo": "Again"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "5",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "6",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "7",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {
+      "0": "x",
+      "1": "y"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "demo_state_not_in_the_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {
+      "var.demo": "Live"
+     },
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Live</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "taken",
+     "state": {
+      "var.demo": "Live"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "2",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "preview_lock_and_idle": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">m1</div></div></div>",
+    "o": [
+     "<div id=\"lock-overlay\" class=\"lock-overlay\">\n            <div class=\"lock-container\">\n                <div class=\"lock-icon\">🔒</div>\n                <div class=\"lock-title\">Panel Locked</div>\n                <input type=\"password\" id=\"lock-input\" class=\"lock-input\" placeholder=\"Enter PIN\" maxlength=\"6\" inputmode=\"numeric\" pattern=\"[0-9]*\">\n                <button id=\"lock-submit\" class=\"lock-submit\">Unlock</button>\n                <div id=\"lock-error\" class=\"lock-error\"></div>\n            </div>\n        </div>"
+    ],
+    "f": "1",
+    "n": "main||",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "locked",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [],
+    "f": "2",
+    "n": "main||",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "idle",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "f": "3",
+    "n": "home||",
+    "b": "h1:text"
+   }
+  ],
+  "canvas_no_lock_or_idle": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "both",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "wait",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "text_editing_by_message": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">h1</div><div class=\"panel-element panel-label\" data-element-id=\"5\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\">5</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "words",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "h1",
+       "5"
+      ],
+      "textRefusals": {}
+     }
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "1",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "1",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-avc-text-editing=\"1\">h1</div><div class=\"panel-element panel-label\" data-element-id=\"5\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\">5</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-open",
+      "elementId": "h1",
+      "path": [
+       "text"
+      ],
+      "source": "h1",
+      "multiline": true
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">h1</div><div class=\"panel-element panel-label\" data-element-id=\"5\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\">5</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">h1</div><div class=\"panel-element panel-label\" data-element-id=\"5\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\" data-avc-text-editing=\"1\">5</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-open",
+      "elementId": "5",
+      "path": [
+       "text"
+      ],
+      "source": "5",
+      "multiline": true
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">h1</div><div class=\"panel-element panel-label\" data-element-id=\"5\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\">5</div></div></div>",
+    "f": "1",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "1",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "text_editing_not_in_the_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "words",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "f": "1",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "1",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "page_change_in_the_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">m1</div></div></div>",
+    "f": "1",
+    "n": "main||",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "1",
+    "n": "main||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "f": "2",
+    "n": "home||",
+    "b": "h1:text",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "2",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "3",
+    "n": "home||",
+    "v": "font-size: 14px; --panel-vmin: 4px;",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "4",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div></div>"
+    ],
+    "f": "5,6",
+    "n": "home|dlg|",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "5,6",
+    "n": "home|dlg|",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "page_change_on_the_canvas": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">m1</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "main||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "m1"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "1",
+    "n": "main||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "2",
+    "n": "home||",
+    "b": "h1:text",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "3",
+    "n": "home||",
+    "v": "font-size: 14px; --panel-vmin: 3px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "4",
+    "n": "home||",
+    "v": "font-size: 14px; --panel-vmin: 2px;",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "4",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "4",
+    "n": "home||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "5",
+    "n": "dlg||",
+    "b": "",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "d1"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "page_change_in_the_preview_before_any_definition": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "main||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "main||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "page_change_before_any_definition": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "main||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "builder",
+    "f": "",
+    "n": "main||",
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "start_canvas_draws_what_the_server_has": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {
+      "var.demo": "stale"
+     },
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "d": [
+     "connection-status gone",
+     "<div id=\"offline-overlay\" style=\"display: none;\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {
+      "var.demo": "stale"
+     },
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/ui/resolved"
+    ],
+    "w": [
+     "log [panel-edit] start: edit mode, waiting for editor-init from parent"
+    ]
+   },
+   {
+    "op": "settle",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "served",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "u": [
+     "/api/themes/dark-default"
+    ],
+    "w": [
+     "log [panel-edit] rendering from fetched project"
+    ]
+   },
+   {
+    "op": "viewport",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "2",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "u": [
+     "/api/themes/dark-default"
+    ]
+   }
+  ],
+  "start_canvas_the_programmer_first": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "d": [
+     "connection-status gone",
+     "<div id=\"offline-overlay\" style=\"display: none;\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/ui/resolved"
+    ],
+    "w": [
+     "log [panel-edit] start: edit mode, waiting for editor-init from parent"
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Mine</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "taken",
+     "state": {
+      "var.demo": "Mine"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "btn"
+      ],
+      "textRefusals": {}
+     },
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/themes/dark-default"
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   },
+   {
+    "op": "settle",
+    "f": "1",
+    "n": "home||",
+    "w": [
+     "log [panel-edit] fetched project but parent already provided one; skipping"
+    ]
+   }
+  ],
+  "start_canvas_served_without_settings": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "d": [
+     "connection-status gone",
+     "<div id=\"offline-overlay\" style=\"display: none;\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/ui/resolved"
+    ],
+    "w": [
+     "log [panel-edit] start: edit mode, waiting for editor-init from parent"
+    ]
+   },
+   {
+    "op": "settle",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "bare",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {},
+      "editableText": [
+       "h1"
+      ],
+      "textRefusals": {}
+     }
+    ],
+    "u": [
+     "/api/themes/dark-default"
+    ],
+    "w": [
+     "log [panel-edit] rendering from fetched project"
+    ]
+   }
+  ],
+  "start_canvas_no_ui_served": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "d": [
+     "connection-status gone",
+     "<div id=\"offline-overlay\" style=\"display: none;\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/ui/resolved"
+    ],
+    "w": [
+     "log [panel-edit] start: edit mode, waiting for editor-init from parent"
+    ]
+   },
+   {
+    "op": "settle",
+    "f": "",
+    "n": "||",
+    "w": [
+     "warn [panel-edit] no project available from /api/ui/resolved"
+    ]
+   }
+  ],
+  "start_canvas_nothing_served": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "d": [
+     "connection-status gone",
+     "<div id=\"offline-overlay\" style=\"display: none;\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/ui/resolved"
+    ],
+    "w": [
+     "log [panel-edit] start: edit mode, waiting for editor-init from parent"
+    ]
+   },
+   {
+    "op": "settle",
+    "f": "",
+    "n": "||",
+    "w": [
+     "warn [panel-edit] no project available from /api/ui/resolved"
+    ]
+   }
+  ],
+  "start_canvas_refused_with_a_body": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "d": [
+     "connection-status gone",
+     "<div id=\"offline-overlay\" style=\"display: none;\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/ui/resolved"
+    ],
+    "w": [
+     "log [panel-edit] start: edit mode, waiting for editor-init from parent"
+    ]
+   },
+   {
+    "op": "settle",
+    "f": "",
+    "n": "||",
+    "w": [
+     "warn [panel-edit] no project available from /api/ui/resolved"
+    ]
+   }
+  ],
+  "start_canvas_refused": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "d": [
+     "connection-status gone",
+     "<div id=\"offline-overlay\" style=\"display: none;\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/ui/resolved"
+    ],
+    "w": [
+     "log [panel-edit] start: edit mode, waiting for editor-init from parent"
+    ]
+   },
+   {
+    "op": "settle",
+    "f": "",
+    "n": "||",
+    "w": [
+     "warn [panel-edit] no project available from /api/ui/resolved"
+    ]
+   }
+  ],
+  "start_canvas_unreachable": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "d": [
+     "connection-status gone",
+     "<div id=\"offline-overlay\" style=\"display: none;\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/ui/resolved"
+    ],
+    "w": [
+     "log [panel-edit] start: edit mode, waiting for editor-init from parent"
+    ]
+   },
+   {
+    "op": "settle",
+    "f": "",
+    "n": "||",
+    "w": [
+     "warn [panel-edit] fetch failed: Error: network down"
+    ]
+   }
+  ],
+  "start_canvas_not_framed": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": false,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "d": [
+     "connection-status gone",
+     "<div id=\"offline-overlay\" style=\"display: none;\"></div>",
+     "<div id=\"loading-state\" style=\"display: none;\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "u": [
+     "/api/ui/resolved"
+    ],
+    "w": [
+     "log [panel-edit] start: edit mode, waiting for editor-init from parent"
+    ]
+   },
+   {
+    "op": "settle",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "h1:text",
+    "x": {
+     "edit": true,
+     "embedded": false,
+     "ui": "served",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:1 orientationchange:1"
+    },
+    "u": [
+     "/api/themes/dark-default"
+    ],
+    "w": [
+     "log [panel-edit] rendering from fetched project"
+    ]
+   }
+  ],
+  "start_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "start",
+    "f": "",
+    "n": "||",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "u": [
+     "/api/plugins/extensions"
+    ]
+   },
+   {
+    "op": "settle",
+    "f": "",
+    "n": "||",
+    "ws": [
+     [
+      "ws://localhost:8080/ws?client=preview&namespaces=device,var,ui,system,plugin"
+     ]
+    ]
+   },
+   {
+    "op": "builder",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">m1</div></div></div>",
+    "f": "1",
+    "n": "main||",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "taken",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:1 orientationchange:1"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-ready"
+     }
+    ],
+    "u": [
+     "/api/themes/dark-default"
+    ],
+    "r": [
+     "source",
+     "origin",
+     "data"
+    ]
+   }
+  ],
+  "text_defaults_reported": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"t1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">t1</div><div class=\"panel-element panel-label\" data-element-id=\"t2\" data-avc-text-src=\"[&quot;text&quot;]\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%; font-size: 2rem;\" data-element-type=\"label\">t2</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"tb\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Go\" style=\"position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; font-size: 1.5rem;\" data-element-type=\"button\">Go</button><div class=\"panel-element panel-label\" data-element-id=\"t3\" data-element-type=\"label\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\">--</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "t3:text",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "text",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {
+       "t1": 1.5,
+       "t2": 0.5
+      },
+      "editableText": [
+       "t1",
+       "t2",
+       "tb"
+      ],
+      "textRefusals": {}
+     }
+    ]
+   },
+   {
+    "op": "render",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "f": "2",
+    "n": "home||",
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {
+       "t1": 1.5,
+       "t2": 0.5
+      },
+      "editableText": [
+       "t1",
+       "t2",
+       "tb"
+      ],
+      "textRefusals": {}
+     }
+    ]
+   }
+  ],
+  "text_defaults_with_scripted_words": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"t1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Also</div><div class=\"panel-element panel-label\" data-element-id=\"t2\" data-avc-text-src=\"[&quot;text&quot;]\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%; font-size: 2rem;\" data-element-type=\"label\">t2</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"tb\" aria-label=\"Scripted\" style=\"position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; font-size: 1.5rem;\" data-element-type=\"button\">Scripted</button><div class=\"panel-element panel-label\" data-element-id=\"t3\" data-element-type=\"label\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\">--</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "t3:text",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "text",
+     "state": {
+      "ui.tb.label": "Scripted",
+      "ui.t1.label": "Also"
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {
+       "t1": 1.5,
+       "t2": 0.5
+      },
+      "editableText": [
+       "t2"
+      ],
+      "textRefusals": {
+       "t1": "This text is being set by a script or macro through ui.t1.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again.",
+       "tb": "This text is being set by a script or macro through ui.tb.label, not by the element's Label. Change the Label in Properties, or clear that key to show it again."
+      }
+     }
+    ]
+   }
+  ],
+  "text_defaults_odd_root": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"t1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">t1</div><div class=\"panel-element panel-label\" data-element-id=\"t2\" data-avc-text-src=\"[&quot;text&quot;]\" style=\"position: absolute; left: 2%; top: 3%; width: 12%; height: 22%; font-size: 2rem;\" data-element-type=\"label\">t2</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"tb\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Go\" style=\"position: absolute; left: 3%; top: 4%; width: 13%; height: 23%; font-size: 1.5rem;\" data-element-type=\"button\">Go</button><div class=\"panel-element panel-label\" data-element-id=\"t3\" data-element-type=\"label\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\">--</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "t3:text",
+    "v": "font-size: 13px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "text",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    },
+    "p": [
+     {
+      "type": "openavc:editor-text-defaults",
+      "fontSizeRem": {
+       "t1": 1.6154,
+       "t2": 0.5385
+      },
+      "editableText": [
+       "t1",
+       "t2",
+       "tb"
+      ],
+      "textRefusals": {}
+     }
+    ]
+   }
+  ],
+  "text_defaults_root_unreadable": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"t1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">t1</div><div class=\"panel-element panel-label\" data-element-id=\"t2\" data-avc-text-src=\"[&quot;text&quot;]\" style=\"font-size: 2rem; position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\" data-element-type=\"label\">t2</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"tb\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Go\" style=\"font-size: 1.5rem; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%;\" data-element-type=\"button\">Go</button><div class=\"panel-element panel-label\" data-element-id=\"t3\" data-element-type=\"label\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\">--</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "t3:text",
+    "v": "",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "text",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "text_defaults_root_zero": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"t1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">t1</div><div class=\"panel-element panel-label\" data-element-id=\"t2\" data-avc-text-src=\"[&quot;text&quot;]\" style=\"font-size: 2rem; position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\" data-element-type=\"label\">t2</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"tb\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Go\" style=\"font-size: 1.5rem; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%;\" data-element-type=\"button\">Go</button><div class=\"panel-element panel-label\" data-element-id=\"t3\" data-element-type=\"label\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\">--</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "t3:text",
+    "v": "font-size: 0px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "text",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "text_defaults_not_framed": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"t1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">t1</div><div class=\"panel-element panel-label\" data-element-id=\"t2\" data-avc-text-src=\"[&quot;text&quot;]\" style=\"font-size: 2rem; position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\" data-element-type=\"label\">t2</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"tb\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Go\" style=\"font-size: 1.5rem; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%;\" data-element-type=\"button\">Go</button><div class=\"panel-element panel-label\" data-element-id=\"t3\" data-element-type=\"label\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\">--</div></div></div>",
+    "o": [
+     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
+    ],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "t3:text",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": "text",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "text_defaults_in_the_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"t1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">t1</div><div class=\"panel-element panel-label\" data-element-id=\"t2\" style=\"font-size: 2rem; position: absolute; left: 2%; top: 3%; width: 12%; height: 22%;\" data-element-type=\"label\">t2</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"tb\" aria-label=\"Go\" style=\"font-size: 1.5rem; position: absolute; left: 3%; top: 4%; width: 13%; height: 23%;\" data-element-type=\"button\">Go</button><div class=\"panel-element panel-label\" data-element-id=\"t3\" data-element-type=\"label\" style=\"position: absolute; left: 4%; top: 5%; width: 14%; height: 24%;\">--</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "t3:text",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": "text",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:1 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "opened_framed_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "opened_framed_edit": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "opened_framed_both": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "main||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "opened_framed_unmarked": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "main||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "opened_framed_other_values": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "opened_tab_preview": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "opened_tab_edit": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": true,
+     "embedded": false,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "post_not_embedded": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "post",
+    "f": "",
+    "n": "||"
+   }
+  ],
+  "post_embedded": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "post",
+    "f": "",
+    "n": "||",
+    "p": [
+     {
+      "type": "openavc:x",
+      "n": 1
+     }
+    ]
+   }
+  ],
+  "post_parent_throws": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "post",
+    "f": "",
+    "n": "||"
+   }
+  ],
+  "post_to_its_own_window": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\"></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "",
+    "n": "||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": true,
+     "ui": null,
+     "state": {},
+     "ready": false,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "post",
+    "f": "",
+    "n": "||",
+    "p": [
+     {
+      "self": {
+       "type": "openavc:x"
+      }
+     }
+    ]
+   }
+  ]
+ }
+}

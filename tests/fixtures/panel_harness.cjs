@@ -10209,6 +10209,1246 @@ Object.assign(tests, {
     },
 });
 
+// --- Pages, layouts and the Builder link, driven whole ----------------------
+//
+// The three pin groups below each drive one panel through what reaches it from
+// outside: a server frame, a press, a page change, a message from the
+// Programmer, the clock, the glass turning round. After every step the rig
+// records what the panel drew (the panel root, and every node it put on the
+// document body), where its navigation stands, which page surfaces are new
+// since the last step (a redraw replaces them), what it sent, what it posted
+// to its parent, what it fetched, which sockets it opened, what it logged and
+// what it threw. A case is plain data -- the ui, how the panel was opened,
+// and its steps (PANEL_STEPS says what each does) -- and is compared with
+// panel_page_pins.json, panel_layout_pins.json and
+// panel_builder_link_pins.json, recorded from the code before it moved, the
+// way the paint pins are (PAINT_PINS_RECORD).
+
+const PAGE_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_page_pins.json'), 'utf8'));
+const LAYOUT_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_layout_pins.json'), 'utf8'));
+const BUILDER_LINK_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_builder_link_pins.json'), 'utf8'));
+
+/** The body nodes the harness document starts with. Anything else on the body, a case drew. */
+const DOCUMENT_NODES = ['panel-root', 'connection-status', 'offline-overlay', 'loading-state'];
+
+/** A case's data, copied, with the values JSON cannot hold spelled as strings ('=NaN', '=undefined', '=Infinity'). */
+function caseData(value) {
+    const SPELLED = { '=NaN': NaN, '=undefined': undefined, '=Infinity': Infinity };
+    const revive = (v) => {
+        if (typeof v === 'string' && Object.prototype.hasOwnProperty.call(SPELLED, v)) return SPELLED[v];
+        if (Array.isArray(v)) return v.map(revive);
+        if (v && typeof v === 'object') {
+            const out = {};
+            for (const [k, x] of Object.entries(v)) out[k] = revive(x);
+            return out;
+        }
+        return v;
+    };
+    return revive(JSON.parse(JSON.stringify(value)));
+}
+
+/** Let every promise and fetch the panel started run to its end. */
+async function settleTasks() {
+    for (let i = 0; i < 4; i++) await new Promise((r) => setImmediate(r));
+}
+
+/** A value a log line names, as text. */
+function loggedText(a) {
+    if (typeof a === 'string') return a;
+    if (a instanceof Error || (a && typeof a.message === 'string' && typeof a.name === 'string')) return `${a.name}: ${a.message}`;
+    try { return JSON.stringify(a); } catch (_) { return String(a); }
+}
+
+/** What each step of a case does, handed the rig and the step's arguments. */
+const PANEL_STEPS = {
+    // A frame from the server.
+    msg: (m, frame) => m.app.handleMessage(frame),
+    // A state change from the server, drawn when the panel next draws a batch.
+    state: (m, changes) => m.app.handleMessage({ type: 'state.update', changes }),
+    // A page change, the way a ui.navigate, a frame or the idle timer asks for one.
+    nav: (m, pageId) => m.app.navigateToPage(pageId),
+    // Several, one after another, recorded as one step.
+    navs: (m, ids) => { for (const id of ids) m.app.navigateToPage(id); },
+    dismiss: (m) => m.app.dismissOverlay(),
+    dismissAll: (m) => m.app.dismissAllOverlays(),
+    render: (m) => m.app.renderCurrentPage(),
+    // A click on the first node the selector finds anywhere in the document.
+    click: (m, selector) => {
+        const node = document.querySelector(selector);
+        if (!node) throw new Error(`nothing at ${selector}`);
+        node.click();
+    },
+    // The CSS transition a dismissed overlay runs comes to its end (jsdom runs none).
+    transitionend: () => {
+        for (const o of document.querySelectorAll('.panel-overlay.dismissing')) {
+            o.dispatchEvent(new window.Event('transitionend'));
+        }
+    },
+    wait: (m, ms) => m.advance(ms),
+    // The browser paints: the animation frames the panel asked for run.
+    raf: (m) => m.flushFrames(),
+    // Somebody used the panel.
+    activity: (m) => m.app.resetIdleTimer(),
+    connection: (m, up) => m.app.setConnectionStatus(up),
+    // The glass changes size and fires `events`, in order, at the window.
+    viewport: (m, w, h, events) => {
+        setViewport(w, h);
+        for (const type of events || []) m.fire(type);
+    },
+    // The size the document's own box reports, which the panel reads when the
+    // window reports none (jsdom's is always 0).
+    client: (m, w, h) => {
+        for (const [k, v] of [['clientWidth', w], ['clientHeight', h]]) {
+            Object.defineProperty(document.documentElement, k, { value: v, configurable: true });
+        }
+    },
+    // A message from the Programmer (`from`: its source and origin).
+    builder: (m, data, from) => m.fromParent(data, from),
+    // The same message object delivered again.
+    again: (m) => m.fromParent(m.lastData, m.lastFrom),
+    vmin: (m, value) => m.app._applyVminOverride(value),
+    post: (m, msg) => m.app._postToParent(msg),
+    start: (m) => { m.started = m.app.start(); },
+    settle: async (m) => { await m.started; await settleTasks(); },
+    // Something the panel holds is changed under it, the way a test sets it.
+    set: (m, field, value) => { m.app[field] = value; },
+    // The definition the panel holds is edited in place (`at` a dotted path).
+    edit: (m, at, value) => {
+        const keys = at.split('.');
+        let o = m.app.uiDef;
+        for (const k of keys.slice(0, -1)) o = o[k];
+        o[keys[keys.length - 1]] = value;
+    },
+};
+
+/**
+ * Drive one case and return its steps. A clean document first (no node an
+ * earlier scenario left on the body, the root empty, the harness's own nodes
+ * as the document made them, nothing inline on <html> but the root font
+ * size), on the harness's clock, with the panel's window listeners for
+ * Programmer messages and the glass held here instead of on the window so
+ * only this panel hears what a case sends. Everything is put back after.
+ */
+async function driveCase(spec) {
+    const c = caseData(spec);
+    const steps = [];
+    const doc = document.documentElement;
+    const m = {
+        steps, sent: [], posted: [], logged: [], fetched: [], frames: [], sockets: [], reads: null,
+        listeners: { message: [], resize: [], orientationchange: [] },
+        serials: new WeakMap(), nextSerial: 1, seen: {},
+    };
+    const own = {
+        htmlStyle: doc.getAttribute('style'),
+        nodes: DOCUMENT_NODES.map((id) => {
+            const n = document.getElementById(id);
+            return n && { n, attrs: [...n.attributes].map((a) => [a.name, a.value]), text: id === 'panel-root' ? null : n.textContent };
+        }).filter(Boolean),
+        parent: Object.getOwnPropertyDescriptor(window, 'parent'),
+        postMessage: Object.getOwnPropertyDescriptor(window, 'postMessage'),
+        href: window.location.href,
+        add: window.addEventListener,
+        remove: window.removeEventListener,
+        raf: window.requestAnimationFrame,
+        fetch: window.fetch,
+        WebSocket: window.WebSocket,
+        console: { log: window.console.log, warn: window.console.warn, error: window.console.error },
+        sheet: null,
+    };
+    const scrub = () => {
+        for (const n of [...document.body.children]) if (!DOCUMENT_NODES.includes(n.id)) n.remove();
+    };
+    scrub();
+    for (const id of DOCUMENT_NODES) {
+        let n = document.getElementById(id);
+        if (!n) { n = document.createElement('div'); n.id = id; }
+        for (const a of [...n.attributes]) if (a.name !== 'id') n.removeAttribute(a.name);
+        n.textContent = '';
+        document.body.appendChild(n);
+    }
+    doc.removeAttribute('style');
+    if (c.rootFont !== '') doc.style.fontSize = c.rootFont || '14px';
+    if (c.css) {
+        own.sheet = document.createElement('style');
+        own.sheet.textContent = c.css;
+        document.head.appendChild(own.sheet);
+    }
+    setViewport(...(c.viewport || [1280, 800]));
+    if (c.url) window.history.replaceState({}, '', c.url);
+
+    // The parent the panel posts to: the Programmer's window when framed,
+    // otherwise the panel's own window, which is its own parent.
+    const record = (self) => (msg, target) => {
+        if (c.parentThrows) throw new Error('postMessage refused');
+        const entry = target === window.location.origin ? msg : { msg, target };
+        m.posted.push(self ? { self: entry } : entry);
+    };
+    if (c.framed) Object.defineProperty(window, 'parent', { value: { postMessage: record(false) }, configurable: true });
+    else window.postMessage = record(true);
+    window.addEventListener = function (type, fn, opts) {
+        if (this === window && m.listeners[type]) { m.listeners[type].push(fn); return undefined; }
+        return own.add.call(this, type, fn, opts);
+    };
+    window.removeEventListener = function (type, fn, opts) {
+        if (this === window && m.listeners[type]) {
+            const at = m.listeners[type].indexOf(fn);
+            if (at >= 0) m.listeners[type].splice(at, 1);
+            return undefined;
+        }
+        return own.remove.call(this, type, fn, opts);
+    };
+    if (c.raf === 'queued') window.requestAnimationFrame = (cb) => { m.frames.push(cb); return m.frames.length; };
+    m.flushFrames = () => { for (const cb of m.frames.splice(0)) cb(0); };
+    window.WebSocket = class extends own.WebSocket {
+        constructor(url, protocols) { super(url, protocols); m.sockets.push(protocols ? [url, protocols] : [url]); }
+    };
+    if (c.fetch) {
+        window.fetch = async (input) => {
+            const url = typeof input === 'string' ? input : String((input && input.url) || input);
+            m.fetched.push(url);
+            const route = Object.keys(c.fetch).find((k) => url.includes(k));
+            const answer = route ? c.fetch[route] : { ok: false };
+            if (answer === 'reject') throw new Error('network down');
+            return { ok: !!answer.ok, status: answer.ok ? 200 : 404, json: async () => answer.body };
+        };
+    }
+    for (const level of ['log', 'warn', 'error']) {
+        window.console[level] = (...args) => m.logged.push(`${level} ${args.map(loggedText).join(' ')}`);
+    }
+    m.fire = (type) => { for (const fn of m.listeners[type].slice()) fn.call(window, new window.Event(type)); };
+    m.fromParent = (data, from = {}) => {
+        // The listener the panel installed for the Programmer: the first
+        // message listener it added (a frame's bridge comes later).
+        const listener = m.listeners.message[0];
+        if (!listener) throw new Error('no listener for the Programmer');
+        const sources = { parent: () => window.parent, self: () => window, none: () => null, other: () => ({ postMessage() {} }) };
+        const source = sources[from.source || 'parent']();
+        const origin = Object.prototype.hasOwnProperty.call(from, 'origin') ? from.origin : window.location.origin;
+        const reads = [];
+        const ev = new window.Event('message');
+        Object.defineProperties(ev, {
+            source: { get: () => { reads.push('source'); return source; } },
+            origin: { get: () => { reads.push('origin'); return origin; } },
+            data: { get: () => { reads.push('data'); return data; } },
+        });
+        m.reads = reads;
+        m.lastData = data;
+        m.lastFrom = from;
+        listener.call(window, ev);
+    };
+
+    const serial = (n) => {
+        if (!m.serials.has(n)) m.serials.set(n, m.nextSerial++);
+        return m.serials.get(n);
+    };
+    const changed = (key, value, step, as) => {
+        // Copied as it stands now: the panel goes on changing what it holds.
+        const text = typeof value === 'string' ? value : JSON.stringify(value);
+        if (text !== m.seen[key]) { m.seen[key] = text; step[as || key] = typeof value === 'string' ? value : JSON.parse(text); }
+    };
+    const look = (op, threw) => {
+        const app = m.app;
+        const step = { op };
+        changed('h', document.getElementById('panel-root').outerHTML, step);
+        changed('o', [...document.body.children].filter((n) => !DOCUMENT_NODES.includes(n.id)).map((n) => n.outerHTML), step);
+        changed('d', DOCUMENT_NODES.slice(1).map((id) => {
+            const n = document.getElementById(id);
+            return n ? n.outerHTML : `${id} gone`;
+        }), step);
+        step.f = [...document.querySelectorAll('.panel-page')].map(serial).join(',');
+        step.n = `${app.currentPage}|${app.overlayStack.join(',')}|${app.pageHistory.join(',')}`;
+        changed('b', app.bindings.map((b) => `${b.elementDef?.id ?? '-'}:${b.type}`).join(' '), step);
+        changed('v', doc.getAttribute('style') || '', step);
+        changed('x', {
+            edit: app.editMode, embedded: app.embedded, ui: app.uiDef ? (app.uiDef.tag ?? 'untagged') : null,
+            state: app.state, ready: app.snapshotReceived, grid: app._editShowGrid ?? null, files: app._uiFilesVersion ?? null,
+            drawn: app._drawnOrientation,
+            listening: Object.entries(m.listeners).map(([t, l]) => `${t}:${l.length}`).join(' '),
+        }, step);
+        if (m.sent.length) step.s = m.sent.splice(0);
+        if (m.posted.length) step.p = m.posted.splice(0);
+        if (m.fetched.length) step.u = m.fetched.splice(0);
+        if (m.sockets.length) step.ws = m.sockets.splice(0);
+        if (m.logged.length) step.w = m.logged.splice(0);
+        if (m.reads) { step.r = m.reads; m.reads = null; }
+        if (threw !== undefined) step.threw = threw;
+        steps.push(step);
+    };
+
+    try {
+        await withFakeTime(async (advance) => {
+            m.advance = advance;
+            let threw;
+            try {
+                m.app = mkApp();
+                if ('edit' in c) m.app.editMode = c.edit;
+                if ('embedded' in c) m.app.embedded = c.embedded;
+                m.app.send = (frame) => m.sent.push(frame);
+                if (c.state) m.app.state = { ...c.state };
+                if (c.listen) m.app._setupEditModeListener();
+                if (c.ui) {
+                    m.app.uiDef = c.ui;
+                    m.app.uiSettings = c.ui.settings || {};
+                    if ('page' in c) m.app.currentPage = c.page;
+                    else if (!m.app.currentPage) m.app.currentPage = (Array.isArray(c.ui.pages) && c.ui.pages[0]?.id) || '';
+                    m.app.snapshotReceived = c.snapshot !== false;
+                    if (c.draw !== false) m.app.renderCurrentPage();
+                }
+            } catch (e) {
+                threw = String(e && e.message);
+            }
+            if (!m.app) { steps.push({ op: 'mount', threw }); return; }
+            look('mount', threw);
+            for (const [op, ...args] of c.steps || []) {
+                // A step runs synchronously unless it is waiting on something
+                // itself, so a promise the panel started settles only when a
+                // case says so (`settle`), never between two steps by chance.
+                let failed;
+                try {
+                    const out = PANEL_STEPS[op](m, ...args);
+                    if (out && typeof out.then === 'function') await out;
+                } catch (e) { failed = String(e && e.message); }
+                look(op, failed);
+            }
+            // Whatever the case left in flight finishes here, unrecorded, so
+            // it cannot reach into the next case.
+            await settleTasks();
+        });
+    } finally {
+        window.addEventListener = own.add;
+        window.removeEventListener = own.remove;
+        window.requestAnimationFrame = own.raf;
+        window.fetch = own.fetch;
+        window.WebSocket = own.WebSocket;
+        Object.assign(window.console, own.console);
+        if (own.parent) Object.defineProperty(window, 'parent', own.parent);
+        else delete window.parent;
+        if (own.postMessage) Object.defineProperty(window, 'postMessage', own.postMessage);
+        else delete window.postMessage;
+        window.history.replaceState({}, '', own.href);
+        setViewport(1280, 800);
+        delete document.documentElement.clientWidth;
+        delete document.documentElement.clientHeight;
+        if (own.sheet) own.sheet.remove();
+        scrub();
+        document.getElementById('panel-root').textContent = '';
+        for (const { n, attrs, text } of own.nodes) {
+            for (const a of [...n.attributes]) n.removeAttribute(a.name);
+            for (const [k, v] of attrs) n.setAttribute(k, v);
+            if (text !== null) n.textContent = text;
+            document.body.appendChild(n);
+        }
+        if (own.htmlStyle === null) doc.removeAttribute('style');
+        else doc.setAttribute('style', own.htmlStyle);
+    }
+    return steps;
+}
+
+/** Every case of a group driven in order, into `got` by name. */
+async function driveCases(got, cases) {
+    for (const [name, spec] of Object.entries(cases)) {
+        try { got[name] = await driveCase(spec); } catch (e) { got[name] = [{ threw: `rig: ${e && e.message}` }]; }
+    }
+    return got;
+}
+
+// --- Builders for the cases' definitions -------------------------------------
+
+/** A page with one primary landscape arrangement placing `elements` at `placements`. */
+function pinPage(id, extra = {}) {
+    const { placements, hidden, ...rest } = extra;
+    return {
+        id, name: id, elements: [],
+        layouts: [{ id: 'landscape', orientation: 'landscape', primary: true, placements: placements || {}, hidden: hidden || [] }],
+        ...rest,
+    };
+}
+const pinLabel = (id, extra) => ({ id, type: 'label', text: id, ...extra });
+const pinNav = (id, target, extra) => ({ id, type: 'page_nav', label: id, target_page: target, ...extra });
+const pinUi = (tag, pages, extra) => ({ tag, settings: {}, master_elements: [], pages, ...extra });
+/** A box of percentages that differs from every other `n`. */
+const box = (n) => ({ x: n, y: n + 1, w: 10 + n, h: 20 + n });
+
+// --- The page rules: which page draws, what goes over it, and back ----------
+
+/** Page Navs on every page, one per kind of target, lit or not by what is showing. */
+const NAV_MASTERS = [
+    pinNav('mn_home', 'home', { pages: '*', highlight_current: true, placements: { landscape: { x: 0, y: 90, w: 10, h: 10 } } }),
+    pinNav('mn_main', 'main', { pages: '*', highlight_current: true, placements: { landscape: { x: 10, y: 90, w: 10, h: 10 } } }),
+    pinNav('mn_dlg', 'dlg', { pages: '*', highlight_current: true, placements: { landscape: { x: 20, y: 90, w: 10, h: 10 } } }),
+    pinNav('mn_side', 'side', { pages: '*', highlight_current: true, placements: { landscape: { x: 30, y: 90, w: 10, h: 10 } } }),
+    pinNav('mn_back', '$back', { pages: '*', highlight_current: true, placements: { landscape: { x: 40, y: 90, w: 10, h: 10 } } }),
+    pinNav('mn_plain', 'main', { pages: '*', placements: { landscape: { x: 50, y: 90, w: 10, h: 10 } } }),
+];
+
+/** A building's worth of pages: two regular, an overlay, a sidebar and a run of plain pages. */
+const NAV_PAGES = () => [
+    pinPage('home', { elements: [pinLabel('h1')], placements: { h1: { x: 5, y: 5, w: 20, h: 10 } } }),
+    pinPage('main', { page_type: 'page', elements: [pinLabel('m1', { bindings: { show: { value: { key: 'var.x' } } } })],
+        placements: { m1: { x: 5, y: 5, w: 20, h: 10 } } }),
+    pinPage('dlg', { page_type: 'overlay', elements: [pinLabel('d1', { bindings: { show: { value: { key: 'var.x' } } } })],
+        placements: { d1: { x: 10, y: 10, w: 80, h: 30 } } }),
+    pinPage('side', { page_type: 'sidebar', elements: [pinLabel('s1')] }),
+    pinPage('p2', { elements: [pinLabel('p2l')] }),
+    pinPage('p3', { elements: [pinLabel('p3l')] }),
+    pinPage('p4', { elements: [pinLabel('p4l')] }),
+];
+const NAV_UI = pinUi('nav', NAV_PAGES(), { master_elements: NAV_MASTERS });
+
+/** One overlay page `o` over a plain page `home`, opened. */
+function overlayBoxCase(overlayPage, extra = {}) {
+    const { steps, ...rest } = extra;
+    return {
+        ui: pinUi('box', [pinPage('home', { elements: [pinLabel('h1')] }), { id: 'o', name: 'o', elements: [pinLabel('o1')], layouts: [], ...overlayPage }]),
+        steps: [['nav', 'o'], ...(steps || [])],
+        ...rest,
+    };
+}
+
+/** The pages a Preview is shown, by the Programmer naming them. */
+const PREVIEW_PAGES = () => [
+    pinPage('home', { elements: [pinLabel('h1')] }),
+    pinPage('main', { page_type: 'page', elements: [pinLabel('m1')] }),
+    pinPage('dlg', { page_type: 'overlay', elements: [pinLabel('d1'), pinNav('d_back', '$back')] }),
+    pinPage('side', { page_type: 'sidebar', elements: [pinLabel('s1')] }),
+];
+const PREVIEW = { url: '/panel?preview=1', framed: true, listen: true };
+const init = (ui, more) => ['builder', { type: 'openavc:editor-init', ui, ...more }];
+const showPage = (more) => ['builder', { type: 'openavc:editor-page', ...more }];
+
+/** A page and the master elements standing on it, drawn. */
+const mastersOn = (pageId, masters, pageExtra) => ({
+    ui: pinUi('masters', [pinPage('home', { ...pageExtra }), pinPage('main', { elements: [pinLabel('m1')] })], { master_elements: masters }),
+    page: pageId,
+});
+const anyMaster = (id, pages, extra) => pinLabel(id, { pages, placements: { landscape: { x: 1, y: 1, w: 9, h: 9 } }, ...extra });
+
+/** A ui.files push to a panel showing `pageId` of `ui`. */
+const filesCase = (ui, pageId, extra) => ({ ui, page: pageId, steps: [['msg', { type: 'ui.files', version: 3 }], ['msg', { type: 'ui.files', version: 'b 4' }]], ...extra });
+const customEl = (id, extra) => ({ id, type: 'custom', custom_file: 'card.html', ...extra });
+
+const PAGE_CASES = {
+    // A run of page changes: nothing to go back to, nothing to dismiss, a page
+    // that is not there, the same page again, an overlay and a sidebar over
+    // a page, back and dismiss taking them down (after the transition, or
+    // after the half second it is given), and back through the history.
+    navigation: {
+        ui: NAV_UI,
+        steps: [
+            ['nav', '$back'], ['nav', '$dismiss'], ['nav', 'nowhere'], ['nav', ''],
+            ['nav', 'main'], ['nav', 'main'],
+            ['nav', 'dlg'], ['state', { 'var.x': 5 }],
+            ['nav', 'side'], ['nav', '$back'], ['wait', 499], ['wait', 1],
+            ['nav', '$dismiss'], ['transitionend'], ['wait', 500],
+            ['nav', '$dismiss'],
+            ['nav', '$back'], ['nav', '$back'],
+            ['nav', 'p2'], ['nav', 'p3'], ['nav', '$back'], ['nav', '$back'],
+            // A regular page while overlays are up takes them all down at once.
+            ['nav', 'dlg'], ['nav', 'side'], ['nav', 'main'],
+            ['dismiss'], ['dismissAll'],
+            ['nav', 'side'], ['dismissAll'], ['nav', '$back'],
+        ],
+    },
+    // The same overlay opened twice, and dismissed twice inside half a second.
+    same_overlay_twice: {
+        ui: NAV_UI,
+        steps: [['nav', 'dlg'], ['nav', 'dlg'], ['dismiss'], ['wait', 100], ['dismiss'], ['wait', 400], ['wait', 100]],
+    },
+    // A dismissed overlay that is reopened before its half second is up.
+    reopened_while_leaving: {
+        ui: NAV_UI,
+        steps: [['nav', 'dlg'], ['nav', '$back'], ['nav', 'dlg'], ['wait', 500], ['nav', '$back'], ['transitionend']],
+    },
+    // Fifty pages of history and no more, the oldest let go first.
+    history_holds_fifty: {
+        ui: NAV_UI,
+        steps: [
+            ['navs', Array.from({ length: 56 }, (_, i) => ['main', 'p2', 'p3', 'p4'][i % 4])],
+            ['nav', '$back'], ['nav', '$back'],
+            ['navs', Array.from({ length: 48 }, () => '$back')],
+            ['nav', '$back'],
+        ],
+    },
+    // Back to a page that has since gone, and a page change that throws: the
+    // next change still goes into the history.
+    back_to_a_page_that_went: {
+        ui: NAV_UI,
+        steps: [
+            ['nav', 'p2'], ['nav', 'p3'], ['edit', 'pages', NAV_PAGES().filter((p) => p.id !== 'p2')],
+            ['nav', '$back'], ['nav', 'main'],
+            ['edit', 'master_elements', [null]], ['nav', '$back'],
+            ['edit', 'master_elements', []], ['nav', 'p4'],
+        ],
+    },
+    // A press failing on a page, then a page change: the band goes with the page;
+    // a page that is not there leaves it.
+    failure_band_goes_with_the_page: {
+        ui: NAV_UI,
+        steps: [
+            ['msg', { type: 'error', source_type: 'device', message: 'Projector refused' }], ['nav', 'nowhere'],
+            ['nav', 'main'],
+            ['msg', { type: 'error', source_type: 'device', message: 'Again' }], ['nav', 'dlg'],
+        ],
+    },
+    // A page or overlay id with a quote in it.
+    quoted_ids: {
+        ui: pinUi('quoted', [
+            pinPage('a"b', { elements: [pinLabel('q"1')] }),
+            pinPage('o"v', { page_type: 'overlay', elements: [pinLabel('in"o', { bindings: { show: { value: { key: 'var.q' } } } })] }),
+        ]),
+        steps: [['nav', 'o"v'], ['nav', '$back'], ['nav', 'o"v'], ['wait', 500]],
+    },
+
+    // The overlay box: a dialog or a sidebar, its size, side, position,
+    // backdrop and animation, sizes that are numbers, strings and neither.
+    box_dialog_defaults: overlayBoxCase({ page_type: 'overlay' }),
+    box_dialog_sized: overlayBoxCase({ page_type: 'overlay', overlay: { width: 50, height: '40', position: 'top', backdrop: 'blur', animation: 'slide-up' } }),
+    box_dialog_not_numbers: overlayBoxCase({ page_type: 'overlay', overlay: { width: 'abc', height: null, position: '' } }),
+    box_dialog_strings_zero_negative: overlayBoxCase({ page_type: 'overlay', overlay: { width: '12.5%', height: 0 } }),
+    box_dialog_negative: overlayBoxCase({ page_type: 'overlay', overlay: { width: -5, height: '7.25' } }),
+    box_sidebar_defaults: overlayBoxCase({ page_type: 'sidebar' }),
+    box_sidebar_left: overlayBoxCase({ page_type: 'sidebar', overlay: { side: 'left', width: '30', height: 50, position: 'top', backdrop: 'none', animation: 'slide' } }),
+    box_sidebar_not_a_number: overlayBoxCase({ page_type: 'sidebar', overlay: { width: {} } }),
+    // The backdrop: a click dismisses, unless dismiss_on_backdrop is false (and only false).
+    backdrop_click_dismisses: overlayBoxCase({ page_type: 'overlay' }, { steps: [['click', '.overlay-backdrop']] }),
+    backdrop_kept_when_false: overlayBoxCase({ page_type: 'overlay', overlay: { dismiss_on_backdrop: false } }, { steps: [['click', '.overlay-backdrop']] }),
+    backdrop_string_false_still_dismisses: overlayBoxCase({ page_type: 'overlay', overlay: { dismiss_on_backdrop: 'false' } }, { steps: [['click', '.overlay-backdrop']] }),
+    backdrop_click_on_the_content_stays: overlayBoxCase({ page_type: 'overlay' }, { steps: [['click', '.overlay-content']] }),
+    // A custom page as a dialog: the author's frame inside the box, its elements not drawn.
+    box_custom_dialog: overlayBoxCase({ page_type: 'overlay', render_mode: 'custom', custom_file: 'dialog.html' }),
+    box_custom_without_a_file: overlayBoxCase({ page_type: 'overlay', render_mode: 'custom' }),
+    // Its own background, and elements placed in percentages of the box.
+    box_background_and_placements: overlayBoxCase({
+        page_type: 'overlay', background: { color: '#203040' },
+        elements: [pinLabel('o1'), { id: 'ogrp', type: 'group', label: 'G', style: { border_width: 0.2, border_color: '#ff0000' } }, pinLabel('oc', { parent: 'ogrp' })],
+        layouts: [{ id: 'l', orientation: 'landscape', primary: true, placements: { o1: { x: 10, y: 20, w: 30, h: 40 }, ogrp: { x: 50, y: 50, w: 40, h: 40 }, oc: { x: 5, y: 5, w: 50, h: 50 } }, hidden: [] }],
+    }),
+    // Opened while offline it takes no touches; the connection coming back gives them back.
+    box_opened_offline: overlayBoxCase({ page_type: 'overlay' }, {
+        steps: [['dismissAll'], ['connection', false], ['nav', 'o'], ['connection', true], ['wait', 3000]],
+    }),
+    // `active` goes on at the next animation frame, not before.
+    box_active_after_a_frame: overlayBoxCase({ page_type: 'sidebar', overlay: { animation: 'slide' } }, { raf: 'queued', steps: [['raf']] }),
+    // Elements in an overlay never run an entry animation.
+    box_no_entry_animation: overlayBoxCase({ page_type: 'overlay' }, { steps: [['wait', 100]] }),
+
+    // Which page draws: the one named, else the first regular page, else the
+    // first page of any kind; no pages at all says so.
+    choice_first_regular_page: {
+        ui: pinUi('choice', [pinPage('ov', { page_type: 'overlay', elements: [pinLabel('ovl')] }), pinPage('sb', { page_type: 'sidebar' }), pinPage('reg', { elements: [pinLabel('r1')] }), pinPage('reg2', { page_type: 'page' })]),
+        page: 'gone',
+        steps: [['set', 'currentPage', 'also gone'], ['render'], ['set', 'currentPage', 'reg2'], ['render']],
+    },
+    choice_only_overlays: {
+        ui: pinUi('choice', [pinPage('sb', { page_type: 'sidebar', elements: [pinLabel('sbl')] }), pinPage('ov', { page_type: 'overlay' })]),
+        page: 'gone',
+    },
+    choice_no_pages: { ui: pinUi('none', []), steps: [['nav', 'x'], ['edit', 'pages', '=undefined'], ['render']] },
+    choice_no_definition: { draw: false, steps: [['render'], ['nav', 'main'], ['nav', '$back']] },
+    // A page change animated: the page leaving keeps drawing for the
+    // transition, the page arriving runs its own; two in one transition.
+    transition_between_pages: {
+        ui: pinUi('moving', NAV_PAGES(), { settings: { page_transition: 'slide', page_transition_duration: 300 } }),
+        steps: [['nav', 'main'], ['wait', 299], ['wait', 1], ['nav', 'p2'], ['nav', 'p3'], ['wait', 300]],
+    },
+    transition_default_duration: {
+        ui: pinUi('moving', NAV_PAGES(), { settings: { page_transition: 'fade' } }),
+        steps: [['nav', 'main'], ['wait', 199], ['wait', 1]],
+    },
+    transition_not_on_the_design_canvas: {
+        ui: pinUi('moving', NAV_PAGES(), { settings: { page_transition: 'fade', element_entry: 'fade' } }),
+        edit: true,
+        steps: [['nav', 'main']],
+    },
+
+    // Master elements: on every page, on the pages named, not on others,
+    // never when hidden, nowhere without `pages`, and a bare page id is not a list.
+    masters_on_a_page: mastersOn('home', [
+        anyMaster('all', '*'), anyMaster('named', ['home', 'main']), anyMaster('other', ['main']),
+        anyMaster('hidden', '*', { hidden: true }), anyMaster('nowhere'), anyMaster('bare', 'home'),
+        anyMaster('empty_list', []),
+    ], { elements: [pinLabel('own')] }),
+    masters_follow_the_page: { ...mastersOn('home', [anyMaster('all', '*'), anyMaster('other', ['main'])]), steps: [['nav', 'main'], ['nav', '$back']] },
+
+    // A page with nothing on it says so, unless something draws there.
+    empty_page_says_so: mastersOn('home', []),
+    empty_page_elements_not_a_list: mastersOn('home', [], { elements: 'none' }),
+    empty_page_with_a_master: mastersOn('home', [anyMaster('all', '*')]),
+    empty_page_with_a_master_naming_it: mastersOn('home', [anyMaster('named', ['home'])]),
+    empty_page_with_a_master_elsewhere: mastersOn('home', [anyMaster('other', ['main'])]),
+    empty_page_with_a_hidden_master: mastersOn('home', [anyMaster('hidden', '*', { hidden: true })]),
+    empty_page_custom: mastersOn('home', [], { render_mode: 'custom', custom_file: 'page.html' }),
+    empty_page_custom_without_a_file: mastersOn('home', [], { render_mode: 'custom' }),
+    empty_page_on_the_design_canvas: { ...mastersOn('home', []), edit: true },
+    empty_overlay_page: { ...mastersOn('home', []), steps: [['edit', 'pages', [pinPage('home'), pinPage('ov', { page_type: 'overlay' })]], ['nav', 'ov']] },
+
+    // A ui/ file changed: redrawn only where the page shows author markup.
+    files_plain_page: filesCase(pinUi('files', [pinPage('plain', { elements: [pinLabel('l1')] })]), 'plain'),
+    files_custom_page: filesCase(pinUi('files', [pinPage('cp', { render_mode: 'custom', custom_file: 'page.html' })]), 'cp'),
+    files_custom_page_without_a_file: filesCase(pinUi('files', [pinPage('cp', { render_mode: 'custom', elements: [pinLabel('l1')] })]), 'cp'),
+    files_custom_control_on_the_page: filesCase(pinUi('files', [pinPage('plain', { elements: [pinLabel('l1'), customEl('c1')] })]), 'plain'),
+    files_custom_master_everywhere: filesCase(pinUi('files', [pinPage('plain', { elements: [pinLabel('l1')] })], { master_elements: [customEl('cm', { pages: '*' })] }), 'plain'),
+    files_custom_master_naming_the_page: filesCase(pinUi('files', [pinPage('plain', { elements: [pinLabel('l1')] })], { master_elements: [customEl('cm', { pages: ['plain'] })] }), 'plain'),
+    files_custom_master_elsewhere: filesCase(pinUi('files', [pinPage('plain', { elements: [pinLabel('l1')] })], { master_elements: [customEl('cm', { pages: ['other'] })] }), 'plain'),
+    files_hidden_custom_master: filesCase(pinUi('files', [pinPage('plain', { elements: [pinLabel('l1')] })], { master_elements: [customEl('cm', { pages: '*', hidden: true })] }), 'plain'),
+    files_plain_master: filesCase(pinUi('files', [pinPage('plain', { elements: [pinLabel('l1')] })], { master_elements: [anyMaster('lm', '*')] }), 'plain'),
+    files_page_not_there: { ...filesCase(pinUi('files', [pinPage('plain', { elements: [customEl('c1')] })], { master_elements: [customEl('cm', { pages: '*' })] }), 'plain'),
+        steps: [['set', 'currentPage', 'gone'], ['msg', { type: 'ui.files', version: 5 }], ['edit', 'master_elements', [customEl('cm', { pages: ['plain'] })]], ['set', 'currentPage', 'gone'], ['msg', { type: 'ui.files', version: 6 }]] },
+    files_before_the_first_state: { ...filesCase(pinUi('files', [pinPage('cp', { render_mode: 'custom', custom_file: 'page.html' })]), 'cp'), snapshot: false },
+    files_in_the_preview: { ...filesCase(pinUi('files', [pinPage('cp', { render_mode: 'custom', custom_file: 'page.html' })]), 'cp'), embedded: true, framed: true },
+    files_version_cleared: { ...filesCase(pinUi('files', [pinPage('cp', { render_mode: 'custom', custom_file: 'page.html' })]), 'cp'),
+        steps: [['msg', { type: 'ui.files', version: 7 }], ['msg', { type: 'ui.files', version: null }], ['msg', { type: 'ui.files' }], ['msg', { type: 'ui.files', version: 0 }]] },
+
+    // Nobody touched it: back to the idle page, overlays closed, history
+    // forgotten; nothing at all when it is already there with nothing open.
+    idle_goes_home: {
+        ui: pinUi('idle', NAV_PAGES(), { settings: { idle_timeout_seconds: 2, idle_page: 'home' } }),
+        steps: [
+            ['nav', 'main'], ['nav', 'p2'], ['nav', 'dlg'], ['activity'], ['wait', 1999], ['wait', 1],
+            ['activity'], ['wait', 2000],
+            ['nav', 'side'], ['activity'], ['wait', 2000],
+        ],
+    },
+    idle_page_not_named: {
+        ui: pinUi('idle', NAV_PAGES(), { settings: { idle_timeout_seconds: 1 } }),
+        steps: [['nav', 'p3'], ['activity'], ['wait', 1000]],
+    },
+    idle_page_that_is_not_there: {
+        ui: pinUi('idle', NAV_PAGES().filter((p) => p.id !== 'main'), { settings: { idle_timeout_seconds: 1, idle_page: 'gone' } }),
+        page: 'p3',
+        steps: [['nav', 'p4'], ['activity'], ['wait', 1000]],
+    },
+
+    // The Programmer's Preview names a page: a regular page draws; an
+    // overlay opens over the page it was on, or over the first regular page
+    // when that was not one; with no regular page it opens over nothing.
+    preview_regular_page: { ...PREVIEW, steps: [init(pinUi('pv', PREVIEW_PAGES()), { pageId: 'main' })] },
+    preview_overlay_over_its_page: {
+        ...PREVIEW,
+        steps: [init(pinUi('pv', PREVIEW_PAGES()), { pageId: 'main' }), showPage({ pageId: 'dlg' }), showPage({ pageId: 'dlg' }),
+            ['click', '[data-element-id="d_back"]'], ['nav', '$back'], showPage({ pageId: 'dlg' }), showPage({}),
+            ['nav', '$back'], ['wait', 500], showPage({}), showPage({ pageId: 'side' }), showPage({ pageId: 'home' })],
+    },
+    preview_overlay_first: { ...PREVIEW, steps: [init(pinUi('pv', PREVIEW_PAGES()), { pageId: 'dlg' }), ['nav', '$back'], ['wait', 500]] },
+    preview_sidebar_over_a_sidebar: { ...PREVIEW, url: '/panel?preview=1&page=side', steps: [init(pinUi('pv', PREVIEW_PAGES()))] },
+    preview_no_regular_page: {
+        ...PREVIEW,
+        steps: [init(pinUi('pv', PREVIEW_PAGES().filter((p) => p.page_type === 'overlay' || p.page_type === 'sidebar')), { pageId: 'dlg' }), showPage({ pageId: 'side' })],
+    },
+    preview_unknown_page: { ...PREVIEW, steps: [init(pinUi('pv', PREVIEW_PAGES()), { pageId: 'nowhere' }), showPage({ pageId: 'also-nowhere' })] },
+    // Every overlay up goes at once, not only the top one.
+    dismiss_all_takes_every_overlay: { ui: NAV_UI, steps: [['nav', 'dlg'], ['nav', 'side'], ['dismissAll'], ['nav', '$back']] },
+    // A script's colour on a lit Page Nav survives the overlay it lit for closing.
+    dismiss_keeps_a_nav_override: {
+        ui: NAV_UI,
+        steps: [['nav', 'dlg'], ['state', { 'ui.mn_dlg.bg_color': '#ff00ff', 'ui.mn_home.text_color': '#00ffff' }], ['dismiss'], ['wait', 500]],
+    },
+    // A page naming a custom file but not drawn as custom draws its elements.
+    custom_file_without_custom_mode: {
+        ...mastersOn('home', [], { custom_file: 'page.html', render_mode: 'elements', elements: [pinLabel('own')] }),
+        steps: [['msg', { type: 'ui.files', version: 9 }], ['edit', 'pages.0.render_mode', '=undefined'], ['render'], ['msg', { type: 'ui.files', version: 10 }]],
+    },
+    // The idle timer firing after the pages have gone still takes the overlay down.
+    idle_after_the_pages_went: {
+        ui: pinUi('idle', NAV_PAGES(), { settings: { idle_timeout_seconds: 1, idle_page: 'home' } }),
+        steps: [['nav', 'dlg'], ['edit', 'pages', []], ['activity'], ['wait', 1000]],
+    },
+    // A Page Nav with a look lights only when it is set to; one with no look and no highlight is never redrawn.
+    nav_look_without_highlight: {
+        ui: pinUi('navs', [pinPage('home', {
+            elements: [
+                pinNav('look_only', 'home', { bindings: { show: { look: { key: 'var.mode', states: { a: { bg_color: '#123456' } } } } } }),
+                pinNav('look_lit', 'home', { highlight_current: true, bindings: { show: { look: { key: 'var.mode', states: { a: { bg_color: '#123456' } } } } } }),
+                pinNav('plain', 'home'), pinNav('lit_other', 'main', { highlight_current: true }),
+            ],
+            placements: { look_only: box(1), look_lit: box(20), plain: box(40), lit_other: box(60) },
+        }), pinPage('main')]),
+        steps: [['state', { 'var.mode': 'a' }], ['nav', 'main'], ['nav', '$back']],
+    },
+    // A page whose id starts with $ is a place, but its tab never lights.
+    dollar_page_tab_never_lights: {
+        ui: pinUi('dollar', [pinPage('home'), pinPage('$lobby', { elements: [pinLabel('lobby')] }), pinPage('$room', { page_type: 'overlay' })], {
+            master_elements: [pinNav('to_lobby', '$lobby', { pages: '*', highlight_current: true }), pinNav('to_room', '$room', { pages: '*', highlight_current: true })],
+        }),
+        steps: [['nav', '$lobby'], ['nav', '$room'], ['nav', '$back'], ['nav', '$back']],
+    },
+    // A dismiss keeps every binding that names no element.
+    dismiss_keeps_a_binding_with_no_id: {
+        ui: pinUi('anon', [pinPage('home'), pinPage('dlg', { page_type: 'overlay', elements: [pinLabel('d1', { bindings: { show: { value: { key: 'var.x' } } } })] })], {
+            master_elements: [{ type: 'label', text: '', pages: '*', bindings: { show: { value: { key: 'var.x' } } } }],
+        }),
+        steps: [['nav', 'dlg'], ['dismiss'], ['state', { 'var.x': 2 }]],
+    },
+    // A definition with no settings and no master elements at all.
+    bare_definition: {
+        ui: { tag: 'bare', pages: [pinPage('home'), pinPage('other', { elements: [pinLabel('o1')] })] },
+        steps: [['msg', { type: 'ui.files', version: 1 }], ['nav', 'other'], ['nav', '$back']],
+    },
+    // A master element that draws nothing still counts as something on the page.
+    master_that_draws_nothing: mastersOn('home', [{ id: 'mystery', type: 'nope', pages: '*' }, anyMaster('after', '*')]),
+    // A ui/ file changing before any definition has arrived.
+    files_with_no_definition: { draw: false, steps: [['msg', { type: 'state.snapshot', state: {} }], ['msg', { type: 'ui.files', version: 2 }]] },
+    preview_vmin_keeps_the_dialog_open: {
+        ...PREVIEW,
+        steps: [init(pinUi('pv', PREVIEW_PAGES()), { pageId: 'home' }), showPage({ pageId: 'dlg' }), showPage({ pageId: 'dlg', vmin: 6 }), showPage({ vmin: 7 })],
+    },
+};
+
+Object.assign(tests, {
+    async pages_navigate_and_overlay_as_today() {
+        const got = await driveCases({}, PAGE_CASES);
+        comparePins('pages', got, PAGE_PINS.pages);
+    },
+});
+
+// --- Layout: which arrangement draws, and where each element goes -----------
+
+const LAY_ELEMENTS = ['a', 'b', 'c', 'h1', 'h2'].map((id) => pinLabel(id));
+/** One page `p` of five labels, in `layouts` (anything, as the project holds it). */
+const layoutCase = (layouts, extra = {}) => {
+    const { pageExtra, elements, ...rest } = extra;
+    return { ui: pinUi('lay', [{ id: 'p', name: 'p', elements: elements || LAY_ELEMENTS, layouts, ...pageExtra }]), ...rest };
+};
+const landscape = (placements, extra) => ({ id: 'L', orientation: 'landscape', primary: true, placements, hidden: [], ...extra });
+const portrait = (placements, extra) => ({ id: 'P', orientation: 'portrait', placements, hidden: [], ...extra });
+const PORTRAIT = [800, 1280];
+
+/** Master labels, one per way a master can carry its boxes. */
+const MASTER_BOXES = [
+    ['both', { landscape: box(1), portrait: box(2) }],
+    ['land_only', { landscape: box(3) }],
+    ['port_only', { portrait: box(4) }],
+    ['first_key', { wide: box(5), tall: box(6) }],
+    ['falsy_land', { landscape: null, portrait: box(7) }],
+    ['empty', {}],
+    ['absent', '=undefined'],
+    ['null', null],
+];
+const boxMasters = () => MASTER_BOXES.map(([id, placements]) => pinLabel(`m_${id}`, { pages: '*', placements }));
+/** A custom page draws no page elements, so what is left drawn is the last master's orientation. */
+const orientationOf = MASTER_BOXES.flatMap(([id, placements]) => [
+    ['edit', 'master_elements', [pinLabel(`m_${id}`, { pages: '*', placements })]], ['render'],
+]);
+const tileWall = (id, placements) => ({
+    id, type: 'matrix', matrix_style: 'tiles', pages: '*', placements,
+    matrix_config: { sources: [{ value: 1, label: 'Laptop' }], destinations: Array.from({ length: 8 }, (_, i) => ({ value: i + 1, label: `D${i + 1}` })) },
+});
+
+/** Labels with every kind of aspect_lock, and every kind of odd placement. */
+const LOCKS = [['n15', 1.5], ['s2', '2'], ['zero', 0], ['neg', -1], ['abc', 'abc'], ['nan', '=NaN'],
+    ['nul', null], ['inf', '=Infinity'], ['lead', '1.5x'], ['tiny', '0.001']];
+const lockElements = () => [
+    ...LOCKS.map(([id, lock]) => pinLabel(`k_${id}`, { aspect_lock: lock })),
+    pinLabel('k_absent'),
+    pinLabel('k_class', { aspect_lock: 2, css_class: 'mine  other' }),
+    pinLabel('u_class', { css_class: 'mine' }),
+    pinLabel('p_str'), pinLabel('p_nan'), pinLabel('p_missing'), pinLabel('p_null'), pinLabel('p_partial'), pinLabel('p_big'),
+    pinLabel('p_locked', { aspect_lock: 2 }),
+];
+const lockPlacements = () => {
+    const out = {};
+    for (const [id] of LOCKS) out[`k_${id}`] = { x: 10, y: 10, w: 20, h: 20 };
+    Object.assign(out, {
+        k_absent: { x: 10, y: 10, w: 20, h: 20 }, k_class: { x: 1, y: 2, w: 3, h: 4 }, u_class: { x: 5, y: 6, w: 7, h: 8 },
+        p_str: { x: '10', y: '12.5%', w: 'abc', h: null }, p_nan: { x: '=NaN', y: '=Infinity', w: -5, h: 0 },
+        p_null: null, p_partial: { x: 50 }, p_big: { x: 150, y: -20, w: 200, h: 300 }, p_locked: { x: '5' },
+    });
+    return out;
+};
+
+/** A page of containers: nested, an orphan, a duplicate id, two parent cycles, hidden ones, broken entries. */
+const TREE_ELEMENTS = () => [
+    { id: 'early', type: 'label', text: 'early', parent: 'box2' },
+    { id: 'box', type: 'group', label: 'Box' },
+    pinLabel('c1', { parent: 'box' }),
+    { id: 'inner', type: 'group', label: 'Inner', parent: 'box' },
+    pinLabel('c3', { parent: 'inner' }),
+    pinLabel('orphan', { parent: 'ghost' }),
+    pinLabel('c1', { text: 'duplicate', parent: '' }),
+    pinLabel('x1', { parent: 'x2' }), pinLabel('x2', { parent: 'x1' }),
+    pinLabel('self', { parent: 'self' }),
+    { id: 'hbox', type: 'group', label: 'Hidden' }, pinLabel('hc', { parent: 'hbox' }),
+    { id: 'shown', type: 'group', label: 'Shown' }, pinLabel('hchild', { parent: 'shown' }),
+    null, { type: 'label', text: 'no id' }, { id: '', type: 'label' },
+    { id: 'bad', type: 'nope' }, pinLabel('bc', { parent: 'bad' }),
+    { id: 'box2', type: 'group', label: 'Box 2' },
+    pinLabel('c4', { parent: 'box' }),
+];
+const TREE_PLACEMENTS = {
+    box: box(10), c1: box(1), inner: box(20), c3: box(2), orphan: box(30), x1: box(3), x2: box(4), self: box(5),
+    hbox: box(40), hc: box(6), shown: box(50), hchild: box(7), bad: box(8), bc: box(9), box2: box(60), early: box(11), c4: box(12),
+};
+
+/** Labels, and a container with a child, for the entry animations. */
+const entryCase = (settings, extra) => ({
+    ui: pinUi('entry', [pinPage('p', {
+        elements: [pinLabel('a'), pinLabel('b'), { id: 'g', type: 'group', label: 'G' }, pinLabel('gc', { parent: 'g' })],
+        placements: { a: box(1), b: box(2), g: box(3), gc: box(4) },
+    }), pinPage('q', { elements: [pinLabel('qa')] })], { settings, master_elements: [pinLabel('m', { pages: '*' })] }),
+    steps: [['wait', 0], ['wait', 29], ['wait', 1], ['wait', 30], ['wait', 30], ['wait', 100]],
+    ...extra,
+});
+
+/** Containers framed every way a border can reach them. */
+const FRAME_CSS = '[data-element-id="ss"] { border: 3px dashed rgb(1, 2, 3); } '
+    + '[data-element-id="sw"] { border-width: 2px; } '
+    + '[data-element-id="szero"] { border: 0px solid rgb(9, 9, 9); } '
+    + '[data-element-id="sfrac"] { border: 1.5px solid rgb(4, 5, 6); }';
+const framed = (id, extra) => [{ id, type: 'group', label: id, ...extra }, pinLabel(`${id}_in`, { parent: id })];
+
+const placementsMsg = (placements) => ['builder', { type: 'openavc:editor-placements', placements }];
+const liveCase = (extra) => ({
+    listen: true,
+    ui: pinUi('live', [pinPage('p', {
+        elements: [pinLabel('a'), pinLabel('lk', { aspect_lock: 2 }), pinLabel('q"x'), pinLabel('1st'), pinLabel('a b'),
+            { id: 'g', type: 'group', label: 'G' }, pinLabel('gc', { parent: 'g' }), pinLabel('0')],
+        placements: { a: box(1), lk: box(2), 'q"x': box(3), '1st': box(4), 'a b': box(5), g: box(6), gc: box(7), 0: box(8) },
+    })]),
+    steps: [
+        placementsMsg({ a: { x: 1, y: 2, w: 3, h: 4 }, lk: { x: 5, y: 6, w: 7, h: 8 } }),
+        placementsMsg({ a: null, gc: { x: 'abc', y: '5', w: null, h: '=NaN' }, zz: { x: 1 } }),
+        placementsMsg({ 'q"x': { x: 9 }, '1st': { y: 9 }, 'a b': { w: 9 } }),
+        placementsMsg({ zz: { x: 1 }, a: { x: 33 } }),
+        placementsMsg('x'), placementsMsg(null), placementsMsg(5), placementsMsg([]), placementsMsg([{ x: 3 }]),
+        placementsMsg({ a: 0 }), placementsMsg({ a: 'str' }), ['builder', { type: 'openavc:editor-placements' }],
+        ['render'],
+    ],
+    ...extra,
+});
+
+const snapPage = (snap) => ['edit', 'pages.0.snap', snap];
+const SNAPS = [{ x: 10, y: 20 }, { x: '5', y: '2.5' }, '=undefined', {}, { x: 0, y: 5 }, { x: 5, y: -1 },
+    { x: 'abc', y: 'def' }, { x: '=NaN', y: 4 }, { x: '=Infinity', y: 5 }, { x: 1e-9, y: '7%' }, null];
+
+const ORIENTED_UI = () => pinUi('oriented', [{
+    id: 'p', name: 'p', elements: [pinLabel('a'), pinLabel('b')],
+    layouts: [landscape({ a: box(1), b: box(2) }), portrait({ a: box(3) }, { inherits: 'L', hidden: ['b'] })],
+}]);
+
+const LAYOUT_CASES = {
+    // Which arrangement: none, the primary, the one for this way round, the
+    // first when none is primary; inherits folded base first with the chosen
+    // one winning and hidden added up along the way; a cycle, a name that
+    // matches nothing, entries that are not layouts at all.
+    select_no_layouts: layoutCase('=undefined'),
+    select_layouts_not_a_list: layoutCase('landscape'),
+    select_empty_list: layoutCase([]),
+    select_primary_in_portrait: layoutCase([landscape({ a: box(1) })], { viewport: PORTRAIT }),
+    select_by_orientation: layoutCase([landscape({ a: box(1), b: box(1) }), portrait({ a: box(2) })], {
+        viewport: PORTRAIT, steps: [['viewport', 1280, 800], ['render'], ['viewport', 1000, 1000], ['render']],
+    }),
+    select_no_primary: layoutCase([portrait({ a: box(3) }, { id: 'x' }), portrait({ a: box(4) }, { id: 'y' })]),
+    select_primary_not_first: layoutCase([portrait({ a: box(3) }, { id: 'x' }), { id: 'y', primary: true, placements: { a: box(5) } }]),
+    select_inherits_chain: layoutCase([
+        landscape({ a: box(1), b: box(1), c: box(1) }, { id: 'R', hidden: ['h1'] }),
+        { id: 'M', orientation: 'square', inherits: 'R', placements: { b: box(2) }, hidden: ['h2'] },
+        portrait({ c: box(3) }, { inherits: 'M', hidden: '=undefined' }),
+    ], { viewport: PORTRAIT, steps: [['viewport', 1280, 800], ['render']] }),
+    select_inherits_cycle: layoutCase([
+        portrait({ a: box(3) }, { inherits: 'M' }),
+        { id: 'M', orientation: 'square', inherits: 'P', placements: { a: box(2), b: box(2) }, hidden: ['h1'] },
+    ], { viewport: PORTRAIT }),
+    select_inherits_itself: layoutCase([portrait({ a: box(3) }, { inherits: 'P' })], { viewport: PORTRAIT }),
+    select_inherits_nothing: layoutCase([landscape({ b: box(1) }), portrait({ a: box(3) }, { inherits: 'ghost' })], { viewport: PORTRAIT }),
+    select_null_entries: layoutCase([null, landscape({ a: box(6), b: box(6) }), null, portrait({ a: box(7) }, { inherits: 'L' })], {
+        viewport: PORTRAIT, steps: [['viewport', 1280, 800], ['render']],
+    }),
+    select_only_nulls: layoutCase([null, null]),
+    // A window that reports no size reads the document's box instead.
+    select_window_size_from_the_document: layoutCase([landscape({ a: box(1) }), portrait({ a: box(2) })], {
+        viewport: [0, 0],
+        steps: [['client', 600, 900], ['render'], ['client', 900, 600], ['render'], ['viewport', 0, 500], ['render']],
+    }),
+    // visible_when on an aspect-locked element hides the box that places it.
+    visible_when_on_a_locked_element: {
+        ui: pinUi('vw', [pinPage('p', {
+            elements: [pinLabel('lk', { aspect_lock: 2, bindings: { show: { visible_when: { key: 'var.show', operator: 'eq', value: true } } } }),
+                pinLabel('free', { bindings: { show: { visible_when: { key: 'var.show', operator: 'eq', value: true } } } })],
+            placements: { lk: box(1), free: box(30) },
+        })]),
+        state: { 'var.show': false },
+        steps: [['state', { 'var.show': true }], ['state', { 'var.show': false }]],
+    },
+    // A window that reports no width is portrait as soon as it has a height.
+    select_zero_viewport: layoutCase([landscape({ a: box(1) }), portrait({ a: box(2) })], {
+        viewport: [0, 800], steps: [['viewport', 0, 0], ['render'], ['viewport', 800, 0], ['render']],
+    }),
+    select_bare_layout: layoutCase([{ id: 'L', orientation: 'landscape' }]),
+    select_hidden_as_text: layoutCase([landscape({ a: box(1) }, { hidden: 'ab' })], { elements: [pinLabel('a'), pinLabel('b'), pinLabel('ab')] }),
+    // An overlay's own arrangement decides what is drawn next too.
+    select_overlay_arrangement: {
+        ui: pinUi('lay', [pinPage('p', { elements: [pinLabel('a')] }), {
+            id: 'o', name: 'o', page_type: 'overlay', elements: [pinLabel('oa')],
+            layouts: [landscape({ oa: box(1) }), portrait({ oa: box(2) })],
+        }]),
+        viewport: PORTRAIT,
+        steps: [['nav', 'o'], ['dismiss'], ['viewport', 1280, 800], ['nav', 'o']],
+    },
+
+    // A master element's box for this way round, then the landscape box, the
+    // portrait one, the first one it has, or the whole page.
+    masters_in_landscape: { ui: pinUi('masters', [pinPage('p', { elements: [pinLabel('own')] })], { master_elements: boxMasters() }) },
+    masters_in_portrait: { ui: pinUi('masters', [pinPage('p', { elements: [pinLabel('own')] })], { master_elements: boxMasters() }), viewport: PORTRAIT },
+    masters_orientation_in_landscape: { ui: pinUi('masters', [pinPage('cp', { render_mode: 'custom', custom_file: 'page.html' })]), steps: orientationOf },
+    masters_orientation_in_portrait: { ui: pinUi('masters', [pinPage('cp', { render_mode: 'custom', custom_file: 'page.html' })]), viewport: PORTRAIT, steps: orientationOf },
+    masters_tile_walls_take_their_box_shape: {
+        ui: pinUi('walls', [pinPage('p')], { master_elements: [tileWall('w_both', { landscape: box(1), portrait: box(2) }), tileWall('w_port', { portrait: box(3) })] }),
+        steps: [['viewport', ...PORTRAIT], ['render']],
+    },
+
+    // The placement path: an aspect-locked element sits in a placement box
+    // that holds the position; anything else is placed itself; coordinates
+    // that are not numbers fall to 0, 0, 100, 100; the author's classes land
+    // on the element.
+    placement_and_aspect_locks: {
+        ui: pinUi('locks', [pinPage('p', { elements: lockElements(), placements: lockPlacements() })], {
+            master_elements: [
+                { type: 'label', text: 'anonymous', pages: '*', aspect_lock: 2, placements: { landscape: box(1) } },
+                pinLabel('m_locked', { pages: '*', aspect_lock: '0.5', css_class: 'brand', placements: { landscape: box(2) } }),
+            ],
+        }),
+    },
+
+    // Containers: children are placed inside the container and are
+    // percentages of it; an orphan draws on the page; an id listed twice draws
+    // once; parent cycles draw nothing; a hidden container takes its children
+    // with it; broken entries are passed over.
+    containers_and_children: {
+        ui: pinUi('tree', [{ id: 'p', name: 'p', elements: TREE_ELEMENTS(), layouts: [landscape(TREE_PLACEMENTS, { hidden: ['hbox', 'hchild'] })] }]),
+    },
+    containers_elements_not_a_list: { ui: pinUi('tree', [{ id: 'p', name: 'p', elements: { a: 1 }, layouts: [] }]) },
+
+    // Entry animations: every element starts transparent and gets its class
+    // in turn, children before their container; masters and the design canvas never animate.
+    entry_fade: entryCase({ element_entry: 'fade' }),
+    entry_stagger_zoom: entryCase({ element_entry: 'stagger', element_stagger_style: 'zoom', element_stagger_ms: 50 }),
+    entry_stagger_default_style: entryCase({ element_entry: 'stagger' }),
+    entry_none: entryCase({ element_entry: 'none', element_stagger_ms: 50 }),
+    entry_zero_ms: entryCase({ element_entry: 'fade', element_stagger_ms: 0 }),
+    entry_on_the_design_canvas: entryCase({ element_entry: 'fade' }, { edit: true }),
+    entry_redrawn_midway: entryCase({ element_entry: 'slide' }, { steps: [['wait', 30], ['render'], ['wait', 30], ['nav', 'q'], ['wait', 100]] }),
+
+    // A container's coordinate space is its whole box: an inline border
+    // becomes an outline, a stylesheet border is asked for and converted too,
+    // no border leaves it alone, and a leaf keeps its border.
+    coordinate_spaces: {
+        css: FRAME_CSS,
+        ui: pinUi('frames', [pinPage('p', {
+            elements: [
+                ...framed('ib', { style: { border_width: 0.2, border_color: '#123456', border_style: 'dashed' } }),
+                ...framed('iw', { style: { border_width: 0.1 } }),
+                ...framed('ss'), ...framed('sw'), ...framed('szero'), ...framed('sfrac'), ...framed('plain'),
+                ...framed('zero', { style: { border_width: 0 } }),
+                pinLabel('leaf', { style: { border_width: 0.2, border_color: '#00ff00' } }),
+            ],
+        })]),
+    },
+    coordinate_spaces_in_an_overlay: {
+        css: FRAME_CSS,
+        ui: pinUi('frames', [pinPage('p'), { id: 'o', name: 'o', page_type: 'overlay', layouts: [],
+            elements: [...framed('ss'), ...framed('ib', { style: { border_width: 0.2, border_color: '#123456' } })] }]),
+        steps: [['nav', 'o']],
+    },
+
+    // A drag on the design canvas moves the nodes that are there: the
+    // placement box of a locked element, the element otherwise, ids with
+    // characters a selector has to escape; anything that is not a set of
+    // boxes moves nothing, and the Preview moves nothing at all.
+    live_placements_on_the_canvas: liveCase({ edit: true }),
+    live_placements_in_the_preview: liveCase({ url: '/panel?preview=1', framed: true }),
+
+    // The type scale pinned to a vmin, and handed back.
+    vmin_override: {
+        draw: false,
+        steps: [['vmin', '8'], ['vmin', 'abc'], ['vmin', '0'], ['vmin', '-3'], ['vmin', ''], ['vmin', 8], ['vmin', '12.5px'],
+            ['vmin', null], ['vmin', 6], ['vmin', '=undefined'], ['vmin', 'Infinity'], ['vmin', '=NaN'], ['vmin', 0.5]],
+    },
+    vmin_from_the_address: { draw: false, url: '/panel?vmin=9' },
+    vmin_from_the_address_not_a_number: { draw: false, url: '/panel?vmin=abc' },
+    vmin_from_the_address_zero: { draw: false, url: '/panel?vmin=0' },
+
+    // The snap ruler on the design canvas: the page's increment, the old
+    // 12 by 8 grid when it has none, nothing for a step that is not above
+    // zero; off when the Builder says so; never in a Preview or on a custom page.
+    snap_ruler_on_the_canvas: {
+        edit: true, listen: true,
+        ui: pinUi('snap', [pinPage('p', { elements: [pinLabel('a')] })]),
+        steps: [
+            ...SNAPS.flatMap((s) => [snapPage(s), ['render']]),
+            ['builder', { type: 'openavc:editor-project', ui: pinUi('snap', [pinPage('p', { snap: { x: 20, y: 25 } })]), showGrid: false }],
+            ['builder', { type: 'openavc:editor-project', ui: pinUi('snap', [pinPage('p', { snap: { x: 20, y: 25 } })]), showGrid: 'yes' }],
+            ['builder', { type: 'openavc:editor-project', ui: pinUi('snap', [pinPage('p', { snap: { x: 20, y: 25 } })]), showGrid: true }],
+            ['builder', { type: 'openavc:editor-project', ui: pinUi('snap', [pinPage('cp', { render_mode: 'custom', custom_file: 'page.html', snap: { x: 20, y: 25 } })]) }],
+        ],
+    },
+    snap_ruler_not_in_the_preview: { ui: pinUi('snap', [pinPage('p', { snap: { x: 10, y: 10 } })]) },
+
+    // Turning the glass round redraws once, into the other arrangement; a
+    // resize that keeps the orientation redraws nothing; the listener is set
+    // up once however many definitions arrive.
+    viewport_turns: {
+        edit: true, listen: true,
+        steps: [
+            ['builder', { type: 'openavc:editor-init', ui: ORIENTED_UI() }],
+            ['builder', { type: 'openavc:editor-project', ui: ORIENTED_UI() }],
+            ['viewport', 1000, 800, ['resize']],
+            ['viewport', 800, 1000, ['orientationchange']], ['viewport', 800, 1000, ['resize']],
+            ['viewport', 800, 1200, ['resize', 'orientationchange']],
+            ['viewport', 1280, 800, ['resize']], ['viewport', 1280, 800, ['orientationchange']],
+            ['set', 'uiDef', null], ['viewport', 800, 1280, ['resize']], ['viewport', 1280, 800, ['resize']],
+        ],
+    },
+    viewport_listener_from_the_server: {
+        ui: ORIENTED_UI(), draw: false,
+        steps: [
+            ['msg', { type: 'ui.definition', ui: ORIENTED_UI() }], ['wait', 1000], ['msg', { type: 'ui.definition', ui: ORIENTED_UI() }],
+            ['viewport', ...PORTRAIT, ['resize']], ['viewport', ...PORTRAIT, ['resize']],
+        ],
+    },
+};
+
+Object.assign(tests, {
+    async layout_places_elements_as_today() {
+        const got = await driveCases({}, LAYOUT_CASES);
+        comparePins('layout', got, LAYOUT_PINS.layout);
+    },
+});
+
+// --- The Builder link: what the Programmer's frames take and send -----------
+
+const LINK_PAGES = () => [
+    pinPage('home', {
+        elements: [pinLabel('h1', { bindings: { show: { value: { key: 'var.demo' } } } }), { id: 'btn', type: 'button', label: 'Press' }],
+        placements: { h1: box(1), btn: box(30) },
+    }),
+    pinPage('main', { elements: [pinLabel('m1')] }),
+    pinPage('dlg', { page_type: 'overlay', elements: [pinLabel('d1')] }),
+];
+const linkUi = (tag, extra) => pinUi(tag, LINK_PAGES(), extra);
+const CANVAS = { url: '/panel?edit=1', framed: true, listen: true };
+const PREVIEWED = { url: '/panel?preview=1', framed: true, listen: true };
+const from = (data, source, origin) => {
+    const f = {};
+    if (source !== undefined) f.source = source;
+    if (origin !== undefined) f.origin = origin;
+    return ['builder', data, f];
+};
+const take = (more) => ['builder', { type: 'openavc:editor-init', ui: linkUi('taken'), pageId: 'home', ...more }];
+const RESOLVED = (ui) => ({ '/api/ui/resolved': { ok: true, body: { ui } } });
+const TEXT_CSS = '[data-element-id="t1"] { font-size: 21px; } [data-element-id="t2"] { font-size: 7px; }';
+const textUi = () => pinUi('text', [pinPage('home', {
+    elements: [pinLabel('t1'), pinLabel('t2', { style: { font_size: 2 } }), { id: 'tb', type: 'button', label: 'Go', style: { font_size: 1.5 } },
+        pinLabel('t3', { bindings: { show: { value: { key: 'var.words' } } } })],
+    placements: { t1: box(1), t2: box(2), tb: box(3), t3: box(4) },
+})]);
+const opened = (url, isFramed) => ({ url, framed: isFramed, draw: false });
+
+const BUILDER_LINK_CASES = {
+    // Who may speak to the panel: the parent window, on the panel's own
+    // origin, with a message that is an object of a type it knows. Each
+    // refusal does nothing at all, and reads no further than it has to.
+    refusals_in_order: {
+        ...CANVAS,
+        steps: [
+            from({ type: 'openavc:editor-init', ui: linkUi('self') }, 'self'),
+            from({ type: 'openavc:editor-init', ui: linkUi('none') }, 'none'),
+            from({ type: 'openavc:editor-init', ui: linkUi('other') }, 'other'),
+            from({ type: 'openavc:editor-init', ui: linkUi('evil') }, 'parent', 'https://evil.example'),
+            from({ type: 'openavc:editor-init', ui: linkUi('null') }, 'parent', 'null'),
+            from({ type: 'openavc:editor-init', ui: linkUi('slash') }, 'parent', 'http://localhost:8080/'),
+            from({ type: 'openavc:editor-init', ui: linkUi('port') }, 'parent', 'http://localhost:8081'),
+            from({ type: 'openavc:editor-init', ui: linkUi('undef') }, 'parent', '=undefined'),
+            from({ type: 'openavc:editor-init', ui: linkUi('https') }, 'other', 'https://evil.example'),
+            from(null), from('openavc:editor-init'), from(42), from(true), from(0), from(''),
+            from([]), from({}), from({ type: 'openavc:editor-nope', ui: linkUi('nope') }),
+            from({ type: 'OPENAVC:EDITOR-INIT', ui: linkUi('caps') }),
+            from({ type: 'openavc:editor-init', ui: linkUi('taken') }),
+        ],
+    },
+    // A definition: from project.ui, from ui, project.ui first, neither (no
+    // ready either), anything truthy taken as one; the page named or kept.
+    definition_shapes: {
+        ...CANVAS,
+        steps: [
+            ['builder', { type: 'openavc:editor-init', project: { ui: linkUi('A') } }],
+            ['builder', { type: 'openavc:editor-init', ui: linkUi('B'), pageId: 'main' }],
+            ['builder', { type: 'openavc:editor-init', project: { ui: linkUi('C') }, ui: linkUi('D') }],
+            ['builder', { type: 'openavc:editor-project', project: {}, ui: linkUi('E'), pageId: 'dlg' }],
+            ['builder', { type: 'openavc:editor-init', project: { ui: null }, ui: '=undefined', pageId: 'home' }],
+            ['builder', { type: 'openavc:editor-init' }],
+            ['builder', { type: 'openavc:editor-init', ui: '', pageId: 'home' }],
+            ['builder', { type: 'openavc:editor-init', ui: 0 }],
+            ['builder', { type: 'openavc:editor-project', project: null, ui: linkUi('F'), pageId: '' }],
+            ['builder', { type: 'openavc:editor-project', ui: 'text', pageId: 'home' }],
+            ['builder', { type: 'openavc:editor-project', ui: linkUi('G') }],
+        ],
+    },
+    // The ruler's switch: a boolean is taken, anything else leaves it as it was.
+    show_grid: {
+        ...CANVAS,
+        steps: [take({ showGrid: false }), take(), take({ showGrid: 'false' }), take({ showGrid: true }), take({ showGrid: 1 }),
+            take({ showGrid: false }), take({ showGrid: null })],
+    },
+    // The ui/ files version rides on a custom control's address once it is
+    // given, is replaced by every message that carries one (even undefined),
+    // and is kept by a message that does not.
+    files_version: {
+        ...CANVAS,
+        steps: ['=absent', 3, '=absent', 'a/b c', '=undefined', 4, null, 0, 'x'].map((v) => ['builder', {
+            type: 'openavc:editor-project', ui: pinUi('files', [pinPage('p', { elements: [customEl('cc')] })]),
+            ...(v === '=absent' ? {} : { uiFilesVersion: v }),
+        }]),
+    },
+    // The type scale a message hands over, kept until another says otherwise.
+    vmin_in_messages: {
+        ...CANVAS,
+        steps: [take({ vmin: 9 }), take(), take({ vmin: 'abc' }), take({ vmin: '=undefined' }), take({ vmin: '4.5' }), take({ vmin: null }),
+            ['builder', { type: 'openavc:editor-page', vmin: 3 }], ['builder', { type: 'openavc:editor-page' }]],
+    },
+    // The Theme Studio's working copy: drawn from without a fetch, kept by a
+    // message that names none, dropped by one that names it as nothing.
+    theme_working_copy: {
+        ...CANVAS,
+        steps: [
+            take({ inlineTheme: { id: 'dark-default', variables: { accent: '#123456', panel_bg: '#010203' }, element_defaults: { label: { text_color: '#00ff00' } } } }),
+            take(), take({ inlineTheme: 'not a theme' }), take({ inlineTheme: null }), take({ inlineTheme: { id: 'other-theme', element_defaults: { label: { text_color: '#0000ff' } } } }),
+        ],
+    },
+    // The design canvas draws the state it is handed, a copy of it, or none;
+    // the Preview keeps the state its socket gave it.
+    demo_state_on_the_canvas: {
+        ...CANVAS,
+        steps: [
+            take({ demoState: { 'var.demo': 'Hello' } }), ['state', { 'var.demo': 'Changed' }], ['again'],
+            take({ demoState: 'text' }), take({ demoState: { 'var.demo': 'Again' } }), take(), take({ demoState: null }), take({ demoState: ['x', 'y'] }),
+        ],
+    },
+    demo_state_not_in_the_preview: {
+        ...PREVIEWED, state: { 'var.demo': 'Live' },
+        steps: [take({ demoState: { 'var.demo': 'Hello' } }), take({ demoState: '=undefined' })],
+    },
+    // A definition taken in the Preview shows its page as the runtime would,
+    // puts the lock up when there is one, and starts the idle timer; the
+    // design canvas does neither.
+    preview_lock_and_idle: {
+        ...PREVIEWED,
+        steps: [
+            take({ ui: linkUi('locked', { settings: { lock_code: '1234' } }), pageId: 'main' }),
+            take({ ui: linkUi('idle', { settings: { idle_timeout_seconds: 2, idle_page: 'home' } }), pageId: 'main' }),
+            ['wait', 2000],
+        ],
+    },
+    canvas_no_lock_or_idle: {
+        ...CANVAS,
+        steps: [take({ ui: linkUi('both', { settings: { lock_code: '1234', idle_timeout_seconds: 1, idle_page: 'main' } }) }), ['wait', 1000]],
+    },
+    // In-place text editing opens only on the design canvas, for an element
+    // named by its id (as text); the cancel ends it.
+    text_editing_by_message: {
+        ...CANVAS,
+        ui: pinUi('words', [pinPage('home', { elements: [pinLabel('h1'), pinLabel('5')], placements: { h1: box(1), 5: box(2) } })]),
+        steps: [
+            ['builder', { type: 'openavc:editor-edit-text' }], ['builder', { type: 'openavc:editor-edit-text', elementId: '' }],
+            ['builder', { type: 'openavc:editor-edit-text', elementId: 'h1' }], ['builder', { type: 'openavc:editor-cancel-text' }],
+            ['builder', { type: 'openavc:editor-edit-text', elementId: 5 }], ['builder', { type: 'openavc:editor-cancel-text' }],
+            ['builder', { type: 'openavc:editor-cancel-text' }],
+        ],
+    },
+    text_editing_not_in_the_preview: {
+        ...PREVIEWED,
+        ui: pinUi('words', [pinPage('home', { elements: [pinLabel('h1')] })]),
+        steps: [['builder', { type: 'openavc:editor-edit-text', elementId: 'h1' }], ['builder', { type: 'openavc:editor-cancel-text' }]],
+    },
+    // A page change from the Builder: the Preview shows it through the
+    // runtime's own path (a vmin always does), the canvas redraws for a new
+    // page or a vmin and for nothing else.
+    page_change_in_the_preview: {
+        ...PREVIEWED,
+        steps: [take({ pageId: 'main' }), ['builder', { type: 'openavc:editor-page', pageId: 'main' }],
+            ['builder', { type: 'openavc:editor-page', pageId: 'home' }], ['builder', { type: 'openavc:editor-page' }],
+            ['builder', { type: 'openavc:editor-page', vmin: 4 }], ['builder', { type: 'openavc:editor-page', pageId: 'gone' }],
+            ['builder', { type: 'openavc:editor-page', pageId: 'dlg' }], ['builder', { type: 'openavc:editor-page', pageId: '' }]],
+    },
+    page_change_on_the_canvas: {
+        ...CANVAS,
+        steps: [take({ pageId: 'main' }), ['builder', { type: 'openavc:editor-page', pageId: 'main' }],
+            ['builder', { type: 'openavc:editor-page', pageId: 'home' }], ['builder', { type: 'openavc:editor-page', vmin: 3 }],
+            ['builder', { type: 'openavc:editor-page', pageId: 'home', vmin: 2 }], ['builder', { type: 'openavc:editor-page', pageId: '' }],
+            ['builder', { type: 'openavc:editor-page' }], ['builder', { type: 'openavc:editor-page', pageId: 'dlg' }]],
+    },
+    page_change_in_the_preview_before_any_definition: {
+        ...PREVIEWED,
+        steps: [['builder', { type: 'openavc:editor-page', pageId: 'main' }], ['builder', { type: 'openavc:editor-page', pageId: 'main' }]],
+    },
+    page_change_before_any_definition: {
+        ...CANVAS,
+        steps: [['builder', { type: 'openavc:editor-page', pageId: 'main' }], ['builder', { type: 'openavc:editor-placements', placements: { a: box(1) } }]],
+    },
+
+    // The design canvas starting: the page's own status goes, it asks the
+    // server for the resolved project and says it is ready at once; what the
+    // server answers is drawn with no state, unless the Programmer got there
+    // first or there is nothing to draw.
+    start_canvas_draws_what_the_server_has: {
+        url: '/panel?edit=1', framed: true, fetch: RESOLVED(linkUi('served')), state: { 'var.demo': 'stale' },
+        steps: [['start'], ['settle'], ['viewport', 800, 1280, ['resize']]],
+    },
+    start_canvas_the_programmer_first: {
+        url: '/panel?edit=1', framed: true, fetch: RESOLVED(linkUi('served')),
+        steps: [['start'], take({ demoState: { 'var.demo': 'Mine' } }), ['settle']],
+    },
+    start_canvas_served_without_settings: {
+        url: '/panel?edit=1', framed: true, fetch: RESOLVED({ tag: 'bare', pages: [pinPage('home', { elements: [pinLabel('h1')] })] }),
+        steps: [['start'], ['settle']],
+    },
+    start_canvas_no_ui_served: { url: '/panel?edit=1', framed: true, fetch: { '/api/ui/resolved': { ok: true, body: { project: 1 } } }, steps: [['start'], ['settle']] },
+    start_canvas_nothing_served: { url: '/panel?edit=1', framed: true, fetch: { '/api/ui/resolved': { ok: true } }, steps: [['start'], ['settle']] },
+    start_canvas_refused_with_a_body: {
+        url: '/panel?edit=1', framed: true, fetch: { '/api/ui/resolved': { ok: false, body: { ui: linkUi('error page') } } },
+        steps: [['start'], ['settle']],
+    },
+    start_canvas_refused: { url: '/panel?edit=1', framed: true, fetch: { '/api/ui/resolved': { ok: false } }, steps: [['start'], ['settle']] },
+    start_canvas_unreachable: { url: '/panel?edit=1', framed: true, fetch: { '/api/ui/resolved': 'reject' }, steps: [['start'], ['settle']] },
+    start_canvas_not_framed: { url: '/panel?edit=1', fetch: RESOLVED(linkUi('served')), steps: [['start'], ['settle']] },
+    start_preview: { url: '/panel?preview=1', framed: true, fetch: {}, steps: [['start'], ['settle'], take({ pageId: 'main' })] },
+
+    // The text sizes the canvas reports: each element's size before its own
+    // font size, in rem of the root at four decimals, its own put back; not
+    // when the panel is not framed or the root size cannot be read.
+    text_defaults_reported: { ...CANVAS, css: TEXT_CSS, ui: textUi(), steps: [['render']] },
+    // A label a script is setting the words of is refused, and says why.
+    text_defaults_with_scripted_words: { ...CANVAS, css: TEXT_CSS, ui: textUi(), state: { 'ui.tb.label': 'Scripted', 'ui.t1.label': 'Also' } },
+    text_defaults_odd_root: { ...CANVAS, css: TEXT_CSS, rootFont: '13px', ui: textUi() },
+    text_defaults_root_unreadable: { ...CANVAS, css: TEXT_CSS, rootFont: '', ui: textUi() },
+    text_defaults_root_zero: { ...CANVAS, css: TEXT_CSS, rootFont: '0px', ui: textUi() },
+    text_defaults_not_framed: { edit: true, embedded: true, css: TEXT_CSS, ui: textUi() },
+    text_defaults_in_the_preview: { ...PREVIEWED, css: TEXT_CSS, ui: textUi() },
+
+    // Which panels count as the Programmer's: framed and marked preview or
+    // edit; framed and unmarked, or not framed, is an ordinary panel.
+    opened_framed_preview: opened('/panel?preview=1', true),
+    opened_framed_edit: opened('/panel?edit=1', true),
+    opened_framed_both: opened('/panel?preview=1&edit=1&page=main', true),
+    opened_framed_unmarked: opened('/panel?page=main', true),
+    opened_framed_other_values: opened('/panel?preview=true&edit=yes', true),
+    opened_tab_preview: opened('/panel?preview=1', false),
+    opened_tab_edit: opened('/panel?edit=1', false),
+
+    // Posting to the parent: only when embedded, only to this origin, and a
+    // parent that throws is ignored.
+    post_not_embedded: { framed: true, draw: false, steps: [['post', { type: 'openavc:x' }]] },
+    post_embedded: { framed: true, embedded: true, draw: false, steps: [['post', { type: 'openavc:x', n: 1 }]] },
+    post_parent_throws: { framed: true, embedded: true, parentThrows: true, draw: false, steps: [['post', { type: 'openavc:x' }]] },
+    post_to_its_own_window: { embedded: true, draw: false, steps: [['post', { type: 'openavc:x' }]] },
+};
+
+Object.assign(tests, {
+    async builder_link_takes_and_sends_as_today() {
+        const got = await driveCases({}, BUILDER_LINK_CASES);
+        comparePins('builder_link', got, BUILDER_LINK_PINS.builder_link);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.
