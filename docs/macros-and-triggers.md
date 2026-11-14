@@ -461,10 +461,10 @@ Most rooms can be built entirely with macros, conditionals, and bindings. Script
 Click **Templates** to insert boilerplate for common patterns:
 - Button handler (event listener with device command)
 - State change handler (react to a device state change)
-- Device control (send commands with error handling)
+- Device control (send commands to a device when an event fires)
 - Periodic timer (recurring status checks)
 - System on/off (full room startup/shutdown sequence)
-- Scheduled task (cron-driven operations)
+- Scheduled task (a repeating check on a timer that can be cancelled)
 - Device monitor (watch device state and react)
 - Custom event handler (listen for custom events)
 - Variable watcher (react to variable changes)

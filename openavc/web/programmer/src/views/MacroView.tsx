@@ -4,7 +4,7 @@ import { MacroList } from "../components/macros/MacroList";
 import { MacroEditor } from "../components/macros/MacroEditor";
 import { ConfirmDialog } from "../components/shared/ConfirmDialog";
 import { Modal } from "../components/shared/Modal";
-import { macroToScript, generateId, getConversionWarnings, loadWorksOffline } from "../components/macros/macroHelpers";
+import { macroToScript, generateId, getConversionWarnings, loadWorksOffline, convertedMacroAdvice } from "../components/macros/macroHelpers";
 import { useMacroLint } from "../components/macros/macroLint";
 import { useTriggerRuns } from "../components/macros/triggerRuns";
 import { useProjectStore } from "../store/projectStore";
@@ -106,12 +106,8 @@ export function MacroView() {
       });
       await useProjectStore.getState().load();
       setScriptPreview(null);
-      showInfo(
-        `Script "${scriptPreview.scriptId}" created! ` +
-        `Important: The original macro and its triggers are still active. ` +
-        `To avoid duplicate actions, delete this macro or disable its triggers ` +
-        `before enabling the script.`
-      );
+      const advice = convertedMacroAdvice(selectedMacro);
+      showInfo(`Script "${scriptPreview.scriptId}" created.${advice ? ` ${advice}` : ""}`);
     } catch (e) {
       showError(`Failed to create script: ${parseApiError(e)}`);
     }

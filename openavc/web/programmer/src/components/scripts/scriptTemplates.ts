@@ -92,8 +92,9 @@ async def system_off(event):
   {
     name: "Scheduled Task",
     description: "Run code on a repeating schedule",
-    code: `"""Scheduled task: runs on a cron schedule via a trigger.
-Create a Schedule trigger on a macro, or use the every() timer here."""
+    code: `"""Scheduled task: runs a check every 5 minutes with the every() timer.
+For a time of day, put a Schedule trigger on a macro with an Emit Event step,
+and handle that event here with @on_event."""
 from openavc import on_event, every, cancel_timer, state, devices, log
 
 

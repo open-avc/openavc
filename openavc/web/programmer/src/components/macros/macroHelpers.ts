@@ -669,6 +669,19 @@ export function getConversionWarnings(macro: MacroConfig, groups?: DeviceGroup[]
   return warnings;
 }
 
+/** What to do with the macro once Convert to Script has created its script,
+ * or "" when nothing. The script runs as soon as it is created and the macro's
+ * triggers still run the macro, so each enabled trigger would run the steps
+ * twice. A Schedule trigger is the one to keep: the script's comment asks for it. */
+export function convertedMacroAdvice(macro: MacroConfig): string {
+  const enabled = (macro.triggers ?? []).filter((t) => t.enabled);
+  if (enabled.length === 0) return "";
+  if (enabled.some((t) => t.type === "schedule")) {
+    return "The macro's triggers still run its steps. Disable all but its Schedule trigger, and replace its steps with the Emit Event step the script names.";
+  }
+  return "The macro's triggers still run its steps. Disable them or delete the macro, so the steps do not run twice.";
+}
+
 let _nextId = 1;
 export function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${_nextId++}`;
