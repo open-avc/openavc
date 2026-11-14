@@ -355,7 +355,7 @@ Click **Test** to save pending project edits and execute the macro. If saving fa
 
 ## Convert to Script
 
-Click **Convert to Script** to generate a Python script from the macro. A preview shows the generated code in a diff-like view before committing. This is useful when you need loops, error handling with retries, external API calls, or complex data processing that macros cannot express. The generated script runs the same steps with proper `await` calls. Navigate Panel, Ask for Help and Clear Help Request have no script equivalent and come out as comments: keep them in a macro and call it with `await macros.execute("<macro id>")`.
+Click **Convert to Script** to generate a Python script from the macro. A preview shows the generated code in a diff-like view before committing. This is useful when you need loops, error handling with retries, external API calls, or complex data processing that macros cannot express. The generated script runs the same steps with proper `await` calls. Navigate Panel, Ask for Help and Clear Help Request have no script equivalent and come out as comments: keep them in a macro and call it with `await macros.execute("<macro id>")`. A Schedule trigger also comes out as a comment, since scripts have no Schedule trigger. To keep the schedule, leave the trigger on the macro, replace the macro's steps with the one Emit Event step the comment names, and uncomment the handler below it.
 
 ## Triggers
 

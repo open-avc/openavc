@@ -78,7 +78,6 @@ gen("injection", {
 }, undefined, {
   state_key: EVIL_KEY,
   event_pattern: EVIL_PATTERN,
-  schedule_pattern: "schedule.macro_" + EVIL_ID,
   name: EVIL_NAME,
 });
 

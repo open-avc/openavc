@@ -1,4 +1,4 @@
-import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup } from "../../api/types";
+import type { MacroStep, MacroConfig, DeviceConfig, DeviceGroup, TriggerConfig } from "../../api/types";
 import { quotedValueText } from "../shared/booleanWords";
 import type { StepNames } from "./commandLabels";
 
@@ -309,20 +309,19 @@ export function macroToScript(
         _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
       } else if (trigger.type === "event" && trigger.event_pattern) {
         body.push(`@on_event("${_pyEscape(trigger.event_pattern)}")`);
-        body.push("async def on_trigger(event, payload):");
+        body.push("async def on_trigger(event):");
         for (const cond of trigger.conditions ?? []) {
           body.push(_conditionToGuard(cond, "    "));
           body.push("        return");
         }
         _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
       } else if (trigger.type === "schedule" && trigger.cron) {
-        body.push(`# Schedule: ${_pyComment(trigger.cron)}`);
-        body.push(`@on_event("schedule.macro_${_pyEscape(macro.id)}")`);
-        body.push("async def on_trigger(event, payload):");
-        _generateStepLines(body, macro.steps, "    ", groups, worksOffline);
+        // A schedule trigger runs its macro directly and emits no event, so
+        // there is nothing for a script handler to listen for.
+        _scheduleComment(body, trigger, macro);
       } else if (trigger.type === "startup") {
         body.push("@on_event(\"system.started\")");
-        body.push("async def on_startup(event, payload):");
+        body.push("async def on_startup(event):");
         if ((trigger.delay_seconds ?? 0) > 0) {
           body.push(`    await asyncio.sleep(${trigger.delay_seconds})`);
         }
@@ -351,7 +350,7 @@ export function macroToScript(
   if (triggers.some((t) => t.type === "startup" && t.enabled) && !hasEvent) {
     imports.push("on_event");
   }
-  // Schedule triggers also use on_event
+  // A schedule trigger's commented-out handler uses on_event once uncommented
   if (hasSchedule && !imports.includes("on_event")) {
     imports.push("on_event");
   }
@@ -367,6 +366,21 @@ export function macroToScript(
   ];
 
   return lines.join("\n") + "\n";
+}
+
+/** What a schedule trigger becomes: a comment, since scripts have no Schedule
+ * trigger, with the handler to uncomment once the macro emits the event. */
+function _scheduleComment(body: string[], trigger: TriggerConfig, macro: MacroConfig): void {
+  const event = `custom.${macro.id}_schedule`;
+  body.push(`# Schedule "${_pyComment(trigger.cron ?? "")}" is not converted: scripts have no Schedule trigger.`);
+  body.push("# To run this script on it, keep the Schedule trigger on the macro, replace");
+  body.push(`# the macro's steps with one Emit Event step that fires ${_pyComment(event)},`);
+  body.push("# and uncomment:");
+  body.push("#");
+  // _pyEscape leaves no control character, so the line stays one comment line
+  body.push(`# @on_event("${_pyEscape(event)}")`);
+  body.push("# async def on_schedule(event):");
+  body.push("#     await run()");
 }
 
 /** Escape a string for use inside a Python string literal (quotes, backslashes,
@@ -453,10 +467,7 @@ function _generateStepLines(
   groups?: DeviceGroup[],
   worksOffline?: WorksOffline,
 ): void {
-  if (steps.length === 0) {
-    lines.push(`${indent}pass`);
-    return;
-  }
+  const start = lines.length;
   for (const step of steps) {
     // skip_if guard — if the condition matches, skip the step (mirrors the
     // macro engine, including compare()'s operator aliases + type coercion)
@@ -619,6 +630,13 @@ function _generateStepLines(
         break;
     }
   }
+  if (_onlyComments(lines.slice(start))) lines.push(`${indent}pass`);
+}
+
+/** True when a block came out as comments only (no steps, or steps with no
+ * script equivalent): Python refuses a block with no statement in it. */
+function _onlyComments(block: string[]): boolean {
+  return block.every((line) => line.trimStart().startsWith("#"));
 }
 
 /** Analyze a macro for potential script conversion issues. */
@@ -645,7 +663,7 @@ export function getConversionWarnings(macro: MacroConfig, groups?: DeviceGroup[]
 
   const triggers = macro.triggers ?? [];
   if (triggers.some((t) => t.type === "schedule" && t.enabled)) {
-    warnings.push("Schedule triggers are converted to event listeners. The schedule cron job still runs on the macro engine, so disable the macro's schedule triggers after switching to the script.");
+    warnings.push("Schedule triggers are not converted: scripts have no Schedule trigger. To run the script on this schedule, keep the Schedule trigger on this macro and replace the macro's steps with one Emit Event step. The generated script shows the handler to add.");
   }
 
   return warnings;

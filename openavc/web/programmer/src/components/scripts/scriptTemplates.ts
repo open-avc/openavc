@@ -13,8 +13,8 @@ from openavc import on_event, devices, state, log
 
 
 @on_event("ui.press.*")
-async def handle_button(event, payload):
-    element_id = payload.get("element_id", "")
+async def handle_button(event):
+    element_id = event.get("element_id", "")
     log.info(f"Button pressed: {element_id}")
 `,
   },
@@ -38,7 +38,7 @@ from openavc import on_event, devices, state, log
 
 
 @on_event("custom.my_trigger")
-async def control_device(event, payload):
+async def control_device(event):
     await devices.send("projector1", "power_on")
     state.set("var.room_active", True)
     log.info("System powered on")
@@ -52,7 +52,7 @@ from openavc import on_event, every, state, log
 
 
 @on_event("system.started")
-def start_timer(event, payload):
+def start_timer(event):
     every(60, check_status)
 
 
@@ -69,7 +69,7 @@ import asyncio
 
 
 @on_event("ui.press.btn_system_on")
-async def system_on(event, payload):
+async def system_on(event):
     log.info("System powering on...")
     state.set("var.projector_status_text", "Starting...")
     await devices.send("projector1", "power_on")
@@ -81,7 +81,7 @@ async def system_on(event, payload):
 
 
 @on_event("ui.press.btn_system_off")
-async def system_off(event, payload):
+async def system_off(event):
     log.info("System powering off...")
     await devices.send("projector1", "power_off")
     state.set("var.room_active", False)
@@ -101,7 +101,7 @@ timer_id = None
 
 
 @on_event("system.started")
-def start_schedule(event, payload):
+def start_schedule(event):
     global timer_id
     # Run every 5 minutes (300 seconds)
     timer_id = every(300, scheduled_check)
@@ -121,24 +121,24 @@ def scheduled_check():
 from openavc import on_event, state, log
 
 
-@on_event("device.*.connected")
-async def on_connected(event, payload):
-    device_id = event.split(".")[1]
+@on_event("device.connected.*")
+async def on_connected(event):
+    device_id = event.name.split(".", 2)[2]
     log.info(f"Device connected: {device_id}")
     state.set(f"var.{device_id}_online", True)
 
 
-@on_event("device.*.disconnected")
-async def on_disconnected(event, payload):
-    device_id = event.split(".")[1]
+@on_event("device.disconnected.*")
+async def on_disconnected(event):
+    device_id = event.name.split(".", 2)[2]
     log.warning(f"Device disconnected: {device_id}")
     state.set(f"var.{device_id}_online", False)
 
 
-@on_event("device.*.error")
-async def on_error(event, payload):
-    device_id = event.split(".")[1]
-    error = payload.get("error", "Unknown error")
+@on_event("device.error.*")
+async def on_error(event):
+    device_id = event.name.split(".", 2)[2]
+    error = event.get("error", "Unknown error")
     log.error(f"Device error on {device_id}: {error}")
 `,
   },
@@ -150,8 +150,8 @@ from openavc import on_event, events, state, log
 
 
 @on_event("custom.room_mode_changed")
-async def on_mode_change(event, payload):
-    mode = payload.get("mode", "unknown")
+async def on_mode_change(event):
+    mode = event.get("mode", "unknown")
     log.info(f"Room mode changed to: {mode}")
 
     if mode == "presentation":

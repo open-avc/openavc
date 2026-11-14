@@ -276,12 +276,12 @@ class TestEscaping:
         for line in src.splitlines():
             assert not re.match(r"^\s*import\s+os\b", line), line
 
-        # Decorator patterns round-trip to the exact literal values
+        # Decorator patterns round-trip to the exact literal values. The
+        # schedule trigger registers no handler: it becomes a comment.
         state_patterns = [p for p, _ in r.state_handlers]
         event_patterns = [p for p, _ in r.event_handlers]
         assert state_patterns == [meta["state_key"]]
-        assert meta["event_pattern"] in event_patterns
-        assert meta["schedule_pattern"] in event_patterns
+        assert event_patterns == [meta["event_pattern"]]
 
     def test_docstring_survives_hostile_name(self, generated):
         entry = generated["injection"]

@@ -481,10 +481,10 @@ export function ScriptEditor({ source, onChange, onEditorReady, runtimeErrors, l
             {
               label: "on_event",
               kind: monaco.languages.CompletionItemKind.Snippet,
-              insertText: 'on_event("${1:event_pattern}")\nasync def ${2:handler}(event, payload):\n    ${0}',
+              insertText: 'on_event("${1:event_pattern}")\nasync def ${2:handler}(event):\n    ${0}',
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
               detail: "Event handler decorator (pattern: str)",
-              documentation: { value: 'Register a function to run when an event fires. Supports glob patterns.\n\n```python\n@on_event("ui.press.btn_power")\nasync def handle(event, payload):\n    log.info("Power pressed")\n```' },
+              documentation: { value: 'Register a function to run when an event fires. Supports glob patterns.\n\n```python\n@on_event("ui.press.btn_power")\nasync def handle(event):\n    log.info("Power pressed")\n```' },
               range,
             },
             {
