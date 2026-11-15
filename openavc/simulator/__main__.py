@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import sys
 
 import uvicorn
 
@@ -13,7 +14,10 @@ def main():
     )
     parser.add_argument(
         "--config",
-        help="Path to simulation config JSON file",
+        help=(
+            "Path to simulation config JSON file, or - to read it from standard "
+            "input (how OpenAVC starts the simulator)"
+        ),
     )
     parser.add_argument(
         "--driver-paths",
@@ -51,11 +55,7 @@ def main():
     )
     args = parser.parse_args()
 
-    # Load config from file if provided
-    config = {}
-    if args.config:
-        with open(args.config) as f:
-            config = json.load(f)
+    config = load_config(args.config)
 
     # CLI args override config file
     if args.driver_paths:
@@ -76,6 +76,21 @@ def main():
     server = uvicorn.Server(server_config(args.host, config["ui_port"]))
     _runtime.uvicorn_server = server
     server.run()
+
+
+def load_config(source: str | None) -> dict:
+    """The simulation config: none, a JSON file, or ``-`` for standard input.
+
+    OpenAVC hands its config over on standard input, read here to the end
+    before anything starts: the config carries each simulated device's saved
+    logins, which a file would leave on disk.
+    """
+    if not source:
+        return {}
+    if source == "-":
+        return json.loads(sys.stdin.buffer.read())
+    with open(source) as f:
+        return json.load(f)
 
 
 def server_config(host: str, port: int) -> uvicorn.Config:

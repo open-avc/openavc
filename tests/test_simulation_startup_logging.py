@@ -12,6 +12,7 @@ import asyncio
 import contextlib
 import logging
 import socket
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -380,17 +381,23 @@ async def test_the_chosen_port_is_the_one_handed_to_the_child(monkeypatch, probe
     with _listening_port() as held:
         monkeypatch.setattr(simulation, "simulator_ui_port", lambda: held)
 
-        captured = {}
+        written = bytearray()
 
         async def _fake_spawn(*cmd, **kwargs):
-            cfg_path = cmd[cmd.index("--config") + 1]
-            with open(cfg_path) as fh:
-                captured.update(json.load(fh))
+            assert cmd[cmd.index("--config") + 1] == "-"
+            stdin = SimpleNamespace(write=written.extend, drain=AsyncMock(), close=lambda: None)
+            return SimpleNamespace(
+                stdin=stdin, stdout=None, stderr=None, returncode=None,
+                terminate=lambda: None, kill=lambda: None, wait=AsyncMock(),
+            )
+
+        async def _stop_here(process, ui_port):
             raise RuntimeError("stop here — the config is what we came for")
 
         monkeypatch.setattr(asyncio, "create_subprocess_exec", _fake_spawn)
 
         mgr = _manager()
+        mgr._await_simulator_ready = _stop_here
         mgr.engine = MagicMock()
         mgr.engine.wait_for_device_bringup = AsyncMock()
         mgr.engine.project = {"project": {"name": "Scratch"}}
@@ -401,5 +408,6 @@ async def test_the_chosen_port_is_the_one_handed_to_the_child(monkeypatch, probe
         with pytest.raises(RuntimeError):
             await mgr.start()
 
+    captured = json.loads(bytes(written))
     assert captured["ui_port"] != held, "the held port must not be handed on"
     assert probe_answers[captured["ui_port"]] is True

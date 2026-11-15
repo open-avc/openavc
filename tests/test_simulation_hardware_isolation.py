@@ -1,6 +1,5 @@
 """Unsupported simulated devices must not fall back to their hardware paths."""
 import asyncio
-import os
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -225,7 +224,8 @@ def start_run(rig, monkeypatch):
     manager, _ = rig
     monkeypatch.setattr(simulation, "_choose_ui_port", lambda preferred: preferred)
     monkeypatch.setattr(simulation, "_PORT_QUERY_RETRY_S", 0)
-    process = SimpleNamespace(stdout=_Pipe(), stderr=_Pipe(), returncode=None)
+    stdin = SimpleNamespace(write=lambda data: None, drain=AsyncMock(), close=lambda: None)
+    process = SimpleNamespace(stdin=stdin, stdout=_Pipe(), stderr=_Pipe(), returncode=None)
     monkeypatch.setattr(simulation.asyncio, "create_subprocess_exec", AsyncMock(return_value=process))
     started = []
 
@@ -242,7 +242,6 @@ def start_run(rig, monkeypatch):
     yield start
     for simulator in started:
         simulator._monitor_task.cancel()
-        os.unlink(simulator._config_path)
     simulation.set_running_ui_port(None)
 
 

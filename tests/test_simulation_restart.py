@@ -16,6 +16,10 @@ subprocess and its HTTP answers stubbed:
   on their real addresses, say so in ``system.simulation_error``, and keep the
   record so the next start tries again
 - the selection a start was given survives saves and subsequent restarts
+- the simulator's settings, which carry each device's saved logins, are never
+  left on disk: a server that ends without its own clean-up (an update's
+  restart, a crash, a kill) leaves no login in the temp folder, and a server
+  that starts removes the launch file an earlier version left there
 """
 
 from __future__ import annotations
@@ -23,7 +27,6 @@ from __future__ import annotations
 import asyncio
 import json
 import json as _json
-from pathlib import Path
 
 import pytest
 
@@ -45,6 +48,7 @@ class _DialRecorder(BaseDriver):
         "config_schema": {
             "host": {"type": "string", "label": "Host"},
             "port": {"type": "integer", "label": "Port", "default": 5000},
+            "password": {"type": "string", "label": "Password", "secret": True},
         },
         "state_variables": {},
         "commands": {},
@@ -82,8 +86,31 @@ class _Pipe:
         return b""
 
 
+class _Stdin:
+    """The simulator's standard input: what the start hands it."""
+
+    def __init__(self):
+        self.data = bytearray()
+        self.closed = False
+
+    def write(self, data: bytes) -> None:
+        assert not self.closed, "written after it was closed"
+        self.data += data
+
+    async def drain(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+    def settings(self) -> dict:
+        assert self.closed, "the simulator reads to the end of its input"
+        return _json.loads(bytes(self.data))
+
+
 class _Process:
     def __init__(self):
+        self.stdin = _Stdin()
         self.stdout = _Pipe()
         self.stderr = _Pipe()
         self.returncode = None
@@ -125,7 +152,7 @@ class _Session:
         return _Resp({"port": 19000 + int(device_id[1:])})
 
     async def get(self, url, timeout=None):
-        payload = _json.loads(self._rig.config_path().read_text())
+        payload = self._rig.processes[-1].stdin.settings()
         return _Resp({"devices": [
             {"device_id": d["device_id"], "port": 19000 + int(d["device_id"][1:])}
             for d in payload["devices"]
@@ -141,9 +168,6 @@ class _Rig:
         self.fail_launch = False
         self.engine: Engine | None = None
 
-    def config_path(self):
-        return Path(self.engine.simulation._config_path)
-
     async def spawn(self, *args, **kwargs):
         self.launches += 1
         if self.fail_launch:
@@ -152,7 +176,10 @@ class _Rig:
         self.processes.append(process)
         return process
 
-    def write_project(self, devices) -> str:
+    def write_project(self, devices, password: str | None = None) -> str:
+        config = {"port": 5000}
+        if password is not None:
+            config["password"] = password
         path = self.tmp_path / "project.avc"
         path.write_text(json.dumps({
             "openavc_version": "0.8.0",
@@ -161,7 +188,7 @@ class _Rig:
             "connections": {}, "scripts": [], "plugins": {},
             "devices": [
                 {"id": f"d{i}", "name": f"Device {i}", "driver": "acme_dial_recorder",
-                 "enabled": True, "config": {"host": f"10.0.0.{i}", "port": 5000}}
+                 "enabled": True, "config": {"host": f"10.0.0.{i}", **config}}
                 for i in devices
             ],
             "ui": {"settings": {}, "pages": []},
@@ -196,8 +223,8 @@ def rig(tmp_path, monkeypatch):
         _DialRecorder.attempts = []
 
 
-async def _boot(rig, devices=(1, 2)) -> Engine:
-    rig.engine = Engine(rig.write_project(list(devices)))
+async def _boot(rig, devices=(1, 2), password: str | None = None) -> Engine:
+    rig.engine = Engine(rig.write_project(list(devices), password))
     await asyncio.wait_for(rig.engine.start(), timeout=20)
     return rig.engine
 
@@ -340,5 +367,60 @@ async def test_a_simulator_that_stops_mid_run_says_so_and_stays_on(rig):
         # A start clears the sentence.
         await eng.simulation.start()
         assert eng.state.get("system.simulation_error") == ""
+    finally:
+        await eng.stop()
+
+
+# ── What a start leaves on disk ─────────────────────────────────────────────
+
+_LOGIN = "acme-door-code-4417"
+
+
+@pytest.mark.asyncio
+async def test_no_saved_login_is_left_on_disk_once_the_simulator_has_started(
+    rig, tmp_path, monkeypatch,
+):
+    """The simulator's settings carry each simulated device's config with its
+    saved logins filled in. Handed over as a file in the temp folder, they
+    stayed there whenever the server ended without its own clean-up: an
+    update's restart, a crash, a kill."""
+    temp = tmp_path / "temp"
+    temp.mkdir()
+    monkeypatch.setattr(simulation.tempfile, "tempdir", str(temp))
+    rig.leave_simulation_on()
+    eng = await _boot(rig, devices=(1,), password=_LOGIN)
+    try:
+        assert eng.simulation.active
+        # Read before any stop: a hard exit runs none of the server's clean-up.
+        holding = [
+            path.name for path in temp.rglob("*")
+            if path.is_file() and _LOGIN.encode() in path.read_bytes()
+        ]
+        assert holding == []
+        # The simulator still got the login, on its standard input.
+        (device,) = rig.processes[0].stdin.settings()["devices"]
+        assert device["config"]["password"] == _LOGIN
+    finally:
+        await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_launch_file_an_earlier_version_left_is_removed_at_start(
+    rig, tmp_path, monkeypatch,
+):
+    """An earlier version left its launch file, with the logins in it, in the
+    temp folder after a hard exit; the next start removes it."""
+    folder = tmp_path / "temp"
+    folder.mkdir()
+    monkeypatch.setattr(simulation, "_leftover_launch_folder", lambda: folder)
+    left = folder / "openavc_sim_k2j4x9.json"
+    left.write_text(_json.dumps({"devices": [{"config": {"password": _LOGIN}}]}))
+    neighbours = [folder / "openavc_sim_notes.txt", folder / "acme_sim_1.json"]
+    for path in neighbours:
+        path.write_text("{}")
+    eng = await _boot(rig)
+    try:
+        assert not left.exists()
+        assert [path.exists() for path in neighbours] == [True, True]
     finally:
         await eng.stop()

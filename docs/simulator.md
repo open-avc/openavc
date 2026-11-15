@@ -43,6 +43,8 @@ Or with a configuration file:
 python -m openavc.simulator --config sim_config.json
 ```
 
+`--config -` reads the same JSON from standard input instead of a file.
+
 **Config file format:**
 
 ```json

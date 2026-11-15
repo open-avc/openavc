@@ -24,6 +24,15 @@ simulator that stops mid-run, leave the devices on their real addresses and
 say so in ``system.simulation_error``; the record stays, so the next start
 tries again. While simulation runs the IDE, the panel and the cloud portal all
 mark it (``system.simulation_active``).
+
+**The simulator's settings never touch the disk.** They carry each simulated
+device's config with its saved logins filled in, so they go to the simulator
+on its standard input (``--config -``), which it reads to the end before it
+starts anything (:func:`_hand_over_settings`). Earlier versions wrote them to
+an ``openavc_sim_*.json`` file in the temp folder, which a server that ended
+without its own clean-up (an update's restart, a crash, a kill) left behind
+with the logins in clear; every start removes any such file
+(:func:`_sweep_leftover_launch_files`).
 """
 
 from __future__ import annotations
@@ -218,6 +227,54 @@ def _remove_record() -> None:
     except OSError as e:
         log.warning("Could not remove %s: %s", RECORD_NAME, e)
 
+
+# The launch file earlier versions wrote (see the module docstring). Exactly
+# this pattern, in that one folder, never below it: the folder is the
+# system's, shared with everything else on the machine.
+_LEFTOVER_LAUNCH_FILES = "openavc_sim_*.json"
+
+# How long the simulator has to take its settings before the start moves on to
+# the readiness wait, which then says what became of it.
+_HAND_OVER_TIMEOUT_S = 4.0
+
+
+def _leftover_launch_folder() -> Path:
+    """Where earlier versions wrote the launch file: the system temp folder."""
+    return Path(tempfile.gettempdir())
+
+
+def _sweep_leftover_launch_files() -> None:
+    """Remove the launch files an earlier version left. Never fails a start."""
+    try:
+        leftovers = list(_leftover_launch_folder().glob(_LEFTOVER_LAUNCH_FILES))
+    except OSError as e:
+        log.warning("Could not look for leftover simulator launch files: %s", e)
+        return
+    for path in leftovers:
+        try:
+            if path.is_file() and not path.is_symlink():
+                path.unlink()
+                log.info("Removed a leftover simulator launch file: %s", path)
+        except OSError as e:
+            log.warning("Could not remove the leftover simulator launch file %s: %s", path, e)
+
+
+async def _hand_over_settings(process: asyncio.subprocess.Process, settings: dict) -> None:
+    """Write the simulator's settings to its standard input and close it.
+
+    A simulator that exits before reading them, or never reads them, is not
+    reported here: the readiness wait that follows sees what it did and says
+    why, with what it printed.
+    """
+    stdin = process.stdin
+    try:
+        stdin.write(json.dumps(settings).encode("utf-8"))
+        await asyncio.wait_for(stdin.drain(), timeout=_HAND_OVER_TIMEOUT_S)
+    except (OSError, asyncio.TimeoutError) as e:
+        log.warning("The simulator did not take its settings: %r", e)
+    finally:
+        stdin.close()
+
 _PERMISSION_DENIED_MARKERS = (
     "forbidden by its access permissions",
     "10013",
@@ -408,7 +465,9 @@ class SimulationManager:
     def load_resume(self) -> bool:
         """Read the record at startup. True when simulation was on, in which
         case the caller registers its devices undialed and runs a bring-up
-        round, whose first step is :meth:`resume`."""
+        round, whose first step is :meth:`resume`. Also removes the launch
+        files an earlier version left in the temp folder."""
+        _sweep_leftover_launch_files()
         on, device_ids = _read_record()
         self._resume_pending = on
         self._resume_ids = device_ids
@@ -636,15 +695,6 @@ class SimulationManager:
             "parent_pid": os.getpid(),
         }
 
-        # Write config to temp file
-        config_file = tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False, prefix="openavc_sim_",
-        )
-        json.dump(sim_config, config_file)
-        config_file.close()
-        config_path = config_file.name
-        self._config_path = config_path
-
         # _choose_ui_port has already proved this port binds, which is the
         # pre-flight that used to live here. It replaced a connect probe that
         # asked "is anyone listening?" — the wrong question, and the reason a
@@ -658,9 +708,9 @@ class SimulationManager:
         # returning, so neither half rests on guessing uvicorn's wording.
         log.info("Starting simulator with %d devices...", len(devices_config))
         log.info("Driver paths: %s", driver_paths)
-        log.info("Config file: %s", config_path)
 
-        # Spawn the simulator process.
+        # Spawn the simulator process. Its settings follow on its standard
+        # input (``--config -``), never in a file: see the module docstring.
         # In frozen (PyInstaller) builds, sys.executable is the .exe itself,
         # so we use --simulator flag which openavc/main.py dispatches to the
         # simulator entry point. In normal Python, use -m openavc.simulator.
@@ -670,13 +720,14 @@ class SimulationManager:
         # is the launcher, drivers depend on the simulator staying up
         # regardless of whether the Simulator UI tab is open.
         if getattr(sys, 'frozen', False):
-            cmd = [sys.executable, "--simulator", "--config", config_path, "--no-auto-shutdown"]
+            cmd = [sys.executable, "--simulator", "--config", "-", "--no-auto-shutdown"]
         else:
-            cmd = [sys.executable, "-m", "openavc.simulator", "--config", config_path, "--no-auto-shutdown"]
+            cmd = [sys.executable, "-m", "openavc.simulator", "--config", "-", "--no-auto-shutdown"]
 
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 creationflags=CREATE_NO_WINDOW,
@@ -694,6 +745,7 @@ class SimulationManager:
                 self._drain_stream(self._process.stdout, "simulator.stdout"),
             ),
         ]
+        await _hand_over_settings(self._process, sim_config)
 
         # Wait for the simulator to start up
         try:
@@ -1075,9 +1127,6 @@ class SimulationManager:
             if not t.done():
                 t.cancel()
         self._drain_tasks = []
-        if hasattr(self, "_config_path") and self._config_path:
-            Path(self._config_path).unlink(missing_ok=True)
-            self._config_path = None
 
     # Transports with no simulator server of their own. Each is a raw byte
     # pipe, so the simulator serves it over TCP and the driver is flipped to

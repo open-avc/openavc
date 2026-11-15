@@ -11,7 +11,7 @@ import os
 import sys
 
 # In frozen (PyInstaller) builds, this exe doubles as the simulator entry point.
-# simulation.py launches: sys.executable --simulator --config <path>
+# simulation.py launches: sys.executable --simulator --config - (settings on stdin)
 if getattr(sys, 'frozen', False) and len(sys.argv) > 1 and sys.argv[1] == '--simulator':
     sys.argv = [sys.argv[0]] + sys.argv[2:]  # strip the --simulator flag
     from openavc.simulator.__main__ import main as _sim_main

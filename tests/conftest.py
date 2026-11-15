@@ -177,6 +177,19 @@ def _isolated_system_config(tmp_path_factory):
     reset_system_config()
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _isolated_launch_file_sweep(tmp_path_factory):
+    """Point the start's sweep of leftover simulator launch files at an empty
+    folder for the session. The real one is the machine's temp folder, where a
+    test run of an earlier version in another checkout on this machine keeps
+    the launch files it is still using."""
+    from openavc.core import simulation
+    folder = tmp_path_factory.mktemp("simulator_launch_files")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(simulation, "_leftover_launch_folder", lambda: folder)
+        yield
+
+
 @pytest.fixture(autouse=True)
 def _reset_global_state():
     """Reset all global module-level state after each test to prevent leakage."""
