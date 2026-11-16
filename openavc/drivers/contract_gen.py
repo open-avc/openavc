@@ -153,8 +153,10 @@ def _top_level(name: str, node: dict[str, Any], tier: str) -> Any:
     # A keyword that also judges a null (a fixed value, a reference, a
     # combination) keeps the field's own schema whole beside the null.
     if kinds is not None and not set(out) & _JUDGES_A_NULL:
-        out["type"] = [*(kinds if isinstance(kinds, list) else [kinds]), "null"]
-        if "enum" in out:
+        kinds = kinds if isinstance(kinds, list) else [kinds]
+        if "null" not in kinds:
+            out["type"] = [*kinds, "null"]
+        if "enum" in out and None not in out["enum"]:
             out["enum"] = [*out["enum"], None]
         return out
     description = out.pop("description", None)

@@ -523,10 +523,11 @@ def test_the_driver_info_lists_its_fields_in_one_order() -> None:
     ]
 
 
-def test_a_field_is_copied_whatever_its_value() -> None:
+def test_a_field_is_copied_whatever_its_value_and_a_null_one_is_absent() -> None:
     definition = _with(UNIT, web_ui=False, help="", routing=None)
     info = create_configurable_driver_class(definition).DRIVER_INFO
-    assert (info["web_ui"], info["help"], info["routing"]) == (False, "", None)
+    assert (info["web_ui"], info["help"]) == (False, "")
+    assert "routing" not in info
 
 
 def test_a_command_entry_is_its_label_params_then_its_declared_fields() -> None:

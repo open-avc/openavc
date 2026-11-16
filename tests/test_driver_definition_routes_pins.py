@@ -28,6 +28,7 @@ import openavc.system_config as system_config
 from openavc.api.models import DriverDefinitionRequest
 from openavc.api.routes import driver_definitions as ROUTES
 from openavc.api.routes import drivers as INSTALL_ROUTES
+from openavc.drivers import refused_files
 from openavc.drivers.driver_loader import save_driver_definition
 
 WIDGET = {"id": "acme_widget", "name": "Acme Widget", "transport": "tcp",
@@ -47,6 +48,10 @@ def env(tmp_path: Path, monkeypatch) -> Env:
     builtin = tmp_path / "definitions"
     repo = tmp_path / "driver_repo"
     builtin.mkdir()
+    # Each test's own record of the files that did not load: a reload of a
+    # broken acme_widget would otherwise say "did not load" to later tests.
+    monkeypatch.setattr(refused_files, "_refused", {})
+    monkeypatch.setattr(refused_files, "_noticed", {})
     repo.mkdir()
     e = Env(builtin=builtin, repo=repo, events=[], restored=False, register_error=None)
 

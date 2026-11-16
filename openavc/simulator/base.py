@@ -34,14 +34,6 @@ BUILTIN_ERROR_MODES: dict[str, dict] = {
 }
 
 
-
-def _section(settings: dict, key: str) -> dict:
-    """One of a device's settings that maps names to values, read only when
-    it is a mapping: anything else is the checker's to name, never a device
-    that cannot be built."""
-    value = settings.get(key)
-    return value if isinstance(value, dict) else {}
-
 class BaseSimulator(ABC):
     """Abstract base for device simulators."""
 
@@ -93,9 +85,9 @@ class BaseSimulator(ABC):
         malformed machine is skipped (``_skip_malformed_machine``) rather than
         aborting the device's construction.
         """
-        self._state.update(_section(settings, "initial_state"))
-        self._error_modes.update(_section(settings, "error_modes"))
-        self._delays.update(_section(settings, "delays"))
+        self._state.update(settings.get("initial_state", {}))
+        self._error_modes.update(settings.get("error_modes", {}))
+        self._delays.update(settings.get("delays", {}))
         if settings.get("capacity") is not None:
             self._capacity.declare(settings["capacity"])
         if settings.get("single_client") is not None:

@@ -293,3 +293,11 @@ def test_a_start_up_or_poll_written_as_one_string_sends_nothing(over: dict[str, 
     asyncio.run(driver._run_on_connect())
     asyncio.run(driver.poll())
     assert driver.transport.sent == []
+
+
+@pytest.mark.parametrize("name", ["avcdriver.schema.json", "pythondriver.schema.json"])
+def test_the_published_schemas_are_valid_json_schema(name: str) -> None:
+    """A field the generator lets take a null stays a schema an editor and
+    the catalog can load (a kind named twice is not one)."""
+    schema = json.loads((_ROOT / "openavc/drivers" / name).read_text(encoding="utf-8"))
+    Draft202012Validator.check_schema(schema)

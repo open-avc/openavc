@@ -177,6 +177,20 @@ def _as_number(value: Any) -> float | None:
         return None
 
 
+
+# The parts of a simulator: section that map names to values.
+_NAMED_SETTINGS = ("initial_state", "delays", "error_modes")
+
+
+def _settings_read(sim: dict) -> dict:
+    """The section as the device's settings reader takes it: a named-values
+    part that is not a mapping is left out (logged), never a device that
+    cannot be built."""
+    misshapen = [key for key in _NAMED_SETTINGS if key in sim and not isinstance(sim[key], dict)]
+    for key in misshapen:
+        logger.warning("simulator.%s is not a mapping; it is left out", key)
+    return {key: value for key, value in sim.items() if key not in misshapen}
+
 class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimulator):
     """Auto-generated simulator from a .avcdriver definition.
 
@@ -1319,8 +1333,10 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         """Merge explicit simulator: enhancements onto auto-generated behavior:
         the device's settings and state machines (base.py's reader, the one a
         Python simulator's SIMULATOR_INFO goes through), its controls, its
-        hand-written handlers, then its own wording for state changes."""
-        self._read_device_settings(sim)
+        hand-written handlers, then its own wording for state changes. A
+        part of the settings that maps names to values and is not a mapping
+        is left out, so the device is built; the checker names it."""
+        self._read_device_settings(_settings_read(sim))
         # Declared controls replace the ones read from the state variables.
         controls = sim.get("controls")
         if controls:

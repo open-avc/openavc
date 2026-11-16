@@ -224,7 +224,6 @@
     "min_platform_version": {
       "type": [
         "string",
-        "null",
         "null"
       ],
       "pattern": "^\\d+\\.\\d+\\.\\d+(?:[\\-+][\\w.\\-]+)?$",
