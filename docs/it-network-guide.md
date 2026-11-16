@@ -534,6 +534,7 @@ Failed authentication attempts are throttled at the strict (10/min) rate on ever
 | Approved panels | `panel_devices.json` | Medium. One record per approved panel: its name, the kind of device, its address, when it was approved and by whom, and a salted hash of its secret, never the secret itself. Readable only by the account the service runs as; carried by the pre-update backup. Devices still waiting, and denied ones, are held in memory only. |
 | Application logs | `logs/` directory | Low. Standard application logs at INFO level. Device protocol traffic (which can include device credentials) is never written to disk — it is held in a fixed-size in-memory buffer, visible only in the live log view behind an authenticated Programmer login. Configurable rotation (default: 50 MB, 5 files). |
 | Cloud pairing data | `cloud.json` | High. Contains system key for cloud authentication. Protect with filesystem permissions. |
+| Backups | `backups/` in the data directory (taken before each update) and `backups/` beside the project (taken by OpenAVC and on request) | Medium to high. A pre-update backup carries `system.json`, the saved logins file (never its key) and, on a system paired with OpenAVC Cloud, `cloud.json`. A project backup carries the project with its logins sealed, so they open only on this system. On Linux and macOS each backup, and the data directory's `backups/` folder, is readable only by the account the service runs as; on Windows the data folder is restricted as for `system.json`. |
 
 ### What is NOT stored
 

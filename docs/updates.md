@@ -56,7 +56,7 @@ Only the application code is updated. Your data is never touched:
 - System configuration (system.json) is preserved
 - Cloud pairing credentials are preserved
 
-A backup zip is created before every update, stored in your data directory under `backups/`. It includes the active project and its scripts, assets, custom controls and saved variable state, including on appliance hardware. The five most recent backups are kept automatically.
+A backup zip is created before every update, stored in your data directory under `backups/`. It includes the active project and its scripts, assets, custom controls and saved variable state, including on appliance hardware. The five most recent backups are kept automatically. On Linux and macOS the folder and each backup in it are readable only by the account the service runs as, so open one with `sudo` there.
 
 ## Deployment Types
 
