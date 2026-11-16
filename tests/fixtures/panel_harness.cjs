@@ -434,7 +434,8 @@ const twoState = (equals) => ({
 //  the authored slot its words come from]
 const LOOK_CASES = [
     ['a matching state', LOOK_STATES, 'on', 'A', ['states', 'on']],
-    ['a state is matched exactly, case and all', LOOK_STATES, 'ON', 'B', ['states', 'off']],
+    ['a state is matched apart from case when none matches exactly', LOOK_STATES, 'ON', 'A', ['states', 'on']],
+    ['a boolean picks the state that means it', LOOK_BLANK, true, 'A', ['states', 'on']],
     ['an unknown value takes the default', LOOK_STATES, 'zzz', 'B', ['states', 'off']],
     ['null takes the default', LOOK_STATES, null, 'B', ['states', 'off']],
     ['no value takes the default', LOOK_STATES, undefined, 'B', ['states', 'off']],
@@ -450,9 +451,9 @@ const LOOK_CASES = [
     ['two-state: no value is inactive', twoState('On'), undefined, 'B', ['style_inactive']],
     ['two-state: a number matches its words', twoState('1'), 1, 'A', ['style_active']],
     ['two-state: true matches TRUE', twoState('TRUE'), true, 'A', ['style_active']],
-    ['two-state: null is compared as the word null', twoState('null'), null, 'A', ['style_active']],
-    ['two-state with no condition: the word undefined is active',
-        { key: 'var.v', style_active: LOOK_ENTRIES.A, style_inactive: LOOK_ENTRIES.B }, 'undefined', 'A', ['style_active']],
+    ['two-state: null is not the word null', twoState('null'), null, 'B', ['style_inactive']],
+    ['two-state with no condition: nothing is active',
+        { key: 'var.v', style_active: LOOK_ENTRIES.A, style_inactive: LOOK_ENTRIES.B }, 'undefined', 'B', ['style_inactive']],
     ['two-state with no inactive look: its own look',
         { key: 'var.v', condition: { equals: 'x' }, style_active: LOOK_ENTRIES.A }, 'y', null, null],
     ['two-state with no active look: its own look',

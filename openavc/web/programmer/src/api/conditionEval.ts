@@ -1,20 +1,36 @@
 /**
- * The runtime's condition rule, for a screen that shows what a condition
- * evaluates to now (the trigger editor's "Evaluated now").
+ * The runtime's comparison of a reading with what an author wrote, for a
+ * screen that judges a condition without the server: the trigger editor's
+ * "Evaluated now" and the page reviews.
  *
- * Mirrors `eval_operator` in openavc/core/condition_eval.py, which decides
- * whether a trigger's conditions pass. Both run the corpus in
- * tests/fixtures/condition_parity_cases.json (tests/test_condition_parity.py
- * and conditionEval.test.ts), so the preview cannot say FALSE about a trigger
- * the runtime fires: text compares without regard to case, "on" / "yes" / "1"
- * equal a boolean true, a number written as text equals the number, and a value
- * that has not been reported never matches.
+ * Mirrors openavc/core/condition_eval.py, THE rule, which macros, triggers
+ * and the server's panel press ask; the panel's own copy is
+ * web/panel/modules/compare.js. All three run the corpus in
+ * tests/fixtures/condition_parity_cases.json in both modes
+ * (tests/test_condition_parity.py, conditionEval.test.ts and
+ * tests/test_panel_condition_parity.py), so a preview cannot say FALSE about a
+ * trigger the runtime fires: text compares without regard to case, a boolean
+ * compares with the words and numbers that mean it, a number written as text
+ * equals the number, and a value that has not been reported never matches.
  *
  * State holds strings, numbers, booleans and null, and that is what is
  * mirrored. Two limits: text is lower-cased where Python case-folds (they differ
  * only outside ASCII, "ß" for one), and Python's int and float are one number
  * here, which changes no answer.
  */
+
+import { asNumber } from "./monitorHelpers";
+
+/** A reader that acts (a macro, a trigger) makes no decision on a reading
+ *  that has not arrived: never equal, never not-equal. The default. */
+export const DECIDE = "decide";
+/** A reader that shows or hides (the panel, a page review) reads one as
+ *  unequal to every value, so `power != on` holds before the device reports. */
+export const SURFACE = "surface";
+export type ConditionMode = typeof DECIDE | typeof SURFACE;
+/** Whether a reading that has not arrived holds `ne`, by mode: `MODES` in
+ *  condition_eval.py. */
+export const MODES: Record<ConditionMode, boolean> = { [DECIDE]: false, [SURFACE]: true };
 
 const OPERATOR_ALIASES: Record<string, string> = {
   equals: "eq",
@@ -33,28 +49,21 @@ const OPERATOR_ALIASES: Record<string, string> = {
   less_or_equal: "lte",
 };
 
-/** What Python's float() reads after trimming: a sign, digits with single
- * underscores between them, a point, an exponent, or inf / infinity / nan.
- * Never hex, never an empty string (Number() takes both). */
-const DIGITS = String.raw`\d(?:_?\d)*`;
-const PY_FLOAT = new RegExp(
-  String.raw`^[+-]?(?:(?:(?:${DIGITS}(?:\.(?:${DIGITS})?)?|\.${DIGITS})(?:[eE][+-]?${DIGITS})?)|inf(?:inity)?|nan)$`,
-  "i",
-);
+/** Every spelling the rule takes, its own eight and the aliases onto them. */
+export const OPERATOR_SPELLINGS: ReadonlySet<string> = new Set([
+  "eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy", ...Object.keys(OPERATOR_ALIASES),
+]);
 
+/** A spelling as the operator it names, or itself when it names none. */
+export function canonicalOperator(op: string): string {
+  return OPERATOR_ALIASES[op] ?? op;
+}
+
+/** A value as a number to compare: `asNumber`'s reading, and a boolean as 1
+ *  or 0 so `true < 2` orders as it always has. */
 function coerceNumeric(value: unknown): number | null {
-  if (typeof value === "number") return value;
-  // Python's bool is an int.
   if (typeof value === "boolean") return value ? 1 : 0;
-  if (typeof value === "string") {
-    const text = value.trim();
-    if (!PY_FLOAT.test(text)) return null;
-    const word = text.replace(/^[+-]/, "").toLowerCase();
-    if (word === "nan") return NaN;
-    if (word === "inf" || word === "infinity") return text.startsWith("-") ? -Infinity : Infinity;
-    return Number(text.replace(/_/g, ""));
-  }
-  return null;
+  return asNumber(value);
 }
 
 function coerceBool(value: unknown): boolean | null {
@@ -65,6 +74,15 @@ function coerceBool(value: unknown): boolean | null {
     if (low === "false" || low === "0" || low === "no" || low === "off") return false;
   }
   return null;
+}
+
+/** A reading as a boolean for comparing with one: a boolean, one of the
+ *  words, or a number by value, non-zero true. */
+function asBool(value: unknown): boolean | null {
+  const word = coerceBool(value);
+  if (word !== null) return word;
+  const number = asNumber(value);
+  return number === null ? null : number !== 0;
 }
 
 /** Python's bool(): only None, False, 0 and "" are false (NaN is true). */
@@ -81,29 +99,35 @@ function compare<T extends number | string>(op: string, a: T, t: T): boolean {
   return a <= t;
 }
 
-/** `eval_operator(op, actual, target)`. Throws on an operator the runtime
- * does not know, as the runtime does; a trigger treats that as not passing. */
-export function evalOperator(op: string, actual: unknown, target: unknown): boolean {
-  const canonical = OPERATOR_ALIASES[op] ?? op;
+/** Whether two values, neither of them missing, are equal under the rule. */
+function same(actual: unknown, target: unknown): boolean {
+  if (typeof actual === "boolean" || typeof target === "boolean") {
+    const a = asBool(actual);
+    const t = asBool(target);
+    if (a !== null && t !== null) return a === t;
+  }
+  if (typeof actual !== typeof target) {
+    const a = coerceNumeric(actual);
+    const t = coerceNumeric(target);
+    if (a !== null && t !== null) return a === t;
+  }
+  return typeof actual === "string" && typeof target === "string"
+    ? actual.toLowerCase() === target.toLowerCase()
+    : actual === target;
+}
+
+/** `eval_operator(op, actual, target, mode)`. Throws on an operator the
+ *  runtime does not know, as the runtime does; a trigger treats that as not
+ *  passing. */
+export function evalOperator(
+  op: string, actual: unknown, target: unknown, mode: ConditionMode = DECIDE,
+): boolean {
+  const canonical = canonicalOperator(op);
 
   if (canonical === "eq" || canonical === "ne") {
-    // Never equal and never not-equal while either side is unknown.
-    if (actual == null || target == null) return false;
-    const eq = canonical === "eq";
-    if (typeof actual === "boolean" || typeof target === "boolean") {
-      const a = coerceBool(actual);
-      const t = coerceBool(target);
-      if (a !== null && t !== null) return eq ? a === t : a !== t;
-    }
-    if (typeof actual !== typeof target) {
-      const a = coerceNumeric(actual);
-      const t = coerceNumeric(target);
-      if (a !== null && t !== null) return eq ? a === t : a !== t;
-    }
-    const isEqual = typeof actual === "string" && typeof target === "string"
-      ? actual.toLowerCase() === target.toLowerCase()
-      : actual === target;
-    return eq ? isEqual : !isEqual;
+    if (target == null) return false;
+    if (actual == null) return canonical === "ne" && MODES[mode];
+    return canonical === "eq" ? same(actual, target) : !same(actual, target);
   }
 
   if (canonical === "gt" || canonical === "lt" || canonical === "gte" || canonical === "lte") {
@@ -111,8 +135,6 @@ export function evalOperator(op: string, actual: unknown, target: unknown): bool
     const a = coerceNumeric(actual);
     const t = coerceNumeric(target);
     if (a !== null && t !== null) return compare(canonical, a, t);
-    // Python then compares the values as they are, which works only for two
-    // strings; anything else is a TypeError and does not pass.
     if (typeof actual === "string" && typeof target === "string") {
       return compare(canonical, actual, target);
     }
@@ -124,4 +146,39 @@ export function evalOperator(op: string, actual: unknown, target: unknown): bool
   throw new Error(
     `Unknown condition operator: '${op}'. Valid operators: eq, ne, gt, lt, gte, lte, truthy, falsy`,
   );
+}
+
+/** Whether a reading equals an authored value: `eq`, the same in both modes. */
+export function sameValue(actual: unknown, target: unknown): boolean {
+  return evalOperator("eq", actual, target);
+}
+
+/** A value's words, as `value_words` in condition_eval.py spells them. */
+function valueWords(value: unknown): string {
+  return String(value);
+}
+
+const byWords = (a: unknown, b: unknown): number => {
+  const x = valueWords(a);
+  const y = valueWords(b);
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+
+/** The key of an authored map a reading picks, or null: `match_key` in
+ *  condition_eval.py (the exact key, then one apart from case, then one the
+ *  reading equals as a boolean or number; ties go to code point order). */
+export function matchKey<K>(keys: Iterable<K>, reading: unknown): K | null {
+  if (reading == null) return null;
+  const candidates = [...keys].filter((key) => key != null);
+  const words = valueWords(reading);
+  const tiers: ((key: K) => boolean)[] = [
+    (key) => valueWords(key) === words,
+    (key) => valueWords(key).toLowerCase() === words.toLowerCase(),
+    (key) => sameValue(reading, key),
+  ];
+  for (const matches of tiers) {
+    const found = candidates.filter(matches).sort(byWords);
+    if (found.length) return found[0];
+  }
+  return null;
 }

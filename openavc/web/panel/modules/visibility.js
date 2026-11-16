@@ -7,49 +7,28 @@
  * conditions under `any`'s rule. A condition is `{ key, operator, value }`,
  * `eq` when it names no operator, and an operator nobody knows never holds.
  *
+ * How each operator compares is the server's rule (core/condition_eval.py),
+ * through the panel's copy of it, modules/compare.js, in the surface mode: a
+ * reading that has not arrived is unequal to every value, so a control shown
+ * while `power != on` shows before the projector reports.
+ *
  * The rule worth knowing before changing anything here: the operator
  * spellings are a contract. The page review (ui/page_review.py) and the
  * Builder's (reviewStacking.ts) reason about which spellings the panel
  * evaluates and what each one means, and tests/test_ui_page_review_mirrors.py
  * runs OPERATORS here and holds the reviews' sets to them; the AI's binding
  * check (cloud/tools/ui_bindings.py) takes the canonical names. A new
- * spelling goes into those too. How each operator compares is not the
- * server's rule (core/condition_eval.py): tests/test_panel_condition_parity.py
- * runs these operators over the server's condition corpus and pins every
- * place they differ. No DOM and no panel state.
+ * spelling goes into those too. No DOM and no panel state.
  */
 
-/** A comparison that holds only when both sides are set (neither null nor undefined). */
-const bounded = (compare) => (actual, target) => actual != null && target != null && compare(actual, target);
+import { OPERATOR_SPELLINGS, SURFACE, evalOperator } from './compare.js';
 
-/**
- * Each operator spelling and whether it holds for a reading `actual` against
- * the condition's `target`. Equality is JavaScript's loose one, so a reading
- * of 5 equals a target of "5", and null equals undefined.
- */
-export const OPERATORS = new Map([
-    ['eq', (actual, target) => actual == target],
-    ['equals', (actual, target) => actual == target],
-    ['==', (actual, target) => actual == target],
-    ['ne', (actual, target) => actual != target],
-    ['not_equals', (actual, target) => actual != target],
-    ['!=', (actual, target) => actual != target],
-    ['gt', bounded((actual, target) => actual > target)],
-    ['>', bounded((actual, target) => actual > target)],
-    ['lt', bounded((actual, target) => actual < target)],
-    ['<', bounded((actual, target) => actual < target)],
-    ['gte', bounded((actual, target) => actual >= target)],
-    ['>=', bounded((actual, target) => actual >= target)],
-    ['lte', bounded((actual, target) => actual <= target)],
-    ['<=', bounded((actual, target) => actual <= target)],
-    ['truthy', (actual) => !!actual],
-    ['falsy', (actual) => !actual],
-]);
+/** Each operator spelling a condition may use, and the operator it names. */
+export const OPERATORS = OPERATOR_SPELLINGS;
 
 /** Whether `actual op target` holds; an operator not in OPERATORS never does. */
 export function conditionHolds(op, actual, target) {
-    const holds = OPERATORS.get(op);
-    return holds ? holds(actual, target) : false;
+    return evalOperator(op, actual, target, SURFACE);
 }
 
 /**

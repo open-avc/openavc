@@ -14,7 +14,7 @@
  * and no control's definition (the caller hands over the decimals).
  */
 
-import { sameWords } from './looks.js';
+import { sameValue } from './compare.js';
 import { nothingToShow } from './readings.js';
 
 /** Where a bound value's words are authored; frozen, since every caller is handed the same one. */
@@ -47,13 +47,13 @@ function withoutReading(binding) {
 }
 
 /**
- * A text condition's word: `text_true` when the reading's words equal
- * `equals` apart from case, so a numeric 1 or a boolean true matches an
- * equals of '1' or 'true'; `text_false` otherwise, a missing or null reading
- * included.
+ * A text condition's word: `text_true` when the reading equals `equals`
+ * (compare.js `sameValue`), so a numeric 1 or a boolean true matches an
+ * equals of '1', 'true' or 'on'; `text_false` otherwise, a missing or null
+ * reading included.
  */
 function conditionWords(binding, value) {
-    const isMatch = !nothingToShow(value) && sameWords(value, binding.condition.equals);
+    const isMatch = !nothingToShow(value) && sameValue(value, binding.condition.equals);
     return [
         isMatch ? (binding.text_true || '') : (binding.text_false || ''),
         [...VALUE, isMatch ? 'text_true' : 'text_false'],

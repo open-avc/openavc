@@ -16,6 +16,7 @@
  * property only one of them reads stays in its renderer in panel.js.
  */
 
+import { pickKey } from './compare.js';
 import { nothingToShow } from './readings.js';
 
 const SELECT_QUIET_MS = 100;
@@ -44,7 +45,7 @@ export function drawSelect(host, elementId, options, styleMap) {
         const option = document.createElement('option');
         option.value = opt.value;
         option.textContent = opt.label;
-        const optStyle = styleMap && styleMap[opt.value];
+        const optStyle = styleMap && styleMap[pickKey(Object.keys(styleMap), opt.value)];
         if (optStyle) {
             if (optStyle.bg_color) option.style.backgroundColor = optStyle.bg_color;
             if (optStyle.text_color) option.style.color = optStyle.text_color;
@@ -55,22 +56,26 @@ export function drawSelect(host, elementId, options, styleMap) {
     return select;
 }
 
-/** No selection at all rather than a stale one or the first option: a
- *  dropdown reading "HDMI 2" for a switcher nobody can reach is a confident
- *  wrong answer, and so is "HDMI 1" for one that has not said yet. */
+/** The option the value picks (compare.js `pickKey`, as a map's keys are
+ *  picked), else no selection at all rather than a stale one or the first
+ *  option: a dropdown reading "HDMI 2" for a switcher nobody can reach is a
+ *  confident wrong answer, and so is "HDMI 1" for one that has not said yet. */
 export function showSelectValue(select, value, offline) {
-    if (nothingToShow(value, offline)) {
+    const picked = nothingToShow(value, offline)
+        ? null : pickKey([...select.options].map((option) => option.value), value);
+    if (picked === null) {
         select.selectedIndex = -1;
         return;
     }
-    select.value = String(value);
+    select.value = picked;
 }
 
 /** The dropdown in the colours of the option its key's value matches, and in
  *  the theme's when nothing matches. Both colours are written every time, so
  *  a previous match never lingers. */
 export function showSelectLook(select, styleMap, value, offline) {
-    const matched = nothingToShow(value, offline) ? undefined : styleMap[String(value)];
+    const key = nothingToShow(value, offline) || !styleMap ? null : pickKey(Object.keys(styleMap), value);
+    const matched = key === null ? undefined : styleMap[key];
     select.style.backgroundColor = (matched && matched.bg_color) || '';
     select.style.color = (matched && matched.text_color) || '';
 }

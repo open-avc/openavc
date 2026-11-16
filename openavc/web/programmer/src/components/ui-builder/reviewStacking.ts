@@ -6,6 +6,7 @@
  * the ones the panel evaluates.
  */
 
+import { SURFACE, evalOperator } from "../../api/conditionEval";
 import type { UIElement } from "../../api/types";
 import { isPlainObject } from "./authoredValues";
 import { showOf } from "./reviewFinding";
@@ -24,11 +25,11 @@ import { showOf } from "./reviewFinding";
 
 /** The operator spellings the panel evaluates (`OPERATORS` in its modules/visibility.js), by what
  *  they mean; held to the AI side's by tests/test_ui_page_review_mirrors.py. */
-const EQ_OPS = new Set(["eq", "equals", "=="]);
-const NE_OPS = new Set(["ne", "not_equals", "!="]);
+const EQ_OPS = new Set(["eq", "equals", "==", "equal"]);
+const NE_OPS = new Set(["ne", "not_equals", "!=", "not_equal"]);
 /** Range operators, mapped to whether the bound they set is inclusive. */
-const LOWER_OPS: Record<string, boolean> = { gt: false, ">": false, gte: true, ">=": true };
-const UPPER_OPS: Record<string, boolean> = { lt: false, "<": false, lte: true, "<=": true };
+const LOWER_OPS: Record<string, boolean> = { gt: false, ">": false, gte: true, ">=": true, greater_than: false, greater_or_equal: true };
+const UPPER_OPS: Record<string, boolean> = { lt: false, "<": false, lte: true, "<=": true, less_than: false, less_or_equal: true };
 
 /** One condition, read off a `visible_when`. */
 type Leaf = { key: string; op: string; value: unknown };
@@ -60,14 +61,15 @@ function literalKind(value: unknown): LiteralKind | null {
 }
 
 /**
- * Two authored literals, compared the way both surfaces can agree on.
- *
- * Not `==`: Python says `1 == True` and JavaScript says `"1" == 1`, and they
- * disagree about which. Same kind and same value, or different.
+ * Whether a key pinned to `value` is, or is not, `target`, as the panel
+ * compares them: the platform's rule in the surface mode (conditionEval.ts),
+ * so "on" and "ON", or `true` and "yes", are one value. True (undecidable)
+ * for a literal that is not a flat value. Mirrors `_equality_holds` in
+ * page_review.py.
  */
-function sameValue(left: unknown, right: unknown): boolean {
-  const kind = literalKind(left);
-  return kind !== null && kind === literalKind(right) && left === right;
+function equalityHolds(value: unknown, op: string, target: unknown): boolean {
+  if (literalKind(value) === null || literalKind(target) === null) return true;
+  return evalOperator(op, value, target, SURFACE);
 }
 
 /** A condition value as a number, or null when it is not one.
@@ -84,8 +86,7 @@ function conditionNumber(value: unknown): number | null {
  *  True for anything undecidable, so an unreadable pair yields no proof of
  *  exclusivity rather than a false one. */
 function conditionHolds(value: unknown, op: string, target: unknown): boolean {
-  if (EQ_OPS.has(op)) return sameValue(value, target);
-  if (NE_OPS.has(op)) return !sameValue(value, target);
+  if (EQ_OPS.has(op) || NE_OPS.has(op)) return equalityHolds(value, op, target);
   if (op === "truthy" || op === "falsy") return truthHolds(value, op);
   if (op in LOWER_OPS || op in UPPER_OPS) return boundHolds(value, op, target);
   return true;

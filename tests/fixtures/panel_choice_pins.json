@@ -566,7 +566,7 @@
           "r.1.1@": "div class style data-value",
           "r.1.1@class": "list-item",
           "r.1.1@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
-          "r.1.1@data-value": "",
+          "r.1.1@data-value": "0",
           "r.1.1#": "Zero",
           "r.1.2@": "div class style data-value",
           "r.1.2@class": "list-item",
@@ -608,13 +608,15 @@
       {
         "c": {
           "r.1.0@class": "list-item",
-          "r.1.0@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
+          "r.1.1@class": "list-item active",
+          "r.1.1@style": "min-height: 2rem; background-color: rgb(66, 165, 245);"
         }
       },
       {
         "c": {
-          "r.1.1@class": "list-item active",
-          "r.1.1@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
+          "r.1.1@class": "list-item",
+          "r.1.1@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
           "r.1.2@class": "list-item active",
           "r.1.2@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
           "r.1.3@class": "list-item active",
@@ -625,8 +627,6 @@
         "c": {
           "r.1.0@class": "list-item active",
           "r.1.0@style": "min-height: 2rem; background-color: rgb(66, 165, 245);",
-          "r.1.1@class": "list-item",
-          "r.1.1@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
           "r.1.2@class": "list-item",
           "r.1.2@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
           "r.1.3@class": "list-item",
@@ -636,15 +636,12 @@
       {
         "c": {
           "r.1.0@class": "list-item",
-          "r.1.0@style": "min-height: 2rem; background-color: rgb(42, 42, 78);"
-        }
-      },
-      {
-        "c": {
+          "r.1.0@style": "min-height: 2rem; background-color: rgb(42, 42, 78);",
           "r.1.4@class": "list-item active",
           "r.1.4@style": "min-height: 2rem; background-color: rgb(66, 165, 245);"
         }
       },
+      {},
       {
         "s": [
           "ui.select x \"a\""

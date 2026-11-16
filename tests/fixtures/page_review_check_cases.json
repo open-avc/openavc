@@ -2395,7 +2395,7 @@
           }
         }
       },
-      "expected": true
+      "expected": false
     },
     {
       "name": "eq true against eq true",
@@ -2545,10 +2545,10 @@
           }
         }
       },
-      "expected": true
+      "expected": false
     },
     {
-      "name": "eq null against eq null",
+      "name": "eq null against eq null: neither is ever shown",
       "a": {
         "id": "a",
         "type": "group",
@@ -2575,10 +2575,10 @@
           }
         }
       },
-      "expected": false
+      "expected": true
     },
     {
-      "name": "a missing value against eq null",
+      "name": "a missing value against eq null: neither is ever shown",
       "a": {
         "id": "a",
         "type": "group",
@@ -2604,7 +2604,7 @@
           }
         }
       },
-      "expected": false
+      "expected": true
     },
     {
       "name": "eq null against eq a word",
@@ -2637,7 +2637,7 @@
       "expected": true
     },
     {
-      "name": "eq a list against eq the same list",
+      "name": "eq a list against eq the same list: undecidable",
       "a": {
         "id": "a",
         "type": "group",
@@ -2668,7 +2668,7 @@
           }
         }
       },
-      "expected": true
+      "expected": false
     },
     {
       "name": "gt 5 against lt 3",
@@ -4206,6 +4206,186 @@
         }
       },
       "expected": false
+    },
+    {
+      "name": "eq against eq on the same word in another case",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.power",
+              "operator": "eq",
+              "value": "on"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.power",
+              "operator": "eq",
+              "value": "ON"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq true against eq a word that means it",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.power",
+              "operator": "eq",
+              "value": true
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.power",
+              "operator": "eq",
+              "value": "yes"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq a number against eq its text",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.level",
+              "operator": "eq",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.level",
+              "operator": "eq",
+              "value": "5.0"
+            }
+          }
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "eq against ne the same word in another case",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.power",
+              "operator": "eq",
+              "value": "on"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.power",
+              "operator": "ne",
+              "value": "ON"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "a word alias for eq against eq another value",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "equal",
+              "value": "a"
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.tab",
+              "operator": "eq",
+              "value": "b"
+            }
+          }
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "greater_than against less_or_equal at the same bound",
+      "a": {
+        "id": "a",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.level",
+              "operator": "greater_than",
+              "value": 5
+            }
+          }
+        }
+      },
+      "b": {
+        "id": "b",
+        "type": "group",
+        "bindings": {
+          "show": {
+            "visible_when": {
+              "key": "var.level",
+              "operator": "less_or_equal",
+              "value": 5
+            }
+          }
+        }
+      },
+      "expected": true
     }
   ],
   "content_findings": [

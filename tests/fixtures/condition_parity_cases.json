@@ -1,5 +1,5 @@
 {
-  "_comment": "The condition rule, answer for answer: tests/test_condition_parity.py runs it over openavc/core/condition_eval.py, conditionEval.test.ts over the IDE's mirror. tests/test_panel_condition_parity.py runs the panel's comparers over it and pins where each differs, so a new case can move those pins. expected is what the runtime answers; 'error' is an operator it refuses.",
+  "_comment": "The condition rule, answer for answer: tests/test_condition_parity.py runs it over openavc/core/condition_eval.py, conditionEval.test.ts over the IDE's mirror, tests/test_panel_condition_parity.py over the panel's (modules/compare.js) and every panel control that asks it. expected is what a reader that acts answers (a macro, a trigger); surface, where present, is what a reader that shows or hides answers instead (the panel, the page reviews); 'error' is an operator the rule refuses. keys: the key of an authored map a reading picks (exact, then apart from case, then as a boolean or number; null where none).",
   "cases": [
     {
       "name": "text equals regardless of case",
@@ -44,17 +44,46 @@
       "expected": false
     },
     {
-      "name": "unreported never differs",
+      "name": "unreported never differs, but on a panel it differs from everything",
       "op": "ne",
       "actual": null,
       "target": "on",
-      "expected": false
+      "expected": false,
+      "surface": true
     },
     {
       "name": "no target never equals",
       "op": "eq",
       "actual": "on",
       "target": null,
+      "expected": false
+    },
+    {
+      "name": "no target never differs, not even on a panel",
+      "op": "ne",
+      "actual": "on",
+      "target": null,
+      "expected": false
+    },
+    {
+      "name": "nothing never equals nothing",
+      "op": "eq",
+      "actual": null,
+      "target": null,
+      "expected": false
+    },
+    {
+      "name": "nothing never differs from nothing",
+      "op": "ne",
+      "actual": null,
+      "target": null,
+      "expected": false
+    },
+    {
+      "name": "unreported never equals, not even on a panel",
+      "op": "eq",
+      "actual": null,
+      "target": "off",
       "expected": false
     },
     {
@@ -114,11 +143,32 @@
       "expected": true
     },
     {
-      "name": "boolean true is not 2",
+      "name": "a number other than zero is true",
       "op": "eq",
       "actual": true,
       "target": 2,
-      "expected": false
+      "expected": true
+    },
+    {
+      "name": "a number written as text is true by value",
+      "op": "eq",
+      "actual": "2",
+      "target": true,
+      "expected": true
+    },
+    {
+      "name": "zero is false",
+      "op": "eq",
+      "actual": 0,
+      "target": false,
+      "expected": true
+    },
+    {
+      "name": "a fraction is true",
+      "op": "ne",
+      "actual": 0.5,
+      "target": false,
+      "expected": true
     },
     {
       "name": "boolean beside other text",
@@ -156,6 +206,13 @@
       "expected": true
     },
     {
+      "name": "a fraction equals its text with a trailing zero",
+      "op": "eq",
+      "actual": 1.5,
+      "target": "1.50",
+      "expected": true
+    },
+    {
       "name": "text with spaces is a number",
       "op": "eq",
       "actual": " 5 ",
@@ -163,11 +220,11 @@
       "expected": true
     },
     {
-      "name": "underscores are a number",
+      "name": "underscores are text",
       "op": "eq",
       "actual": "1_000",
       "target": 1000,
-      "expected": true
+      "expected": false
     },
     {
       "name": "hex text is not a number",
@@ -345,17 +402,24 @@
       "expected": false
     },
     {
-      "name": "infinity text",
+      "name": "infinity is text",
       "op": "gt",
       "actual": "inf",
       "target": 1e+300,
-      "expected": true
+      "expected": false
     },
     {
       "name": "not a number never compares",
       "op": "gt",
       "actual": "nan",
       "target": 1,
+      "expected": false
+    },
+    {
+      "name": "infinity text is not a number to equal",
+      "op": "eq",
+      "actual": "inf",
+      "target": 1e+300,
       "expected": false
     },
     {
@@ -518,6 +582,159 @@
       "actual": 1,
       "target": 2,
       "expected": "error"
+    }
+  ],
+  "keys": [
+    {
+      "name": "the exact key",
+      "keys": [
+        "ON",
+        "on"
+      ],
+      "reading": "on",
+      "expected": "on"
+    },
+    {
+      "name": "apart from case when none is exact",
+      "keys": [
+        "ON",
+        "off"
+      ],
+      "reading": "on",
+      "expected": "ON"
+    },
+    {
+      "name": "apart from case before a boolean",
+      "keys": [
+        "on",
+        "TRUE"
+      ],
+      "reading": true,
+      "expected": "TRUE"
+    },
+    {
+      "name": "a boolean reads its words",
+      "keys": [
+        "on",
+        "off"
+      ],
+      "reading": true,
+      "expected": "on"
+    },
+    {
+      "name": "false reads its words",
+      "keys": [
+        "on",
+        "off"
+      ],
+      "reading": false,
+      "expected": "off"
+    },
+    {
+      "name": "a boolean's own spelling first",
+      "keys": [
+        "true",
+        "1"
+      ],
+      "reading": true,
+      "expected": "true"
+    },
+    {
+      "name": "two that mean the same: the first in code point order",
+      "keys": [
+        "on",
+        "1"
+      ],
+      "reading": true,
+      "expected": "1"
+    },
+    {
+      "name": "two apart from case: the first in code point order",
+      "keys": [
+        "On",
+        "ON"
+      ],
+      "reading": "on",
+      "expected": "ON"
+    },
+    {
+      "name": "a number by value",
+      "keys": [
+        "1.0",
+        "2"
+      ],
+      "reading": 1,
+      "expected": "1.0"
+    },
+    {
+      "name": "a number's own spelling first",
+      "keys": [
+        "1.0",
+        "1"
+      ],
+      "reading": 1,
+      "expected": "1"
+    },
+    {
+      "name": "a whole number with a point is spelled without one",
+      "keys": [
+        "1.0",
+        "1"
+      ],
+      "reading": 1.0,
+      "expected": "1"
+    },
+    {
+      "name": "zero",
+      "keys": [
+        "0",
+        "1"
+      ],
+      "reading": 0,
+      "expected": "0"
+    },
+    {
+      "name": "zero as text",
+      "keys": [
+        "0",
+        "1"
+      ],
+      "reading": "0",
+      "expected": "0"
+    },
+    {
+      "name": "a blank reading picks the blank key",
+      "keys": [
+        "",
+        "on"
+      ],
+      "reading": "",
+      "expected": ""
+    },
+    {
+      "name": "text is never a number spelled another way",
+      "keys": [
+        "1.0"
+      ],
+      "reading": "1",
+      "expected": null
+    },
+    {
+      "name": "no key for it",
+      "keys": [
+        "on"
+      ],
+      "reading": "off",
+      "expected": null
+    },
+    {
+      "name": "nothing picks no key, not even null",
+      "keys": [
+        "null",
+        ""
+      ],
+      "reading": null,
+      "expected": null
     }
   ]
 }

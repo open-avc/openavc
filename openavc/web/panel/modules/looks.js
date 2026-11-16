@@ -17,7 +17,11 @@
  * (tests/test_ui_page_review_mirrors.py) credits a module's whole text to
  * any control that hands it the element, and the picture `lookPictures`
  * reads would then count that control as one that draws a state's picture.
+ * Whether a reading matches a state, or a two-state look's value, is
+ * modules/compare.js's to say, as it is for every control.
  */
+
+import { pickKey, sameValue } from './compare.js';
 
 const LOOK = ['bindings', 'show', 'look'];
 
@@ -32,30 +36,33 @@ export function pickLook(binding, stateValue) {
 }
 
 /**
- * A look with `states`: the value's words are matched exactly, case and all.
- * No value, or one no state names, takes `default_state`; a look without one
+ * A look with `states`: the state the value picks (compare.js `pickKey`: the
+ * exact name, then one apart from case, then one the value equals as a
+ * boolean or number, so a state `on` takes a reading of `ON` or `true`). No
+ * value, or one no state names, takes `default_state`; a look without one
  * takes its blank state `''`. The words belong to the state the value
  * matched, even when that state's entry is empty and the default was drawn.
  */
 function pickState(binding, stateValue) {
     const { states } = binding;
     const fallback = binding.default_state || '';
-    const stateKey = stateValue != null ? String(stateValue) : fallback;
-    const matched = states[stateKey] !== undefined ? stateKey : fallback;
+    const picked = pickKey(Object.keys(states), stateValue);
+    const matched = picked === null ? fallback : picked;
     return {
-        appearance: states[stateKey] || states[fallback] || {},
+        appearance: (picked !== null && states[picked]) || states[fallback] || {},
         wordsPath: [...LOOK, 'states', matched, 'label'],
     };
 }
 
 /**
  * The two-state form (`condition.equals`, `style_active`, `style_inactive`):
- * active when the value's words equal `equals` apart from case. A missing
- * value is inactive; null is compared as the word "null".
+ * active when the value equals `equals` (compare.js `sameValue`). A value
+ * that has not arrived, null included, is inactive, and so is a look with no
+ * `equals`.
  */
 function pickTwoState(binding, stateValue) {
     const condition = binding.condition || {};
-    const isActive = stateValue !== undefined && sameWords(stateValue, condition.equals);
+    const isActive = sameValue(stateValue, condition.equals);
     const half = isActive ? 'style_active' : 'style_inactive';
     return {
         appearance: binding[half] || {},
@@ -83,17 +90,6 @@ export function lookPictures(look) {
     const named = entries.filter(isEntry).map((entry) => entry.button_image)
         .filter((image) => typeof image === 'string' && image !== '');
     return [...new Set(named)];
-}
-
-/**
- * Two readings compared as words apart from case, so a driver's boolean
- * `true`, the word "True" and a value written as "true" are the same. Every
- * rule that asks whether a reading is "on" compares this way: a look's
- * two-state form, a toggle's press (modules/press.js) and its indication, a
- * label's text condition. What a missing reading is stays each rule's own.
- */
-export function sameWords(a, b) {
-    return String(a).toLowerCase() === String(b).toLowerCase();
 }
 
 /**

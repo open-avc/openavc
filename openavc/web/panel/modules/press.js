@@ -24,7 +24,7 @@
  * end them, so the panel lends `repeat` and `endHold` to every press.
  */
 
-import { sameWords } from './looks.js';
+import { sameValue } from './compare.js';
 
 /**
  * What a button's press binding asks for. The binding is a list of actions,
@@ -71,14 +71,14 @@ function toggleLookOf(pressBinding, isList) {
 }
 
 /**
- * Whether a press of a toggle turns it off: the reading and the toggle's
- * value compared as words apart from case, so a driver's boolean `true`
- * matches a `toggle_value` of "true". A key nobody has reported, or a toggle
- * with no value, reads as off; a reading of null is compared as the word
- * "null".
+ * Whether a press of a toggle turns it off: the reading equals the toggle's
+ * value (compare.js `sameValue`), so a driver's boolean `true` matches a
+ * `toggle_value` of "true" or "on". A key nobody has reported, a null, or a
+ * toggle with no value, reads as off. core/ui_events.py `resolve_press`
+ * asks the server's copy of the same rule.
  */
 function toggleIsOn(stateValue, toggleValue) {
-    return stateValue !== undefined && toggleValue !== undefined && sameWords(stateValue, toggleValue);
+    return sameValue(stateValue, toggleValue);
 }
 
 /**

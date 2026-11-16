@@ -1,50 +1,33 @@
-"""The panel's comparers, run over the condition corpus.
+"""The panel's comparison, and every control that asks it, run over the condition corpus.
 
-When a reported value matches what an author wrote is decided in more than a
-dozen places on the panel, each its own way: a look's named states and its
-two-state form, a toggle's light and its press, a label's text condition, a
-`visible_when`, the status LED's colour map, a dropdown and a list. The
-server's rule is `core/condition_eval.py`, which macros and triggers ask and
-the IDE's `conditionEval.ts` is held to through
-`fixtures/condition_parity_cases.json`. Nothing held the panel to it.
+Whether a reported value matches what an author wrote is asked in more than a
+dozen places on the panel: a look's named states and its two-state form, a
+toggle's light and its press, a label's text condition, a `visible_when`, the
+status LED's colour map, a dropdown and a list. They all ask
+`web/panel/modules/compare.js`, the panel's copy of the server's rule
+(`core/condition_eval.py`, which macros and triggers ask and the IDE's
+`conditionEval.ts` mirrors), and all three copies run
+`fixtures/condition_parity_cases.json`.
 
-Executed rather than read: Node runs each comparer through what the panel
-itself calls (`fixtures/panel_condition_harness.cjs`) and the answers are
-compared with `eval_operator` over the same corpus. A comparer that only
-matches (every one but `visible_when`) is asked each pair of reading and
-authored value once, against the rule's `eq`; `visible_when` is asked every
-case with its own operator. A named state, a colour map's entry and a
-dropdown's look are named by text, an object's key, so the authored value is
-written there as text.
+Executed rather than read: Node runs `compare.js` over every case in both
+modes, and each control through what the panel itself calls
+(`fixtures/panel_condition_harness.cjs`); the answers are compared with
+`eval_operator` and `match_key` over the same corpus. A control that only
+matches is asked each pair of reading and authored value once, against the
+rule's `eq`; one that reads an authored map is also asked which key each of
+the corpus's `keys` cases picks; `visible_when` is asked every case with its
+own operator, in the surface mode a control that shows or hides reads in,
+with a null reading and with the key missing. A named state, a colour map's
+entry and a dropdown's look are named by text, an object's key, so the
+authored value is written there as text.
 
-Every difference is pinned below as it is today, by cause, so a change on
-either side shows up here and updates these sets rather than passing by:
-- case: the named states, the LED, the dropdown, the list and `visible_when`
-  compare words exactly, so `ON` is not `on`;
-- the words that mean true: the rule reads a boolean beside "on", "yes",
-  "off" (and 1, "1") as a boolean; the panel compares `true` as the word
-  "true";
-- a number's spelling: the rule reads "5.0", " 5 " and "1e3" as 5 and 1000
-  beside a number; the comparers that compare words do not;
-- what only Python's `float` reads as a number ("1_000", "inf");
-- JavaScript's loose `==` in `visible_when`: "0x10" is 16, a blank is 0, a
-  not-equal holds for a reading that is not there, and two numbers written as
-  text are ordered as text;
-- a list row whose value is 0: once a reading arrives the row is matched as a
-  blank (`item.value || ''`), so a blank reading lights it;
-- the operator spellings: `visible_when` knows eight of the rule's fourteen
-  aliases, and an operator it does not know never holds where the rule
-  refuses it.
+One control still compares its own way, pinned below so a change shows up:
+the status LED's colour map (`evaluateColor` in `panel.js`) looks its key up
+exactly, case and all.
 
-Left out, because the corpus does not reach it:
-- a reading that is not there at all: JSON carries no missing key, so the
-  corpus's null is a state that holds null; the comparers that compare words
-  read it as the word "null" (a look's two-state form, a toggle's press) or as
-  no reading (a toggle's light, a label), and no case has null or "null" on
-  both sides to tell them apart;
-- a whole number written with a decimal point: JSON's 1.0 reaches JavaScript
-  as 1, so a case of 1.0 runs as 1 on the panel;
-- a list row of 0 against a reading of 0.
+Left out, because JSON cannot carry it: a whole number written with a
+decimal point. JSON's 1.0 reaches JavaScript as 1, so a case of 1.0 runs as 1
+on the panel; `test_press_parity.py` runs the server's 1.0 against it.
 """
 
 from __future__ import annotations
@@ -57,7 +40,14 @@ from pathlib import Path
 
 import pytest
 
-from openavc.core.condition_eval import _OPERATOR_ALIASES, eval_operator
+from openavc.core.condition_eval import (
+    _OPERATOR_ALIASES,
+    DECIDE,
+    SURFACE,
+    eval_operator,
+    match_key,
+    value_words,
+)
 from tests import gates
 
 OPENAVC_ROOT = Path(__file__).resolve().parents[1]
@@ -65,14 +55,12 @@ HARNESS = OPENAVC_ROOT / "tests" / "fixtures" / "panel_condition_harness.cjs"
 PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
 NODE_MODULES = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "node_modules"
 CORPUS_PATH = OPENAVC_ROOT / "tests" / "fixtures" / "condition_parity_cases.json"
-CASES = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))["cases"]
+CORPUS = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
+CASES = CORPUS["cases"]
+KEYS = CORPUS["keys"]
 
 #: Every spelling the rule takes: its own eight and the aliases onto them.
 RULE_SPELLINGS = {"eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy"} | set(_OPERATOR_ALIASES)
-#: The rule's spellings `visible_when` does not know.
-UNKNOWN_TO_THE_PANEL = {
-    "equal", "not_equal", "greater_than", "less_than", "greater_or_equal", "less_or_equal",
-}
 
 
 def _canonical(op: str) -> str:
@@ -91,47 +79,35 @@ def _pairs() -> list[tuple[str, object, object]]:
 
 PAIRS = _pairs()
 
-# The differences, by cause. Each comparer's pin is the union of the causes
-# it has; a name is the corpus case that first holds the pair.
-CASE = {"text equals regardless of case"}
-TRUE_WORDS = {"boolean true equals on", "boolean true equals yes", "boolean false equals off"}
-TRUE_AS_ONE = {"boolean true equals 1 as text", "boolean true equals number 1"}
-NUMBER_SPELLINGS = {"decimal text equals whole number", "text with spaces is a number", "exponent text"}
-PYTHON_ONLY_NUMBERS = {"underscores are a number"}
-ZERO_ROW_AS_BLANK = {"empty text is not zero"}
+#: The controls that only match, each asked every pair.
+MATCHERS = (
+    "pickState", "pickTwoState", "toggleLit", "toggleIsOn", "conditionWords",
+    "evaluateColor", "selectValue", "selectLook", "listAtDraw", "listAfterReading",
+)
+#: The controls that read an authored map, each asked every keys case.
+PICKERS = ("pickState", "evaluateColor", "selectValue", "selectLook", "listAtDraw", "listAfterReading")
 
-WORDS_APART_FROM_CASE = TRUE_WORDS | TRUE_AS_ONE | NUMBER_SPELLINGS | PYTHON_ONLY_NUMBERS
-EXACT_WORDS = CASE | WORDS_APART_FROM_CASE
-
-#: Where each comparer that only matches differs from the rule's `eq`.
-MATCHER_DIFFERENCES = {
-    "pickState": EXACT_WORDS,
-    "pickTwoState": WORDS_APART_FROM_CASE,
-    "toggleLit": WORDS_APART_FROM_CASE,
-    "toggleIsOn": WORDS_APART_FROM_CASE,
-    "conditionWords": WORDS_APART_FROM_CASE,
-    "evaluateColor": EXACT_WORDS,
-    "selectValue": EXACT_WORDS,
-    "selectLook": EXACT_WORDS,
-    "listAtDraw": EXACT_WORDS,
-    "listAfterReading": EXACT_WORDS | ZERO_ROW_AS_BLANK,
+#: Where the status LED's exact key lookup differs from the rule: case, and
+#: the words and numbers that mean a boolean or a number.
+LED_PAIRS = {
+    "text equals regardless of case", "boolean true equals on", "boolean true equals yes",
+    "boolean false equals off", "boolean true equals number 1", "a number other than zero is true",
+    "a fraction equals its text with a trailing zero",
+}
+LED_KEYS = {
+    "apart from case when none is exact", "apart from case before a boolean", "a boolean reads its words",
+    "false reads its words", "two that mean the same: the first in code point order",
+    "two apart from case: the first in code point order", "a number by value",
+}
+#: What the LED picks in each of those keys cases: what its exact lookup finds.
+LED_KEY_PICKS = {
+    "two that mean the same: the first in code point order": None,
+    "two apart from case: the first in code point order": None,
 }
 
-#: Where `visible_when` differs from the rule, over the cases whose operator
-#: it knows: case and the true words as above, then JavaScript's loose `==`.
-VISIBLE_WHEN_DIFFERENCES = {
-    # case, under each spelling of eq and ne
-    "text equals regardless of case", "the same text in another case is not different",
-    "alias equals", "alias not_equals", "alias ==", "alias !=",
-    *TRUE_WORDS,
-    *PYTHON_ONLY_NUMBERS, "infinity text",
-    # loose ==: Number("0x10") is 16 and Number("") is 0
-    "hex text is not a number", "empty text is not zero", "empty text differs from zero",
-    # loose !=: a reading that is not there differs from everything
-    "unreported never differs",
-    # two numbers written as text are ordered as text: "10" < "9"
-    "both text, read as numbers",
-}
+
+def _expected_in(case: dict, mode: str) -> object:
+    return case.get("surface", case["expected"]) if mode == SURFACE else case["expected"]
 
 
 def _toolchain_reason() -> str | None:
@@ -150,6 +126,7 @@ def panel_answers() -> dict:
     corpus = json.dumps({
         "pairs": [[actual, target] for _name, actual, target in PAIRS],
         "cases": [{"op": c["op"], "actual": c["actual"], "target": c["target"]} for c in CASES],
+        "keys": [{"keys": c["keys"], "reading": c["reading"]} for c in KEYS],
     })
     proc = subprocess.run(
         ["node", str(HARNESS), str(PANEL_JS)],
@@ -160,61 +137,102 @@ def panel_answers() -> dict:
     return json.loads(proc.stdout)
 
 
-@pytest.mark.parametrize("comparer", sorted(MATCHER_DIFFERENCES))
-def test_where_each_comparer_differs_from_the_rule(panel_answers: dict, comparer: str) -> None:
+@pytest.mark.parametrize("mode", [DECIDE, SURFACE])
+def test_the_panel_s_copy_answers_every_case_as_the_rule(panel_answers: dict, mode: str) -> None:
+    """An operator the rule refuses never holds on the panel; every other case answers as the rule."""
+    got = panel_answers["compareDecide" if mode == DECIDE else "compareSurface"]
+    differ = [
+        case["name"] for case, answer in zip(CASES, got, strict=True)
+        if answer is not (False if case["expected"] == "error" else _expected_in(case, mode))
+    ]
+    assert differ == []
+
+
+def test_the_panel_s_copy_picks_every_key_as_the_rule(panel_answers: dict) -> None:
+    assert panel_answers["compareKeys"] == [c["expected"] for c in KEYS]
+    assert [match_key(c["keys"], c["reading"]) for c in KEYS] == [c["expected"] for c in KEYS]
+
+
+def _rule_matches(comparer: str, actual: object, target: object) -> bool:
+    """The rule's answer: ``eq``, or for a control that reads a map, whether
+    the reading picks the key the authored value is written as."""
+    if comparer in PICKERS:
+        key = value_words(target) if target is not None else "null"
+        return match_key([key], actual) is not None
+    return eval_operator("eq", actual, target)
+
+
+@pytest.mark.parametrize("comparer", MATCHERS)
+def test_every_control_matches_as_the_rule(panel_answers: dict, comparer: str) -> None:
     differ = {
         name for (name, actual, target), matched in zip(PAIRS, panel_answers[comparer], strict=True)
-        if matched != eval_operator("eq", actual, target)
+        if matched != _rule_matches(comparer, actual, target)
     }
-    assert differ == MATCHER_DIFFERENCES[comparer]
+    assert differ == (LED_PAIRS if comparer == "evaluateColor" else set())
 
 
-@pytest.mark.parametrize("comparer", sorted(MATCHER_DIFFERENCES))
-def test_each_comparer_answers_both_ways(panel_answers: dict, comparer: str) -> None:
-    """A comparer the harness reaches wrongly answers one way for every pair."""
+@pytest.mark.parametrize("comparer", MATCHERS)
+def test_each_control_answers_both_ways(panel_answers: dict, comparer: str) -> None:
+    """A control the harness reaches wrongly answers one way for every pair."""
     assert set(panel_answers[comparer]) == {True, False}
 
 
-def test_where_visible_when_differs_from_the_rule(panel_answers: dict) -> None:
-    differ = set()
-    for case, shown in zip(CASES, panel_answers["visibleWhen"], strict=True):
-        if case["op"] in UNKNOWN_TO_THE_PANEL or case["expected"] == "error":
-            continue
-        if shown != eval_operator(case["op"], case["actual"], case["target"]):
-            differ.add(case["name"])
-    assert differ == VISIBLE_WHEN_DIFFERENCES
+@pytest.mark.parametrize("picker", PICKERS)
+def test_every_map_reader_picks_the_key_the_rule_picks(panel_answers: dict, picker: str) -> None:
+    differ = {
+        case["name"] for case, picked in zip(KEYS, panel_answers["picks"][picker], strict=True)
+        if picked != case["expected"]
+    }
+    assert differ == (LED_KEYS if picker == "evaluateColor" else set())
 
 
-def test_visible_when_knows_all_but_six_of_the_rules_spellings(panel_answers: dict) -> None:
-    panel = set(panel_answers["spellings"])
-    assert panel <= RULE_SPELLINGS
-    assert RULE_SPELLINGS - panel == UNKNOWN_TO_THE_PANEL
+def test_the_led_finds_only_the_key_spelled_as_the_reading(panel_answers: dict) -> None:
+    for case, picked in zip(KEYS, panel_answers["picks"]["evaluateColor"], strict=True):
+        if case["name"] in LED_KEY_PICKS:
+            assert picked == LED_KEY_PICKS[case["name"]], case["name"]
 
 
-def test_an_operator_visible_when_does_not_know_never_holds(panel_answers: dict) -> None:
-    """Where the rule refuses an operator, or knows a spelling the panel does not."""
-    unknown = [
-        (case["name"], shown) for case, shown in zip(CASES, panel_answers["visibleWhen"], strict=True)
-        if case["op"] in UNKNOWN_TO_THE_PANEL or case["expected"] == "error"
-    ]
-    assert unknown and not any(shown for _name, shown in unknown)
-    assert any(case["expected"] == "error" for case in CASES)
+def test_visible_when_shows_as_the_rule_s_surface_mode(panel_answers: dict) -> None:
+    differ = []
+    for case, shown, missing in zip(
+        CASES, panel_answers["visibleWhen"], panel_answers["visibleWhenMissing"], strict=True,
+    ):
+        want = False if case["expected"] == "error" else _expected_in(case, SURFACE)
+        if shown is not want:
+            differ.append(case["name"])
+        if case["actual"] is None and missing is not want:
+            differ.append(f"{case['name']} (key missing)")
+    assert differ == []
 
 
-def test_visible_when_holds_and_fails_under_every_operator_it_knows(panel_answers: dict) -> None:
+def test_visible_when_shows_a_not_on_control_before_the_device_reports(panel_answers: dict) -> None:
+    """The plain reading of "show this while the power is not on", and the case that tells the modes apart."""
+    name = "unreported never differs, but on a panel it differs from everything"
+    index = next(i for i, c in enumerate(CASES) if c["name"] == name)
+    assert panel_answers["visibleWhen"][index] is True
+    assert panel_answers["visibleWhenMissing"][index] is True
+
+
+def test_visible_when_knows_every_spelling_the_rule_takes(panel_answers: dict) -> None:
+    assert set(panel_answers["spellings"]) == RULE_SPELLINGS
+
+
+def test_visible_when_holds_and_fails_under_every_operator(panel_answers: dict) -> None:
     seen = {
         (_canonical(case["op"]), shown)
         for case, shown in zip(CASES, panel_answers["visibleWhen"], strict=True)
-        if case["op"] not in UNKNOWN_TO_THE_PANEL and case["expected"] != "error"
+        if case["expected"] != "error"
     }
     canonical = {"eq", "ne", "gt", "lt", "gte", "lte", "truthy", "falsy"}
     assert seen == {(op, verdict) for op in canonical for verdict in (True, False)}
 
 
-def test_every_difference_names_a_corpus_case() -> None:
+def test_a_list_row_whose_value_is_zero_lights(panel_answers: dict) -> None:
+    """Readings 0, "0" and a blank, against rows 0 and 1: 0 lights for both spellings of it, never for a blank."""
+    assert panel_answers["zeroRow"] == {"atDraw": [[0], [0], []], "afterReading": [[0], [0], []]}
+
+
+def test_every_pin_names_a_corpus_case() -> None:
     """A pin naming a case the corpus no longer holds would pass by itself."""
-    names = {case["name"] for case in CASES}
-    pair_names = {name for name, _actual, _target in PAIRS}
-    for pinned in MATCHER_DIFFERENCES.values():
-        assert pinned <= pair_names
-    assert VISIBLE_WHEN_DIFFERENCES <= names
+    assert LED_PAIRS <= {name for name, _actual, _target in PAIRS}
+    assert LED_KEYS | set(LED_KEY_PICKS) <= {c["name"] for c in KEYS}

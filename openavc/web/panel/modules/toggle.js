@@ -6,25 +6,25 @@
  * Only a button whose press is a toggle, and which has no look of its own,
  * draws this (evaluateToggleLook); the lit look itself is modules/lit.js and
  * the button's face, its picture and its paint are modules/button.js. The
- * press decides whether the same toggle is on its own way
- * (modules/press.js), and the two rules differ for a null reading.
+ * press (modules/press.js) and this light both ask modules/compare.js
+ * whether the reading is the toggle's value.
  *
  * The page review's renderer scan credits all of this text to the button,
  * the one control that hands it a definition.
  */
 
-import { sameWords } from './looks.js';
+import { sameValue } from './compare.js';
 
 /** Where a toggle's two words are authored when its press says nothing else. */
 const PRESS_WORDS = ['bindings', 'do', 'press', 0];
 
 /**
- * Whether a toggle is lit: its device answers, it has a reading, and the
- * reading's words are the value that means on, apart from case.
+ * Whether a toggle is lit: its device answers and the reading equals the
+ * value that means on (compare.js `sameValue`, never while it has not
+ * arrived).
  */
 export function toggleLit(binding, stateValue, offline) {
-    return !offline && stateValue != null && binding.value !== undefined &&
-        sameWords(stateValue, binding.value);
+    return !offline && sameValue(stateValue, binding.value);
 }
 
 /** Whether a toggle names words of its own for on or off. */

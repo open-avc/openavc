@@ -53,6 +53,7 @@ from math import isfinite
 from operator import gt, lt
 from typing import Any
 
+from openavc.core.condition_eval import SURFACE, eval_operator
 from openavc.core.macro_validation import BUILTIN_STEP_ACTIONS
 from openavc.core.ui_events import DISPATCHED_ACTIONS
 from openavc.ui.control_minimums import (
@@ -1131,11 +1132,11 @@ def _overlap_message(
 #: they mean. A spelling missing here reads as undecidable, which only costs a
 #: warning; tests/test_ui_page_review_mirrors.py holds these to the panel's
 #: and the Builder's sets to these.
-_EQ = frozenset({"eq", "equals", "=="})
-_NE = frozenset({"ne", "not_equals", "!="})
+_EQ = frozenset({"eq", "equals", "==", "equal"})
+_NE = frozenset({"ne", "not_equals", "!=", "not_equal"})
 #: Range operators, mapped to whether the bound they set is inclusive.
-_LOWER = {"gt": False, ">": False, "gte": True, ">=": True}
-_UPPER = {"lt": False, "<": False, "lte": True, "<=": True}
+_LOWER = {"gt": False, ">": False, "gte": True, ">=": True, "greater_than": False, "greater_or_equal": True}
+_UPPER = {"lt": False, "<": False, "lte": True, "<=": True, "less_than": False, "less_or_equal": True}
 
 def _literal_kind(value: Any) -> str | None:
     """Which kind of authored literal this is, where both surfaces agree; None where they do not.
@@ -1157,20 +1158,6 @@ def _literal_kind(value: Any) -> str | None:
     return None
 
 
-def _same_value(left: Any, right: Any) -> bool:
-    """Two authored literals, compared the way both surfaces can agree on.
-
-    Not ``==``: Python says ``1 == True`` and JavaScript says ``"1" == 1``, and
-    they disagree about which. Same kind and same value, or different.
-    """
-    kind = _literal_kind(left)
-    if kind is None or kind != _literal_kind(right):
-        return False
-    if kind == "number":
-        return float(left) == float(right)
-    return left == right
-
-
 def _number(value: Any) -> float | None:
     """A condition value as a number, or None when it is not one.
 
@@ -1187,15 +1174,24 @@ def _holds(value: Any, op: str, target: Any) -> bool:
     True for anything undecidable, so an unreadable pair yields no proof of
     exclusivity rather than a false one.
     """
-    if op in _EQ:
-        return _same_value(value, target)
-    if op in _NE:
-        return not _same_value(value, target)
+    if op in _EQ or op in _NE:
+        return _equality_holds(value, op, target)
     if op in ("truthy", "falsy"):
         return _truth_holds(value, op)
     if op in _LOWER or op in _UPPER:
         return _bound_holds(value, op, target)
     return True
+
+
+def _equality_holds(value: Any, op: str, target: Any) -> bool:
+    """Whether a key pinned to ``value`` is, or is not, ``target``, as the panel
+    compares them: the platform's rule in the surface mode
+    (``core/condition_eval.py``), so "on" and "ON", or ``true`` and "yes",
+    are one value. True (undecidable) for a literal that is not a flat value.
+    """
+    if _literal_kind(value) is None or _literal_kind(target) is None:
+        return True
+    return eval_operator(op, value, target, SURFACE)
 
 
 def _truth_holds(value: Any, op: str) -> bool:
