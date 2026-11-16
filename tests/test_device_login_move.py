@@ -341,6 +341,25 @@ async def test_a_start_whose_backup_fails_leaves_the_project_as_it_was(engine, d
     assert engine.project.connections["proj1"]["password"] == "Hunter2-Acme"
 
 
+async def test_a_start_whose_backup_runs_out_of_room_leaves_the_project_as_it_was(engine, data, monkeypatch):
+    """The backup itself fails part way (it reports nothing written rather
+    than raising): the move must not go ahead without it."""
+    from openavc.core import backup_manager
+
+    _write(engine.project_path, _document())
+    before = engine.project_path.read_bytes()
+
+    class NoRoom(zipfile.ZipFile):
+        def write(self, *args, **kwargs):
+            raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(backup_manager.zipfile, "ZipFile", NoRoom)
+    await _start_until_loaded(engine, monkeypatch)
+    assert engine.project_path.read_bytes() == before
+    assert engine.project.connections["proj1"]["password"] == "Hunter2-Acme"
+    assert _backups(engine) == []
+
+
 async def test_a_start_whose_login_file_will_not_open_leaves_the_project_as_it_was(engine, data, monkeypatch):
     DeviceLogins(data).save("other", DRIVER, {"password": "x-1"})
     (data / KEY_FILENAME).unlink()

@@ -216,15 +216,20 @@ class ProjectLoginsMixin:
 
     async def _back_up_before_moving_logins(self) -> bool:
         """Back up the project file before the move rewrites it. False when
-        the backup failed, and the file must then stay as it is."""
+        the backup failed, and the file must then stay as it is: a backup that
+        fails part way (no room left) reports no backup rather than raising.
+        With no project file there is nothing on disk to keep."""
         from openavc.core.backup_manager import create_backup
 
         try:
-            await asyncio.to_thread(
+            backup = await asyncio.to_thread(
                 create_backup, self.project_path, "Before moving device logins out of the project",
             )
         except Exception:
             log.exception("Could not back up the project, so its device logins stay in it for now")
+            return False
+        if backup is None and self.project_path.exists():
+            log.error("Could not back up the project, so its device logins stay in it for now")
             return False
         return True
 
