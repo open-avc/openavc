@@ -223,11 +223,13 @@ class DeclaredRoster:
     ) -> bool:
         """One wanted child, with its template label and the offline mark;
         False when the type's id format refuses it (warned)."""
-        initial = self._template_label(ctype, local_id, label_template)
+        initial = self._template_label(ctype, local_id, label_template) or {}
         if offline_seed is not None:
-            initial = {**(initial or {}), **offline_seed}
+            initial = {**initial, **offline_seed}
         try:
-            self.register_child(ctype, local_id, initial_state=initial)
+            # The platform's door: the offline mark is the platform's own
+            # parent_offline, which a driver's register_child would drop.
+            self._register_child(ctype, local_id, initial)
         except (TypeError, ValueError) as e:
             log.warning(
                 f"[{self.device_id}] instances: could not register "

@@ -3,8 +3,9 @@
 Every cross-field rule that decides whether a driver definition is valid
 is reached through this module: ``validate_driver_definition`` walks the
 definition section by section and asks a check module about each command
-(``command_checks``), response rule (``response_rule_checks``, and the
-state variables it names, ``reply_name_checks``), query entry
+(``command_checks``), response rule (``response_rule_checks``, the
+state variables it names, ``reply_name_checks``, and the fault codes it writes
+on a child, ``child_fault_checks``), query entry
 (``query_entry_checks``), child type and the references into it
 (``child_type_checks``), state variable (``state_variable_checks``), device
 setting and learned config field (``setting_checks``), the push block
@@ -51,6 +52,7 @@ from openavc.drivers.action_checks import (
     validate_actions as validate_actions,
     yaml_action_errors,
 )
+from openavc.drivers.child_fault_checks import child_fault_code_errors
 from openavc.drivers.child_type_checks import (
     RosterNames,
     child_param_reference_errors,
@@ -472,7 +474,7 @@ class _DefinitionWalk:
     def authors_parts(self) -> list[tuple[Callable[[], None], str]]:
         """The parts only the author's doors refuse on, in the order they
         report, each with the section it is tagged with until it says where."""
-        return [(self.rule_names, "responses")]
+        return [(self.rule_names, "responses"), (self.child_fault_codes, "responses")]
 
     def rule_names(self) -> None:
         """The state variables each response rule writes and gates on, read
@@ -481,6 +483,14 @@ class _DefinitionWalk:
         for i, rule in enumerate(self.declared.responses):
             errors.ctx = f"responses[{i}]"
             errors.extend(undeclared_name_errors(i, rule, self.declared))
+
+    def child_fault_codes(self) -> None:
+        """The fault code each response rule writes on a child, read against
+        those a driver may assert (child_fault_checks)."""
+        errors = self.authored
+        for i, rule in enumerate(self.declared.responses):
+            errors.ctx = f"responses[{i}]"
+            errors.extend(child_fault_code_errors(i, rule))
 
     def parts(
         self,

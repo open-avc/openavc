@@ -8,15 +8,15 @@ fixed taxonomy and returns a stable ``code`` (used by triggers and automation
 as ``device.<id>.offline_reason``) and a human ``message`` (shown on the device
 card as ``device.<id>.offline_detail``).
 
-It also owns the CHILD-entity fault vocabulary at the bottom of the file --
-the same question ("why is this thing not working") one level down, for a
-sub-unit of a device rather than the device itself. Those are asserted by the
-driver rather than derived here, because nothing the platform can see tells a
-wedged endpoint from an absent one, but they share this home so there is one
-vocabulary and one place the frontend maps a code to copy. The one exception is
-`parent_offline`, which the platform asserts and a driver may not: when the
-connection to the parent drops there is nothing the driver can still see, so
-the only honest statement about every child under it is the platform's.
+It also owns what the CHILD-entity fault codes mean, at the bottom of the file
+-- the same question ("why is this thing not working") one level down, for a
+sub-unit of a device: each code's sentence, which count as trouble, and the
+seam every driver's child write passes (``normalize_child_fault_claim``). The
+code names are the driver contract's (``drivers/spec.py``), where the checker
+reads them. A driver asserts them, because nothing the platform can see tells
+a wedged endpoint from an absent one; the one exception is `parent_offline`,
+which only the platform writes: when the connection to the parent drops there
+is nothing the driver can still see.
 
 This is the single place that owns both taxonomies: pure / stdlib, no I/O, and
 no driver- or transport-specific branching beyond the small amount the taxonomy
@@ -30,8 +30,13 @@ from __future__ import annotations
 import asyncio
 import errno
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
+
+from openavc.drivers.spec import (
+    CHILD_NOT_FITTED, CHILD_NOT_RESPONDING, CHILD_PARENT_OFFLINE, CHILD_SERVICE_FAULT,
+)
 
 # --- Stable offline_reason codes -------------------------------------------
 # These strings are a contract: triggers, scripts, and panels match on them,
@@ -255,8 +260,10 @@ def is_permanent_fault(code: str) -> bool:
 # `parent_offline` is the ONE exception, and it is here because the platform
 # genuinely does know it: when the connection to the parent device drops,
 # nothing under that device can be seen at all, whatever the driver last said.
-# A driver cannot assert it (its own transport is gone), so the platform does —
-# see BaseDriver._children_follow_parent, which is the only writer.
+# A driver cannot assert it (its own transport is gone), so the platform does:
+# BaseDriver._children_follow_parent as the device drops and returns, and the
+# declared roster for a child registered while it is away. A driver's own write
+# of it is dropped (normalize_child_fault_claim).
 #
 # The set is deliberately small: every code here earns its place by having a
 # DIFFERENT REMEDY from the others, which is the whole point of the item that
@@ -267,23 +274,12 @@ def is_permanent_fault(code: str) -> bool:
 # `online: False` — that is what every driver does today and it degrades
 # correctly, which is better than a code meaning "dunno".
 
-#: The device lists it, and it is not answering. Go find it — power, cabling,
-#: network. This is absence, whether it was unplugged or has left the building.
-CHILD_NOT_RESPONDING = "not_responding"
-#: It IS answering — presence is fine, its control channel is live — but the
-#: function it exists to perform is not running. Power-cycle or restart it.
-#: This is the one the boolean could never say.
-CHILD_SERVICE_FAULT = "service_fault"
-#: The slot is empty: this id is a place something CAN be, and nothing is
-#: there. Not a fault, and nothing to go and fix — a mixer with no AT-LINK
-#: extensions chained to it is a correctly-configured mixer. Only a roster
-#: whose driver reports presence (`instances.presence: reported`) uses it; on
-#: an `assumed` roster every id is fitted by definition.
-CHILD_NOT_FITTED = "not_fitted"
-#: The parent device is unreachable, so nothing under it can be seen. Platform-
-#: asserted, never a driver's to claim — the fix is on the device card above,
-#: not on the child. Clears itself when the device reconnects.
-CHILD_PARENT_OFFLINE = "parent_offline"
+# The four codes themselves, and the three a driver may write, are the driver
+# contract's (drivers/spec.py, imported above): the checker that refuses a
+# YAML driver writing any other reads the contract alone. What each code is
+# FOR is written beside it there; its sentence and whether it counts as
+# trouble are below.
+#
 # A fifth code, `disabled` (off on purpose, not a fault), was drafted and cut
 # before it shipped. The one case in the corpus that looked like it — an MXNet
 # destination whose video path is disabled — is what pressing Off on a matrix
@@ -300,18 +296,6 @@ CHILD_FAULT_CODES: frozenset[str] = frozenset({
     CHILD_SERVICE_FAULT,
     CHILD_NOT_FITTED,
     CHILD_PARENT_OFFLINE,
-})
-
-#: The subset a DRIVER may assert through ``BaseDriver.child_fault``.
-#: `parent_offline` is excluded for the same reason `bridge_offline` is excluded
-#: from the device set above: it is the platform's own statement about a
-#: connection the driver no longer has, and a driver writing it would be
-#: claiming something it cannot see — the platform would clear it on the next
-#: reconnect anyway.
-CHILD_DRIVER_FAULT_CODES: frozenset[str] = frozenset({
-    CHILD_NOT_RESPONDING,
-    CHILD_SERVICE_FAULT,
-    CHILD_NOT_FITTED,
 })
 
 #: Codes that mean something is WRONG, as opposed to something being absent by
@@ -389,26 +373,28 @@ NO_FAULT_CLAIMED = None
 CHILD_FAULT_PROPS: frozenset[str] = frozenset({"offline_reason", "offline_detail"})
 
 
-def normalize_child_fault_claim(prop: str, value: Any) -> Any:
-    """Fold an empty-string write to a child's fault keys onto ``None``.
+def normalize_child_fault_claim(updates: Mapping[str, Any]) -> dict[str, Any]:
+    """A driver's write to one child, prop by prop, as the platform stores it.
 
-    Applied at every door a driver writes a child through, because otherwise
-    the value would depend on how the driver was written rather than on what
-    it means. A YAML driver clears these through ``child_set:``, and a string
-    is the only thing it can put there — the compiler runs every mapped value
-    through ``str()``, so ``null`` in a definition arrives as the literal
-    ``"None"``. Refusing ``""`` instead was considered and rejected: it is what
-    the documented declarative pattern writes and what shipped drivers already
-    write, and a refusal would take working rosters offline to make a point
-    about spelling.
+    Every door a driver writes a child through passes it here, so what is
+    stored depends on what the driver meant rather than how it was written:
 
-    Nothing is lost by folding them together. ``""`` never carried anything
-    ``online`` was not already carrying (see NO_FAULT_CLAIMED), and no reader
-    in the platform ever distinguished them.
+    * An empty fault code or detail folds onto ``None``. ``""`` is how a YAML
+      ``child_set:`` clears one and what shipped drivers write, and it never
+      carried anything ``online`` was not already carrying (NO_FAULT_CLAIMED).
+    * A claim of ``parent_offline`` is dropped, and the child keeps the code it
+      holds. The code is the platform's, undone when the device returns, so
+      claimed by a driver it would put the child back in service against what
+      the device said. The platform's own writes of it do not pass here.
+
+    Any other code is written as given: refusing a misspelt one would leave the
+    child showing no fault at all. The checker refuses one a definition writes.
     """
-    if prop in CHILD_FAULT_PROPS and value == "":
-        return NO_FAULT_CLAIMED
-    return value
+    return {
+        prop: NO_FAULT_CLAIMED if prop in CHILD_FAULT_PROPS and value == "" else value
+        for prop, value in updates.items()
+        if not (prop == "offline_reason" and value == CHILD_PARENT_OFFLINE)
+    }
 
 
 class ConnectionFaultError(ConnectionError):

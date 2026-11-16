@@ -1186,6 +1186,53 @@
   },
   "transport": "tcp"
  },
+ "child_list_offline_reason_not_a_code": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_list": {
+     "element": "(\\d+)",
+     "id": "$1",
+     "state": {
+      "offline_reason": "down"
+     },
+     "type": "zone"
+    },
+    "match": "LEVELS (.+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "child_list_on_json_rule": {
   "child_entity_types": {
    "zone": {
@@ -2396,6 +2443,109 @@
    {
     "child_set": {},
     "match": "Z(\\d)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_set_offline_reason_not_a_code": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_set": [
+     {
+      "id": "$1",
+      "state": {
+       "offline_reason": {
+        "group": 2,
+        "map": {
+         "0": "",
+         "1": "not_respondng"
+        }
+       }
+      },
+      "type": "zone"
+     }
+    ],
+    "match": "ZONE(\\d) LVL (\\d+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "child_set_offline_reason_parent_offline": {
+  "child_entity_types": {
+   "zone": {
+    "id_format": {
+     "max": 8,
+     "min": 1,
+     "type": "integer"
+    },
+    "instances": {
+     "count": 4
+    },
+    "state_variables": {
+     "level": {
+      "label": "Level",
+      "type": "number"
+     }
+    }
+   }
+  },
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "child_set": [
+     {
+      "id": "$1",
+      "state": {
+       "offline_reason": "parent_offline",
+       "online": false
+      },
+      "type": "zone"
+     }
+    ],
+    "match": "ZONE(\\d) LVL (\\d+)"
    }
   ],
   "state_variables": {

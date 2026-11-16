@@ -234,6 +234,19 @@ CASES: dict[str, Any] = {
         set={"power": "$1"},
         only_when={"any": [{"key": "var.room_mode"}, {"key": "zone_count"}]},
     ),
+    # A child's fault code is one a driver may assert; parent_offline is the
+    # platform's. Refused where a driver is written.
+    "child_set_offline_reason_parent_offline": _child_resp(
+        type="zone", id="$1", state={"online": False, "offline_reason": "parent_offline"}
+    ),
+    "child_set_offline_reason_not_a_code": _child_resp(
+        type="zone",
+        id="$1",
+        state={"offline_reason": {"group": 2, "map": {"0": "", "1": "not_respondng"}}},
+    ),
+    "child_list_offline_reason_not_a_code": _list_resp(
+        type="zone", element=r"(\d+)", id="$1", state={"offline_reason": "down"}
+    ),
     "response_json_child_set_entry_not_mapping": _resp(
         json=True, set={"power": "$.p"}, child_set=["zone"]
     ),
@@ -1105,6 +1118,7 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
             "param_aid_checks.py",
             "push_block_checks.py",
             "query_entry_checks.py", "reply_name_checks.py", "response_rule_checks.py",
+            "child_fault_checks.py",
             "routing_checks.py", "setting_checks.py",
             "sign_in_checks.py", "state_variable_checks.py", "substitution_checks.py",
             "python_info.py",

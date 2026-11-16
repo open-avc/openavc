@@ -155,6 +155,50 @@ async def test_the_upload_answers_with_a_reply_rule_s_undeclared_name(repo) -> N
     assert (await _installed(repo))["acme_widget.avcdriver"]["load_notices"] == [REPLY_TARGET]
 
 
+CHILD_CLAIM = (
+    "Response 0: child_set[0]: state 'offline_reason' writes 'parent_offline', "
+    "the code the platform writes while the device is unreachable; write "
+    'not_fitted, not_responding or service_fault, or "" for none'
+)
+
+
+def _child_claiming_parent_offline() -> bytes:
+    return _yaml(
+        child_entity_types={
+            "output": {"label": "Output", "instances": {"count": 2}, "state_variables": {}}
+        },
+        responses=[
+            {
+                "match": r"OUT(\d+) DOWN",
+                "child_set": [
+                    {
+                        "type": "output",
+                        "id": "$1",
+                        "state": {"online": False, "offline_reason": "parent_offline"},
+                    }
+                ],
+            }
+        ],
+    )
+
+
+def test_the_loader_loads_a_child_claiming_parent_offline_and_names_it(repo) -> None:
+    path = repo / "acme_widget.avcdriver"
+    path.write_bytes(_child_claiming_parent_offline())
+    read = driver_loader.read_driver_file(path)
+    assert read.definition is not None and read.reasons == ()
+    assert read.notices == (CHILD_CLAIM,)
+
+
+async def test_the_upload_answers_with_a_child_s_fault_code(repo) -> None:
+    answer = await routes.upload_driver(
+        _form("acme_widget.avcdriver", _child_claiming_parent_offline())
+    )
+    assert answer["status"] == "uploaded" and registry.is_driver_registered(DRIVER_ID)
+    assert answer["notices"] == [CHILD_CLAIM]
+    assert (await _installed(repo))["acme_widget.avcdriver"]["load_notices"] == [CHILD_CLAIM]
+
+
 async def test_a_clean_upload_answers_with_no_notices(repo) -> None:
     answer = await routes.upload_driver(_form("acme_widget.avcdriver", _yaml()))
     assert answer["notices"] == []

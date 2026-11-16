@@ -65,7 +65,7 @@ What's flagged:
 - **Publish quality** (warnings): missing `description`, `version`, `author`, or `help.overview`.
 - **Commands**: any `{placeholder}` in the wire string (send/path/body/headers/query_params/address/args) that doesn't resolve to a declared parameter or config field. Catches typos that would otherwise leave a literal `{level}` on the wire.
 - **Parameter names**: illegal characters surface as an inline error instead of being silently stripped.
-- **Responses**: a state variable a rule writes, or a bare `only_when:` key, that the driver does not declare under State Variables.
+- **Responses**: a state variable a rule writes, or a bare `only_when:` key, that the driver does not declare under State Variables; and a child's `offline_reason` written as anything but `not_fitted`, `not_responding`, `service_fault` or `""` (see [Saying what is wrong with a sub-unit](#saying-what-is-wrong-with-a-sub-unit)).
 - **Polling** (warnings): a poll that takes longer than its interval, and a device that could stop answering with nothing to notice (see [Checking the file against the driver contract](#checking-the-file-against-the-driver-contract)).
 - **Parameter labels** (warnings): a command parameter with no label.
 
@@ -3414,7 +3414,9 @@ driver cannot: when the connection to the device drops, every child that was in
 service is marked with it, and every one of them is put back as it was when the
 device returns. You do not have to do anything for that to happen, and
 `child_fault()` refuses the code — your transport is gone, so it is not
-something you can still see. Children are never de-registered for it either: a
+something you can still see. Written any other way (`set_child_state`, a value
+the device reports through `child_set:`) it is dropped, and the child keeps the
+reason it already had. Children are never de-registered for it either: a
 panel bound to `input.1.level` keeps working and goes quiet, rather than
 pointing at a key that no longer exists.
 
@@ -3475,6 +3477,14 @@ responses:
           online: {group: 2, map: {UP: "true", DOWN: "false"}}
           offline_reason: {group: 2, map: {UP: "", DOWN: "not_responding"}}
 ```
+
+A reason the file itself writes, as a literal or a `map:` value, has to be one
+of the three codes or `""`. The Driver Builder's Validate and save,
+`python -m openavc.drivers.check` and the community catalog refuse `parent_offline`
+and a misspelled code, naming the three; a driver already installed with one
+keeps loading, and its entry on the Installed list says what to fix. A reason
+the device reports through a capture is stored as it arrives, except
+`parent_offline`, which is dropped.
 
 ### BaseDriver Hooks Reference
 
@@ -4033,6 +4043,12 @@ driver declares, so a misspelled name is caught here rather than on the device:
 
 ```
 my_driver.avcdriver: error: Response 2: set 'powr' writes a state variable this driver does not declare (did you mean 'power'?); declare it under state_variables
+```
+
+A sub-unit's fault reason is one of the codes a driver may write:
+
+```
+my_driver.avcdriver: error: Response 3: child_set[0]: state 'offline_reason' maps 'DOWN' to 'not_respondng', which is not a child fault code (did you mean 'not_responding'?); write not_fitted, not_responding or service_fault, or "" for none
 ```
 
 The same checks run in the Driver Builder's Validate and save and in the

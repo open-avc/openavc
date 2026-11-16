@@ -19,6 +19,8 @@ The rules worth knowing before changing anything here:
 * The platform has one opinion about a child's presence, its parent's
   reachability. A child under an unreachable parent reads ``parent_offline``,
   and coming back undoes that code and nothing else (``_children_follow_parent``).
+  The code is the platform's alone: every door a driver writes a child through
+  passes ``normalize_child_fault_claim``, which drops a driver's claim of it.
 * A write to a child that was never registered is skipped and reported, never
   written: the key would be an orphan nothing lists.
 
@@ -38,7 +40,6 @@ from collections.abc import Awaitable, Callable, Iterator
 from typing import Any
 
 from openavc.core.connection_fault import (
-    CHILD_DRIVER_FAULT_CODES,
     CHILD_NOT_FITTED,
     CHILD_PARENT_OFFLINE,
     NO_FAULT_CLAIMED,
@@ -48,6 +49,7 @@ from openavc.core.connection_fault import (
 from openavc.core.state_store import StateStore
 from openavc.drivers.contract_events import CHILD_UNREGISTERED
 from openavc.drivers.spec import (
+    CHILD_DRIVER_FAULT_CODES,
     CHILD_PRESENCE_MODES,
     CHILD_RESERVED_PROP_SCHEMA,
     CHILD_RESERVED_PROPS,
@@ -269,6 +271,9 @@ class ChildEntities:
         # consults this to seed the per-child `label` state key without
         # the driver having to plumb the project schema itself.
         self._project_child_entities: dict[str, dict[str, dict[str, Any]]] = {}
+        # Whether this device has been told, once, that a claim of
+        # parent_offline was dropped (_child_writes).
+        self._parent_offline_claim_said = False
 
     def set_project_child_entities(
         self, child_entities: dict[str, dict[str, dict[str, Any]]] | None,
@@ -480,11 +485,33 @@ class ChildEntities:
     def _child_writes(
         self, child_type: str, local_id: int | str, updates: dict[str, Any],
     ) -> dict[str, Any]:
-        """``updates`` as the state keys and stored values they write."""
+        """A driver's ``updates`` to one child as the state keys and stored
+        values they write: passed through ``normalize_child_fault_claim``,
+        the seam every door a driver writes a child through shares."""
+        claimed = self._driver_claim(updates)
+        return self._child_keyed(child_type, local_id, claimed)
+
+    def _driver_claim(self, updates: dict[str, Any]) -> dict[str, Any]:
+        """``updates`` as the platform stores a driver's write, said once per
+        device when a claim of ``parent_offline`` was dropped from it."""
+        claimed = normalize_child_fault_claim(updates)
+        if len(claimed) < len(updates) and not self._parent_offline_claim_said:
+            self._parent_offline_claim_said = True
+            log.warning(
+                f"[{self.device_id}] a child write claimed offline_reason "
+                f"'{CHILD_PARENT_OFFLINE}', which only the platform writes "
+                f"(while the device is unreachable); the claim was dropped. "
+                f"Use one of {', '.join(sorted(CHILD_DRIVER_FAULT_CODES))}"
+            )
+        return claimed
+
+    def _child_keyed(
+        self, child_type: str, local_id: int | str, values: dict[str, Any],
+    ) -> dict[str, Any]:
+        """``values`` under the state keys of one child, as they are."""
         return {
-            self._child_state_key(child_type, local_id, prop):
-                normalize_child_fault_claim(prop, value)
-            for prop, value in updates.items()
+            self._child_state_key(child_type, local_id, prop): value
+            for prop, value in values.items()
         }
 
     # --- Registration -------------------------------------------------------
@@ -518,7 +545,25 @@ class ChildEntities:
         (``{"type": "number"|"boolean"|"integer"|"string"|"enum", "label":
         ..., ...}``), the same shape as a static ``state_variables`` entry.
         Passing ``schema`` for a non-dynamic type raises ValueError.
+
+        ``initial_state`` passes the seam a driver's every child write does
+        (``normalize_child_fault_claim``): a claim of ``parent_offline`` is
+        dropped and the child starts as the roster says.
         """
+        self._register_child(
+            child_type, local_id, self._driver_claim(initial_state or {}), schema,
+        )
+
+    def _register_child(
+        self,
+        child_type: str,
+        local_id: int | str,
+        initial_state: dict[str, Any],
+        schema: dict[str, dict[str, Any]] | None = None,
+    ) -> None:
+        """``register_child`` with ``initial_state`` written as given: the
+        platform's own door, through which the declared roster marks a child
+        registered while the device is away ``parent_offline``."""
         self._format_child_id(child_type, local_id)   # validates id range
         type_def = self._child_type_def(child_type)
         if schema is not None:
@@ -539,7 +584,7 @@ class ChildEntities:
             self._child_schemas[(child_type, local_id)] = dict(schema)
 
         eff_schema = self._effective_child_schema(child_type, local_id)
-        overrides = dict(initial_state or {})
+        overrides = dict(initial_state)
         unknown = [prop for prop in overrides if prop not in eff_schema]
         if unknown:
             # Rolled back (the epoch stays spent) so a retry can succeed once
@@ -609,7 +654,7 @@ class ChildEntities:
                 values[prop] = seeded[prop]
             else:
                 values[prop] = self._default_for_var_def(var_def)
-        return self._child_writes(child_type, local_id, values)
+        return self._child_keyed(child_type, local_id, values)
 
     def _seed_presence(
         self, child_type: str, overrides: dict[str, Any],
@@ -725,11 +770,8 @@ class ChildEntities:
             value,
             schema[prop],
         )
-        self.state.set(
-            self._child_state_key(child_type, local_id, prop),
-            normalize_child_fault_claim(prop, value),
-            source=f"device.{self.device_id}",
-        )
+        for key, stored in self._child_writes(child_type, local_id, {prop: value}).items():
+            self.state.set(key, stored, source=f"device.{self.device_id}")
 
     @staticmethod
     def child_fault(code: str = "", message: str = "") -> dict[str, Any]:
@@ -768,7 +810,8 @@ class ChildEntities:
         learned yet. ``parent_offline`` is refused too, though it is a real
         code: it is the platform's statement about a connection the driver no
         longer has (see _children_follow_parent), and a driver claiming it
-        would only be overwritten on the next reconnect.
+        would put the child back in service at the next reconnect. Written any
+        other way it is dropped (``normalize_child_fault_claim``).
         """
         if not code:
             return _in_service()

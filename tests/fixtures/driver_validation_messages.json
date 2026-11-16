@@ -128,6 +128,9 @@
  "child_list_not_mapping": [
   "Response 0: child_list: must be a mapping"
  ],
+ "child_list_offline_reason_not_a_code": [
+  "Response 0: child_list: state 'offline_reason' writes 'down', which is not a child fault code; write not_fitted, not_responding or service_fault, or \"\" for none"
+ ],
  "child_list_on_json_rule": [
   "Response 0: child_list works on text rules (match:) only; a json: true rule routes to children with child_set"
  ],
@@ -205,6 +208,12 @@
  ],
  "child_set_not_list": [
   "Response 0: child_set must be a non-empty list"
+ ],
+ "child_set_offline_reason_not_a_code": [
+  "Response 0: child_set[0]: state 'offline_reason' maps '1' to 'not_respondng', which is not a child fault code (did you mean 'not_responding'?); write not_fitted, not_responding or service_fault, or \"\" for none"
+ ],
+ "child_set_offline_reason_parent_offline": [
+  "Response 0: child_set[0]: state 'offline_reason' writes 'parent_offline', the code the platform writes while the device is unreachable; write not_fitted, not_responding or service_fault, or \"\" for none"
  ],
  "child_set_state_prop_undeclared": [
   "Response 0: child_set[0]: state prop 'gain' is not declared in child_entity_types.zone.state_variables"

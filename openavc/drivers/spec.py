@@ -368,8 +368,9 @@ CHILD_PRESENCE_MODES: tuple[str, ...] = ("assumed", "reported")
 # opinion, because only the driver can see a sub-unit. `online` is presence.
 # `label` is the user's friendly name. `offline_reason` / `offline_detail`
 # are the child-level pair of the device's own offline_reason/offline_detail:
-# a stable code automation can match on, and the sentence a person reads. See
-# openavc/core/connection_fault.py for the codes and what each one means.
+# a stable code automation can match on, and the sentence a person reads. The
+# codes are below (CHILD_DRIVER_FAULT_CODES); what each one means to a person
+# is openavc/core/connection_fault.py's.
 #
 # This tuple is the contract half — the names. It lives here rather than in
 # base.py because avcdriver_semantic.py has to see it (a YAML driver writing
@@ -389,6 +390,41 @@ CHILD_RESERVED_PROP_SCHEMA: dict[str, dict[str, str]] = {
 }
 
 CHILD_RESERVED_PROPS: tuple[str, ...] = tuple(CHILD_RESERVED_PROP_SCHEMA)
+
+# The codes a child's `offline_reason` may hold, and which of them a driver may
+# write. They are the contract's because the checker refuses a YAML driver
+# writing any other (child_fault_checks) and reads only the contract; what each
+# one means to a person, its sentence and which count as trouble are
+# openavc/core/connection_fault.py's, which reads these names.
+
+#: The device lists it, and it is not answering. Go find it: power, cabling,
+#: network. This is absence, whether it was unplugged or has left the building.
+CHILD_NOT_RESPONDING = "not_responding"
+#: It IS answering (presence is fine, its control channel is live) but the
+#: function it exists to perform is not running. Power-cycle or restart it.
+#: This is the one the boolean could never say.
+CHILD_SERVICE_FAULT = "service_fault"
+#: The slot is empty: this id is a place something CAN be, and nothing is
+#: there. Not a fault, and nothing to go and fix: a mixer with no AT-LINK
+#: extensions chained to it is a correctly-configured mixer. Only a roster
+#: whose driver reports presence (`instances.presence: reported`) uses it; on
+#: an `assumed` roster every id is fitted by definition.
+CHILD_NOT_FITTED = "not_fitted"
+#: The parent device is unreachable, so nothing under it can be seen. The
+#: platform's own: it marks every child in service with it when the device
+#: drops and puts exactly those back when it returns. A driver writing it would
+#: be claiming what it cannot see (its transport is gone), and the return would
+#: put the child back in service against what the device said, so the checker
+#: refuses it in a definition and the runtime drops it from any driver.
+CHILD_PARENT_OFFLINE = "parent_offline"
+
+#: The codes a driver may write: through ``BaseDriver.child_fault``, a
+#: ``child_set:`` or ``child_list:``, or a child write of its own.
+CHILD_DRIVER_FAULT_CODES: frozenset[str] = frozenset({
+    CHILD_NOT_RESPONDING,
+    CHILD_SERVICE_FAULT,
+    CHILD_NOT_FITTED,
+})
 
 # The ``device.<id>.<key>`` keys the device manager writes for every device:
 # its name and switches, whether it is connected, why it is away, its pause,
