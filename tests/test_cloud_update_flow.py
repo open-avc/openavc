@@ -585,3 +585,40 @@ async def test_end_to_end_cloud_update_message():
     assert result_payload["success"] is True
     assert result_payload["result"] is not None
     assert "error" in result_payload  # field must exist (even if None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("update_url", [
+    "https://github.com/open-avc/openavc/releases/download/v1.0.0/setup.exe", "",
+], ids=["cloud_url", "github"])
+async def test_a_refused_update_answers_with_the_updaters_instructions(update_url):
+    """The updater says what to do instead when it will not update itself, and
+    the answer went back with only the error."""
+    agent = MockAgent()
+    refusal = {
+        "success": False,
+        "error": "This deployment type does not support self-update.",
+        "instructions": "Update this install with its own package manager.",
+    }
+    update_manager = AsyncMock()
+    update_manager.apply_cloud_update = AsyncMock(return_value=refusal)
+    update_manager.check_for_updates = AsyncMock(return_value={"update_available": True})
+    update_manager.apply_update = AsyncMock(return_value=refusal)
+    handler = CommandHandler(agent, MockDeviceManager(), MockEventBus(), update_manager=update_manager)
+
+    msg = {
+        "type": "software_update",
+        "payload": {
+            "request_id": "req-refused", "target_version": "1.0.0",
+            "update_url": update_url, "checksum_sha256": "abc123", "auto_restart": True,
+        },
+    }
+    with patch("openavc.updater.platform.can_self_update", return_value=True), \
+         patch("openavc.updater.platform.detect_deployment_type"):
+        await handler.handle(msg)
+
+    [(msg_type, payload)] = agent.sent
+    assert msg_type == "command_result"
+    assert payload["success"] is False
+    assert payload["error"] == refusal["error"]
+    assert payload["result"] == refusal["instructions"]

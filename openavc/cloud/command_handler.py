@@ -443,11 +443,7 @@ class CommandHandler:
                 apply_result = await self._update_manager.apply_cloud_update(
                     target_version, update_url, checksum_sha256,
                 )
-                await self._send_result(
-                    request_id, apply_result.get("success", False),
-                    result=apply_result.get("message"),
-                    error=apply_result.get("error"),
-                )
+                await self._send_apply_result(request_id, apply_result)
             else:
                 # Fallback: no URL provided, check GitHub independently
                 check_result = await self._update_manager.check_for_updates()
@@ -459,11 +455,7 @@ class CommandHandler:
                     return
 
                 apply_result = await self._update_manager.apply_update()
-                await self._send_result(
-                    request_id, apply_result.get("success", False),
-                    result=apply_result.get("message"),
-                    error=apply_result.get("error"),
-                )
+                await self._send_apply_result(request_id, apply_result)
 
         except Exception as e:
             log.exception("Cloud software update failed")
@@ -471,6 +463,14 @@ class CommandHandler:
                 request_id, False,
                 error=f"Update failed: {e}",
             )
+
+    async def _send_apply_result(self, request_id: str, apply_result: dict[str, Any]) -> None:
+        """Answer with what the updater said: its message, or what to do instead of updating."""
+        await self._send_result(
+            request_id, apply_result.get("success", False),
+            result=apply_result.get("message") or apply_result.get("instructions"),
+            error=apply_result.get("error"),
+        )
 
     async def _handle_update(
         self, msg_type: str, payload: dict[str, Any], request_id: str, actor: str

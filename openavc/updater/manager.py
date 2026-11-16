@@ -87,6 +87,7 @@ class UpdateManager:
 
         # Load update history
         self._load_history()
+        self._publish_last_result()
         self._older_than_last_update = note_an_older_version(self._history, __version__)
 
         # Re-surface a cloud-staged update across restarts. The staged record
@@ -220,6 +221,20 @@ class UpdateManager:
             )
         except OSError as e:
             log.warning("Failed to save update history: %s", e)
+        self._publish_last_result()
+
+    def _publish_last_result(self) -> None:
+        """Publish how the newest update ended: its status, its release and its sentence.
+
+        An update sent from the cloud is answered "started" just before the
+        server exits, so this is where the cloud reads why one did not stick
+        once the system is back: matched to the release it sent, and only for
+        a failed or rolled-back end (`system.update_last_result*`).
+        """
+        row = self._history[0] if self._history else {}
+        self._set_state("system.update_last_result", row.get("status", ""))
+        self._set_state("system.update_last_result_version", row.get("to_version", ""))
+        self._set_state("system.update_last_result_message", row.get("error", ""))
 
     def _add_history_entry(
         self, from_version: str, to_version: str, status: str, error: str = "",

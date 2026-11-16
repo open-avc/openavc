@@ -388,3 +388,79 @@ class TestHistoryCannotClaimAnUpdateThatWasUndone:
         rows = _boot_manager(tmp_path, running="0.31.0")
 
         assert rows[0]["status"] == "success"
+
+
+# ===========================================================================
+# 5: how the last update ended is published for the cloud
+# ===========================================================================
+
+LAST_RESULT_KEYS = (
+    "system.update_last_result",
+    "system.update_last_result_version",
+    "system.update_last_result_message",
+)
+
+
+class _State:
+    def __init__(self):
+        self.values: dict = {}
+
+    def set(self, key, value, source=None):
+        self.values[key] = value
+
+
+def _published(tmp_path: Path, running: str) -> tuple:
+    state = _State()
+    with patch("openavc.updater.manager.__version__", running):
+        UpdateManager(state_store=state, data_dir=tmp_path)
+    return tuple(state.values.get(key) for key in LAST_RESULT_KEYS)
+
+
+class TestTheLastUpdatesEndIsPublished:
+    """An update sent from the cloud is answered "started" before the server
+    exits, so the cloud learns how it ended from the newest history row, which
+    each start settles, published as three state keys it reads back by release."""
+
+    def test_an_update_that_was_reverted(self, tmp_path):
+        _write_history(tmp_path, [{
+            "from_version": "0.31.0", "to_version": "0.32.0",
+            "status": "success", "error": "", "rollback": False,
+            "timestamp": "2026-09-02T18:43:42+00:00",
+        }])
+
+        assert _published(tmp_path, running="0.31.0") == (
+            "rolled_back", "0.32.0", "Update was reverted; running v0.31.0",
+        )
+
+    def test_an_update_that_did_not_apply(self, tmp_path):
+        _write_history(tmp_path, [{
+            "from_version": "0.31.0", "to_version": "0.32.0",
+            "status": "pending", "error": "", "rollback": False,
+            "timestamp": "2026-09-02T18:43:42+00:00",
+        }])
+
+        assert _published(tmp_path, running="0.31.0") == (
+            "failed", "0.32.0", "Update did not apply: expected v0.32.0, running v0.31.0",
+        )
+
+    def test_an_update_that_applied(self, tmp_path):
+        _write_history(tmp_path, [{
+            "from_version": "0.31.0", "to_version": "0.32.0",
+            "status": "pending", "error": "", "rollback": False,
+            "timestamp": "2026-09-02T18:43:42+00:00",
+        }])
+
+        assert _published(tmp_path, running="0.32.0") == ("success", "0.32.0", "")
+
+    def test_no_update_yet(self, tmp_path):
+        assert _published(tmp_path, running="0.31.0") == ("", "", "")
+
+    def test_a_row_written_later_is_published(self, tmp_path):
+        state = _State()
+        with patch("openavc.updater.manager.__version__", "0.31.0"):
+            manager = UpdateManager(state_store=state, data_dir=tmp_path)
+            manager._add_history_entry("0.31.0", "0.32.0", "failed", "Update failed: disk full")
+
+        assert tuple(state.values[key] for key in LAST_RESULT_KEYS) == (
+            "failed", "0.32.0", "Update failed: disk full",
+        )
