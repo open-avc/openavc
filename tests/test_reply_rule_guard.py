@@ -447,6 +447,8 @@ def test_every_contract_event_has_audit_words():
     step = Path(__file__).parents[1] / (
         "openavc/web/programmer/src/views/devices/audit/steps/ListenStep.tsx"
     )
-    labels = re.search(r"const CONTRACT_LABELS[^{]*\{(.*?)\};", step.read_text(), re.S)
+    labels = re.search(
+        r"const CONTRACT_LABELS[^{]*\{(.*?)\};", step.read_text(encoding="utf-8"), re.S
+    )
     assert labels is not None
     assert set(re.findall(r"^\s*(\w+):", labels.group(1), re.M)) == set(CONTRACT_EVENTS)
