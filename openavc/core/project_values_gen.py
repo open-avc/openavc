@@ -10,11 +10,11 @@ the Builder's unsaved draft, a project that never passed the loader).
 
 The table carries every field that declares a bound, under the model that
 declares it, and every panel setting with a plain default, since the panel
-fills a blank setting itself; a blank another setting decides (a settings
-model's ``BLANK_FROM``: the theme a project with no theme id draws) carries
-that setting's values too. A bound the table has no word for stops the
-generator rather than being left out: left out, the Builder would offer a value
-the save refuses.
+fills a blank setting itself; a blank another setting decides (a model's
+``BLANK_FROM``: the theme a project with no theme id draws, the format a clock
+with none draws) carries that setting's values too. A bound the table has no
+word for stops the generator rather than being left out: left out, the Builder
+would offer a value the save refuses.
 
 Data only. Run:  python -m openavc.core.project_values_gen
 A test compares both committed files against a fresh render, so a bound changed
@@ -32,7 +32,7 @@ import annotated_types
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
-from openavc.core.project_loader import ProjectConfig, UISettings
+from openavc.core.project_loader import ProjectConfig, UISettings, blank_rule
 
 TS_ARTIFACT = "openavc/web/programmer/src/api/projectValues.gen.ts"
 PANEL_ARTIFACT = "openavc/web/panel/modules/project_values.gen.js"
@@ -122,21 +122,31 @@ def _plain_default(info: FieldInfo) -> dict[str, Any]:
 
 
 def _blank_from(model: type[BaseModel], field: str) -> dict[str, Any]:
-    """``{"blank_from": {setting: {its value: this field's}}}`` when another
-    setting decides this field's blank (``BLANK_FROM``), else ``{}``. The other
-    setting's own default must be one of its values, so a value it does not
-    name always reads as something."""
-    rule = getattr(model, "BLANK_FROM", {}).get(field)
-    if rule is None:
+    """``{"blank_from": {setting: {its value: this field's}}, "otherwise":
+    word}`` when another setting decides this field's blank (``BLANK_FROM``,
+    read by ``project_loader.blank_rule``), else ``{}``. ``otherwise`` is the
+    value a word not named reads as: it must name something drawn, so every
+    word reads as something, and it must be that setting's default where it has
+    one, so a draft that leaves the setting out draws what saving it stores."""
+    if field not in getattr(model, "BLANK_FROM", {}):
         return {}
-    setting, by_value = rule
+    setting, by_value, *_ = model.BLANK_FROM[field]
     other = model.model_fields.get(setting)
-    if other is None or other.default not in by_value:
-        raise UnreadableBoundError(
-            f"{model.__name__}.{field}'s blank follows {setting!r}, which is not a setting "
-            f"of {model.__name__} whose default is among {sorted(by_value)}"
-        )
-    return {"blank_from": {setting: dict(by_value)}}
+    if other is None:
+        raise _unreadable_blank(model, field)
+    unnamed = blank_rule(model, field)[2]
+    if by_value.get(unnamed) is None or other.default not in (None, unnamed):
+        raise _unreadable_blank(model, field)
+    return {"blank_from": {setting: dict(by_value)}, "otherwise": unnamed}
+
+
+def _unreadable_blank(model: type[BaseModel], field: str) -> UnreadableBoundError:
+    setting, by_value, *_ = model.BLANK_FROM[field]
+    drawn = sorted(v for v in by_value.values() if v is not None)
+    return UnreadableBoundError(
+        f"{model.__name__}.{field}'s blank follows {setting!r}, which is not a setting "
+        f"of {model.__name__} whose default, or the word its rule names instead, draws one of {drawn}"
+    )
 
 
 def _entry(model: type[BaseModel], field: str, info: FieldInfo, settings: bool) -> dict[str, Any] | None:
@@ -180,8 +190,9 @@ BANNER = """\
 // for a blank one, `min` and `max` the range it takes (both ends included),
 // `integer` that it refuses a fraction. A value outside its range fails the
 // whole project save. `blank_from` says what a blank one draws when another
-// setting decides it: that setting's value names it, and a value not named
-// reads as that setting's default.
+// setting decides it: that setting's value names it (null: that value draws
+// none), and a value not named, a blank one included, reads as the one
+// `otherwise` names.
 """
 
 TS_BODY = """
@@ -191,7 +202,8 @@ export interface ProjectValue {
   readonly min?: number;
   readonly max?: number;
   readonly integer?: boolean;
-  readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string | null>>>>;
+  readonly otherwise?: string;
 }
 
 export const PROJECT_VALUES = %(table)s as const satisfies Record<string, Record<string, ProjectValue>>;

@@ -88,7 +88,9 @@ def test_the_panel_asks_the_table_reader_for_its_theme() -> None:
 
 def test_the_table_carries_the_rule() -> None:
     entry = project_values()["UISettings"]["theme_id"]
-    assert entry == {"default": "", "blank_from": {"theme": {"light": "light-modern", "dark": "dark-default"}}}
+    assert entry == {
+        "default": "", "blank_from": {"theme": {"light": "light-modern", "dark": "dark-default"}}, "otherwise": "dark",
+    }
 
 
 def test_every_theme_the_rule_gives_is_built_in() -> None:

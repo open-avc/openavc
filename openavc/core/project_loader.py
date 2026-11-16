@@ -7,7 +7,8 @@ All downstream code works with typed ProjectConfig objects, never raw dicts.
 The models are the one place a project value's bound and default are written:
 each range on its field (``Field(ge=, le=)``), each blank as the field's
 default, or, for a blank another setting decides (the theme a project with no
-theme id draws), in the model's ``BLANK_FROM``.
+theme id draws, the format a clock with none draws), in the model's
+``BLANK_FROM``, read by ``blank_drawn``.
 ``python -m openavc.core.project_values_gen`` renders them into one
 table for the Builder (``web/programmer/src/api/projectValues.gen.ts``) and the
 panel (``web/panel/modules/project_values.gen.js``), which draws the Builder's
@@ -96,6 +97,28 @@ def _validate_id(value: str, label: str) -> str:
 # the most the panel's labels and gauges ever drew.
 DISPLAY_DECIMALS_MIN = 0
 DISPLAY_DECIMALS_MAX = 20
+
+# A blank another setting decides is declared in its model's ``BLANK_FROM``:
+# field -> (that setting, its value -> what this field draws), with a third
+# entry, the value a word not named reads as, where that setting's own default
+# is None. Left out, it is that setting's default. A drawn None is a value that
+# draws no such thing.
+
+
+def blank_rule(model: type[BaseModel], field: str) -> tuple[str, dict[str, Any], Any]:
+    """``field``'s ``BLANK_FROM`` rule as (the setting that decides it, its
+    value -> what the field draws, the value a word not named reads as)."""
+    setting, by_value, *otherwise = getattr(model, "BLANK_FROM")[field]
+    unnamed = otherwise[0] if otherwise else model.model_fields[setting].default
+    return setting, by_value, unnamed
+
+
+def blank_drawn(model: type[BaseModel], field: str, word: Any) -> Any:
+    """THE value a blank ``field`` of ``model`` draws, when the deciding
+    setting holds ``word``. The panel and the Builder read the same rule from
+    the generated table (``project_values_gen.py``)."""
+    _, by_value, unnamed = blank_rule(model, field)
+    return by_value[word if isinstance(word, str) and word in by_value else unnamed]
 
 
 class ProjectMeta(_ForwardCompatModel):
@@ -475,7 +498,8 @@ class UIElement(_ForwardCompatModel):
     zones: list[dict[str, Any]] | None = None  # gauge: color zones
     orientation: str | None = None  # fader, level_meter: vertical/horizontal
     clock_mode: str | None = None  # clock: time/date/datetime/countdown/elapsed/meeting
-    format: str | None = None  # clock: format string (h:mm A)
+    # clock: format string; blank is kept as written, what it draws is BLANK_FROM's
+    format: str | None = None
     timezone: str | None = None  # clock: IANA timezone
     target_time: str | None = None  # clock: countdown target
     start_key: str | None = None  # clock: elapsed timer start state key
@@ -533,6 +557,17 @@ class UIElement(_ForwardCompatModel):
     locked: bool = False
     style: dict[str, Any] = Field(default_factory=dict)
     bindings: dict[str, Any] = Field(default_factory=dict)
+
+    #: A blank format is the clock's mode's (blank_rule has the shape). A
+    #: duration (countdown, elapsed, meeting) reads none: it is always hours,
+    #: minutes and seconds. A mode not named, a blank one included, draws as
+    #: the time.
+    BLANK_FROM: ClassVar[dict[str, tuple[str, dict[str, str | None], str]]] = {
+        "format": ("clock_mode", {
+            "time": "h:mm A", "date": "MMM D, YYYY", "datetime": "MMM D, YYYY h:mm A",
+            "countdown": None, "elapsed": None, "meeting": None,
+        }, "time"),
+    }
 
     @field_validator("id")
     @classmethod
@@ -648,10 +683,10 @@ class UISettings(_ForwardCompatModel):
     # a room that draws its own status and would rather ours kept quiet.
     show_error_messages: bool = True
 
-    #: A blank setting another setting decides, as (that setting, its value ->
-    #: this one's). A blank theme_id is the theme the light or dark `theme`
-    #: names (the setting a project carried before themes had ids); a `theme`
-    #: not named here reads as the default `theme`.
+    #: A blank setting another setting decides (blank_rule has the shape). A
+    #: blank theme_id is the theme the light or dark `theme` names (the setting
+    #: a project carried before themes had ids); a `theme` not named here reads
+    #: as the default `theme`.
     BLANK_FROM: ClassVar[dict[str, tuple[str, dict[str, str]]]] = {
         "theme_id": ("theme", {"light": "light-modern", "dark": "dark-default"}),
     }
@@ -660,11 +695,7 @@ class UISettings(_ForwardCompatModel):
         """THE theme this project draws: its ``theme_id``, else the one
         ``BLANK_FROM`` gives for its ``theme``. The panel and the Builder read
         the same rule from the generated table."""
-        if self.theme_id:
-            return self.theme_id
-        setting, by_value = self.BLANK_FROM["theme_id"]
-        default = type(self).model_fields[setting].default
-        return by_value.get(getattr(self, setting), by_value[default])
+        return self.theme_id or blank_drawn(type(self), "theme_id", self.theme)
 
 
 class MasterElement(UIElement):

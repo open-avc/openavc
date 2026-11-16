@@ -158,6 +158,61 @@ def test_a_blank_that_cannot_always_be_read_stops_the_generator(rule) -> None:
         project_values(roots=(Odd,))
 
 
+def test_a_blank_the_setting_does_not_name_reads_as_its_default() -> None:
+    """Left unsaid, a word not named reads as the deciding setting's own
+    default, which is how a draft that leaves the setting out draws what
+    saving it stores."""
+
+    class Odd(BaseModel):
+        theme: str = "dark"
+        theme_id: str = ""
+        BLANK_FROM: ClassVar[dict] = {"theme_id": ("theme", {"light": "a", "dark": "b"})}
+
+    assert project_values(roots=(Odd,))["Odd"]["theme_id"]["otherwise"] == "dark"
+
+
+def test_a_setting_with_no_default_names_the_word_a_blank_reads_as() -> None:
+    """A mode every element carries, blank on all but one type, has no word
+    of its own: the rule names it, and a value drawn as nothing is carried."""
+
+    class Odd(BaseModel):
+        mode: str | None = None
+        fmt: str | None = None
+        BLANK_FROM: ClassVar[dict] = {"fmt": ("mode", {"a": "x", "b": None}, "a")}
+
+    assert project_values(roots=(Odd,))["Odd"]["fmt"] == {
+        "default": None, "blank_from": {"mode": {"a": "x", "b": None}}, "otherwise": "a",
+    }
+
+
+@pytest.mark.parametrize(
+    "default, rule",
+    [
+        (None, ("mode", {"a": "x"})),
+        (None, ("mode", {"a": "x", "b": None}, "b")),
+        (None, ("mode", {"a": "x"}, "c")),
+        ("a", ("mode", {"a": "x", "b": "y"}, "b")),
+    ],
+    ids=[
+        "no default and no word named",
+        "the word named draws nothing",
+        "the word named is not in the rule",
+        "a word other than the setting's own default",
+    ],
+)
+def test_a_blank_whose_fallback_cannot_be_drawn_stops_the_generator(default, rule) -> None:
+    """Every word has to read as something drawn, and a setting left out has
+    to read as the default the save stores for it."""
+
+    class Odd(BaseModel):
+        mode: str | None = default
+        fmt: str | None = None
+        BLANK_FROM: ClassVar[dict] = {"fmt": rule}
+
+    with pytest.raises(UnreadableBoundError, match="Odd.fmt"):
+        project_values(roots=(Odd,))
+
+
 def test_the_panel_module_imports_to_the_same_table() -> None:
     """The panel's copy is an ES module a browser can load as it stands."""
     if shutil.which("node") is None:

@@ -9,20 +9,19 @@
  * each meeting started, which outlives a redraw, so a meeting keeps counting
  * from its start when the page is drawn again.
  *
+ * The format a clock with none written draws is the project schema's, by its
+ * mode (`blank_from` in the generated table, read through
+ * modules/project_values.js), the same table the Builder's Format placeholder
+ * reads. The three durations read none: a duration is always hours, minutes
+ * and seconds.
+ *
  * The page review's renderer scan (tests/test_ui_page_review_mirrors.py)
  * credits all of this text to the clock, the one renderer that hands it a
- * definition. The Builder's clock fields (ClockFields.tsx) show the same
- * default formats as their placeholder: change the two together.
+ * definition.
  */
 
-/**
- * The format a mode draws when the author wrote none. The three durations
- * never read theirs: a duration is always hours, minutes and seconds.
- */
-const DEFAULT_FORMATS = {
-    time: 'h:mm A', date: 'MMM D, YYYY', datetime: 'MMM D, YYYY h:mm A',
-    countdown: 'HH:mm:ss', elapsed: 'HH:mm:ss', meeting: 'mm:ss',
-};
+import { blankDrawn } from './project_values.js';
+
 /** "12" and "24" are documented shorthands for 12- and 24-hour time, not tokens. */
 const FORMAT_SHORTHANDS = { '12': 'h:mm A', '24': 'HH:mm' };
 
@@ -126,8 +125,8 @@ export class ClockControl {
         this.element = element;
         this.read = read;
         this.ticker = ticker;
-        this.mode = element.clock_mode || 'time';
-        const rawFormat = element.format || DEFAULT_FORMATS[this.mode] || 'h:mm A';
+        this.mode = element.clock_mode;
+        const rawFormat = element.format || blankDrawn('UIElement', 'format', this.mode);
         this.format = FORMAT_SHORTHANDS[rawFormat] || rawFormat;
         this.timezone = element.timezone || undefined;
         this.durationMin = element.duration_minutes || 60;

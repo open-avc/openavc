@@ -8,8 +8,9 @@
 // for a blank one, `min` and `max` the range it takes (both ends included),
 // `integer` that it refuses a fraction. A value outside its range fails the
 // whole project save. `blank_from` says what a blank one draws when another
-// setting decides it: that setting's value names it, and a value not named
-// reads as that setting's default.
+// setting decides it: that setting's value names it (null: that value draws
+// none), and a value not named, a blank one included, reads as the one
+// `otherwise` names.
 
 /** One project value: what a blank one is, and the range it may hold. */
 export interface ProjectValue {
@@ -17,7 +18,8 @@ export interface ProjectValue {
   readonly min?: number;
   readonly max?: number;
   readonly integer?: boolean;
-  readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string | null>>>>;
+  readonly otherwise?: string;
 }
 
 export const PROJECT_VALUES = {
@@ -35,6 +37,20 @@ export const PROJECT_VALUES = {
       "min": 0,
       "max": 20,
       "integer": true
+    },
+    "format": {
+      "default": null,
+      "blank_from": {
+        "clock_mode": {
+          "time": "h:mm A",
+          "date": "MMM D, YYYY",
+          "datetime": "MMM D, YYYY h:mm A",
+          "countdown": null,
+          "elapsed": null,
+          "meeting": null
+        }
+      },
+      "otherwise": "time"
     }
   },
   "UISettings": {
@@ -48,7 +64,8 @@ export const PROJECT_VALUES = {
           "light": "light-modern",
           "dark": "dark-default"
         }
-      }
+      },
+      "otherwise": "dark"
     },
     "accent_color": {
       "default": ""

@@ -2030,7 +2030,7 @@ exports[`the Basic section, every element type > clock, countdown from a start k
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Format"
-    input placeholder="HH:mm:ss" style="flex: 1 1 0%;" value=""
+    input style="flex: 1 1 0%;" value=""
   div style="font-size: 10px; color: var(--text-muted); line-height: 1.5; padding: 0px 4px; margin-top: -4px;"
     strong
       "Tokens:"
@@ -2081,14 +2081,14 @@ exports[`the Basic section, every element type > clock, countdown from a start k
 #3 select value="countdown" :: change "countdown" -> patch {clock_mode: "countdown", format: ""}
 #3 select value="countdown" :: change "elapsed" -> patch {clock_mode: "elapsed", format: ""}
 #3 select value="countdown" :: change "meeting" -> patch {clock_mode: "meeting", format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc" -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: change "" -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: focus, blur -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
+#4 input value="" :: change "abc" -> patch {format: "abc"}
+#4 input value="" :: change "" -> nothing
+#4 input value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
+#4 input value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
+#4 input value="" :: focus, blur -> nothing
+#4 input value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
+#4 input value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
+#4 input value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
 #5 input type="datetime-local" value="" :: change "2026-01-02T03:04" -> patch {target_time: "2026-01-02T03:04"}
 #5 input type="datetime-local" value="" :: change "" -> nothing
 #6 button data-emit="onChange \\"var.start\\"" :: click -> patch {bindings: {show: {value: {source: "state", key: "var.start"}}}, target_time: undefined}
@@ -2142,7 +2142,7 @@ exports[`the Basic section, every element type > clock, countdown from state (pa
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Format"
-    input placeholder="HH:mm:ss" style="flex: 1 1 0%;" value=""
+    input style="flex: 1 1 0%;" value=""
   div style="font-size: 10px; color: var(--text-muted); line-height: 1.5; padding: 0px 4px; margin-top: -4px;"
     strong
       "Tokens:"
@@ -2193,14 +2193,14 @@ exports[`the Basic section, every element type > clock, countdown from state (pa
 #3 select value="countdown" :: change "countdown" -> patch {clock_mode: "countdown", format: ""}
 #3 select value="countdown" :: change "elapsed" -> patch {clock_mode: "elapsed", format: ""}
 #3 select value="countdown" :: change "meeting" -> patch {clock_mode: "meeting", format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc" -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: change "" -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: focus, blur -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
+#4 input value="" :: change "abc" -> patch {format: "abc"}
+#4 input value="" :: change "" -> nothing
+#4 input value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
+#4 input value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
+#4 input value="" :: focus, blur -> nothing
+#4 input value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
+#4 input value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
+#4 input value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
 #5 input type="datetime-local" value="" :: change "2026-01-02T03:04" -> patch {target_time: "2026-01-02T03:04"}
 #5 input type="datetime-local" value="" :: change "" -> nothing
 #6 button data-emit="onChange \\"var.start\\"" :: click -> patch {bindings: {show: {value: {source: "state", key: "var.start"}, look: {key: "var.x"}}, do: {press: {}}}, target_time: undefined}
@@ -2254,7 +2254,7 @@ exports[`the Basic section, every element type > clock, countdown to a time (pag
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Format"
-    input placeholder="HH:mm:ss" style="flex: 1 1 0%;" value=""
+    input style="flex: 1 1 0%;" value=""
   div style="font-size: 10px; color: var(--text-muted); line-height: 1.5; padding: 0px 4px; margin-top: -4px;"
     strong
       "Tokens:"
@@ -2305,14 +2305,14 @@ exports[`the Basic section, every element type > clock, countdown to a time (pag
 #3 select value="countdown" :: change "countdown" -> patch {clock_mode: "countdown", format: ""}
 #3 select value="countdown" :: change "elapsed" -> patch {clock_mode: "elapsed", format: ""}
 #3 select value="countdown" :: change "meeting" -> patch {clock_mode: "meeting", format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc" -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: change "" -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: focus, blur -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
+#4 input value="" :: change "abc" -> patch {format: "abc"}
+#4 input value="" :: change "" -> nothing
+#4 input value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
+#4 input value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
+#4 input value="" :: focus, blur -> nothing
+#4 input value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
+#4 input value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
+#4 input value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
 #5 input type="datetime-local" value="2026-05-01T09:00" :: change "2026-01-02T03:04" -> patch {target_time: "2026-01-02T03:04"}
 #5 input type="datetime-local" value="2026-05-01T09:00" :: change "" -> patch {target_time: undefined}
 #6 button data-emit="onChange \\"var.start\\"" :: click -> patch {bindings: {show: {value: {source: "state", key: "var.start"}}}, target_time: undefined}
@@ -2366,7 +2366,7 @@ exports[`the Basic section, every element type > clock, countdown with only a va
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Format"
-    input placeholder="HH:mm:ss" style="flex: 1 1 0%;" value=""
+    input style="flex: 1 1 0%;" value=""
   div style="font-size: 10px; color: var(--text-muted); line-height: 1.5; padding: 0px 4px; margin-top: -4px;"
     strong
       "Tokens:"
@@ -2417,14 +2417,14 @@ exports[`the Basic section, every element type > clock, countdown with only a va
 #3 select value="countdown" :: change "countdown" -> patch {clock_mode: "countdown", format: ""}
 #3 select value="countdown" :: change "elapsed" -> patch {clock_mode: "elapsed", format: ""}
 #3 select value="countdown" :: change "meeting" -> patch {clock_mode: "meeting", format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc" -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: change "" -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: focus, blur -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
+#4 input value="" :: change "abc" -> patch {format: "abc"}
+#4 input value="" :: change "" -> nothing
+#4 input value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
+#4 input value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
+#4 input value="" :: focus, blur -> nothing
+#4 input value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
+#4 input value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
+#4 input value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
 #5 input type="datetime-local" value="" :: change "2026-01-02T03:04" -> patch {target_time: "2026-01-02T03:04"}
 #5 input type="datetime-local" value="" :: change "" -> nothing
 #6 button data-emit="onChange \\"var.start\\"" :: click -> patch {bindings: {show: {value: {source: "state", key: "var.start"}}}, target_time: undefined}
@@ -2674,7 +2674,7 @@ exports[`the Basic section, every element type > clock, elapsed (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Format"
-    input placeholder="HH:mm:ss" style="flex: 1 1 0%;" value=""
+    input style="flex: 1 1 0%;" value=""
   div style="font-size: 10px; color: var(--text-muted); line-height: 1.5; padding: 0px 4px; margin-top: -4px;"
     strong
       "Tokens:"
@@ -2721,14 +2721,14 @@ exports[`the Basic section, every element type > clock, elapsed (page) 1`] = `
 #3 select value="elapsed" :: change "countdown" -> patch {clock_mode: "countdown", format: ""}
 #3 select value="elapsed" :: change "elapsed" -> patch {clock_mode: "elapsed", format: ""}
 #3 select value="elapsed" :: change "meeting" -> patch {clock_mode: "meeting", format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc" -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: change "" -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
-#4 input placeholder="HH:mm:ss" value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
-#4 input placeholder="HH:mm:ss" value="" :: focus, blur -> nothing
-#4 input placeholder="HH:mm:ss" value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
-#4 input placeholder="HH:mm:ss" value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
+#4 input value="" :: change "abc" -> patch {format: "abc"}
+#4 input value="" :: change "" -> nothing
+#4 input value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
+#4 input value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
+#4 input value="" :: focus, blur -> nothing
+#4 input value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
+#4 input value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
+#4 input value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
 #5 button data-emit="onChange \\"var.start\\"" :: click -> patch {start_key: "var.start"}
 #6 button data-emit="onChange \\"\\"" :: click -> patch {start_key: undefined}
 #7 input placeholder="America/New_York" value="" :: change "abc" -> patch {timezone: "abc"}
@@ -2780,7 +2780,7 @@ exports[`the Basic section, every element type > clock, meeting (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Format"
-    input placeholder="mm:ss" style="flex: 1 1 0%;" value=""
+    input style="flex: 1 1 0%;" value=""
   div style="font-size: 10px; color: var(--text-muted); line-height: 1.5; padding: 0px 4px; margin-top: -4px;"
     strong
       "Tokens:"
@@ -2827,14 +2827,14 @@ exports[`the Basic section, every element type > clock, meeting (page) 1`] = `
 #3 select value="meeting" :: change "countdown" -> patch {clock_mode: "countdown", format: ""}
 #3 select value="meeting" :: change "elapsed" -> patch {clock_mode: "elapsed", format: ""}
 #3 select value="meeting" :: change "meeting" -> patch {clock_mode: "meeting", format: ""}
-#4 input placeholder="mm:ss" value="" :: change "abc" -> patch {format: "abc"}
-#4 input placeholder="mm:ss" value="" :: change "" -> nothing
-#4 input placeholder="mm:ss" value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
-#4 input placeholder="mm:ss" value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
-#4 input placeholder="mm:ss" value="" :: focus, blur -> nothing
-#4 input placeholder="mm:ss" value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
-#4 input placeholder="mm:ss" value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
-#4 input placeholder="mm:ss" value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
+#4 input value="" :: change "abc" -> patch {format: "abc"}
+#4 input value="" :: change "" -> nothing
+#4 input value="" :: change "{\\"a\\":1}" -> patch {format: "{\\"a\\":1}"}
+#4 input value="" :: change "abc", change "" -> patch {format: "abc"} ; patch {format: ""}
+#4 input value="" :: focus, blur -> nothing
+#4 input value="" :: focus, change " new_id ", blur -> patch {format: " new_id "}
+#4 input value="" :: focus, change "abc", key Enter -> patch {format: "abc"}
+#4 input value="" :: focus, change "abc", key Escape -> patch {format: "abc"}
 #5 input type="number" placeholder="60" min="1" value="30" :: change "7" -> patch {duration_minutes: 7}
 #5 input type="number" placeholder="60" min="1" value="30" :: change "" -> patch {duration_minutes: undefined}
 #5 input type="number" placeholder="60" min="1" value="30" :: change "2.5" -> patch {duration_minutes: 2.5}

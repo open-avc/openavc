@@ -22,6 +22,7 @@
  * its font blank, which Panel Settings shows in those two fields.
  */
 import { useCallback, useEffect, useState } from "react";
+import { blankDrawn } from "../../api/projectValues";
 import { PROJECT_VALUES } from "../../api/projectValues.gen";
 import { getTunnelPrefix, listThemes } from "../../api/restClient";
 import type { UISettings } from "../../api/types";
@@ -163,9 +164,7 @@ export function projectThemeId(settings: ThemeChoice): string {
  * setting's.
  */
 export function blankThemeId(settings: ThemeChoice): string {
-  const byTheme: Readonly<Record<string, string>> = SETTINGS.theme_id.blank_from.theme;
-  const word = settings?.theme || SETTINGS.theme.default;
-  return byTheme[Object.prototype.hasOwnProperty.call(byTheme, word) ? word : SETTINGS.theme.default];
+  return blankDrawn(SETTINGS.theme_id, settings?.theme);
 }
 
 /**

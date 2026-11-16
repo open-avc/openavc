@@ -5,8 +5,9 @@
  * which passed the loader, and the Builder's unsaved draft
  * (modules/builder_link.js), which never did. Both are read here, so a draft
  * draws what saving it would: a control's shown decimals, the page transition
- * and entry stagger, the idle page, the failure message switch and the theme a
- * project with no theme id draws are read only here.
+ * and entry stagger, the idle page, the failure message switch, the theme a
+ * project with no theme id draws and the format a clock with none draws are
+ * read only here.
  *
  * A number the table bounds is held to its range (the nearer end for one
  * outside it) and rounded where the schema takes whole numbers only. A blank
@@ -56,13 +57,18 @@ export function panelSetting(settings, field) {
  * this is only what it draws.
  */
 export function themeIdOf(settings) {
-    return panelSetting(settings, 'theme_id') || blankFrom(settings, 'theme_id');
+    return panelSetting(settings, 'theme_id') || blankDrawn('UISettings', 'theme_id', settings?.theme);
 }
 
-/** A blank setting's value as the setting the table says decides it reads. */
-function blankFrom(settings, field) {
-    const [[setting, byValue]] = Object.entries(PROJECT_VALUES.UISettings[field].blank_from);
-    const word = panelSetting(settings, setting);
-    const named = Object.prototype.hasOwnProperty.call(byValue, word);
-    return byValue[named ? word : PROJECT_VALUES.UISettings[setting].default];
+/**
+ * What a blank `field` of `model` draws when the setting the table's
+ * `blank_from` says decides it holds `word`: the value named for that word,
+ * else for the word `otherwise` names (a blank one included). Null is a value
+ * that draws none.
+ */
+export function blankDrawn(model, field, word) {
+    const { blank_from: blankFrom, otherwise } = PROJECT_VALUES[model][field];
+    const [byValue] = Object.values(blankFrom);
+    const named = typeof word === 'string' && Object.prototype.hasOwnProperty.call(byValue, word);
+    return byValue[named ? word : otherwise];
 }

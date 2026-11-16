@@ -5,21 +5,17 @@
  * A countdown's state key is stored as the element's `show.value` binding
  * (the same slot the Bindings tab edits), not a field of its own; an older
  * project's `start_key` is still read for it until a key is picked.
+ *
+ * The Format box's placeholder is the format the panel draws while it is
+ * empty: the project schema's, by the clock's mode (`blank_from` in
+ * projectValues.gen.ts). The three durations read no format, so they show none.
  */
+import { blankDrawn } from "../../../api/projectValues";
+import { PROJECT_VALUES } from "../../../api/projectValues.gen";
 import type { UIElement } from "../../../api/types";
 import { VariableKeyPicker } from "../../shared/VariableKeyPicker";
 import { FieldHint, FieldRow, type FieldProps } from "./FieldRow";
 import { numOrUndefined } from "./numericField";
-
-/** The format each mode uses while the field is empty. */
-const DEFAULT_FORMATS: Record<string, string> = {
-  time: "h:mm A",
-  date: "MMM D, YYYY",
-  datetime: "MMM D, YYYY h:mm A",
-  countdown: "HH:mm:ss",
-  elapsed: "HH:mm:ss",
-  meeting: "mm:ss",
-};
 
 export function ClockFields({ element, onChange }: FieldProps) {
   return (
@@ -35,7 +31,7 @@ export function ClockFields({ element, onChange }: FieldProps) {
         </select>
       </FieldRow>
       <FieldRow label="Format">
-        <input value={element.format || ""} onChange={(e) => onChange({ format: e.target.value })} placeholder={DEFAULT_FORMATS[element.clock_mode || "time"] || "h:mm A"} style={{ flex: 1 }} />
+        <input value={element.format || ""} onChange={(e) => onChange({ format: e.target.value })} placeholder={blankDrawn(PROJECT_VALUES.UIElement.format, element.clock_mode) ?? undefined} style={{ flex: 1 }} />
       </FieldRow>
       <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5, padding: "0 4px", marginTop: -4 }}>
         <strong>Tokens:</strong>{" "}

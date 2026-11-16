@@ -1,0 +1,30 @@
+{
+  "_comment": [
+    "The format a clock with none written draws, by its mode. The project schema",
+    "decides it (UIElement.BLANK_FROM in openavc/core/project_loader.py); the panel",
+    "(web/panel/modules/clock.js, through modules/project_values.js) draws it and the",
+    "Builder (components/ui-builder/PropertySections/ClockFields.tsx) shows it as the",
+    "Format box's placeholder, both from the generated table.",
+    "tests/test_clock_format_parity.py runs every case through the table and the",
+    "panel, ClockFields.clock.test.tsx through the Builder. 'mode' is the clock's",
+    "clock_mode as written (absent when the key is missing); an 'expected' of null",
+    "is a mode that reads no format: a duration is always hours, minutes and",
+    "seconds, and the Builder shows no placeholder for it. A 'draft_only' case is",
+    "one the loader refuses, which only a Builder draft can hand the panel."
+  ],
+  "cases": [
+    {"name": "no mode written", "expected": "h:mm A"},
+    {"name": "the time", "mode": "time", "expected": "h:mm A"},
+    {"name": "the date", "mode": "date", "expected": "MMM D, YYYY"},
+    {"name": "the date and time", "mode": "datetime", "expected": "MMM D, YYYY h:mm A"},
+    {"name": "a countdown", "mode": "countdown", "expected": null},
+    {"name": "an elapsed timer", "mode": "elapsed", "expected": null},
+    {"name": "a meeting timer", "mode": "meeting", "expected": null},
+    {"name": "a mode left blank", "mode": "", "expected": "h:mm A"},
+    {"name": "a mode this release does not know", "mode": "lunar", "expected": "h:mm A"},
+    {"name": "date in capitals is not date", "mode": "Date", "expected": "h:mm A"},
+    {"name": "a word that is an object's own property name", "mode": "constructor", "expected": "h:mm A"},
+    {"name": "a null mode", "mode": null, "expected": "h:mm A"},
+    {"name": "a number for a mode in a draft", "mode": 7, "expected": "h:mm A", "draft_only": true}
+  ]
+}
