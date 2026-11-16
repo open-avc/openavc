@@ -358,6 +358,49 @@ async def test_backups_exports_and_the_library_carry_the_key(engine, data):
     assert backup is not None and KEY not in backup
 
 
+async def test_the_backup_a_first_start_takes_holds_its_keys_sealed_once_they_moved(data, tmp_path, monkeypatch):
+    import zipfile
+
+    from openavc.core.backup_manager import list_backups
+    from openavc.core.device_logins import KEY_FILENAME, FoundView, put_back
+    from openavc.core.engine import Engine
+
+    path = tmp_path / "project" / "project.avc"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(_document()), encoding="utf-8")
+    eng = Engine(str(path))
+
+    class Loaded(Exception):
+        pass
+
+    def loaded():
+        raise Loaded()
+
+    monkeypatch.setattr(eng, "_apply_project_settings", loaded)
+    with pytest.raises(Loaded):
+        await eng._load_project_at_start()
+    await eng._move_logins_at_start()
+    await eng._seal_the_start_backup()
+
+    [info] = list_backups(path)
+    with zipfile.ZipFile(path.parent / info.filename) as zf:
+        members = {name: zf.read(name) for name in zf.namelist()}
+    assert all(KEY.encode() not in content for content in members.values())
+    kept = json.loads(members["project.avc"])
+    assert saved_params.is_marker(kept["macros"][0]["steps"][0]["params"]["key"])
+    # Restored on this system, every key comes back.
+    same_key = tmp_path / "same_key"
+    same_key.mkdir()
+    (same_key / KEY_FILENAME).write_bytes((data / KEY_FILENAME).read_bytes())
+    restored_logins = DeviceLogins(same_key)
+    restored_logins.restore_copy(members["device_logins.json"].decode(), in_project(kept), where="the test")
+    from openavc.core.device_logins import StoreView, saved_logins_of
+
+    restored = put_back(kept, FoundView(saved_logins_of(kept, StoreView(restored_logins))))
+    assert restored["macros"][0]["steps"][0]["params"]["key"] == KEY
+    assert restored["ui"]["pages"][0]["elements"][0]["bindings"]["do"]["press"][0]["params"]["key"] == KEY
+
+
 async def test_a_step_that_is_gone_lets_its_key_go(engine):
     await _edit(engine, _document())
     name = saved_params.name_of(_step_params(engine)["key"])

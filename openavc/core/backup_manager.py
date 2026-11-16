@@ -30,6 +30,7 @@ the configured file however either was named.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -363,36 +364,35 @@ def seal_logins_in_backup(backup_path: Path, move: Callable[[dict[str, Any]], An
     same object when it holds none or the move could not finish. The backup
     then carries the project's logins sealed (``ARCHIVE_LOGINS``), as every
     backup does, so restored on this system it fills in the same logins. The
-    rest is kept: the file's format version, every other member, the name,
-    and the time it was taken, which the list shows and the rotation sorts by.
-    False, the backup untouched, when the file holds no login in the clear,
-    the move could not finish or the logins cannot be sealed.
+    rest is kept: the file's format version, every other member (copied one
+    at a time, never read whole), the name, and the time it was taken, which
+    the list shows and the rotation sorts by. False, the backup untouched,
+    when the file holds no login in the clear, the move could not finish or
+    the logins cannot be sealed.
     """
-    with zipfile.ZipFile(backup_path) as zf:
-        members = [(info, zf.read(info)) for info in zf.infolist()]
-    raw = _archived_project(members)
-    if raw is None:
-        return False
-    moved = move(raw)
-    logins = _logins_copy(moved) if moved is not raw else None
-    if logins is None:
-        return False
-    replaced = {
-        ARCHIVE_PROJECT: json.dumps(moved, indent=4, ensure_ascii=False).encode("utf-8"),
-        ARCHIVE_LOGINS: logins.encode("utf-8"),
-    }
-    taken = backup_path.stat()
     from openavc.core.project_loader import _project_save_lock
 
-    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(backup_path.parent), suffix=".zip.tmp", prefix=".backup_")
-    os.close(tmp_fd)
-    tmp_path: Path | None = Path(tmp_name)
+    taken = backup_path.stat()
+    tmp_path: Path | None = None
     try:
-        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for info, content in members:
-                zf.writestr(info, replaced.pop(info.filename, content))
-            for name, content in replaced.items():
-                zf.writestr(name, content)
+        with zipfile.ZipFile(backup_path) as source:
+            replaced = _sealed_members(source, move)
+            if replaced is None:
+                return False
+            tmp_fd, tmp_name = tempfile.mkstemp(
+                dir=str(backup_path.parent), suffix=".zip.tmp", prefix=".backup_",
+            )
+            os.close(tmp_fd)
+            tmp_path = Path(tmp_name)
+            with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as out:
+                for info in source.infolist():
+                    if info.filename in replaced:
+                        out.writestr(copy.copy(info), replaced.pop(info.filename))
+                        continue
+                    with source.open(info) as member, out.open(copy.copy(info), "w") as copied:
+                        shutil.copyfileobj(member, copied, 1 << 20)
+                for name, content in replaced.items():
+                    out.writestr(name, content)
         os.utime(tmp_path, ns=(taken.st_atime_ns, taken.st_mtime_ns))
         with _project_save_lock:
             if not backup_path.exists():  # rotated away meanwhile
@@ -406,18 +406,24 @@ def seal_logins_in_backup(backup_path: Path, move: Callable[[dict[str, Any]], An
     return True
 
 
-def _archived_project(members: list[tuple[zipfile.ZipInfo, bytes]]) -> dict[str, Any] | None:
-    """The project file in a backup's members, read as JSON; None when there
-    is none or it does not read as a project."""
-    for info, content in members:
-        if info.filename != ARCHIVE_PROJECT:
-            continue
-        try:
-            raw = json.loads(content.decode("utf-8"))
-        except ValueError:
-            return None
-        return raw if isinstance(raw, dict) else None
-    return None
+def _sealed_members(source: zipfile.ZipFile, move: Callable[[dict[str, Any]], Any]) -> dict[str, bytes] | None:
+    """The two members a sealed backup replaces: its project file with the
+    logins moved, and their sealed copy; None when there is nothing to seal
+    (``seal_logins_in_backup``)."""
+    try:
+        raw = json.loads(source.read(ARCHIVE_PROJECT).decode("utf-8"))
+    except (KeyError, ValueError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    moved = move(raw)
+    logins = _logins_copy(moved) if moved is not raw else None
+    if logins is None:
+        return None
+    return {
+        ARCHIVE_PROJECT: json.dumps(moved, indent=4, ensure_ascii=False).encode("utf-8"),
+        ARCHIVE_LOGINS: logins.encode("utf-8"),
+    }
 
 
 def list_backups(project_file: Path) -> list[BackupInfo]:

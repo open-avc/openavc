@@ -142,6 +142,24 @@ def test_a_start_makes_the_backups_an_earlier_version_left_owner_only(tmp_path, 
     assert _mode(elsewhere) == 0o644  # a link is never followed
 
 
+def test_a_start_makes_them_owner_only_through_the_real_path(tmp_path, umask_022, caplog):
+    from openavc.system_config import get_system_config
+
+    backups = Path(get_system_config().data_dir) / "backups"
+    backups.mkdir(parents=True, exist_ok=True)
+    backups.chmod(0o755)
+    left = backups / "pre-update-v0.0.1-20260101T000000Z.zip"
+    left.write_bytes(b"zip")
+    left.chmod(0o644)
+    try:
+        engine_lifecycle.prepare_host(tmp_path)
+        assert _mode(left) == 0o600
+        assert _mode(backups) == 0o700
+        assert "Could not make the data folder's backups" not in caplog.text
+    finally:
+        left.unlink()
+
+
 def test_a_data_folder_with_no_backups_yet_is_left_as_it_is(tmp_path):
     updater_backup.make_backups_private(tmp_path)
     assert not (tmp_path / "backups").exists()
