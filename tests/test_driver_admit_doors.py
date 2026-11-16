@@ -28,9 +28,11 @@ from fastapi import HTTPException
 from openavc.api import driver_catalog
 from openavc.api.models import CommunityDriverInstallRequest
 from openavc.api.routes import drivers as routes
+from openavc.api.routes.drivers import _BUNDLE_REFUSED, _IMPORT_REFUSED, _UPDATE_REFUSED
 from openavc.drivers import registry
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.driver_loader import load_driver_file, load_python_driver_file
+from openavc.drivers.python_modules import NO_DRIVER_CLASS
 from openavc.utils.community_integrity import ArtifactHashes
 
 CATALOG = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/"
@@ -279,7 +281,10 @@ async def test_an_import_whose_companion_is_not_here_keeps_the_installed_copy(li
     data = _yaml(discovery={"python": {"file": "./acme_widget_discovery.py"}})
     refusal = await _refused(routes.upload_driver(_form("acme_widget.avcdriver", data)))
     assert refusal.status_code == 422
-    assert "is not in the driver library yet" in refusal.detail
+    assert refusal.detail == (
+        f"{_IMPORT_REFUSED}:\nIt names the discovery file './acme_widget_discovery.py' "
+        "(discovery.python.file), which is not in the driver folder. Add that file first."
+    )
     _kept(lib, before, cls)
 
 
@@ -290,7 +295,7 @@ async def test_an_import_of_a_python_file_without_a_class_keeps_the_installed_co
     before = _tree(lib.repo)
     refusal = await _refused(routes.upload_driver(_form("acme_widget.py", b"VALUE = 1\n")))
     assert (refusal.status_code, refusal.detail) == (
-        422, "No valid driver class found in Python file",
+        422, f"{_IMPORT_REFUSED}:\n{NO_DRIVER_CLASS}",
     )
     _kept(lib, before, cls)
     assert sys.modules[MODULE] is old_module
@@ -329,7 +334,7 @@ async def test_a_bundle_without_a_class_keeps_the_installed_copy_and_its_simulat
     data = _zip({"acme_widget.py": b"VALUE = 1\n", "acme_widget_sim.py": b"SIM = 1\n"})
     refusal = await _refused(routes.upload_driver_bundle(_form("b.zip", data)))
     assert (refusal.status_code, refusal.detail) == (
-        422, "No valid driver class found in the bundle's Python file.",
+        422, f"{_BUNDLE_REFUSED}:\n{NO_DRIVER_CLASS}",
     )
     _kept(lib, before, cls)
 
@@ -404,7 +409,9 @@ async def test_an_update_the_loader_refuses_keeps_the_installed_driver(lib):
     before = _tree(lib.repo)
     lib.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(transport="carrier_pigeon")
     refusal = await _refused(_update("acme_widget.avcdriver"))
-    assert (refusal.status_code, refusal.detail) == (422, "Invalid driver definition file")
+    assert (refusal.status_code, refusal.detail) == (
+        422, f"{_UPDATE_REFUSED}:\nUnsupported transport: carrier_pigeon",
+    )
     _kept(lib, before, cls)
 
 
