@@ -264,7 +264,7 @@ def test_a_library_import_keeps_its_notes_until_the_copy_is_opened(tmp_path, mon
     assert project_update.read(lib / result["id"]) is None
 
 
-async def test_an_import_brings_its_notice_and_the_next_import_replaces_it(tmp_path, monkeypatch):
+async def test_an_import_or_a_blank_project_replaces_the_notice(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
 
     import httpx
@@ -290,6 +290,13 @@ async def test_an_import_brings_its_notice_and_the_next_import_replaces_it(tmp_p
         assert engine.state.get(project_update.KEY_AT) != ""
 
         assert (await client.put("/api/project?mode=import", json=current)).status_code == 200
+        assert (await client.get("/api/project/update-notice")).json()["notes"] == []
+        assert engine.state.get(project_update.KEY_AT) == ""
+
+        # A new blank project replaces the running one, so its notice goes too.
+        assert (await client.put("/api/project?mode=import", json=old)).status_code == 200
+        assert (await client.get("/api/project/update-notice")).json()["notes"] != []
+        assert (await client.post("/api/project/create-blank", json={"project_name": "Blank"})).status_code == 200
         assert (await client.get("/api/project/update-notice")).json()["notes"] == []
         assert engine.state.get(project_update.KEY_AT) == ""
     await engine.stop()

@@ -21,6 +21,7 @@ Validate to report.
 """
 
 import math
+from dataclasses import dataclass
 
 from openavc.core.project_update import MigrationNotes
 
@@ -85,33 +86,41 @@ def _dicts_0_17(items) -> list[dict]:
     return [item for item in items or [] if isinstance(item, dict)]
 
 
+@dataclass
 class _Box:
     """One stored box and where it is: the layout it belongs to and the
-    control it places."""
+    control it places (``at``: its page id and element id, for a note)."""
 
-    def __init__(self, box: dict, layout_id: str, location: str, page_id: str, element_id: str):
-        self.box = box
-        self.layout_id = layout_id
-        self.location = location
-        self.at = {"page_id": page_id, "element_id": element_id}
+    box: dict
+    layout_id: str
+    location: str
+    at: dict
 
 
 def _boxes_0_17(ui: dict) -> list[_Box]:
     """Every stored box: each placement of every page arrangement, then each
     of every master element's. A list that is missing, null or not the shape
     it should be reads as nothing."""
-    boxes: list[_Box] = []
-    for page in _dicts_0_17(ui.get("pages")):
-        name, page_id = _page_place_0_17(page)
-        for layout in _dicts_0_17(page.get("layouts")):
-            layout_id = str(layout.get("id", ""))
-            for element_id, box in _placements_0_17(layout):
-                boxes.append(_Box(box, layout_id, f"{name} > {element_id}", page_id, element_id))
-    for mel in _dicts_0_17(ui.get("master_elements")):
-        element_id = str(mel.get("id", ""))
-        for layout_id, box in _placements_0_17(mel):
-            boxes.append(_Box(box, layout_id, f"Master Elements > {element_id}", "", element_id))
-    return boxes
+    boxes = [box for page in _dicts_0_17(ui.get("pages")) for box in _page_boxes_0_17(page)]
+    return boxes + [box for mel in _dicts_0_17(ui.get("master_elements")) for box in _master_boxes_0_17(mel)]
+
+
+def _page_boxes_0_17(page: dict) -> list[_Box]:
+    name, page_id = _page_place_0_17(page)
+    return [
+        _Box(box, str(layout.get("id", "")), f"{name} > {element_id}",
+             {"page_id": page_id, "element_id": element_id})
+        for layout in _dicts_0_17(page.get("layouts"))
+        for element_id, box in _placements_0_17(layout)
+    ]
+
+
+def _master_boxes_0_17(mel: dict) -> list[_Box]:
+    element_id = str(mel.get("id", ""))
+    return [
+        _Box(box, layout_id, f"Master Elements > {element_id}", {"page_id": "", "element_id": element_id})
+        for layout_id, box in _placements_0_17(mel)
+    ]
 
 
 def _placements_0_17(holder: dict) -> list[tuple[str, dict]]:

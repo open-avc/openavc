@@ -106,6 +106,8 @@ class ProjectChangesMixin:
         Programmer's notice (``core/project_update.py``), and publish it.
         ``replace`` is for a project that replaced the running one: the
         record then describes it alone, or is cleared when it needs none."""
+        if not (replace or notes):
+            return
         keep = project_update.replace if replace else project_update.record
         keep(self.project_path.parent, notes)
         project_update.publish(self.state, self.project_path.parent)
@@ -117,16 +119,13 @@ class ProjectChangesMixin:
         expected_revision: str | None = None,
         origin: ProjectOrigin = ProjectOrigin.EDIT,
         persist: bool = True,
-        update_notes: MigrationNotes | None = None,
     ) -> str:
         """The one way a project change enters the engine.
 
         Checks optimistic concurrency (``expected_revision=None`` skips the
         check), persists the bytes, swaps the in-memory project, bumps the
         revision, and reconciles only the subsystems the change actually
-        touches. Returns the new revision. ``update_notes`` is for a project
-        that replaces the running one: what its migration changed, kept once
-        the apply has worked (``keep_update_notes``).
+        touches. Returns the new revision.
 
         The revision compare must happen under the same lock that increments
         ``_project_revision``. Checked outside it, two concurrent saves can
@@ -136,9 +135,20 @@ class ProjectChangesMixin:
         """
         async with self._reload_lock:
             self._check_revision(expected_revision)
-            revision = await self._apply_project_locked(new_project, origin, persist)
-            if update_notes is not None:
-                self.keep_update_notes(update_notes, replace=True)
+            return await self._apply_project_locked(new_project, origin, persist)
+
+    async def replace_project(
+        self, new_project: ProjectConfig, update_notes: MigrationNotes, *,
+        expected_revision: str | None = None,
+    ) -> str:
+        """A project that replaces the running one (an import, a new blank
+        project, a whole project pushed from the cloud), applied as a load
+        and saved; once that has worked, the update notice is what its
+        migration changed, or none (``keep_update_notes``)."""
+        async with self._reload_lock:
+            self._check_revision(expected_revision)
+            revision = await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=True)
+            self.keep_update_notes(update_notes, replace=True)
             return revision
 
     def _check_revision(self, expected_revision: str | None) -> None:

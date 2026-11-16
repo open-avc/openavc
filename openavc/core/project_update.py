@@ -29,13 +29,12 @@ happened to it, never the digits.
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from openavc.utils.fileio import atomic_write_text
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -109,7 +108,7 @@ def record(folder: Path, notes: MigrationNotes) -> None:
     }
     try:
         folder.mkdir(parents=True, exist_ok=True)
-        _write_atomic(_marker_path(folder), json.dumps(data, indent=2))
+        atomic_write_text(_marker_path(folder), json.dumps(data, indent=2))
     except OSError as e:
         log.warning(f"Could not write the project update record: {e}")
 
@@ -183,17 +182,3 @@ def dismiss(state: StateStore, project_dir: Path) -> bool:
     existed = clear(project_dir)
     publish(state, project_dir)
     return existed
-
-
-def _write_atomic(path: Path, text: str) -> None:
-    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent), prefix=".project_update_", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp_name, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise

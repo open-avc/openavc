@@ -20,6 +20,7 @@ from openavc.cloud.protocol import (
     build_project_data_payload, build_device_commands_data_payload,
     extract_payload,
 )
+from openavc.core.project_update import MigrationNotes
 from openavc.drivers.spec import is_file_command
 from openavc.utils.logger import get_logger
 from openavc.utils.spawn import CREATE_NO_WINDOW
@@ -62,8 +63,9 @@ class CommandHandler:
             events: EventBus for emitting audit events.
             reload_fn: Optional async callable to reload the project from disk
                 (used by a bare config_push that carries no project_json).
-            apply_fn: Optional async callable (engine.apply_project) that
-                persists and reconciles a pushed project through the one seam.
+            apply_fn: Optional async callable (engine.replace_project) that
+                persists and reconciles a pushed project through the one seam,
+                taking what its migration changed as ``update_notes``.
             update_manager: Optional UpdateManager for cloud-triggered updates.
             project_path: Path to the active project.avc file.
             panel_software: Optional PanelSoftwareUpdates for panel software
@@ -215,7 +217,6 @@ class CommandHandler:
                     # validating/saving, matching load_project — otherwise a
                     # pre-current-schema cloud project is persisted with stale
                     # field placement and misread until the next disk reload.
-                    from openavc.core.project_update import MigrationNotes
                     update_notes = MigrationNotes()
                     try:
                         migrated_json, _ = migrate_project(project_json, update_notes)
@@ -229,15 +230,11 @@ class CommandHandler:
                     await asyncio.to_thread(create_backup, project_path, "Before cloud config push")
 
                     # A fleet push wins by design — no expected_revision — but
-                    # it goes through the one seam: LOAD-origin apply persists
-                    # the pushed bytes, fully reconciles, bumps the revision,
-                    # and broadcasts project.reloaded, so an open IDE 409s on
-                    # its next save instead of silently reverting the push.
-                    from openavc.core.project_diff import ProjectOrigin
-                    await self._apply_fn(
-                        project, origin=ProjectOrigin.LOAD, persist=True,
-                        update_notes=update_notes,
-                    )
+                    # it goes through the one seam: a replace persists the
+                    # pushed bytes, fully reconciles, bumps the revision, and
+                    # broadcasts project.reloaded, so an open IDE 409s on its
+                    # next save instead of silently reverting the push.
+                    await self._apply_fn(project, update_notes=update_notes)
                 else:
                     if self._reload_fn is None:
                         await self._send_result(request_id, False, error="Reload not available")

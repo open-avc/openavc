@@ -348,6 +348,27 @@ async def dismiss_update_notice() -> dict[str, Any]:
     return {"status": "dismissed", "cleared": cleared}
 
 
+def _migrated_body(body: dict[str, Any]) -> tuple[ProjectConfig, Any]:
+    """A whole project document as this release reads it, and what its
+    migration changed. The format chain runs before validating: this door
+    takes whole documents (the Programmer's import saves through here), so an
+    older export migrates exactly as a disk load would. Current-format bodies
+    pass through untouched."""
+    from openavc.core.project_migration import migrate_project
+    from openavc.core.project_update import MigrationNotes
+
+    update_notes = MigrationNotes()
+    try:
+        body, _ = migrate_project(body, update_notes)
+        return ProjectConfig(**body), update_notes
+    except ValidationError as e:
+        # The field list is the whole repair story for whoever sent this --
+        # a person, an integration, or the AI writing a project section.
+        raise validation_failed(422, "Invalid project configuration", e)
+    except Exception as e:
+        raise _api_error(422, "Invalid project configuration", e)
+
+
 @router.put("/project")
 async def save_project_config(request: Request, mode: Literal["edit", "import"] = "edit") -> dict[str, Any]:
     """Save a full project configuration, then reload.
@@ -412,22 +433,7 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
                    "document from GET /api/project, version field included.",
         )
 
-    try:
-        # Run the format-migration chain before validating: this door takes
-        # whole project documents (Programmer import saves through here), so an
-        # older export must migrate exactly like a disk load would. Current-
-        # format bodies pass through untouched.
-        from openavc.core.project_migration import migrate_project
-        from openavc.core.project_update import MigrationNotes
-        update_notes = MigrationNotes()
-        body, _ = migrate_project(body, update_notes)
-        project = ProjectConfig(**body)
-    except ValidationError as e:
-        # The field list is the whole repair story for whoever sent this --
-        # a person, an integration, or the AI writing a project section.
-        raise validation_failed(422, "Invalid project configuration", e)
-    except Exception as e:
-        raise _api_error(422, "Invalid project configuration", e)
+    project, update_notes = _migrated_body(body)
     # Compare-and-set runs inside the engine, under the same lock that
     # increments the revision — checked here, two concurrent saves could
     # both pass and one edit would be silently lost.
@@ -437,20 +443,18 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
 
             from openavc.core.backup_manager import create_backup
             from openavc.core.installed_equipment import InstalledEquipmentError
-            from openavc.core.project_diff import ProjectOrigin
 
             try:
                 # Asked before the backup, so a project this server refuses
-                # leaves no backup behind. apply_project asks again under its lock.
+                # leaves no backup behind. replace_project asks again under its lock.
                 engine.installed_equipment.compose(project, for_load=True)
                 # Import replaces the running project, as opening one from the
                 # library does, and keeps the one it replaces the same way.
                 await asyncio.to_thread(
                     create_backup, engine.project_path, f"Before importing '{project.project.name}'"
                 )
-                new_revision = await engine.apply_project(
-                    project, expected_revision=expected_rev, origin=ProjectOrigin.LOAD,
-                    update_notes=update_notes,
+                new_revision = await engine.replace_project(
+                    project, update_notes, expected_revision=expected_rev
                 )
             except InstalledEquipmentError as error:
                 raise HTTPException(status_code=422, detail=str(error)) from error
@@ -460,8 +464,7 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
             )
             # An earlier release's document saved over this one: what its
             # migration changed joins the notice for the running project.
-            if update_notes:
-                engine.keep_update_notes(update_notes, replace=False)
+            engine.keep_update_notes(update_notes, replace=False)
     except ProjectRevisionConflictError as e:
         # The engine's own sentence: it is the half that knows whether another
         # writer landed a save or the caller's token is simply from an earlier
@@ -887,8 +890,8 @@ async def create_blank(request: Request) -> dict[str, Any]:
     # A whole new project: LOAD origin persists it and does the full
     # reconcile (library rescan, startup triggers) in one pass instead of
     # save-then-reload-from-disk.
-    from openavc.core.project_diff import ProjectOrigin
-    await engine.apply_project(project, origin=ProjectOrigin.LOAD)
+    from openavc.core.project_update import MigrationNotes
+    await engine.replace_project(project, MigrationNotes())
 
     return {"status": "created", "project_name": project_name}
 

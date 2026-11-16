@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink, QrCode, Printer, X, Tablet, Moon } from "lucide-react";
+import { Cpu, Zap, Cloud, FileCode, AlertTriangle, Clock, ArrowRight, ArrowUpCircle, Monitor, Copy, Check, ExternalLink, QrCode, Printer, Tablet, Moon } from "lucide-react";
 import qrcode from "qrcode-generator";
 import { ViewContainer } from "../components/layout/ViewContainer";
 import { DeviceStatusDot } from "../components/shared/DeviceStatusDot";
@@ -21,8 +21,7 @@ import { showError } from "../store/toastStore";
 import * as api from "../api/restClient";
 import type { CloudStatus, PanelDevice, TlsStatus } from "../api/restClient";
 import { panelAccess } from "./panelAccessUrls";
-import { recoveryNotice, type RecoveryNotice as RecoveryNoticeCopy } from "./recoveryNotice";
-import { UpdateNotice } from "./UpdateNotice";
+import { ProjectNotices } from "./ProjectNotices";
 import type { MonitorConfig } from "../api/types";
 import {
   ABNORMAL, NORMAL, monitorLabel, monitorReading, monitorStatus,
@@ -817,98 +816,6 @@ function StatCard({ icon, label, value, valueColor, hint, hintTitle, onClick }: 
   );
 }
 
-/** What a startup recovery left behind, said where somebody will see it.
- *
- *  The recovery itself works. Before this card the only trace was two log
- *  lines, so the integrator whose last edit fell between the backup and the
- *  corrupt save had no way to learn it was gone. The record on the server
- *  survives restarts, and dismissing here is the only thing that clears it.
- */
-function RecoveryNotice({ notice }: { notice: RecoveryNoticeCopy }) {
-  const [dismissing, setDismissing] = useState(false);
-  const tone = notice.severe ? "var(--color-error)" : "#f59e0b";
-
-  const dismiss = useCallback(() => {
-    setDismissing(true);
-    api.dismissRecoveryNotice()
-      .catch((e) => showError(`Could not dismiss the notice: ${parseApiError(e)}`))
-      .finally(() => setDismissing(false));
-  }, []);
-
-  return (
-    <div
-      style={{
-        background: "var(--bg-surface)",
-        border: "1px solid " + tone,
-        borderLeft: "3px solid " + tone,
-        borderRadius: "var(--border-radius)",
-        padding: "var(--space-lg)",
-        marginBottom: "var(--space-lg)",
-        display: "flex",
-        alignItems: "flex-start",
-        gap: "var(--space-md)",
-      }}
-    >
-      <AlertTriangle size={18} style={{ color: tone, flexShrink: 0, marginTop: 2 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: "var(--font-size-sm)" }}>{notice.title}</div>
-        <div style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 4 }}>
-          {notice.body}
-        </div>
-        {!!notice.backupFile && (
-          <code style={{
-            display: "block",
-            fontSize: 11,
-            color: "var(--text-muted)",
-            fontFamily: "var(--font-mono)",
-            marginTop: 6,
-            wordBreak: "break-all",
-          }}>
-            {notice.backupFile}
-          </code>
-        )}
-        <button
-          type="button"
-          onClick={() => useNavigationStore.getState().navigateTo("project", { type: "backups", id: "" })}
-          style={{
-            marginTop: "var(--space-md)",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-            background: "var(--bg-hover)",
-            border: "1px solid var(--border-color)",
-            color: "var(--text-primary)",
-            borderRadius: "var(--border-radius)",
-            padding: "6px 12px",
-            cursor: "pointer",
-            fontSize: "var(--font-size-sm)",
-          }}
-        >
-          {notice.action}
-          <ArrowRight size={13} />
-        </button>
-      </div>
-      <button
-        type="button"
-        onClick={dismiss}
-        disabled={dismissing}
-        title="Dismiss"
-        aria-label="Dismiss"
-        style={{
-          background: "none",
-          border: "none",
-          color: "var(--text-muted)",
-          cursor: dismissing ? "default" : "pointer",
-          padding: 4,
-          flexShrink: 0,
-        }}
-      >
-        <X size={15} />
-      </button>
-    </div>
-  );
-}
-
 export function DashboardView() {
   const projectName = useProjectStore((s) => s.project?.project?.name);
   const devices = useProjectStore((s) => s.project?.devices);
@@ -1007,7 +914,6 @@ export function DashboardView() {
   // state alike. One list, the same one the cloud card and the alerts read.
   const monitored = monitors ?? [];
 
-  const recovery = recoveryNotice(liveState);
 
   // Snapshot of recent log entries (non-reactive to avoid rapid re-renders)
   const logEntries = useLogStore.getState().logEntries;
@@ -1058,13 +964,11 @@ export function DashboardView() {
             )}
           </div>
 
-          {/* What the last boot had to do to get a project. Above the summary
+          {/* What the last boot had to do to get a project, and what loading it changed. Above the summary
               row because it outranks everything else on the page: the figures
               underneath may be describing older settings than the ones whoever
               is reading this last saved. */}
-          {recovery.show && <RecoveryNotice notice={recovery} />}
-          {/* What loading this project changed in it, after an update. */}
-          <UpdateNotice />
+          <ProjectNotices />
 
           {/* Summary row */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--space-md)", marginBottom: "var(--space-xl)" }}>
