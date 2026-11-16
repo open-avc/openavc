@@ -385,7 +385,7 @@ describe("Panel Settings, field by field", () => {
       "Accent Color" +
       "Font FamilyInter (Default)System UIRobotoSegoe UIMonospace" +
       "Lock Code (PIN)4-6 digit PIN to lock the touch panel. Leave empty to disable." +
-      "Idle Timeout (seconds)Return to idle page after this many seconds of inactivity. 0 = disabled." +
+      "Idle Timeout (seconds)Return to idle page after this many seconds of inactivity, up to 86400 (one day). 0 = disabled." +
       "Idle PageMain (main)Other (other)" +
       "Show a message when a control failsA press that does not reach its device puts the reason across the " +
       "panel for about five seconds. Turn this off in a space that shows its own status." +

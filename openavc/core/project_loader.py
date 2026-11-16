@@ -618,8 +618,9 @@ class UISettings(_ForwardCompatModel):
     accent_color: str = ""
     font_family: str = ""
     lock_code: str = ""
-    # 0 is off.
-    idle_timeout_seconds: int = Field(default=0, ge=0)
+    # 0 is off. At most a day: the panel's timer cannot hold a delay much past
+    # 24 days, and one that overflows fires at once, after every touch.
+    idle_timeout_seconds: int = Field(default=0, ge=0, le=86400)
     idle_page: str = "main"
     # orientation removed in 0.8.0 -- it was one string for the whole project,
     # which is exactly what stopped a project serving a landscape wall panel and

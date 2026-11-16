@@ -66,11 +66,14 @@ def test_one_past_either_end_is_refused(build, field, low, high):
             build(field, value)
 
 
-def test_the_idle_timeout_takes_zero_and_a_long_one_and_refuses_a_negative():
+def test_the_idle_timeout_takes_zero_to_a_day():
+    # Past about 24.8 days the panel's timer overflows and fires at once, so
+    # the panel would go idle after every touch.
     assert UISettings(idle_timeout_seconds=0).idle_timeout_seconds == 0
-    assert UISettings(idle_timeout_seconds=3600).idle_timeout_seconds == 3600
-    with pytest.raises(ValidationError):
-        UISettings(idle_timeout_seconds=-1)
+    assert UISettings(idle_timeout_seconds=86400).idle_timeout_seconds == 86400
+    for value in (-1, 86401, 3_000_000):
+        with pytest.raises(ValidationError):
+            UISettings(idle_timeout_seconds=value)
 
 
 def test_the_defaults_are_inside_their_bounds():

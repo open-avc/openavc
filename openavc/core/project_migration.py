@@ -754,6 +754,7 @@ _MOTION_0_17 = {
     "page_transition_duration": (50, 1000),
     "element_stagger_ms": (10, 200),
 }
+_IDLE_0_17 = (0, 86400)
 
 
 def _whole_number_0_17(value) -> int | None:
@@ -786,8 +787,9 @@ def _settle_panel_settings_0_17(settings: dict) -> None:
         else:
             settings[field] = max(low, min(high, value))
     idle = _whole_number_0_17(settings.get("idle_timeout_seconds"))
-    if idle is not None and idle < 0:
-        settings["idle_timeout_seconds"] = 0
+    if idle is not None:
+        low, high = _IDLE_0_17
+        settings["idle_timeout_seconds"] = max(low, min(high, idle))
 
 
 def migrate_0_16_to_0_17(data: dict) -> dict:
@@ -809,8 +811,9 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
       `element_stagger_ms` to 10..200, the ranges the Panel Settings fields
       offer. A 0 is removed instead: the panel drew a 0 as the default (200 and
       30 ms), and an absent setting is the default.
-    - a negative `idle_timeout_seconds` to 0. The panel already read it as no
-      timeout.
+    - `idle_timeout_seconds` to 0..86400. The panel read a negative one as no
+      timeout, as it reads 0; one past about 24.8 days overflowed the panel's
+      timer, which then fired after every touch, and now waits a day.
 
     A value that is not a whole number is left as it was: the schema refused
     it before and still does.

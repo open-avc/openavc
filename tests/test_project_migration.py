@@ -851,6 +851,12 @@ class TestMigrate016To017:
         assert settings["element_stagger_ms"] == 10
         assert settings["idle_timeout_seconds"] == 0
 
+    def test_an_idle_timeout_the_panel_timer_cannot_hold_waits_a_day(self):
+        result = migrate_0_16_to_0_17(make_v016_project_out_of_bounds(
+            idle_timeout_seconds=3_000_000,
+        ))
+        assert result["ui"]["settings"]["idle_timeout_seconds"] == 86400
+
     def test_each_setting_low_end_and_in_range(self):
         result = migrate_0_16_to_0_17(make_v016_project_out_of_bounds(
             page_transition_duration=20, element_stagger_ms=500,

@@ -166,11 +166,11 @@ function LockIdleAndErrorFields({ draft, patch, pages }: DraftProps & { pages: U
           style={INPUT}
         />
       </Field>
-      <Field label="Idle Timeout (seconds)" hint="Return to idle page after this many seconds of inactivity. 0 = disabled.">
+      <Field label="Idle Timeout (seconds)" hint="Return to idle page after this many seconds of inactivity, up to 86400 (one day). 0 = disabled.">
         <NumberBox
           owner="panel-settings/idle_timeout_seconds"
           value={draft.idle_timeout_seconds}
-          range={{ min: 0 }}
+          range={{ min: 0, max: 86400 }}
           onChange={(idle_timeout_seconds) => patch({ idle_timeout_seconds })}
         />
       </Field>
