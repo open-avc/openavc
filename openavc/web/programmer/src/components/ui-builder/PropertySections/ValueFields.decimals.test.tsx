@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 
-// The project refuses a control's decimals past its bound, and refuses the
-// whole save with it. The Shown decimals box brings what was typed inside its
-// own range as it commits, so a save never carries one.
+// The project takes a control's decimals from 0 to 20 and refuses the whole
+// save over one past that. The Shown decimals box brings what was typed
+// inside the same range as it commits, so a save never carries one, and
+// leaves a count already inside it alone.
 
 import type { UIElement } from "../../../api/types";
 import { ShownDecimalsRow } from "./ValueFields";
@@ -23,10 +24,23 @@ function typeAndLeave(box: HTMLInputElement, text: string) {
 }
 
 describe("Shown decimals", () => {
-  it("brings a count past the box's range down to its top", () => {
+  it("brings a count past 20 down to 20", () => {
     const { box, onChange } = renderBox();
     typeAndLeave(box, "50");
-    expect(onChange).toHaveBeenLastCalledWith({ display_decimals: 6 });
+    expect(onChange).toHaveBeenLastCalledWith({ display_decimals: 20 });
+  });
+
+  it("takes a count the old box's arrows stopped short of", () => {
+    const { box, onChange } = renderBox();
+    typeAndLeave(box, "12");
+    expect(onChange).toHaveBeenLastCalledWith({ display_decimals: 12 });
+  });
+
+  it("tabbed through, leaves a saved count alone", () => {
+    const { box, onChange } = renderBox(12);
+    fireEvent.focus(box);
+    fireEvent.blur(box);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("brings a negative count up to none", () => {

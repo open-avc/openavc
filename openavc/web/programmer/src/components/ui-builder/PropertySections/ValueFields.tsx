@@ -361,8 +361,8 @@ export function ShownDecimalsRow({
 }: FieldProps & { placeholder: string }) {
   return (
     <FieldRow label="Shown decimals">
-      {/* Clamped as it commits: the project refuses a count past its bound,
-          and a typed 50 would otherwise fail the whole save. */}
+      {/* Clamped as it commits to the project's own bound, which refuses a
+          count past it: a typed 50 would otherwise fail the whole save. */}
       <NumericInput
         owner={`${element.id}/display_decimals`}
         value={element.display_decimals}
@@ -371,7 +371,7 @@ export function ShownDecimalsRow({
         integer
         placeholder={placeholder}
         min={0}
-        max={6}
+        max={20}
         step={1}
         style={{ flex: 1 }}
       />

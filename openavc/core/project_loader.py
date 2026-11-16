@@ -430,8 +430,7 @@ class UIElement(_ForwardCompatModel):
     response_db_range: float | None = None  # logarithmic taper: dB span of the throw (default 60)
     send_on_release: bool | None = None  # slider/fader: send only when the drag ends, not continuously
     send_throttle_ms: int | None = None  # slider/fader: min ms between live sends (default per element)
-    # slider/fader/gauge/label: decimal places shown in the value readout
-    display_decimals: int | None = Field(
+    display_decimals: int | None = Field(  # slider/fader/gauge/label: decimal places shown in the value readout
         default=None, ge=DISPLAY_DECIMALS_MIN, le=DISPLAY_DECIMALS_MAX,
     )
     target_page: str | None = None

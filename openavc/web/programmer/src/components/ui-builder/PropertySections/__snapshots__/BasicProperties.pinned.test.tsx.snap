@@ -3144,7 +3144,7 @@ exports[`the Basic section, every element type > fader, bare (master) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="Auto" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="Auto" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Send"
@@ -3243,13 +3243,13 @@ exports[`the Basic section, every element type > fader, bare (master) 1`] = `
 #14 input type="checkbox" checked=true :: click -> patch {scale_to_full: false}
 #15 select value="linear" :: change "linear" -> patch {response: "linear"}
 #15 select value="linear" :: change "logarithmic" -> patch {response: "logarithmic"}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #17 select value="live" :: change "live" -> patch {send_on_release: false}
 #17 select value="live" :: change "release" -> patch {send_on_release: true}
 #18 input type="number" placeholder="50" min="0" step="10" value="" :: change "7" -> patch {send_throttle_ms: 7}
@@ -3355,7 +3355,7 @@ exports[`the Basic section, every element type > fader, bare (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="Auto" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="Auto" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Send"
@@ -3454,13 +3454,13 @@ exports[`the Basic section, every element type > fader, bare (page) 1`] = `
 #14 input type="checkbox" checked=true :: click -> patch {scale_to_full: false}
 #15 select value="linear" :: change "linear" -> patch {response: "linear"}
 #15 select value="linear" :: change "logarithmic" -> patch {response: "logarithmic"}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #17 select value="live" :: change "live" -> patch {send_on_release: false}
 #17 select value="live" :: change "release" -> patch {send_on_release: true}
 #18 input type="number" placeholder="50" min="0" step="10" value="" :: change "7" -> patch {send_throttle_ms: 7}
@@ -3572,7 +3572,7 @@ exports[`the Basic section, every element type > fader, set (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="Auto" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="Auto" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Send"
@@ -3673,13 +3673,13 @@ exports[`the Basic section, every element type > fader, set (page) 1`] = `
 #16 input type="number" min="6" max="120" step="1" value="60" :: change "40" -> patch {response_db_range: 40}
 #16 input type="number" min="6" max="120" step="1" value="60" :: change "-3" -> patch {response_db_range: -3}
 #16 input type="number" min="6" max="120" step="1" value="60" :: change "7", change "" -> patch {response_db_range: 7} ; patch {response_db_range: undefined}
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #18 select value="release" :: change "live" -> patch {send_on_release: false}
 #18 select value="release" :: change "release" -> patch {send_on_release: true}"
 `;
@@ -3723,7 +3723,7 @@ exports[`the Basic section, every element type > gauge, bare (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="1" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="1" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div data-stub="MatchDriverRangeRow" data-props="{\\"element\\":{\\"id\\":\\"el\\",\\"type\\":\\"gauge\\"}}"
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
@@ -3824,13 +3824,13 @@ exports[`the Basic section, every element type > gauge, bare (page) 1`] = `
 #6 input placeholder="%, dB, etc." value="" :: focus, change " new_id ", blur -> patch {unit: " new_id "}
 #6 input placeholder="%, dB, etc." value="" :: focus, change "abc", key Enter -> patch {unit: "abc"}
 #6 input placeholder="%, dB, etc." value="" :: focus, change "abc", key Escape -> patch {unit: "abc"}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #8 button data-emit="onElementPatch {\\"min\\":-10,\\"max\\":10}" :: click -> patch {min: -10, max: 10}
 #9 input type="number" placeholder="240" min="90" max="360" value="" :: change "7" -> patch {arc_angle: 7}
 #9 input type="number" placeholder="240" min="90" max="360" value="" :: change "" -> nothing
@@ -3901,7 +3901,7 @@ exports[`the Basic section, every element type > gauge, no ticks (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="1" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="1" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div data-stub="MatchDriverRangeRow" data-props="{\\"element\\":{\\"id\\":\\"el\\",\\"type\\":\\"gauge\\",\\"style\\":{\\"show_ticks\\":false},\\"max\\":7}}"
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
@@ -3998,13 +3998,13 @@ exports[`the Basic section, every element type > gauge, no ticks (page) 1`] = `
 #6 input placeholder="%, dB, etc." value="" :: focus, change " new_id ", blur -> patch {unit: " new_id "}
 #6 input placeholder="%, dB, etc." value="" :: focus, change "abc", key Enter -> patch {unit: "abc"}
 #6 input placeholder="%, dB, etc." value="" :: focus, change "abc", key Escape -> patch {unit: "abc"}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #8 button data-emit="onElementPatch {\\"min\\":-10,\\"max\\":10}" :: click -> patch {min: -10, max: 10}
 #9 input type="number" placeholder="240" min="90" max="360" value="" :: change "7" -> patch {arc_angle: 7}
 #9 input type="number" placeholder="240" min="90" max="360" value="" :: change "" -> nothing
@@ -4068,7 +4068,7 @@ exports[`the Basic section, every element type > gauge, one zone (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="1" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="1" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div data-stub="MatchDriverRangeRow" data-props="{\\"element\\":{\\"id\\":\\"el\\",\\"type\\":\\"gauge\\",\\"zones\\":[{\\"from\\":0,\\"to\\":10,\\"color\\":\\"#fff\\"}],\\"min\\":5}}"
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
@@ -4175,13 +4175,13 @@ exports[`the Basic section, every element type > gauge, one zone (page) 1`] = `
 #6 input placeholder="%, dB, etc." value="" :: focus, change " new_id ", blur -> patch {unit: " new_id "}
 #6 input placeholder="%, dB, etc." value="" :: focus, change "abc", key Enter -> patch {unit: "abc"}
 #6 input placeholder="%, dB, etc." value="" :: focus, change "abc", key Escape -> patch {unit: "abc"}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #8 button data-emit="onElementPatch {\\"min\\":-10,\\"max\\":10}" :: click -> patch {min: -10, max: 10}
 #9 input type="number" placeholder="240" min="90" max="360" value="" :: change "7" -> patch {arc_angle: 7}
 #9 input type="number" placeholder="240" min="90" max="360" value="" :: change "" -> nothing
@@ -4275,7 +4275,7 @@ exports[`the Basic section, every element type > gauge, set (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="1" min="0" max="6" step="1" style="flex: 1 1 0%;" value="0"
+    input type="number" placeholder="1" min="0" max="20" step="1" style="flex: 1 1 0%;" value="0"
   div data-stub="MatchDriverRangeRow" data-props="{\\"element\\":{\\"id\\":\\"el\\",\\"type\\":\\"gauge\\",\\"min\\":0,\\"max\\":200,\\"unit\\":\\"W\\",\\"display_decimals\\":0,\\"arc_angle\\":180,\\"style\\":{\\"gauge_color\\":\\"#f00\\",\\"gauge_bg_color\\":\\"#333\\",\\"gauge_width\\":12,\\"show_value\\":false,\\"show_ticks\\":true,\\"tick_count\\":8},\\"zones\\":[{\\"from\\":0,\\"to\\":100,\\"color\\":\\"#4CAF50\\"},{\\"from\\":100,\\"to\\":200,\\"color\\":\\"#F44336\\"}]}}"
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
@@ -4390,13 +4390,13 @@ exports[`the Basic section, every element type > gauge, set (page) 1`] = `
 #6 input placeholder="%, dB, etc." value="W" :: focus, change " new_id ", blur -> patch {unit: " new_id "}
 #6 input placeholder="%, dB, etc." value="W" :: focus, change "abc", key Enter -> patch {unit: "abc"}
 #6 input placeholder="%, dB, etc." value="W" :: focus, change "abc", key Escape -> patch {unit: "abc"}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="0" :: change "7" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="0" :: change "" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="0" :: change "2.5" -> patch {display_decimals: 2}
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="0" :: change "0" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="0" :: change "40" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="0" :: change "-3" -> nothing
-#7 input type="number" placeholder="1" min="0" max="6" step="1" value="0" :: change "7", change "" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="0" :: change "7" -> patch {display_decimals: 7}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="0" :: change "" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="0" :: change "2.5" -> patch {display_decimals: 2}
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="0" :: change "0" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="0" :: change "40" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="0" :: change "-3" -> nothing
+#7 input type="number" placeholder="1" min="0" max="20" step="1" value="0" :: change "7", change "" -> patch {display_decimals: 7}
 #8 button data-emit="onElementPatch {\\"min\\":-10,\\"max\\":10}" :: click -> patch {min: -10, max: 10}
 #9 input type="number" placeholder="240" min="90" max="360" value="180" :: change "7" -> patch {arc_angle: 7}
 #9 input type="number" placeholder="240" min="90" max="360" value="180" :: change "" -> patch {arc_angle: undefined}
@@ -5389,7 +5389,7 @@ exports[`the Basic section, every element type > label, bare (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="As reported" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="As reported" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div style="font-size: 10px; color: var(--text-muted); margin-top: -2px; margin-bottom: 4px;"
     "Rounds a bound value when it is a number. Text is shown exactly as the device reports it."
   div style="display: flex; align-items: center; gap: var(--space-sm);"
@@ -5429,13 +5429,13 @@ exports[`the Basic section, every element type > label, bare (page) 1`] = `
 #3 input value="" :: focus, change "abc", key Enter -> patch {text: "abc"}
 #3 input value="" :: focus, change "abc", key Escape -> patch {text: "abc"}
 #4 input type="checkbox" checked=false :: click -> patch {style: {white_space: "pre-line"}}
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="" :: change "" -> nothing
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="" :: change "" -> nothing
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #6 button data-emit="onChange \\"power\\"" :: click -> patch {icon: "power"}
 #7 button data-emit="onChange \\"\\"" :: click -> patch {icon: undefined}"
 `;
@@ -5474,7 +5474,7 @@ exports[`the Basic section, every element type > label, multi-line text and deci
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="As reported" min="0" max="6" step="1" style="flex: 1 1 0%;" value="2"
+    input type="number" placeholder="As reported" min="0" max="20" step="1" style="flex: 1 1 0%;" value="2"
   div style="font-size: 10px; color: var(--text-muted); margin-top: -2px; margin-bottom: 4px;"
     "Rounds a bound value when it is a number. Text is shown exactly as the device reports it."
   div style="display: flex; align-items: center; gap: var(--space-sm);"
@@ -5533,13 +5533,13 @@ exports[`the Basic section, every element type > label, multi-line text and deci
 #3 textarea rows="3" value="Hi" :: change "" -> patch {text: ""}
 #3 textarea rows="3" value="Hi" :: change "{\\"a\\":1}" -> patch {text: "{\\"a\\":1}"}
 #4 input type="checkbox" checked=true :: click -> patch {style: {}}
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="2" :: change "7" -> nothing
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="2" :: change "" -> nothing
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="2" :: change "2.5" -> nothing
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="2" :: change "0" -> patch {display_decimals: 0}
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="2" :: change "40" -> nothing
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="2" :: change "-3" -> nothing
-#5 input type="number" placeholder="As reported" min="0" max="6" step="1" value="2" :: change "7", change "" -> nothing
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="2" :: change "7" -> patch {display_decimals: 7}
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="2" :: change "" -> nothing
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="2" :: change "2.5" -> nothing
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="2" :: change "0" -> patch {display_decimals: 0}
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="2" :: change "40" -> nothing
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="2" :: change "-3" -> nothing
+#5 input type="number" placeholder="As reported" min="0" max="20" step="1" value="2" :: change "7", change "" -> patch {display_decimals: 7}
 #6 button data-emit="onChange \\"power\\"" :: click -> patch {icon: "power"}
 #7 button data-emit="onChange \\"\\"" :: click -> patch {icon: undefined}
 #8 select value="left" :: change "left" -> patch {icon_position: "left"}
@@ -9388,7 +9388,7 @@ exports[`the Basic section, every element type > slider, bare (master) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="Auto" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="Auto" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Send"
@@ -9493,13 +9493,13 @@ exports[`the Basic section, every element type > slider, bare (master) 1`] = `
 #15 input placeholder="e.g. dB, %" value="" :: focus, change " new_id ", blur -> patch {unit: " new_id "}
 #15 input placeholder="e.g. dB, %" value="" :: focus, change "abc", key Enter -> patch {unit: "abc"}
 #15 input placeholder="e.g. dB, %" value="" :: focus, change "abc", key Escape -> patch {unit: "abc"}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #17 select value="live" :: change "live" -> patch {send_on_release: false}
 #17 select value="live" :: change "release" -> patch {send_on_release: true}
 #18 input type="number" placeholder="100" min="0" step="10" value="" :: change "7" -> patch {send_throttle_ms: 7}
@@ -9599,7 +9599,7 @@ exports[`the Basic section, every element type > slider, bare (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="Auto" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="Auto" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Send"
@@ -9704,13 +9704,13 @@ exports[`the Basic section, every element type > slider, bare (page) 1`] = `
 #15 input placeholder="e.g. dB, %" value="" :: focus, change " new_id ", blur -> patch {unit: " new_id "}
 #15 input placeholder="e.g. dB, %" value="" :: focus, change "abc", key Enter -> patch {unit: "abc"}
 #15 input placeholder="e.g. dB, %" value="" :: focus, change "abc", key Escape -> patch {unit: "abc"}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #17 select value="live" :: change "live" -> patch {send_on_release: false}
 #17 select value="live" :: change "release" -> patch {send_on_release: true}
 #18 input type="number" placeholder="100" min="0" step="10" value="" :: change "7" -> patch {send_throttle_ms: 7}
@@ -9810,7 +9810,7 @@ exports[`the Basic section, every element type > slider, on release (page) 1`] =
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="Auto" min="0" max="6" step="1" style="flex: 1 1 0%;" value=""
+    input type="number" placeholder="Auto" min="0" max="20" step="1" style="flex: 1 1 0%;" value=""
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Send"
@@ -9910,13 +9910,13 @@ exports[`the Basic section, every element type > slider, on release (page) 1`] =
 #15 input placeholder="e.g. dB, %" value="" :: focus, change " new_id ", blur -> patch {unit: " new_id "}
 #15 input placeholder="e.g. dB, %" value="" :: focus, change "abc", key Enter -> patch {unit: "abc"}
 #15 input placeholder="e.g. dB, %" value="" :: focus, change "abc", key Escape -> patch {unit: "abc"}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "0" -> patch {display_decimals: 0}
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "40" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "-3" -> nothing
-#16 input type="number" placeholder="Auto" min="0" max="6" step="1" value="" :: change "7", change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7" -> patch {display_decimals: 7}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "2.5" -> patch {display_decimals: 2}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "0" -> patch {display_decimals: 0}
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "40" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "-3" -> nothing
+#16 input type="number" placeholder="Auto" min="0" max="20" step="1" value="" :: change "7", change "" -> patch {display_decimals: 7}
 #17 select value="release" :: change "live" -> patch {send_on_release: false}
 #17 select value="release" :: change "release" -> patch {send_on_release: true}"
 `;
@@ -10015,7 +10015,7 @@ exports[`the Basic section, every element type > slider, set (master) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="Auto" min="0" max="6" step="1" style="flex: 1 1 0%;" value="1"
+    input type="number" placeholder="Auto" min="0" max="20" step="1" style="flex: 1 1 0%;" value="1"
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Send"
@@ -10127,13 +10127,13 @@ exports[`the Basic section, every element type > slider, set (master) 1`] = `
 #16 input placeholder="e.g. dB, %" value="dB" :: focus, change " new_id ", blur -> patch {unit: " new_id "}
 #16 input placeholder="e.g. dB, %" value="dB" :: focus, change "abc", key Enter -> patch {unit: "abc"}
 #16 input placeholder="e.g. dB, %" value="dB" :: focus, change "abc", key Escape -> patch {unit: "abc"}
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "7" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "2.5" -> patch {display_decimals: 2}
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "0" -> patch {display_decimals: 0}
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "40" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "-3" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "7", change "" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "7" -> patch {display_decimals: 7}
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "2.5" -> patch {display_decimals: 2}
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "0" -> patch {display_decimals: 0}
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "40" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "-3" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "7", change "" -> patch {display_decimals: 7}
 #18 select value="live" :: change "live" -> patch {send_on_release: false}
 #18 select value="live" :: change "release" -> patch {send_on_release: true}
 #19 input type="number" placeholder="100" min="0" step="10" value="20" :: change "7" -> patch {send_throttle_ms: 7}
@@ -10239,7 +10239,7 @@ exports[`the Basic section, every element type > slider, set (page) 1`] = `
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Shown decimals"
-    input type="number" placeholder="Auto" min="0" max="6" step="1" style="flex: 1 1 0%;" value="1"
+    input type="number" placeholder="Auto" min="0" max="20" step="1" style="flex: 1 1 0%;" value="1"
   div style="display: flex; align-items: center; gap: var(--space-sm);"
     label style="width: 72px; flex-shrink: 0; font-size: var(--font-size-sm); color: var(--text-secondary);"
       "Send"
@@ -10351,13 +10351,13 @@ exports[`the Basic section, every element type > slider, set (page) 1`] = `
 #16 input placeholder="e.g. dB, %" value="dB" :: focus, change " new_id ", blur -> patch {unit: " new_id "}
 #16 input placeholder="e.g. dB, %" value="dB" :: focus, change "abc", key Enter -> patch {unit: "abc"}
 #16 input placeholder="e.g. dB, %" value="dB" :: focus, change "abc", key Escape -> patch {unit: "abc"}
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "7" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "2.5" -> patch {display_decimals: 2}
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "0" -> patch {display_decimals: 0}
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "40" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "-3" -> nothing
-#17 input type="number" placeholder="Auto" min="0" max="6" step="1" value="1" :: change "7", change "" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "7" -> patch {display_decimals: 7}
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "2.5" -> patch {display_decimals: 2}
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "0" -> patch {display_decimals: 0}
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "40" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "-3" -> nothing
+#17 input type="number" placeholder="Auto" min="0" max="20" step="1" value="1" :: change "7", change "" -> patch {display_decimals: 7}
 #18 select value="live" :: change "live" -> patch {send_on_release: false}
 #18 select value="live" :: change "release" -> patch {send_on_release: true}
 #19 input type="number" placeholder="100" min="0" step="10" value="20" :: change "7" -> patch {send_throttle_ms: 7}
