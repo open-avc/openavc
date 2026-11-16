@@ -109,6 +109,31 @@ function rowCaption(rows: Row[], index: number, axis: Axis): string {
 }
 
 /**
+ * A row the project already has, with what the device now says about the same
+ * port (`device`, absent when the device no longer lists it).
+ */
+function projectRow(entry: ProposedDestination, device: Partial<ProposedDestination>): Row {
+  const named = isNamed(entry.label);
+  return {
+    ...entry,
+    // A key the device now declares fills one the project never had; a key
+    // the project set is the author's and is left alone.
+    label_key: entry.label_key ?? device.label_key,
+    route_key: entry.route_key ?? device.route_key,
+    report_value: entry.report_value ?? device.report_value,
+    offline: device.offline,
+    label: named ? String(entry.label) : device.label || "",
+    // A stored label that is exactly what the device currently calls the port
+    // is a copy, not a decision -- every matrix set up before this picker
+    // stopped writing them looks like that. Treating it as authored would
+    // freeze the rack's own name onto the panel for good.
+    labelFromDevice: !named || entry.label === device.label,
+    include: true,
+    isNew: false,
+  };
+}
+
+/**
  * The device's list and the project's, as one list of rows.
  *
  * The project wins on everything it already says -- its order, its names, the
@@ -129,27 +154,9 @@ function mergeRows(
   const firstTime = fromProject.length === 0;
 
   const rows: Row[] = fromProject.map((entry) => {
-    const device = deviceByValue.get(key(entry.value));
+    const device = deviceByValue.get(key(entry.value)) ?? {};
     deviceByValue.delete(key(entry.value));
-    const named = isNamed(entry.label);
-    const label = named ? String(entry.label) : device?.label || "";
-    return {
-      ...entry,
-      // A key the device now declares fills one the project never had; a key
-      // the project set is the author's and is left alone.
-      label_key: entry.label_key ?? device?.label_key,
-      route_key: entry.route_key ?? device?.route_key,
-      report_value: entry.report_value ?? device?.report_value,
-      offline: device?.offline,
-      label,
-      // A stored label that is exactly what the device currently calls the port
-      // is a copy, not a decision -- every matrix set up before this picker
-      // stopped writing them looks like that. Treating it as authored would
-      // freeze the rack's own name onto the panel for good.
-      labelFromDevice: !named || entry.label === device?.label,
-      include: true,
-      isNew: false,
-    };
+    return projectRow(entry, device);
   });
 
   for (const entry of fromDevice) {

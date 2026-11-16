@@ -332,10 +332,13 @@ function audioSourceNode(tag, o) {
  */
 export function captionUnnamed(entries, prefix) {
     entries.forEach((entry, i) => {
-        if (entry && !isNamed(entry.label) && !isNamed(entry.caption)) {
-            entry.caption = `${prefix} ${i + 1}`;
-        }
+        if (entry && !namedOrCaptioned(entry)) entry.caption = `${prefix} ${i + 1}`;
     });
+}
+
+/** Whether a row already has a name, or the caption the server gave it. */
+function namedOrCaptioned(entry) {
+    return isNamed(entry.label) || isNamed(entry.caption);
 }
 
 /**
