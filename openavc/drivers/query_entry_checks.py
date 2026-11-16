@@ -83,8 +83,11 @@ class FollowUp:
         self.child_of = self._routed_types[0] if len(self._routed_types) == 1 else None
         written = rule.get("set")
         self._written = set(written) if isinstance(written, dict) else set()
+        mappings = rule.get("mappings")
         self._written |= {
-            m.get("state") for m in (rule.get("mappings") or []) if isinstance(m, dict)
+            m["state"]
+            for m in (mappings if isinstance(mappings, list) else ())
+            if isinstance(m, dict) and isinstance(m.get("state"), str)
         }
         self._written_child = {
             prop for e in routes if isinstance(e.get("state"), dict) for prop in e["state"]

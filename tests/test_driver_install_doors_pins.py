@@ -908,6 +908,7 @@ async def test_upload_of_a_yaml_whose_companion_is_here(world):
         "driver_id": DRIVER_ID,
         "file": "acme_widget.avcdriver",
         "activated_devices": ["waiting_device"],
+        "notices": [],
     }
     assert world.events == [("register", DRIVER_ID), ("retry",), ("announce", DRIVER_ID)]
 
@@ -1006,6 +1007,7 @@ async def test_bundle_of_a_yaml_driver_renames_the_main_and_keeps_the_companion_
         "driver_id": DRIVER_ID,
         "files": ["acme_widget.avcdriver", "copy_of_widget_discovery.py"],
         "activated_devices": ["waiting_device"],
+        "notices": [],
     }
     assert world.events == [
         ("register", DRIVER_ID), ("refresh",), ("retry",), ("announce", DRIVER_ID),

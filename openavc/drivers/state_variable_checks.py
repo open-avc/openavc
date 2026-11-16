@@ -31,6 +31,8 @@ _VALUE_TYPES = set(VALUE_TYPES)
 
 def _type_error(var_def: dict[str, Any]) -> str | None:
     var_type = var_def.get("type", "")
+    if not isinstance(var_type, str):
+        return f"unknown type {var_type!r}" if var_type else None
     if var_type and var_type not in _VALUE_TYPES:
         return f"unknown type '{var_type}'"
     return None

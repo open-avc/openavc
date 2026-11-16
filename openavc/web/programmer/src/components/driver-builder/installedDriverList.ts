@@ -43,6 +43,25 @@ export function loadErrorOf(installedById: Map<string, InstalledDriver>, id: str
   return installedById.get(id)?.load_error ?? null;
 }
 
+/** What is wrong in an installed file that loaded anyway; empty when nothing is. */
+export function loadNoticesOf(installedById: Map<string, InstalledDriver>, id: string): string[] {
+  return installedById.get(id)?.load_notices ?? [];
+}
+
+/** What a driver page says above those mistakes. */
+export const LOADED_WITH_NOTICES_TEXT =
+  "This driver loaded and devices can use it, but its file has mistakes the Driver Builder " +
+  "would not save. Fix them in the file, or send them to whoever wrote the driver:";
+
+/** What an import says when the driver went in with mistakes in its file
+ *  (``extra`` is what else it did, such as connecting waiting devices). */
+export function importedWithNotices(driverId: string, extra: string, notices: string[]): string {
+  return (
+    `Imported driver "${driverId}"${extra}. Its file has mistakes the Driver Builder ` +
+    `would not save; fix them in the file: ${notices.join("; ")}`
+  );
+}
+
 /** What a driver page says when its file never registered and the server
  *  gave its reason, which is shown beneath it. */
 export const NOT_LOADED_WITH_REASON_TEXT =

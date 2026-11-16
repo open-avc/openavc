@@ -19,6 +19,7 @@ from pathlib import Path
 
 import yaml
 
+from openavc.drivers.spec import without_null_sections
 from openavc.simulator.base import BaseSimulator
 from openavc.simulator.tcp_simulator import TCPSimulator
 from openavc.simulator.http_simulator import HTTPSimulator
@@ -128,7 +129,7 @@ class SimulatorManager:
     def _load_yaml_driver(self, path: Path) -> None:
         """Load a YAML driver and register it for auto-generation."""
         with open(path, encoding="utf-8") as f:
-            driver_def = yaml.safe_load(f)
+            driver_def = without_null_sections(yaml.safe_load(f))
 
         if not driver_def or not isinstance(driver_def, dict):
             return

@@ -1,7 +1,11 @@
 import { UpdateRowButton } from "../shared/CatalogUpdateControls";
 import type { CatalogUpdate } from "../shared/catalogUpdates";
 import type { DriverInfo } from "../../api/types";
-import { NOT_LOADED_TEXT, NOT_LOADED_WITH_REASON_TEXT } from "./installedDriverList";
+import {
+  LOADED_WITH_NOTICES_TEXT,
+  NOT_LOADED_TEXT,
+  NOT_LOADED_WITH_REASON_TEXT,
+} from "./installedDriverList";
 
 /** One driver in the list: its name (a PY mark for a Python driver), its
  *  maker and category or that it did not load, and Update when there is one. */
@@ -115,6 +119,33 @@ export function NotLoadedNote({ show, reason }: { show: boolean; reason?: string
       {reason && (
         <p style={{ margin: "var(--space-xs) 0 0", whiteSpace: "pre-wrap" }}>Reason: {reason}</p>
       )}
+    </div>
+  );
+}
+
+/** A driver file that loaded but has mistakes in it: each one, beneath what
+ *  to do about them. */
+export function LoadNoticesNote({ notices }: { notices: string[] }) {
+  if (notices.length === 0) return null;
+  return (
+    <div
+      style={{
+        margin: "0 0 var(--space-md)",
+        padding: "var(--space-sm) var(--space-md)",
+        borderRadius: "var(--radius)",
+        border: "1px solid var(--color-warning)",
+        fontSize: "var(--font-size-sm)",
+        color: "var(--color-warning)",
+      }}
+    >
+      <p style={{ margin: 0 }}>{LOADED_WITH_NOTICES_TEXT}</p>
+      <ul style={{ margin: "var(--space-xs) 0 0", paddingLeft: "var(--space-lg)" }}>
+        {notices.map((notice) => (
+          <li key={notice} style={{ whiteSpace: "pre-wrap" }}>
+            {notice}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

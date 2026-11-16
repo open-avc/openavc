@@ -236,7 +236,10 @@ def _count_from_state_errors(roster: _Roster, state_name: Any) -> list[str]:
         return []
     if not isinstance(state_name, str) or not state_name:
         return [f"{roster.where}: count_from_state must name a state variable"]
-    if state_name not in roster.names.state_variables:
+    declared = roster.names.state_variables
+    # Judged only against a mapping of variables; a block of another shape is
+    # named where the definition walk checks it.
+    if isinstance(declared, dict) and state_name not in declared:
         return [
             f"{roster.where}: count_from_state {state_name!r} is not a declared "
             f"state variable"
@@ -332,7 +335,9 @@ def undeclared_child_type_reason(
     sentence, so each surface frames it: the static rule prefixes the dotted
     path, the gate prefixes the command and parameter name.
     """
-    declared = sorted(k for k in child_types if k != UNEVALUATED_KEY)
+    # Named as text: a type named by a number is refused where the types are
+    # checked, and the reason still has to be a sentence.
+    declared = sorted(str(k) for k in child_types if k != UNEVALUATED_KEY)
     return (
         f"child_type '{child_type}' is not a declared child_entity_type"
         + (

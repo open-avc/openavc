@@ -54,6 +54,7 @@ from urllib.parse import unquote
 
 import yaml
 
+from openavc.drivers.spec import without_null_sections
 from openavc.drivers.compiled_protocol import (
     apply_send_frame,
     build_send_frame,
@@ -204,7 +205,10 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         part of what it means; each stage says what it must follow."""
         # A Generic device's inline protocol is merged first: it is the
         # definition every stage reads (inline_device.py).
-        driver_def, self._inline_protocol = _merge_inline_protocol(driver_def, config)
+        # A null top-level section is read as absent, as the driver reads it.
+        driver_def, self._inline_protocol = _merge_inline_protocol(
+            without_null_sections(driver_def), config
+        )
         # Before the base, which reads the device's settings from it.
         self.SIMULATOR_INFO = self._build_info(driver_def)
         super().__init__(device_id, config)

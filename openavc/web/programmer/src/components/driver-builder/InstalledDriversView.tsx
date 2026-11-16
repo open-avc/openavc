@@ -15,8 +15,8 @@ import {
   UpdateAvailableLine,
   UpdatesAvailableCount,
 } from "../shared/CatalogUpdateControls";
-import { DriverListRow, NotLoadedNote } from "./DriverListRow";
-import { listedDrivers, loadErrorOf } from "./installedDriverList";
+import { DriverListRow, LoadNoticesNote, NotLoadedNote } from "./DriverListRow";
+import { listedDrivers, loadErrorOf, loadNoticesOf } from "./installedDriverList";
 import type {
   ChildEntityStateVarDef,
   ChildEntityTypeSchema,
@@ -296,6 +296,7 @@ export function InstalledDriversView({
         {selectedDriver ? (
           <>
             <NotLoadedNote show={listed.notLoaded.has(selectedDriver.id)} reason={loadErrorOf(installedById, selectedDriver.id)} />
+            <LoadNoticesNote notices={loadNoticesOf(installedById, selectedDriver.id)} />
             <DriverDetailPanel
               driver={selectedDriver}
               installed={selectedInstalled}

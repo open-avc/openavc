@@ -68,7 +68,10 @@
       "description": "Transport the driver uses to reach the device. Use \"bridge\" for a device that has no address of its own and emits through a live bridge instance (an IR device on an emitter port); it opens no socket and routes commands via the bridge."
     },
     "transports": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "Optional. Transports this driver can use interchangeably (e.g. [\"tcp\", \"serial\"] for a text protocol whose command/response strings are byte-identical over the network or a serial line). The per-device connection picks the actual transport; listing \"serial\" makes the device offerable over a direct serial port or through a bridge. Opt-in: only declare it when the strings really are identical across the listed media.",
       "items": {
         "type": "string",
@@ -82,7 +85,10 @@
       }
     },
     "bridge": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Optional. Declares this driver as a bridge: a device that exposes typed ports other devices connect through (e.g. a serial-to-Ethernet or IR bridge). The port declaration is valid in YAML, but the runtime behind a port needs a Python driver: pushing serial line settings to the hardware (prepare_bridge_port), and emitting/learning IR (bridge_emit / bridge_learn_*) for ir ports.",
       "required": [
         "ports"
@@ -136,27 +142,45 @@
       "description": "Protocol reference or product documentation URL. Must start with http:// or https://."
     },
     "delimiter": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Message delimiter. Default \"\\r\". Use \"\\r\\n\" for CRLF. Escape sequences \\r and \\n are interpreted."
     },
     "command_prefix": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Opt-in constant string prepended to every command's send string (a fixed packet header). Set it once instead of repeating it on each command. Byte-stream transports only (tcp/serial/udp); never applied to OSC or HTTP. Supports the same escape sequences and {config} substitution as send. A command can opt out with raw: true. Requires platform 0.23.0."
     },
     "command_suffix": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "Opt-in constant string appended to every command's send string (its terminator). Set it once so you don't type \\r on each command. Byte-stream transports only (tcp/serial/udp). Supports the same escape sequences and {config} substitution as send. A command can opt out with raw: true. Requires platform 0.23.0."
     },
     "inline_protocol": {
-      "type": "boolean",
+      "type": [
+        "boolean",
+        "null"
+      ],
       "description": "Built-in generic devices only. When true, the device page shows a no-code Commands & Responses editor that stores commands/responses/state_variables in the device config and merges them into this driver at runtime. Community drivers ship their commands and responses in the driver file and should not set this."
     },
     "ir_codes": {
-      "type": "boolean",
+      "type": [
+        "boolean",
+        "null"
+      ],
       "description": "Marks this as an IR code-set device (a device controlled by an infrared remote through an IR bridge). When true, the device page shows the IR Codes editor (learn / paste Pronto / type sendir / database search / test emit) and each code in the ir_codes map becomes a device command that emits through the bound bridge's IR port. A build-your-own IR device authors codes per-device; a community IR driver ships its code-set in default_config.ir_codes. Codes are stored as vendor-neutral Pronto hex plus a per-command repeat. Use transport \"bridge\" with this. Requires platform 0.22.0."
     },
     "ports": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "TCP/UDP ports the device listens on (catalog metadata only).",
       "items": {
         "type": "integer",
@@ -165,7 +189,10 @@
       }
     },
     "protocols": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "Protocol names this driver speaks, e.g. [\"pjlink\"]. Helps discovery match devices to drivers.",
       "items": {
         "type": "string",
@@ -173,30 +200,41 @@
       }
     },
     "simulated": {
-      "type": "boolean",
+      "type": [
+        "boolean",
+        "null"
+      ],
       "description": "True if the driver ships with simulator support (auto-gen or an explicit simulator: section)."
     },
     "verified": {
-      "type": "boolean",
+      "type": [
+        "boolean",
+        "null"
+      ],
       "description": "True once the driver has been validated against real hardware."
     },
     "web_ui": {
       "type": [
         "boolean",
-        "string"
+        "string",
+        "null"
       ],
       "description": "Controls the 'Open Web UI' button. Leave unset for auto-detect: the platform finds a reachable web URL (HTTP devices from config, others from a port probe / discovery scan) and adds the button on its own. true forces it on (opens https://{host}); a string forces it on with that URL template (e.g. \"http://{host}:8080\") with {host}/{port}/{config_key} substitution; false forces it off. Requires platform 0.24.0."
     },
     "min_platform_version": {
       "type": [
         "string",
+        "null",
         "null"
       ],
       "pattern": "^\\d+\\.\\d+\\.\\d+(?:[\\-+][\\w.\\-]+)?$",
       "description": "Minimum OpenAVC version required. Blocks install on older platforms missing a needed feature. Semantic version."
     },
     "tags": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "Search/browse tags. Lowercase, hyphen-separated, alphanumeric.",
       "items": {
         "type": "string",
@@ -204,57 +242,91 @@
       }
     },
     "help": {
-      "$ref": "#/$defs/helpBlock"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/helpBlock"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "deprecated": {
-      "type": "boolean",
+      "type": [
+        "boolean",
+        "null"
+      ],
       "description": "True if this driver is superseded. Requires replacement_id."
     },
     "replacement_id": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "ID of the driver that replaces this one. Only valid when deprecated is true."
     },
     "compatible_models": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "Specific device models this driver supports, with confidence levels.",
       "items": {
         "$ref": "#/$defs/compatibleModelsEntry"
       }
     },
     "default_config": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Default values for config fields (e.g. host, port, poll_interval, inter_command_delay)."
     },
     "config_derived": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Computed config values, each a template substituted from other config fields, e.g. {\"ws\": \"/workspace/{workspace_id}\"}. If any {field} the template references is empty or missing, the derived value is \"\" — so an optional prefixed address segment simply disappears. Computed once when the device connects and visible to every command address, on_connect entry, response, and poll query (just like a real config field). Lets one friendly field (e.g. a workspace id) drive both a bare and a prefixed address form without conditional logic in every command.",
       "additionalProperties": {
         "type": "string"
       }
     },
     "config_schema": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Per-device connection settings shown in the Add Device dialog. Keyed by config field name.",
       "additionalProperties": {
         "$ref": "#/$defs/configSchemaEntry"
       }
     },
     "device_settings": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Configurable values that live on the device hardware (polled + writable). Keyed by setting name.",
       "additionalProperties": {
         "$ref": "#/$defs/deviceSettingEntry"
       }
     },
     "state_variables": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Read-only state properties this driver exposes. Keyed by state variable name.",
       "additionalProperties": {
         "$ref": "#/$defs/stateVariableEntry"
       }
     },
     "child_entity_types": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Sub-units this device manages (encoders, decoders, zones, presets). Keyed by child type name.",
       "additionalProperties": {
         "$ref": "#/$defs/childEntityType"
@@ -265,14 +337,20 @@
       }
     },
     "commands": {
-      "type": "object",
+      "type": [
+        "object",
+        "null"
+      ],
       "description": "Commands this driver can send. Keyed by command name.",
       "additionalProperties": {
         "$ref": "#/$defs/commandEntry"
       }
     },
     "quick_actions": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "Command ids promoted to one-click Quick Action buttons at the top of the device view. Sugar for actions of kind \"command\". Each id must name a declared command.",
       "items": {
         "type": "string",
@@ -280,21 +358,30 @@
       }
     },
     "actions": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "Driver-declared actions promoted to buttons in the device view. kind:\"command\" promotes a declared command (runs online); kind:\"setup\" is an offline-capable provisioning wizard handled by the driver's run_setup_action().",
       "items": {
         "$ref": "#/$defs/actionEntry"
       }
     },
     "responses": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "Patterns for parsing device replies. Regex/OSC rules are checked in order and the first match wins; a json: true rule parses the whole JSON body and applies all of its field mappings, so a multi-field JSON reply fully populates.",
       "items": {
         "$ref": "#/$defs/responseEntry"
       }
     },
     "on_connect": {
-      "type": "array",
+      "type": [
+        "array",
+        "null"
+      ],
       "description": "Commands sent immediately after connect, before polling. Strings for TCP/serial/UDP; {address, args} mappings for OSC (args carry typed OSC values for a value-setting bring-up message); {each_child, send} templates expand to one query per registered child. Any mapping entry may add when: <config_field> to run only while that field is on, or when_state: to run only while the device's state allows (a reconnect to a unit in standby leaves it there), and a {send} entry may add query_for: <state_var> to name the state variable its reply reports.",
       "items": {
         "oneOf": [
@@ -336,76 +423,139 @@
       }
     },
     "polling": {
-      "type": "object",
       "description": "Periodic status query configuration. NOTE: a polling.interval key is inert and rejected by the catalog validator; set the cadence via default_config.poll_interval instead.",
-      "properties": {
-        "queries": {
-          "type": "array",
-          "description": "Query strings (or command names) sent each poll cycle; {each_child, send} templates expand to one query per registered child; when: <config_field> gates an entry on a config field; query_for: <state_var> on a mapping entry names the state variable the reply reports (drives the auto-generated simulator). Cadence comes from default_config.poll_interval.",
-          "items": {
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "$ref": "#/$defs/eachChildQuery"
-              },
-              {
-                "$ref": "#/$defs/queryEntry"
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "queries": {
+              "type": "array",
+              "description": "Query strings (or command names) sent each poll cycle; {each_child, send} templates expand to one query per registered child; when: <config_field> gates an entry on a config field; query_for: <state_var> on a mapping entry names the state variable the reply reports (drives the auto-generated simulator). Cadence comes from default_config.poll_interval.",
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "$ref": "#/$defs/eachChildQuery"
+                  },
+                  {
+                    "$ref": "#/$defs/queryEntry"
+                  }
+                ]
               }
+            },
+            "when_state": {
+              "$ref": "#/$defs/whenStateGate",
+              "description": "Hold the whole poll while the device's state is outside this gate (a matrix that any command wakes, left in standby). A cycle that sends nothing is not counted as a missed poll."
+            }
+          },
+          "additionalProperties": false,
+          "not": {
+            "required": [
+              "interval"
             ]
           }
         },
-        "when_state": {
-          "$ref": "#/$defs/whenStateGate",
-          "description": "Hold the whole poll while the device's state is outside this gate (a matrix that any command wakes, left in standby). A cycle that sends nothing is not counted as a missed poll."
+        {
+          "type": "null"
         }
-      },
-      "additionalProperties": false,
-      "not": {
-        "required": [
-          "interval"
-        ]
-      }
+      ]
     },
     "auth": {
-      "$ref": "#/$defs/authBlock"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/authBlock"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "liveness": {
-      "$ref": "#/$defs/livenessBlock"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/livenessBlock"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "push": {
-      "$ref": "#/$defs/pushBlock"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/pushBlock"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "frame_parser": {
       "description": "Framing for the control transport's inbound byte stream. Top level accepts length_prefix / fixed_length only; struct_frame is push-only (push.frame_parser, for tcp_listener dial-back frames).",
-      "allOf": [
+      "anyOf": [
         {
-          "$ref": "#/$defs/frameParser"
+          "allOf": [
+            {
+              "$ref": "#/$defs/frameParser"
+            },
+            {
+              "properties": {
+                "type": {
+                  "enum": [
+                    "length_prefix",
+                    "fixed_length"
+                  ]
+                }
+              }
+            }
+          ]
         },
         {
-          "properties": {
-            "type": {
-              "enum": [
-                "length_prefix",
-                "fixed_length"
-              ]
-            }
-          }
+          "type": "null"
         }
       ]
     },
     "send_frame": {
-      "$ref": "#/$defs/sendFrame"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/sendFrame"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "simulator": {
-      "$ref": "#/$defs/simulatorSection"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/simulatorSection"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "discovery": {
-      "$ref": "#/$defs/discoveryBlock"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/discoveryBlock"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
     "routing": {
-      "$ref": "#/$defs/routingBlock"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/routingBlock"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "allOf": [
@@ -421,6 +571,13 @@
         ]
       },
       "then": {
+        "properties": {
+          "replacement_id": {
+            "not": {
+              "type": "null"
+            }
+          }
+        },
         "required": [
           "replacement_id"
         ]
@@ -428,6 +585,13 @@
     },
     {
       "if": {
+        "properties": {
+          "replacement_id": {
+            "not": {
+              "type": "null"
+            }
+          }
+        },
         "required": [
           "replacement_id"
         ]

@@ -61,7 +61,8 @@ ERROR_PARTS = [
     ("push_block_errors", "push"),
     ("auth_errors", "auth"),
     ("liveness_errors", "liveness"),
-    ("validate_actions", "actions"),
+    ("quick_action_errors", "quick_actions"),
+    ("action_entry_errors", "actions"),
     ("state_variable_errors", "state_variables.power"),
     ("value_conversion_errors", "state_variables"),
     ("frame_parser_errors", "frame_parser"),
@@ -190,7 +191,7 @@ def _write(folder: Path, name: str, definition: dict[Any, Any]) -> Path:
     return path
 
 
-def test_a_file_the_check_raised_on_is_skipped_and_the_rest_load(library, caplog):
+def test_a_file_the_check_refuses_is_skipped_and_the_rest_load(library, caplog):
     _write(library, "a_number_id.avcdriver", {**BASE, "id": 5})
     _write(library, "b_push.avcdriver", {**BASE, "id": "acme_widget_push", "push": {"type": "multicast", 1: "x"}})
     _write(library, "c_good.avcdriver", BASE)
@@ -201,7 +202,7 @@ def test_a_file_the_check_raised_on_is_skipped_and_the_rest_load(library, caplog
     assert registry.get_driver_class("acme_widget_push") is None
     skipped = [r.getMessage() for r in caplog.records if "Invalid driver definition" in r.getMessage()]
     assert len(skipped) == 2
-    assert "a_number_id.avcdriver" in skipped[0] and "discovery: could not be checked" in skipped[0]
+    assert "a_number_id.avcdriver" in skipped[0] and "id: must be a string" in skipped[0]
     assert "b_push.avcdriver" in skipped[1] and "push: unknown key(s): 1 " in skipped[1]
 
 

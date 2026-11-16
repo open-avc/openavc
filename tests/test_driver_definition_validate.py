@@ -88,8 +88,23 @@ def _paths(definition: dict[str, Any]) -> set[str]:
 SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
     (
         "top-level",
-        _d(transport="carrier_pigeon"),
+        {k: v for k, v in _d().items() if k != "name"},
         "",
+    ),
+    (
+        "id",
+        _d(id=5),
+        "id",
+    ),
+    (
+        "transport",
+        _d(transport="carrier_pigeon"),
+        "transport",
+    ),
+    (
+        "ir_codes",
+        _d(ir_codes="yes"),
+        "ir_codes",
     ),
     (
         "command_prefix",
@@ -163,8 +178,13 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
     ),
     (
         "actions (block)",
-        _d(quick_actions="noop"),
+        _d(actions={"id": "noop"}),
         "actions",
+    ),
+    (
+        "quick_actions",
+        _d(quick_actions="noop"),
+        "quick_actions",
     ),
     (
         "actions[i]",

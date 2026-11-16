@@ -64,7 +64,7 @@ from openavc.drivers.driver_loader import (
     driver_files_for,
     require_mutable_driver_file,
 )
-from openavc.drivers.refused_files import load_error
+from openavc.drivers.refused_files import load_error, load_notices
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import (
     list_registered_drivers,
@@ -494,6 +494,7 @@ async def upload_driver(request: Request) -> dict[str, Any]:
         "driver_id": driver_id,
         "file": filename,
         "activated_devices": activated,
+        "notices": list(admitted.notices),
     }
 
 
@@ -552,6 +553,7 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
         "driver_id": driver_id,
         "files": sorted(entries.keys()),
         "activated_devices": activated,
+        "notices": list(admitted.notices),
     }
 
 
@@ -659,7 +661,8 @@ def _installed_definition_entry(filepath: Path) -> dict[str, Any] | None:
     id, name and version; by its file name when it cannot be read, decoded as
     UTF-8 (``UnicodeDecodeError`` is a ``ValueError``) or parsed; and not at
     all when it parses to something other than a mapping. ``load_error`` is
-    why it did not load (``refused_files``), else None."""
+    why it did not load (``refused_files``), else None; ``load_notices`` what
+    the author's doors refuse in a file that loaded anyway."""
     import yaml
 
     try:
@@ -676,6 +679,7 @@ def _installed_definition_entry(filepath: Path) -> dict[str, Any] | None:
         "filename": filepath.name,
         "version": data.get("version", ""),
         "load_error": load_error(filepath),
+        "load_notices": load_notices(filepath),
     }
 
 
@@ -696,6 +700,7 @@ def _installed_python_entry(filepath: Path) -> dict[str, Any]:
         "filename": filepath.name,
         "version": info.get("version", ""),
         "load_error": load_error(filepath),
+        "load_notices": load_notices(filepath),
     }
 
 

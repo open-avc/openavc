@@ -70,7 +70,7 @@ from openavc.drivers.send_framing import SendFraming
 from openavc.drivers.setting_writes import SettingWrites
 from openavc.drivers.side_sends import SideSends
 from openavc.drivers.sign_in import SignIn
-from openavc.drivers.spec import placeholder_names
+from openavc.drivers.spec import placeholder_names, without_null_sections
 from openavc.drivers.start_up_and_poll import StartUpAndPoll
 from openavc.drivers.text_replies import TextReplies
 from openavc.drivers.yaml_driver_info import driver_info_for
@@ -529,8 +529,11 @@ def create_configurable_driver_class(
     Factory: create a ConfigurableDriver subclass from a JSON definition.
 
     Returns a new class with the correct DRIVER_INFO and _definition
-    attributes, ready to be registered in the driver registry.
+    attributes, ready to be registered in the driver registry. A null
+    top-level section is read as absent (``spec.without_null_sections``), so
+    no reader of the definition meets one.
     """
+    driver_def = without_null_sections(driver_def)
     driver_info = driver_info_for(driver_def)
     return type(
         f"ConfigurableDriver_{driver_info['id']}",

@@ -249,14 +249,23 @@ def validate_actions(driver_def: dict[str, Any]) -> list[str]:
     Returns the error strings, ``quick_actions`` first, each entry's in the
     order its fields are listed above (empty when valid).
     """
-    commands = _Commands(driver_def)
-    errors = _quick_action_errors(driver_def.get("quick_actions"), commands)
+    return [*quick_action_errors(driver_def), *action_entry_errors(driver_def)]
+
+
+def quick_action_errors(driver_def: dict[str, Any]) -> list[str]:
+    """``validate_actions``' ``quick_actions`` half."""
+    return _quick_action_errors(driver_def.get("quick_actions"), _Commands(driver_def))
+
+
+def action_entry_errors(driver_def: dict[str, Any]) -> list[str]:
+    """``validate_actions``' ``actions`` half: each entry's rules, in order."""
     actions = driver_def.get("actions")
     if actions is None:
-        return errors
+        return []
     if not isinstance(actions, list):
-        return [*errors, "actions: must be a list"]
-    entries = _Entries(commands)
+        return ["actions: must be a list"]
+    entries = _Entries(_Commands(driver_def))
+    errors: list[str] = []
     for i, entry in enumerate(actions):
         errors.extend(entries.errors(i, entry))
     return errors

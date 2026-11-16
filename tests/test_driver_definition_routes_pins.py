@@ -665,13 +665,13 @@ async def test_installed_lists_definitions_then_python_drivers_by_file_name(inst
     answer = await INSTALL_ROUTES.list_installed_community_drivers()
 
     assert answer == {"drivers": [
-        {"id": "a_bare", "name": "a_bare", "format": "avcdriver", "filename": "a_bare.avcdriver", "version": "", "load_error": None},
+        {"id": "a_bare", "name": "a_bare", "format": "avcdriver", "filename": "a_bare.avcdriver", "version": "", "load_error": None, "load_notices": []},
         {"id": "acme_widget", "name": "Acme Widget", "format": "avcdriver", "filename": "b_widget.avcdriver",
-         "version": "2.1.0", "load_error": None},
-        {"id": "d_broken", "name": "d_broken", "format": "avcdriver", "filename": "d_broken.avcdriver", "version": "", "load_error": None},
-        {"id": "acme_box", "name": "Acme Box", "format": "python", "filename": "acme_box.py", "version": "", "load_error": None},
+         "version": "2.1.0", "load_error": None, "load_notices": []},
+        {"id": "d_broken", "name": "d_broken", "format": "avcdriver", "filename": "d_broken.avcdriver", "version": "", "load_error": None, "load_notices": []},
+        {"id": "acme_box", "name": "Acme Box", "format": "python", "filename": "acme_box.py", "version": "", "load_error": None, "load_notices": []},
         {"id": "acme_cube_id", "name": "Acme Cube", "format": "python", "filename": "acme_cube.py",
-         "version": "3.0", "load_error": None},
+         "version": "3.0", "load_error": None, "load_notices": []},
     ]}
 
 
@@ -684,7 +684,7 @@ async def test_installed_matches_a_python_driver_by_its_name_inside_the_module_n
     answer = await INSTALL_ROUTES.list_installed_community_drivers()
 
     assert answer == {"drivers": [
-        {"id": "acme_box", "name": "Box", "format": "python", "filename": "box.py", "version": "", "load_error": None},
+        {"id": "acme_box", "name": "Box", "format": "python", "filename": "box.py", "version": "", "load_error": None, "load_notices": []},
     ]}
 
 
@@ -699,9 +699,9 @@ async def test_installed_lists_a_definition_that_is_not_utf8_by_its_file_name(in
 
     assert answer == {"drivers": [
         {"id": "acme_gadget", "name": "Acme Gadget", "format": "avcdriver", "filename": "acme_gadget.avcdriver",
-         "version": "1.0.0", "load_error": None},
+         "version": "1.0.0", "load_error": None, "load_notices": []},
         {"id": "acme_widget", "name": "acme_widget", "format": "avcdriver", "filename": "acme_widget.avcdriver",
-         "version": "", "load_error": None},
+         "version": "", "load_error": None, "load_notices": []},
     ]}
 
 

@@ -325,6 +325,9 @@ export interface DriverUploadResult {
   file?: string;
   files?: string[];
   activated_devices: string[];
+  /** What is wrong in the driver file, which loaded anyway (the same as its
+   *  Installed entry's load_notices). */
+  notices?: string[];
 }
 
 async function _parseUploadError(res: Response): Promise<string> {

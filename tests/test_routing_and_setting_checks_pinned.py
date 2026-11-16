@@ -705,8 +705,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'settings_type_list': [('device_se
                           'reached')],
  'learned_state_vars_none': [('config_schema.zone',
                               "Config field 'zone': learned_from 'picture' is not a declared state "
-                              'variable, so the field would never be filled in'),
-                             ('state_variables', 'state_variables: must be a mapping')],
+                              'variable, so the field would never be filled in')],
  'learned_state_vars_unevaluated': [('state_variables.<unevaluated>',
                                      "State variable '<unevaluated>': must be a dict")],
  'learned_table': [('config_schema.zone',
@@ -834,8 +833,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'settings_type_list': [('device_se
  'routing_commands_list': [('commands', 'commands: must be a mapping'),
                            ('routing',
                             "routing.planes[0]: command 'route' is not a declared command")],
- 'routing_commands_none': [('commands', 'commands: must be a mapping'),
-                           ('routing',
+ 'routing_commands_none': [('routing',
                             "routing.planes[0]: command 'route' is not a declared command")],
  'routing_dest_child_not_mapping': [('child_entity_types.output',
                                      'child_entity_types.output: must be a mapping')],
@@ -1093,8 +1091,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'settings_type_list': [('device_se
                                        ('routing',
                                         "routing.planes[0]: route_property 'source_video' is not a "
                                         'state variable of this driver')],
- 'routing_property_device_vars_none': [('state_variables', 'state_variables: must be a mapping'),
-                                       ('routing',
+ 'routing_property_device_vars_none': [('routing',
                                         "routing.planes[0]: route_property 'source_video' is not a "
                                         'state variable of this driver')],
  'routing_property_empty': [('routing',
@@ -1328,8 +1325,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'settings_type_list': [('device_se
                               ('state_variables', 'state_variables: must be a mapping')],
  'settings_state_vars_none': [('device_settings.volume',
                                "Device setting 'volume': state_key 'volume' is not a declared "
-                               'state variable, so the setting would never read back'),
-                              ('state_variables', 'state_variables: must be a mapping')],
+                               'state variable, so the setting would never read back')],
  'settings_state_vars_unevaluated': [('state_variables.<unevaluated>',
                                       "State variable '<unevaluated>': must be a dict")],
  'settings_text': [('device_settings', 'device_settings: must be a mapping')],

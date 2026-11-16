@@ -696,11 +696,11 @@ def test_the_command_line_says_what_it_said(tmp_path, name, capsys):
     assert _cli(tmp_path, name, capsys) == CLI_EXPECTED[name]
 
 
-def test_a_driver_that_stops_the_run_stops_it_before_anything_prints(tmp_path, capsys):
-    """Every file is validated before any is printed, so a later driver whose
-    parity check raises (an initial_state written as a list of pairs, which
-    the contract check passes) ends the run with nothing on standard output,
-    the earlier driver's lines included."""
+def test_a_misshapen_simulator_section_is_reported_and_the_run_goes_on(tmp_path, capsys):
+    """A later driver whose simulator section is written in a shape the
+    simulator cannot read (an initial_state written as a list of pairs) is
+    reported by the contract check, and the earlier driver's lines are still
+    printed."""
     (tmp_path / "a").mkdir()
     (tmp_path / "a" / "acme_widget.avcdriver").write_text(_cli_yaml(), encoding="utf-8")
     (tmp_path / "b").mkdir()
@@ -708,9 +708,12 @@ def test_a_driver_that_stops_the_run_stops_it_before_anything_prints(tmp_path, c
         _cli_yaml(id="acme_other", simulator={"initial_state": [["power", False]]}),
         encoding="utf-8",
     )
-    with pytest.raises(TypeError, match="unhashable type: 'list'"):
+    with pytest.raises(SystemExit) as exit_info:
         main([str(tmp_path)])
-    assert capsys.readouterr().out == ""
+    out = capsys.readouterr().out
+    assert exit_info.value.code == 1
+    assert "acme_widget [yaml]" in out
+    assert "  ERROR [contract] simulator.initial_state: must be a mapping" in out
 
 
 def test_every_case_has_an_expectation():
@@ -1614,52 +1617,64 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                    "its initial value 'x' could not be checked against them.")]}}
 
 CLI_EXPECTED: dict = {'a_folder_of_drivers': {'code': 1,
-                         'err': [],
-                         'out': ['',
-                                 'WARN: acme_widget [yaml] (<tmp>/a/acme_widget.avcdriver)',
-                                 '  WARN  [contract] Nothing notices if the device stops answering '
-                                 'over tcp: it sends no poll at its default config, and there is '
-                                 'no liveness block, so the device reads connected for as long as '
-                                 'the connection stays open. Add a liveness block that asks '
-                                 'something the device answers in every state.',
-                                 '  INFO  [reply_framing] 1 simulator reply checked, all '
-                                 "terminated with '\\\\r\\\\n'.",
-                                 '',
-                                 'FAIL: acme_other [yaml] (<tmp>/b/acme_other.avcdriver)',
-                                 '  WARN  [contract] Nothing notices if the device stops answering '
-                                 'over tcp: it sends no poll at its default config, and there is '
-                                 'no liveness block, so the device reads connected for as long as '
-                                 'the connection stays open. Add a liveness block that asks '
-                                 'something the device answers in every state.',
-                                 '  INFO  [reply_framing] 1 simulator reply checked, all '
-                                 "terminated with '\\\\r\\\\n'.",
-                                 '  ERROR [capacity] simulator.capacity: capacity must be a '
-                                 'mapping with rx_buffer and process_ms',
-                                 '',
-                                 'PASS: acme_widget [python]',
-                                 '',
-                                 'WARN: acme_warn [yaml] (<tmp>/d/acme_warn.avcdriver)',
-                                 '  WARN  [contract] Nothing notices if the device stops answering '
-                                 'over udp: it sends no poll at its default config, and there is '
-                                 'no liveness block, so the device reads connected for as long as '
-                                 'the connection stays open. Add a liveness block that asks '
-                                 'something the device answers in every state.',
-                                 '  WARN  [single_client] simulator.single_client applies to a TCP '
-                                 'device; a udp device answers its one connection',
-                                 '',
-                                 '============================================================',
-                                 '4 drivers validated: 3 passed, 1 failed, 1 errors, 4 warnings, 2 '
-                                 'infos']},
+                                              'err': [],
+                                              'out': ['',
+                                                      'WARN: acme_widget [yaml] '
+                                                      '(<tmp>/a/acme_widget.avcdriver)',
+                                                      '  WARN  [contract] Nothing notices if the '
+                                                      'device stops answering over tcp: it sends '
+                                                      'no poll at its default config, and there is '
+                                                      'no liveness block, so the device reads '
+                                                      'connected for as long as the connection '
+                                                      'stays open. Add a liveness block that asks '
+                                                      'something the device answers in every '
+                                                      'state.',
+                                                      '  INFO  [reply_framing] 1 simulator reply '
+                                                      "checked, all terminated with '\\\\r\\\\n'.",
+                                                      '',
+                                                      'FAIL: acme_other [yaml] '
+                                                      '(<tmp>/b/acme_other.avcdriver)',
+                                                      '  ERROR [contract] simulator.capacity: must '
+                                                      'be a mapping with rx_buffer and process_ms',
+                                                      '  WARN  [contract] Nothing notices if the '
+                                                      'device stops answering over tcp: it sends '
+                                                      'no poll at its default config, and there is '
+                                                      'no liveness block, so the device reads '
+                                                      'connected for as long as the connection '
+                                                      'stays open. Add a liveness block that asks '
+                                                      'something the device answers in every '
+                                                      'state.',
+                                                      '',
+                                                      'PASS: acme_widget [python]',
+                                                      '',
+                                                      'WARN: acme_warn [yaml] '
+                                                      '(<tmp>/d/acme_warn.avcdriver)',
+                                                      '  WARN  [contract] Nothing notices if the '
+                                                      'device stops answering over udp: it sends '
+                                                      'no poll at its default config, and there is '
+                                                      'no liveness block, so the device reads '
+                                                      'connected for as long as the connection '
+                                                      'stays open. Add a liveness block that asks '
+                                                      'something the device answers in every '
+                                                      'state.',
+                                                      '  WARN  [single_client] '
+                                                      'simulator.single_client applies to a TCP '
+                                                      'device; a udp device answers its one '
+                                                      'connection',
+                                                      '',
+                                                      '============================================================',
+                                                      '4 drivers validated: 3 passed, 1 failed, 1 '
+                                                      'errors, 4 warnings, 1 infos']},
  'a_folder_summarised': {'code': 1,
                          'err': [],
                          'out': ['PASS acme_widget [yaml] (1 warnings, 1 infos)',
-                                 'FAIL acme_other [yaml] (1 errors, 1 warnings, 1 infos)',
+                                 'FAIL acme_other [yaml] (1 errors, 1 warnings)',
                                  'PASS acme_widget [python]',
                                  'PASS acme_warn [yaml] (2 warnings)',
                                  'PASS acme_infos [yaml] (1 warnings, 2 infos)',
                                  '',
                                  '============================================================',
-                                 '5 drivers validated: 4 passed, 1 failed, 1 errors, 5 warnings, 4 '
+                                 '5 drivers validated: 4 passed, 1 failed, 1 errors, 5 warnings, 3 '
                                  'infos']},
  'a_folder_with_no_drivers': {'code': 1, 'err': ['No drivers found at <tmp>'], 'out': []},
  'a_path_that_does_not_exist': {'code': 1,
@@ -1734,19 +1749,17 @@ CLI_EXPECTED: dict = {'a_folder_of_drivers': {'code': 1,
                             'err': [],
                             'out': ['',
                                     'FAIL: acme_widget [yaml] (<tmp>/acme_widget.avcdriver)',
+                                    '  ERROR [contract] simulator.capacity: must be a mapping with '
+                                    'rx_buffer and process_ms',
                                     '  WARN  [contract] Nothing notices if the device stops '
                                     'answering over tcp: it sends no poll at its default config, '
                                     'and there is no liveness block, so the device reads connected '
                                     'for as long as the connection stays open. Add a liveness '
                                     'block that asks something the device answers in every state.',
-                                    '  INFO  [reply_framing] 1 simulator reply checked, all '
-                                    "terminated with '\\\\r\\\\n'.",
-                                    '  ERROR [capacity] simulator.capacity: capacity must be a '
-                                    'mapping with rx_buffer and process_ms',
                                     '',
                                     '============================================================',
                                     '1 drivers validated: 0 passed, 1 failed, 1 errors, 1 '
-                                    'warnings, 1 infos']},
+                                    'warnings, 0 infos']},
  'one_yaml_with_infos': {'code': 0,
                          'err': [],
                          'out': ['',

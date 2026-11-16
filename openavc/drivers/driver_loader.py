@@ -29,7 +29,8 @@ from typing import Any, Callable, Iterator, Sequence
 import yaml
 
 from openavc.drivers.avcdriver_semantic import (
-    unknown_key_errors as _unknown_key_errors,
+    DefinitionVerdict,
+    check_driver_definition as _check_definition_rules,
     validate_driver_definition as _validate_definition_rules,
     validate_driver_issues as _validate_definition_issues,
 )
@@ -48,7 +49,7 @@ from openavc.drivers.registry import (
     register_driver,
     unregister_driver,
 )
-from openavc.drivers.spec import REQUIRED_FIELDS as REQUIRED_FIELDS
+from openavc.drivers.spec import REQUIRED_FIELDS as REQUIRED_FIELDS, without_null_sections
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.logger import get_logger
 
@@ -184,11 +185,22 @@ def validate_driver_definition(
     catalog's validator); this wrapper adds the discovery-block check, which
     needs the discovery engine's parser.
 
-    ``strict`` also rejects keys the contract doesn't declare. Pass it from
-    the gates that *create* a driver (save, import, the AI tool); leave it off
-    when loading one, where ``load_driver_file`` warns instead.
+    ``strict`` is the author's doors' switch (save, Validate, the AI tool,
+    ``drivers.check``): leave it off when loading a driver, where
+    ``check_driver_definition`` returns what it moves as notices.
     """
     return _validate_definition_rules(
+        driver_def, discovery_validator=_discovery_hint_errors, strict=strict
+    )
+
+
+def check_driver_definition(
+    driver_def: dict[str, Any], *, strict: bool = False
+) -> DefinitionVerdict:
+    """The errors and the notices for a definition
+    (``avcdriver_semantic.check_driver_definition``), with the
+    discovery-block check."""
+    return _check_definition_rules(
         driver_def, discovery_validator=_discovery_hint_errors, strict=strict
     )
 
@@ -275,14 +287,17 @@ def count_comment_lines(filepath: Path) -> int:
 
 @dataclass(frozen=True)
 class DefinitionRead:
-    """What reading one ``.avcdriver`` came to: the checked definition, or
-    None with the reasons it does not load (sentences without the file's
-    path, which at an import is a staging folder's); and the id it declares,
-    when one can be read."""
+    """What reading one ``.avcdriver`` came to: the checked definition (a
+    null top-level section read as absent), or None with the reasons it does
+    not load (sentences without the file's path, which at an import is a
+    staging folder's); the id it declares, when one can be read; and, for a
+    definition that loads, the notices: what the author's doors refuse in it
+    (``check_driver_definition``), which a door loading it says instead."""
 
     definition: dict[str, Any] | None
     reasons: tuple[str, ...] = ()
     declared_id: str | None = None
+    notices: tuple[str, ...] = ()
 
 
 def load_driver_file(filepath: Path) -> dict[str, Any] | None:
@@ -320,34 +335,37 @@ def read_driver_file(filepath: Path) -> DefinitionRead:
     declared = driver_def.get("id")
     declared_id = declared if isinstance(declared, str) and declared else None
     try:
-        reasons = _definition_refusals(filepath, driver_def)
+        reasons, notices = _definition_refusals(filepath, driver_def)
     except Exception as exc:  # one file a check cannot take is that file's problem
         log.warning(f"Driver file {filepath} could not be checked, so it was not loaded: {exc}")
-        reasons = (f"The driver check could not read it: {exc}",)
+        reasons, notices = (f"The driver check could not read it: {exc}",), ()
     if reasons:
         return DefinitionRead(None, reasons, declared_id)
-    return DefinitionRead(driver_def, (), declared_id)
+    return DefinitionRead(without_null_sections(driver_def), (), declared_id, notices)
 
 
-def _definition_refusals(filepath: Path, driver_def: dict[str, Any]) -> tuple[str, ...]:
+def _definition_refusals(
+    filepath: Path, driver_def: dict[str, Any]
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """``read_driver_file``'s verdict on a definition it read: why the loader
-    drops it (each reason logged), or nothing when it loads."""
-    errors = validate_driver_definition(driver_def)
-    if errors:
+    drops it (each reason logged), or nothing when it loads, with what the
+    author's doors would refuse in it (each logged too)."""
+    verdict = check_driver_definition(driver_def)
+    if verdict.errors:
         log.warning(
             f"Invalid driver definition in {filepath}: "
-            + "; ".join(errors)
+            + "; ".join(verdict.errors)
         )
-        return tuple(errors)
+        return tuple(verdict.errors), ()
 
-    # Loud, but not fatal. A key the contract doesn't declare is nearly always
-    # a typo — and a typo'd section silently does nothing, which is why it is
-    # worth saying out loud. It is not worth dropping the driver over: a
-    # definition written for a newer platform can carry a field this one hasn't
-    # learned yet, and refusing it here would take the device offline instead.
-    # The authoring gates reject the same thing outright, so a typo can only
-    # reach this point on a driver that was written elsewhere.
-    for message in _unknown_key_errors(driver_def):
+    # Loud, but not fatal. A wrong shape or a key the contract doesn't declare
+    # is nearly always a slip, and a slipped section silently does nothing,
+    # which is why it is said out loud: logged here and shown on the driver's
+    # Installed entry. It is not worth dropping the driver over: a definition
+    # written for a newer platform can carry a field this one hasn't learned
+    # yet, and refusing it here would take the device offline instead. The
+    # authoring gates refuse the same things outright.
+    for message in verdict.notices:
         log.warning(f"Driver definition {filepath}: {message}")
 
     # Companion existence check: a ``python:`` declaration that points at
@@ -368,9 +386,9 @@ def _definition_refusals(filepath: Path, driver_def: dict[str, Any]) -> tuple[st
                 f"It names the discovery file {companion_relpath!r} "
                 "(discovery.python.file), which is not in the driver folder. "
                 "Add that file first.",
-            )
+            ), ()
 
-    return ()
+    return (), tuple(verdict.notices)
 
 
 def _python_driver_id(filepath: Path) -> str | None:
@@ -660,10 +678,12 @@ def read_library_definition(filepath: Path) -> DefinitionRead:
     install and the Builder's reload read a library file through here; a
     staged copy (an install, an update, an import) never does."""
     read = read_driver_file(filepath)
+    driver_id = read.declared_id or filepath.stem
     if read.definition is None:
-        refused_files.record(filepath, read.declared_id or filepath.stem, read.reasons)
+        refused_files.record(filepath, driver_id, read.reasons)
     else:
         refused_files.clear(filepath)
+    refused_files.record_notices(filepath, driver_id, read.notices)
     return read
 
 

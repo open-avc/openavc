@@ -446,22 +446,19 @@ REASON_CASES: dict[str, tuple[str, dict[str, Any]]] = {
     "some_declared": ("zon", {"zone": {}, "bus": {}, "mic": {}}),
     "only_computed": ("zone", {UNEVALUATED_KEY: UNEVALUATED}),
     "computed_and_declared": ("out", {"zone": {}, UNEVALUATED_KEY: UNEVALUATED}),
+    # A type named by a number is refused where the types are checked; the
+    # reason still names it, as text, beside the types named by text.
+    "named_by_a_number": ("zone", {1: {}}),
+    "named_by_text_and_a_number": ("zone", {"bus": {}, 2: {}}),
 }
 
 
 EXPECTED: dict[str, list[tuple[str, str]]] = {'child_var_type_a_list': [('child_entity_types.zone',
-  "child_entity_types.zone: could not be checked (unhashable type: 'list'). One of its values is "
-  'not the kind it should be, such as a number or true/false where a name goes; correct it and '
-  'check again')],
- 'count_from_state_over_a_number_of_variables': [('state_variables', 'state_variables: must be a mapping'),
- ('child_entity_types.zone',
-  "child_entity_types.zone: could not be checked (argument of type 'int' is not iterable). One of "
-  'its values is not the kind it should be, such as a number or true/false where a name goes; '
-  'correct it and check again')],
- 'var_type_a_list': [('state_variables.a',
-  "state_variables.a: could not be checked (unhashable type: 'list'). One of its values is not the "
-  'kind it should be, such as a number or true/false where a name goes; correct it and check '
-  'again')],
+                                                                         'child_entity_types.zone.state_variables.a: '
+                                                                         "unknown type ['number']")],
+ 'count_from_state_over_a_number_of_variables': [('state_variables',
+                                                  'state_variables: must be a mapping')],
+ 'var_type_a_list': [('state_variables.a', "State variable 'a': unknown type ['number']")],
  'a_bad_declaration_skips_the_rest': [('child_entity_types.zone',
                                        'child_entity_types.zone: must be a mapping'),
                                       ('child_entity_types.mic',
@@ -604,7 +601,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'child_var_type_a_list': [('child_
                              ('child_entity_types.zone',
                               'child_entity_types.zone.state_variables.c: must be a mapping')],
  'child_var_type_a_number': [('child_entity_types.zone',
-                              "child_entity_types.zone.state_variables.a: unknown type '3'")],
+                              'child_entity_types.zone.state_variables.a: unknown type 3')],
  'child_var_type_empty': [],
  'child_var_type_none': [],
  'child_var_unit': [('child_entity_types.zone',
@@ -667,10 +664,9 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'child_var_type_a_list': [('child_
  'count_from_state_none': [],
  'count_from_state_over_a_list_of_variables': [('state_variables', 'state_variables: must be a mapping')],
  'count_from_state_over_a_string_of_variables': [('state_variables', 'state_variables: must be a mapping')],
- 'count_from_state_over_no_variables': [('state_variables', 'state_variables: must be a mapping'),
-                                        ('child_entity_types.zone',
-                                         "child_entity_types.zone.instances: count_from_state 'power' is not "
-                                         'a declared state variable')],
+ 'count_from_state_over_no_variables': [('child_entity_types.zone',
+                                         'child_entity_types.zone.instances: count_from_state '
+                                         "'power' is not a declared state variable")],
  'count_from_state_undeclared': [('child_entity_types.zone',
                                   "child_entity_types.zone.instances: count_from_state 'outputs' is not a "
                                   'declared state variable')],
@@ -926,7 +922,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'child_var_type_a_list': [('child_
  'var_not_a_mapping': [('state_variables.a', "State variable 'a': must be a dict"),
                        ('state_variables.b', "State variable 'b': must be a dict"),
                        ('state_variables.c', "State variable 'c': must be a dict")],
- 'var_type_a_number': [('state_variables.a', "State variable 'a': unknown type '3'")],
+ 'var_type_a_number': [('state_variables.a', "State variable 'a': unknown type 3")],
  'var_type_empty': [],
  'var_unit': [('state_variables.a', "State variable 'a': unit must be a string (got 5)")],
  'var_unit_a_date': [('state_variables.a',
@@ -958,7 +954,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'child_var_type_a_list': [('child_
                                        'child_entity_types.zone.state_variables.a: control must be true or '
                                        'false (got 0)')],
  'vars_empty': [],
- 'vars_none': [('state_variables', 'state_variables: must be a mapping')]}
+ 'vars_none': []}
 
 REFERENCE_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_command_named_like_the_marker': ([],
                                      ['0 of an unknown number of commands were readable; params of the rest '
@@ -1079,6 +1075,8 @@ PYTHON_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_command_named_like
                                        'child_entity_types keys are computed'])}
 
 REASON_EXPECTED: dict[str, str] = {'computed_and_declared': "child_type 'out' is not a declared child_entity_type (declared: zone)",
+ 'named_by_a_number': "child_type 'zone' is not a declared child_entity_type (declared: 1)",
+ 'named_by_text_and_a_number': "child_type 'zone' is not a declared child_entity_type (declared: 2, bus)",
  'none_declared': "child_type 'zone' is not a declared child_entity_type (the driver declares none)",
  'only_computed': "child_type 'zone' is not a declared child_entity_type (the driver declares none)",
  'some_declared': "child_type 'zon' is not a declared child_entity_type (declared: bus, mic, zone)"}

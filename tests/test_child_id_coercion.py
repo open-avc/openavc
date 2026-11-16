@@ -306,3 +306,21 @@ def test_surrounding_whitespace_is_never_part_of_a_name():
     assert child_display_name(
         "", {"name": "  Stage  "}, {"label_field": "name"},
     ) == "Stage"
+
+
+def test_a_child_type_named_by_a_number_is_refused_in_a_sentence_at_command_time() -> None:
+    """A driver whose child types include one named by a number, sent a
+    command whose child_id parameter names a type it does not declare: the
+    refusal is the declaration's own sentence, never a TypeError."""
+    from types import SimpleNamespace
+
+    driver = SimpleNamespace(DRIVER_INFO={
+        "id": "acme_widget",
+        "child_entity_types": {1: {}, "bus": {}},
+        "commands": {"go": {"params": {"z": {"type": "child_id", "child_type": "zone"}}}},
+    })
+    with pytest.raises(CommandParamError) as refused:
+        coerce_child_id_params(driver, "go", {"z": "1"})
+    assert str(refused.value) == (
+        "'go': 'z': child_type 'zone' is not a declared child_entity_type (declared: 1, bus)"
+    )

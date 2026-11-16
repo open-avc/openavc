@@ -72,6 +72,7 @@ from pathlib import Path
 import yaml
 
 from openavc.drivers.check import check_driver_file, iter_driver_files
+from openavc.drivers.spec import without_null_sections
 from openavc.simulator.control_checks import check_controls
 from openavc.simulator.handler_replies import check_response_parsing
 from openavc.simulator.notification_checks import check_notifications
@@ -100,6 +101,23 @@ from openavc.simulator.send_coverage import (
 # ── YAML driver validation ──
 
 
+def _misshapen_section(result: ValidationResult, sim: object) -> bool:
+    """A ``simulator:`` section, or one of the parts of it the checks below
+    read as a mapping, that is not one: an error, and nothing further is
+    read (the driver contract's check names it first on the command line)."""
+    if sim is None:
+        return False
+    places = [("simulator", sim)] if not isinstance(sim, dict) else [
+        (f"simulator.{key}", sim[key])
+        for key in ("initial_state", "delays", "error_modes")
+        if sim.get(key) is not None
+    ]
+    misshapen = [where for where, value in places if not isinstance(value, dict)]
+    for where in misshapen:
+        result.error("simulator_section", f"{where}: must be a mapping")
+    return bool(misshapen)
+
+
 def validate_yaml_driver(path: Path) -> ValidationResult:
     """Validate a YAML .avcdriver file and its simulator section."""
     try:
@@ -110,8 +128,11 @@ def validate_yaml_driver(path: Path) -> ValidationResult:
         result.error("yaml_parse", f"Failed to parse YAML: {e}")
         return result
 
+    driver_def = without_null_sections(driver_def)
     driver_id = driver_def.get("id", path.stem)
     result = ValidationResult(str(path), driver_id, "yaml")
+    if _misshapen_section(result, driver_def.get("simulator")):
+        return result
 
     state_vars = driver_def.get("state_variables", {})
     commands = driver_def.get("commands", {})

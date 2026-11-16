@@ -83,6 +83,13 @@ def _osc_message(address: str, args: list[Any] | None = None) -> bytes:
     return osc_encode_message(address, args)
 
 
+
+def _entries(value: Any) -> list[Any]:
+    """A start-up's or a poll's entries: a list as written, anything else none.
+    One query written as a string is not sent a character at a time; the
+    checker names it (``shape_checks``)."""
+    return value if isinstance(value, list) else []
+
 class StartUpAndPoll:
     """Start-up and poll lines, for ``ConfigurableDriver``."""
 
@@ -182,7 +189,7 @@ class StartUpAndPoll:
         after each response), so nothing waits for it here.
         """
         self._start_up_lines = set()
-        on_connect = self._definition.get("on_connect", [])
+        on_connect = _entries(self._definition.get("on_connect"))
         if not on_connect or not self._link_open():
             return
         if self._definition.get("transport") == "osc":
@@ -311,8 +318,9 @@ class StartUpAndPoll:
         """Send the poll's lines (``polling.queries``), in order."""
         if not self._link_open():
             return
-        polling = self._definition.get("polling", {})
-        queries = polling.get("queries", [])
+        polling = self._definition.get("polling")
+        polling = polling if isinstance(polling, dict) else {}
+        queries = _entries(polling.get("queries"))
         # The whole poll waits while the device's own state says so
         # (polling.when_state). A cycle that sends nothing is neither silent
         # nor unread to BaseDriver._poll_loop, so the connection stays up.

@@ -4017,6 +4017,21 @@ than a YAML one: a `.avcdriver` gets live feedback in an editor from its
 `# yaml-language-server:` schema line, and there is no equivalent for a
 `DRIVER_INFO` dict.
 
+It also checks that each value is the kind the contract declares, naming the
+field and what it must be:
+
+```
+my_driver.avcdriver: error: on_connect: must be a list; write a single entry as a one-item list
+my_driver.avcdriver: error: version: must be a string; put it in quotes
+```
+
+The second is the YAML trap: `version: 1.0` is a number until it is quoted. A
+section left empty (`polling:` with nothing under it) is fine; it reads as if
+it were not there. The same checks run in the Driver Builder's Validate and
+save and in the community catalog. A driver already installed that has one of
+these mistakes keeps loading: its entry on the Installed list, and the answer
+to an upload, say what to fix.
+
 The command exits non-zero when anything is wrong and prints nothing when a
 single file is clean. It needs no project, no server and no particular folder
 layout, so it works on a driver you will never publish. `python -m

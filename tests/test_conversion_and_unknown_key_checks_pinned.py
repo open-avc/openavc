@@ -549,7 +549,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'keys_nested_text_and_
                                   'on/off/yes/no/true/false as booleans and bare digits as '
                                   'numbers. Put it in quotes.')],
  'keys_named_map_a_list': [('error', 'state_variables', 'state_variables: must be a mapping')],
- 'keys_named_map_values_open': [],
+ 'keys_named_map_values_open': [('error', 'config_derived.x', 'config_derived.x: must be a string')],
  'keys_open_block_not_judged': [('error',
                                  'push',
                                  "push: unknown key(s): anything (known keys for type 'sse': "
@@ -557,7 +557,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'keys_nested_text_and_
                                 ('error',
                                  'push',
                                  "push: type 'sse' requires the http transport, not 'tcp'")],
- 'keys_open_bridge_not_judged': [],
+ 'keys_open_bridge_not_judged': [('error', 'bridge', "bridge: missing required 'ports'")],
  'keys_param_typo': [('error',
                       'commands.set.params.level',
                       "commands.set.params.level: unknown key 'mni'")],

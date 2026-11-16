@@ -40,10 +40,13 @@ them are passed in (see ``validate_driver_definition``'s
 from __future__ import annotations
 
 import difflib as _difflib
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, Callable
 
 from openavc.drivers.action_checks import (
+    action_entry_errors,
+    quick_action_errors,
     validate_actions as validate_actions,
     yaml_action_errors,
 )
@@ -85,6 +88,7 @@ from openavc.drivers.response_rule_checks import response_rule_errors
 from openavc.drivers.routing_checks import (
     routing_block_errors as routing_block_errors,
 )
+from openavc.drivers.shape_checks import shape_of as _shape_of, shape_refusals
 from openavc.drivers.setting_checks import (
     config_learned_from_errors as config_learned_from_errors,
     device_setting_errors,
@@ -101,6 +105,7 @@ from openavc.drivers.spec import (
     block_has_fixed_keys,
     parse_version,
     platform_requirements,
+    without_null_sections,
 )
 from openavc.drivers.state_variable_checks import (
     DEVICE_VARIABLE,
@@ -364,28 +369,114 @@ def validate_driver_definition(
     it is asked after the device settings and before the push block. When
     None, the discovery block is not validated.
 
-    ``strict`` additionally rejects keys the contract doesn't declare (a
-    misspelled ``state_varibles`` silently loads a driver with no state
-    variables otherwise). Pass it where a driver is being *created* — the
-    Builder's save, an import, the AI tool, catalog CI — and leave it off
-    where one is being *loaded*: see ``unknown_key_errors``.
+    ``strict`` is the one switch between the two kinds of door
+    (``check_driver_definition`` says which refusals it moves): pass it where
+    a driver is being *created* (the Builder's save, Validate, the AI tool,
+    ``drivers.check``, catalog CI), and leave it off where one is being
+    *loaded*, where those refusals are the notices ``check_driver_definition``
+    returns instead.
 
     The returned list is a ``_TaggedErrors`` — still a plain ``list[str]`` to
     every caller, but it also carries the section each message came from, so
     ``validate_driver_issues`` can hand the Driver Builder something to anchor
-    each issue to. ``_DefinitionWalk`` sets the tag as it enters each part of
-    the definition; the parts are asked in the order they report
-    (``_DefinitionWalk.parts``), each through ``_guarded``, so this never
-    raises.
+    each issue to. This never raises.
+    """
+    return check_driver_definition(
+        driver_def, discovery_validator=discovery_validator, strict=strict
+    ).errors
+
+
+@dataclass(frozen=True)
+class DefinitionVerdict:
+    """What judging one definition came to: the ``errors`` that refuse it,
+    and the ``notices``, refusals of the author's doors that a door loading
+    the driver reports instead (empty in strict mode)."""
+
+    errors: list[str]
+    notices: list[str]
+
+
+def check_driver_definition(
+    driver_def: dict[str, Any],
+    *,
+    discovery_validator: Callable[[dict[str, Any]], list[str]] | None = None,
+    strict: bool = False,
+) -> DefinitionVerdict:
+    """THE verdict on a driver definition, at either kind of door.
+
+    The definition is read with a null top-level field as absent
+    (``spec.without_null_sections``), then judged twice over: by the shape
+    walk (``shape_checks``, every value's kind against the contract) and by
+    the definition walk (``_DefinitionWalk``, every part's own rules). Where
+    a part's own message is tagged with a place, or with one inside it or
+    holding it, the shape walk's sentence for that place is left out: the
+    part already said it, in words that name the fix.
+
+    Two kinds of refusal come out. The definition walk's refuse at every
+    door, as they always have. The author's-door refusals (the shape walk's,
+    then a key the contract does not declare, then the platform release the
+    driver's fields need) refuse only in ``strict`` mode, the shape walk's
+    first: at a door that loads a driver they are ``notices``, so a driver
+    that loaded before still loads and the door can say what is wrong with
+    it. Every refusal the author's doors add later goes in that second kind.
     """
     # A file can parse to something other than a mapping. It is reported, not
     # raised on, so one bad file never stops the others loading.
     if not isinstance(driver_def, dict):
-        return _TaggedErrors(["Driver definition must be a mapping"])
+        return DefinitionVerdict(_TaggedErrors(["Driver definition must be a mapping"]), _TaggedErrors())
+    driver_def = without_null_sections(driver_def)
     walk = _DefinitionWalk(driver_def)
-    for part, section in walk.parts(discovery_validator, strict=strict):
+    for part, section in walk.parts(discovery_validator):
         _guarded(walk.errors, part, section)
-    return walk.errors
+    shapes = _TaggedErrors()
+    _guarded(shapes, partial(_shape_gaps, shapes, driver_def, walk.errors), "")
+    undeclared = _TaggedErrors()
+    _guarded(undeclared, partial(_undeclared, undeclared, driver_def), "")
+    if not strict:
+        notices = _TaggedErrors()
+        notices.extend(shapes)
+        notices.extend(undeclared)
+        return DefinitionVerdict(walk.errors, notices)
+    errors = _TaggedErrors()
+    errors.extend(shapes)
+    errors.extend(walk.errors)
+    errors.extend(undeclared)
+    return DefinitionVerdict(errors, _TaggedErrors())
+
+
+def _shape_gaps(found: _TaggedErrors, driver_def: dict[str, Any], said: _TaggedErrors) -> None:
+    """The shape walk's refusals the definition walk left unsaid, each
+    tagged with its own place."""
+    for loc, message in shape_refusals(driver_def):
+        if not _said_at(said, loc):
+            found.ctx = loc
+            found.append(message)
+
+
+def _said_at(said: _TaggedErrors, loc: str) -> bool:
+    """Whether the definition walk said something tagged with ``loc``, a
+    place inside it, or a place holding it. A part that could not be checked
+    said nothing about the value, so its message counts for nothing here."""
+    for message, tag in zip(said, said.tags):
+        if tag and _UNCHECKED not in message and _overlaps(tag, loc):
+            return True
+    return False
+
+
+def _overlaps(tag: str, loc: str) -> bool:
+    return any(
+        a == b or a.startswith(b + ".") or a.startswith(b + "[")
+        for a, b in ((tag, loc), (loc, tag))
+    )
+
+
+def _undeclared(found: _TaggedErrors, driver_def: dict[str, Any]) -> None:
+    """The author's doors' two older refusals: keys the contract does not
+    declare (``unknown_key_errors`` tags its own), then the platform release
+    the driver's fields need."""
+    found.extend(unknown_key_errors(driver_def))
+    found.ctx = "min_platform_version"
+    found.extend(platform_version_errors(driver_def))
 
 
 _UNCHECKED = "could not be checked"
@@ -426,11 +517,11 @@ class _DefinitionWalk:
     ``tests/test_driver_definition_validate.py`` reads, so every method that
     sets one names the list that way. The sections other parts name into are
     read once (``declared``, which also names those that are there in another
-    shape) and handed to the checks that follow a name into them. Whether a
-    section of the wrong shape is refused is written where the section is
-    checked, and the sections differ: the rules, the commands and the state
-    variables refuse a null, the device settings and the poll let one pass,
-    the child types let any empty value pass.
+    shape) and handed to the checks that follow a name into them. A null
+    top-level section never reaches it (``spec.without_null_sections``);
+    whether a section of another shape is refused is written where the
+    section is checked, and the shape walk (``check_driver_definition``)
+    names any it leaves unsaid.
     """
 
     def __init__(self, driver_def: dict[str, Any]) -> None:
@@ -441,12 +532,10 @@ class _DefinitionWalk:
     def parts(
         self,
         discovery_validator: Callable[[dict[str, Any]], list[str]] | None,
-        *,
-        strict: bool,
     ) -> list[tuple[Callable[[], None], str]]:
         """Each part in the order they report, with the section a message it
         raises is tagged with when it raises before setting its own place."""
-        parts: list[tuple[Callable[[], None], str]] = [
+        return [
             (self.driver_fields, ""),
             (self.response_rules, "responses"),
             (self.commands, "commands"),
@@ -462,9 +551,6 @@ class _DefinitionWalk:
             (self.routing, "routing"),
             (self.placeholders, ""),
         ]
-        if strict:
-            parts.append((self.undeclared, ""))
-        return parts
 
     def driver_fields(self) -> None:
         """The driver's own fields, tagged with no section."""
@@ -473,16 +559,23 @@ class _DefinitionWalk:
         for field in REQUIRED_FIELDS:
             if field not in driver_def:
                 errors.append(f"Missing required field: {field}")
+        # Every reader keys the driver by its id as text: one that is not text
+        # is refused wherever the driver is loaded, in the shape walk's words.
+        if "id" in driver_def and not isinstance(driver_def["id"], str):
+            errors.ctx = "id"
+            errors.extend(message for _, message in _shape_of("id", driver_def["id"]))
         transport = driver_def.get("transport", "")
         # "bridge" is the sentinel transport for a device that emits through a
         # live bridge instance (an IR device on an emitter port) rather than
         # dialing a host of its own: it opens no socket.
         if transport and transport not in YAML_TRANSPORTS:
+            errors.ctx = "transport"
             errors.append(f"Unsupported transport: {transport}")
         # The IR code-set opt-in is a flag that turns on the device page's IR
         # Codes editor; the codes live in the device config / default_config.
         ir_codes_flag = driver_def.get("ir_codes")
         if ir_codes_flag is not None and not isinstance(ir_codes_flag, bool):
+            errors.ctx = "ir_codes"
             errors.append(
                 "ir_codes: must be a boolean (the code-set lives in "
                 "default_config.ir_codes / the device config)"
@@ -571,8 +664,8 @@ class _DefinitionWalk:
         the SignalIndex is built."""
         errors = self.errors
         errors.ctx = "discovery"
-        driver_id = self.driver_def.get("id", "") or ""
-        is_template = any(driver_id.startswith(p) for p in GENERIC_ID_PREFIXES)
+        driver_id = self.driver_def.get("id")
+        is_template = isinstance(driver_id, str) and driver_id.startswith(GENERIC_ID_PREFIXES)
         if not is_template and discovery_validator is not None:
             errors.extend(discovery_validator(self.driver_def))
 
@@ -595,9 +688,12 @@ class _DefinitionWalk:
         Python driver's DRIVER_INFO shares, every message tagged actions, then
         a YAML definition's own, entry by entry."""
         errors = self.errors
+        errors.ctx = "quick_actions"
+        errors.extend(quick_action_errors(self.driver_def))
         errors.ctx = "actions"
-        errors.extend(validate_actions(self.driver_def))
-        for i, entry in enumerate(self.driver_def.get("actions") or []):
+        errors.extend(action_entry_errors(self.driver_def))
+        actions = self.driver_def.get("actions")
+        for i, entry in enumerate(actions if isinstance(actions, list) else ()):
             errors.ctx = f"actions[{i}]"
             errors.extend(yaml_action_errors(f"actions[{i}]", entry))
 
@@ -716,16 +812,6 @@ class _DefinitionWalk:
             errors.ctx = substitution_loc
             errors.append(message)
 
-    def undeclared(self) -> None:
-        """Strict mode's two checks, after every other error so each keeps its
-        position: keys the contract does not declare (``unknown_key_errors``
-        says why loading stays lenient), then the platform release the
-        driver's fields need."""
-        errors = self.errors
-        errors.extend(unknown_key_errors(self.driver_def))
-        errors.ctx = "min_platform_version"
-        errors.extend(platform_version_errors(self.driver_def))
-
     def _each(self, name: str, entries: Any, check: Callable[[str, Any], list[str]]) -> None:
         """Ask ``check`` about each entry of a list, tagging what it says with
         the entry's place (``name[i]``). A list that is not a list has no
@@ -759,7 +845,7 @@ def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:
     """
     if not isinstance(driver_def, dict):
         return _TaggedErrors()
-    walk = _WarningWalk(driver_def)
+    walk = _WarningWalk(without_null_sections(driver_def))
     for part, section in walk.parts():
         _guarded(walk.warnings, part, section, f"{_UNCHECKED} for warnings")
     return walk.warnings

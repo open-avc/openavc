@@ -140,6 +140,30 @@ def _node_to_schema(node: dict[str, Any], tier: str) -> Any:
     return out
 
 
+_JUDGES_A_NULL = frozenset({"const", "not", "allOf", "anyOf", "oneOf", "$ref", "if"})
+
+
+def _top_level(name: str, node: dict[str, Any], tier: str) -> Any:
+    """A top-level field's schema; one a null reads as absent for
+    (``spec.NULL_AS_ABSENT``) also takes a null, as every reader does."""
+    out = _node_to_schema(node, tier)
+    if name not in spec.NULL_AS_ABSENT or not isinstance(out, dict):
+        return out
+    kinds = out.get("type")
+    # A keyword that also judges a null (a fixed value, a reference, a
+    # combination) keeps the field's own schema whole beside the null.
+    if kinds is not None and not set(out) & _JUDGES_A_NULL:
+        out["type"] = [*(kinds if isinstance(kinds, list) else [kinds]), "null"]
+        if "enum" in out:
+            out["enum"] = [*out["enum"], None]
+        return out
+    description = out.pop("description", None)
+    nullable: dict[str, Any] = {"anyOf": [out, {"type": "null"}]}
+    if description:
+        nullable = {"description": description, **nullable}
+    return nullable
+
+
 def build_schema(tier: str) -> dict[str, Any]:
     """Build the full JSON Schema document for one tier ("yaml" or "python")."""
     if tier == "yaml":
@@ -165,7 +189,7 @@ def build_schema(tier: str) -> dict[str, Any]:
         # legitimate lands outside it.
         "additionalProperties": False,
         "properties": {
-            name: _node_to_schema(node, tier) for name, node in spec.FIELDS.items()
+            name: _top_level(name, node, tier) for name, node in spec.FIELDS.items()
         },
         "allOf": [dict(rule) for rule in spec.CROSS_FIELD_RULES],
         "$defs": {

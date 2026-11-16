@@ -948,6 +948,10 @@ export interface InstalledDriver {
   version: string;
   /** Why this file did not load; null when it loaded or the server has no reason. */
   load_error?: string | null;
+  /** What is wrong in a file that loaded anyway (a value of the wrong kind,
+   *  a key the driver format does not have): the Driver Builder and the
+   *  community catalog would refuse these. Empty when there is nothing. */
+  load_notices?: string[];
 }
 
 interface ParsedSemver {

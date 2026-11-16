@@ -3288,6 +3288,29 @@ DEFS = {
 }
 
 
+# THE top-level fields a null reads as absent for: every one a definition
+# may leave out (no `req`). An empty YAML key (`polling:` with nothing under
+# it) is common and harmless once read as absent, so the definition walk,
+# the runtime, the simulator and the published schema all read it so. A
+# field the platform or the catalog requires is not among them: a null there
+# is the field missing, and named so.
+NULL_AS_ABSENT: tuple[str, ...] = tuple(
+    name for name, node in FIELDS.items() if "req" not in node
+)
+
+
+def without_null_sections(definition: object) -> object:
+    """The definition as every reader reads it: each top-level field in
+    ``NULL_AS_ABSENT`` written as a null left out. A new mapping when one is
+    left out; the same object when none is (or it is not a mapping)."""
+    if not isinstance(definition, dict):
+        return definition
+    nulls = [name for name in NULL_AS_ABSENT if name in definition and definition[name] is None]
+    if not nulls:
+        return definition
+    return {key: value for key, value in definition.items() if key not in nulls}
+
+
 def block_has_fixed_keys(node: dict) -> bool:
     """True when a block's declared ``fields`` are its whole legal key set.
 
@@ -3512,16 +3535,26 @@ def required_platform_version(driver_def: object, tier: str = "yaml") -> str | N
 # Cross-field rules that live at the document root (JSON Schema allOf):
 # a deprecated driver must name its replacement, and naming a replacement
 # implies deprecation.
+# A null replacement_id is absent (NULL_AS_ABSENT): it neither names a
+# replacement nor asks for deprecated.
+_NOT_NULL: dict = {"not": {"type": "null"}}
+
 CROSS_FIELD_RULES: tuple[dict, ...] = (
     {
         "if": {
             "properties": {"deprecated": {"const": True}},
             "required": ["deprecated"],
         },
-        "then": {"required": ["replacement_id"]},
+        "then": {
+            "properties": {"replacement_id": _NOT_NULL},
+            "required": ["replacement_id"],
+        },
     },
     {
-        "if": {"required": ["replacement_id"]},
+        "if": {
+            "properties": {"replacement_id": _NOT_NULL},
+            "required": ["replacement_id"],
+        },
         "then": {
             "properties": {"deprecated": {"const": True}},
             "required": ["deprecated"],

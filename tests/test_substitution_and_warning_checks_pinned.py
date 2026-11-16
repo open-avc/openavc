@@ -651,12 +651,13 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
   'liveness: could not be checked for warnings (int too large to convert to float). One of its '
   'values is not the kind it should be, such as a number or true/false where a name goes; correct '
   'it and check again')],
- 'silence_transport_unhashable': [('error', '', "Unsupported transport: ['tcp']"),
- ('warning',
-  'liveness',
-  "liveness: could not be checked for warnings (unhashable type: 'list'). One of its values is not "
-  'the kind it should be, such as a number or true/false where a name goes; correct it and check '
-  'again')],
+ 'silence_transport_unhashable': [('error', 'transport', "Unsupported transport: ['tcp']"),
+                                  ('warning',
+                                   'liveness',
+                                   'liveness: could not be checked for warnings (unhashable type: '
+                                   "'list'). One of its values is not the kind it should be, such "
+                                   'as a number or true/false where a name goes; correct it and '
+                                   'check again')],
  'cmd_clean': [],
  'cmd_config_typo': [('error',
                       'commands.set.send',
@@ -1389,7 +1390,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
                     'transport is osc, so the hint can never fire. Drop it, or add a transport '
                     'that listens on TCP.')],
  'port_open_tcp': [],
- 'port_open_transport_not_text': [('error', '', 'Unsupported transport: 5')],
+ 'port_open_transport_not_text': [('error', 'transport', 'Unsupported transport: 5')],
  'port_open_udp_with_tcp': [],
  'resp_entry_not_mapping': [('error', 'responses[0]', 'Response 0: must be a mapping'),
                             ('error',

@@ -126,11 +126,14 @@ class Gates:
 
 @dataclass(frozen=True)
 class Admitted:
-    """A change that went in: the class now registered, and the names of the
-    files it removed that were there."""
+    """A change that went in: the class now registered, the names of the
+    files it removed that were there, and the notices on the driver file it
+    put in: what the author's doors refuse in it, which a door that loads a
+    driver says instead (``DefinitionRead.notices``)."""
 
     driver_class: type
     removed: list[str]
+    notices: tuple[str, ...] = ()
 
 
 # --- the platform floor ---------------------------------------------------------
@@ -217,8 +220,8 @@ def admit(change: DriverChange, gates: Gates = Gates()) -> Admitted:
     try:
         staged = _write_beside(os.path.realpath(staging), change.files)
         _installed_companion_beside(folder, os.path.realpath(staging), change)
-        driver_class = _staged_class(staged[change.main], gates)
-        return _Swap(folder, change, staged).register(driver_class, gates)
+        driver_class, notices = _staged_class(staged[change.main], gates)
+        return _Swap(folder, change, staged).register(driver_class, gates, notices)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 
@@ -271,18 +274,19 @@ def _installed_companion_beside(folder: str, staging: str, change: DriverChange)
         shutil.copyfile(installed, _path_in(staging, name))
 
 
-def _staged_class(staged: Path, gates: Gates) -> type:
+def _staged_class(staged: Path, gates: Gates) -> tuple[type, tuple[str, ...]]:
     """The class the staged driver file is, by the loader's checks and then
-    the door's gates."""
+    the door's gates, with the loader's notices on it."""
     if staged.suffix == DRIVER_EXTENSION:
-        return _gated(_staged_definition_class(staged, gates), gates)
+        driver_class, notices = _staged_definition_class(staged, gates)
+        return _gated(driver_class, gates), notices
     read = trial_driver_import(staged)
-    return _python_class(read.driver_class, gates, read.reason)
+    return _python_class(read.driver_class, gates, read.reason), ()
 
 
-def _staged_definition_class(staged: Path, gates: Gates) -> type:
+def _staged_definition_class(staged: Path, gates: Gates) -> tuple[type, tuple[str, ...]]:
     """A staged YAML driver's class, its definition held to the door's
-    definition gate."""
+    definition gate, with the loader's notices on it."""
     from openavc.drivers.configurable import create_configurable_driver_class
 
     read = read_driver_file(staged)
@@ -291,7 +295,7 @@ def _staged_definition_class(staged: Path, gates: Gates) -> type:
         raise DriverRefused(422, gates.not_a_definition, read.reasons)
     if gates.definition is not None:
         gates.definition(definition)
-    return create_configurable_driver_class(definition)
+    return create_configurable_driver_class(definition), read.notices
 
 
 def _python_class(driver_class: type | None, gates: Gates, reason: str | None = None) -> type:
@@ -375,9 +379,12 @@ class _Swap:
         self.old_module = sys.modules.get(self.module) if self.module else None
         self.applied: list[_Before] = []
 
-    def register(self, driver_class: type, gates: Gates) -> Admitted:
+    def register(
+        self, driver_class: type, gates: Gates, notices: tuple[str, ...] = ()
+    ) -> Admitted:
         """Swap, then register (a Python driver imported again from its
-        final place first); on any failure, everything put back."""
+        final place first); on any failure, everything put back. The driver
+        file's notices are recorded where it now is."""
         try:
             self._place()
             self._remove()
@@ -388,7 +395,10 @@ class _Swap:
             self._put_back()
             raise
         refused_files.clear(self.main)
-        return Admitted(driver_class, [path.name for path in self.removals])
+        refused_files.record_notices(
+            self.main, driver_class.DRIVER_INFO.get("id") or self.main.stem, notices
+        )
+        return Admitted(driver_class, [path.name for path in self.removals], notices)
 
     def _place(self) -> None:
         """Each staged file over its target. An optional file that cannot be

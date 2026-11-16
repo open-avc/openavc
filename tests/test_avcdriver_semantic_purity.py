@@ -43,6 +43,7 @@ ALLOWED = {
     "openavc.drivers.response_rule_checks",
     "openavc.drivers.routing_checks",
     "openavc.drivers.setting_checks",
+    "openavc.drivers.shape_checks",
     "openavc.drivers.sign_in_checks",
     "openavc.drivers.state_variable_checks",
     "openavc.drivers.substitution_checks",

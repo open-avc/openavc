@@ -140,3 +140,37 @@ describe("Installed Drivers: a driver that did not load", () => {
     expect(screen.queryByText("Acme Cam")).toBeNull();
   });
 });
+
+describe("Installed Drivers: a driver that loaded with mistakes in its file", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("opens to each mistake beneath what to do about them", () => {
+    setup();
+    storeState.installedDrivers = storeState.installedDrivers.map((d) =>
+      (d as { id: string }).id === "acme_cam"
+        ? { ...(d as object), load_notices: ["version: must be a string; put it in quotes"] }
+        : d,
+    );
+    const { rerender } = render(<InstalledDriversView />);
+    fireEvent.click(screen.getByText("Acme Cam"));
+    rerender(<InstalledDriversView />);
+
+    expect(
+      screen.getByText(
+        "This driver loaded and devices can use it, but its file has mistakes the Driver Builder " +
+          "would not save. Fix them in the file, or send them to whoever wrote the driver:",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("version: must be a string; put it in quotes")).toBeTruthy();
+    expect(screen.queryByText(/did not load/)).toBeNull();
+  });
+
+  it("says nothing of the kind for a driver without any", () => {
+    setup();
+    const { rerender } = render(<InstalledDriversView />);
+    fireEvent.click(screen.getByText("Acme Cam"));
+    rerender(<InstalledDriversView />);
+
+    expect(screen.queryByText(/mistakes the Driver Builder/)).toBeNull();
+  });
+});

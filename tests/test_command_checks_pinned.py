@@ -537,7 +537,7 @@ def _definition(case: str) -> dict[str, Any]:
 
 
 EXPECTED: dict[str, list[tuple[str, str]]] = {'commands_not_a_mapping': [('commands', 'commands: must be a mapping')],
- 'commands_absent': [('commands', 'commands: must be a mapping')],
+ 'commands_absent': [],
  'command_not_a_mapping': [('commands.a', "Command 'a': must be a dict"),
                            ('commands.b', "Command 'b': must be a dict"),
                            ('commands.c', "Command 'c': must be a dict")],

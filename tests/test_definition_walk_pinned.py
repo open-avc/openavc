@@ -29,6 +29,7 @@ import pytest
 from openavc.drivers.avcdriver_semantic import (
     _as_issues,
     _TaggedErrors,
+    check_driver_definition,
     validate_driver_definition,
     validate_driver_issues,
 )
@@ -301,43 +302,34 @@ def _definition(case: str, cases: dict[str, dict[str, Any]] = CASES) -> dict[str
 
 
 def _issues(definition: Any, *, strict: bool) -> list[tuple[str, str, str]]:
-    return [
+    """Every issue, then (lenient) every notice the load doors say instead of
+    refusing, as ``("notice", tag, message)``."""
+    found = [
         (issue["severity"], issue["path"], issue["message"])
         for issue in validate_driver_issues(definition, strict=strict)
     ]
+    notices = check_driver_definition(definition, strict=strict).notices
+    return found + [("notice", tag, message) for message, tag in zip(notices, notices.tags)]
 
 
-EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error', 'actions', 'actions: must be a list'),
- ('error',
-  'actions',
-  "actions: could not be checked ('int' object is not iterable). One of its values is not the kind "
-  'it should be, such as a number or true/false where a name goes; correct it and check again')],
- 'actions_true': [('error', 'actions', 'actions: must be a list'),
- ('error',
-  'actions',
-  "actions: could not be checked ('bool' object is not iterable). One of its values is not the "
-  'kind it should be, such as a number or true/false where a name goes; correct it and check '
-  'again')],
- 'id_a_list': [('error',
-  'discovery',
-  "discovery: could not be checked ('list' object has no attribute 'startswith'). One of its "
-  'values is not the kind it should be, such as a number or true/false where a name goes; correct '
-  'it and check again')],
- 'id_a_number': [('error',
-  'discovery',
-  "discovery: could not be checked ('int' object has no attribute 'startswith'). One of its values "
-  'is not the kind it should be, such as a number or true/false where a name goes; correct it and '
-  'check again')],
- 'then_query_on_a_rule_whose_mappings_is_a_number': [('error',
-  'responses[0]',
-  "responses[0]: could not be checked ('int' object is not iterable). One of its values is not the "
-  'kind it should be, such as a number or true/false where a name goes; correct it and check '
-  'again'),
- ('warning',
-  'liveness',
-  'Nothing notices if the device stops answering over tcp: it sends no poll at its default config, '
-  'and there is no liveness block, so the device reads connected for as long as the connection '
-  'stays open. Add a liveness block that asks something the device answers in every state.')],
+EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error',
+                                                                         'actions',
+                                                                         'actions: must be a list')],
+ 'actions_true': [('error', 'actions', 'actions: must be a list')],
+ 'id_a_list': [('error', 'id', 'id: must be a string')],
+ 'id_a_number': [('error', 'id', 'id: must be a string; put it in quotes')],
+ 'then_query_on_a_rule_whose_mappings_is_a_number': [('warning',
+                                                      'liveness',
+                                                      'Nothing notices if the device stops '
+                                                      'answering over tcp: it sends no poll at its '
+                                                      'default config, and there is no liveness '
+                                                      'block, so the device reads connected for as '
+                                                      'long as the connection stays open. Add a '
+                                                      'liveness block that asks something the '
+                                                      'device answers in every state.'),
+                                                     ('notice',
+                                                      'responses[0].mappings',
+                                                      'responses[0].mappings: must be a list')],
  'actions_empty': [],
  'actions_empty_mapping': [('error', 'actions', 'actions: must be a list')],
  'actions_empty_text': [('error', 'actions', 'actions: must be a list')],
@@ -368,23 +360,29 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                      'child_entity_types.output',
                      'child_entity_types.output: must be a mapping')],
  'child_types_empty': [],
- 'child_types_empty_list': [],
- 'child_types_empty_text': [],
- 'child_types_false': [],
+ 'child_types_empty_list': [('notice',
+                             'child_entity_types',
+                             'child_entity_types: must be a mapping')],
+ 'child_types_empty_text': [('notice',
+                             'child_entity_types',
+                             'child_entity_types: must be a mapping')],
+ 'child_types_false': [('notice', 'child_entity_types', 'child_entity_types: must be a mapping')],
  'child_types_list': [('error', 'child_entity_types', 'child_entity_types: must be a mapping')],
  'child_types_none': [],
  'child_types_text': [('error', 'child_entity_types', 'child_entity_types: must be a mapping')],
  'child_types_true': [('error', 'child_entity_types', 'child_entity_types: must be a mapping')],
- 'child_types_zero': [],
+ 'child_types_zero': [('notice', 'child_entity_types', 'child_entity_types: must be a mapping')],
  'clean': [],
  'commands_empty_list': [('error', 'commands', 'commands: must be a mapping')],
  'commands_empty_text': [('error', 'commands', 'commands: must be a mapping')],
  'commands_entry_not_a_mapping': [('error', 'commands.noop', "Command 'noop': must be a dict")],
  'commands_left_out': [],
  'commands_list': [('error', 'commands', 'commands: must be a mapping')],
- 'commands_none': [('error', 'commands', 'commands: must be a mapping')],
+ 'commands_none': [],
  'commands_text': [('error', 'commands', 'commands: must be a mapping')],
- 'config_schema_entry_text': [],
+ 'config_schema_entry_text': [('notice',
+                               'config_schema.host',
+                               'config_schema.host: must be a mapping')],
  'config_schema_learned_from': [('error',
                                  'config_schema.host',
                                  "Config field 'host': a connection field cannot be learned_from a "
@@ -394,9 +392,9 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                                  'config_schema.host',
                                  "Config field 'host': learned_from 'nope' is not a declared state "
                                  'variable, so the field would never be filled in')],
- 'config_schema_list': [],
+ 'config_schema_list': [('notice', 'config_schema', 'config_schema: must be a mapping')],
  'config_schema_none': [],
- 'config_schema_text': [],
+ 'config_schema_text': [('notice', 'config_schema', 'config_schema: must be a mapping')],
  'conversion_on_a_child': [('error',
                             'state_variables',
                             'child_entity_types.zone.state_variables.level: the type must be '
@@ -419,9 +417,9 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
  'device_settings_none': [],
  'device_settings_text': [('error', 'device_settings', 'device_settings: must be a mapping')],
  'device_settings_zero': [('error', 'device_settings', 'device_settings: must be a mapping')],
- 'everything': [('error', '', 'Unsupported transport: carrier_pigeon'),
+ 'everything': [('error', 'transport', 'Unsupported transport: carrier_pigeon'),
                 ('error',
-                 '',
+                 'ir_codes',
                  'ir_codes: must be a boolean (the code-set lives in default_config.ir_codes / the '
                  'device config)'),
                 ('error',
@@ -516,10 +514,20 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                 ('warning',
                  'commands.set.params.level',
                  "Command 'set' parameter 'level' has no label, so forms show its key made "
-                 'readable. Give it a label that says what to enter.')],
- 'everything_with_wrong_shapes': [('error', '', 'Unsupported transport: carrier_pigeon'),
+                 'readable. Give it a label that says what to enter.'),
+                ('notice',
+                 'responses[1].then_query[2]',
+                 'responses[1].then_query[2]: must be a string or a mapping; put it in quotes'),
+                ('notice', '', "unknown key 'lable'"),
+                ('notice', 'polling', "polling: unknown key 'interval'"),
+                ('notice',
+                 'min_platform_version',
+                 'min_platform_version is "0.1.0", but this driver uses polling.when_state, '
+                 'state_variables.gain.scale, which needs platform 0.37.0. Raise it to "0.37.0", '
+                 'or drop those fields if the driver has to keep installing on 0.1.0.')],
+ 'everything_with_wrong_shapes': [('error', 'transport', 'Unsupported transport: carrier_pigeon'),
                                   ('error',
-                                   '',
+                                   'ir_codes',
                                    'ir_codes: must be a boolean (the code-set lives in '
                                    'default_config.ir_codes / the device config)'),
                                   ('error', 'responses', 'responses: must be a list'),
@@ -578,12 +586,22 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                                    'routing',
                                    "routing: needs a non-empty 'planes' list, the independent "
                                    'things this device routes (usually one; a decoder that routes '
-                                   'video, audio and USB separately declares three)')],
+                                   'video, audio and USB separately declares three)'),
+                                  ('notice',
+                                   'on_connect',
+                                   'on_connect: must be a list; write a single entry as a one-item '
+                                   'list'),
+                                  ('notice', '', "unknown key 'lable'"),
+                                  ('notice',
+                                   'min_platform_version',
+                                   'min_platform_version is "0.1.0", but this driver uses routing, '
+                                   'which needs platform 0.27.0. Raise it to "0.27.0", or drop '
+                                   'that field if the driver has to keep installing on 0.1.0.')],
  'everything_without_responses_and_child_types': [('error',
-                                                   '',
+                                                   'transport',
                                                    'Unsupported transport: carrier_pigeon'),
                                                   ('error',
-                                                   '',
+                                                   'ir_codes',
                                                    'ir_codes: must be a boolean (the code-set '
                                                    'lives in default_config.ir_codes / the device '
                                                    'config)'),
@@ -700,7 +718,19 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                                                    'commands.set.params.level',
                                                    "Command 'set' parameter 'level' has no label, "
                                                    'so forms show its key made readable. Give it a '
-                                                   'label that says what to enter.')],
+                                                   'label that says what to enter.'),
+                                                  ('notice', '', "unknown key 'lable'"),
+                                                  ('notice',
+                                                   'polling',
+                                                   "polling: unknown key 'interval'"),
+                                                  ('notice',
+                                                   'min_platform_version',
+                                                   'min_platform_version is "0.1.0", but this '
+                                                   'driver uses polling.when_state, '
+                                                   'state_variables.gain.scale, which needs '
+                                                   'platform 0.37.0. Raise it to "0.37.0", or drop '
+                                                   'those fields if the driver has to keep '
+                                                   'installing on 0.1.0.')],
  'fields_missing_all': [('error', '', 'Missing required field: id'),
                         ('error', '', 'Missing required field: name'),
                         ('error', '', 'Missing required field: transport')],
@@ -713,11 +743,11 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                   "send_frame: unknown type 'nope' (expected 'length_prefix')")],
  'ir_codes_none': [],
  'ir_codes_number': [('error',
-                      '',
+                      'ir_codes',
                       'ir_codes: must be a boolean (the code-set lives in default_config.ir_codes '
                       '/ the device config)')],
  'ir_codes_text': [('error',
-                    '',
+                    'ir_codes',
                     'ir_codes: must be a boolean (the code-set lives in default_config.ir_codes / '
                     'the device config)')],
  'ir_codes_true': [],
@@ -725,15 +755,28 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                    'liveness',
                    "liveness: missing required 'send' (the probe payload: a raw protocol string, "
                    'or an OSC address on osc)')],
- 'on_connect_a_number': [],
+ 'on_connect_a_number': [('notice', 'on_connect', 'on_connect: must be a list')],
  'on_connect_entries': [('error',
                          'on_connect[3]',
                          "on_connect[3]: 'when' field 'nope' is not a declared config field "
-                         '(config_schema / default_config / config_derived)')],
- 'on_connect_mapping': [],
+                         '(config_schema / default_config / config_derived)'),
+                        ('notice',
+                         'on_connect[0]',
+                         'on_connect[0]: must be a string or a mapping; put it in quotes'),
+                        ('notice',
+                         'on_connect[1]',
+                         'on_connect[1]: is not in any of the forms it can take'),
+                        ('notice',
+                         'on_connect[2]',
+                         'on_connect[2]: is not in any of the forms it can take')],
+ 'on_connect_mapping': [('notice',
+                         'on_connect',
+                         'on_connect: must be a list; write a single entry as a one-item list')],
  'on_connect_none': [],
- 'on_connect_text': [],
- 'on_connect_true': [],
+ 'on_connect_text': [('notice',
+                      'on_connect',
+                      'on_connect: must be a list; write a single entry as a one-item list')],
+ 'on_connect_true': [('notice', 'on_connect', 'on_connect: must be a list')],
  'placeholder_in_a_command_named_with_a_colon': [('error',
                                                   'commands.a',
                                                   "commands.a:b.send: '{levl}' resolves to nothing "
@@ -788,14 +831,16 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                         ('error',
                          'polling',
                          'polling: when_state must map a state variable to the value it must hold, '
-                         'or to a list of values')],
+                         'or to a list of values'),
+                        ('notice', 'polling', "polling: unknown key 'interval'")],
  'polling_interval': [('error',
                        'polling',
                        'polling.interval is not read by the runtime. Remove the interval: key and '
-                       'set default_config.poll_interval instead')],
+                       'set default_config.poll_interval instead'),
+                      ('notice', 'polling', "polling: unknown key 'interval'")],
  'polling_list': [('error', 'polling', 'polling: must be a mapping')],
  'polling_none': [],
- 'polling_queries_a_number': [],
+ 'polling_queries_a_number': [('notice', 'polling.queries', 'polling.queries: must be a list')],
  'polling_queries_entries': [('error',
                               'polling.queries[1]',
                               "polling.queries[1]: 'when' field 'nope' is not a declared config "
@@ -806,10 +851,20 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                               'child_entity_type'),
                              ('error',
                               'polling.queries[3]',
-                              "polling.queries[3]: missing 'send' template")],
- 'polling_queries_mapping': [],
- 'polling_queries_text': [],
- 'polling_queries_true': [],
+                              "polling.queries[3]: missing 'send' template"),
+                             ('notice',
+                              'polling.queries[2]',
+                              'polling.queries[2]: must be a string or a mapping; put it in '
+                              'quotes')],
+ 'polling_queries_mapping': [('notice',
+                              'polling.queries',
+                              'polling.queries: must be a list; write a single entry as a one-item '
+                              'list')],
+ 'polling_queries_text': [('notice',
+                           'polling.queries',
+                           'polling.queries: must be a list; write a single entry as a one-item '
+                           'list')],
+ 'polling_queries_true': [('notice', 'polling.queries', 'polling.queries: must be a list')],
  'polling_text': [('error', 'polling', 'polling: must be a mapping')],
  'polling_text_interval': [('error', 'polling', 'polling: must be a mapping')],
  'polling_when_state_bad': [('error',
@@ -838,7 +893,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                                     'something the device answers in every state.')],
  'responses_left_out': [],
  'responses_mapping': [('error', 'responses', 'responses: must be a list')],
- 'responses_none': [('error', 'responses', 'responses: must be a list')],
+ 'responses_none': [],
  'responses_text': [('error', 'responses', 'responses: must be a list')],
  'responses_zero': [('error', 'responses', 'responses: must be a list')],
  'routing_bad': [('error',
@@ -856,7 +911,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
  'state_variables_empty_list': [('error', 'state_variables', 'state_variables: must be a mapping')],
  'state_variables_left_out': [],
  'state_variables_list': [('error', 'state_variables', 'state_variables: must be a mapping')],
- 'state_variables_none': [('error', 'state_variables', 'state_variables: must be a mapping')],
+ 'state_variables_none': [],
  'state_variables_text': [('error', 'state_variables', 'state_variables: must be a mapping')],
  'then_query_child_id': [('error',
                           'responses[0].then_query[0]',
@@ -925,7 +980,11 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                       'Nothing notices if the device stops answering over tcp: it sends no poll at '
                       'its default config, and there is no liveness block, so the device reads '
                       'connected for as long as the connection stays open. Add a liveness block '
-                      'that asks something the device answers in every state.')],
+                      'that asks something the device answers in every state.'),
+                     ('notice',
+                      'responses[0].then_query[2]',
+                      'responses[0].then_query[2]: must be a string or a mapping; put it in '
+                      'quotes')],
  'then_query_refused_empty_entries_are_not_read': [('error',
                                                     'responses[0]',
                                                     'Response 0: then_query must list at least one '
@@ -988,45 +1047,43 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                              'poll at its default config, and there is no liveness block, so the '
                              'device reads connected for as long as the connection stays open. Add '
                              'a liveness block that asks something the device answers in every '
-                             'state.')],
- 'transport_a_list': [('error', '', "Unsupported transport: ['tcp']")],
- 'transport_a_mapping': [('error', '', "Unsupported transport: {'tcp': 1}")],
+                             'state.'),
+                            ('notice',
+                             'responses[0].then_query[2]',
+                             'responses[0].then_query[2]: must be a string or a mapping; put it in '
+                             'quotes'),
+                            ('notice',
+                             'responses[4].then_query[2]',
+                             'responses[4].then_query[2]: must be a string or a mapping; put it in '
+                             'quotes')],
+ 'transport_a_list': [('error', 'transport', "Unsupported transport: ['tcp']")],
+ 'transport_a_mapping': [('error', 'transport', "Unsupported transport: {'tcp': 1}")],
  'transport_bridge': [],
- 'transport_empty': [],
- 'transport_none': [],
- 'transport_unknown': [('error', '', 'Unsupported transport: carrier_pigeon')]}
+ 'transport_empty': [('notice',
+                      'transport',
+                      "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not "
+                      "''")],
+ 'transport_none': [('notice', 'transport', 'transport: must be a string')],
+ 'transport_unknown': [('error', 'transport', 'Unsupported transport: carrier_pigeon')]}
 
-STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error', 'actions', 'actions: must be a list'),
- ('error',
-  'actions',
-  "actions: could not be checked ('int' object is not iterable). One of its values is not the kind "
-  'it should be, such as a number or true/false where a name goes; correct it and check again')],
- 'actions_true': [('error', 'actions', 'actions: must be a list'),
- ('error',
-  'actions',
-  "actions: could not be checked ('bool' object is not iterable). One of its values is not the "
-  'kind it should be, such as a number or true/false where a name goes; correct it and check '
-  'again')],
- 'id_a_list': [('error',
-  'discovery',
-  "discovery: could not be checked ('list' object has no attribute 'startswith'). One of its "
-  'values is not the kind it should be, such as a number or true/false where a name goes; correct '
-  'it and check again')],
- 'id_a_number': [('error',
-  'discovery',
-  "discovery: could not be checked ('int' object has no attribute 'startswith'). One of its values "
-  'is not the kind it should be, such as a number or true/false where a name goes; correct it and '
-  'check again')],
+STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error',
+                                                                                'actions',
+                                                                                'actions: must be a list')],
+ 'actions_true': [('error', 'actions', 'actions: must be a list')],
+ 'id_a_list': [('error', 'id', 'id: must be a string')],
+ 'id_a_number': [('error', 'id', 'id: must be a string; put it in quotes')],
  'then_query_on_a_rule_whose_mappings_is_a_number': [('error',
-  'responses[0]',
-  "responses[0]: could not be checked ('int' object is not iterable). One of its values is not the "
-  'kind it should be, such as a number or true/false where a name goes; correct it and check '
-  'again'),
- ('warning',
-  'liveness',
-  'Nothing notices if the device stops answering over tcp: it sends no poll at its default config, '
-  'and there is no liveness block, so the device reads connected for as long as the connection '
-  'stays open. Add a liveness block that asks something the device answers in every state.')],
+                                                      'responses[0].mappings',
+                                                      'responses[0].mappings: must be a list'),
+                                                     ('warning',
+                                                      'liveness',
+                                                      'Nothing notices if the device stops '
+                                                      'answering over tcp: it sends no poll at its '
+                                                      'default config, and there is no liveness '
+                                                      'block, so the device reads connected for as '
+                                                      'long as the connection stays open. Add a '
+                                                      'liveness block that asks something the '
+                                                      'device answers in every state.')],
  'actions_empty': [],
  'actions_empty_mapping': [('error', 'actions', 'actions: must be a list')],
  'actions_empty_text': [('error', 'actions', 'actions: must be a list')],
@@ -1057,23 +1114,29 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                      'child_entity_types.output',
                      'child_entity_types.output: must be a mapping')],
  'child_types_empty': [],
- 'child_types_empty_list': [],
- 'child_types_empty_text': [],
- 'child_types_false': [],
+ 'child_types_empty_list': [('error',
+                             'child_entity_types',
+                             'child_entity_types: must be a mapping')],
+ 'child_types_empty_text': [('error',
+                             'child_entity_types',
+                             'child_entity_types: must be a mapping')],
+ 'child_types_false': [('error', 'child_entity_types', 'child_entity_types: must be a mapping')],
  'child_types_list': [('error', 'child_entity_types', 'child_entity_types: must be a mapping')],
  'child_types_none': [],
  'child_types_text': [('error', 'child_entity_types', 'child_entity_types: must be a mapping')],
  'child_types_true': [('error', 'child_entity_types', 'child_entity_types: must be a mapping')],
- 'child_types_zero': [],
+ 'child_types_zero': [('error', 'child_entity_types', 'child_entity_types: must be a mapping')],
  'clean': [],
  'commands_empty_list': [('error', 'commands', 'commands: must be a mapping')],
  'commands_empty_text': [('error', 'commands', 'commands: must be a mapping')],
  'commands_entry_not_a_mapping': [('error', 'commands.noop', "Command 'noop': must be a dict")],
  'commands_left_out': [],
  'commands_list': [('error', 'commands', 'commands: must be a mapping')],
- 'commands_none': [('error', 'commands', 'commands: must be a mapping')],
+ 'commands_none': [],
  'commands_text': [('error', 'commands', 'commands: must be a mapping')],
- 'config_schema_entry_text': [],
+ 'config_schema_entry_text': [('error',
+                               'config_schema.host',
+                               'config_schema.host: must be a mapping')],
  'config_schema_learned_from': [('error',
                                  'config_schema.host',
                                  "Config field 'host': a connection field cannot be learned_from a "
@@ -1083,9 +1146,9 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                                  'config_schema.host',
                                  "Config field 'host': learned_from 'nope' is not a declared state "
                                  'variable, so the field would never be filled in')],
- 'config_schema_list': [],
+ 'config_schema_list': [('error', 'config_schema', 'config_schema: must be a mapping')],
  'config_schema_none': [],
- 'config_schema_text': [],
+ 'config_schema_text': [('error', 'config_schema', 'config_schema: must be a mapping')],
  'conversion_on_a_child': [('error',
                             'state_variables',
                             'child_entity_types.zone.state_variables.level: the type must be '
@@ -1108,9 +1171,12 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
  'device_settings_none': [],
  'device_settings_text': [('error', 'device_settings', 'device_settings: must be a mapping')],
  'device_settings_zero': [('error', 'device_settings', 'device_settings: must be a mapping')],
- 'everything': [('error', '', 'Unsupported transport: carrier_pigeon'),
+ 'everything': [('error',
+                 'responses[1].then_query[2]',
+                 'responses[1].then_query[2]: must be a string or a mapping; put it in quotes'),
+                ('error', 'transport', 'Unsupported transport: carrier_pigeon'),
                 ('error',
-                 '',
+                 'ir_codes',
                  'ir_codes: must be a boolean (the code-set lives in default_config.ir_codes / the '
                  'device config)'),
                 ('error',
@@ -1213,9 +1279,13 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                  'commands.set.params.level',
                  "Command 'set' parameter 'level' has no label, so forms show its key made "
                  'readable. Give it a label that says what to enter.')],
- 'everything_with_wrong_shapes': [('error', '', 'Unsupported transport: carrier_pigeon'),
+ 'everything_with_wrong_shapes': [('error',
+                                   'on_connect',
+                                   'on_connect: must be a list; write a single entry as a one-item '
+                                   'list'),
+                                  ('error', 'transport', 'Unsupported transport: carrier_pigeon'),
                                   ('error',
-                                   '',
+                                   'ir_codes',
                                    'ir_codes: must be a boolean (the code-set lives in '
                                    'default_config.ir_codes / the device config)'),
                                   ('error', 'responses', 'responses: must be a list'),
@@ -1282,10 +1352,10 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                                    'which needs platform 0.27.0. Raise it to "0.27.0", or drop '
                                    'that field if the driver has to keep installing on 0.1.0.')],
  'everything_without_responses_and_child_types': [('error',
-                                                   '',
+                                                   'transport',
                                                    'Unsupported transport: carrier_pigeon'),
                                                   ('error',
-                                                   '',
+                                                   'ir_codes',
                                                    'ir_codes: must be a boolean (the code-set '
                                                    'lives in default_config.ir_codes / the device '
                                                    'config)'),
@@ -1427,11 +1497,11 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                   "send_frame: unknown type 'nope' (expected 'length_prefix')")],
  'ir_codes_none': [],
  'ir_codes_number': [('error',
-                      '',
+                      'ir_codes',
                       'ir_codes: must be a boolean (the code-set lives in default_config.ir_codes '
                       '/ the device config)')],
  'ir_codes_text': [('error',
-                    '',
+                    'ir_codes',
                     'ir_codes: must be a boolean (the code-set lives in default_config.ir_codes / '
                     'the device config)')],
  'ir_codes_true': [],
@@ -1439,15 +1509,28 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                    'liveness',
                    "liveness: missing required 'send' (the probe payload: a raw protocol string, "
                    'or an OSC address on osc)')],
- 'on_connect_a_number': [],
+ 'on_connect_a_number': [('error', 'on_connect', 'on_connect: must be a list')],
  'on_connect_entries': [('error',
+                         'on_connect[0]',
+                         'on_connect[0]: must be a string or a mapping; put it in quotes'),
+                        ('error',
+                         'on_connect[1]',
+                         'on_connect[1]: is not in any of the forms it can take'),
+                        ('error',
+                         'on_connect[2]',
+                         'on_connect[2]: is not in any of the forms it can take'),
+                        ('error',
                          'on_connect[3]',
                          "on_connect[3]: 'when' field 'nope' is not a declared config field "
                          '(config_schema / default_config / config_derived)')],
- 'on_connect_mapping': [],
+ 'on_connect_mapping': [('error',
+                         'on_connect',
+                         'on_connect: must be a list; write a single entry as a one-item list')],
  'on_connect_none': [],
- 'on_connect_text': [],
- 'on_connect_true': [],
+ 'on_connect_text': [('error',
+                      'on_connect',
+                      'on_connect: must be a list; write a single entry as a one-item list')],
+ 'on_connect_true': [('error', 'on_connect', 'on_connect: must be a list')],
  'placeholder_in_a_command_named_with_a_colon': [('error',
                                                   'commands.a',
                                                   "commands.a:b.send: '{levl}' resolves to nothing "
@@ -1511,8 +1594,12 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                       ('error', 'polling', "polling: unknown key 'interval'")],
  'polling_list': [('error', 'polling', 'polling: must be a mapping')],
  'polling_none': [],
- 'polling_queries_a_number': [],
+ 'polling_queries_a_number': [('error', 'polling.queries', 'polling.queries: must be a list')],
  'polling_queries_entries': [('error',
+                              'polling.queries[2]',
+                              'polling.queries[2]: must be a string or a mapping; put it in '
+                              'quotes'),
+                             ('error',
                               'polling.queries[1]',
                               "polling.queries[1]: 'when' field 'nope' is not a declared config "
                               'field (config_schema / default_config / config_derived)'),
@@ -1523,9 +1610,15 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                              ('error',
                               'polling.queries[3]',
                               "polling.queries[3]: missing 'send' template")],
- 'polling_queries_mapping': [],
- 'polling_queries_text': [],
- 'polling_queries_true': [],
+ 'polling_queries_mapping': [('error',
+                              'polling.queries',
+                              'polling.queries: must be a list; write a single entry as a one-item '
+                              'list')],
+ 'polling_queries_text': [('error',
+                           'polling.queries',
+                           'polling.queries: must be a list; write a single entry as a one-item '
+                           'list')],
+ 'polling_queries_true': [('error', 'polling.queries', 'polling.queries: must be a list')],
  'polling_text': [('error', 'polling', 'polling: must be a mapping')],
  'polling_text_interval': [('error', 'polling', 'polling: must be a mapping')],
  'polling_when_state_bad': [('error',
@@ -1554,7 +1647,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                                     'something the device answers in every state.')],
  'responses_left_out': [],
  'responses_mapping': [('error', 'responses', 'responses: must be a list')],
- 'responses_none': [('error', 'responses', 'responses: must be a list')],
+ 'responses_none': [],
  'responses_text': [('error', 'responses', 'responses: must be a list')],
  'responses_zero': [('error', 'responses', 'responses: must be a list')],
  'routing_bad': [('error',
@@ -1572,7 +1665,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
  'state_variables_empty_list': [('error', 'state_variables', 'state_variables: must be a mapping')],
  'state_variables_left_out': [],
  'state_variables_list': [('error', 'state_variables', 'state_variables: must be a mapping')],
- 'state_variables_none': [('error', 'state_variables', 'state_variables: must be a mapping')],
+ 'state_variables_none': [],
  'state_variables_text': [('error', 'state_variables', 'state_variables: must be a mapping')],
  'then_query_child_id': [('error',
                           'responses[0].then_query[0]',
@@ -1629,6 +1722,10 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                              'a liveness block that asks something the device answers in every '
                              'state.')],
  'then_query_read': [('error',
+                      'responses[0].then_query[2]',
+                      'responses[0].then_query[2]: must be a string or a mapping; put it in '
+                      'quotes'),
+                     ('error',
                       'responses[0].then_query[0]',
                       "responses[0].then_query[0]: reads 'power', which this rule has just "
                       'written. then_query reads what the report did not say'),
@@ -1676,7 +1773,15 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                       'its default config, and there is no liveness block, so the device reads '
                       'connected for as long as the connection stays open. Add a liveness block '
                       'that asks something the device answers in every state.')],
- 'then_query_three_rules': [('error', 'responses[1]', 'Response 1: must be a mapping'),
+ 'then_query_three_rules': [('error',
+                             'responses[0].then_query[2]',
+                             'responses[0].then_query[2]: must be a string or a mapping; put it in '
+                             'quotes'),
+                            ('error',
+                             'responses[4].then_query[2]',
+                             'responses[4].then_query[2]: must be a string or a mapping; put it in '
+                             'quotes'),
+                            ('error', 'responses[1]', 'Response 1: must be a mapping'),
                             ('error',
                              'responses[0].then_query[0]',
                              "responses[0].then_query[0]: reads 'power', which this rule has just "
@@ -1705,12 +1810,15 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                              'device reads connected for as long as the connection stays open. Add '
                              'a liveness block that asks something the device answers in every '
                              'state.')],
- 'transport_a_list': [('error', '', "Unsupported transport: ['tcp']")],
- 'transport_a_mapping': [('error', '', "Unsupported transport: {'tcp': 1}")],
+ 'transport_a_list': [('error', 'transport', "Unsupported transport: ['tcp']")],
+ 'transport_a_mapping': [('error', 'transport', "Unsupported transport: {'tcp': 1}")],
  'transport_bridge': [],
- 'transport_empty': [],
- 'transport_none': [],
- 'transport_unknown': [('error', '', 'Unsupported transport: carrier_pigeon')]}
+ 'transport_empty': [('error',
+                      'transport',
+                      "transport: must be 'tcp', 'serial', 'udp', 'http', 'osc' or 'bridge', not "
+                      "''")],
+ 'transport_none': [('error', 'transport', 'transport: must be a string')],
+ 'transport_unknown': [('error', 'transport', 'Unsupported transport: carrier_pigeon')]}
 
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_issues_their_order_and_their_tags(case: str) -> None:
@@ -1827,13 +1935,14 @@ def test_a_discovery_check_that_raises_is_reported_in_its_place() -> None:
     assert issues[0]["message"].startswith("discovery: could not be checked (discovery parser broke). ")
 
 
-def test_a_number_for_an_id_is_reported_with_or_without_a_discovery_check() -> None:
+def test_a_number_for_an_id_is_refused_in_its_own_words_with_or_without_a_discovery_check() -> None:
     hook = _Recorder([])
     without = validate_driver_definition({**BASE, "id": 5})
     with_hook = validate_driver_definition({**BASE, "id": 5}, discovery_validator=hook)
-    assert list(without) == list(with_hook)
-    assert without.tags == with_hook.tags == ["discovery"]  # type: ignore[attr-defined]
-    assert hook.seen == []
+    assert list(without) == list(with_hook) == ["id: must be a string; put it in quotes"]
+    assert without.tags == with_hook.tags == ["id"]  # type: ignore[attr-defined]
+    # An id that is not text is no template, so its discovery block is checked.
+    assert len(hook.seen) == 1
 
 
 def test_a_discovery_check_message_is_carried_by_the_issue_records() -> None:
