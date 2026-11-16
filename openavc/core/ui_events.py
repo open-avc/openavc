@@ -17,6 +17,7 @@ import asyncio
 import itertools
 from typing import TYPE_CHECKING, Any
 
+from openavc.core.condition_eval import match_key, same_value
 from openavc.core.device_manager import failed_command
 from openavc.core.saved_params import saved_kwargs
 from openavc.core.script_engine import ScriptCallError
@@ -133,11 +134,12 @@ def resolve_press(element: Any, state: Any) -> tuple[str, str | None]:
     broken toggle from a simulation that cannot see one.
 
     So this is a mirror, and it is a mirror of a few lines. The comparison is
-    string and case-insensitive, matching the panel's ``modules/press.js`` --
-    that is what lets ``toggle_value: true`` match a driver's boolean ``True``,
-    which is how nearly every toggle in a real project is written.
-    ``tests/test_press_parity.py`` runs both over one corpus, and names the
-    two places they still disagree (a null, and a whole number written 1.0).
+    the platform's one rule (``core/condition_eval.py``), which the panel's
+    ``modules/press.js`` asks through its copy -- that is what lets
+    ``toggle_value: true`` match a driver's boolean ``True``, or "on", which is
+    how nearly every toggle in a real project is written. A reading that has
+    not arrived is off. ``tests/test_press_parity.py`` runs both over one
+    corpus and holds them to the same verdict.
 
     Returns the event type plus a sentence explaining the choice, or None when
     the element is not a toggle and there was no choice to make.
@@ -148,10 +150,7 @@ def resolve_press(element: Any, state: Any) -> tuple[str, str | None]:
     key = action.get("toggle_key")
     want = action.get("toggle_value")
     current = state.get(key) if state is not None else None
-    active = (
-        current is not None and want is not None
-        and str(current).lower() == str(want).lower()
-    )
+    active = same_value(current, want)
     verdict = "==" if active else "!="
     why = (
         f"toggle_key '{key}' is {current!r} {verdict} toggle_value {want!r}, so a press "
@@ -356,10 +355,15 @@ class UIEventRuntime:
         }
 
         if action == "value_map":
-            # Per-option action map (used by select elements).
-            element_value = str(data.get("value", ""))
+            # Per-option action map (used by select elements). The key is
+            # picked the way every authored map is (condition_eval.match_key):
+            # the exact key, then one apart from case, then one the value
+            # equals as a boolean or number.
+            sent = data.get("value")
+            element_value = "" if sent is None else str(sent)
             action_map = action_def.get("map", {})
-            mapped_action = action_map.get(element_value)
+            key = match_key(action_map, sent) if isinstance(action_map, dict) else None
+            mapped_action = action_map.get(key) if key is not None else None
             # A value that matches no entry is the quiet failure this whole
             # binding shape invites, so it is recorded either way.
             record(value=element_value, matched=bool(mapped_action))

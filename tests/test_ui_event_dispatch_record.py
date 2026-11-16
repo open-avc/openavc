@@ -220,6 +220,29 @@ async def test_a_value_map_that_matched_nothing_says_so(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(("keys", "sent", "picks"), [
+    (("HDMI1", "hdmi1 "), "hdmi1", "HDMI1"),  # apart from case, when no key is spelled the same
+    (("HDMI1", "hdmi1"), "HDMI1", "HDMI1"),   # the exact key first
+    (("1", "2"), 1.0, "1"),                   # a whole number by value, not Python's spelling "1.0"
+    (("on", "off"), True, "on"),              # a boolean picks the word that means it
+    (("2.0",), "2", None),                    # text is never a number spelled another way
+])
+async def test_a_value_map_picks_its_key_as_every_map_does(tmp_path, keys, sent, picks) -> None:
+    engine = _engine(tmp_path, [{
+        "id": "sel_src", "type": "select",
+        "options": [{"label": "A", "value": "a"}],
+        "bindings": {"do": {"change": [{"action": "value_map", "map": {
+            key: {"action": "state.set", "key": "var.picked", "value": key} for key in keys
+        }}]}},
+    }])
+
+    dispatched = await engine.handle_ui_event("change", "sel_src", {"value": sent})
+    assert dispatched[0]["matched"] is (picks is not None)
+    if picks is not None:
+        assert dispatched[1]["value"] == picks
+
+
+@pytest.mark.asyncio
 async def test_nothing_bound_dispatches_nothing(tmp_path) -> None:
     engine = _engine(tmp_path, [{"id": "lbl", "type": "label", "text": "Hi"}])
     assert await engine.handle_ui_event("press", "lbl") == []

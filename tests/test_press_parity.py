@@ -12,14 +12,11 @@ Executed rather than read: Node runs the panel's own `pressOf` and
 `frameAtPress` over one corpus, and the answers are compared with the
 server's over the same corpus.
 
-The two sides disagree in two places today, both asserted below so a fix on
-either side shows up here:
-- a null, on either side of the comparison: the panel compares it as the
-  word "null", so a toggle whose value is null (or "null") reads as on while
-  its key reads null; the server reads a null as off;
-- a whole number written with a decimal point: Python spells 1.0 "1.0",
-  JavaScript "1", so a reading of 1.0 is the toggle value "1" to the panel
-  and not to the server, and the other way round for a reading of "1.0".
+Both ask the platform's one comparison (`core/condition_eval.py` on the
+server, its copy `modules/compare.js` on the panel), so they reach the same
+verdict for every toggle value and reading below: a null on either side, and
+a whole number written with a decimal point (Python's 1.0, which JSON hands
+JavaScript as 1), included.
 """
 
 from __future__ import annotations
@@ -115,16 +112,6 @@ class _State:
         return self.values.get(key, default)
 
 
-def _null_on_a_side(value: object, reading: object) -> bool:
-    """The panel compares a null as the word "null"; the server reads it as off."""
-    return value is None and reading is not _MISSING or (reading is None and value is not _MISSING)
-
-
-def _decimal_point_spelling(value: object, reading: object) -> bool:
-    """A whole number with a decimal point is "1.0" in Python and "1" in JavaScript."""
-    return any(isinstance(x, float) and x.is_integer() for x in (value, reading)) or "1.0" in (value, reading)
-
-
 def test_the_panel_reads_a_press_mode_the_way_the_server_does(panel_answers: dict) -> None:
     for shape, got in zip(SHAPES, panel_answers["modes"], strict=True):
         assert got == press_mode(_element(shape))[0], shape
@@ -136,15 +123,7 @@ def test_the_panel_decides_a_toggle_the_way_the_server_does(panel_answers: dict)
         event, _why = resolve_press(_element([_toggle_action(value)]), _State(_state(reading)))
         if got != f"ui.{event}":
             differ.append((value, reading))
-    unexplained = [
-        pair for pair in differ
-        if not (_null_on_a_side(*pair) or _decimal_point_spelling(*pair))
-    ]
-    assert not unexplained, f"the panel and the server disagree on these toggles: {unexplained}"
-    # Guard the guard: both named disagreements are still there, so a fix on
-    # either side updates the docstring and this test rather than passing it by.
-    assert any(_null_on_a_side(*pair) for pair in differ)
-    assert any(_decimal_point_spelling(*pair) and not _null_on_a_side(*pair) for pair in differ)
+    assert not differ, f"the panel and the server disagree on these toggles: {differ}"
 
 
 def test_the_corpus_reaches_both_verdicts(panel_answers: dict) -> None:
