@@ -16,7 +16,6 @@ Each valid driver is registered in the global driver registry.
 from __future__ import annotations
 
 import ast
-import os
 import tempfile
 from pathlib import Path
 from typing import Any, Iterator, Sequence
@@ -40,6 +39,7 @@ from openavc.drivers.registry import (
     unregister_driver,
 )
 from openavc.drivers.spec import REQUIRED_FIELDS as REQUIRED_FIELDS
+from openavc.utils.fileio import atomic_write_text
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -681,17 +681,7 @@ def save_driver_definition(
         allow_unicode=True,
         sort_keys=False,
     )
-    fd, tmp = tempfile.mkstemp(dir=str(directory), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, str(filepath))
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    atomic_write_text(filepath, text)
 
     log.info(f"Saved driver definition: {filepath}")
     return filepath
