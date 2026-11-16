@@ -168,10 +168,14 @@ export class ClockControl {
         return start ? formatDuration(Math.max(0, now - start)) : '00:00:00';
     }
 
-    /** Down through the meeting's length from when this clock first showed it, then past it. */
+    /**
+     * Down through the meeting's length from when this clock first showed it,
+     * then past it. Both directions count whole seconds, so the overrun takes
+     * its minus at its first whole second: the end reads 00:00, never -00:00.
+     */
     _meeting(now) {
         const remaining = this.durationMin * 60 * 1000 - (now - this.ticker.meetingStart(this.element.id, now));
-        return remaining > 0 ? formatDuration(remaining) : '-' + formatDuration(Math.abs(remaining));
+        return remaining > -1000 ? formatDuration(Math.max(0, remaining)) : '-' + formatDuration(-remaining);
     }
 }
 

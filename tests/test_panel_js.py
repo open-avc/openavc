@@ -434,6 +434,8 @@ SCENARIOS = [
     "a_reading_that_is_not_a_number_draws_no_reading",
     "a_reading_that_is_not_a_number_shows_the_design_sample",
     "a_status_led_lights_nothing_without_a_reading",
+    # A meeting at its end reads 00:00, never -00:00.
+    "a_meeting_reads_00_00_at_its_end_never_minus_zero",
 ]
 
 

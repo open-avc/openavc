@@ -13217,6 +13217,32 @@ Object.assign(tests, {
     },
 });
 
+// --- A meeting at its end ---------------------------------------------------
+
+Object.assign(tests, {
+    // A meeting reads 00:00 at its end, then counts the overrun from the
+    // first whole second past it: never -00:00. The countdown and the
+    // overrun both count whole seconds, so on a tick that lands off the
+    // second the clock reads 00:00 for two ticks.
+    a_meeting_reads_00_00_at_its_end_never_minus_zero() {
+        const read = (offset) => {
+            const seen = [];
+            withFakeTime((advance) => {
+                const m = levelMount({ id: 'mt', type: 'clock', clock_mode: 'meeting', duration_minutes: 1 },
+                    { state: { 'device.d.connected': true } });
+                if (offset) { advance(offset); m.app.renderCurrentPage(); }
+                advance(58000);
+                for (let i = 0; i < 4; i++) { advance(1000); seen.push(m.node().textContent); }
+            });
+            return seen.join(' ');
+        };
+        const onTheSecond = read(0);
+        assert(onTheSecond === '00:01 00:00 -00:01 -00:02', `ticks on the second, got ${onTheSecond}`);
+        const late = read(250);
+        assert(late === '00:00 00:00 -00:01 -00:02', `ticks 250 ms after it, got ${late}`);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.
