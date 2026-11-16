@@ -21,7 +21,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from openavc.core.project_loader import UIElement, UISettings
+from openavc.core.project_loader import PANEL_PIN_MAX_DIGITS, UIElement, UISettings
 from openavc.core.project_migration import migrate_0_16_to_0_17
 from tests import gates
 
@@ -46,6 +46,13 @@ BLANKS = {
 
 DECIMAL_VALUES = [ABSENT, None, 0, -3, 1, 3, 20, 21, 25, 101, 999]
 
+#: A PIN as it might be typed at the lock screen, or saved before the schema
+#: held it to what that screen takes.
+PINS = [
+    "", "0", "0123", "123456", "1234567", "12345678901", "12 34", " 1234 ",
+    "1234\n", "12a4", "é12", "pässwörd", "١٢٣٤", "1-2-3-4-5-6-7",
+]
+
 _SCRIPT = """
 const { boundedNumber, panelSetting } = await import(process.argv[1]);
 const { settings, decimals } = JSON.parse(process.argv[2]);
@@ -68,6 +75,28 @@ def _drawn() -> dict:
     cases = {"settings": settings, "decimals": DECIMAL_VALUES}
     proc = subprocess.run(
         ["node", "--input-type=module", "-e", _SCRIPT, MODULE.as_uri(), json.dumps(cases)],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+_PIN_SCRIPT = """
+const { longestText, typedText } = await import(process.argv[1]);
+const pins = JSON.parse(process.argv[2]);
+console.log(JSON.stringify({
+    longest: longestText('UISettings', 'lock_code'),
+    typed: pins.map((pin) => typedText('UISettings', 'lock_code', pin)),
+}));
+"""
+
+
+def _typed_pins() -> dict:
+    """What the lock screen's box keeps of each PIN typed into it, run under Node."""
+    if shutil.which("node") is None:
+        gates.skip_or_fail(gates.NODE, "node not installed")
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", _PIN_SCRIPT, MODULE.as_uri(), json.dumps(PINS)],
         capture_output=True, text=True, timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
@@ -133,3 +162,20 @@ def test_the_reader_writes_no_range_or_default_of_its_own() -> None:
     code = "\n".join(line for line in source.splitlines() if not line.lstrip().startswith(("*", "/**", "//")))
     stray = [token for token in ("200", "30", "20", "1000", "fade-up", "'none'") if token in code]
     assert not stray, f"the panel's reader writes its own {stray}; read it from PROJECT_VALUES"
+
+
+def test_a_pin_typed_at_the_lock_screen_is_what_an_older_saved_one_becomes() -> None:
+    """The box keeps the digits 0 to 9 typed, as many as a PIN holds; a PIN
+    an earlier release saved becomes what the box keeps of it typed, so the
+    PIN its integrator knows unlocks the panel."""
+    saved = [_saved_setting("lock_code", pin) for pin in PINS]
+    assert _typed_pins()["typed"] == saved, f"lock_code over {PINS}"
+
+
+def test_the_lock_screen_builds_its_box_from_the_table() -> None:
+    assert _typed_pins()["longest"] == PANEL_PIN_MAX_DIGITS
+    source = (MODULES / "lock.js").read_text(encoding="utf-8")
+    assert "longestText('UISettings', 'lock_code')" in source
+    assert 'maxlength="${PIN_LENGTH}"' in source
+    assert "typedText('UISettings', 'lock_code', input.value)" in source
+    assert 'maxlength="6"' not in source

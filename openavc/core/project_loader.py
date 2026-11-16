@@ -7,7 +7,8 @@ All downstream code works with typed ProjectConfig objects, never raw dicts.
 The models are the one place a project value's bound and default are written:
 each range on its field (``Field(ge=, le=)``), a measurement that takes finite
 numbers only as ``FiniteFloat`` (a box's side, a trigger's delay), each blank
-as the field's default, or, for a blank another setting decides (the theme a
+as the field's default, a text value's shape as ``PanelPin`` (the panel lock PIN),
+or, for a blank another setting decides (the theme a
 project with no theme id draws, the format a clock with none draws), in the
 model's ``BLANK_FROM``, read by ``blank_drawn``; a style value whose 0 is blank
 (a crosspoint cell size) in ``UIElement.ZERO_IS_BLANK``, read by
@@ -27,7 +28,7 @@ import shutil
 import tempfile
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator, model_validator
 
@@ -113,6 +114,16 @@ OVERLAY_BOX_MAX = 100
 # for a negative one, as for 0. The macro lint reads it for a trigger's
 # (``core/macro_validation.py``).
 SECONDS_MIN = 0
+
+# THE panel lock PIN: what the panel's lock screen can take, the digits 0 to 9
+# and at most six of them; blank is no lock. A PIN outside it could never be
+# typed there, so that panel could never be unlocked at the glass. The unlock
+# route takes an attempt by the same rule (``api/models.py``), and the
+# Builder's field and the lock screen's box read it from the generated table.
+# Written ``[0-9]``, never ``\d``: Python reads ``\d`` as any script's digits,
+# a browser as these ten.
+PANEL_PIN_MAX_DIGITS = 6
+PanelPin = Annotated[str, Field(max_length=PANEL_PIN_MAX_DIGITS, pattern=r"^[0-9]*$")]
 
 # A blank another setting decides is declared in its model's ``BLANK_FROM``:
 # field -> (that setting, its value -> what this field draws), with a third
@@ -700,7 +711,7 @@ class UISettings(_ForwardCompatModel):
     theme_overrides: dict[str, Any] = Field(default_factory=dict)
     accent_color: str = ""
     font_family: str = ""
-    lock_code: str = ""
+    lock_code: PanelPin = ""
     # 0 is off. At most a day: the panel's timer cannot hold a delay much past
     # 24 days, and one that overflows fires at once, after every touch.
     idle_timeout_seconds: int = Field(default=0, ge=0, le=86400)

@@ -58,6 +58,7 @@ def _bounded_fields() -> set[tuple[str, str]]:
         for field, info in cls.model_fields.items():
             if any(
                 hasattr(m, "ge") or hasattr(m, "le") or getattr(m, "allow_inf_nan", True) is False
+                or hasattr(m, "max_length") or getattr(m, "pattern", None) is not None
                 for m in info.metadata
             ):
                 found.add((cls.__name__, field))
@@ -158,6 +159,32 @@ def test_a_bound_the_table_cannot_say_stops_the_generator() -> None:
         level: int = Field(default=1, gt=0)
 
     with pytest.raises(UnreadableBoundError, match="Odd.level"):
+        project_values(roots=(Odd,))
+
+
+def test_a_text_rule_is_carried_as_its_longest_and_the_characters_it_takes() -> None:
+    """Text has no range and no fraction: its entry says how long it may be
+    and, for a pattern the table knows, which characters it takes."""
+
+    class Pin(BaseModel):
+        code: project_loader.PanelPin = ""
+        name: str = Field(default="", max_length=12)
+
+    table = project_values(roots=(Pin,))
+    assert table["Pin"] == {
+        "code": {"default": "", "max_length": project_loader.PANEL_PIN_MAX_DIGITS, "digits": True},
+        "name": {"default": "", "max_length": 12},
+    }
+
+
+def test_a_pattern_the_table_cannot_say_stops_the_generator() -> None:
+    """A reader keeps what a pattern allows as it is typed, which it can do
+    only for a pattern it knows; one it does not is refused, never dropped."""
+
+    class Odd(BaseModel):
+        code: str = Field(default="", pattern=r"^[a-f]*$")
+
+    with pytest.raises(UnreadableBoundError, match="Odd.code"):
         project_values(roots=(Odd,))
 
 

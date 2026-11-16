@@ -345,9 +345,10 @@ class Engine(
 
         Both sides are encoded before the comparison, for the reason
         ``api/auth.py``'s username check is: ``compare_digest`` raises on two
-        ``str`` arguments that are not both ASCII. The Builder's field takes
-        digits only, but a project file can be hand-written or AI-authored, and
-        a lock code with an accent in it would answer every attempt with a 500.
+        ``str`` arguments that are not both ASCII. The schema holds a PIN to
+        the digits 0 to 9 and the unlock route an attempt the same way
+        (``project_loader.PanelPin``), but this is a method anything can call,
+        and an attempt with an accent in it would answer with a 500.
         """
         if not self.project:
             return False

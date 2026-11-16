@@ -385,7 +385,7 @@ describe("Panel Settings, field by field", () => {
       "Panel Settings" +
       "Accent ColorLeave blank to use the theme's accent." +
       "Font FamilyTheme font (Inter)InterSystem UIRobotoSegoe UIMonospace" +
-      "Lock Code (PIN)4-6 digit PIN to lock the touch panel. Leave empty to disable." +
+      "Lock Code (PIN)A PIN of up to 6 digits to lock the touch panel. Leave empty to disable." +
       "Idle Timeout (seconds)Return to idle page after this many seconds of inactivity, up to 86400 (one day). 0 = disabled." +
       "Idle PageMain (main)Other (other)" +
       "Show a message when a control failsA press that does not reach its device puts the reason across the " +

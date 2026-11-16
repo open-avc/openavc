@@ -7,6 +7,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from openavc.core.project_loader import PanelPin
 from openavc.utils.paths import is_safe_script_filename
 
 
@@ -319,12 +320,13 @@ class LibraryUpdateRequest(BaseModel):
 class PanelUnlockRequest(BaseModel):
     """One typed PIN from a panel's lock screen.
 
-    Bounded because this is an open door: the field a person types into holds
-    six digits, and nothing is gained by letting an unauthenticated caller hand
-    the comparison a megabyte.
+    Held to what a PIN may be (``project_loader.PanelPin``), the box the
+    attempt was typed into included: an attempt no project could hold is
+    refused here rather than compared, and an anonymous caller cannot hand an
+    open door's comparison a megabyte.
     """
 
-    code: str = Field("", max_length=64)
+    code: PanelPin = ""
 
 
 # --- Panel devices (approval) ---

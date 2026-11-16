@@ -15,6 +15,11 @@
  * changing the PIN and pressing Preview would test the last SAVED one and tell
  * the programmer their new PIN is wrong.
  *
+ * The box takes what a PIN may be, as the project schema declares it (the
+ * generated table, through project_values.js): the digits 0 to 9, as many as a
+ * PIN holds. A letter typed on a keyboard never reaches the box, so what is
+ * sent is always a PIN a project could hold.
+ *
  * The design canvas never locks and never goes idle. The panel lends what this
  * reads at call time (its settings, pages, edit mode, whether it is offline),
  * where activity goes (its `resetIdleTimer`, which tests replace) and how it
@@ -22,7 +27,7 @@
  */
 
 import { basePath } from './base_path.js';
-import { panelSetting } from './project_values.js';
+import { longestText, panelSetting, typedText } from './project_values.js';
 
 // The timeout is what turns a hung request into "could not ask" instead of a
 // lock screen whose Unlock button never comes back.
@@ -32,11 +37,14 @@ const ERROR_SHOWN_MS = 2000;
 // What counts as somebody using the panel.
 const ACTIVITY = ['mousedown', 'mousemove', 'keydown', 'touchstart', 'scroll'];
 
+// The longest PIN a project holds, which is all the box takes.
+const PIN_LENGTH = longestText('UISettings', 'lock_code');
+
 const LOCK_SCREEN = `
             <div class="lock-container">
                 <div class="lock-icon">\u{1F512}</div>
                 <div class="lock-title">Panel Locked</div>
-                <input type="password" id="lock-input" class="lock-input" placeholder="Enter PIN" maxlength="6" inputmode="numeric" pattern="[0-9]*" />
+                <input type="password" id="lock-input" class="lock-input" placeholder="Enter PIN" maxlength="${PIN_LENGTH}" inputmode="numeric" pattern="[0-9]*" />
                 <button id="lock-submit" class="lock-submit">Unlock</button>
                 <div id="lock-error" class="lock-error"></div>
             </div>
@@ -55,6 +63,14 @@ function drawLockScreen() {
         submit: document.getElementById('lock-submit'),
         error: document.getElementById('lock-error'),
     };
+}
+
+/** Keep only what a PIN may hold in the box, as it is typed. */
+function keepPinShape({ input }) {
+    input.addEventListener('input', () => {
+        const kept = typedText('UISettings', 'lock_code', input.value);
+        if (kept !== input.value) input.value = kept;
+    });
 }
 
 /**
@@ -177,6 +193,7 @@ export class PanelLock {
         screen.input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') tryUnlock();
         });
+        keepPinShape(screen);
         forgetWhenHidden(screen);
         screen.input.focus();
     }

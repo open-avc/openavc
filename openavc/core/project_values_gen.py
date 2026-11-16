@@ -8,9 +8,10 @@ from and writes the table to
 and ``openavc/web/panel/modules/project_values.gen.js`` (the panel, which draws
 the Builder's unsaved draft, a project that never passed the loader).
 
-The table carries every field that declares a bound (a range, or that it
-takes finite numbers only), under the model that declares it, and every panel
-setting with a plain default, since the panel
+The table carries every field that declares a bound (a range, that it takes
+finite numbers only, or a text value's longest and the characters it takes:
+the panel lock PIN's ``PanelPin``), under the model that declares it, and
+every panel setting with a plain default, since the panel
 fills a blank setting itself; a blank another setting decides (a model's
 ``BLANK_FROM``: the theme a project with no theme id draws, the format a clock
 with none draws) carries that setting's values too, and a style value whose 0
@@ -45,7 +46,16 @@ PANEL_ARTIFACT = "openavc/web/panel/modules/project_values.gen.js"
 SETTINGS_MODELS: tuple[type[BaseModel], ...] = (UISettings,)
 
 #: The bound each ``annotated_types`` constraint becomes in the table.
-_BOUND_KEYS = {annotated_types.Ge: ("min", "ge"), annotated_types.Le: ("max", "le")}
+_BOUND_KEYS = {
+    annotated_types.Ge: ("min", "ge"),
+    annotated_types.Le: ("max", "le"),
+    annotated_types.MaxLen: ("max_length", "max_length"),
+}
+
+#: The table's word for each text pattern a field may declare. A reader
+#: cannot run a pattern on what is being typed, only keep what it allows, so
+#: each is a rule both readers know.
+_PATTERN_WORDS = {r"^[0-9]*$": {"digits": True}}
 
 _PLAIN = (str, int, float, bool, type(None))
 
@@ -112,6 +122,9 @@ def _bound(rule: Any) -> dict[str, Any] | None:
         return {keys[0]: getattr(rule, keys[1])}
     if isinstance(rule, AllowInfNan) and not rule.allow_inf_nan:
         return {"finite": True}
+    pattern = getattr(rule, "pattern", None)
+    if isinstance(pattern, str) and pattern in _PATTERN_WORDS:
+        return dict(_PATTERN_WORDS[pattern])
     return None
 
 
@@ -163,9 +176,15 @@ def _unreadable_blank(model: type[BaseModel], field: str) -> UnreadableBoundErro
     )
 
 
+def _is_text(annotation: Any) -> bool:
+    return annotation is str
+
+
 def _entry(model: type[BaseModel], field: str, info: FieldInfo, settings: bool) -> dict[str, Any] | None:
     bounds = _bounds(model, field, info)
     blank = _plain_default(info)
+    if bounds and _is_text(info.annotation):
+        return {**blank, **bounds}
     if bounds:
         return {**blank, **bounds, "integer": _is_integer(info.annotation)}
     follows = _blank_from(model, field)
@@ -194,7 +213,8 @@ def _zero_blanks(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
 
 
 def project_values(roots: tuple[type[BaseModel], ...] = (ProjectConfig,)) -> dict[str, dict[str, Any]]:
-    """The table: model name -> field -> its default, min, max, integer and finite."""
+    """The table: model name -> field -> its default, min, max, integer and
+    finite, or for text its max_length and digits."""
     table: dict[str, dict[str, Any]] = {}
     for model in _walk(roots):
         settings = model in SETTINGS_MODELS
@@ -221,11 +241,12 @@ BANNER = """\
 // field the project schema declares it on: `default` is what the schema stores
 // for a blank one, `min` and `max` the range it takes (both ends included),
 // `integer` that it refuses a fraction, `finite` that it refuses a value that
-// is no finite number (NaN or infinity). A value outside its range fails the
-// whole project save. `blank_from` says what a blank one draws when another
-// setting decides it: that setting's value names it (null: that value draws
-// none), and a value not named, a blank one included, reads as the one
-// `otherwise` names. A key inside a field (`style.cell_size`) with
+// is no finite number (NaN or infinity). For text, `max_length` is the most
+// characters it takes and `digits` that it takes the digits 0 to 9 and nothing
+// else. A value outside its range or shape fails the whole project save.
+// `blank_from` says what a blank one draws when another setting decides it:
+// that setting's value names it (null: that value draws none), and a value not
+// named, a blank one included, reads as the one `otherwise` names. A key inside a field (`style.cell_size`) with
 // `zero_is_blank` reads a 0 as a blank one, the control drawing its own size,
 // never as a size of 0.
 """
@@ -238,6 +259,8 @@ export interface ProjectValue {
   readonly max?: number;
   readonly integer?: boolean;
   readonly finite?: boolean;
+  readonly max_length?: number;
+  readonly digits?: boolean;
   readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string | null>>>>;
   readonly otherwise?: string;
   readonly zero_is_blank?: boolean;

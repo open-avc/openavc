@@ -67,6 +67,21 @@ def test_initial_lock_unlock_and_idle_relock(server_factory, page, preview):
     expect(panel.get_by_role("button", name="Navigate to Details", exact=True)).to_be_visible()
 
 
+def test_the_lock_screen_takes_digits_only_as_many_as_a_pin_holds(server_factory, page):
+    """Typed on a keyboard, a letter, a space or a seventh digit never reaches
+    the box, so what goes to the server is a PIN a project could hold."""
+    handle = server_factory(project_overrides=_project())
+    page.goto(f"{handle.base_url}/panel/")
+    box = page.get_by_placeholder("Enter PIN")
+    box.press_sequentially("1234567")
+    expect(box).to_have_value("123456")
+    box.fill("")
+    box.press_sequentially("12a 34")
+    expect(box).to_have_value("1234")
+    page.get_by_role("button", name="Unlock", exact=True).click()
+    expect(page.locator("#lock-overlay")).to_have_count(0)
+
+
 def test_preview_starts_idle_timer_without_panel_input(server_factory, page):
     handle = server_factory(project_overrides=_project(lock_code="", idle_timeout=1))
     page.goto(f"{handle.base_url}/programmer/#ui-builder")

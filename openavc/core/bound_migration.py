@@ -1,13 +1,21 @@
 """
-The project format's 0.17.0 step, its repair of saved numbers the schema now
+The project format's 0.17.0 step, its repair of saved values the schema now
 bounds, apart from boxes (``core/box_migration.py``): a readout's decimals,
-the panel settings, a trigger's delay, debounce and cooldown, and a macro's
-own cooldown.
+the panel settings and the panel lock PIN, a trigger's delay, debounce and
+cooldown, and a macro's own cooldown.
 
 A readout's ``display_decimals`` and a panel setting are counts, moved to the
 nearer end of their bound; a page transition or stagger of 0, which the panel
 drew as its default, is removed instead, so it loads as the default. A count
 that is not a whole number is left alone.
+
+A panel lock PIN the lock screen could not take becomes what that screen
+holds when somebody types it there: its digits 0 to 9, in order, the first
+six. Before this step the screen kept the first six characters typed and the
+server compared the whole PIN, so a longer one never unlocked the panel at the
+glass; now the PIN that person knows does. One with no such digit (letters
+only, or another script's digits) becomes blank, which is no lock: no PIN of
+digits keeps that lock and can be typed.
 
 A time in seconds is brought to 0 when negative: the engines waited no time
 for it, as for 0. One that is no finite number is removed, so it loads as 0.
@@ -41,6 +49,10 @@ _PANEL_SETTINGS_0_17 = {
 }
 # The panel drew a 0 in these as its default (200 and 30 ms).
 _ZERO_IS_DEFAULT_0_17 = ("page_transition_duration", "element_stagger_ms")
+
+# What the lock screen's box takes: these digits, and this many.
+_PIN_DIGITS_0_17 = "0123456789"
+_PIN_LENGTH_0_17 = 6
 
 # A trigger's times in seconds; each, and a macro's cooldown, is this or more.
 _TRIGGER_SECONDS_0_17 = ("delay_seconds", "debounce_seconds", "cooldown_seconds")
@@ -84,6 +96,16 @@ def _clamp_settings_0_17(settings) -> None:
     if isinstance(settings, dict):
         for field, bounds in _PANEL_SETTINGS_0_17.items():
             _clamp_0_17(settings, field, bounds)
+        _repair_pin_0_17(settings)
+
+
+def _repair_pin_0_17(settings: dict) -> None:
+    """The PIN as the lock screen's box holds it once typed. Anything but
+    text the schema refused before this step, and still does."""
+    pin = settings.get("lock_code")
+    if isinstance(pin, str):
+        typed = "".join(c for c in pin if c in _PIN_DIGITS_0_17)
+        settings["lock_code"] = typed[:_PIN_LENGTH_0_17]
 
 
 def _repair_macro_0_17(macro: dict) -> None:

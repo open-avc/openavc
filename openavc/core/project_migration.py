@@ -795,8 +795,16 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
     a NaN; an infinite one held its trigger back for good, so that trigger is
     also turned off.
 
-    The bounds are the step's own, as they stood at 0.17.0: the numbers in
-    `core/bound_migration.py` and the boxes in `core/box_migration.py`.
+    `ui.settings.lock_code`, the panel lock PIN, is brought to what the
+    panel's lock screen holds when somebody types it there: its digits 0 to
+    9, in order, the first six. The screen kept the first six characters
+    typed and the server compared the whole PIN, so a longer one, or one with
+    a space or a letter in it, never unlocked the panel at the glass. A PIN
+    with no such digit becomes blank, which is no lock.
+
+    The bounds are the step's own, as they stood at 0.17.0: the numbers and
+    the PIN in `core/bound_migration.py` and the boxes in
+    `core/box_migration.py`.
     """
     repair_bounds_0_17(data, _elements(data))
     ui = data.get("ui")

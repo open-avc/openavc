@@ -21,7 +21,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from openavc.core.project_loader import ProjectConfig
+from pydantic import ValidationError
+
+from openavc.core.project_loader import ProjectConfig, UISettings
 
 
 def _project(lock_code: str = "1234") -> ProjectConfig:
@@ -112,13 +114,12 @@ class TestTheCheck:
         assert _engine("").panel_lock_accepts("") is False
         assert _engine("").panel_lock_accepts("1234") is False
 
-    def test_a_non_ascii_pin_answers_instead_of_raising(self):
-        """`compare_digest` raises on two non-ASCII `str` arguments, which
-        would 500 every attempt. The Builder's field takes digits, but a
-        project file can be hand-written or AI-authored."""
-        assert _engine("pässwörd").panel_lock_accepts("pässwörd") is True
-        assert _engine("pässwörd").panel_lock_accepts("passwörd") is False
+    def test_a_non_ascii_attempt_answers_instead_of_raising(self):
+        """`compare_digest` raises on two `str` arguments that are not both
+        ASCII, which would answer the attempt with a 500. The schema holds the
+        PIN to digits, but the check is a method anything can call."""
         assert _engine("1234").panel_lock_accepts("123ü") is False
+        assert _engine("1234").panel_lock_accepts("١٢٣٤") is False
 
     def test_no_project_accepts_nothing(self):
         from openavc.core.engine import Engine
@@ -126,6 +127,78 @@ class TestTheCheck:
         engine = Engine.__new__(Engine)
         engine.project = None
         assert engine.panel_lock_accepts("1234") is False
+
+
+class TestWhatAPinMayBe:
+    """A PIN is what the panel's lock screen can take: the digits 0 to 9, at
+    most six of them. Blank is no lock. Anything else could never be typed at
+    the panel, so that panel could never be unlocked there."""
+
+    @pytest.mark.parametrize("pin", ["", "0", "1234", "0123", "123456"])
+    def test_a_pin_the_lock_screen_can_take_is_taken(self, pin):
+        assert UISettings(lock_code=pin).lock_code == pin
+
+    @pytest.mark.parametrize(
+        "pin", ["1234567", "12 34", " 1234", "1234 ", "1234\n", "é12", "pässwörd", "١٢٣٤", "12a4"],
+    )
+    def test_a_pin_the_lock_screen_cannot_take_is_refused(self, pin):
+        with pytest.raises(ValidationError) as caught:
+            UISettings(lock_code=pin)
+        assert [e["loc"] for e in caught.value.errors()] == [("lock_code",)]
+
+    def test_the_unlock_route_takes_the_same_rule(self):
+        """One rule, read by both: the request a lock screen sends is a PIN."""
+        from openavc.api.models import PanelUnlockRequest
+
+        assert PanelUnlockRequest.model_fields["code"].metadata == (
+            UISettings.model_fields["lock_code"].metadata
+        )
+
+    def test_the_table_carries_it_for_the_builder_and_the_panel(self):
+        from openavc.core.project_values_gen import project_values
+
+        assert project_values()["UISettings"]["lock_code"] == {
+            "default": "", "max_length": 6, "digits": True,
+        }
+
+
+class TestAnOlderProjectsPin:
+    """A project saved before the rule holding a PIN the lock screen could
+    not take loads with the PIN that screen holds when somebody types it."""
+
+    @staticmethod
+    def _older(pin) -> dict:
+        return {
+            "openavc_version": "0.16.0",
+            "project": {"id": "acme_room", "name": "Acme Room"},
+            "ui": {"settings": {"lock_code": pin}, "pages": []},
+        }
+
+    def _loaded_engine(self, tmp_path, pin):
+        import json
+
+        from openavc.core.engine import Engine
+        from openavc.core.project_loader import load_project
+
+        path = tmp_path / "project.avc"
+        path.write_text(json.dumps(self._older(pin)), encoding="utf-8")
+        engine = Engine.__new__(Engine)
+        engine.project = load_project(path)
+        return engine
+
+    def test_a_pin_longer_than_the_box_unlocks_with_what_the_box_keeps(self, tmp_path):
+        engine = self._loaded_engine(tmp_path, "12345678")
+        assert engine.project.ui.settings.lock_code == "123456"
+        assert engine.panel_lock_accepts("123456") is True
+
+    def test_a_pin_with_a_space_unlocks_with_its_digits(self, tmp_path):
+        engine = self._loaded_engine(tmp_path, "12 34")
+        assert engine.panel_lock_accepts("1234") is True
+
+    def test_a_pin_with_no_digit_loads_with_no_lock(self, tmp_path):
+        engine = self._loaded_engine(tmp_path, "pässwörd")
+        assert engine.project.ui.settings.lock_code == ""
+        assert engine.panel_ui()["settings"]["lock_enabled"] is False
 
 
 class TestTheDoor:
@@ -171,6 +244,22 @@ class TestTheDoor:
         c, _engine = client
         resp = c.post("/api/panel/unlock", json={"code": "9" * 5000})
         assert resp.status_code == 422
+
+    @pytest.mark.parametrize("attempt", ["1234567", "12a4", "12 34", "١٢٣٤", "1234\n"])
+    def test_an_attempt_no_pin_could_be_is_refused_at_the_model(self, client, attempt):
+        """The route takes what a PIN may be, as the project does: a panel's
+        box types nothing else, so only another caller sends one, and no
+        project holds a PIN it could match."""
+        c, engine = client
+        resp = c.post("/api/panel/unlock", json={"code": attempt})
+        assert resp.status_code == 422
+        engine.panel_lock_accepts.assert_not_called()
+
+    def test_an_attempt_as_long_as_a_pin_is_checked(self, client):
+        c, engine = client
+        resp = c.post("/api/panel/unlock", json={"code": "123456"})
+        assert resp.status_code == 200
+        engine.panel_lock_accepts.assert_called_once_with("123456")
 
     def test_a_missing_code_is_just_a_wrong_one(self, client):
         c, _engine = client

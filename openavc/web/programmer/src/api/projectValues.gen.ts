@@ -7,11 +7,12 @@
 // field the project schema declares it on: `default` is what the schema stores
 // for a blank one, `min` and `max` the range it takes (both ends included),
 // `integer` that it refuses a fraction, `finite` that it refuses a value that
-// is no finite number (NaN or infinity). A value outside its range fails the
-// whole project save. `blank_from` says what a blank one draws when another
-// setting decides it: that setting's value names it (null: that value draws
-// none), and a value not named, a blank one included, reads as the one
-// `otherwise` names. A key inside a field (`style.cell_size`) with
+// is no finite number (NaN or infinity). For text, `max_length` is the most
+// characters it takes and `digits` that it takes the digits 0 to 9 and nothing
+// else. A value outside its range or shape fails the whole project save.
+// `blank_from` says what a blank one draws when another setting decides it:
+// that setting's value names it (null: that value draws none), and a value not
+// named, a blank one included, reads as the one `otherwise` names. A key inside a field (`style.cell_size`) with
 // `zero_is_blank` reads a 0 as a blank one, the control drawing its own size,
 // never as a size of 0.
 
@@ -22,6 +23,8 @@ export interface ProjectValue {
   readonly max?: number;
   readonly integer?: boolean;
   readonly finite?: boolean;
+  readonly max_length?: number;
+  readonly digits?: boolean;
   readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string | null>>>>;
   readonly otherwise?: string;
   readonly zero_is_blank?: boolean;
@@ -146,7 +149,9 @@ export const PROJECT_VALUES = {
       "default": ""
     },
     "lock_code": {
-      "default": ""
+      "default": "",
+      "max_length": 6,
+      "digits": true
     },
     "idle_timeout_seconds": {
       "default": 0,

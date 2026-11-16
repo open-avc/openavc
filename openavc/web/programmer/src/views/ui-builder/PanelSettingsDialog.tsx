@@ -6,10 +6,11 @@
  * Escape or the backdrop ask before throwing a changed draft away.
  *
  * Each choice is listed under the value the panel reads (panel.js). The range
- * each number takes, and what a blank idle page, failure message, transition,
- * entry animation or stagger shows, are the project schema's, from its
- * generated table (projectValues.gen.ts), so a box never offers a value the
- * save refuses. A blank accent or font shows what the panel draws for it, the
+ * each number takes, what the lock PIN may hold (the digits the panel's lock
+ * screen takes, as many as it takes), and what a blank idle page, failure
+ * message, transition, entry animation or stagger shows, are the project
+ * schema's, from its generated table (projectValues.gen.ts), so a box never
+ * offers a value the save refuses. A blank accent or font shows what the panel draws for it, the
  * chosen theme's (`blankLook`), and saves as blank: the choice follows the
  * theme.
  */
@@ -29,6 +30,14 @@ const SETTINGS = PROJECT_VALUES.UISettings;
 const IDLE = SETTINGS.idle_timeout_seconds;
 const DURATION = SETTINGS.page_transition_duration;
 const STAGGER = SETTINGS.element_stagger_ms;
+const PIN = SETTINGS.lock_code;
+
+/** The lock PIN as the field keeps it while it is typed: the digits a PIN
+ *  takes, as many as it holds. */
+function typedPin(text: string): string {
+  const kept = PIN.digits ? text.replace(/[^0-9]/g, "") : text;
+  return kept.slice(0, PIN.max_length);
+}
 
 const FONTS: readonly Choice[] = [
   ["Inter, system-ui, sans-serif", "Inter"],
@@ -194,10 +203,13 @@ function LockIdleAndErrorFields({ draft, patch, pages }: DraftProps & { pages: U
   const pageChoices = pages.map((p): Choice => [p.id, `${p.name} (${p.id})`]);
   return (
     <>
-      <Field label="Lock Code (PIN)" hint="4-6 digit PIN to lock the touch panel. Leave empty to disable.">
+      <Field
+        label="Lock Code (PIN)"
+        hint={`A PIN of up to ${PIN.max_length} digits to lock the touch panel. Leave empty to disable.`}
+      >
         <input
           value={draft.lock_code}
-          onChange={(e) => patch({ lock_code: e.target.value.replace(/[^0-9]/g, "").slice(0, 6) })}
+          onChange={(e) => patch({ lock_code: typedPin(e.target.value) })}
           placeholder="Leave empty for no lock"
           style={INPUT}
         />

@@ -20,6 +20,7 @@ vi.mock("./projectValues.gen", () => ({
       element_entry: { default: "stagger" },
       element_stagger_ms: { default: 40, min: 20, max: 150, integer: true },
       element_stagger_style: { default: "scale" },
+      lock_code: { default: "", max_length: 4, digits: true },
     },
     OverlayConfig: {
       width: { default: null, min: 10, max: 90, integer: false },
@@ -95,6 +96,14 @@ describe("The Builder's fields read the project schema's table", () => {
     save();
     expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ idle_timeout_seconds: 600 }));
     expect(screen.getByText(/up to 600 \(one day\)/)).toBeTruthy();
+  });
+
+  it("Lock Code keeps the digits a PIN takes, as many as it holds, and says how many", () => {
+    const { onUpdate, save } = renderPanelSettings();
+    fireEvent.change(screen.getByPlaceholderText("Leave empty for no lock"), { target: { value: "1a2 345" } });
+    save();
+    expect(onUpdate).toHaveBeenCalledWith(expect.objectContaining({ lock_code: "1234" }));
+    expect(screen.getByText(/A PIN of up to 4 digits/)).toBeTruthy();
   });
 
   it("Transition Duration takes the setting's range", () => {

@@ -3,6 +3,8 @@
 import copy
 import json
 
+import pytest
+
 
 from openavc.core.project_migration import (
     CURRENT_VERSION,
@@ -1146,6 +1148,55 @@ class TestMigrate016To017TriggerSeconds:
             result = migrate_0_16_to_0_17(data)
             assert result["openavc_version"] == "0.17.0"
         assert result["macros"][0]["triggers"][2] == {"delay_seconds": 0}
+
+
+def make_v016_project_with_pin(pin) -> dict:
+    return {
+        "openavc_version": "0.16.0",
+        "project": {"id": "p", "name": "P"},
+        "ui": {"settings": {"lock_code": pin}, "pages": []},
+    }
+
+
+class TestMigrate016To017PanelPin:
+    """A PIN the lock screen could not take becomes what that screen holds
+    when somebody types it: its digits 0 to 9, in order, the first six."""
+
+    @pytest.mark.parametrize("pin, kept", [
+        ("1234567", "123456"),
+        ("12345678901", "123456"),
+        ("12 34", "1234"),
+        (" 1234 ", "1234"),
+        ("1234\n", "1234"),
+        ("12a4", "124"),
+        ("é12", "12"),
+        ("1-2-3-4-5-6-7", "123456"),
+    ])
+    def test_a_pin_is_brought_to_what_the_lock_screen_holds(self, pin, kept):
+        result = migrate_0_16_to_0_17(make_v016_project_with_pin(pin))
+        assert result["ui"]["settings"]["lock_code"] == kept
+        assert ProjectConfig(**result).ui.settings.lock_code == kept
+
+    @pytest.mark.parametrize("pin", ["pässwörd", "abcd", " ", "١٢٣٤"])
+    def test_a_pin_with_no_digit_the_screen_types_is_no_lock(self, pin):
+        result = migrate_0_16_to_0_17(make_v016_project_with_pin(pin))
+        assert result["ui"]["settings"]["lock_code"] == ""
+
+    @pytest.mark.parametrize("pin", ["", "0", "0123", "123456"])
+    def test_a_pin_the_screen_takes_is_left_as_it_was(self, pin):
+        result = migrate_0_16_to_0_17(make_v016_project_with_pin(pin))
+        assert result["ui"]["settings"]["lock_code"] == pin
+
+    @pytest.mark.parametrize("pin", [1234, None, ["1234"]])
+    def test_a_pin_the_schema_refused_before_is_left_for_the_load_to_refuse(self, pin):
+        result = migrate_0_16_to_0_17(make_v016_project_with_pin(pin))
+        assert result["ui"]["settings"]["lock_code"] == pin
+
+    def test_a_project_with_no_pin_gets_none(self):
+        result = migrate_0_16_to_0_17(make_v016_project_with_pin(""))
+        del result["ui"]["settings"]["lock_code"]
+        again = migrate_0_16_to_0_17({**result, "openavc_version": "0.16.0"})
+        assert "lock_code" not in again["ui"]["settings"]
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,8 @@
  * draws what saving it would: a control's shown decimals, the page transition
  * and entry stagger, the idle page, the failure message switch, the theme a
  * project with no theme id draws, the format a clock with none draws and
- * whether a 0 crosspoint cell is one at all are read only here.
+ * whether a 0 crosspoint cell is one at all are read only here, and so is what
+ * the lock screen's PIN box takes.
  *
  * A number the table bounds is held to its range (the nearer end for one
  * outside it) and rounded where the schema takes whole numbers only. A blank
@@ -48,6 +49,22 @@ export function panelSetting(settings, field) {
     const n = boundedNumber('UISettings', field, raw);
     if (n === null || (Number(raw) === 0 && spec.min > 0)) return spec.default;
     return n;
+}
+
+/** The most characters text in `field` of `model` takes; undefined for no limit. */
+export function longestText(model, field) {
+    return PROJECT_VALUES[model][field].max_length;
+}
+
+/**
+ * `text` as `field` of `model` takes it while it is typed: only the digits 0
+ * to 9 where the table says the field takes digits, then no more than its
+ * longest.
+ */
+export function typedText(model, field, text) {
+    const { max_length: longest, digits } = PROJECT_VALUES[model][field];
+    const kept = digits ? String(text).replace(/[^0-9]/g, '') : String(text);
+    return longest === undefined ? kept : kept.slice(0, longest);
 }
 
 /**

@@ -587,7 +587,7 @@ you approve it from the notice or the Dashboard's **Panels** card (see
 Click the gear icon in the UI Builder toolbar to open Panel Settings:
 - **Accent Color**: primary color used for buttons and highlights. Leave it blank to use the theme's accent, which the field then shows.
 - **Font Family**: the panel's font. **Theme font** uses the theme's, named beside it.
-- **Lock Code**: optional PIN required when the panel opens and after its idle timeout
+- **Lock Code**: optional PIN of up to 6 digits, required when the panel opens and after its idle timeout
 - **Idle Timeout**: seconds of inactivity before the panel returns to the idle page
 - **Idle Page**: which page to display when the idle timeout triggers
 - **Show a message when a control fails**: on unless you turn it off
