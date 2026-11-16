@@ -61,6 +61,7 @@ if (
         pass
 
 import asyncio
+import functools
 import importlib
 import logging
 import mimetypes
@@ -827,14 +828,13 @@ def _main_server(cfg: "uvicorn.Config") -> "uvicorn.Server":
     something on the way down knows the server is going (``Engine.stopping``).
     """
     server = uvicorn.Server(cfg)
-    uvicorn_handles = server.handle_exit
-
-    def handle_exit(sig, frame) -> None:
-        runtime_flags.stopping = True
-        uvicorn_handles(sig, frame)
-
-    server.handle_exit = handle_exit
+    server.handle_exit = functools.partial(_note_the_stop, server.handle_exit)
     return server
+
+
+def _note_the_stop(uvicorn_handles, sig, frame) -> None:
+    runtime_flags.stopping = True
+    uvicorn_handles(sig, frame)
 
 
 async def _run_tls(sockets: list) -> None:
