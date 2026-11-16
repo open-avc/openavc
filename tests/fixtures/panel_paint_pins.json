@@ -4,7 +4,7 @@
     "empty": null,
     "flat": "background-color: rgb(17, 17, 17);",
     "gradient_default_angle": "background-image: linear-gradient(180deg, #ff0000, #0000ff); background-color: transparent;",
-    "gradient_angle_zero_reads_180": "background-image: linear-gradient(180deg, #ff0000, #0000ff); background-color: transparent;",
+    "gradient_angle_zero": "background-image: linear-gradient(0deg, #ff0000, #0000ff); background-color: transparent;",
     "gradient_angle_text_reads_180": "background-image: linear-gradient(180deg, #ff0000, #0000ff); background-color: transparent;",
     "gradient_angle_45_with_colour": "background-image: linear-gradient(45deg, #ff0000, #0000ff); background-color: rgb(34, 34, 34);",
     "gradient_needs_both_stops": "background-color: rgb(51, 51, 51);",
@@ -51,7 +51,7 @@
     "node": "position: absolute;",
     "layers": 1,
     "first": "panel-bg-image-layer",
-    "layer": "position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/api/projects/default/assets/a.png\"); background-size: 100% 100%; background-position: bottom; background-repeat: no-repeat; opacity: 1;",
+    "layer": "position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/api/projects/default/assets/a.png\"); background-size: 100% 100%; background-position: bottom; background-repeat: no-repeat; opacity: 0;",
     "plain": "position: relative; z-index: 1;",
     "stacked": "z-index: 3;",
     "placed": "position: absolute;",
@@ -121,7 +121,7 @@
     ],
     "picture_opacity_zero": [
       "grid: position: relative;",
-      "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/p.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 1;"
+      "panel-page-bg-image: position: absolute; inset: 0; z-index: 0; pointer-events: none; background-image: url(\"/p.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; opacity: 0;"
     ],
     "picture_opacity_text": [
       "grid: position: relative;",
@@ -133,7 +133,7 @@
     ],
     "gradient_angle_zero": [
       "grid: position: relative;",
-      "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, #ff0000, #0000ff);"
+      "panel-page-bg-gradient: position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(0deg, #ff0000, #0000ff);"
     ],
     "gradient_angle_45": [
       "grid: position: relative;",

@@ -6378,7 +6378,7 @@ const tests = {
             empty: {},
             flat: { bg_color: '#111111' },
             gradient_default_angle: { background_gradient: { from: '#ff0000', to: '#0000ff' } },
-            gradient_angle_zero_reads_180: { background_gradient: { from: '#ff0000', to: '#0000ff', angle: 0 } },
+            gradient_angle_zero: { background_gradient: { from: '#ff0000', to: '#0000ff', angle: 0 } },
             gradient_angle_text_reads_180: { background_gradient: { from: '#ff0000', to: '#0000ff', angle: 'abc' } },
             gradient_angle_45_with_colour: { bg_color: '#222222', background_gradient: { from: '#ff0000', to: '#0000ff', angle: 45 } },
             gradient_needs_both_stops: { bg_color: '#333333', background_gradient: { from: '#ff0000' } },

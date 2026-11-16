@@ -23,6 +23,7 @@
  * written.
  */
 import { assetUrl } from './base_path.js';
+import { pct as numberOr } from './layout.js';
 
 /** The gradient each node was last painted with, read by a picture drawn after it. */
 const gradientOf = new WeakMap();
@@ -76,12 +77,13 @@ const hasBothStops = (gradient) => Boolean(gradient && gradient.from && gradient
 
 /**
  * A gradient as CSS, or null when it lacks either stop. An angle that is
- * missing or does not read as a non-zero number is 180 (top to bottom), so an
- * angle of 0 draws as 180. Shared by a control's style and a page's background.
+ * missing or does not read as a number is 180 (top to bottom); 0 is an angle
+ * (bottom to top), as the Builder's field offers it. Shared by a control's
+ * style and a page's background.
  */
 export function gradientCss(gradient) {
     if (!hasBothStops(gradient)) return null;
-    const angle = parseFloat(gradient.angle != null ? gradient.angle : 180) || 180;
+    const angle = numberOr(gradient.angle, 180);
     return `linear-gradient(${angle}deg, `
         + `${sanitizeCssValue(gradient.from)}, ${sanitizeCssValue(gradient.to)})`;
 }
@@ -102,7 +104,8 @@ function drawOverGradient(node, imageCss, size, position) {
 /**
  * Fill a layer with a faded picture: a background picture whose opacity is
  * below 1 on a control, and a page's own picture. An opacity that does not
- * read as a non-zero number draws as 1.
+ * read as a number draws as 1; 0 is an opacity, and keeps its layer, so a
+ * later look that raises it draws on the same one.
  */
 export function drawFadedPicture(layer, { url, size, position, opacity }) {
     layer.style.position = 'absolute';
@@ -113,7 +116,7 @@ export function drawFadedPicture(layer, { url, size, position, opacity }) {
     layer.style.backgroundSize = sanitizeCssValue(size);
     layer.style.backgroundPosition = sanitizeCssValue(position);
     layer.style.backgroundRepeat = 'no-repeat';
-    layer.style.opacity = String(parseFloat(opacity) || 1);
+    layer.style.opacity = String(numberOr(opacity, 1));
 }
 
 /**
