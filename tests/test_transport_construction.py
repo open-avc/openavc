@@ -150,10 +150,16 @@ async def test_tcp_with_tls_keepalive_pacing_and_its_own_line_ending(monkeypatch
     assert kwargs["delimiter"] == b"\n"
 
 
-async def test_tcp_without_a_port_names_the_driver(monkeypatch, control_ip):
+async def test_tcp_without_a_port_is_refused_as_the_connection_test_words_it(
+    monkeypatch, control_ip,
+):
+    from openavc.core.connection_fault import no_port_message
+
     create = _created(monkeypatch, "openavc.transport.tcp.TCPTransport.create")
-    with pytest.raises(ConnectionError, match="missing 'port'.*acme_widget"):
+    with pytest.raises(ConnectionFaultError) as caught:
         await _driver({"host": "192.0.2.10"})._create_transport("tcp")
+    assert caught.value.fault_code == "invalid_config"
+    assert str(caught.value) == no_port_message()
     create.assert_not_awaited()
 
 
@@ -207,22 +213,23 @@ async def test_serial_two_stop_bits_and_software_flow(monkeypatch, control_ip):
 
 async def test_serial_settings_the_port_cannot_take(monkeypatch, control_ip):
     create = _created(monkeypatch, "openavc.transport.serial_transport.SerialTransport.create")
-    with pytest.raises(ValueError, match=r"Invalid parity 'Q'"):
+    with pytest.raises(ConnectionFaultError, match=r"Parity setting is 'Q'") as caught:
         await _driver({"port": "COM3", "parity": "Q"})._create_transport("serial")
+    assert caught.value.fault_code == "invalid_config"
     create.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
     ("config", "first_complaint"),
     [
-        ({"baudrate": "fast", "bytesize": 9}, "Invalid baudrate 'fast'"),
-        ({"bytesize": 9, "parity": "Q"}, "Invalid bytesize 9"),
-        ({"parity": "Q", "stopbits": 3}, "Invalid parity 'Q'"),
-        ({"stopbits": "one", "flow_control": "sideways"}, "Invalid stopbits 'one'"),
+        ({"baudrate": "fast", "bytesize": 9}, "This device's Baud rate setting is 'fast'"),
+        ({"bytesize": 9, "parity": "Q"}, "This device's Data bits setting is 9"),
+        ({"parity": "Q", "stopbits": 3}, "This device's Parity setting is 'Q'"),
+        ({"stopbits": "one", "flow_control": "sideways"}, "This device's Stop bits setting is 'one'"),
     ],
 )
 def test_serial_settings_are_checked_in_order(config, first_complaint):
-    with pytest.raises(ValueError, match=f"^{first_complaint}"):
+    with pytest.raises(ConnectionFaultError, match=f"^{first_complaint}"):
         BaseDriver._coerce_serial_params(config)
 
 
@@ -423,7 +430,7 @@ async def test_ssh_port_that_is_not_a_number_makes_no_key(monkeypatch, control_i
         lambda: made.append(True) or SimpleNamespace(path=data_dir / "id"),
     )
     create = _created(monkeypatch, "openavc.transport.ssh.SSHTransport.create")
-    with pytest.raises(ValueError):
+    with pytest.raises(ConnectionFaultError, match="'twenty-two'"):
         await _driver({"host": "192.0.2.50", "port": "twenty-two"})._create_transport("ssh")
     assert made == []
     create.assert_not_awaited()
@@ -550,8 +557,9 @@ async def test_snmp_timeout_of_zero_is_the_default(monkeypatch, control_ip):
 
 
 async def test_an_unknown_transport_is_refused():
-    with pytest.raises(ValueError, match=r"^Unsupported transport type: carrier_pigeon$"):
+    with pytest.raises(ConnectionFaultError, match=r"Connection is set to 'carrier_pigeon'") as caught:
         await _driver({"host": "192.0.2.80"})._create_transport("carrier_pigeon")
+    assert caught.value.fault_code == "invalid_config"
 
 
 async def test_an_adapter_with_no_address_fails_before_the_transport_is_looked_up(monkeypatch):

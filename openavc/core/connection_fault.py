@@ -146,6 +146,29 @@ def no_address_message() -> str:
     return _NO_ADDRESS_MESSAGE
 
 
+_NO_PORT_MESSAGE = (
+    "No port is set for this device, and its driver does not supply one. "
+    "Enter the port in the device's Connection Settings."
+)
+_NO_SERIAL_PORT_MESSAGE = (
+    "No serial port is set for this device. Choose one in the device's "
+    "Connection Settings."
+)
+
+
+def no_port_message() -> str:
+    """What a network device with no port to dial says: on its card (an
+    ``invalid_config`` fault the transport builder raises before dialing) and
+    from the connection test, one sentence for both."""
+    return _NO_PORT_MESSAGE
+
+
+def no_serial_port_message() -> str:
+    """What a serial device with no serial port chosen says: on its card and
+    from the connection test, one sentence for both."""
+    return _NO_SERIAL_PORT_MESSAGE
+
+
 _BRIDGE_PORT_MISSING_MESSAGE = (
     "No bridge port is chosen for this device. In Edit Device, choose the "
     "port on the bridge that the device is wired to."
@@ -626,22 +649,6 @@ _CLIENT_MISSING_SIGS = (
     "no such file or directory: 'ssh'",
 )
 
-# Message framing is configured wrong, so the transport could not be built at
-# all. These are the validation refusals from transport/frame_parsers.py, and
-# they are raised at CONSTRUCTION -- before any socket work -- so the device
-# never reached the network and retrying cannot help. Without this they fell
-# through to transport_disconnected, which both misdescribes the failure
-# ("the connection dropped" when nothing ever opened) and keeps reconnecting
-# forever, because transport_disconnected is not a permanent fault.
-_FRAMING_CONFIG_SIGS = (
-    "delimiter must not be empty",
-    "header_size must be",
-    "length_offset and header_extra must be",
-    "length must be positive",
-    "length_size must be",
-    "reserve byte counts must be",
-)
-
 # Transport connect-phase wrappers — used to tell a connect timeout (→
 # unreachable) from a post-connect protocol timeout (→ no_response).
 _CONNECT_WRAPPERS = (
@@ -850,22 +857,13 @@ def classify_connection_fault(
 
     # 0. A driver-declared typed fault wins over everything below — the
     #    driver already classified itself (ConnectionFaultError). String
-    #    matching only exists for causes nobody typed.
+    #    matching only exists for causes nobody typed. A setting the
+    #    transport could not be built from (framing, serial line settings,
+    #    the port) arrives typed invalid_config from the transport builder
+    #    (drivers/transport_ladder.py), so no message text is matched for it.
     typed = typed_fault_from_exc(exc, host=host, port=port)
     if typed is not None:
         return typed
-
-    # Message framing rejected before the transport existed. Checked ahead of
-    # the serial branch because serial builds the same frame parsers TCP does,
-    # and ahead of every network signature because this failure never reached
-    # the network.
-    if _has_any(hay, _FRAMING_CONFIG_SIGS):
-        return ConnectionFault(
-            INVALID_CONFIG,
-            "This device's message framing settings were rejected, so it "
-            "can't be connected. Check the line ending and any packet framing "
-            "on the device page.",
-        )
 
     # Serial has no auth / route / refused / host-key semantics: a serial
     # failure is almost always "can't open the port" (missing, busy, or no OS

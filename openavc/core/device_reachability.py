@@ -64,6 +64,8 @@ from openavc.core.connection_fault import (
     bridge_port_missing_message,
     ConnectionFaultError,
     no_address_message,
+    no_port_message,
+    no_serial_port_message,
     NO_RESPONSE,
     TRANSPORT_DISCONNECTED,
     UNREACHABLE,
@@ -85,14 +87,8 @@ _CONNECT_TIMEOUT_S = 5.0
 _SERIAL_TIMEOUT_S = 2
 
 _NO_HOST = no_address_message()
-_NO_PORT = (
-    "No port is set for this device, and its driver does not supply one. "
-    "Enter the port in the device's Connection Settings."
-)
-_NO_SERIAL_PORT = (
-    "No serial port is set for this device. Choose one in the device's "
-    "Connection Settings."
-)
+_NO_PORT = no_port_message()
+_NO_SERIAL_PORT = no_serial_port_message()
 _DATAGRAM_NOTE = (
     "This device talks over UDP, which has no connection to open, so this "
     "only checks that the address resolves and has a route. Whether the "

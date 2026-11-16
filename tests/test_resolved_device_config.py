@@ -267,19 +267,19 @@ def test_required_port_coerces_string_int():
 
 def test_required_port_missing_raises_clear_error():
     d = _make_driver({"host": "10.0.0.1"})
-    with pytest.raises(ConnectionError, match="missing 'port'"):
+    with pytest.raises(ConnectionError, match="^No port is set for this device"):
         d._required_port()
 
 
 def test_required_port_empty_string_raises():
     d = _make_driver({"port": ""})
-    with pytest.raises(ConnectionError, match="missing 'port'"):
+    with pytest.raises(ConnectionError, match="^No port is set for this device"):
         d._required_port()
 
 
 def test_required_port_invalid_value_raises():
     d = _make_driver({"port": "not-a-number"})
-    with pytest.raises(ConnectionError, match="invalid port"):
+    with pytest.raises(ConnectionError, match="'not-a-number', which is not a port number"):
         d._required_port()
 
 

@@ -16,6 +16,16 @@ The rules worth knowing before changing anything here:
 * The framing hooks and ``local_address()`` are asked first, for every
   transport and in that order, so an adapter with no address fails the
   connect before anything is built.
+* THE rule for a setting a transport cannot be built from: it is refused
+  as ``invalid_config`` (a :class:`ConnectionFaultError`) before anything
+  is dialed, naming the setting, so the device card says what to change and
+  the device manager stops retrying (retrying can never change the answer).
+  Each builder runs in two halves, its settings and its dial: the framing
+  hooks and the settings half (the builder's own reads and the driver's
+  ``_transport_kwargs`` hook) run under :func:`_refusing_unusable`, which
+  types any ``ValueError`` or ``TypeError`` they raise; the checks below that
+  know the setting raise the typed refusal themselves, in words. The dial is
+  outside it: a failure once a transport opens is the transport's to word.
 * Each transport class, and ``transport/endpoint.py``, is imported when a
   connection is built, not when this module loads: a test that replaces one
   of those module attributes reaches the connect.
@@ -36,10 +46,18 @@ to shadow. From its host this needs ``device_id``, ``config``,
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+import importlib
+from collections.abc import Awaitable, Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.core.connection_fault import (
+    INVALID_CONFIG,
+    ConnectionFaultError,
+    no_port_message,
+    no_serial_port_message,
+)
 from openavc.transport.frame_parsers import FrameParser
 from openavc.utils.logger import get_logger
 
@@ -67,6 +85,71 @@ def _ssh_option_list(value: object) -> list[str]:
     return [line.strip() for line in str(value).splitlines() if line.strip()]
 
 
+# --- Settings a transport cannot be built from --------------------------------
+
+
+def _refused(message: str) -> ConnectionFaultError:
+    """The typed refusal of a setting no connection can be built from."""
+    return ConnectionFaultError(message, code=INVALID_CONFIG)
+
+
+def _in_words(exc: BaseException) -> str:
+    return (str(exc).strip() or type(exc).__name__).rstrip(".")
+
+
+@contextmanager
+def _refusing_unusable(sentence: str) -> Iterator[None]:
+    """Run a step that reads settings, before anything is dialed, typing a
+    ``ValueError`` or ``TypeError`` it raises as ``invalid_config``.
+
+    ``sentence`` frames the error's own words (``{reason}``). A refusal that
+    is already typed (an adapter with no address, a setting a check below
+    worded) passes through as it is.
+    """
+    try:
+        yield
+    except (ValueError, TypeError) as exc:
+        raise _refused(sentence.format(reason=_in_words(exc))) from exc
+
+
+_FRAMING_UNUSABLE = (
+    "This device's message framing can't be used: {reason}. Check the line "
+    "ending and packet framing in its settings or its driver."
+)
+_SETTINGS_UNUSABLE = (
+    "This device's connection settings can't be used: {reason}. Check them "
+    "in Edit Device."
+)
+
+
+def _port_number(port: object) -> int:
+    """``port`` as the number a socket takes, or the typed refusal naming it."""
+    try:
+        number = int(port)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        number = -1
+    if not 0 <= number <= 65535:
+        raise _refused(
+            f"This device's Port setting is {port!r}, which is not a port "
+            f"number. Enter a number from 1 to 65535 in the device's "
+            f"Connection Settings."
+        )
+    return number
+
+
+def _delimiter_not_text(delimiter: object, from_driver: bool) -> str:
+    if from_driver:
+        return (
+            f"This device's driver sets its line ending to {delimiter!r}, which "
+            f"is not text, so the device can't be connected. The driver's "
+            f"delimiter must be text, such as \\r or \\r\\n."
+        )
+    return (
+        f"This device's line ending is set to {delimiter!r}, which is not "
+        f"text. Choose a line ending on the device page."
+    )
+
+
 # --- Serial line settings -----------------------------------------------------
 
 _BYTESIZES = (5, 6, 7, 8)
@@ -79,26 +162,42 @@ _HARDWARE_FLOW = ("hardware", "rtscts", "rts/cts")
 _SOFTWARE_FLOW = ("software", "xonxoff", "xon/xoff")
 
 
-def _serial_int(config: dict[str, Any], key: str, default: int, expected: str) -> int:
+# The words for each line setting a serial port cannot use: the device form's
+# label (views/devices/DeviceDialogs.tsx) and what it may be.
+_SERIAL_SETTINGS = {
+    "baudrate": ("Baud rate", "a number, such as 9600"),
+    "bytesize": ("Data bits", "5, 6, 7 or 8"),
+    "parity": ("Parity", "N (none), E (even), O (odd), M (mark) or S (space)"),
+    "stopbits": ("Stop bits", "1, 1.5 or 2"),
+}
+
+
+def _serial_refused(key: str, value: object) -> ConnectionFaultError:
+    label, allowed = _SERIAL_SETTINGS[key]
+    return _refused(
+        f"This device's {label} setting is {value!r}, which a serial port "
+        f"can't use. {label} must be {allowed}. Set it in Edit Device."
+    )
+
+
+def _serial_int(config: dict[str, Any], key: str, default: int) -> int:
     try:
         return int(config.get(key, default))
     except (TypeError, ValueError):
-        raise ValueError(f"Invalid {key} {config.get(key)!r} ({expected})")
+        raise _serial_refused(key, config.get(key)) from None
 
 
 def _serial_bytesize(config: dict[str, Any]) -> int:
-    bytesize = _serial_int(config, "bytesize", 8, "must be 5, 6, 7, or 8")
+    bytesize = _serial_int(config, "bytesize", 8)
     if bytesize not in _BYTESIZES:
-        raise ValueError(f"Invalid bytesize {bytesize} (must be 5, 6, 7, or 8)")
+        raise _serial_refused("bytesize", config.get("bytesize"))
     return bytesize
 
 
 def _serial_parity(config: dict[str, Any]) -> str:
     parity = str(config.get("parity", "N")).upper()
     if parity not in _PARITIES:
-        raise ValueError(
-            f"Invalid parity {config.get('parity')!r} (must be one of N, E, O, M, S)"
-        )
+        raise _serial_refused("parity", config.get("parity"))
     return parity
 
 
@@ -107,10 +206,20 @@ def _serial_stopbits(config: dict[str, Any]) -> int | float:
     try:
         as_float = float(raw)
     except (TypeError, ValueError):
-        raise ValueError(f"Invalid stopbits {raw!r} (must be 1, 1.5, or 2)")
+        raise _serial_refused("stopbits", raw) from None
     if as_float not in _STOPBITS:
-        raise ValueError(f"Invalid stopbits {raw!r} (must be 1, 1.5, or 2)")
+        raise _serial_refused("stopbits", raw)
     return _STOPBITS[as_float]
+
+
+def _serial_port(config: dict[str, Any]) -> Any:
+    """The serial port to open; blank is refused before anything is opened.
+    Anything else goes to the transport as it is: it refuses a value that is
+    not a device path in words of its own."""
+    port = config.get("port", "")
+    if port is None or (isinstance(port, str) and not port.strip()):
+        raise _refused(no_serial_port_message())
+    return port
 
 
 def _serial_flow(config: dict[str, Any]) -> tuple[bool, bool]:
@@ -158,9 +267,11 @@ class _Asked:
     control_ip: str | None
 
 
-async def _tcp(driver: TransportLadder, asked: _Asked) -> None:
-    from openavc.transport.tcp import TCPTransport
+# Each settings half reads the device's config into the keyword arguments its
+# transport is built with, and dials nothing (_create_transport hands them to
+# the driver's _transport_kwargs hook, then to the dial).
 
+async def _tcp(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
     config = driver.config
     # TLS-wrapped TCP with `ssl: true`, in the same vocabulary as the http
     # branch (`ssl` to enable, `verify_ssl` for cert checking). The defaults
@@ -181,18 +292,16 @@ async def _tcp(driver: TransportLadder, asked: _Asked) -> None:
         ssl_verify=config.get("verify_ssl", True),
         keepalive=bool(config.get("tcp_keepalive", False)),
     )
-    driver.transport = await TCPTransport.create(**driver._transport_kwargs("tcp", kwargs))
+    return kwargs
 
 
-async def _serial(driver: TransportLadder, asked: _Asked) -> None:
-    from openavc.transport.serial_transport import SerialTransport
-
+async def _serial(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
     config = driver.config
     baudrate, bytesize, parity, stopbits, rtscts, xonxoff = (
         driver._coerce_serial_params(config)
     )
     kwargs = dict(
-        port=config.get("port", ""),
+        port=_serial_port(config),
         baudrate=baudrate,
         on_data=driver.on_data_received,
         on_disconnect=driver._handle_transport_disconnect,
@@ -206,12 +315,10 @@ async def _serial(driver: TransportLadder, asked: _Asked) -> None:
         xonxoff=xonxoff,
         name=driver.device_id,
     )
-    driver.transport = await SerialTransport.create(**driver._transport_kwargs("serial", kwargs))
+    return kwargs
 
 
-async def _udp(driver: TransportLadder, asked: _Asked) -> None:
-    from openavc.transport.udp import UDPTransport
-
+async def _udp(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
     config = driver.config
     kwargs = dict(
         host=config.get("host", ""),
@@ -221,13 +328,10 @@ async def _udp(driver: TransportLadder, asked: _Asked) -> None:
         inter_command_delay=config.get("inter_command_delay", 0.0),
         name=driver.device_id,
     )
-    driver.transport = UDPTransport(**driver._transport_kwargs("udp", kwargs))
-    await driver.transport.open(local_addr=asked.control_ip)
+    return kwargs
 
 
-async def _osc(driver: TransportLadder, asked: _Asked) -> None:
-    from openavc.transport.osc import OSCTransport
-
+async def _osc(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
     config = driver.config
     host = config.get("host", "")
     port = driver._required_port()
@@ -244,13 +348,11 @@ async def _osc(driver: TransportLadder, asked: _Asked) -> None:
         name=driver.device_id,
         tcp=osc_tcp,
     )
-    driver.transport = OSCTransport(**driver._transport_kwargs("osc", kwargs))
-    await driver.transport.open(local_addr=asked.control_ip)
+    return kwargs
 
 
-async def _http(driver: TransportLadder, asked: _Asked) -> None:
+async def _http(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
     from openavc.transport.endpoint import implied_port
-    from openavc.transport.http_client import HTTPClientTransport
 
     config = driver.config
     host = config.get("host", "")
@@ -274,8 +376,7 @@ async def _http(driver: TransportLadder, asked: _Asked) -> None:
         max_response_bytes=driver._http_max_response_bytes(),
         inter_command_delay=config.get("inter_command_delay", 0.0),
     )
-    driver.transport = HTTPClientTransport(**driver._transport_kwargs("http", kwargs))
-    await driver.transport.open()
+    return kwargs
 
 
 def _known_hosts_path(config: dict[str, Any]) -> str:
@@ -288,15 +389,14 @@ def _known_hosts_path(config: dict[str, Any]) -> str:
     return str(get_data_dir() / "ssh" / "known_hosts")
 
 
-async def _ssh(driver: TransportLadder, asked: _Asked) -> None:
+async def _ssh(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
     from openavc.transport.endpoint import implied_port
-    from openavc.transport.ssh import SSHTransport
 
     config = driver.config
     host = config.get("host", "")
     # Parsed before the key is asked for: a port that is not a number fails
     # the connect without making OpenAVC's key.
-    port = int(config.get("port") or implied_port("ssh", config))
+    port = _port_number(config.get("port") or implied_port("ssh", config))
     username = config.get("username", "")
     auth_method = config.get("ssh_auth_method", "key")
     known_hosts = _known_hosts_path(config)
@@ -319,12 +419,11 @@ async def _ssh(driver: TransportLadder, asked: _Asked) -> None:
         legacy_algorithms=config.get("ssh_legacy_algorithms", True) is not False,
         local_address=asked.control_ip,
     )
-    driver.transport = await SSHTransport.create(**driver._transport_kwargs("ssh", kwargs))
+    return kwargs
 
 
-async def _mqtt(driver: TransportLadder, asked: _Asked) -> None:
+async def _mqtt(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
     from openavc.transport.endpoint import implied_port
-    from openavc.transport.mqtt import MQTTTransport
 
     config = driver.config
     # Pub/sub, not a byte stream: inbound messages arrive topic-tagged via
@@ -333,7 +432,7 @@ async def _mqtt(driver: TransportLadder, asked: _Asked) -> None:
     # certificate for devices that require one.
     kwargs = dict(
         host=config.get("host", ""),
-        port=int(config.get("port") or implied_port("mqtt", config)),
+        port=_port_number(config.get("port") or implied_port("mqtt", config)),
         client_id=_set_or_none(config, "client_id"),
         username=_set_or_none(config, "username"),
         password=_set_or_none(config, "password"),
@@ -350,12 +449,11 @@ async def _mqtt(driver: TransportLadder, asked: _Asked) -> None:
         name=driver.device_id,
         local_address=asked.control_ip,
     )
-    driver.transport = await MQTTTransport.create(**driver._transport_kwargs("mqtt", kwargs))
+    return kwargs
 
 
-async def _snmp(driver: TransportLadder, asked: _Asked) -> None:
+async def _snmp(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
     from openavc.transport.endpoint import implied_port
-    from openavc.transport.snmp import SNMPTransport
 
     config = driver.config
     # Request/response only: SNMP has no inbound byte stream, so there is no
@@ -365,7 +463,7 @@ async def _snmp(driver: TransportLadder, asked: _Asked) -> None:
     # and a driver that only reads should not have to declare both.
     kwargs = dict(
         host=config.get("host", ""),
-        port=int(config.get("port") or implied_port("snmp", config)),
+        port=_port_number(config.get("port") or implied_port("snmp", config)),
         community=config.get("community", "public"),
         write_community=_set_or_none(config, "write_community"),
         timeout=float(config.get("timeout", 2.0) or 2.0),
@@ -374,19 +472,54 @@ async def _snmp(driver: TransportLadder, asked: _Asked) -> None:
         inter_command_delay=config.get("inter_command_delay", 0.0),
         name=driver.device_id,
     )
-    driver.transport = SNMPTransport(**driver._transport_kwargs("snmp", kwargs))
-    await driver.transport.open(local_addr=asked.control_ip)
+    return kwargs
 
 
-_BUILDERS: dict[str, Callable[[TransportLadder, _Asked], Awaitable[None]]] = {
-    "tcp": _tcp,
-    "serial": _serial,
-    "udp": _udp,
-    "osc": _osc,
-    "http": _http,
-    "ssh": _ssh,
-    "mqtt": _mqtt,
-    "snmp": _snmp,
+# --- The dials ----------------------------------------------------------------
+# Where the first socket (or port, or process) opens. The transport class is
+# looked up here, at connect, so a test that replaces it reaches the connect.
+
+_Settings = Callable[["TransportLadder", _Asked], Awaitable[dict[str, Any]]]
+_Dial = Callable[["TransportLadder", dict[str, Any], _Asked], Awaitable[None]]
+
+
+def _transport_class(path: str) -> Any:
+    module, name = path.rsplit(".", 1)
+    return getattr(importlib.import_module(module), name)
+
+
+def _created(path: str) -> _Dial:
+    """A transport whose ``create()`` builds it and opens it."""
+
+    async def dial(driver: TransportLadder, kwargs: dict[str, Any], asked: _Asked) -> None:
+        driver.transport = await _transport_class(path).create(**kwargs)
+
+    return dial
+
+
+def _opened(path: str, *, local_addr: bool) -> _Dial:
+    """A transport built by its constructor, then opened (from the chosen
+    adapter's address, for a datagram socket)."""
+
+    async def dial(driver: TransportLadder, kwargs: dict[str, Any], asked: _Asked) -> None:
+        driver.transport = _transport_class(path)(**kwargs)
+        if local_addr:
+            await driver.transport.open(local_addr=asked.control_ip)
+        else:
+            await driver.transport.open()
+
+    return dial
+
+
+_BUILDERS: dict[str, tuple[_Settings, _Dial]] = {
+    "tcp": (_tcp, _created("openavc.transport.tcp.TCPTransport")),
+    "serial": (_serial, _created("openavc.transport.serial_transport.SerialTransport")),
+    "udp": (_udp, _opened("openavc.transport.udp.UDPTransport", local_addr=True)),
+    "osc": (_osc, _opened("openavc.transport.osc.OSCTransport", local_addr=True)),
+    "http": (_http, _opened("openavc.transport.http_client.HTTPClientTransport", local_addr=False)),
+    "ssh": (_ssh, _created("openavc.transport.ssh.SSHTransport")),
+    "mqtt": (_mqtt, _created("openavc.transport.mqtt.MQTTTransport")),
+    "snmp": (_snmp, _opened("openavc.transport.snmp.SNMPTransport", local_addr=True)),
 }
 
 
@@ -416,10 +549,17 @@ class TransportLadder:
         then override _link_alive() and _close_session() so the
         connected property, the health loop, and every teardown path
         see the driver-owned session instead of a platform transport.
+
+        A setting no connection can be built from is refused as
+        ``invalid_config`` before the dial (the module docstring has the
+        rule); a failure in the dial itself is left as the transport raised it.
         """
+        with _refusing_unusable(_FRAMING_UNUSABLE):
+            frame_parser = self._create_frame_parser()
+            delimiter = self._resolve_delimiter()
         asked = _Asked(
-            frame_parser=self._create_frame_parser(),
-            delimiter=self._resolve_delimiter(),
+            frame_parser=frame_parser,
+            delimiter=delimiter,
             # Reach devices through (if an adapter is chosen); never for a
             # loopback host. The rule, and each transport's fallback port, are
             # in transport/endpoint.py so a connection test dials the same way.
@@ -427,8 +567,14 @@ class TransportLadder:
         )
         build = _BUILDERS.get(transport_type) if isinstance(transport_type, str) else None
         if build is None:
-            raise ValueError(f"Unsupported transport type: {transport_type}")
-        await build(self, asked)
+            raise _refused(
+                f"This device's Connection is set to {transport_type!r}, which "
+                f"OpenAVC can't connect over. Choose another in Edit Device."
+            )
+        settings, dial = build
+        with _refusing_unusable(_SETTINGS_UNUSABLE):
+            kwargs = self._transport_kwargs(transport_type, await settings(self, asked))
+        await dial(self, kwargs, asked)
 
     def local_address(self, host: str | None = None) -> str | None:
         """The local IP a connection this driver opens to ``host`` leaves
@@ -502,6 +648,10 @@ class TransportLadder:
         transport built a DelimiterFrameParser on it and that constructor
         rejects an empty delimiter. The device then failed at transport
         construction on every attempt, before any socket work.
+
+        A delimiter that is not text (a number, a list) is refused as
+        ``invalid_config``, saying whether the driver or the device set it:
+        the driver's wins, so the device page cannot change it.
         """
         from openavc.transport.binary_helpers import encode_escape_sequences
 
@@ -509,6 +659,8 @@ class TransportLadder:
             delim = source.get("delimiter")
             if delim is None:
                 continue
+            if not isinstance(delim, (str, bytes)):
+                raise _refused(_delimiter_not_text(delim, source is self.DRIVER_INFO))
             raw = delim if isinstance(delim, bytes) else encode_escape_sequences(delim)
             # "" and b"" both mean no framing, not a zero-length delimiter.
             return raw or None
@@ -548,15 +700,14 @@ class TransportLadder:
 
         Project config is untyped JSON, so an integrator / AI tool / hand-edit
         can store ``bytesize: "8"`` or ``stopbits: "1.5"`` as strings, or a
-        flat-out invalid value. pyserial does exact membership tests and raises
-        a bare ValueError at connect that the device manager then buries under
-        ~120 generic reconnect attempts. Coerce string forms to the right type
-        and raise a clear, actionable error for genuinely invalid values,
+        flat-out invalid value. pyserial does exact membership tests. Coerce
+        string forms to the right type and refuse a value no serial port can
+        use as ``invalid_config``, naming the setting as the device form does,
         checked in the order returned.
 
         Returns ``(baudrate, bytesize, parity, stopbits, rtscts, xonxoff)``.
         """
-        baudrate = _serial_int(config, "baudrate", 9600, "must be an integer")
+        baudrate = _serial_int(config, "baudrate", 9600)
         bytesize = _serial_bytesize(config)
         parity = _serial_parity(config)
         stopbits = _serial_stopbits(config)
@@ -564,30 +715,19 @@ class TransportLadder:
         return baudrate, bytesize, parity, stopbits, rtscts, xonxoff
 
     def _required_port(self) -> int:
-        """Return ``config['port']`` for TCP/UDP/OSC, or raise a clear error.
+        """Return ``config['port']`` for TCP/UDP/OSC, or refuse it.
 
         Driver ``default_config.port`` is layered in by
         ``Engine.resolved_device_config`` before instantiation, so a
         properly-declared driver always has a port here. A missing port
-        means the driver definition skipped declaring one — surface that
-        as a config error instead of silently dialing port 23.
+        means the driver definition skipped declaring one; it is refused as
+        ``invalid_config`` in the connection test's words instead of
+        silently dialing port 23, and so is a port that is not a number.
         """
         port = self.config.get("port")
         if port is None or port == "":
-            driver_id = self.DRIVER_INFO.get("id", "?")
-            raise ConnectionError(
-                f"Device '{self.device_id}': missing 'port' in config "
-                f"(driver '{driver_id}' must declare default_config.port "
-                f"or the device must override it)"
-            )
-        try:
-            return int(port)
-        except (TypeError, ValueError) as e:
-            driver_id = self.DRIVER_INFO.get("id", "?")
-            raise ConnectionError(
-                f"Device '{self.device_id}': invalid port {port!r} "
-                f"(driver '{driver_id}')"
-            ) from e
+            raise _refused(no_port_message())
+        return _port_number(port)
 
     def _http_max_response_bytes(self) -> int:
         """Resolve the HTTP response-body cap from config.

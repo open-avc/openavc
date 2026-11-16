@@ -210,16 +210,19 @@ class TestSerialParamCoercion:
         assert (got_rtscts, got_xonxoff) == (rtscts, xonxoff)
 
     @pytest.mark.parametrize("config,match", [
-        ({"bytesize": 3}, "bytesize"),
-        ({"bytesize": "x"}, "bytesize"),
-        ({"parity": "X"}, "parity"),
-        ({"stopbits": 3}, "stopbits"),
-        ({"stopbits": "nope"}, "stopbits"),
-        ({"baudrate": "fast"}, "baudrate"),
+        ({"bytesize": 3}, "Data bits"),
+        ({"bytesize": "x"}, "Data bits"),
+        ({"parity": "X"}, "Parity"),
+        ({"stopbits": 3}, "Stop bits"),
+        ({"stopbits": "nope"}, "Stop bits"),
+        ({"baudrate": "fast"}, "Baud rate"),
     ])
     def test_invalid_values_raise_clear_error(self, config, match):
-        with pytest.raises(ValueError, match=match):
+        from openavc.drivers.base import ConnectionFaultError
+
+        with pytest.raises(ConnectionFaultError, match=match) as caught:
             BaseDriver._coerce_serial_params(config)
+        assert caught.value.fault_code == "invalid_config"
 
 
 # ── max_missed_polls clamp ──
