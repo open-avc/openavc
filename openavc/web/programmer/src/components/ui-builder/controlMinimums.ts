@@ -17,6 +17,7 @@
  * Read by the page review's too-small finding and the Layout panel's minimum
  * size.
  */
+import { styleIsBlank } from "../../api/projectValues";
 import type { UIElement } from "../../api/types";
 import {
   CONTROL_MINIMUMS,
@@ -85,13 +86,16 @@ function subObject(el: UIElement, name: string): Record<string, unknown> {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
-/** An authored measurement out of `element.style`, in px (style is rem).
+/** An authored measurement out of `element.style`, in px (style is rem), or
+ *  null where the control draws its own: none written, a blank one
+ *  (`styleIsBlank`, the project schema's rule: a crosspoint cell of 0), or no
+ *  number at all.
  *
  *  Mirrors `_style_px` in openavc/ui/control_minimums.py. */
 function stylePx(el: UIElement, key: string): number | null {
   if (!key) return null;
   const value = subObject(el, "style")[key];
-  return typeof value === "number" ? value * REM_BASE_PX : null;
+  return typeof value === "number" && !styleIsBlank(key, value) ? value * REM_BASE_PX : null;
 }
 
 /** Whether a ControlConditionalPart is drawn. Mirrors `part_is_present`

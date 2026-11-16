@@ -1054,6 +1054,29 @@ CASES["masters_zero_sized_under_a_control"] = _project(
     ],
 )
 
+# A crosspoint cell size of 0 is unset: the panel draws the cell that fits the
+# box, at least 44px, exactly as it does with none written. So a two-by-two
+# matrix written with one needs the same box as one written without, and a box
+# between the two readings (a 0px cell needs 97x86) is too small for both.
+_TWO_BY_TWO = {
+    "sources": {"from": {"count": 2}},
+    "destinations": {"from": {"count": 2, "route_key": "device.acme.output.*.input"}},
+}
+CASES["matrix_cell_size_zero"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "mtx_cell_zero", "type": "matrix", "matrix_config": _TWO_BY_TWO,
+             "style": {"cell_size": 0}},
+            {"id": "mtx_cell_unset", "type": "matrix", "matrix_config": _TWO_BY_TWO},
+        ],
+        [_landscape({
+            "mtx_cell_zero": _box(0, 0, 150, 130),
+            "mtx_cell_unset": _box(0, 50, 150, 130),
+        })],
+    ),
+])
+
 # ...and the other half of that: a master has no sibling in any layout, but the
 # controls on the pages it draws under are laid over the top of it. Masters are
 # appended to the page surface FIRST, so a control on top of one hides it and
@@ -1910,6 +1933,27 @@ def test_a_master_written_zero_wide_or_tall_is_measured_at_zero(verdicts) -> Non
          "zero_tall (status_led) is 128x0px at the 1280x800 reference, too small for "
          "what it draws: 0px tall, needs 20px (led-dot is 20px). Give it h at least "
          "2.5% of the page in the landscape arrangement."),
+    ]
+
+
+def test_a_crosspoint_cell_size_of_zero_is_measured_as_unset(verdicts) -> None:
+    """Named here too: the defect failed toward saying NOTHING. One side read
+    the 0 as a 0px cell, wanted a 97x86 box for a two-by-two matrix the panel
+    draws at 185x174, and found 150x130 roomy."""
+    python_side, builder_side = verdicts["matrix_cell_size_zero"]
+    assert builder_side == python_side  # said again here so a drift names this case
+
+    def sentence(element_id: str) -> str:
+        return (
+            f"{element_id} (matrix) is 150x130px at the 1280x800 reference, too small for "
+            "what it draws: 150px wide, needs 185px (matrix-cell is 44px); 130px tall, "
+            "needs 174px (matrix-cell is 44px). Give it w at least 14.45% and h at least "
+            "21.75% of the page."
+        )
+
+    assert [(f["element_id"], f["kind"], f["message"]) for f in python_side] == [
+        ("mtx_cell_zero", "too_small_for_contents", sentence("mtx_cell_zero")),
+        ("mtx_cell_unset", "too_small_for_contents", sentence("mtx_cell_unset")),
     ]
 
 

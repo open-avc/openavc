@@ -6601,7 +6601,7 @@ exports[`the Basic section, every element type > matrix, bare (page) 1`] = `
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7" -> patch {style: {cell_size: 0.5}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "" -> nothing
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "2.5" -> patch {style: {cell_size: 0.1786}}
-#20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: 0}}
+#20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: undefined}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "40" -> patch {style: {cell_size: 2.8571}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "-3" -> patch {style: {cell_size: -0.2143}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7", change "" -> patch {style: {cell_size: 0.5}} ; patch {style: {cell_size: undefined}}"
@@ -6917,7 +6917,7 @@ exports[`the Basic section, every element type > matrix, generator (page) 1`] = 
 #30 input type="number" placeholder="Auto" min="24" max="80" value="42" :: change "7" -> patch {style: {crosspoint_active_color: "#0f0", crosspoint_inactive_color: "#333", cell_size: 0.5}}
 #30 input type="number" placeholder="Auto" min="24" max="80" value="42" :: change "" -> patch {style: {crosspoint_active_color: "#0f0", crosspoint_inactive_color: "#333", cell_size: undefined}}
 #30 input type="number" placeholder="Auto" min="24" max="80" value="42" :: change "2.5" -> patch {style: {crosspoint_active_color: "#0f0", crosspoint_inactive_color: "#333", cell_size: 0.1786}}
-#30 input type="number" placeholder="Auto" min="24" max="80" value="42" :: change "0" -> patch {style: {crosspoint_active_color: "#0f0", crosspoint_inactive_color: "#333", cell_size: 0}}
+#30 input type="number" placeholder="Auto" min="24" max="80" value="42" :: change "0" -> patch {style: {crosspoint_active_color: "#0f0", crosspoint_inactive_color: "#333", cell_size: undefined}}
 #30 input type="number" placeholder="Auto" min="24" max="80" value="42" :: change "40" -> patch {style: {crosspoint_active_color: "#0f0", crosspoint_inactive_color: "#333", cell_size: 2.8571}}
 #30 input type="number" placeholder="Auto" min="24" max="80" value="42" :: change "-3" -> patch {style: {crosspoint_active_color: "#0f0", crosspoint_inactive_color: "#333", cell_size: -0.2143}}
 #30 input type="number" placeholder="Auto" min="24" max="80" value="42" :: change "7", change "" -> patch {style: {crosspoint_active_color: "#0f0", crosspoint_inactive_color: "#333", cell_size: 0.5}} ; patch {style: {crosspoint_active_color: "#0f0", crosspoint_inactive_color: "#333", cell_size: undefined}}"
@@ -7077,7 +7077,7 @@ exports[`the Basic section, every element type > matrix, lists on both axes (pag
 #15 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7" -> patch {style: {cell_size: 0.5}}
 #15 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "" -> nothing
 #15 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "2.5" -> patch {style: {cell_size: 0.1786}}
-#15 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: 0}}
+#15 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: undefined}}
 #15 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "40" -> patch {style: {cell_size: 2.8571}}
 #15 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "-3" -> patch {style: {cell_size: -0.2143}}
 #15 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7", change "" -> patch {style: {cell_size: 0.5}} ; patch {style: {cell_size: undefined}}"
@@ -7228,7 +7228,7 @@ exports[`the Basic section, every element type > matrix, lists without audio (pa
 #14 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7" -> patch {style: {cell_size: 0.5}}
 #14 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "" -> nothing
 #14 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "2.5" -> patch {style: {cell_size: 0.1786}}
-#14 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: 0}}
+#14 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: undefined}}
 #14 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "40" -> patch {style: {cell_size: 2.8571}}
 #14 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "-3" -> patch {style: {cell_size: -0.2143}}
 #14 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7", change "" -> patch {style: {cell_size: 0.5}} ; patch {style: {cell_size: undefined}}"
@@ -7454,7 +7454,7 @@ exports[`the Basic section, every element type > matrix, mute left on by default
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7" -> patch {style: {cell_size: 0.5}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "" -> nothing
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "2.5" -> patch {style: {cell_size: 0.1786}}
-#20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: 0}}
+#20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: undefined}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "40" -> patch {style: {cell_size: 2.8571}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "-3" -> patch {style: {cell_size: -0.2143}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7", change "" -> patch {style: {cell_size: 0.5}} ; patch {style: {cell_size: undefined}}"
@@ -7674,7 +7674,7 @@ exports[`the Basic section, every element type > matrix, odd axes (page) 1`] = `
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7" -> patch {style: {cell_size: 0.5}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "" -> nothing
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "2.5" -> patch {style: {cell_size: 0.1786}}
-#20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: 0}}
+#20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: undefined}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "40" -> patch {style: {cell_size: 2.8571}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "-3" -> patch {style: {cell_size: -0.2143}}
 #20 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7", change "" -> patch {style: {cell_size: 0.5}} ; patch {style: {cell_size: undefined}}"
@@ -7916,7 +7916,7 @@ exports[`the Basic section, every element type > matrix, one preset (page) 1`] =
 #23 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7" -> patch {style: {cell_size: 0.5}}
 #23 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "" -> nothing
 #23 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "2.5" -> patch {style: {cell_size: 0.1786}}
-#23 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: 0}}
+#23 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: undefined}}
 #23 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "40" -> patch {style: {cell_size: 2.8571}}
 #23 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "-3" -> patch {style: {cell_size: -0.2143}}
 #23 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7", change "" -> patch {style: {cell_size: 0.5}} ; patch {style: {cell_size: undefined}}"
@@ -8068,7 +8068,7 @@ exports[`the Basic section, every element type > matrix, setup dialog open (page
 #16 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7" -> patch {style: {cell_size: 0.5}}
 #16 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "" -> nothing
 #16 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "2.5" -> patch {style: {cell_size: 0.1786}}
-#16 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: 0}}
+#16 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: undefined}}
 #16 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "40" -> patch {style: {cell_size: 2.8571}}
 #16 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "-3" -> patch {style: {cell_size: -0.2143}}
 #16 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7", change "" -> patch {style: {cell_size: 0.5}} ; patch {style: {cell_size: undefined}}"
@@ -8270,7 +8270,7 @@ exports[`the Basic section, every element type > matrix, sources a list and dest
 #18 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7" -> patch {style: {cell_size: 0.5}}
 #18 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "" -> nothing
 #18 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "2.5" -> patch {style: {cell_size: 0.1786}}
-#18 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: 0}}
+#18 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: undefined}}
 #18 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "40" -> patch {style: {cell_size: 2.8571}}
 #18 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "-3" -> patch {style: {cell_size: -0.2143}}
 #18 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7", change "" -> patch {style: {cell_size: 0.5}} ; patch {style: {cell_size: undefined}}"
@@ -8514,7 +8514,7 @@ exports[`the Basic section, every element type > matrix, unbacked lock and missi
 #21 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7" -> patch {style: {cell_size: 0.5}}
 #21 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "" -> nothing
 #21 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "2.5" -> patch {style: {cell_size: 0.1786}}
-#21 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: 0}}
+#21 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "0" -> patch {style: {cell_size: undefined}}
 #21 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "40" -> patch {style: {cell_size: 2.8571}}
 #21 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "-3" -> patch {style: {cell_size: -0.2143}}
 #21 input type="number" placeholder="Auto" min="24" max="80" value="" :: change "7", change "" -> patch {style: {cell_size: 0.5}} ; patch {style: {cell_size: undefined}}"

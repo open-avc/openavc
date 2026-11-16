@@ -12,6 +12,7 @@
  */
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
+import { styleIsBlank } from "../../../api/projectValues";
 import type { ProjectConfig, UIElement } from "../../../api/types";
 import { MATRIX_PANEL_WRITABLE_PREFIXES } from "../../../api/uiBindingReach.gen";
 import { pxToRem, remToPx } from "../uiBuilderHelpers";
@@ -393,7 +394,15 @@ function GeneratorLabels({
   );
 }
 
+/** A typed cell size in rem, or none for an empty box or a 0, which the
+ *  project schema reads as unset: the panel fits the cell to the box. */
+function typedCellSize(typed: string): number | undefined {
+  const rem = pxToRem(typed);
+  return rem === null || styleIsBlank("cell_size", rem) ? undefined : rem;
+}
+
 function MatrixAppearance({ element, onChange }: FieldProps) {
+  const cellSize = element.style?.cell_size;
   return (
     <>
       <SubSection label="Matrix Appearance" />
@@ -402,9 +411,9 @@ function MatrixAppearance({ element, onChange }: FieldProps) {
       <FieldRow label="Cell Size">
         <input
           type="number"
-          value={remToPx(element.style?.cell_size as number) ?? ""}
+          value={styleIsBlank("cell_size", cellSize) ? "" : remToPx(cellSize as number) ?? ""}
           placeholder="Auto"
-          onChange={(e) => onChange({ style: { ...element.style, cell_size: e.target.value ? pxToRem(Number(e.target.value)) : undefined } })}
+          onChange={(e) => onChange({ style: { ...element.style, cell_size: typedCellSize(e.target.value) } })}
           min={24} max={80} style={{ flex: 1 }}
         />
         <span style={{ fontSize: 10, color: "var(--text-muted)" }}>px</span>

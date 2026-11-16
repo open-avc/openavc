@@ -61,6 +61,20 @@ describe("a repeated part", () => {
     ).toEqual([{ part: "matrix-cell", widthPx: 44, heightPx: 44 }]);
   });
 
+  it("reads a cell size of 0 as unset, the cell the panel fits to the box", () => {
+    const unset = controlMinimumBox(crosspoint({ sources: [1, 2], destinations: [1, 2] }));
+    expect(unset).toEqual({
+      widthPx: 95 + 2 * 45,
+      heightPx: 84 + 2 * 45,
+      internals: [{ part: "matrix-cell", widthPx: 44, heightPx: 44 }],
+    });
+    for (const zero of [0, -0]) {
+      expect(
+        controlMinimumBox(crosspoint({ sources: [1, 2], destinations: [1, 2] }, { style: { cell_size: zero } })),
+      ).toEqual(unset);
+    }
+  });
+
   it("replaces the declared part with the resolved one, on the axis it repeats along", () => {
     expect(
       controlMinimumBox(el({ matrix_style: "list", matrix_config: { sources: [1, 2, 3], destinations: [1, 2] } })),

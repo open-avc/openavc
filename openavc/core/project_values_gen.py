@@ -12,9 +12,11 @@ The table carries every field that declares a bound, under the model that
 declares it, and every panel setting with a plain default, since the panel
 fills a blank setting itself; a blank another setting decides (a model's
 ``BLANK_FROM``: the theme a project with no theme id draws, the format a clock
-with none draws) carries that setting's values too. A bound the table has no
-word for stops the generator rather than being left out: left out, the Builder
-would offer a value the save refuses.
+with none draws) carries that setting's values too, and a style value whose 0
+is blank (a model's ``ZERO_IS_BLANK``: a crosspoint cell size) is listed by its
+path, ``style.cell_size``. A bound the table has no word for stops the
+generator rather than being left out: left out, the Builder would offer a value
+the save refuses.
 
 Data only. Run:  python -m openavc.core.project_values_gen
 A test compares both committed files against a fresh render, so a bound changed
@@ -162,6 +164,23 @@ def _entry(model: type[BaseModel], field: str, info: FieldInfo, settings: bool) 
     return None
 
 
+def _zero_blanks(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
+    """``{"style.cell_size": {"zero_is_blank": True}, ...}`` for the keys the
+    model itself declares in ``ZERO_IS_BLANK`` (a model inheriting them is
+    not listed again)."""
+    declared = vars(model).get("ZERO_IS_BLANK", {})
+    entries = {}
+    for field, keys in declared.items():
+        info = model.model_fields.get(field)
+        if info is None or dict not in (info.annotation, typing.get_origin(info.annotation)):
+            raise UnreadableBoundError(
+                f"{model.__name__}.ZERO_IS_BLANK names {field!r}, which is not a dict field "
+                f"of {model.__name__}"
+            )
+        entries.update({f"{field}.{key}": {"zero_is_blank": True} for key in sorted(keys)})
+    return entries
+
+
 def project_values(roots: tuple[type[BaseModel], ...] = (ProjectConfig,)) -> dict[str, dict[str, Any]]:
     """The table: model name -> field -> its default, min, max and integer."""
     table: dict[str, dict[str, Any]] = {}
@@ -174,6 +193,7 @@ def project_values(roots: tuple[type[BaseModel], ...] = (ProjectConfig,)) -> dic
             entry = _entry(model, field, info, settings)
             if entry is not None:
                 fields[field] = entry
+        fields.update(_zero_blanks(model))
         if fields:
             table[model.__name__] = fields
     return table
@@ -192,7 +212,9 @@ BANNER = """\
 // whole project save. `blank_from` says what a blank one draws when another
 // setting decides it: that setting's value names it (null: that value draws
 // none), and a value not named, a blank one included, reads as the one
-// `otherwise` names.
+// `otherwise` names. A key inside a field (`style.cell_size`) with
+// `zero_is_blank` reads a 0 as a blank one, the control drawing its own size,
+// never as a size of 0.
 """
 
 TS_BODY = """
@@ -204,6 +226,7 @@ export interface ProjectValue {
   readonly integer?: boolean;
   readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string | null>>>>;
   readonly otherwise?: string;
+  readonly zero_is_blank?: boolean;
 }
 
 export const PROJECT_VALUES = %(table)s as const satisfies Record<string, Record<string, ProjectValue>>;

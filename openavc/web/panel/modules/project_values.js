@@ -6,8 +6,8 @@
  * (modules/builder_link.js), which never did. Both are read here, so a draft
  * draws what saving it would: a control's shown decimals, the page transition
  * and entry stagger, the idle page, the failure message switch, the theme a
- * project with no theme id draws and the format a clock with none draws are
- * read only here.
+ * project with no theme id draws, the format a clock with none draws and
+ * whether a 0 crosspoint cell is one at all are read only here.
  *
  * A number the table bounds is held to its range (the nearer end for one
  * outside it) and rounded where the schema takes whole numbers only. A blank
@@ -48,6 +48,18 @@ export function panelSetting(settings, field) {
     const n = boundedNumber('UISettings', field, raw);
     if (n === null || (Number(raw) === 0 && spec.min > 0)) return spec.default;
     return n;
+}
+
+/**
+ * A size in a control's `style` as the panel draws it: the value as written,
+ * or null where the control sizes itself. A 0 is null where the table reads a
+ * 0 as blank (`zero_is_blank`: a crosspoint cell of 0 is the cell that fits
+ * the box), and so is a value that is no size at all (absent, empty, false,
+ * NaN), as the panel has always drawn one.
+ */
+export function styleSize(field, raw) {
+    if (raw === 0) return PROJECT_VALUES.UIElement[`style.${field}`]?.zero_is_blank ? null : raw;
+    return raw || null;
 }
 
 /**

@@ -140,6 +140,30 @@ def test_a_bound_the_table_cannot_say_stops_the_generator() -> None:
         project_values(roots=(Odd,))
 
 
+@pytest.mark.parametrize("field", ["label", "missing"])
+def test_a_zero_blank_outside_a_dict_field_stops_the_generator(field) -> None:
+    """A 0 that reads as blank is a key inside a dict field (``style.cell_size``);
+    one named on any other field has no path the panel or the Builder can read."""
+
+    class Odd(BaseModel):
+        label: str = ""
+        style: dict = Field(default_factory=dict)
+        ZERO_IS_BLANK: ClassVar[dict] = {field: frozenset({"size"})}
+
+    with pytest.raises(UnreadableBoundError, match=f"Odd.ZERO_IS_BLANK names '{field}'"):
+        project_values(roots=(Odd,))
+
+
+def test_a_zero_blank_is_listed_by_its_path() -> None:
+    class Odd(BaseModel):
+        style: dict = Field(default_factory=dict)
+        ZERO_IS_BLANK: ClassVar[dict] = {"style": frozenset({"size", "gap"})}
+
+    assert project_values(roots=(Odd,)) == {
+        "Odd": {"style.gap": {"zero_is_blank": True}, "style.size": {"zero_is_blank": True}},
+    }
+
+
 @pytest.mark.parametrize(
     "rule",
     [("mode", {"light": "light-modern", "dark": "dark-default"}), ("theme", {"light": "light-modern"})],

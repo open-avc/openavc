@@ -23,6 +23,8 @@
  * drawn: `orientation` (of the arrangement being drawn) and `remPx`.
  */
 
+import { styleSize } from './project_values.js';
+
 // How far a finger may travel on a matrix crosspoint before the gesture stops
 // being a tap and becomes a drag-to-route. Deliberately generous: a wall panel
 // is touched with a thumb, and a few pixels of travel on the way down is a tap
@@ -353,12 +355,13 @@ function showsMute(element, config) {
 
 /**
  * A crosspoint cell's size. An authored cell_size pins the cell at exactly
- * that size; with nothing authored the cell fits itself to the box between
- * the floor and the ceiling, so a matrix given half a page draws a grid
- * worth touching.
+ * that size; with nothing authored (a 0 is nothing: the project schema's
+ * table says so) the cell fits itself to the box between the floor and the
+ * ceiling, so a matrix given half a page draws a grid worth touching.
  */
-function cellSizes(style, remPx) {
-    const authoredPx = style.cell_size ? style.cell_size * remPx : null;
+export function cellSizes(style, remPx) {
+    const cell = styleSize('cell_size', style.cell_size);
+    const authoredPx = cell === null ? null : cell * remPx;
     return {
         authoredPx,
         minPx: authoredPx ?? MATRIX_CELL_MIN_PX,

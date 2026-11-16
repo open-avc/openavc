@@ -116,6 +116,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from openavc.core.project_loader import style_is_blank
 from openavc.ui.matrix_model import axis_count
 
 # The panel's rem base: `style` measurements are px / 14 (project format 0.8.0).
@@ -625,7 +626,9 @@ def _config(element: Mapping[str, Any], name: str) -> Mapping[str, Any]:
 
 
 def _style_px(element: Mapping[str, Any], key: str) -> float | None:
-    """An authored measurement out of ``element.style``, in px.
+    """An authored measurement out of ``element.style``, in px, or None where
+    the control draws its own: none written, a blank one (``style_is_blank``,
+    the project schema's rule: a crosspoint cell of 0), or no number at all.
 
     Style measurements are rem (project format 0.8.0), so this is the one place
     that multiplies back up.
@@ -633,7 +636,9 @@ def _style_px(element: Mapping[str, Any], key: str) -> float | None:
     if not key:
         return None
     value = _config(element, "style").get(key)
-    return float(value) * REM_BASE_PX if isinstance(value, int | float) else None
+    if style_is_blank(key, value) or not isinstance(value, int | float):
+        return None
+    return float(value) * REM_BASE_PX
 
 
 def part_is_present(when: str, element: Mapping[str, Any]) -> bool:
@@ -740,7 +745,8 @@ def minimum_box(
         # into one internal rather than reported twice with a hole in each.
         resolved: dict[str, dict[str, Any]] = {}
         for repeated in rule.repeated:
-            size = _style_px(element, repeated.size_property) or repeated.size_px
+            authored = _style_px(element, repeated.size_property)
+            size = repeated.size_px if authored is None else authored
             span = _count(repeated, element, orientation) * (size + repeated.gap_px)
             if repeated.axis == "width":
                 width += span

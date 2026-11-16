@@ -8,7 +8,9 @@ The models are the one place a project value's bound and default are written:
 each range on its field (``Field(ge=, le=)``), each blank as the field's
 default, or, for a blank another setting decides (the theme a project with no
 theme id draws, the format a clock with none draws), in the model's
-``BLANK_FROM``, read by ``blank_drawn``.
+``BLANK_FROM``, read by ``blank_drawn``; a style value whose 0 is blank (a
+crosspoint cell size) in ``UIElement.ZERO_IS_BLANK``, read by
+``style_is_blank``.
 ``python -m openavc.core.project_values_gen`` renders them into one
 table for the Builder (``web/programmer/src/api/projectValues.gen.ts``) and the
 panel (``web/panel/modules/project_values.gen.js``), which draws the Builder's
@@ -569,6 +571,11 @@ class UIElement(_ForwardCompatModel):
         }, "time"),
     }
 
+    #: Keys of a dict field whose 0 is a blank value, never a size: the
+    #: control draws its own, as with none written (style_is_blank reads it).
+    #: A crosspoint cell_size of 0 is the cell that fits the box.
+    ZERO_IS_BLANK: ClassVar[dict[str, frozenset[str]]] = {"style": frozenset({"cell_size"})}
+
     @field_validator("id")
     @classmethod
     def id_no_dots(cls, v: str) -> str:
@@ -594,6 +601,17 @@ class UIElement(_ForwardCompatModel):
             ):
                 log.warning("Matrix element %s", problem)
         return self
+
+
+def style_is_blank(key: str, value: Any) -> bool:
+    """THE read of a value in a control's ``style``: blank, the control drawing
+    its own size, when none is written or when it is a 0 the element declares
+    blank (``UIElement.ZERO_IS_BLANK``). The panel and the Builder read the same
+    rule from the generated table (``project_values_gen.py``)."""
+    if value is None:
+        return True
+    zero_blank = key in UIElement.ZERO_IS_BLANK["style"]
+    return zero_blank and isinstance(value, int | float) and value == 0
 
 
 class PageBackground(_ForwardCompatModel):

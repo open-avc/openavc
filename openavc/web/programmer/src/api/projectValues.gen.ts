@@ -10,7 +10,9 @@
 // whole project save. `blank_from` says what a blank one draws when another
 // setting decides it: that setting's value names it (null: that value draws
 // none), and a value not named, a blank one included, reads as the one
-// `otherwise` names.
+// `otherwise` names. A key inside a field (`style.cell_size`) with
+// `zero_is_blank` reads a 0 as a blank one, the control drawing its own size,
+// never as a size of 0.
 
 /** One project value: what a blank one is, and the range it may hold. */
 export interface ProjectValue {
@@ -20,6 +22,7 @@ export interface ProjectValue {
   readonly integer?: boolean;
   readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string | null>>>>;
   readonly otherwise?: string;
+  readonly zero_is_blank?: boolean;
 }
 
 export const PROJECT_VALUES = {
@@ -51,6 +54,9 @@ export const PROJECT_VALUES = {
         }
       },
       "otherwise": "time"
+    },
+    "style.cell_size": {
+      "zero_is_blank": true
     }
   },
   "UISettings": {
