@@ -1166,7 +1166,7 @@ def _bundle_bytes(
         for fname, source in scripts.items():
             zf.writestr(f"scripts/{fname}", source)
         for fname, fpath in driver_files:
-            zf.writestr(f"drivers/{fname}", fpath.read_text(encoding="utf-8"))
+            zf.writestr(f"drivers/{fname}", fpath.read_bytes())
         for archive_path, fpath in plugin_files:
             zf.writestr(archive_path, fpath.read_bytes())
         for archive_path, fpath in asset_files:

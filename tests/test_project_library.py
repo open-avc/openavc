@@ -1307,3 +1307,16 @@ def test_replace_project_trees_is_safe_on_a_project_with_none(tmp_path):
     project_dir.mkdir(parents=True)
     plib.replace_project_trees(project_dir, None)
     assert _live_tree_files(project_dir) == set()
+
+
+def test_an_export_copies_a_driver_file_byte_for_byte(tmp_path, monkeypatch):
+    """A driver file goes into the bundle as the bytes on disk, whatever
+    encoding its text is in: here latin-1, as its own coding line says."""
+    driver = tmp_path / "acme_widget.py"
+    content = b"# -*- coding: latin-1 -*-\nNAME = 'Acme Caf\xe9'\n"
+    driver.write_bytes(content)
+    monkeypatch.setattr(plib, "_find_driver_files", lambda _deps: [("acme_widget.py", driver)])
+    data = {"project": {"id": "acme", "name": "Acme"}, "driver_dependencies": ["acme_widget"]}
+    payload = plib._bundle_bytes(data, {}, tmp_path / "acme")
+    with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+        assert zf.read("drivers/acme_widget.py") == content
