@@ -73,6 +73,19 @@ def _validate_id(value: str, label: str) -> str:
 
 
 # --- Pydantic Models ---
+#
+# A field that takes a range of numbers says so on the field (``Field(ge=,
+# le=)``): the schema refuses a value outside it, whoever sends it. A bound
+# added to a field a project could already hold comes with a format migration
+# step that brings a saved value inside it, so a project an earlier release
+# saved still loads; a door that writes into the running project without going
+# back through the schema checks the field the same way (the AI's element
+# doors validate each assignment).
+
+# A readout's decimal places, on a control and on a monitored reading alike:
+# the most the panel's labels and gauges ever drew.
+DISPLAY_DECIMALS_MIN = 0
+DISPLAY_DECIMALS_MAX = 20
 
 
 class ProjectMeta(_ForwardCompatModel):
@@ -201,8 +214,10 @@ class MonitorConfig(_ForwardCompatModel):
     #: the panel's slider/fader/gauge/label carry. Unset is "as reported", not
     #: zero: a float32 crossing a float64 wire reads 0.08000000566244125, and
     #: the room that cares says so once, here, for the tile, the cloud health
-    #: card and the alert together.
-    display_decimals: int | None = None
+    #: card and the alert together. The bound is the element field's.
+    display_decimals: int | None = Field(
+        default=None, ge=DISPLAY_DECIMALS_MIN, le=DISPLAY_DECIMALS_MAX,
+    )
     #: Value -> word, and which values are normal (booleans, enums, strings).
     states: dict[str, MonitorStateEntry] = Field(default_factory=dict)
     #: How long the reading must be outside normal before it fires. 0 fires at
@@ -415,7 +430,10 @@ class UIElement(_ForwardCompatModel):
     response_db_range: float | None = None  # logarithmic taper: dB span of the throw (default 60)
     send_on_release: bool | None = None  # slider/fader: send only when the drag ends, not continuously
     send_throttle_ms: int | None = None  # slider/fader: min ms between live sends (default per element)
-    display_decimals: int | None = None  # slider/fader/gauge/label: decimal places shown in the value readout
+    # slider/fader/gauge/label: decimal places shown in the value readout
+    display_decimals: int | None = Field(
+        default=None, ge=DISPLAY_DECIMALS_MIN, le=DISPLAY_DECIMALS_MAX,
+    )
     target_page: str | None = None
     # page_nav: lit (accent fill) while its target page or overlay is on this
     # panel's screen. Absent is off, so a nav saved before it existed is unchanged.
@@ -600,15 +618,17 @@ class UISettings(_ForwardCompatModel):
     accent_color: str = ""
     font_family: str = ""
     lock_code: str = ""
-    idle_timeout_seconds: int = 0
+    # 0 is off.
+    idle_timeout_seconds: int = Field(default=0, ge=0)
     idle_page: str = "main"
     # orientation removed in 0.8.0 -- it was one string for the whole project,
     # which is exactly what stopped a project serving a landscape wall panel and
     # a portrait phone at the same time. Orientation is now a layout property.
     page_transition: str = "none"
-    page_transition_duration: int = 200
+    # The old page stays on screen under the new one until this runs out.
+    page_transition_duration: int = Field(default=200, ge=50, le=1000)
     element_entry: str = "none"
-    element_stagger_ms: int = 30
+    element_stagger_ms: int = Field(default=30, ge=10, le=200)
     element_stagger_style: str = "fade-up"
     # A failed press says why, on the glass, for about five seconds. On by
     # default because the room that needs it most belongs to somebody who never

@@ -101,7 +101,7 @@ The label, unit, type and range are filled in from what the driver or the variab
 
 A number is shown exactly as the device reports it, which is usually what you want and occasionally reads as `0.08000000566244125 A`. That is not a fault: plenty of gear reports a reading at one precision and it reaches the software at another, and every digit of it is genuinely what arrived.
 
-Set **Decimals** on the monitor to say how many places to show. It changes what is displayed and nothing else — the Dashboard tile, the health card in the cloud and the sentence in the alert all read it, so all three say the same thing. Leave it blank to show the reading as it arrives.
+Set **Decimals** on the monitor to say how many places to show, from 0 to 20. It changes what is displayed and nothing else — the Dashboard tile, the health card in the cloud and the sentence in the alert all read it, so all three say the same thing. Leave it blank to show the reading as it arrives.
 
 Rounding never changes the judgement. A reading outside its limits that happens to round to a value inside them is still outside them, and the tile still says so. It applies to numbers only: a word you have given a value, a yes/no reading and text the device reports are all shown as they are.
 

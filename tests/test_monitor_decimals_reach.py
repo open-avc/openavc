@@ -268,16 +268,19 @@ async def _drain(monitor: AlertMonitor, agent: _RecordingAgent) -> list:
 
 
 def test_the_form_can_never_write_a_value_the_loader_refuses():
-    """``display_decimals`` is an integer on the server and Pydantic refuses a
-    float with a fraction — so a "2.5" typed into the form would fail the whole
-    project's NEXT LOAD, over a display hint. A number input hands back "2.5"
-    even when its step says 1, so the form truncates."""
-    with pytest.raises(ValidationError):
-        MonitorConfig(key="var.n", display_decimals=2.5)
+    """``display_decimals`` is a whole number from 0 to 20 on the server, and
+    Pydantic refuses a float with a fraction or a count past either end -- so
+    a "2.5" or a "50" typed into the form would fail the whole project save,
+    over a display hint. A number input hands back "2.5" even when its step
+    says 1, so the form's box commits a whole number inside the bound
+    (MonitorControl.decimals.test.tsx types into it)."""
+    for refused in (2.5, -1, 21):
+        with pytest.raises(ValidationError):
+            MonitorConfig(key="var.n", display_decimals=refused)
     assert MonitorConfig(key="var.n", display_decimals=2.0).display_decimals == 2
 
     src = MONITOR_CONTROL.read_text(encoding="utf-8")
-    decimals_at = src.index("display_decimals: e.target.value")
-    assert "Math.trunc(" in src[decimals_at:decimals_at + 200], (
-        "the decimals field must truncate before it writes"
-    )
+    decimals_at = src.index("owner={`monitor/${monitor.key}/display_decimals`}")
+    box = src[decimals_at - 200:decimals_at + 300]
+    for prop in ("<NumericInput", "integer", "min={0}", "max={20}"):
+        assert prop in box, f"the decimals box must commit a whole number from 0 to 20 ({prop})"

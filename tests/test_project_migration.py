@@ -20,6 +20,7 @@ from openavc.core.project_migration import (
     migrate_0_13_to_0_14,
     migrate_0_14_to_0_15,
     migrate_0_15_to_0_16,
+    migrate_0_16_to_0_17,
     migrate_project,
 )
 from openavc.core.project_loader import ProjectConfig
@@ -399,7 +400,8 @@ class TestFullMigrationChain:
         data = migrate_0_12_to_0_13(data)
         data = migrate_0_13_to_0_14(data)
         data = migrate_0_14_to_0_15(data)
-        data = migrate_0_15_to_0_16(data)  # Now at CURRENT_VERSION
+        data = migrate_0_15_to_0_16(data)
+        data = migrate_0_16_to_0_17(data)  # Now at CURRENT_VERSION
         result, migrated = migrate_project(copy.deepcopy(data))
 
         assert migrated is False
@@ -740,7 +742,7 @@ class TestMigrate015To016:
         result, migrated = migrate_project(make_v015_project_with_faders())
 
         assert migrated is True
-        assert result["openavc_version"] == CURRENT_VERSION == "0.16.0"
+        assert result["openavc_version"] == CURRENT_VERSION
         page = {el["id"]: el for el in result["ui"]["pages"][0]["elements"]}
         assert page["volume"]["unit"] == "%"
         assert page["saved"]["unit"] == "%"
@@ -761,6 +763,129 @@ class TestMigrate015To016:
         result = migrate_0_15_to_0_16(copy.deepcopy(data))
         assert result["openavc_version"] == "0.16.0"
         assert result["ui"]["pages"][1]["elements"] == ["not an element"]
+
+
+# ---------------------------------------------------------------------------
+# 0.16.0 -> 0.17.0 — a saved value the schema now bounds is brought inside it
+# ---------------------------------------------------------------------------
+
+def make_v016_project_out_of_bounds(**settings) -> dict:
+    """Decimals past both ends on every kind of control and on a monitor, one
+    in range, one that is not a whole number, and the panel settings given."""
+    data = _v016_project_out_of_bounds(settings)
+    data["monitors"].append("not a monitor")
+    data["ui"]["pages"][0]["elements"].append(
+        {"id": "word", "type": "label", "display_decimals": "two"},
+    )
+    return data
+
+
+def make_loadable_v016_project_out_of_bounds(**settings) -> dict:
+    """The same without the two entries the schema has always refused."""
+    return _v016_project_out_of_bounds(settings)
+
+
+def _v016_project_out_of_bounds(settings: dict) -> dict:
+    return {
+        "openavc_version": "0.16.0",
+        "project": {"id": "p", "name": "P"},
+        "monitors": [
+            {"key": "var.a", "display_decimals": 40},
+            {"key": "var.b", "display_decimals": -2},
+            {"key": "var.c"},
+        ],
+        "ui": {
+            "settings": settings,
+            "pages": [{"id": "main", "name": "Main", "elements": [
+                {"id": "slider", "type": "slider", "display_decimals": 150},
+                {"id": "fader", "type": "fader", "unit": "dB", "display_decimals": 50},
+                {"id": "label", "type": "label", "display_decimals": 21},
+                {"id": "gauge", "type": "gauge", "display_decimals": -1},
+                {"id": "button", "type": "button", "display_decimals": 30},
+                {"id": "kept", "type": "label", "display_decimals": 3},
+                {"id": "whole", "type": "label", "display_decimals": 4.0},
+                {"id": "unset", "type": "label"},
+                {"id": "nulled", "type": "label", "display_decimals": None},
+            ]}],
+            "master_elements": [{"id": "bar", "type": "label", "display_decimals": 99}],
+        },
+    }
+
+
+class TestMigrate016To017:
+    def test_decimals_are_brought_to_zero_through_twenty_wherever_they_are(self):
+        result, migrated = migrate_project(make_v016_project_out_of_bounds())
+
+        assert migrated is True
+        assert result["openavc_version"] == CURRENT_VERSION
+        page = {el["id"]: el for el in result["ui"]["pages"][0]["elements"]}
+        assert page["slider"]["display_decimals"] == 20
+        assert page["fader"]["display_decimals"] == 20
+        assert page["label"]["display_decimals"] == 20
+        assert page["gauge"]["display_decimals"] == 0
+        # The bound is on the field, so a control that draws no readout is
+        # brought inside it too, or the project would not load.
+        assert page["button"]["display_decimals"] == 20
+        assert result["ui"]["master_elements"][0]["display_decimals"] == 20
+        assert [m.get("display_decimals") for m in result["monitors"][:3]] == [20, 0, None]
+
+    def test_a_value_in_range_or_unset_is_left_as_it_was(self):
+        result = migrate_0_16_to_0_17(make_v016_project_out_of_bounds())
+        page = {el["id"]: el for el in result["ui"]["pages"][0]["elements"]}
+        assert page["kept"]["display_decimals"] == 3
+        assert page["whole"]["display_decimals"] == 4
+        assert "display_decimals" not in page["unset"]
+        assert page["nulled"]["display_decimals"] is None
+        # Not a whole number: the schema refused it before and still does.
+        assert page["word"]["display_decimals"] == "two"
+        assert result["monitors"][3] == "not a monitor"
+
+    def test_the_panel_settings_are_brought_inside_the_fields_ranges(self):
+        result = migrate_0_16_to_0_17(make_v016_project_out_of_bounds(
+            page_transition="fade", page_transition_duration=99999,
+            element_entry="stagger", element_stagger_ms=-5,
+            idle_timeout_seconds=-5,
+        ))
+        settings = result["ui"]["settings"]
+        assert settings["page_transition_duration"] == 1000
+        assert settings["element_stagger_ms"] == 10
+        assert settings["idle_timeout_seconds"] == 0
+
+    def test_each_setting_low_end_and_in_range(self):
+        result = migrate_0_16_to_0_17(make_v016_project_out_of_bounds(
+            page_transition_duration=20, element_stagger_ms=500,
+            idle_timeout_seconds=600,
+        ))
+        settings = result["ui"]["settings"]
+        assert settings["page_transition_duration"] == 50
+        assert settings["element_stagger_ms"] == 200
+        assert settings["idle_timeout_seconds"] == 600
+
+    def test_a_zero_the_panel_drew_as_the_default_becomes_the_default(self):
+        result = migrate_0_16_to_0_17(make_loadable_v016_project_out_of_bounds(
+            page_transition_duration=0, element_stagger_ms=0,
+        ))
+        settings = result["ui"]["settings"]
+        assert "page_transition_duration" not in settings
+        assert "element_stagger_ms" not in settings
+        loaded = ProjectConfig(**result).ui.settings
+        assert (loaded.page_transition_duration, loaded.element_stagger_ms) == (200, 30)
+
+    def test_the_migrated_project_loads(self):
+        result, _ = migrate_project(make_loadable_v016_project_out_of_bounds(
+            page_transition_duration=99999, element_stagger_ms=-5,
+            idle_timeout_seconds=-5,
+        ))
+        ProjectConfig(**result)
+
+    def test_a_malformed_project_does_not_stop_the_migration(self):
+        for data in (
+            {"openavc_version": "0.16.0", "project": {"id": "p", "name": "P"}},
+            {"openavc_version": "0.16.0", "ui": "not a ui", "monitors": None},
+            {"openavc_version": "0.16.0", "ui": {"settings": None, "pages": None}},
+        ):
+            result = migrate_0_16_to_0_17(copy.deepcopy(data))
+            assert result["openavc_version"] == "0.17.0"
 
 
 # ---------------------------------------------------------------------------

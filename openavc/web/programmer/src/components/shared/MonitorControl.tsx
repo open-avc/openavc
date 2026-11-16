@@ -26,6 +26,7 @@ import type { MonitorConfig, MonitorStateEntry } from "../../api/types";
 import { monitorStatus, hasLimits, normalValues, ABNORMAL } from "../../api/monitorHelpers";
 import { booleanWord } from "./booleanWords";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { NumericInput } from "./NumericInput";
 
 /** What the driver or the variable already says about this reading. Everything
  *  here is pre-filled and stays editable — a driver's 0–10000 lamp-hour range
@@ -354,24 +355,20 @@ function MonitorLimits({
                 which is why the placeholder says so: a blank box next to "Unit"
                 otherwise reads as 0 decimal places. */}
             <Field label="Decimals" width={110}>
-              <input
-                type="number"
+              {/* A whole number from 0 to 20 as it commits: the server
+                  refuses a fraction or a count past 20, and a "2.5" or a "50"
+                  typed here would fail the whole save over a display hint. */}
+              <NumericInput
+                owner={`monitor/${monitor.key}/display_decimals`}
+                integer
                 min={0}
                 max={20}
                 step={1}
-                value={monitor.display_decimals ?? ""}
+                allowEmpty
+                value={monitor.display_decimals}
                 placeholder="As reported"
-                onChange={(e) => patch(
-                  {
-                    // Truncated because the field is an integer on the server
-                    // and Pydantic refuses a float with a fraction — a "2.5"
-                    // typed here would fail the whole project's next load, over
-                    // a display hint. A number input still hands back "2.5"
-                    // when its step says otherwise.
-                    display_decimals: e.target.value === ""
-                      ? null
-                      : Math.trunc(Number(e.target.value)),
-                  },
+                onCommit={(display_decimals) => patch(
+                  { display_decimals: display_decimals ?? null },
                   `Monitor decimals for ${monitor.key}`,
                 )}
                 style={inputStyle}

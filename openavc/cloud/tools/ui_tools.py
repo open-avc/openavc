@@ -209,11 +209,12 @@ def _updated_bindings(input: dict, project: Any, what: str) -> dict:
 def _validated_grant(value: Any, what: str) -> Any:
     """Coerce a grant, or say what is wrong with it.
 
-    The one field checked rather than assigned raw, and the reason is the panel:
-    a grant is the whole reach model for author markup, the panel enforces it
-    and nothing else can (a WS frame carries no element identity), and the model
-    does not validate on assignment. So a string where a list belongs would land
-    intact -- and the panel asks ``grant.devices.includes(id)``, which a
+    Checked with a sentence of its own, and the reason is the panel: a grant
+    is the whole reach model for author markup, the panel enforces it and
+    nothing else can (a WS frame carries no element identity), and the page
+    door assigns its fields without the model's check (the element and master
+    doors have :func:`_assign_checked`). So a string where a list belongs would
+    land intact -- and the panel asks ``grant.devices.includes(id)``, which a
     **string** answers too, matching every device id that is a substring of it.
 
     Shared by the field assigners of the element, master and page doors,
@@ -250,7 +251,8 @@ def _assign_plain_fields(target: Any, fields: dict, what: str, notes: WriteNotes
     layout, a parent needs the percentage conversion, bindings need validating
     first.
 
-    One field is checked rather than assigned raw, the grant
+    Each is checked against the model's declaration of it as it is assigned
+    (:func:`_assign_checked`); the grant first, with a sentence of its own
     (:func:`_validated_grant` says why), and said back before and after.
     """
     assigned: list[str] = []
@@ -269,9 +271,27 @@ def _assign_plain_fields(target: Any, fields: dict, what: str, notes: WriteNotes
                 raise ToolEditError({
                     "error": f"{what}: '{field}' is not a field on a UI element."
                 })
-            setattr(target, field, value)
+            _assign_checked(target, field, value, what)
             assigned.append(field)
     return assigned
+
+
+def _assign_checked(target: Any, field: str, value: Any, what: str) -> None:
+    """One field set, checked against the model's own declaration of it.
+
+    The element models do not validate on assignment, so a raw ``setattr`` of
+    a value the field refuses (a number past its bound, a word where a number
+    belongs) would be saved as it was sent, and the next load of the project,
+    which does validate, would refuse the whole file.
+    """
+    if field not in type(target).model_fields:
+        setattr(target, field, value)
+        return
+    try:
+        type(target).__pydantic_validator__.validate_assignment(target, field, value)
+    except ValidationError as exc:
+        problems = "; ".join(error["msg"] for error in exc.errors())
+        raise ToolEditError({"error": f"{what}: '{field}' {problems}."}) from exc
 
 
 def _left_over(input: dict, handled: set[str]) -> dict:

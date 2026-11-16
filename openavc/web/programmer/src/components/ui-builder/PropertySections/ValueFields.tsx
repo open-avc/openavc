@@ -10,6 +10,7 @@
  */
 import { Plus, X } from "lucide-react";
 import type { Placement } from "../../../api/types";
+import { NumericInput } from "../../shared/NumericInput";
 import { showInfo } from "../../../store/toastStore";
 import { MatchDriverRangeRow } from "../BindingEditor/DeviceValuePicker";
 import { pxToRem, remToPx } from "../uiBuilderHelpers";
@@ -360,12 +361,14 @@ export function ShownDecimalsRow({
 }: FieldProps & { placeholder: string }) {
   return (
     <FieldRow label="Shown decimals">
-      <input
-        type="number"
-        value={element.display_decimals ?? ""}
-        onChange={(e) =>
-          onChange({ display_decimals: e.target.value === "" ? undefined : Number(e.target.value) })
-        }
+      {/* Clamped as it commits: the project refuses a count past its bound,
+          and a typed 50 would otherwise fail the whole save. */}
+      <NumericInput
+        owner={`${element.id}/display_decimals`}
+        value={element.display_decimals}
+        onCommit={(display_decimals) => onChange({ display_decimals })}
+        allowEmpty
+        integer
         placeholder={placeholder}
         min={0}
         max={6}

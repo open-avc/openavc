@@ -745,6 +745,92 @@ def migrate_0_15_to_0_16(data: dict) -> dict:
     return data
 
 
+# The bounds the schema took at 0.17.0, as they stood then. Written out rather
+# than read from the project models, for the reason the 0.15.0 table gives.
+_DECIMALS_0_17 = (0, 20)
+# Each panel setting's (lowest, highest); the panel drew a 0 in either as its
+# default.
+_MOTION_0_17 = {
+    "page_transition_duration": (50, 1000),
+    "element_stagger_ms": (10, 200),
+}
+
+
+def _whole_number_0_17(value) -> int | None:
+    """A count as a release could have saved it: a whole number, which the
+    schema has always taken (a float with no fraction included). Anything else
+    the schema refused before this step and still does, so it is left alone."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return None
+
+
+def _clamp_decimals_0_17(holder: dict) -> None:
+    count = _whole_number_0_17(holder.get("display_decimals"))
+    if count is not None:
+        low, high = _DECIMALS_0_17
+        holder["display_decimals"] = max(low, min(high, count))
+
+
+def _settle_panel_settings_0_17(settings: dict) -> None:
+    for field, (low, high) in _MOTION_0_17.items():
+        value = _whole_number_0_17(settings.get(field))
+        if value is None:
+            continue
+        if value == 0:
+            settings.pop(field)
+        else:
+            settings[field] = max(low, min(high, value))
+    idle = _whole_number_0_17(settings.get("idle_timeout_seconds"))
+    if idle is not None and idle < 0:
+        settings["idle_timeout_seconds"] = 0
+
+
+def migrate_0_16_to_0_17(data: dict) -> dict:
+    """
+    Migrate from 0.16.0 to 0.17.0 -- a saved value the schema now bounds is
+    brought inside its bound.
+
+    The schema took any whole number for these, and the panel drew some of
+    them badly: a page transition of 99999 ms kept every page navigated away
+    from on screen under the new one for 100 seconds, and a slider or fader
+    asked for more than 100 decimal places stopped its page drawing. Each is
+    moved to the nearest end of its bound, so the project loads:
+
+    - every page and master element's `display_decimals`, and every
+      monitored reading's, to 0..20. Labels, gauges and the monitor tiles
+      already drew no more than 20 and no fewer than 0, so they look the
+      same; a slider or fader asked for more than 20 now shows 20.
+    - `ui.settings.page_transition_duration` to 50..1000 and
+      `element_stagger_ms` to 10..200, the ranges the Panel Settings fields
+      offer. A 0 is removed instead: the panel drew a 0 as the default (200 and
+      30 ms), and an absent setting is the default.
+    - a negative `idle_timeout_seconds` to 0. The panel already read it as no
+      timeout.
+
+    A value that is not a whole number is left as it was: the schema refused
+    it before and still does.
+    """
+    for el in _elements(data):
+        _clamp_decimals_0_17(el)
+    monitors = data.get("monitors")
+    if isinstance(monitors, list):
+        for monitor in monitors:
+            if isinstance(monitor, dict):
+                _clamp_decimals_0_17(monitor)
+    ui = data.get("ui")
+    settings = ui.get("settings") if isinstance(ui, dict) else None
+    if isinstance(settings, dict):
+        _settle_panel_settings_0_17(settings)
+
+    data["openavc_version"] = "0.17.0"
+    return data
+
+
 # Ordered list of migrations: (source_version, target_version, transform_fn)
 MIGRATIONS = [
     ("0.1.0", "0.2.0", migrate_0_1_to_0_2),
@@ -762,6 +848,7 @@ MIGRATIONS = [
     ("0.13.0", "0.14.0", migrate_0_13_to_0_14),
     ("0.14.0", "0.15.0", migrate_0_14_to_0_15),
     ("0.15.0", "0.16.0", migrate_0_15_to_0_16),
+    ("0.16.0", "0.17.0", migrate_0_16_to_0_17),
 ]
 
 # The format this platform writes: where the chain ends.
