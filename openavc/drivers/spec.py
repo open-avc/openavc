@@ -3535,26 +3535,16 @@ def required_platform_version(driver_def: object, tier: str = "yaml") -> str | N
 # Cross-field rules that live at the document root (JSON Schema allOf):
 # a deprecated driver must name its replacement, and naming a replacement
 # implies deprecation.
-# A null replacement_id is absent (NULL_AS_ABSENT): it neither names a
-# replacement nor asks for deprecated.
-_NOT_NULL: dict = {"not": {"type": "null"}}
-
 CROSS_FIELD_RULES: tuple[dict, ...] = (
     {
         "if": {
             "properties": {"deprecated": {"const": True}},
             "required": ["deprecated"],
         },
-        "then": {
-            "properties": {"replacement_id": _NOT_NULL},
-            "required": ["replacement_id"],
-        },
+        "then": {"required": ["replacement_id"]},
     },
     {
-        "if": {
-            "properties": {"replacement_id": _NOT_NULL},
-            "required": ["replacement_id"],
-        },
+        "if": {"required": ["replacement_id"]},
         "then": {
             "properties": {"deprecated": {"const": True}},
             "required": ["deprecated"],

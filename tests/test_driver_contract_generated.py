@@ -47,9 +47,16 @@ def test_python_variant_differs_only_in_the_python_tier() -> None:
     Python-tier widenings: the Python-only transports, kind:"setup" actions,
     the Python-only param types ("file"), the platform floors that belong
     to a Python-only value, and a YAML-only floor (``yaml_since_values``),
-    which the Python schema states as an enhancement."""
+    which the Python schema states as an enhancement. And one YAML-only
+    reading: a definition's top-level field left null is absent, while a
+    DRIVER_INFO is read as written."""
+    from openavc.drivers.contract_gen import _node_to_schema
+
     yaml_schema = build_schema("yaml")
     python_schema = build_schema("python")
+    for name, node in spec.FIELDS.items():
+        yaml_schema["properties"][name] = _node_to_schema(node, "yaml")
+    yaml_schema["allOf"] = [dict(rule) for rule in spec.CROSS_FIELD_RULES]
 
     t = yaml_schema["properties"]["transport"]
     t["enum"] = t["enum"] + list(spec.PYTHON_ONLY_TRANSPORTS)

@@ -226,10 +226,16 @@ def test_an_id_that_is_not_text_is_refused_at_every_door() -> None:
         assert verdict.errors.tags == ["id"]  # type: ignore[attr-defined]
 
 
-def test_a_key_the_contract_does_not_declare_is_a_notice_at_a_load_door() -> None:
-    verdict = check_driver_definition({**BASE, "lable": "x"}, strict=False)
-    assert list(verdict.errors) == []
-    assert list(verdict.notices) == ["unknown key 'lable'"]
+def test_a_key_the_contract_does_not_declare_is_no_notice_at_a_load_door() -> None:
+    """A correct driver written for a newer platform carries keys this one
+    does not know, so at a load door an undeclared key is only logged (by the
+    loader), and the platform floor is not asked; the author's doors refuse
+    both."""
+    definition = {**BASE, "lable": "x", "min_platform_version": "0.1.0", "polling": {"when_state": {"power": True}}}
+    loaded = check_driver_definition(definition, strict=False)
+    assert (list(loaded.errors), list(loaded.notices)) == ([], [])
+    refused = check_driver_definition(definition, strict=True).errors
+    assert refused.tags == ["", "min_platform_version"]  # type: ignore[attr-defined]
 
 
 # --- a null section is absent everywhere -------------------------------------
@@ -311,3 +317,18 @@ def test_the_discovery_block_is_left_to_the_discovery_parser() -> None:
     definition = {**BASE, "discovery": {"tcp_probe": {"port": "x"}}}
     assert shape_refusals(definition) == []
     assert list(check_driver_definition(definition, strict=True).errors) == []
+
+
+def test_a_python_driver_s_schema_takes_no_null_the_registry_does_not_declare() -> None:
+    """DRIVER_INFO is read as written, so the null-as-absent read is the
+    YAML schema's alone."""
+    python = json.loads((_ROOT / "openavc/drivers/pythondriver.schema.json").read_text(encoding="utf-8"))
+    for name in spec.NULL_AS_ABSENT:
+        declared = spec.FIELDS[name].get("type")
+        declared = (declared,) if isinstance(declared, str) else tuple(declared or ())
+        if "null" in declared:
+            continue
+        rendered = python["properties"][name]
+        kinds = rendered.get("type", [])
+        assert "null" not in (kinds if isinstance(kinds, list) else [kinds]), name
+        assert {"type": "null"} not in rendered.get("anyOf", []), name

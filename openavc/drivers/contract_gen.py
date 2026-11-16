@@ -144,10 +144,11 @@ _JUDGES_A_NULL = frozenset({"const", "not", "allOf", "anyOf", "oneOf", "$ref", "
 
 
 def _top_level(name: str, node: dict[str, Any], tier: str) -> Any:
-    """A top-level field's schema; one a null reads as absent for
-    (``spec.NULL_AS_ABSENT``) also takes a null, as every reader does."""
+    """A top-level field's schema; in a YAML driver, one a null reads as
+    absent for (``spec.NULL_AS_ABSENT``) also takes a null, as every reader
+    of a definition does. A Python driver's DRIVER_INFO is read as written."""
     out = _node_to_schema(node, tier)
-    if name not in spec.NULL_AS_ABSENT or not isinstance(out, dict):
+    if tier != "yaml" or name not in spec.NULL_AS_ABSENT or not isinstance(out, dict):
         return out
     kinds = out.get("type")
     # A keyword that also judges a null (a fixed value, a reference, a
@@ -164,6 +165,23 @@ def _top_level(name: str, node: dict[str, Any], tier: str) -> Any:
     if description:
         nullable = {"description": description, **nullable}
     return nullable
+
+
+def _cross_field_rule(rule: dict[str, Any], tier: str) -> dict[str, Any]:
+    """One cross-field rule; in a YAML driver, a field the rule requires that
+    a null reads as absent for must not be that null, so an empty one neither
+    asks for nor answers the rule."""
+    out = json.loads(json.dumps(rule))
+    if tier != "yaml":
+        return out
+    for part in (out.get("if"), out.get("then")):
+        if not isinstance(part, dict):
+            continue
+        for name in part.get("required", ()):
+            if name in spec.NULL_AS_ABSENT:
+                held = part.setdefault("properties", {}).setdefault(name, {})
+                held["not"] = {"type": "null"}
+    return out
 
 
 def build_schema(tier: str) -> dict[str, Any]:
@@ -193,7 +211,7 @@ def build_schema(tier: str) -> dict[str, Any]:
         "properties": {
             name: _top_level(name, node, tier) for name, node in spec.FIELDS.items()
         },
-        "allOf": [dict(rule) for rule in spec.CROSS_FIELD_RULES],
+        "allOf": [_cross_field_rule(rule, tier) for rule in spec.CROSS_FIELD_RULES],
         "$defs": {
             name: _node_to_schema(node, tier) for name, node in spec.DEFS.items()
         },

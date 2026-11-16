@@ -31,6 +31,7 @@ import yaml
 from openavc.drivers.avcdriver_semantic import (
     DefinitionVerdict,
     check_driver_definition as _check_definition_rules,
+    unknown_key_errors as _unknown_key_errors,
     validate_driver_definition as _validate_definition_rules,
     validate_driver_issues as _validate_definition_issues,
 )
@@ -358,14 +359,16 @@ def _definition_refusals(
         )
         return tuple(verdict.errors), ()
 
-    # Loud, but not fatal. A wrong shape or a key the contract doesn't declare
-    # is nearly always a slip, and a slipped section silently does nothing,
-    # which is why it is said out loud: logged here and shown on the driver's
-    # Installed entry. It is not worth dropping the driver over: a definition
-    # written for a newer platform can carry a field this one hasn't learned
-    # yet, and refusing it here would take the device offline instead. The
-    # authoring gates refuse the same things outright.
+    # Loud, but not fatal. A value of the wrong kind is said out loud: logged
+    # here and shown on the driver's Installed entry (the notices). A key the
+    # contract doesn't declare is logged only: it is nearly always a typo,
+    # but a definition written for a newer platform can carry a field this one
+    # hasn't learned yet, which is no mistake in the file. Neither is worth
+    # dropping the driver over, which would take its devices offline; the
+    # authoring gates refuse both outright.
     for message in verdict.notices:
+        log.warning(f"Driver definition {filepath}: {message}")
+    for message in _unknown_key_errors(driver_def):
         log.warning(f"Driver definition {filepath}: {message}")
 
     # Companion existence check: a ``python:`` declaration that points at

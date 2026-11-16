@@ -297,3 +297,13 @@ async def test_create_refuses_a_wrong_kind_in_the_checker_s_own_words(driver_dir
     assert refused.value.status_code == 422
     assert refused.value.fields["errors"] == ["version: must be a string; put it in quotes"]
     assert not (repo_dir / "acme_widget.avcdriver").exists()
+
+
+@pytest.mark.parametrize("driver_id", [None, 5, ["acme_widget"]])
+def test_an_id_that_is_not_text_is_refused_before_any_lookup(driver_id):
+    """The routes look a driver up by its id before the check runs, so the
+    request takes only a text id (FastAPI answers anything else 422)."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        DriverDefinitionRequest.model_validate({**DEFINITION, "id": driver_id})

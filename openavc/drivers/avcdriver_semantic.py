@@ -416,9 +416,12 @@ def check_driver_definition(
     door, as they always have. The author's-door refusals (the shape walk's,
     then a key the contract does not declare, then the platform release the
     driver's fields need) refuse only in ``strict`` mode, the shape walk's
-    first: at a door that loads a driver they are ``notices``, so a driver
-    that loaded before still loads and the door can say what is wrong with
-    it. Every refusal the author's doors add later goes in that second kind.
+    first. At a door that loads a driver the shape walk's are ``notices``, so
+    a driver that loaded before still loads and the door can say what is
+    wrong with it; the other two are not asked there (the loader logs an
+    undeclared key, ``unknown_key_errors`` says why: a correct driver written
+    for a newer platform carries keys this one does not know). Every refusal
+    the author's doors add later is a notice at load.
     """
     # A file can parse to something other than a mapping. It is reported, not
     # raised on, so one bad file never stops the others loading.
@@ -430,13 +433,10 @@ def check_driver_definition(
         _guarded(walk.errors, part, section)
     shapes = _TaggedErrors()
     _guarded(shapes, partial(_shape_gaps, shapes, driver_def, walk.errors), "")
+    if not strict:
+        return DefinitionVerdict(walk.errors, shapes)
     undeclared = _TaggedErrors()
     _guarded(undeclared, partial(_undeclared, undeclared, driver_def), "")
-    if not strict:
-        notices = _TaggedErrors()
-        notices.extend(shapes)
-        notices.extend(undeclared)
-        return DefinitionVerdict(walk.errors, notices)
     errors = _TaggedErrors()
     errors.extend(shapes)
     errors.extend(walk.errors)
@@ -444,13 +444,13 @@ def check_driver_definition(
     return DefinitionVerdict(errors, _TaggedErrors())
 
 
-def _shape_gaps(found: _TaggedErrors, driver_def: dict[str, Any], said: _TaggedErrors) -> None:
+def _shape_gaps(errors: _TaggedErrors, driver_def: dict[str, Any], said: _TaggedErrors) -> None:
     """The shape walk's refusals the definition walk left unsaid, each
     tagged with its own place."""
     for loc, message in shape_refusals(driver_def):
         if not _said_at(said, loc):
-            found.ctx = loc
-            found.append(message)
+            errors.ctx = loc
+            errors.append(message)
 
 
 def _said_at(said: _TaggedErrors, loc: str) -> bool:
@@ -470,13 +470,13 @@ def _overlaps(tag: str, loc: str) -> bool:
     )
 
 
-def _undeclared(found: _TaggedErrors, driver_def: dict[str, Any]) -> None:
+def _undeclared(errors: _TaggedErrors, driver_def: dict[str, Any]) -> None:
     """The author's doors' two older refusals: keys the contract does not
     declare (``unknown_key_errors`` tags its own), then the platform release
     the driver's fields need."""
-    found.extend(unknown_key_errors(driver_def))
-    found.ctx = "min_platform_version"
-    found.extend(platform_version_errors(driver_def))
+    errors.extend(unknown_key_errors(driver_def))
+    errors.ctx = "min_platform_version"
+    errors.extend(platform_version_errors(driver_def))
 
 
 _UNCHECKED = "could not be checked"

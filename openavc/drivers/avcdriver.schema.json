@@ -562,7 +562,10 @@
       "if": {
         "properties": {
           "deprecated": {
-            "const": true
+            "const": true,
+            "not": {
+              "type": "null"
+            }
           }
         },
         "required": [
@@ -570,35 +573,38 @@
         ]
       },
       "then": {
+        "required": [
+          "replacement_id"
+        ],
         "properties": {
           "replacement_id": {
             "not": {
               "type": "null"
             }
           }
-        },
-        "required": [
-          "replacement_id"
-        ]
+        }
       }
     },
     {
       "if": {
+        "required": [
+          "replacement_id"
+        ],
         "properties": {
           "replacement_id": {
             "not": {
               "type": "null"
             }
           }
-        },
-        "required": [
-          "replacement_id"
-        ]
+        }
       },
       "then": {
         "properties": {
           "deprecated": {
-            "const": true
+            "const": true,
+            "not": {
+              "type": "null"
+            }
           }
         },
         "required": [

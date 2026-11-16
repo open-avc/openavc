@@ -517,14 +517,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                  'readable. Give it a label that says what to enter.'),
                 ('notice',
                  'responses[1].then_query[2]',
-                 'responses[1].then_query[2]: must be a string or a mapping; put it in quotes'),
-                ('notice', '', "unknown key 'lable'"),
-                ('notice', 'polling', "polling: unknown key 'interval'"),
-                ('notice',
-                 'min_platform_version',
-                 'min_platform_version is "0.1.0", but this driver uses polling.when_state, '
-                 'state_variables.gain.scale, which needs platform 0.37.0. Raise it to "0.37.0", '
-                 'or drop those fields if the driver has to keep installing on 0.1.0.')],
+                 'responses[1].then_query[2]: must be a string or a mapping; put it in quotes')],
  'everything_with_wrong_shapes': [('error', 'transport', 'Unsupported transport: carrier_pigeon'),
                                   ('error',
                                    'ir_codes',
@@ -590,13 +583,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                                   ('notice',
                                    'on_connect',
                                    'on_connect: must be a list; write a single entry as a one-item '
-                                   'list'),
-                                  ('notice', '', "unknown key 'lable'"),
-                                  ('notice',
-                                   'min_platform_version',
-                                   'min_platform_version is "0.1.0", but this driver uses routing, '
-                                   'which needs platform 0.27.0. Raise it to "0.27.0", or drop '
-                                   'that field if the driver has to keep installing on 0.1.0.')],
+                                   'list')],
  'everything_without_responses_and_child_types': [('error',
                                                    'transport',
                                                    'Unsupported transport: carrier_pigeon'),
@@ -718,19 +705,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                                                    'commands.set.params.level',
                                                    "Command 'set' parameter 'level' has no label, "
                                                    'so forms show its key made readable. Give it a '
-                                                   'label that says what to enter.'),
-                                                  ('notice', '', "unknown key 'lable'"),
-                                                  ('notice',
-                                                   'polling',
-                                                   "polling: unknown key 'interval'"),
-                                                  ('notice',
-                                                   'min_platform_version',
-                                                   'min_platform_version is "0.1.0", but this '
-                                                   'driver uses polling.when_state, '
-                                                   'state_variables.gain.scale, which needs '
-                                                   'platform 0.37.0. Raise it to "0.37.0", or drop '
-                                                   'those fields if the driver has to keep '
-                                                   'installing on 0.1.0.')],
+                                                   'label that says what to enter.')],
  'fields_missing_all': [('error', '', 'Missing required field: id'),
                         ('error', '', 'Missing required field: name'),
                         ('error', '', 'Missing required field: transport')],
@@ -831,13 +806,11 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                         ('error',
                          'polling',
                          'polling: when_state must map a state variable to the value it must hold, '
-                         'or to a list of values'),
-                        ('notice', 'polling', "polling: unknown key 'interval'")],
+                         'or to a list of values')],
  'polling_interval': [('error',
                        'polling',
                        'polling.interval is not read by the runtime. Remove the interval: key and '
-                       'set default_config.poll_interval instead'),
-                      ('notice', 'polling', "polling: unknown key 'interval'")],
+                       'set default_config.poll_interval instead')],
  'polling_list': [('error', 'polling', 'polling: must be a mapping')],
  'polling_none': [],
  'polling_queries_a_number': [('notice', 'polling.queries', 'polling.queries: must be a list')],

@@ -174,12 +174,13 @@ class DriverDefinitionRequest(BaseModel):
     # here to a registry entry.
     model_config = ConfigDict(extra="allow")
 
-    # Every field carries whatever the request holds, typed Any on purpose:
-    # whether a value is the kind the driver format declares is the driver
-    # checker's to say, in the sentence that names the field and the fix
-    # (``check_driver_definition``, which the save runs strict), and a null
-    # section is read as absent there, as everywhere.
-    id: Any
+    # Every field but the id carries whatever the request holds, typed Any on
+    # purpose: whether a value is the kind the driver format declares is the
+    # driver checker's to say, in the sentence that names the field and the
+    # fix (``check_driver_definition``, which the save runs strict), and a null
+    # section is read as absent there, as everywhere. The id stays text: the
+    # routes look the driver up by it before anything is checked.
+    id: str
     name: Any
     manufacturer: Any = "Generic"
     category: Any = "utility"
