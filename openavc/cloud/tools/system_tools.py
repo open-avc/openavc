@@ -296,7 +296,8 @@ class SystemToolsMixin:
         if engine and engine.project:
             settings = getattr(engine.project.ui, "settings", None)
             if settings is not None:
-                active_theme = getattr(settings, "theme_id", None) or None
+                # The theme the panel draws, a project with no theme id included.
+                active_theme = settings.drawn_theme_id()
 
         themes = _list_all_themes()
         return [
