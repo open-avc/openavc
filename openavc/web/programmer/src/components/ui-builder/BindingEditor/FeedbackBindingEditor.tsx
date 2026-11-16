@@ -9,6 +9,7 @@
  *   - Active/inactive color pickers with preview
  *   - Conditional label text (active/inactive)
  */
+import { matchKey, sameValue } from "../../../api/conditionEval";
 import { useState, useEffect, useMemo, useId } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useProjectStore } from "../../../store/projectStore";
@@ -234,7 +235,8 @@ export function FeedbackBindingEditor({
     if (!stateKey || liveValue === undefined) return null;
     const expected = condition.equals;
     if (expected === undefined || expected === "") return null;
-    return String(liveValue).toLowerCase() === String(expected).toLowerCase();
+    // The panel's own comparison (conditionEval.ts mirrors it).
+    return sameValue(liveValue, expected);
   }, [stateKey, liveValue, condition.equals]);
 
   // Multi-state mode detection
@@ -487,7 +489,7 @@ export function FeedbackBindingEditor({
 
           {Object.entries(statesMap).map(([sk, appearance]) => {
             const isDefault = sk === defaultState;
-            const isLive = String(liveValue) === sk;
+            const isLive = matchKey(Object.keys(statesMap), liveValue) === sk;
             return (
               <div
                 key={sk}

@@ -14,6 +14,7 @@
  *   - Hold Repeat: shows "Action" + repeat interval
  *   - Tap/Hold: shows "Tap Action" + "Long Press Action" + threshold
  */
+import { sameValue } from "../../api/conditionEval";
 import { useState } from "react";
 import type { ProjectConfig } from "../../api/types";
 import { ActionPicker } from "../ui-builder/BindingEditor/ActionPicker";
@@ -93,8 +94,10 @@ export function ButtonBindingEditor({
 
   // Get live value for toggle state key
   const toggleLiveValue = useConnectionStore((s) => toggleKey ? s.liveState[toggleKey] : undefined);
+  // The panel's own comparison (conditionEval.ts mirrors it), so the badge
+  // says what the press will do.
   const toggleIsActive = toggleKey && toggleLiveValue !== undefined && toggleValue !== undefined
-    ? String(toggleLiveValue).toLowerCase() === String(toggleValue).toLowerCase()
+    ? sameValue(toggleLiveValue, toggleValue)
     : null;
 
   const updatePress = (patch: Record<string, unknown>) => {
