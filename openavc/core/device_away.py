@@ -336,7 +336,7 @@ class DeviceAwayMixin:
         # never meant to be reached. Answer the question the author is actually
         # asking before the classifier answers a different one correctly.
         gap = self._simulation_gap(device_id)
-        if gap:
+        if gap is not None:
             fault = self._no_simulator_fault(device_id, gap)
         if fault is None:
             fault = _typed_fault(driver, exc, host, port)

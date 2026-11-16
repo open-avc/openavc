@@ -47,7 +47,7 @@ CLIENT_MISSING = "client_missing"
 INVALID_CONFIG = "invalid_config"  # bad connection settings (baud/parity/port/...)
 TRANSPORT_DISCONNECTED = "transport_disconnected"  # generic fallback
 BRIDGE_OFFLINE = "bridge_offline"  # a device bound to a bridge port whose bridge is down
-NO_SIMULATOR = "no_simulator"  # simulating, but this driver ships no simulator
+NO_SIMULATOR = "no_simulator"  # simulating, but nothing simulates this device (SimulatorGap says why)
 LOGIN_MISSING = "login_missing"  # the project says a login is saved here, and none is
 
 
@@ -1064,26 +1064,130 @@ def link_local_fault(host: str, port: object = None) -> ConnectionFault | None:
     return ConnectionFault(UNREACHABLE, message)
 
 
-def no_simulator_fault(driver_id: str = "") -> ConnectionFault:
-    """A selected device has no virtual target, so hardware control is paused.
+# --- Why a running simulation has no simulator for a device ----------------
+# The cause beside a NO_SIMULATOR fault. The simulator decides the first three
+# when it turns a device down (SimulatorManager.start_device in
+# openavc/simulator/engine.py); the server records REFUSED for whatever else it
+# heard (an error answer, no port, no answer) and has no cause for a device it
+# heard nothing about (UNKNOWN). The offline_reason
+# code stays NO_SIMULATOR for every cause: only the sentence differs.
+class SimulatorCause:
+    """The causes, a vocabulary of their own (not offline_reason codes)."""
 
-    ``driver_id`` names a driver the integrator can give a simulator: a YAML
-    driver simulates on its own, a Python driver needs a companion
-    ``<name>_sim.py``. Left out for manufacturer-owned equipment, whose
-    installed integration the programmer cannot edit, so its one remedy is to
-    stop simulation.
-    """
-    who = (driver_id or "").strip()
-    if not who:
-        return ConnectionFault(
-            NO_SIMULATOR,
-            "This device has no simulator. Stop simulation to control it.",
-        )
-    return ConnectionFault(
-        NO_SIMULATOR,
+    MISSING = "no_simulator"  # the driver ships no simulator
+    BUILD_FAILED = "build_failed"  # its simulator could not be built for this device
+    START_FAILED = "start_failed"  # built, but it could not start (a port, a socket)
+    REFUSED = "refused"  # anything else the server heard, or no answer at all
+    UNKNOWN = "unknown"  # nothing was heard about this device
+
+
+# How much of an error a card shows: its first line, cut to this many characters.
+_SIMULATOR_DETAIL_CHARS = 200
+
+
+@dataclass(frozen=True)
+class SimulatorGap:
+    """Why a device a running simulation selected has no simulator: its
+    driver, the cause, and the error that went with it (or empty). Recorded by
+    ``SimulationManager`` in core/simulation.py, worded by
+    :func:`no_simulator_fault`."""
+
+    driver_id: str
+    cause: str = SimulatorCause.UNKNOWN
+    detail: str = ""
+
+
+def simulator_error_text(exc: BaseException) -> str:
+    """An error as the detail of a simulator refusal: its type and the first
+    line of its text, or the type alone when the text is empty, so a bare
+    ``KeyError()`` still names something."""
+    text = _first_line(str(exc))
+    name = type(exc).__name__
+    return f"{name}: {text}" if text else name
+
+
+def _first_line(text: str) -> str:
+    for line in (text or "").splitlines():
+        if line.strip():
+            return " ".join(line.split())
+    return ""
+
+
+def _card_detail(detail: str) -> str:
+    """A refusal's detail as the card shows it: one line, bounded, with no
+    closing full stop (it is set in brackets inside a sentence)."""
+    line = _first_line(detail).rstrip(".")
+    if len(line) > _SIMULATOR_DETAIL_CHARS:
+        line = line[:_SIMULATOR_DETAIL_CHARS].rstrip() + "..."
+    return line
+
+
+def _no_simulator_sentence(who: str, because: str, product: bool) -> str:
+    if product or not who:
+        return "This device has no simulator. Stop simulation to control it."
+    return (
         f"The driver '{who}' has no simulator, so this device stays disconnected "
         f"while simulation runs. Add a simulator for it (a Python driver needs a "
-        f"companion _sim.py file), or stop simulation to control the real device.",
+        f"companion _sim.py file), or stop simulation to control the real device."
+    )
+
+
+def _build_failed_sentence(who: str, because: str, product: bool) -> str:
+    if product or not who:
+        return (
+            f"This device's simulator could not be built{because}. Stop "
+            f"simulation to control it."
+        )
+    return (
+        f"The simulator for the driver '{who}' could not be built for this "
+        f"device{because}, so the device stays disconnected while simulation "
+        f"runs. Fix the driver, or stop simulation to control the real device."
+    )
+
+
+def _not_started_sentence(who: str, because: str, product: bool) -> str:
+    return (
+        f"The simulator could not start this device{because}, so it stays "
+        f"disconnected while simulation runs. Stop simulation and start it "
+        f"again to retry, or leave it stopped to control the real device."
+    )
+
+
+def _not_running_sentence(who: str, because: str, product: bool) -> str:
+    return (
+        "The simulator is not running this device, so it stays disconnected "
+        "while simulation runs. Stop simulation and start it again to retry, "
+        "or leave it stopped to control the real device."
+    )
+
+
+_SIMULATOR_SENTENCES = {
+    SimulatorCause.MISSING: _no_simulator_sentence,
+    SimulatorCause.BUILD_FAILED: _build_failed_sentence,
+    SimulatorCause.START_FAILED: _not_started_sentence,
+    SimulatorCause.REFUSED: _not_started_sentence,
+}
+
+
+def no_simulator_fault(
+    gap: SimulatorGap | None = None, *, product: bool = False,
+) -> ConnectionFault:
+    """A selected device has no virtual target, so hardware control is paused.
+
+    THE wording of why, read from the recorded :class:`SimulatorGap`: a
+    driver that ships no simulator is told how to give it one (a YAML driver
+    simulates on its own, a Python driver needs a companion
+    ``<name>_sim.py``), a simulator that could not be built or started says so
+    with its error, and a device nothing was heard about claims no cause.
+    ``product`` is manufacturer-owned equipment, whose installed integration
+    the programmer cannot edit, so it is never told to change the driver.
+    """
+    gap = gap or SimulatorGap("")
+    detail = _card_detail(gap.detail)
+    because = f" ({detail})" if detail else ""
+    sentence = _SIMULATOR_SENTENCES.get(gap.cause, _not_running_sentence)
+    return ConnectionFault(
+        NO_SIMULATOR, sentence((gap.driver_id or "").strip(), because, product),
     )
 
 

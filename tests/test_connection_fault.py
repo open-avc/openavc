@@ -586,7 +586,7 @@ def test_no_simulator_fault_does_not_require_a_driver_id():
 def test_the_simulation_gap_wins_over_a_refused_socket():
     """The device really was refused, so every other signal is accurate and
     misleading at once. The gap has to be checked before them."""
-    from openavc.core.connection_fault import NO_SIMULATOR
+    from openavc.core.connection_fault import NO_SIMULATOR, SimulatorCause, SimulatorGap
     from openavc.core.device_manager import DeviceManager
     from openavc.core.event_bus import EventBus
     from openavc.core.state_store import StateStore
@@ -598,7 +598,7 @@ def test_the_simulation_gap_wins_over_a_refused_socket():
     # Without the hook: the honest, unhelpful answer.
     assert manager._set_offline_reason("dev1", None, exc=exc) == CONNECTION_REFUSED
 
-    manager.unsimulated_driver = lambda device_id: "acme_widget"
+    manager.simulation_gap = lambda device_id: SimulatorGap("acme_widget", SimulatorCause.MISSING)
     assert manager._set_offline_reason("dev1", None, exc=exc) == NO_SIMULATOR
     assert "stop simulation" in state.get("device.dev1.offline_detail").lower()
 
@@ -611,7 +611,7 @@ def test_a_simulated_device_is_left_to_the_normal_classifier():
     from openavc.core.state_store import StateStore
 
     manager = DeviceManager(StateStore(), EventBus())
-    manager.unsimulated_driver = lambda device_id: None
+    manager.simulation_gap = lambda device_id: None
     exc = ConnectionRefusedError(errno.ECONNREFUSED, "Connection refused")
     assert manager._set_offline_reason("dev1", None, exc=exc) == CONNECTION_REFUSED
 

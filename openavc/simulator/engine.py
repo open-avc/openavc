@@ -7,6 +7,15 @@ Scans driver directories for:
 
 Manages port allocation, start/stop, and provides the registry
 that the REST API and UI query.
+
+**Why a device is not running is decided here, in** :meth:`SimulatorManager.start_device`,
+**by the step that failed**: no simulator for its driver (none was found, even
+after a rescan), its simulator could not be built (the constructor raised, or
+the driver's ``_sim.py`` failed to import), or it was built and could not
+start (a port it could not open). Each is a :class:`SimulatorRefusal` with its
+cause from ``core/connection_fault.py``'s ``SIMULATOR_*`` vocabulary and the
+error, kept until the device starts and listed beside the running devices
+(``GET /api/devices``), so the server words the device card from it.
 """
 
 from __future__ import annotations
@@ -19,6 +28,7 @@ from pathlib import Path
 
 import yaml
 
+from openavc.core.connection_fault import SimulatorCause, simulator_error_text
 from openavc.drivers.spec import without_null_sections
 from openavc.simulator.base import BaseSimulator
 from openavc.simulator.tcp_simulator import TCPSimulator
@@ -70,12 +80,38 @@ class SimulatorInfo:
         self.avcdriver_path = avcdriver_path
 
 
+class SimulatorRefusal(Exception):
+    """Why a device was not started: ``cause`` (a ``SIMULATOR_*`` code from
+    core/connection_fault.py) and ``detail``, the error as one line (empty
+    when there is none)."""
+
+    def __init__(self, device_id: str, driver_id: str, cause: str, detail: str = "") -> None:
+        super().__init__(detail or cause)
+        self.device_id = device_id
+        self.driver_id = driver_id
+        self.cause = cause
+        self.detail = detail
+
+    def as_dict(self) -> dict[str, str]:
+        return {
+            "device_id": self.device_id,
+            "driver_id": self.driver_id,
+            "cause": self.cause,
+            "detail": self.detail,
+        }
+
+
 class SimulatorManager:
     """Central coordinator for device simulators."""
 
     def __init__(self, port_range_start: int | None = None):
         self._available: dict[str, SimulatorInfo] = {}
         self._driver_paths: list[str] = []  # what discover() last scanned
+        # driver id -> why its _sim.py did not import, from the last scan. A
+        # driver whose simulator file is broken is not "without a simulator".
+        self._load_errors: dict[str, str] = {}
+        # device id -> why its last start failed, until it starts.
+        self._refusals: dict[str, SimulatorRefusal] = {}
         self._instances: dict[str, BaseSimulator] = {}  # keyed by device_id
         self._allocated_ports: set[int] = set()
         self._change_listeners: list = []
@@ -94,6 +130,7 @@ class SimulatorManager:
         Returns {driver_id: SimulatorInfo}.
         """
         self._available.clear()
+        self._load_errors.clear()
         self._driver_paths = list(driver_paths)
 
         for path_str in driver_paths:
@@ -163,8 +200,11 @@ class SimulatorManager:
         module = importlib.util.module_from_spec(spec)
         try:
             spec.loader.exec_module(module)
-        except Exception:
+        except Exception as e:
             logger.exception("Failed to import simulator: %s", path)
+            # Named by the file, as a companion simulator is (<driver id>_sim.py):
+            # the class that would have said its driver id never loaded.
+            self._load_errors[path.stem.removesuffix("_sim")] = simulator_error_text(e)
             return
 
         # Find BaseSimulator subclasses in the module
@@ -210,10 +250,68 @@ class SimulatorManager:
 
         Returns:
             The started simulator instance.
+
+        Raises:
+            ValueError: the device is already simulated.
+            SimulatorRefusal: it could not be started, and why (kept until it
+                starts, :meth:`list_refusals`).
         """
         if device_id in self._instances:
             raise ValueError(f"Device '{device_id}' is already simulated")
 
+        shown = {
+            "device_name": device_name or device_id,
+            "real_host": real_host,
+            "real_port": real_port,
+            "child_entities": child_entities or {},
+        }
+        try:
+            info = self._simulator_for(driver_id, device_id)
+            simulator = self._build(info, device_id, config, shown)
+            port = await self._start_refusing(simulator, device_id, driver_id, port)
+        except SimulatorRefusal as refusal:
+            self._refusals[device_id] = refusal
+            logger.warning(
+                "Could not simulate %s (driver=%s): %s",
+                device_id, driver_id, refusal.detail or refusal.cause,
+            )
+            raise
+        self._refusals.pop(device_id, None)
+        self._instances[device_id] = simulator
+
+        logger.info(
+            "Started simulator for %s (driver=%s, port=%d)",
+            device_id, driver_id, port,
+        )
+        return simulator
+
+    async def start_requested(self, devices: list[dict]) -> None:
+        """Start the devices a launch config asks for. One that cannot be run
+        is kept with why (:meth:`list_refusals`), which ``GET /api/devices``
+        lists for the server that launched the simulator; the rest still start."""
+        for device in devices:
+            try:
+                await self.start_device(
+                    driver_id=device["driver_id"],
+                    device_id=device["device_id"],
+                    device_name=device.get("device_name", ""),
+                    real_host=device.get("real_host", ""),
+                    real_port=device.get("real_port", 0),
+                    port=device.get("port", 0),
+                    config=device.get("config"),
+                    child_entities=device.get("child_entities"),
+                )
+            except SimulatorRefusal:
+                pass  # logged and kept by start_device
+            except Exception:
+                logger.exception(
+                    "Failed to start simulator for %s (driver=%s)",
+                    device.get("device_id"), device.get("driver_id"),
+                )
+
+    def _simulator_for(self, driver_id: str, device_id: str) -> SimulatorInfo:
+        """The simulator ``driver_id`` has, or the refusal saying it has none
+        (or that its ``_sim.py`` did not import)."""
         info = self._available.get(driver_id)
         if info is None and self._driver_paths:
             # The driver directories are walked once, at startup. A driver
@@ -227,38 +325,60 @@ class SimulatorManager:
             )
             self.discover(self._driver_paths)
             info = self._available.get(driver_id)
-        if not info:
-            raise ValueError(
-                f"No simulator available for driver '{driver_id}'. "
-                f"Available: {', '.join(sorted(self._available.keys()))}"
-            )
+        if info is not None:
+            return info
+        load_error = self._load_errors.get(driver_id)
+        if load_error:
+            raise SimulatorRefusal(device_id, driver_id, SimulatorCause.BUILD_FAILED, load_error)
+        raise SimulatorRefusal(
+            device_id, driver_id, SimulatorCause.MISSING,
+            f"No simulator available for driver '{driver_id}'",
+        )
 
-        # Create the simulator instance
-        simulator = self._create_instance(info, device_id, config)
+    def _build(
+        self, info: SimulatorInfo, device_id: str, config: dict | None, shown: dict,
+    ) -> BaseSimulator:
+        """The device's simulator, built and given what the project says about
+        the device (``shown``). Anything that raises on the way is the
+        BUILD_FAILED refusal: a simulator class that refuses the project's
+        details was not built for this device either."""
+        try:
+            simulator = self._create_instance(info, device_id, config)
+            self._dress(simulator, shown)
+        except Exception as e:
+            logger.exception("Building the simulator for %s failed", device_id)
+            raise SimulatorRefusal(
+                device_id, info.driver_id, SimulatorCause.BUILD_FAILED, simulator_error_text(e),
+            ) from e
+        return simulator
 
+    def _dress(self, simulator: BaseSimulator, shown: dict) -> None:
         # Store display metadata from the project
-        simulator._device_name = device_name or device_id
-        simulator._real_host = real_host
-        simulator._real_port = real_port
+        simulator._device_name = shown["device_name"]
+        simulator._real_host = shown["real_host"]
+        simulator._real_port = shown["real_port"]
         # v0.5.0 child entities ({child_type: {padded_id: {label, config}}}).
         # Passed through so Python _sim.py simulators can model per-child
         # state/responses; the BaseSimulator default is an empty dict.
-        simulator.set_child_entities(child_entities or {})
-
+        simulator.set_child_entities(shown["child_entities"])
         # Inject network conditions layer
         simulator._network_layer = self.network
-
         # Add change listener for broadcasting
         simulator.add_change_listener(self._on_simulator_change)
 
-        port = await self._start_on_a_port(simulator, device_id, port)
-        self._instances[device_id] = simulator
+    async def _start_refusing(
+        self, simulator: BaseSimulator, device_id: str, driver_id: str, port: int,
+    ) -> int:
+        try:
+            return await self._start_on_a_port(simulator, device_id, port)
+        except Exception as e:
+            raise SimulatorRefusal(
+                device_id, driver_id, SimulatorCause.START_FAILED, simulator_error_text(e),
+            ) from e
 
-        logger.info(
-            "Started simulator for %s (driver=%s, port=%d)",
-            device_id, driver_id, port,
-        )
-        return simulator
+    def list_refusals(self) -> list[SimulatorRefusal]:
+        """Every device whose last start failed and has not started since."""
+        return list(self._refusals.values())
 
     async def _start_on_a_port(
         self, simulator: BaseSimulator, device_id: str, port: int,

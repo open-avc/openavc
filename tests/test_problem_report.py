@@ -65,7 +65,7 @@ OTHER = {"id": "lobby_widget", "name": "Lobby Widget", "host": "10.9.8.77",
 
 class FakeDevices:
     installed_equipment = None
-    unsimulated_driver = None
+    simulation_gap = None
 
     def __init__(self, info: dict[str, dict]):
         self.info = info

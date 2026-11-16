@@ -27,6 +27,7 @@ from openavc.core.connection_fault import (
     CONNECTION_REFUSED,
     NO_SIMULATOR,
     ConnectionFault,
+    SimulatorGap,
 )
 from openavc.core.device_manager import DeviceManager
 from openavc.core.device_sleep import SleepBook
@@ -223,11 +224,11 @@ async def test_a_poll_that_will_not_stop_does_not_stop_the_attempt(dm):
 
 async def test_a_simulation_that_starts_during_the_wait_ends_the_loop_undialed(dm):
     driver = _place(dm, _AcmeDriver)
-    gap: dict[str, str | None] = {"acme1": None}
-    dm.unsimulated_driver = lambda device_id: gap.get(device_id)
+    gap: dict[str, SimulatorGap | None] = {"acme1": None}
+    dm.simulation_gap = lambda device_id: gap.get(device_id)
 
     async def wait(delay: float) -> None:
-        gap["acme1"] = "acme_widget"  # simulation started while it waited
+        gap["acme1"] = SimulatorGap("acme_widget")  # simulation started while it waited
 
     with patch(SLEEP, side_effect=wait):
         await dm._reconnect_loop("acme1")
@@ -239,7 +240,7 @@ async def test_a_simulation_that_starts_during_the_wait_ends_the_loop_undialed(d
 
 async def test_a_simulation_already_running_ends_the_loop_before_it_waits(dm):
     driver = _place(dm, _AcmeDriver)
-    dm.unsimulated_driver = lambda device_id: "acme_widget"
+    dm.simulation_gap = lambda device_id: SimulatorGap("acme_widget")
     waits: list[float] = []
 
     async def wait(delay: float) -> None:

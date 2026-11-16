@@ -8,7 +8,8 @@ from fastapi.testclient import TestClient
 
 from openavc.api import rest
 from openavc.api.error_messages import friendly_error
-from openavc.core.device_manager import DeviceManager
+from openavc.core.connection_fault import SimulatorCause
+from openavc.core.device_manager import DeviceManager, NoSimulatorError
 from openavc.core.event_bus import EventBus
 from openavc.core.simulation import _PORT_QUERY_ATTEMPTS, SimulationManager
 from openavc.core.state_store import StateStore
@@ -58,7 +59,10 @@ def rig():
     simulator._run.redirected = True
     simulator._sim_payloads = {"missing": {}, "ordinary": {}}
     simulator._sim_ports = {"ordinary": 19000}
-    manager.unsimulated_driver = simulator._unsimulated_driver
+    # The simulator said its driver has none, as it does for a Python driver
+    # with no _sim.py.
+    simulator._refusals = {"missing": (SimulatorCause.MISSING, "")}
+    manager.simulation_gap = simulator.simulation_gap
     return manager, simulator
 
 
@@ -152,10 +156,10 @@ async def test_failed_simulator_add_cannot_connect_new_hardware(rig, outcome, de
     post = AsyncMock(side_effect=TimeoutError("simulator unavailable")) if outcome == "timeout" else AsyncMock(return_value=response)
     simulator._adopt_existing_sim = AsyncMock(return_value=False)
     await simulator._sync_add_device(SimpleNamespace(post=post), "http://127.0.0.1:19500", "new")
-    assert simulator._unsimulated_driver("new") == "acme_widget"
+    assert simulator.simulation_gap("new").driver_id == "acme_widget"
     assert hardware.get_state("connected") is False
     await manager._bring_up_device("new")
-    with pytest.raises(ConnectionError, match="has no simulator"):
+    with pytest.raises(NoSimulatorError, match="stays disconnected while simulation runs"):
         await manager.send_command("new", "wake")
     assert hardware.connects == 0 and hardware.writes == 0
     assert not manager._reconnect_tasks

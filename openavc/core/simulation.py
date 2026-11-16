@@ -59,6 +59,11 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from openavc.core.connection_fault import (
+    SimulatorCause,
+    SimulatorGap,
+    simulator_error_text,
+)
 from openavc.drivers.spec import CHILD_RESERVED_PROPS
 from openavc.system_config import APP_DIR, DRIVER_DEFINITIONS_DIR, DRIVER_REPO_DIR
 from openavc.utils.logger import get_logger
@@ -504,6 +509,21 @@ class _Run:
         self.settled.set()
 
 
+async def _refusal_in(resp: Any) -> tuple[str, str] | None:
+    """The simulator's own refusal of a device in a start answer (422 with
+    ``{"cause", "detail"}``), or None for any other answer, a request the
+    simulator could not read included (also 422, with a list)."""
+    if resp.status != 422:
+        return None
+    try:
+        detail = (await resp.json()).get("detail")
+    except Exception:
+        return None
+    if not isinstance(detail, dict) or not detail.get("cause"):
+        return None
+    return str(detail["cause"]), str(detail.get("detail") or "")
+
+
 class SimulationManager:
     """Manages the simulator subprocess and device connection redirection."""
 
@@ -525,6 +545,10 @@ class SimulationManager:
         # credential) gets its simulator restarted with the new one, so the
         # simulated device is the one the project now describes.
         self._sim_payloads: dict[str, dict] = {}
+        # device_id -> why the simulator is not running it: (cause, detail),
+        # as the simulator said or as this side heard it. Kept until the
+        # device gets a port, leaves the run, or the run ends.
+        self._refusals: dict[str, tuple[str, str]] = {}
         self._run = _Run()
         # One end at a time: a second waits for the first, then does its own.
         self._ending = asyncio.Lock()
@@ -931,6 +955,7 @@ class SimulationManager:
                                 if did and port:
                                     self._sim_ports[did] = port
                                     self._sim_tls[did] = bool(dev.get("tls"))
+                            self._note_refusals(data.get("refused"))
                             answered = True
                             break
                     except Exception:
@@ -959,7 +984,7 @@ class SimulationManager:
         self._run.redirected = True
         # Let the device manager explain a device this run could not simulate,
         # instead of it reporting a refused socket at the device's real address.
-        self.engine.devices.unsimulated_driver = self._unsimulated_driver
+        self.engine.devices.simulation_gap = self.simulation_gap
 
         # Redirect device connections
         await self._redirect_connections()
@@ -1089,20 +1114,38 @@ class SimulationManager:
         except Exception as e:
             log.warning("Stream drain (%s) ended: %s", label, e)
 
-    def _unsimulated_driver(self, device_id: str) -> str | None:
-        """The driver id of a device this run has no simulator for, else None.
+    def simulation_gap(self, device_id: str) -> SimulatorGap | None:
+        """Why this run has no simulator for a device it selected, else None.
 
-        Derived rather than recorded: a device is unsimulated exactly when a
-        run selected the device and it never got a port. That covers the start path and
-        every later sync from one place, so a refusal cannot be missed by a
-        call site that forgot to note it.
+        THE answer the device card, a refused command and a problem report
+        read (``no_simulator_fault`` words it). Whether the device is
+        unsimulated is derived, not recorded: exactly when a run selected it
+        and it never got a port. That covers the start path and every later
+        sync from one place, so no refusal is missed by a call site that
+        forgot to note it. Why is the recorded part (:meth:`_note_refusal`),
+        and a device nothing was heard about has no cause rather than a
+        guessed one.
         """
         if not self._run.redirected or device_id in self._sim_ports or device_id not in self._sim_payloads:
             return None
         config = self.engine.devices.get_device_config(device_id)
         if config is None:
             return None
-        return config.get("driver") or ""
+        cause, detail = self._refusals.get(device_id, (SimulatorCause.UNKNOWN, ""))
+        return SimulatorGap(config.get("driver") or "", cause, detail)
+
+    def _note_refusal(self, device_id: str, cause: str, detail: str = "") -> None:
+        """Record why the simulator is not running ``device_id``."""
+        self._refusals[device_id] = (cause or SimulatorCause.UNKNOWN, detail or "")
+        log.warning("Simulation: %s is not simulated (%s): %s", device_id, cause, detail or "no detail")
+
+    def _note_refusals(self, refused: Any) -> None:
+        """Record the simulator's own list of devices it could not run."""
+        for entry in refused if isinstance(refused, list) else []:
+            if isinstance(entry, dict) and entry.get("device_id"):
+                self._note_refusal(
+                    str(entry["device_id"]), str(entry.get("cause") or ""), str(entry.get("detail") or ""),
+                )
 
     async def stop(self) -> None:
         """Stop Simulation: the devices go back to their real equipment.
@@ -1166,7 +1209,7 @@ class SimulationManager:
 
         # Devices point back at their real addresses from here on, so a refused
         # socket means what it usually means again.
-        self.engine.devices.unsimulated_driver = None
+        self.engine.devices.simulation_gap = None
         await self._stop_monitor()
         if ending.hands_back and run.redirected:
             await self._restore_connections()
@@ -1175,6 +1218,7 @@ class SimulationManager:
 
         self._sim_ports.clear()
         self._sim_payloads.clear()
+        self._refusals.clear()
         self._sim_tls.clear()
         self._original_configs.clear()
         self._handing_back.clear()
@@ -1423,7 +1467,7 @@ class SimulationManager:
         stopping simulation on a large project paid the same per-device wait
         as starting it)."""
         dm = self.engine.devices
-        dm.unsimulated_driver = None
+        dm.simulation_gap = None
 
         restored: list[str] = []
         for device_id, orig in self._original_configs.items():
@@ -1597,6 +1641,7 @@ class SimulationManager:
             self._original_configs.pop(device_id, None)
             self._sim_ports.pop(device_id, None)
             self._sim_payloads.pop(device_id, None)
+            self._refusals.pop(device_id, None)
 
     async def _sync_add_device(
         self, session: Any, sim_api: str, device_id: str
@@ -1627,36 +1672,12 @@ class SimulationManager:
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=10),
             )
-            if resp.status == 200:
-                started_ok = True
-                data = await resp.json()
-                sim_port = data.get("port", 0)
-                if sim_port:
-                    self._redirect_device_to_sim(
-                        device_id, sim_port, bool(data.get("tls"))
-                    )
-                    if not dm.is_connect_deferred(device_id):
-                        # A device registered by this save has never been
-                        # dialed; the bring-up right after this opens it on
-                        # the redirect we just applied. Anything else is
-                        # already on the wire and has to be moved.
-                        await self._reconnect_quietly(device_id)
-                    log.info("Simulation sync: %s on port %d", device_id, sim_port)
-                else:
-                    log.warning("Simulator started %s but reported no port", device_id)
-            elif resp.status == 400:
-                # A prior leak may have left an orphaned instance the
-                # simulator now reports as "already simulated". Adopt its
-                # running port instead of leaving the device pointed at
-                # its real address.
-                if not await self._adopt_existing_sim(sim_api, device_id):
-                    body = await resp.text()
-                    log.warning("Simulator refused device %s: %s", device_id, body[:200])
-            else:
-                body = await resp.text()
-                log.warning("Simulator refused device %s: %s", device_id, body[:200])
+            started_ok = resp.status == 200
+            await self._take_start_answer(resp, sim_api, device_id)
         except Exception as e:
             log.warning("Failed to start simulator for new device %s: %s", device_id, e)
+            heard = "its answer could not be read" if started_ok else "it did not answer"
+            self._note_refusal(device_id, SimulatorCause.REFUSED, f"{heard}: {simulator_error_text(e)}")
             # If /start committed an instance server-side but our handling
             # then failed (e.g. response parse), roll it back so we don't
             # leak the instance + one of only 500 sim ports.
@@ -1667,6 +1688,37 @@ class SimulationManager:
                 # The manager disconnects existing hardware and publishes the
                 # missing-simulator reason; the active guard refuses a redial.
                 await self._reconnect_quietly(device_id)
+
+    async def _take_start_answer(self, resp: Any, sim_api: str, device_id: str) -> None:
+        """Point an added device at the port the simulator started it on, or
+        record why it is not running: the simulator's own refusal (422, with
+        its cause), else what this side heard."""
+        if resp.status == 200:
+            data = await resp.json()
+            sim_port = data.get("port", 0)
+            if not sim_port:
+                self._note_refusal(device_id, SimulatorCause.REFUSED, "it reported no port")
+                return
+            self._redirect_device_to_sim(device_id, sim_port, bool(data.get("tls")))
+            if not self.engine.devices.is_connect_deferred(device_id):
+                # A device registered by this save has never been dialed; the
+                # bring-up right after this opens it on the redirect we just
+                # applied. Anything else is already on the wire and has to be
+                # moved.
+                await self._reconnect_quietly(device_id)
+            log.info("Simulation sync: %s on port %d", device_id, sim_port)
+            return
+        if resp.status == 400 and await self._adopt_existing_sim(sim_api, device_id):
+            # A prior leak may have left an orphaned instance the simulator
+            # now reports as "already simulated": its running port is adopted
+            # instead of leaving the device pointed at its real address.
+            return
+        refusal = await _refusal_in(resp)
+        if refusal is not None:
+            self._note_refusal(device_id, *refusal)
+            return
+        body = await resp.text()
+        self._note_refusal(device_id, SimulatorCause.REFUSED, f"it answered {resp.status}: {body[:200]}")
 
     def _redirect_device_to_sim(
         self, device_id: str, sim_port: int, sim_tls: bool = False
@@ -1679,6 +1731,7 @@ class SimulationManager:
         dm = self.engine.devices
         self._sim_ports[device_id] = sim_port
         self._sim_tls[device_id] = sim_tls
+        self._refusals.pop(device_id, None)
         driver = dm._devices.get(device_id)
         if driver:
             self._apply_sim_redirect(driver, device_id, sim_port)

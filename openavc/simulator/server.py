@@ -124,25 +124,7 @@ async def lifespan(app: FastAPI):
     set_manager(manager)
     set_auto_shutdown(config.get("auto_shutdown", True))
 
-    # Start requested devices (from config file)
-    for device in config.get("devices", []):
-        try:
-            await manager.start_device(
-                driver_id=device["driver_id"],
-                device_id=device["device_id"],
-                device_name=device.get("device_name", ""),
-                real_host=device.get("real_host", ""),
-                real_port=device.get("real_port", 0),
-                port=device.get("port", 0),
-                config=device.get("config"),
-                child_entities=device.get("child_entities"),
-            )
-        except Exception:
-            logger.exception(
-                "Failed to start simulator for %s (driver=%s)",
-                device.get("device_id"),
-                device.get("driver_id"),
-            )
+    await manager.start_requested(config.get("devices", []))
 
     instances = manager.list_instances()
     if instances:

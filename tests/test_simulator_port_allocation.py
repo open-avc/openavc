@@ -10,11 +10,13 @@ Two coupled guarantees for openavc/simulator/engine.py:
 
 import pytest
 
+from openavc.core.connection_fault import SimulatorCause
 from openavc.simulator.engine import (
     PORT_RANGE_END,
     PORT_RANGE_START,
     SimulatorInfo,
     SimulatorManager,
+    SimulatorRefusal,
 )
 
 
@@ -78,8 +80,10 @@ async def test_failed_start_releases_reserved_port(all_ports_bindable):
     sim = _FakeSim(fail=True)
     _register(mgr, sim)
 
-    with pytest.raises(OSError):
+    with pytest.raises(SimulatorRefusal) as refused:
         await mgr.start_device("acme_probe", "dev1")
+    assert refused.value.cause == SimulatorCause.START_FAILED
+    assert isinstance(refused.value.__cause__, OSError)
 
     # The reserved port is returned to the pool and no ghost instance lingers.
     assert mgr._allocated_ports == set()

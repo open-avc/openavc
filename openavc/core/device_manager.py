@@ -37,6 +37,7 @@ from typing import Any, TYPE_CHECKING
 from openavc.core.connection_fault import (
     ConnectionFault,
     ConnectionFaultError,
+    SimulatorGap,
     no_simulator_fault,
 )
 from openavc.core.device_away import DeviceAwayMixin
@@ -115,13 +116,13 @@ class DeviceManager(
         self._init_pending()
         self._init_away()
         # Set by SimulationManager while a simulated bench is running: given a
-        # device id, returns its driver id when that device has no simulator
-        # and so was never redirected. Such a device fails against its REAL
+        # device id, returns why that device has no simulator (and so was
+        # never redirected), else None. Such a device fails against its REAL
         # address, which classifies as a perfectly accurate connection_refused
         # and sends the author to check a port that was never the problem.
         # A callable rather than an import, so the device manager goes on
         # knowing nothing about simulation; None whenever it isn't running.
-        self.unsimulated_driver: Callable[[str], str | None] | None = None
+        self.simulation_gap: Callable[[str], SimulatorGap | None] | None = None
         # Set by the engine to SimulationManager.is_redirected: given a device
         # id, True while that device connects to the simulator rather than to
         # its own address. Asked before probing for a web page; None in a bare
@@ -713,16 +714,15 @@ class DeviceManager(
         # web UI; the probe's own "already detected" guard makes this idempotent.
         self._schedule_web_ui_probe(device_id)
 
-    def _simulation_gap(self, device_id: str) -> str | None:
-        return self.unsimulated_driver(device_id) if self.unsimulated_driver else None
+    def _simulation_gap(self, device_id: str) -> SimulatorGap | None:
+        return self.simulation_gap(device_id) if self.simulation_gap else None
 
-    def _no_simulator_fault(self, device_id: str, driver_id: str) -> ConnectionFault:
+    def _no_simulator_fault(self, device_id: str, gap: SimulatorGap) -> ConnectionFault:
         """The card's sentence for a device a running simulation could not
-        simulate: how to give its driver a simulator, except on product
-        hardware, whose installed integration the programmer cannot edit."""
-        if self.installed_equipment and self.installed_equipment.owns(device_id):
-            return no_simulator_fault()
-        return no_simulator_fault(driver_id)
+        simulate, worded from why; product hardware, whose installed
+        integration the programmer cannot edit, is never told to change it."""
+        product = bool(self.installed_equipment and self.installed_equipment.owns(device_id))
+        return no_simulator_fault(gap, product=product)
 
     def _require_control_target(self, device_id: str) -> None:
         """A missing simulator must never fall through to physical control."""

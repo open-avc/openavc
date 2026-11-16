@@ -111,7 +111,13 @@ All YAML drivers (`.avcdriver`) get basic simulation automatically — the simul
 
 Python drivers need a companion simulator file (`_sim.py`) placed alongside the driver.
 
-While simulation runs, a selected device whose driver has no simulator stays disconnected, and its page names the driver. Add a simulator for it, or stop simulation and leave it unchecked when starting again to control the real device.
+While simulation runs, a selected device the simulator can't run stays disconnected, and its page says why:
+
+- **The driver has no simulator.** The page names the driver. Add a simulator for it.
+- **The simulator could not be built.** The driver has a simulator, but building it for this device failed, for example on a `simulator:` section the simulator can't read, or a `_sim.py` file that fails to load. The page shows the error. Fix the driver, then stop simulation and start it again.
+- **The simulator could not start it.** The simulator was built but couldn't open a port for the device. The page shows the error. Stop simulation and start it again to retry.
+
+To control the real device instead, stop simulation and leave it unchecked when starting again.
 
 Check the Browse Drivers view for the simulator badge (play icon) to see which community drivers include enhanced simulation support.
 
@@ -127,9 +133,9 @@ requires the same credentials as the rest of the API.
 |----------|--------|-------------|
 | `/api/status` | GET | Overall simulator status |
 | `/api/available` | GET | Discovered drivers |
-| `/api/devices` | GET | Running simulator instances |
+| `/api/devices` | GET | Running simulator instances (`devices`), and each device the simulator was asked to run and could not (`refused`: `device_id`, `driver_id`, `cause` and `detail`, the error). `cause` is `no_simulator`, `build_failed` or `start_failed` |
 | `/api/devices/{id}` | GET | Single device state |
-| `/api/devices/{id}/start` | POST | Start simulating a device |
+| `/api/devices/{id}/start` | POST | Start simulating a device. Answers 422 with the same `cause` and `detail` when the device can't be run, and 400 when it is already simulated |
 | `/api/devices/{id}/stop` | POST | Stop simulating a device |
 | `/api/devices/{id}/state` | POST | Change device state |
 | `/api/devices/{id}/errors/{mode}` | POST | Inject or clear an error |

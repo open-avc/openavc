@@ -50,7 +50,7 @@ class _Devices:
 
     def __init__(self, *drivers: _AcmeMatrix):
         self._devices = {d.device_id: d for d in drivers}
-        self.unsimulated_driver = None
+        self.simulation_gap = None
         self.at_reconnect: dict[str, dict[str, Any]] = {}
 
     async def reconnect_device(self, device_id: str) -> None:

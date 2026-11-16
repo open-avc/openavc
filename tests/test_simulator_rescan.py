@@ -13,7 +13,8 @@ refusing an unknown driver.
 
 import pytest
 
-from openavc.simulator.engine import SimulatorManager
+from openavc.core.connection_fault import SimulatorCause
+from openavc.simulator.engine import SimulatorManager, SimulatorRefusal
 
 
 class _FakeSim:
@@ -86,8 +87,9 @@ async def test_a_driver_that_is_nowhere_is_still_refused(
     mgr = SimulatorManager()
     mgr.discover([str(repo)])
 
-    with pytest.raises(ValueError, match="No simulator available"):
+    with pytest.raises(SimulatorRefusal, match="No simulator available") as refused:
         await mgr.start_device("acme_absent", "dev1")
+    assert refused.value.cause == SimulatorCause.MISSING
 
 
 async def test_a_manager_that_never_scanned_anything_is_unchanged(
@@ -97,8 +99,9 @@ async def test_a_manager_that_never_scanned_anything_is_unchanged(
     one it always was, not an AttributeError on the way to it."""
     mgr = SimulatorManager()
 
-    with pytest.raises(ValueError, match="No simulator available"):
+    with pytest.raises(SimulatorRefusal, match="No simulator available") as refused:
         await mgr.start_device("acme_absent", "dev1")
+    assert refused.value.cause == SimulatorCause.MISSING
 
 
 async def test_rescan_does_not_disturb_a_running_instance(

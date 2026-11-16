@@ -32,7 +32,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 from pydantic import BaseModel
 
-from openavc.simulator.engine import SimulatorManager
+from openavc.simulator.engine import SimulatorManager, SimulatorRefusal
 from openavc.simulator.network_conditions import NetworkConditions
 
 logger = logging.getLogger(__name__)
@@ -171,9 +171,12 @@ async def get_available():
 
 @router.get("/devices")
 async def list_devices():
+    """The running devices, and beside them each device the simulator was
+    asked to run and could not, with why (``refused``)."""
     mgr = _get_manager()
     return {
-        "devices": [inst.to_info_dict() for inst in mgr.list_instances()]
+        "devices": [inst.to_info_dict() for inst in mgr.list_instances()],
+        "refused": [refusal.as_dict() for refusal in mgr.list_refusals()],
     }
 
 
@@ -201,6 +204,9 @@ async def start_device(device_id: str, req: StartRequest):
             child_entities=req.child_entities,
         )
         return sim.to_info_dict()
+    except SimulatorRefusal as refusal:
+        # Not the request's fault: the device cannot be run, and why.
+        raise HTTPException(422, refusal.as_dict())
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception:

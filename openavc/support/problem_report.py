@@ -34,7 +34,9 @@ or variables, the system's settings or its credentials is in it.
   was compared: the library was not reached, does not list the driver, or
   lists another version), the library's listing), ``settings`` (credentials masked), ``address`` (where it really
   connects, from the saved record: a simulation's 127.0.0.1 never shows),
-  ``transport``, ``simulated`` and ``simulator_gap``, ``orphaned`` and
+  ``transport``, ``simulated``, ``simulator_gap`` (null, or for a device a
+  running simulation could not simulate its ``driver_id``, ``cause`` and
+  ``detail``: why, as the device card says it), ``orphaned`` and
   ``orphan_reason``, and ``installed`` for product hardware.
 - ``state``: every ``device.<id>.*`` value now (children included) and three
   ``system.*`` values; ``history``: this device's rows of the state history.
@@ -127,6 +129,19 @@ class DeviceMissing(LookupError):
 # ---------------------------------------------------------------------------
 
 
+def simulation_facts(engine: Any, device_id: str) -> tuple[bool, dict[str, str] | None]:
+    """Whether the device connects to the simulator now, and, for one a
+    running simulation selected and could not simulate, why (its driver, the
+    cause and the error, as the device card is worded from them)."""
+    simulation = getattr(engine, "simulation", None)
+    simulated = bool(simulation is not None and simulation.is_redirected(device_id))
+    gap_fn = getattr(engine.devices, "simulation_gap", None)
+    gap = gap_fn(device_id) if gap_fn else None
+    if gap is None:
+        return simulated, None
+    return simulated, {"driver_id": gap.driver_id, "cause": gap.cause, "detail": gap.detail}
+
+
 class Snapshot:
     """Every source a report reads, taken once."""
 
@@ -178,10 +193,7 @@ class Snapshot:
         self.traffic = get_traffic_recorder().get_recent(device_id)
         self.log = get_log_buffer().get_recent(count=LOG_LINES, device=device_id)
 
-        simulation = getattr(engine, "simulation", None)
-        self.simulated = bool(simulation is not None and simulation.is_redirected(device_id))
-        gap_fn = getattr(devices, "unsimulated_driver", None)
-        self.simulator_gap = gap_fn(device_id) if (gap_fn and self.simulated) else None
+        self.simulated, self.simulator_gap = simulation_facts(engine, device_id)
         installed = getattr(devices, "installed_equipment", None)
         self.installed: dict[str, Any] | None = None
         if installed is not None and installed.owns(device_id):
