@@ -692,11 +692,21 @@ export class FaderControl extends LevelControl {
         if (!direction) return;
         e.preventDefault();
         const current = parseFloat(this.handle.getAttribute('aria-valuenow') || String(this.scale.min));
+        const next = this.keyStepFrom(current, direction);
+        this.place(next);
+        this.sender.live(next);
+    }
+
+    /**
+     * The value an arrow key steps to from `current`, up (1) or down (-1):
+     * one step along, snapped, held to the range and to any dead space, so
+     * the keys stop where a drag does.
+     */
+    keyStepFrom(current, direction) {
         const next = direction > 0
             ? Math.min(this.scale.max, snapToStep(current + this.step, this.step))
             : Math.max(this.scale.min, snapToStep(current - this.step, this.step));
-        this.place(next);
-        this.sender.live(next);
+        return this.scale.limited ? this.scale.toOutput(next) : next;
     }
 
     /** The display value a reading draws at. */

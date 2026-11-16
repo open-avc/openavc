@@ -53,7 +53,10 @@ for (const { name, element, pairs } of cases) {
     const ends = def.type === 'fader'
         ? [control.valueAtTravel(0), control.valueAtTravel(1)]
         : [control.valueAtPosition(0), control.valueAtPosition(control.steps)];
-    out[name] = { ends, back: pairs.map(([, device]) => control.readingOf(device)) };
+    // A fader's arrow keys are a second way along its travel: a key pressed
+    // at either end, toward the outside, is where they stop.
+    const keys = def.type === 'fader' ? [control.keyStepFrom(ends[0], -1), control.keyStepFrom(ends[1], 1)] : null;
+    out[name] = { ends, keys, back: pairs.map(([, device]) => control.readingOf(device)) };
 }
 console.log(JSON.stringify(out));
 """
@@ -89,6 +92,14 @@ def test_the_panel_sends_the_ends_and_draws_each_device_value_back(case: dict, p
     # lands within float noise of the display value, never further.
     displays = [display for display, _device in case["pairs"]]
     assert answer["back"] == pytest.approx(displays, rel=1e-9, abs=1e-9)
+
+
+FADERS = [case for case in CASES if case["element"]["type"] == "fader"]
+
+
+@pytest.mark.parametrize("case", FADERS, ids=[case["name"] for case in FADERS])
+def test_a_faders_arrow_keys_stop_where_its_travel_does(case: dict, panel_answers: dict) -> None:
+    assert panel_answers[case["name"]]["keys"] == pytest.approx(case["ends"])
 
 
 @pytest.mark.parametrize("case", CASES, ids=NAMES)
