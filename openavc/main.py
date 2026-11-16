@@ -817,11 +817,9 @@ def _served_app():
     return importlib.import_module("openavc.main").app
 
 
+# The main listener's server, the one that hears a stop signal first.
 def _main_server(cfg: "uvicorn.Config") -> "uvicorn.Server":
-    """The main listener's server: the one that hears a stop signal first
-    (``listen_sockets.hears_the_stop``)."""
     from openavc import listen_sockets
-
     return listen_sockets.hears_the_stop(uvicorn.Server(cfg))
 
 
