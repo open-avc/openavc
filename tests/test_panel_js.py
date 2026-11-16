@@ -143,6 +143,7 @@ SCENARIOS = [
     "gauge_display_decimals",
     "display_decimals_out_of_range_cannot_throw",
     "level_decimals_are_held_to_the_schema_bound",
+    "page_motion_reads_the_schema_bounds",
     # Layout engine (percentage geometry, project format 0.8.0).
     "layout_elements_paint_above_page_background",
     "layout_placement_is_percentages",

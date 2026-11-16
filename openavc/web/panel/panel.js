@@ -15,7 +15,7 @@ import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
 import { FaderControl, SliderControl, endFaderDrags } from './modules/level.js';
-import { boundedNumber } from './modules/project_values.js';
+import { boundedNumber, panelSetting } from './modules/project_values.js';
 import {
     FrameStatusWatch, drawFrame, fetchExtToken, framePlaceholder, loadPanelElementExtensions,
     pushToFrames, releaseFrames, releaseFramesIn,
@@ -1160,11 +1160,11 @@ class PanelApp {
         const settings = this.uiSettings || {};
         const still = this.editMode;
         return {
-            transition: still ? 'none' : (settings.page_transition || 'none'),
-            duration: settings.page_transition_duration || 200,
-            entryAnimation: still ? 'none' : (settings.element_entry || 'none'),
-            staggerMs: settings.element_stagger_ms || 30,
-            staggerStyle: settings.element_stagger_style,
+            transition: still ? 'none' : panelSetting(settings, 'page_transition'),
+            duration: panelSetting(settings, 'page_transition_duration'),
+            entryAnimation: still ? 'none' : panelSetting(settings, 'element_entry'),
+            staggerMs: panelSetting(settings, 'element_stagger_ms'),
+            staggerStyle: panelSetting(settings, 'element_stagger_style'),
         };
     }
 

@@ -30,7 +30,9 @@
  * `visibleWhen(node, def)`, which registers the node's visibility rule, both
  * asked as each element is drawn; and the page's entry motion,
  * `entryAnimation` ('none', 'stagger' or a class suffix), `staggerMs` and
- * `staggerStyle`.
+ * `staggerStyle`, as the panel settings give them with every blank already
+ * filled (modules/project_values.js). With no `entryAnimation` nothing
+ * animates in, which is how an overlay draws.
  */
 
 import { applyCssClass } from './stylesheet.js';
@@ -366,7 +368,7 @@ export function drawElementTree(page, layout, surface, how) {
         rendered: new Set(),
         order: 0,
         entryAnimation: how.entryAnimation || 'none',
-        staggerMs: how.staggerMs || 30,
+        staggerMs: how.staggerMs,
         staggerStyle: how.staggerStyle,
         how,
     };
@@ -439,7 +441,7 @@ function animateEntry(node, ctx) {
     const index = ctx.order++;
     node.style.opacity = '0';
     const animClass = ctx.entryAnimation === 'stagger'
-        ? `element-entry-${ctx.staggerStyle || 'fade-up'}`
+        ? `element-entry-${ctx.staggerStyle}`
         : `element-entry-${ctx.entryAnimation}`;
     setTimeout(() => {
         node.style.opacity = '';

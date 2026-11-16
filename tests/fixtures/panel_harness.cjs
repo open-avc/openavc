@@ -1823,6 +1823,40 @@ const tests = {
         }
     },
 
+    // The page motion a Builder draft asks for is read through the project
+    // schema's table, as a saved one is: blank, 0 or not a number is the
+    // default; one outside the range is held to its nearer end.
+    page_motion_reads_the_schema_bounds() {
+        const cases = [
+            [{}, '200ms', 30],
+            [{ page_transition_duration: 0, element_stagger_ms: 0 }, '200ms', 30],
+            [{ page_transition_duration: 99999, element_stagger_ms: 5000 }, '1000ms', 200],
+            [{ page_transition_duration: -5, element_stagger_ms: -5 }, '50ms', 10],
+            [{ page_transition_duration: 'slow', element_stagger_ms: null }, '200ms', 30],
+            [{ page_transition_duration: 350, element_stagger_ms: 45 }, '350ms', 45],
+        ];
+        for (const [settings, duration, stagger] of cases) {
+            withFakeClock((advance) => {
+                const app = mkApp();
+                const proj = project({
+                    elements: [{ id: 'a', type: 'label', text: 'a' }, { id: 'b', type: 'label', text: 'b' }],
+                    placements: { a: { x: 0, y: 0, w: 10, h: 10 }, b: { x: 20, y: 0, w: 10, h: 10 } },
+                });
+                proj.ui.settings = { page_transition: 'fade', element_entry: 'fade', ...settings };
+                app.root.textContent = '';   // every app draws into the one root: no page left from the last case
+                renderProject(app, proj);
+                const said = JSON.stringify(settings);
+                const drawn = app.root.style.getPropertyValue('--page-transition-duration');
+                assert(drawn === duration, `${said}: transition ${drawn}, want ${duration}`);
+                const second = () => app.root.querySelector('[data-element-id="b"]').classList.contains('element-entry-fade');
+                advance(stagger - 1);
+                assert(!second(), `${said}: the second element came in before ${stagger} ms`);
+                advance(1);
+                assert(second(), `${said}: the second element had not come in at ${stagger} ms`);
+            });
+        }
+    },
+
     // the reconnect backoff cap field is wired up.
     l004_max_reconnect_delay() {
         assert(mkApp().maxReconnectDelay === 30000, 'maxReconnectDelay is 30000');
