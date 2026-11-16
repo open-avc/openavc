@@ -165,11 +165,12 @@ function drawBackground(surface, bg) {
     if (bg.color) {
         surface.style.backgroundColor = bg.color;
     }
-    // Background image with opacity
-    if (bg.image) {
+    // Background image with opacity; a reference that names no picture draws none.
+    const imageUrl = assetUrl(bg.image);
+    if (imageUrl) {
         const imgLayer = backgroundLayer('panel-page-bg-image');
         drawFadedPicture(imgLayer, {
-            url: assetUrl(bg.image),
+            url: imageUrl,
             size: bg.image_size || 'cover',
             position: bg.image_position || 'center',
             opacity: bg.image_opacity ?? 1,

@@ -69,9 +69,10 @@ const isEntry = (value) => typeof value === 'object' && value !== null;
 
 /**
  * Every picture a look's entries name (an entry's `button_image`), in the
- * order they are written, each once and as a word: the states', then the
- * active half's and the inactive half's. A control fetches them all when it
- * is drawn, so a state change swaps its picture at once.
+ * order they are written, each once: the states', then the active half's and
+ * the inactive half's. Only text names a picture (assetUrl, modules/base_path.js),
+ * so a number is none and is never fetched. A control fetches them all when
+ * it is drawn, so a state change swaps its picture at once.
  */
 export function lookPictures(look) {
     const entries = [
@@ -79,8 +80,9 @@ export function lookPictures(look) {
         look.style_active,
         look.style_inactive,
     ];
-    const named = entries.filter(isEntry).map((entry) => entry.button_image).filter(Boolean);
-    return [...new Set(named.map(String))];
+    const named = entries.filter(isEntry).map((entry) => entry.button_image)
+        .filter((image) => typeof image === 'string' && image !== '');
+    return [...new Set(named)];
 }
 
 /**

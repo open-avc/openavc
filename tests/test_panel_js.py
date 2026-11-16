@@ -436,6 +436,9 @@ SCENARIOS = [
     "a_status_led_lights_nothing_without_a_reading",
     # A meeting at its end reads 00:00, never -00:00.
     "a_meeting_reads_00_00_at_its_end_never_minus_zero",
+    # A picture that is not text draws no picture, on every control and page.
+    "a_picture_that_is_not_text_draws_no_picture",
+    "a_page_picture_that_is_not_text_draws_the_page_without_it",
 ]
 
 

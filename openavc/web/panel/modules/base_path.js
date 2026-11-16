@@ -19,9 +19,13 @@ export function basePath() {
  * is when it names an address already. The name is encoded, since a legal
  * asset name may hold a space or a `#`, and asset names are flat, so
  * encodeURIComponent is safe; the Programmer's getAssetUrl builds the same.
+ *
+ * A reference that is not text names no picture (a number only a
+ * hand-edited or generated file carries): '' for it, as for an empty one,
+ * and every caller draws no picture for ''.
  */
 export function assetUrl(ref) {
-    if (!ref) return '';
+    if (typeof ref !== 'string' || !ref) return '';
     if (ref.startsWith('assets://')) {
         const name = encodeURIComponent(ref.slice('assets://'.length));
         return `${basePath()}/api/projects/default/assets/${name}`;

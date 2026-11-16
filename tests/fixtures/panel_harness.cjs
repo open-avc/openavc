@@ -13243,6 +13243,106 @@ Object.assign(tests, {
     },
 });
 
+// --- A picture that is not text ----------------------------------------------
+//
+// A picture is named by text (`assets://<name>`, a URL or a path); anything
+// else (a number only a hand-edited or generated file carries) names no
+// picture. Every place a picture is drawn draws none for it, without
+// throwing, after a picture it did draw as well as on the first draw.
+
+Object.assign(tests, {
+    a_picture_that_is_not_text_draws_no_picture() {
+        const KEY = 'device.d.mode';
+        const live = { 'device.d.connected': true, [KEY]: 'pic' };
+        const states = (extra) => ({ key: KEY, states: {
+            pic: { button_image: 'assets://on.png', ...extra }, num: { button_image: 7 } } });
+        const logged = [];
+        const wrong = [];
+        const check = (ok, what) => { if (!ok) wrong.push(what); };
+        const own = { Image: window.Image };
+        const probes = [];
+        window.Image = function (...args) { const img = new own.Image(...args); probes.push(img); return img; };
+        const run = loggingTo(logged, () => {
+            // An Image: its own picture a number; a look's picture a number after a real one.
+            const ownNum = levelMount({ id: 'own', type: 'image', src: 7 }, { state: live });
+            check(!ownNum.node().querySelector('img'), 'an Image whose own picture is a number drew an <img>');
+            const im = levelMount({ id: 'im', type: 'image', bindings: { show: { look: states() } } }, { state: live });
+            check(/\/on\.png$/.test(im.node().querySelector('img')?.getAttribute('src') || ''), 'the real picture is drawn first');
+            im.set(KEY, 'num');
+            check(!im.node().querySelector('img'), 'a state picture that is a number left an <img>');
+            const preloaded = probes.map((p) => p.getAttribute('src'));
+            check(preloaded.length === 1 && /\/on\.png$/.test(preloaded[0]),
+                `the preload fetches only the real picture, got ${JSON.stringify(preloaded)}`);
+
+            // A button: on its own face, and on an effect layer after a real one.
+            const btn = levelMount({ id: 'b', type: 'button', label: 'B', display_mode: 'image', button_image: 7 }, { state: live });
+            check(!/url\(/.test(btn.node().getAttribute('style')), 'a button whose own picture is a number drew one');
+            const masked = levelMount({ id: 'bm', type: 'button', label: 'B', image_blend_mode: 'mask',
+                bindings: { show: { look: states() } } }, { state: live });
+            check(masked.node().querySelector(':scope > .panel-button-image-layer'), 'the real picture is drawn on its layer first');
+            masked.set(KEY, 'num');
+            check(!masked.node().querySelector(':scope > .panel-button-image-layer'), 'a state picture that is a number kept the last layer');
+            const plain = levelMount({ id: 'bp', type: 'button', label: 'B', bindings: { show: { look: states() } } }, { state: live });
+            check(/on\.png/.test(plain.node().getAttribute('style')), 'the real picture is drawn on the button first');
+            plain.set(KEY, 'num');
+            check(!/url\(/.test(plain.node().getAttribute('style')), 'a state picture that is a number kept the last picture');
+
+            // A Container: a faded state picture, then a number.
+            const zone = levelMount({ id: 'z', type: 'group', label: 'Z',
+                bindings: { show: { look: states({ background_opacity: 0.4 }) } } }, { state: live });
+            check(zone.node().querySelector(':scope > .panel-bg-image-layer'), 'the faded picture is drawn first');
+            zone.set(KEY, 'num');
+            check(!zone.node().querySelector(':scope > .panel-bg-image-layer'), 'a state picture that is a number kept the faded layer');
+            check(!/url\(/.test(zone.node().getAttribute('style')), 'a state picture that is a number drew a background');
+            const zoneOwn = levelMount({ id: 'zo', type: 'group', label: 'Z', style: { background_image: 7 } }, { state: live });
+            check(!/url\(/.test(zoneOwn.node().getAttribute('style')), 'a background picture that is a number drew one');
+        });
+        window.Image = own.Image;
+        check(!run.threw, `drawing threw: ${run.threw}`);
+        check(!logged.some((l) => /error/i.test(l)), `logged: ${logged.join(' | ')}`);
+        assert(wrong.length === 0, wrong.join(' ;; '));
+    },
+
+    // A page whose picture is a number, its own or its theme's, is drawn
+    // without one.
+    a_page_picture_that_is_not_text_draws_the_page_without_it() {
+        const wrong = [];
+        const pageDrawn = (app) => {
+            const surface = document.querySelector('#panel-root .panel-page');
+            if (!surface || !app.root.querySelector('[data-element-id="b1"]')) return 'the page was not drawn';
+            return surface.querySelector('.panel-page-bg-image') ? 'drew a picture layer' : null;
+        };
+        const logged = [];
+        const own = loggingTo(logged, () => {
+            const app = mkApp();
+            renderProject(app, Object.assign(project({
+                elements: [el('b1', 'button')], placements: { b1: { x: 0, y: 0, w: 10, h: 10 } },
+                background: { image: 7, color: '#101010' },
+            })));
+            const problem = pageDrawn(app);
+            if (problem) wrong.push(`its own picture a number: ${problem}`);
+        });
+        if (own.threw) wrong.push(`its own picture a number threw: ${own.threw}`);
+        const themed = loggingTo(logged, () => {
+            const app = mkApp();
+            app.theme.inline = {
+                id: 'slate', variables: { panel_bg: '#1e2a3a', pic: 7 }, element_defaults: {},
+                page_defaults: { background_color: 'var(panel_bg)', background_image: 'var(pic)' },
+            };
+            try {
+                renderProject(app, themedProject());
+                const problem = pageDrawn(app);
+                if (problem) wrong.push(`its theme's picture a number: ${problem}`);
+            } finally {
+                document.documentElement.style.removeProperty('--panel-bg');
+            }
+        });
+        if (themed.threw) wrong.push(`its theme's picture a number threw: ${themed.threw}`);
+        if (logged.some((l) => /error/i.test(l))) wrong.push(`logged: ${logged.join(' | ')}`);
+        assert(wrong.length === 0, wrong.join(' ;; '));
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

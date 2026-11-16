@@ -20,18 +20,19 @@ import { assetUrl } from './base_path.js';
 
 const NOTE_STYLE = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--panel-text);opacity:0.5;font-size:0.8571rem;';
 
-/** Show `src` in the Image `node` drawn from `elementDef`, or no picture when `src` is empty. */
+/** Show `src` in the Image `node` drawn from `elementDef`, or no picture when `src` names none (assetUrl). */
 export function showPicture(node, elementDef, src) {
     if (node._pictureSrc === src) return;
     node._pictureSrc = src;
-    if (!src) {
+    const url = assetUrl(src);
+    if (!url) {
         node._pictureImg?.remove();
         node._pictureImg = null;
         dropNote(node);
         return;
     }
     const img = node._pictureImg || newPicture(node, elementDef);
-    img.src = assetUrl(src);
+    img.src = url;
 }
 
 /** The Image's one <img>, first in it, shown once it loads and hidden behind the note when it cannot. */

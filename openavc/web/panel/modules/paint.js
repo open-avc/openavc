@@ -177,9 +177,15 @@ function paintBackground(node, style) {
 
 /** A background picture: over the gradient, or on a layer of its own when it is faded. */
 function paintBackgroundPicture(node, style) {
+    const url = assetUrl(style.background_image);
+    if (!url) {
+        // Names no picture: none drawn, and a faded one drawn before goes.
+        dropFadedBackground(node);
+        return;
+    }
     const size = style.background_size || 'cover';
     const picture = {
-        url: assetUrl(style.background_image),
+        url,
         size: size === 'stretch' ? '100% 100%' : size,
         position: style.background_position || 'center',
         opacity: style.background_opacity != null ? style.background_opacity : 1,
@@ -420,7 +426,11 @@ function drawOnEffectLayer(node, picture, { effect, blend, opacity, tintColor })
  */
 export function applyImageEffect(node, imageRef, options = {}) {
     const url = assetUrl(imageRef);
-    if (!url) return;
+    if (!url) {
+        // Names no picture: none drawn, and one on an effect layer goes.
+        node.querySelector(':scope > .panel-button-image-layer')?.remove();
+        return;
+    }
     const opacity = options.opacity != null ? Number(options.opacity) : 1;
     const picture = { urlCss: `url("${sanitizeCssUrl(url)}")`, sizeCss: fitCss(options.fit || 'cover') };
 
