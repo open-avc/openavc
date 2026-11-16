@@ -37,7 +37,7 @@ import re
 import shutil
 import tempfile
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -268,33 +268,33 @@ def _read_project(project_file: Path) -> tuple[object, str]:
 
 def _write_archive(archive: Path, project_file: Path, meta: dict, logins: str | None) -> None:
     """Every member of a project backup, written into ``archive``: the
-    project file, the meta, the scripts, each tree with its folders intact,
-    state.json and the sealed logins."""
-    project_dir = project_file.parent
+    project file, the meta, what sits beside the project file
+    (``_beside_members``) and the sealed logins."""
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(project_file, ARCHIVE_PROJECT)
         zf.writestr("backup_meta.json", json.dumps(meta, indent=2))
-        scripts_dir = project_dir / "scripts"
-        if scripts_dir.is_dir():
-            for f in scripts_dir.glob("*.py"):
-                zf.write(f, f"scripts/{f.name}")
-        # Uploaded images, custom controls and themes, folders intact. Assets
-        # used to be a non-recursive iterdir(), so a nested one was not
-        # flattened but absent from the backup, the one failure a backup must
-        # not have; one custom control is a folder, so ui/ cannot be flattened
-        # on the way in or out.
-        for entries in (
-            asset_tree.zip_entries(project_dir / "assets"),
-            zip_entries(project_dir / "ui"),
-            theme_tree.zip_entries(project_dir / "themes"),
-        ):
-            for archive_path, f in entries:
-                zf.write(f, archive_path)
-        state_file = project_dir / "state.json"
-        if state_file.is_file():
-            zf.write(state_file, "state.json")
+        for archive_path, f in _beside_members(project_file.parent):
+            zf.write(f, archive_path)
         if logins is not None:
             zf.writestr(ARCHIVE_LOGINS, logins)
+
+
+def _beside_members(project_dir: Path) -> Iterator[tuple[str, Path]]:
+    """(archive path, file) for what a backup carries from beside the
+    project file: the scripts, each tree with its folders intact, state.json.
+
+    Assets used to be a non-recursive iterdir(), so a nested one was not
+    flattened but absent from the backup, the one failure a backup must not
+    have; one custom control is a folder, so ui/ cannot be flattened on the
+    way in or out."""
+    for f in (project_dir / "scripts").glob("*.py"):
+        yield f"scripts/{f.name}", f
+    yield from asset_tree.zip_entries(project_dir / "assets")
+    yield from zip_entries(project_dir / "ui")
+    yield from theme_tree.zip_entries(project_dir / "themes")
+    state_file = project_dir / "state.json"
+    if state_file.is_file():
+        yield "state.json", state_file
 
 
 def _free_name(backup_d: Path, base: str) -> Path:
