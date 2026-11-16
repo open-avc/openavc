@@ -104,6 +104,12 @@
       "pairs": [[0, 0], [25, 50], [50, 100]]
     },
     {
+      "name": "a fader whose Min is above its Max is turned round",
+      "element": {"type": "fader", "min": 100, "max": 0, "step": 1, "output_min": 0, "output_max": 255},
+      "ends": [0, 100],
+      "pairs": [[0, 0], [40, 102], [100, 255]]
+    },
+    {
       "name": "a slider whose range is one value sends the bottom of its output range",
       "element": {"type": "slider", "min": 5, "max": 5, "step": 1, "output_min": 0, "output_max": 255},
       "ends": [5, 5],

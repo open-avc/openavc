@@ -189,13 +189,16 @@ _LEVEL_DEFAULT_MAX = 100.0
 
 def _display_range(element: Any) -> tuple[float, float]:
     """The display range a slider's or fader's travel covers, read the way the
-    panel's control reads it: a blank end is the default."""
+    panel's control reads it: a blank end is the default, and a fader whose
+    Min is above its Max is turned round (the panel draws it the right way up,
+    so its top sends the top of the output range)."""
     low = getattr(element, "min", None)
     high = getattr(element, "max", None)
-    return (
-        _LEVEL_DEFAULT_MIN if low is None else low,
-        _LEVEL_DEFAULT_MAX if high is None else high,
-    )
+    low = _LEVEL_DEFAULT_MIN if low is None else low
+    high = _LEVEL_DEFAULT_MAX if high is None else high
+    if getattr(element, "type", None) == "fader" and low > high:
+        return high, low
+    return low, high
 
 
 class UIEventRuntime:
