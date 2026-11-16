@@ -406,6 +406,23 @@ async def test_a_simulator_that_exits_on_the_way_down_is_left_to_the_stop(rig, m
 
 
 @pytest.mark.asyncio
+async def test_a_comeback_that_fails_as_the_server_stops_dials_nothing_real(rig, monkeypatch):
+    """A stop heard while the server is still starting: the simulation that
+    was on cannot come back (the same signal ended its simulator), and the
+    devices it would have moved are left undialed for the stop rather than
+    sent to their real equipment."""
+    rig.leave_simulation_on()
+    rig.fail_launch = True
+    monkeypatch.setattr(runtime_flags, "stopping", True)
+    eng = await _boot(rig)
+    try:
+        assert _DialRecorder.attempts == []
+        assert rig.record.exists()
+    finally:
+        await eng.stop()
+
+
+@pytest.mark.asyncio
 async def test_a_simulator_that_exits_while_the_server_starts_is_not_taken_for_a_stop(rig):
     """The engine is not running yet while a resumed simulation is already
     being watched; a simulator that dies then is a crash like any other."""

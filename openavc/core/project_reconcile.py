@@ -318,6 +318,12 @@ class ProjectReconcileMixin:
                         await self.simulation.resume()
                     elif self.simulation.active:
                         await self.simulation.sync()
+                    if self.stopping:
+                        # On the way down nothing is dialed: the stop is about
+                        # to disconnect every device, and a comeback the same
+                        # signal cut short has left the simulated ones on
+                        # their real addresses.
+                        return
                     await self.devices.bring_up()
                 except asyncio.CancelledError:
                     raise
