@@ -110,7 +110,7 @@ def repair_bounds_0_17(
     for el in elements:
         prefix, page_id = places.get(id(el), ("", ""))
         element_id = str(el.get("id", ""))
-        _Noted(notes, bounds, f"{prefix} > {element_id}", page_id, element_id).decimals(el)
+        _Noted(notes, bounds, f"{prefix} > {element_id}", page_id=page_id, element_id=element_id).decimals(el)
     for monitor in _dicts_0_17(data.get("monitors")):
         _Noted(notes, bounds, f"Monitored Readings > {monitor.get('key', '')}").decimals(monitor)
     ui = data.get("ui")
@@ -122,12 +122,10 @@ def repair_bounds_0_17(
 class _Noted:
     """One holder's repairs, each said at its place."""
 
-    def __init__(
-        self, notes: MigrationNotes, bounds: RepairBounds, location: str, page_id: str = "", element_id: str = "",
-    ):
+    def __init__(self, notes: MigrationNotes, bounds: RepairBounds, location: str, **at: str):
         self.notes = notes
         self.bounds = bounds
-        self.at = {"page_id": page_id, "element_id": element_id}
+        self.at = {"page_id": at.get("page_id", ""), "element_id": at.get("element_id", "")}
         self.location = location
 
     def changed(self, message: str) -> None:

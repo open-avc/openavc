@@ -46,11 +46,13 @@ PANEL_ARTIFACT = "openavc/web/panel/modules/project_values.gen.js"
 #: Models whose every plain default is in the table, bounded or not.
 SETTINGS_MODELS: tuple[type[BaseModel], ...] = (UISettings,)
 
-#: The bound each ``annotated_types`` constraint becomes in the table.
-_BOUND_KEYS = {
-    annotated_types.Ge: ("min", "ge"),
-    annotated_types.Le: ("max", "le"),
-    annotated_types.MaxLen: ("max_length", "max_length"),
+#: What each rule on a field becomes in the table: an ``annotated_types``
+#: constraint its bound, a ``OneOf`` its words and what another reads as.
+_RULE_WORDS = {
+    annotated_types.Ge: lambda rule: {"min": rule.ge},
+    annotated_types.Le: lambda rule: {"max": rule.le},
+    annotated_types.MaxLen: lambda rule: {"max_length": rule.max_length},
+    OneOf: lambda rule: {"words": list(rule.words), "otherwise": rule.otherwise},
 }
 
 #: The table's word for each text pattern a field may declare. A reader
@@ -118,13 +120,11 @@ def _is_integer(annotation: Any) -> bool:
 
 def _bound(rule: Any) -> dict[str, Any] | None:
     """The table's word for one rule on a field, or None when it has none."""
-    keys = _BOUND_KEYS.get(type(rule))
-    if keys is not None:
-        return {keys[0]: getattr(rule, keys[1])}
+    words = _RULE_WORDS.get(type(rule))
+    if words is not None:
+        return words(rule)
     if isinstance(rule, AllowInfNan) and not rule.allow_inf_nan:
         return {"finite": True}
-    if isinstance(rule, OneOf):
-        return {"words": list(rule.words), "otherwise": rule.otherwise}
     pattern = getattr(rule, "pattern", None)
     if isinstance(pattern, str) and pattern in _PATTERN_WORDS:
         return dict(_PATTERN_WORDS[pattern])
@@ -180,13 +180,14 @@ def _unreadable_blank(model: type[BaseModel], field: str) -> UnreadableBoundErro
 
 
 def _is_text(annotation: Any) -> bool:
-    return annotation is str
+    """Text, or text that may be blank (a fixed choice with no default)."""
+    return annotation in (str, str | None)
 
 
 def _entry(model: type[BaseModel], field: str, info: FieldInfo, settings: bool) -> dict[str, Any] | None:
     bounds = _bounds(model, field, info)
     blank = _plain_default(info)
-    if bounds and (_is_text(info.annotation) or "words" in bounds):
+    if bounds and _is_text(info.annotation):
         return {**blank, **bounds}
     if bounds:
         return {**blank, **bounds, "integer": _is_integer(info.annotation)}

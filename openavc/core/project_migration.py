@@ -17,10 +17,7 @@ there what it changed and what it found and left, in the words a person reads
 in the Programmer's notice; a step that only reshapes the file, so nobody sees
 a difference, says nothing. An import runs this chain and the load like a boot
 and never refuses; only the AI's tools, and a project PUT for what it newly
-adds, refuse a value a rule does not take. After the chain, every load runs
-the repair a project needs whatever its version (``core/saved_values.py``):
-an earlier release can save past a bound into a project stamped with this
-format, and a later release can save a word this one does not know.
+adds, refuse a value a rule does not take.
 
 The rule worth knowing before changing a step: a step says what it did to the
 projects of its day, so the steps that rewrite UI elements keep their own
@@ -856,23 +853,17 @@ MIGRATIONS = [
 CURRENT_VERSION = MIGRATIONS[-1][1]
 
 
-def migrate_project(
-    data: dict, notes: MigrationNotes | None = None, *, repair: bool = True,
-) -> tuple[dict, bool]:
+def migrate_project(data: dict, notes: MigrationNotes | None = None, *, repair: bool = True):
     """
-    Apply all needed migrations to bring a project to the current version,
-    then the repair every load makes whatever the version
-    (``core/saved_values.py``): a value past today's bound brought inside it,
-    a word a fixed-choice field does not know said. ``repair=False`` is for a
-    save, which refuses a value past a bound rather than repair it.
+    Apply all needed migrations, then the repair every load makes whatever the
+    version (``core/saved_values.py``); ``repair=False`` is a save's, which refuses.
 
     ``notes``, when given, gets what each step changed and found: a door that
     keeps them for the Programmer's notice passes one
     (``core/project_update.py``).
 
-    Returns:
-        (migrated_data, was_migrated) — the transformed dict and whether
-        any migration or repair rewrote it.
+    Returns (migrated_data, was_migrated): the dict, and whether any migration
+    or repair rewrote it.
     """
     current = data.get("openavc_version", "0.1.0")
     migrated = False
@@ -892,11 +883,8 @@ def migrate_project(
             current, CURRENT_VERSION,
         )
 
-    if repair:
-        # Imported here: saved_values reads the project models, which import
-        # this module's CURRENT_VERSION.
+    if repair:  # saved_values reads the models, which import CURRENT_VERSION from here
         from openavc.core.saved_values import repair_saved_values
-
         migrated = repair_saved_values(data, _elements(data), notes) or migrated
 
     return data, migrated

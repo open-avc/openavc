@@ -462,8 +462,12 @@ async def _edit_rig(tmp_path, monkeypatch, project: dict):
     save_project(engine.project_path, engine.project)
     monkeypatch.setattr(engine, "_reconcile", AsyncMock())
     monkeypatch.setattr(routes, "_get_engine", lambda: engine)
+    from openavc.api.errors import unknown_word_handler
+    from openavc.core.saved_values import UnknownWordError
+
     app = FastAPI()
     app.include_router(routes.router, prefix="/api")
+    app.add_exception_handler(UnknownWordError, unknown_word_handler)
     return engine, httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
@@ -491,6 +495,14 @@ async def test_a_save_refuses_a_word_this_release_does_not_know_and_the_running_
     assert resp.status_code == 422
     assert "Trigger type 'webhook' is not one this version of OpenAVC knows" in resp.json()["detail"]
     assert engine.project.macros[0].triggers[0].type == "startup"
+
+
+def test_the_server_answers_an_unknown_word_refusal_with_a_422():
+    from openavc.api.errors import unknown_word_handler
+    from openavc.core.saved_values import UnknownWordError
+    from openavc.main import app
+
+    assert app.exception_handlers[UnknownWordError] is unknown_word_handler
 
 
 @pytest.mark.asyncio

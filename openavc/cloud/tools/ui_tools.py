@@ -753,9 +753,8 @@ def _set_background(page: Any, value: Any, what: str) -> None:
 
 
 def _set_render_mode(page: Any, value: Any, what: str) -> None:
-    """Checked rather than assigned: the model keeps any word as written (a
-    later release's), so "Custom" or a typo would land and the page would
-    quietly go back to drawing its elements."""
+    """Checked rather than assigned: the model keeps any word (a later release's), so
+    "Custom" or a typo would land and the page would quietly draw its elements."""
     from openavc.core.project_loader import UIPage, choice_rule
 
     if value not in choice_rule(UIPage, "render_mode").words:

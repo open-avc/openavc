@@ -521,6 +521,7 @@ from openavc.api.errors import (
     StructuredApiError,
     request_validation_exception_handler,
     structured_api_error_handler,
+    unknown_word_handler,
 )
 
 app.add_exception_handler(RequestValidationError, request_validation_exception_handler)
@@ -536,6 +537,11 @@ async def installed_equipment_error(request, error):
 # detail rather than inside it, so every client still finds a readable sentence
 # at {"detail": ...}. See openavc/api/errors.py for the contract.
 app.add_exception_handler(StructuredApiError, structured_api_error_handler)
+
+# An edit that adds a fixed choice this version does not know is a 422.
+from openavc.core.saved_values import UnknownWordError
+
+app.add_exception_handler(UnknownWordError, unknown_word_handler)
 
 # CORS — allow same-origin and localhost by default.
 # Additional origins can be set via OPENAVC_CORS_ORIGINS (comma-separated).

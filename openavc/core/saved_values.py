@@ -156,32 +156,36 @@ class _Words:
         self.location = location
         self.page_id = page_id
 
-    def check(self, model: type[BaseModel], field: str, holder: Any, location: str = "", layout_id: str = "") -> None:
-        if not isinstance(holder, dict) or field not in holder:
-            return
-        word = holder[field]
-        # A blank is no word: it is not set, and reads as the field's default.
-        if not word or not isinstance(word, str) or reads_as(model, field, word) == word:
-            return
-        self.found.append(UnknownWord(
-            model, field, word, location or self.location, self.page_id, layout_id,
-        ))
+    def check(self, rule: tuple[type[BaseModel], str], holder: Any, location: str = "", layout_id: str = "") -> None:
+        """``holder``'s word in the field ``rule`` names, kept when unknown."""
+        model, field = rule
+        word = holder.get(field) if isinstance(holder, dict) else None
+        if _unknown(model, field, word):
+            self.found.append(UnknownWord(
+                model, field, word, location or self.location, self.page_id, layout_id,
+            ))
 
     def macro(self, macro: dict) -> None:
-        self.check(MacroConfig, "overlap", macro)
+        self.check((MacroConfig, "overlap"), macro)
         for number, step in enumerate(_dicts(macro.get("steps")), start=1):
             for each in _steps_within(step):
-                self.check(MacroStep, "on_timeout", each, f"{self.location} > step {number}")
+                self.check((MacroStep, "on_timeout"), each, f"{self.location} > step {number}")
         for trigger in _dicts(macro.get("triggers")):
             where = f"{self.location} > {trigger.get('id', '')}"
-            self.check(TriggerConfig, "type", trigger, where)
-            self.check(TriggerConfig, "overlap", trigger, where)
+            self.check((TriggerConfig, "type"), trigger, where)
+            self.check((TriggerConfig, "overlap"), trigger, where)
 
     def page(self, page: dict) -> None:
-        self.check(UIPage, "render_mode", page)
-        self.check(PageBackground, "image_size", page.get("background"))
+        self.check((UIPage, "render_mode"), page)
+        self.check((PageBackground, "image_size"), page.get("background"))
         for layout in _dicts(page.get("layouts")):
-            self.check(Layout, "orientation", layout, layout_id=str(layout.get("id", "")))
+            self.check((Layout, "orientation"), layout, layout_id=str(layout.get("id", "")))
+
+
+def _unknown(model: type[BaseModel], field: str, word: Any) -> bool:
+    """A word the field does not know. A blank is no word: it is not set, and
+    reads as the field's default."""
+    return isinstance(word, str) and word != "" and reads_as(model, field, word) != word
 
 
 def _steps_within(step: dict) -> list[dict]:

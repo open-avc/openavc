@@ -91,6 +91,12 @@ async def structured_api_error_handler(request: Request, exc: StructuredApiError
     )
 
 
+async def unknown_word_handler(request: Request, exc: Exception) -> JSONResponse:
+    """An edit that adds a fixed choice this version does not know
+    (``core/saved_values.UnknownWordError``): 422 with its sentence."""
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 def validation_error_lines(errors: list) -> list[str]:
     """One ``"<field>: <msg>"`` line per validation error, in Pydantic's order.
 

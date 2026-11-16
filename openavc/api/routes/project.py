@@ -28,7 +28,6 @@ from openavc.core.command_params import (
 from openavc.core.device_config import resolve_device_config
 from openavc.core.engine import ProjectRevisionConflictError
 from openavc.core.project_loader import ProjectConfig
-from openavc.core.saved_values import UnknownWordError
 from openavc.drivers.child_ids import child_display_name
 from openavc.ui.matrix_inference import propose_matrices
 from openavc.ui.matrix_model import resolve_matrix_config
@@ -349,20 +348,18 @@ async def dismiss_update_notice() -> dict[str, Any]:
     return {"status": "dismissed", "cleared": cleared}
 
 
-def _migrated_body(body: dict[str, Any], *, repair: bool) -> tuple[ProjectConfig, Any]:
+def _migrated_body(body: dict[str, Any], mode: str) -> tuple[ProjectConfig, Any]:
     """A whole project document as this release reads it, and what its
-    migration changed. The format chain runs before validating: this door
-    takes whole documents (the Programmer's import saves through here), so an
-    older export migrates exactly as a disk load would. Current-format bodies
-    pass through untouched. ``repair`` is an import's: it is read as a load
-    reads it (``core/saved_values.py``), where a save refuses a value past a
-    bound."""
+    migration changed. The format chain runs before validating, so an older
+    export (the Programmer's import saves through here) migrates as a disk
+    load would; an import is also repaired as a load is
+    (core/saved_values.py), where a save refuses a value past a bound."""
     from openavc.core.project_migration import migrate_project
     from openavc.core.project_update import MigrationNotes
 
     update_notes = MigrationNotes()
     try:
-        body, _ = migrate_project(body, update_notes, repair=repair)
+        body, _ = migrate_project(body, update_notes, repair=mode == "import")
         return ProjectConfig(**body), update_notes
     except ValidationError as e:
         # The field list is the whole repair story for whoever sent this --
@@ -436,7 +433,7 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
                    "document from GET /api/project, version field included.",
         )
 
-    project, update_notes = _migrated_body(body, repair=mode == "import")
+    project, update_notes = _migrated_body(body, mode)
     # Compare-and-set runs inside the engine, under the same lock that
     # increments the revision — checked here, two concurrent saves could
     # both pass and one edit would be silently lost.
@@ -462,12 +459,9 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
             except InstalledEquipmentError as error:
                 raise HTTPException(status_code=422, detail=str(error)) from error
         else:
-            try:
-                new_revision = await engine.apply_project(
-                    project, expected_revision=expected_rev
-                )
-            except UnknownWordError as error:
-                raise HTTPException(status_code=422, detail=str(error)) from error
+            new_revision = await engine.apply_project(
+                project, expected_revision=expected_rev
+            )
             # An earlier release's document saved over this one: what its
             # migration changed joins the notice for the running project.
             engine.keep_update_notes(update_notes, replace=False)

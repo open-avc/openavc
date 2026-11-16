@@ -165,19 +165,18 @@ def _clamp_overlay_box_0_17(page: dict, notes: MigrationNotes, box: tuple[float,
     one that is no finite number goes, so it loads as the default box the
     panel drew."""
     name, page_id = _page_place_0_17(page)
-    for side, label in (("width", "Width"), ("height", "Height")):
+    for side in ("width", "height"):
         number = number_0_17(page["overlay"].get(side))
         if number is None:
             continue
-        said = _overlay_side_inside_0_17(page["overlay"], side, number, label, box)
+        said = _overlay_side_inside_0_17(page["overlay"], side, number, box)
         if said:
             notes.changed(said, f"{name} > page", page_id=page_id)
 
 
-def _overlay_side_inside_0_17(
-    overlay: dict, side: str, number: float, label: str, box: tuple[float, float],
-) -> str:
+def _overlay_side_inside_0_17(overlay: dict, side: str, number: float, box: tuple[float, float]) -> str:
     """The side brought inside the box; what changed, or "" for nothing."""
+    label = side.capitalize()
     low, high = box
     if not math.isfinite(number):
         overlay.pop(side)
