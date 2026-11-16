@@ -32,6 +32,19 @@ the sentence says what is known (nothing here emits it) and what follows (it
 runs only if something outside does), never "this handler never runs". A
 handler waiting on an outside system is worth a glance, not a deletion.
 
+**And the one event that comes once.** `system.started` is emitted once per
+server start (`engine_lifecycle`); a script loaded or reloaded after it never
+hears it, and a reload must not re-send it, or a Startup macro's power-on
+commands would go out at every edit. So an `every()` started in a handler
+that listens only for it ticks until the script's first edit and then never
+again, while the same call at the top of the script is armed at every load
+and cleared at every reload. `startup_timers` finds that shape. `after()` in
+the same handler is one-time boot work, which is what that handler is for,
+and is left alone.
+
+`script_issues` is both checks together, each issue tagged with its `kind`,
+and is what `POST /api/scripts/validate` and the AI's script tools ask.
+
 Read statically, never by importing: the editor asks about source it is holding
 and has not saved, and a script that fails to load has to be readable too --
 that is precisely when somebody needs to know why nothing happens.
@@ -61,6 +74,21 @@ CUSTOM_PREFIX = "custom."
 # stands for "could be anything", which suppresses rather than accuses: this
 # check may never be the reason somebody deletes a handler that works.
 UNREADABLE = "*"
+
+# The event emitted once per server start, never on a script's load or reload.
+STARTED_EVENT = "system.started"
+
+# The two kinds of issue, as `script_issues` tags them.
+NO_EMITTER = "no_emitter"
+STARTUP_TIMER = "startup_timer"
+
+STARTUP_TIMER_MESSAGE = (
+    "This timer starts only when the server starts. Start it at the top of the "
+    "script so it survives edits."
+)
+
+# The decorators that subscribe a handler to something.
+_SUBSCRIBERS = ("on_event", "on_state_change")
 
 
 def _callee(node: ast.AST) -> str:
@@ -141,6 +169,54 @@ def event_listeners(source: str) -> list[tuple[int, str]]:
             if pattern:
                 found.append((decorator.lineno, pattern))
     return found
+
+
+def _runs_only_at_start(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Whether every subscription on a handler is `@on_event("system.started")`.
+
+    A handler that also listens for something else runs again when that comes,
+    and a pattern built at runtime is not something to have an opinion about.
+    """
+    subscriptions = [
+        d for d in func.decorator_list
+        if isinstance(d, ast.Call) and _callee(d) in _SUBSCRIBERS
+    ]
+    return bool(subscriptions) and all(
+        _callee(d) == "on_event" and _literal(_first_arg(d)) == STARTED_EVENT
+        for d in subscriptions
+    )
+
+
+def _is_every_call(node: ast.AST) -> bool:
+    """`every(...)` or `openavc.every(...)`, never some other object's `every`."""
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Name):
+        return func.id == "every"
+    return (
+        isinstance(func, ast.Attribute)
+        and func.attr == "every"
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "openavc"
+    )
+
+
+def startup_timers(source: str) -> list[int]:
+    """The lines of every `every()` started in a handler that runs only at
+    `system.started`, which stops at the script's first edit.
+
+    The line is the call's own: the handler is fine, the timer is in the wrong
+    place.
+    """
+    tree = _parse(source)
+    if tree is None:
+        return []
+    lines: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and _runs_only_at_start(node):
+            lines.update(call.lineno for call in ast.walk(node) if _is_every_call(call))
+    return sorted(lines)
 
 
 def script_emitters(source: str) -> list[str]:
@@ -284,9 +360,9 @@ def dead_listeners(
     count, including the one being checked -- a script that emits to itself is
     a normal shape, not a suspicious one.
 
-    Returns script id -> ``[{line, event, message}]``. A script with nothing
-    wrong is absent rather than present and empty, which is what lets a caller
-    treat the result as "what to draw".
+    Returns script id -> ``[{kind, line, event, message}]``. A script with
+    nothing wrong is absent rather than present and empty, which is what lets a
+    caller treat the result as "what to draw".
     """
     emitters = project_emitters(project) if project is not None else set()
     for source in sources.values():
@@ -301,6 +377,7 @@ def dead_listeners(
             if is_emitted(pattern, emitters):
                 continue
             found.append({
+                "kind": NO_EMITTER,
                 "line": line,
                 "event": pattern,
                 "message": (
@@ -313,4 +390,23 @@ def dead_listeners(
             })
         if found:
             issues[script_id] = found
+    return issues
+
+
+def script_issues(
+    sources: Mapping[str, str], project: Any = None
+) -> dict[str, list[dict[str, Any]]]:
+    """Both checks over ``sources`` (all of the project's scripts, as
+    ``dead_listeners`` needs): script id -> its issues in line order, each
+    ``{kind, line, event, message}``. A clean script is absent."""
+    issues = dead_listeners(sources, project)
+    for script_id, source in sources.items():
+        timers = [
+            {"kind": STARTUP_TIMER, "line": line, "event": STARTED_EVENT,
+             "message": STARTUP_TIMER_MESSAGE}
+            for line in startup_timers(source)
+        ]
+        if timers:
+            merged = issues.get(script_id, []) + timers
+            issues[script_id] = sorted(merged, key=lambda issue: issue["line"])
     return issues

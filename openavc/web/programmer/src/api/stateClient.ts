@@ -135,18 +135,26 @@ export async function validateMacros(
 
 // --- Scripts ---
 
-/** A handler in a script waiting for an event nothing in the project emits.
+/** One thing the script check found, by `kind`:
  *
- *  `line` is the `@on_event` decorator's own line -- the handler below it is
- *  fine and the pattern is what is wrong -- and `event` is that pattern. */
+ *  - `no_emitter`: a handler waiting for an event nothing in the project
+ *    emits. `line` is the `@on_event` decorator's own line -- the handler
+ *    below it is fine and the pattern is what is wrong -- and `event` is that
+ *    pattern.
+ *  - `startup_timer`: an `every()` started in a handler that listens only for
+ *    `system.started`, which comes once per server start, so the timer stops
+ *    at the script's next edit. `line` is the `every(` call's, and `event` is
+ *    `system.started`. */
 export interface ScriptIssue {
+  kind: "no_emitter" | "startup_timer";
   line: number;
   event: string;
   message: string;
 }
 
 /**
- * Ask the platform which handlers in these scripts can never run.
+ * Ask the platform which handlers in these scripts can never run, and which
+ * timers stop at the script's next edit.
  *
  * The script half of the dead-control failure: `@on_event("custom.start")` in
  * a project where no macro step, no control action and no other script ever

@@ -1,10 +1,21 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ScriptFileTree } from "./ScriptFileTree";
+import { issueBadge, type ScriptIssue } from "./scriptLint";
 
 // A handler waiting for an event nothing sends is in a file nobody has opened
 // -- that is the whole shape of the failure. So the mark has to be on the LIST,
 // not only inside the editor, exactly as the macro lint marks its rows.
+
+function dead(n: number) {
+  const issues: ScriptIssue[] = Array.from({ length: n }, (_, i) => ({
+    kind: "no_emitter",
+    line: i + 1,
+    event: "custom.select_source",
+    message: "Nothing in this project emits it.",
+  }));
+  return issueBadge(issues);
+}
 
 const SCRIPTS = [
   { id: "router", file: "router.py", enabled: true, description: "Source routing" },
@@ -39,17 +50,17 @@ function renderTree(overrides: Partial<Parameters<typeof ScriptFileTree>[0]> = {
 
 describe("dead handlers on the script list", () => {
   it("marks the row of a script whose handler nothing can reach", () => {
-    renderTree({ deadHandlers: { router: 1 } });
+    renderTree({ lintBadges: { router: dead(1) } });
     expect(screen.getByText("1 handler with no emitter")).toBeTruthy();
   });
 
   it("counts them, because one file can carry several", () => {
-    renderTree({ deadHandlers: { router: 3 } });
+    renderTree({ lintBadges: { router: dead(3) } });
     expect(screen.getByText("3 handlers with no emitter")).toBeTruthy();
   });
 
   it("leaves a script with nothing wrong showing its description", () => {
-    renderTree({ deadHandlers: { router: 1 } });
+    renderTree({ lintBadges: { router: dead(1) } });
     expect(screen.getByText("Lighting scenes")).toBeTruthy();
   });
 
@@ -61,7 +72,7 @@ describe("dead handlers on the script list", () => {
 
   it("does not talk over a load error, which is the worse news", () => {
     renderTree({
-      deadHandlers: { router: 1 },
+      lintBadges: { router: dead(1) },
       loadErrors: { router: "SyntaxError: invalid syntax (line 3)" },
     });
     expect(screen.queryByText(/no emitter/)).toBeNull();

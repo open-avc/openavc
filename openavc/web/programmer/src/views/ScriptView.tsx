@@ -16,7 +16,7 @@ import { useNavigationStore } from "../store/navigationStore";
 import { useLogStore } from "../store/logStore";
 import { useUiFilesStore } from "../store/uiFilesStore";
 import { describeStoredError, extractScriptRuntimeErrors, latestScriptErrorId, markerFromStoredError } from "../components/scripts/scriptRuntimeErrors";
-import { useScriptLint } from "../components/scripts/scriptLint";
+import { issueBadge, useScriptLint, type IssueBadge } from "../components/scripts/scriptLint";
 import * as api from "../api/restClient";
 import { parseApiError } from "../api/errors";
 import {
@@ -178,29 +178,30 @@ export function ScriptView() {
     return rows;
   }, [scriptRuntimeErrors]);
 
-  // Handlers waiting for an event nothing in this project emits. Asked of the
-  // platform rather than worked out here: the answer depends on every macro,
-  // every control binding and every other script, none of which this view is
-  // holding. Only a script can carry one -- a driver and a custom control are
-  // not on the event bus -- so the open file's text is offered only then.
+  // Handlers waiting for an event nothing in this project emits, and timers
+  // that stop at the script's next edit. Asked of the platform rather than
+  // worked out here: the answer depends on every macro, every control binding
+  // and every other script, none of which this view is holding. Only a script
+  // can carry one -- a driver and a custom control are not on the event bus --
+  // so the open file's text is offered only then.
   const scriptIds = useMemo(() => scripts.map((s) => s.id), [scripts]);
-  const deadListeners = useScriptLint(
+  const lintIssues = useScriptLint(
     scriptIds,
     selectedType === "script" ? selectedId : null,
     selectedType === "script" ? source : "",
   );
-  const deadHandlerCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const [id, issues] of Object.entries(deadListeners)) counts[id] = issues.length;
-    return counts;
-  }, [deadListeners]);
+  const lintBadges = useMemo(() => {
+    const badges: Record<string, IssueBadge> = {};
+    for (const [id, issues] of Object.entries(lintIssues)) badges[id] = issueBadge(issues);
+    return badges;
+  }, [lintIssues]);
   const lintWarnings = useMemo((): RuntimeError[] => {
     if (selectedType !== "script" || !selectedId) return [];
-    return (deadListeners[selectedId] ?? []).map((i) => ({
+    return (lintIssues[selectedId] ?? []).map((i) => ({
       line: i.line,
       message: i.message,
     }));
-  }, [deadListeners, selectedId, selectedType]);
+  }, [lintIssues, selectedId, selectedType]);
 
   // --- Selection handlers ---
 
@@ -924,7 +925,7 @@ export function ScriptView() {
             loadErrors={scriptLoadErrors}
             abandonedLoads={abandonedLoads}
             runtimeErrors={runtimeErrorRows}
-            deadHandlers={deadHandlerCounts}
+            lintBadges={lintBadges}
             onSelectScript={handleSelectScript}
             onSelectDriver={handleSelectDriver}
             onSelectUiFile={handleSelectUiFile}

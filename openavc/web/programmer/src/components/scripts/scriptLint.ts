@@ -1,5 +1,6 @@
 /**
- * Which handlers in this project's scripts are waiting for an event nothing sends.
+ * Which handlers in this project's scripts are waiting for an event nothing
+ * sends, and which timers stop at the script's next edit.
  *
  * The failure this exists for is the script half of the dead control: a
  * handler decorated `@on_event("custom.start")` in a project where no macro
@@ -55,9 +56,36 @@ export function issuesAtLine(
   return (issues ?? []).filter((i) => i.line === line);
 }
 
-/** "1 handler", "3 handlers" -- the subject of a badge or a summary line. */
-export function issueSummary(issues: ScriptIssue[]): string {
-  return `${issues.length} handler${issues.length === 1 ? "" : "s"}`;
+/** The script list's mark for one script: its words and its tooltip. */
+export interface IssueBadge {
+  text: string;
+  title: string;
+}
+
+function counted(n: number, one: string, many: string): string {
+  return n === 1 ? `1 ${one}` : `${n} ${many}`;
+}
+
+/** What the script list says about a script's issues, worded by their kind. */
+export function issueBadge(issues: ScriptIssue[]): IssueBadge {
+  const timers = issues.filter((i) => i.kind === "startup_timer").length;
+  const handlers = issues.length - timers;
+  if (timers === 0) {
+    return {
+      text: counted(handlers, "handler with no emitter", "handlers with no emitter"),
+      title: "Nothing in this project emits its event. Open the script to see which, and where to emit it.",
+    };
+  }
+  if (handlers === 0) {
+    return {
+      text: counted(timers, "timer stops at the next edit", "timers stop at the next edit"),
+      title: "Started only when the server starts. Open the script to see where to start it instead.",
+    };
+  }
+  return {
+    text: counted(issues.length, "warning", "warnings"),
+    title: "Open the script to see each one.",
+  };
 }
 
 /**

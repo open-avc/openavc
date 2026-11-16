@@ -5,6 +5,7 @@ import type { CustomUiFile } from "../../api/customUiClient";
 import { CopyButton } from "../shared/CopyButton";
 import { filesFromDataTransfer, type DroppedFile } from "../shared/dropFiles";
 import { groupUiFiles } from "./customUiFiles";
+import type { IssueBadge } from "./scriptLint";
 
 interface ScriptFileTreeProps {
   scripts: ScriptConfig[];
@@ -13,10 +14,11 @@ interface ScriptFileTreeProps {
   selectedId: string | null;
   selectedType: "script" | "driver" | "ui" | null;
   loadErrors?: Record<string, string>;
-  /** How many handlers in each script are waiting for an event nothing sends.
+  /** What the script check found in each script (`issueBadge`): handlers
+   *  waiting for an event nothing sends, timers that stop at the next edit.
    *  On the LIST because a handler that has done nothing for months is in a
    *  file nobody has opened. */
-  deadHandlers?: Record<string, number>;
+  lintBadges?: Record<string, IssueBadge>;
   /** Loads the server gave up on. `running` means a thread of that script's
    *  top-level code is STILL going and only a restart will clear it -- the
    *  state that used to show up as devices flapping and nothing else. */
@@ -53,7 +55,7 @@ export function ScriptFileTree({
   selectedId,
   selectedType,
   loadErrors = {},
-  deadHandlers = {},
+  lintBadges = {},
   abandonedLoads = {},
   runtimeErrors = {},
   onSelectScript,
@@ -317,12 +319,9 @@ export function ScriptFileTree({
                               ? "Failed once while running"
                               : `Failed ${runtimeErrors[s.id].count} times while running`}
                           </div>
-                        ) : deadHandlers[s.id] ? (
-                          <div
-                            style={warnDescStyle}
-                            title="Nothing in this project emits its event. Open the script to see which, and where to emit it."
-                          >
-                            {deadHandlers[s.id] === 1 ? "1 handler with no emitter" : `${deadHandlers[s.id]} handlers with no emitter`}
+                        ) : lintBadges[s.id] ? (
+                          <div style={warnDescStyle} title={lintBadges[s.id].title}>
+                            {lintBadges[s.id].text}
                           </div>
                         ) : s.description ? (
                           <div style={descStyle}>{s.description}</div>

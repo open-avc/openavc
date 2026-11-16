@@ -578,6 +578,97 @@ async def test_top_level_timer_materializes(engine, subsystems, script_dir):
     assert state.get("var.fired") == "yes"
 
 
+def _ticker_source(version: str, *, then_raise: bool = False) -> str:
+    """A script that starts its repeating timer at the top, the way the guide
+    and the templates start one, counting its ticks under its own version."""
+    tail = '\nraise RuntimeError("broken after its timer")\n' if then_raise else ""
+    return (
+        "from openavc import every, state\n"
+        "\n"
+        "def tick():\n"
+        f'    state.set("var.ticks_{version}", (state.get("var.ticks_{version}") or 0) + 1)\n'
+        "\n"
+        "every(0.02, tick)\n"
+        f"{tail}"
+    )
+
+
+def _timers_owned_by(script_id: str) -> list[str]:
+    return [t for t, owner in script_api._timer_owners.items() if owner == script_id]
+
+
+async def test_a_timer_started_at_the_top_of_a_script_survives_its_reload(
+    engine, subsystems, script_dir
+):
+    """An edit reloads the script: the old version's timer stops and the new
+    version's starts, so the interval keeps running across Save & Reload."""
+    state, _, _ = subsystems
+    cfg = {"id": "ticker", "file": "ticker.py", "enabled": True}
+    (script_dir / "scripts" / "ticker.py").write_text(_ticker_source("v1"), encoding="utf-8")
+    engine.load_scripts([cfg])
+    await asyncio.sleep(0.1)
+    assert state.get("var.ticks_v1"), "the timer never ticked before the edit"
+
+    (script_dir / "scripts" / "ticker.py").write_text(_ticker_source("v2"), encoding="utf-8")
+    assert engine.reload_script(cfg)["status"] == "reloaded"
+    v1_at_reload = state.get("var.ticks_v1")
+    await asyncio.sleep(0.15)
+
+    assert state.get("var.ticks_v2"), "the reloaded script's timer never started"
+    assert state.get("var.ticks_v1") == v1_at_reload, "the old version's timer is still ticking"
+    assert len(_timers_owned_by("ticker")) == 1
+    assert script_api._pending_timers == {}
+
+
+async def test_a_failed_reload_keeps_the_running_timer_and_starts_none(
+    engine, subsystems, script_dir
+):
+    """A new version that raises after starting its timer is not swapped in:
+    the running version's timer keeps ticking and the new one never starts."""
+    state, _, _ = subsystems
+    cfg = {"id": "ticker", "file": "ticker.py", "enabled": True}
+    (script_dir / "scripts" / "ticker.py").write_text(_ticker_source("v1"), encoding="utf-8")
+    engine.load_scripts([cfg])
+    await asyncio.sleep(0.1)
+
+    (script_dir / "scripts" / "ticker.py").write_text(
+        _ticker_source("v2", then_raise=True), encoding="utf-8"
+    )
+    assert engine.reload_script(cfg)["status"] == "error"
+    v1_at_reload = state.get("var.ticks_v1")
+    await asyncio.sleep(0.15)
+
+    assert state.get("var.ticks_v1") > v1_at_reload, "the running version's timer stopped"
+    assert state.get("var.ticks_v2") is None
+    assert len(_timers_owned_by("ticker")) == 1
+    assert script_api._pending_timers == {}
+
+
+async def test_a_reload_does_not_run_a_system_started_handler_again(
+    engine, subsystems, script_dir
+):
+    """`system.started` comes once per server start. A reload re-running it
+    would re-send a Startup macro's power-on commands at every edit."""
+    state, events, _ = subsystems
+    source = textwrap.dedent("""\
+        from openavc import on_event, state
+
+        @on_event("system.started")
+        async def booted(event):
+            state.set("var.boots", (state.get("var.boots") or 0) + 1)
+    """)
+    _write_script(script_dir, "boot.py", source)
+    cfg = {"id": "boot", "file": "boot.py", "enabled": True}
+    engine.load_scripts([cfg])
+    await events.emit("system.started")
+    assert state.get("var.boots") == 1
+
+    _write_script(script_dir, "boot.py", source + "\n# edited\n")
+    assert engine.reload_script(cfg)["status"] == "reloaded"
+    await asyncio.sleep(0.05)
+    assert state.get("var.boots") == 1
+
+
 # ===== per-script reload isolation + preserve-on-failure =====
 
 

@@ -74,7 +74,7 @@ describe("abandoned script loads on the list", () => {
   it("outranks a dead handler, which is the smaller problem", () => {
     renderTree({
       abandonedLoads: { router: { attempts: 1, running: true } },
-      deadHandlers: { router: 2 },
+      lintBadges: { router: { text: "2 handlers with no emitter", title: "" } },
     });
     expect(screen.getByText("Load abandoned and still running")).toBeTruthy();
     expect(screen.queryByText(/never run/)).toBeNull();

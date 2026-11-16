@@ -269,7 +269,7 @@ timer_id = after(5, set_input, "hdmi1")  # passes "hdmi1" to set_input()
 
 ### every(seconds, callback, *args) -> str
 
-Schedule a function to run repeatedly at an interval. Returns a timer ID. Non-blocking. Extra positional arguments are passed to the callback.
+Schedule a function to run repeatedly at an interval. Returns a timer ID. Non-blocking. Extra positional arguments are passed to the callback. Call it at the top of the script, where every load starts it again: one started in a `system.started` handler stops at the script's first edit, and the script check marks it.
 
 ```python
 timer_id = every(60, check_status)
@@ -338,7 +338,7 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `macro.cancelled.<macro_id>` | `macro_id`, `name` | Macro was cancelled |
 | `macro.step_error.<macro_id>` | `macro_id`, `call_chain`, `step_index`, `total_steps`, `action`, `device`, `group`, `command`, `error`, `message`, `description` | A step failed. Fires whether or not the macro stops there — subscribe to this, not `macro.error`, to react to a failure |
 | `macro.error.<macro_id>` | `macro_id`, `name`, `error` | The macro stopped because a step failed. Only fires when the macro has **Stop on Error** set; without it the run continues and ends on `macro.completed` |
-| `system.started` | (none) | System startup complete |
+| `system.started` | (none) | System startup complete. Comes once per server start: a script loaded or edited later does not get it |
 | `system.stopping` | (none) | System shutting down |
 | `system.project.reloaded` | (none) | Project reloaded |
 | `isc.*.<event>` | `source_instance`, ... | Event from a remote instance |

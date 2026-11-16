@@ -12,7 +12,7 @@ from openavc.api._engine import _get_engine
 from openavc.api.auth import authenticate_claimed_request, require_claimed_auth
 from openavc.api.errors import api_error as _api_error
 from openavc.api.models import ScriptCreateRequest
-from openavc.core.event_references import dead_listeners, project_script_sources
+from openavc.core.event_references import project_script_sources, script_issues
 from openavc.utils.fileio import atomic_write_text
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
 
@@ -137,7 +137,8 @@ async def get_script_references() -> dict[str, Any]:
 
 @router.post("/scripts/validate")
 async def validate_scripts(body: Any = Body(...)) -> dict[str, Any]:
-    """Which handlers in these scripts are waiting for an event nothing sends.
+    """Which handlers in these scripts are waiting for an event nothing sends,
+    and which timers stop at the script's first edit (`core/event_references`).
 
     The script half of the dead-control failure: `@on_event("custom.start")`
     against a project where no macro step, no control action and no other
@@ -176,7 +177,7 @@ async def validate_scripts(body: Any = Body(...)) -> dict[str, Any]:
             sources[entry["id"]] = source
         posted.append(entry["id"])
 
-    issues = dead_listeners(sources, engine.project)
+    issues = script_issues(sources, engine.project)
     return {"scripts": {script_id: {"issues": issues.get(script_id, [])} for script_id in posted}}
 
 

@@ -444,7 +444,7 @@ timer_id = after(15, set_input)
 
 ### every(seconds, callback)
 
-Recurring timer. Returns a timer ID.
+Recurring timer. Returns a timer ID. Start it at the top of the script, where every load starts it again. Started in a `system.started` handler, it runs only until the script's first edit, because that event comes once, when the server starts. The editor marks that line, and the script list marks the file.
 
 ```python
 async def check_status():
@@ -507,7 +507,7 @@ log.info(f"Cancelled {count} timers")
 | `macro.cancelled.<macro_id>` | Macro was cancelled |
 | `macro.step_error.<macro_id>` | A step failed (payload includes `error` and a readable `message`). Fires whether or not the macro stops there, so this is the one to listen for |
 | `macro.error.<macro_id>` | The macro stopped because a step failed (payload includes `error`). Only fires on a macro with **Stop on Error** set — otherwise the run continues past the failure and ends on `macro.completed` |
-| `system.started` | System startup complete |
+| `system.started` | System startup complete. Comes once per server start: a script loaded or edited later does not get it |
 | `system.stopping` | System shutting down |
 | `system.project.reloaded` | Project reloaded (after save, import, or cloud push) |
 | `isc.*.<event>` | Event from a remote OpenAVC instance |
@@ -582,21 +582,17 @@ async def projector_state_changed(key, old_value, new_value):
 ### Recurring Status Check with Timer
 
 ```python
-from openavc import on_event, state, log, every, cancel_all_timers
+from openavc import state, log, every
 
-@on_event("system.started")
-async def start_polling(event):
-    async def poll_occupancy():
-        occupied = state.get("device.sensor1.occupied", False)
-        if not occupied and state.get("var.room_active"):
-            log.warning("Room active but unoccupied -- consider auto-shutdown")
+async def poll_occupancy():
+    occupied = state.get("device.sensor1.occupied", False)
+    if not occupied and state.get("var.room_active"):
+        log.warning("Room active but unoccupied -- consider auto-shutdown")
 
-    every(300, poll_occupancy)
-
-@on_event("system.stopping")
-async def stop_polling(event):
-    cancel_all_timers()
+every(300, poll_occupancy)
 ```
+
+The timer is started at the top of the script, below the function it calls. It starts each time the script loads, and saving an edit clears the old one and starts the new one.
 
 ## Tips
 

@@ -96,7 +96,7 @@ describe("script runtime failures on the list", () => {
   it("outranks a dead handler, which has not failed -- it has never fired", () => {
     renderTree({
       runtimeErrors: { router: FAILED },
-      deadHandlers: { router: 2 },
+      lintBadges: { router: { text: "2 handlers with no emitter", title: "" } },
     });
     expect(screen.getByText("Failed once while running")).toBeTruthy();
     expect(screen.queryByText(/no emitter/)).toBeNull();

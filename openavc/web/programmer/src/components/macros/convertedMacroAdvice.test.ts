@@ -31,4 +31,31 @@ describe("what Convert to Script says to do with the macro", () => {
     expect(advice).toContain("Emit Event step");
     expect(advice).not.toContain("delete the macro");
   });
+
+  it("says a Startup trigger's steps run in the script at the next start, not now", () => {
+    const advice = convertedMacroAdvice(macro([{ type: "startup", enabled: true }]));
+    expect(advice).toContain("Disable them or delete the macro");
+    expect(advice).toContain("The script runs its Startup steps the next time the server starts.");
+  });
+
+  it("says it beside a Schedule trigger too", () => {
+    const advice = convertedMacroAdvice(
+      macro([
+        { type: "schedule", enabled: true, cron: "0 22 * * 1-5" },
+        { type: "startup", enabled: true },
+      ]),
+    );
+    expect(advice).toContain("Disable all but its Schedule trigger");
+    expect(advice).toContain("the next time the server starts");
+  });
+
+  it("says nothing about the next start for a disabled Startup trigger", () => {
+    const advice = convertedMacroAdvice(
+      macro([
+        { type: "startup", enabled: false },
+        { type: "event", enabled: true, event_pattern: "custom.go" },
+      ]),
+    );
+    expect(advice).not.toContain("server starts");
+  });
 });

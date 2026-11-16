@@ -48,16 +48,15 @@ async def control_device(event):
     name: "Periodic Timer",
     description: "Run code on a repeating interval",
     code: `"""Periodic timer: check status every 60 seconds."""
-from openavc import on_event, every, state, log
-
-
-@on_event("system.started")
-def start_timer(event):
-    every(60, check_status)
+from openavc import every, state, log
 
 
 def check_status():
     log.info("Periodic check running")
+
+
+# Starts each time this script loads, so it keeps running after an edit.
+every(60, check_status)
 `,
   },
   {
@@ -98,21 +97,16 @@ and handle that event here with @on_event."""
 from openavc import on_event, every, cancel_timer, state, devices, log
 
 
-timer_id = None
-
-
-@on_event("system.started")
-def start_schedule(event):
-    global timer_id
-    # Run every 5 minutes (300 seconds)
-    timer_id = every(300, scheduled_check)
-    log.info("Scheduled task started (every 5 minutes)")
-
-
 def scheduled_check():
     # Add your periodic logic here
     log.info("Running scheduled check...")
     # Example: check a device, update a variable, send an alert
+
+
+# Run every 5 minutes (300 seconds). Starts each time this script loads,
+# so it keeps running after an edit.
+timer_id = every(300, scheduled_check)
+log.info("Scheduled task started (every 5 minutes)")
 `,
   },
   {

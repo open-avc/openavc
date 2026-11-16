@@ -672,14 +672,17 @@ export function getConversionWarnings(macro: MacroConfig, groups?: DeviceGroup[]
 /** What to do with the macro once Convert to Script has created its script,
  * or "" when nothing. The script runs as soon as it is created and the macro's
  * triggers still run the macro, so each enabled trigger would run the steps
- * twice. A Schedule trigger is the one to keep: the script's comment asks for it. */
+ * twice. A Schedule trigger is the one to keep: the script's comment asks for it.
+ * A Startup trigger becomes a `system.started` handler, and that event comes
+ * once per server start, so the script's copy first runs at the next start. */
 export function convertedMacroAdvice(macro: MacroConfig): string {
   const enabled = (macro.triggers ?? []).filter((t) => t.enabled);
   if (enabled.length === 0) return "";
-  if (enabled.some((t) => t.type === "schedule")) {
-    return "The macro's triggers still run its steps. Disable all but its Schedule trigger, and replace its steps with the Emit Event step the script names.";
-  }
-  return "The macro's triggers still run its steps. Disable them or delete the macro, so the steps do not run twice.";
+  const advice = enabled.some((t) => t.type === "schedule")
+    ? "The macro's triggers still run its steps. Disable all but its Schedule trigger, and replace its steps with the Emit Event step the script names."
+    : "The macro's triggers still run its steps. Disable them or delete the macro, so the steps do not run twice.";
+  if (!enabled.some((t) => t.type === "startup")) return advice;
+  return `${advice} The script runs its Startup steps the next time the server starts.`;
 }
 
 let _nextId = 1;

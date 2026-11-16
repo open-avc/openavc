@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { lintPayload, issuesAtLine, issueSummary, useScriptLint } from "./scriptLint";
+import { lintPayload, issuesAtLine, issueBadge, useScriptLint } from "./scriptLint";
 import type { ScriptIssue } from "./scriptLint";
 
 vi.mock("../../api/restClient", () => ({
@@ -12,6 +12,7 @@ const validateScripts = api.validateScripts as unknown as ReturnType<typeof vi.f
 
 function issue(over: Partial<ScriptIssue> = {}): ScriptIssue {
   return {
+    kind: "no_emitter",
     line: 4,
     event: "custom.select_source",
     message: 'Nothing in this project emits "custom.select_source", so this handler runs only if an outside system emits it over the API.',
@@ -54,10 +55,25 @@ describe("issuesAtLine", () => {
   });
 });
 
-describe("issueSummary", () => {
-  it("counts handlers, singular and plural", () => {
-    expect(issueSummary([issue()])).toBe("1 handler");
-    expect(issueSummary([issue(), issue({ line: 9 })])).toBe("2 handlers");
+describe("issueBadge", () => {
+  const timer = (line: number) =>
+    issue({ kind: "startup_timer", line, event: "system.started", message: "This timer starts only when the server starts." });
+
+  it("counts handlers with no emitter, singular and plural", () => {
+    expect(issueBadge([issue()]).text).toBe("1 handler with no emitter");
+    expect(issueBadge([issue(), issue({ line: 9 })]).text).toBe("2 handlers with no emitter");
+  });
+
+  it("words a timer started at server start as what happens to it", () => {
+    expect(issueBadge([timer(8)]).text).toBe("1 timer stops at the next edit");
+    expect(issueBadge([timer(8), timer(12)]).text).toBe("2 timers stop at the next edit");
+    expect(issueBadge([timer(8)]).title).toContain("only when the server starts");
+  });
+
+  it("counts both kinds together as warnings rather than misnaming one", () => {
+    const badge = issueBadge([issue(), timer(8)]);
+    expect(badge.text).toBe("2 warnings");
+    expect(badge.text).not.toContain("emitter");
   });
 });
 

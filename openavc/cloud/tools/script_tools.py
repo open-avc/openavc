@@ -7,8 +7,8 @@ folder, and a new file must be a plain ``.py`` name. A source is compiled
 before it is written, so a syntax error is refused with nothing written; a
 written source goes live (the running script is reloaded, the new version
 imported before the old one is unloaded), and the answer names every handler
-in it that nothing in the project can reach: the IDE's script lint, at the
-other door that writes a script.
+in it that nothing in the project can reach and every timer that stops at its
+next edit: the IDE's script lint, at the other door that writes a script.
 """
 
 from __future__ import annotations
@@ -17,16 +17,29 @@ from pathlib import Path
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError, apply_tool_edit
-from openavc.core.event_references import dead_listeners, project_script_sources
+from openavc.core.event_references import (
+    NO_EMITTER,
+    STARTUP_TIMER,
+    project_script_sources,
+    script_issues,
+)
 from openavc.utils.paths import is_safe_script_filename, safe_path_within
 
 #: Said once per reply that carries one, at the moment it is broken rather
-#: than in the standing prompt.
-_DEAD_LISTENER_NOTE = (
-    "The write landed -- these are warnings, not failures. A handler for a custom. event "
-    "nothing sends can never fire, and nothing else will report it. Emit it from a macro "
-    "step, a control action or another script, or listen for the event that does happen."
-)
+#: than in the standing prompt: the lead, then one sentence per kind present.
+_WARNING_NOTE_LEAD = "The write landed -- these are warnings, not failures."
+_KIND_NOTES = {
+    NO_EMITTER: (
+        "A handler for a custom. event nothing sends can never fire, and nothing else will "
+        "report it. Emit it from a macro step, a control action or another script, or listen "
+        "for the event that does happen."
+    ),
+    STARTUP_TIMER: (
+        "system.started comes once per server start, so an every() started in its handler "
+        "stops at the script's next edit. Call every() at the top of the script, where each "
+        "load starts it again."
+    ),
+}
 
 
 def _validate_script_syntax(source: str, filename: str = "<script>") -> str | None:
@@ -68,8 +81,9 @@ def _new_script_path(scripts_dir: Path, filename: str) -> Path:
     return path
 
 
-def _dead_listener_warnings(engine: Any, script_id: str, source: str) -> list[str]:
-    """Handlers in the script just written that nothing in the project can reach.
+def _script_issues(engine: Any, script_id: str, source: str) -> list[dict]:
+    """The script lint's issues in the script just written: handlers nothing in
+    the project can reach, and timers that stop at the script's next edit.
 
     The same check the IDE's script lint runs, at the other door that writes a
     script. A generator is told in the reply it is already reading, which is
@@ -81,15 +95,18 @@ def _dead_listener_warnings(engine: Any, script_id: str, source: str) -> list[st
         return []
     sources = project_script_sources(project, _scripts_dir(engine))
     sources[script_id] = source
-    return [issue["message"] for issue in dead_listeners(sources, project).get(script_id, [])]
+    return script_issues(sources, project).get(script_id, [])
 
 
-def _with_listener_warnings(result: dict, engine: Any, script_id: str, source: str) -> dict:
-    """``result`` with the dead-listener warnings of the source just written, if any."""
-    warnings = _dead_listener_warnings(engine, script_id, source)
-    if warnings:
-        result["warnings"] = warnings
-        result["warning_note"] = _DEAD_LISTENER_NOTE
+def _with_script_warnings(result: dict, engine: Any, script_id: str, source: str) -> dict:
+    """``result`` with the script lint's warnings on the source just written, if any."""
+    issues = _script_issues(engine, script_id, source)
+    if issues:
+        kinds = {issue["kind"] for issue in issues}
+        result["warnings"] = [issue["message"] for issue in issues]
+        result["warning_note"] = " ".join(
+            [_WARNING_NOTE_LEAD, *(note for kind, note in _KIND_NOTES.items() if kind in kinds)]
+        )
     return result
 
 
@@ -189,7 +206,7 @@ class ScriptToolsMixin:
         err = await apply_tool_edit(engine, lambda project: _append_script(project, new_script))
         if err:
             return err
-        return _with_listener_warnings({"status": "created", "id": script_id}, engine, script_id, source)
+        return _with_script_warnings({"status": "created", "id": script_id}, engine, script_id, source)
 
     async def _update_script_source(self, input: dict) -> Any:
         engine = self._get_engine()
@@ -216,7 +233,7 @@ class ScriptToolsMixin:
         result: dict[str, Any] = {"status": "saved"}
         if engine.scripts:
             result["reload"] = engine.scripts.reload_script(script.model_dump())
-        return _with_listener_warnings(result, engine, script_id, source)
+        return _with_script_warnings(result, engine, script_id, source)
 
     async def _delete_script(self, input: dict) -> Any:
         engine = self._get_engine()

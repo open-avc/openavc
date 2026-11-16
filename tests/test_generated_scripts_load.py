@@ -134,13 +134,19 @@ async def test_every_template_loads(generated, subsystems, tmp_path):
         se.install()
         try:
             count = _load(se, f"template_{i}", template["code"])
-            assert count >= 1, f"{template['name']} registers no handler"
+            timers = _timers_of(f"template_{i}")
+            assert count >= 1 or timers, f"{template['name']} registers no handler and starts no timer"
         except AssertionError as exc:
             refused.append(f"{template['name']}: {exc}")
         finally:
             se.unload_all()
     assert generated["templates"], "the harness found no templates"
     assert not refused, "\n\n".join(refused)
+
+
+def _timers_of(script_id: str) -> list[str]:
+    """The live timers a script started (the timer table is the process's)."""
+    return [t for t, owner in script_api._timer_owners.items() if owner == script_id]
 
 
 def _template(generated: dict, name: str) -> str:
@@ -185,16 +191,20 @@ async def test_button_handler_runs_on_a_press(generated, engine, subsystems):
 
 
 @pytest.mark.parametrize("name", ["Periodic Timer", "Scheduled Task"])
-async def test_timer_templates_start_their_timer_on_system_started(
-    generated, engine, subsystems, name
+async def test_timer_templates_start_their_timer_at_load_and_again_after_an_edit(
+    generated, engine, name
 ):
-    _, events, _ = subsystems
+    """`system.started` comes once per server start, so a timer started in its
+    handler would stop at the first edit; the templates start theirs at the top."""
     _load(engine, "timer", _template(generated, name))
-    # The timer table is the process's, so look for a new id, not an empty one
-    before = set(script_api._active_timers)
+    first = _timers_of("timer")
+    assert len(first) == 1
 
-    await events.emit("system.started")
-    assert await _settle(lambda: len(set(script_api._active_timers) - before) == 1)
+    edited = _template(generated, name) + "\n# edited\n"
+    (engine.scripts_dir / "timer.py").write_text(edited, encoding="utf-8")
+    assert engine.reload_script({"id": "timer", "file": "timer.py", "enabled": True})["status"] == "reloaded"
+    after_edit = _timers_of("timer")
+    assert len(after_edit) == 1 and after_edit != first
     assert _runtime_errors(engine) == {}
 
 
