@@ -16,7 +16,10 @@ from inside one call:
 2. **Nothing it reports blocks anything.** Half-built is a normal state while
    somebody is editing, so a macro this endpoint flags still saves through
    ``PUT /api/project`` with a 200. If that ever becomes a 422, the fix was
-   turned into the thing this design explicitly did not want.
+   turned into the thing this design explicitly did not want. The one
+   exception is a bound the project schema itself declares (a trigger's
+   delay, debounce or cooldown below 0): the save refuses that on its own,
+   and the lint only says so where the editor can show it.
 """
 
 from __future__ import annotations

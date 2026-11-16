@@ -17,7 +17,9 @@ the runtime can't run, while the IDE's project save stays shape-only because a
 half-built macro is a normal intermediate state for someone editing one. A
 trigger's delay, debounce and cooldown are bounded on the model itself
 (``project_loader.SECONDS_MIN``), so the save refuses one outside it; the
-finding here is that bound, read from the model, not a second rule.
+finding here reads that bound from the model. Like the delay step's check,
+it also refuses a value that is not a number, which the model would read as
+one (``"5"``, ``true``): the AI is told to send a number.
 
 What the IDE gets instead is ``macro_issues`` -- the same rules, the same
 traversal, returned as placed records rather than one refusal string, so the
