@@ -10,6 +10,14 @@ class (``plugin_declarations.Declared.of_class``), for
 Which class: the one the loader's ``plugin_class_in`` picks, the first
 top-level class by name whose ``PLUGIN_INFO`` is a dict with an ``id``.
 
+Which file: ``candidate_files`` is THE rule for which files in a plugin's
+folder may hold its class, and the order they are tried in. The loader
+imports them in that order (``plugin_import.find_plugin_class``);
+``read_folder`` reads them in that order, passing over a file that does not
+read or parse as the loader passes over one that does not import, so the
+installer and openavc-plugins' ``validate.py`` judge the file the loader
+would start.
+
 What is read: a value written as a literal, where a name stands for the value
 an earlier assignment gives it, looked up where Python looks it up when the
 class statement runs (the class body so far, then the module before the
@@ -31,6 +39,7 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any
 
 from openavc.core.plugin_declarations import DECLARATION_NAMES, UNREAD, Declared
@@ -38,6 +47,52 @@ from openavc.core.plugin_declarations import DECLARATION_NAMES, UNREAD, Declared
 
 class _NotLiteral(Exception):
     """A value the reader cannot evaluate from the text."""
+
+
+def candidate_files(plugin_dir: Path) -> list[Path]:
+    """The files that may hold a plugin's class, in the order they are tried,
+    each once: ``__init__.py``, then ``<folder>_plugin.py``, then every other
+    ``.py`` in name order except those starting with ``_``."""
+    first = [plugin_dir / "__init__.py", plugin_dir / f"{plugin_dir.name}_plugin.py"]
+    candidates = [path for path in first if path.exists()]
+    candidates.extend(
+        py_file for py_file in sorted(plugin_dir.glob("*.py"))
+        if not py_file.name.startswith("_") and py_file not in candidates
+    )
+    return candidates
+
+
+#: Why a file's text could not be read: not there or not readable, not UTF-8
+#: or holding a null byte (``ValueError``), not Python, or nested too deep to
+#: parse.
+_UNREADABLE = (OSError, ValueError, SyntaxError, RecursionError, MemoryError)
+
+
+@dataclass(frozen=True)
+class FolderRead:
+    """A plugin folder read the way the loader imports it."""
+
+    #: The file the plugin's class was read from; None when no file holds one.
+    path: Path | None = None
+    declared: Declared | None = None
+    #: Each candidate tried before it that could not be read, with why
+    #: (``"SyntaxError: invalid syntax (<unknown>, line 3)"``), in order.
+    passed_over: tuple[tuple[Path, str], ...] = ()
+
+
+def read_folder(plugin_dir: Path) -> FolderRead:
+    """The declarations of the first of ``candidate_files`` that holds a
+    plugin class, and the files passed over on the way."""
+    passed_over: list[tuple[Path, str]] = []
+    for path in candidate_files(plugin_dir):
+        try:
+            declared = read_source(path.read_text(encoding="utf-8"))
+        except _UNREADABLE as exc:
+            passed_over.append((path, f"{type(exc).__name__}: {exc}"))
+            continue
+        if declared is not None:
+            return FolderRead(path, declared, tuple(passed_over))
+    return FolderRead(passed_over=tuple(passed_over))
 
 
 def read_source(text: str) -> Declared | None:

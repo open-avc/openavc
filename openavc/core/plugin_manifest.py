@@ -18,9 +18,6 @@ the download, through ``plugin_source`` and ``plugin_declarations.info_value``,
 and compares it itself (``plugin_installer._check_min_openavc_version``), so a
 change to the version comparison is made there too.
 
-The declaration tables stay importable from here for openavc-plugins' tests,
-which compare its ``validate.py`` with them.
-
 Logs as ``openavc.core.plugin_loader``: the Programmer's plugin page shows
 that logger's lines beside the plugin's own.
 """
@@ -30,12 +27,6 @@ from typing import Any
 
 from openavc.core import plugin_secrets
 from openavc.core.plugin_declarations import (
-    GUEST_ALIAS_RE as GUEST_ALIAS_RE,
-    MIT_COMPATIBLE_LICENSES as MIT_COMPATIBLE_LICENSES,
-    REQUIRED_MANIFEST_FIELDS as REQUIRED_MANIFEST_FIELDS,
-    RESERVED_GUEST_ALIASES as RESERVED_GUEST_ALIASES,
-    VALID_CAPABILITIES as VALID_CAPABILITIES,
-    VALID_CATEGORIES as VALID_CATEGORIES,
     Declared,
     first_problem,
     macro_actions_problem,

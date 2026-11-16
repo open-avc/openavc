@@ -1329,3 +1329,17 @@ async def test_starting_a_running_plugin_with_no_config_changes_nothing(loader, 
     assert await loader.start_plugin("acme_widget") is True
     assert [c for c in rec.calls if c[0] in ("start", "stop")] == [("start", None)]
     assert loader.get_running_config("acme_widget") == {"level": 3}
+
+
+def test_every_platform_id_reported_is_one_a_plugin_may_list(monkeypatch):
+    """The ids a plugin's ``platforms`` may name are the ids this machine can
+    report, and each of them is reported by some machine."""
+    from openavc.core.plugin_declarations import PLATFORM_IDS
+
+    reported = set()
+    for system in ("Windows", "Linux", "Darwin", "FreeBSD"):
+        for machine in ("AMD64", "x86_64", "aarch64", "arm64", "armv7l"):
+            monkeypatch.setattr("platform.system", lambda s=system: s)
+            monkeypatch.setattr("platform.machine", lambda m=machine: m)
+            reported.add(get_platform_id())
+    assert reported - {"unknown"} == set(PLATFORM_IDS)

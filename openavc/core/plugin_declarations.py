@@ -33,18 +33,29 @@ platform.
 A value a source read could not evaluate is ``UNREAD``. No rule refuses one:
 whether it is valid is not known from the text.
 
+``problems`` gives every row's refusal, in the same order, for a check that
+reports them all at once; the first is ``first_problem``'s.
+
+``platforms_problem`` is the one declaration rule that is not a row: whether
+the platform ids a plugin lists are ones OpenAVC knows (``PLATFORM_IDS``). A
+release that does not know an id yet must still start a plugin that also lists
+it, so the loader asks only the host check, whether this machine is listed
+(``platform_problem``). A check made before a plugin is published, which has
+no host to ask, asks ``platforms_problem`` instead.
+
 Purity contract: standard library only (with ``plugin_handler_rules`` and
 ``plugin_source``), so openavc-plugins can carry these modules and run the
 rules in its CI without installing OpenAVC
-(``tests/test_plugin_declarations_purity.py`` holds it). Rules return their
-sentence; the caller logs.
+(``tests/test_plugin_declarations_purity.py`` holds it). openavc-plugins'
+``validate.py`` runs this repo's copy (``scripts/vendor_platform_rules.py``
+there), with no host to ask. Rules return their sentence; the caller logs.
 """
 
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 from openavc.core.plugin_handler_rules import (
     HandlerProbe,
@@ -82,6 +93,12 @@ RESERVED_GUEST_ALIASES = {
 }
 
 VALID_CATEGORIES = {"control_surface", "integration", "sensor", "utility"}
+
+#: The ids ``get_platform_id()`` (core/plugin_loader.py) reports for a machine
+#: OpenAVC supports plugins on; any other machine reports "unknown".
+PLATFORM_IDS = ("win_x64", "linux_x64", "linux_arm64")
+#: What a plugin's ``platforms`` may list: a platform id, or "all".
+VALID_PLATFORMS = frozenset({"all", *PLATFORM_IDS})
 
 # Compared lowercased and trimmed.
 MIT_COMPATIBLE_LICENSES = {
@@ -200,14 +217,25 @@ def first_problem(
     handlers: HandlerProbe | None = None,
 ) -> str | None:
     """The refusal the plugin's card shows, or None when every rule passes."""
+    return next(problems(declared, host=host, handlers=handlers), None)
+
+
+def problems(
+    declared: Declared,
+    *,
+    host: HostCheck | None = None,
+    handlers: HandlerProbe | None = None,
+) -> Iterator[str]:
+    """Each row's refusal, in the order a plugin is refused: at most one a
+    row, the first of what is wrong with that declaration."""
     if not isinstance(declared.info, dict):
-        return "Missing or invalid PLUGIN_INFO dict"
+        yield "Missing or invalid PLUGIN_INFO dict"
+        return
     judging = _Judging(declared, declared.info, host, handlers)
     for rule in _RULES:
         problem = rule(judging)
         if problem is not None:
-            return problem
-    return None
+            yield problem
 
 
 # --- PLUGIN_INFO ----------------------------------------------------------------
@@ -223,20 +251,26 @@ def _required_fields(j: _Judging) -> str | None:
 
 
 def _license(j: _Judging) -> str | None:
-    license_name = info_value(j.info, "license", "")
+    if "license" not in j.info:  # the required-fields row names it, or it may be computed
+        return None
+    license_name = j.info["license"]
     if not _known(license_name):
         return None
-    if not _is_mit_compatible(license_name):
+    if not is_mit_compatible(license_name):
         return f"License '{j.info.get('license')}' is not MIT-compatible"
     return None
 
 
-def _is_mit_compatible(license_name: Any) -> bool:
+def is_mit_compatible(license_name: Any) -> bool:
+    """Whether a license name is one of ``MIT_COMPATIBLE_LICENSES``, in any
+    case and with spaces around it."""
     return isinstance(license_name, str) and license_name.lower().strip() in MIT_COMPATIBLE_LICENSES
 
 
 def _category(j: _Judging) -> str | None:
-    category = info_value(j.info, "category", "")
+    if "category" not in j.info:  # the required-fields row names it, or it may be computed
+        return None
+    category = j.info["category"]
     if not _known(category):
         return None
     if not (isinstance(category, str) and category in VALID_CATEGORIES):
@@ -266,9 +300,10 @@ def _as_text(value: Any) -> str:
 
 def _lacks_capability(info: dict, capability: str) -> bool:
     """Whether the plugin plainly does not declare ``capability``: False when
-    its capabilities could not be read."""
+    its capabilities could not be read or are not a list, which the
+    capabilities row refuses on its own."""
     capabilities = info_value(info, "capabilities", [])
-    return _known(capabilities) and capability not in capabilities
+    return isinstance(capabilities, (list, tuple)) and capability not in capabilities
 
 
 def _guest_alias(j: _Judging) -> str | None:
@@ -400,6 +435,28 @@ def platform_problem(info: dict, platform_id: str) -> str | None:
             f"Supported: {info.get('platforms', ['all'])}"
         )
     return None
+
+
+def platforms_problem(info: dict) -> str | None:
+    """What is wrong with the ``platforms`` a plugin lists, or None: a
+    non-empty list of ``VALID_PLATFORMS``. Every machine refuses a plugin
+    whose list is not a list or is empty; an id not known here is refused
+    only by a check made before the plugin is published (module docstring)."""
+    platforms = info_value(info, "platforms", ["all"])
+    if not _known(platforms):
+        return None
+    if not isinstance(platforms, (list, tuple)):
+        return "platforms must be a list"
+    if not platforms:
+        return "platforms lists no platform; list 'all' or each platform the plugin runs on"
+    unknown = {_as_text(p) for p in platforms if not _is_platform(p)}
+    if unknown:
+        return f"Unknown platforms: {sorted(unknown)}; each must be one of {sorted(VALID_PLATFORMS)}"
+    return None
+
+
+def _is_platform(value: Any) -> bool:
+    return isinstance(value, str) and value in VALID_PLATFORMS
 
 
 def _host(j: _Judging) -> str | None:

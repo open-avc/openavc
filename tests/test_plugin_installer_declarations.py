@@ -2,7 +2,7 @@
 
 After the download and before any dependency is installed, the installer
 reads the plugin's declarations from source (``core/plugin_source.py``), once,
-from the file the loader would import (``plugin_import._candidate_files``):
+from the file the loader would import (``plugin_source.read_folder``):
 its ``PLUGIN_INFO``'s ``min_openavc_version``, ``dependencies`` and
 ``native_dependencies``, and nothing else in the folder. A value the source
 computes when the plugin runs cannot be read; nothing is installed or checked
@@ -255,13 +255,13 @@ async def test_a_native_dependency_that_is_not_a_dict_is_left_out_and_said(tmp_p
 
 async def test_the_plugin_is_read_once(tmp_path):
     reads = []
-    real = pi.read_source
+    real = pi.read_folder
 
-    def counting(text):
-        reads.append(text)
-        return real(text)
+    def counting(folder):
+        reads.append(folder)
+        return real(folder)
 
-    with patch.object(pi, "read_source", counting):
+    with patch.object(pi, "read_folder", counting):
         installed = await _install(tmp_path, {
             MAIN: _plugin('"dependencies": ["acme-lib"], "min_openavc_version": "0.1.0",'),
             "helper.py": "VALUE = 1\n",

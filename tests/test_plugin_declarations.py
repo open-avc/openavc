@@ -432,3 +432,167 @@ async def test_a_check_that_raises_refuses_that_plugin_and_the_next_still_starts
     finally:
         _PLUGIN_CLASS_REGISTRY.clear()
         _PLUGIN_CLASS_REGISTRY.update(saved)
+
+
+# --- every refusal at once ------------------------------------------------------------
+
+
+def test_problems_gives_each_rows_refusal_in_order_and_the_first_is_first_problems():
+    read = Declared(
+        {**_BASE_INFO, "license": "GPL", "capabilities": 5, "guest_alias": "api",
+         "network_ports": [{"port": 22, "reason": "ssh"}]},
+        config_schema=[],
+        config_secrets={"[b]": {"id": "x", "fields": ["y"]}},
+        macro_actions={"other.ping": {"handler": "ping"}},
+        script_api={"register": {"handler": "ping"}},
+        extensions={"views": [{"label": "no id"}]},
+    )
+    from openavc.core.plugin_declarations import problems
+
+    found = list(problems(read))
+    assert found == [
+        "License 'GPL' is not MIT-compatible",
+        "capabilities must be a list",
+        "guest_alias 'api' is a reserved platform path",
+        "network_ports may not request port 22 -- it belongs to the host, not to a plugin",
+        "CONFIG_SCHEMA must be a dict",
+        "CONFIG_SECRETS key '[b]' must be a config key",
+        "MACRO_ACTIONS invalid: action 'other.ping' must be prefixed with the plugin id ('acme_widget.')",
+        "SCRIPT_API invalid: method name 'register' is reserved",
+        "EXTENSIONS invalid: views[0] missing 'id' (string)",
+    ]
+    assert first_problem(read) == found[0]
+    assert list(problems(Declared(None))) == ["Missing or invalid PLUGIN_INFO dict"]
+    assert list(problems(Declared({}))) == [
+        "Missing required fields: ['author', 'category', 'description', 'id', 'license', 'name', 'version']"]
+    assert list(problems(Declared(dict(_BASE_INFO)))) == []
+
+
+def test_a_capability_list_that_is_not_a_list_is_refused_once():
+    """Its own row refuses it; the rows that ask whether a capability is
+    declared do not raise on it, or refuse it again."""
+    from openavc.core.plugin_declarations import problems
+
+    read = Declared({**_BASE_INFO, "capabilities": 5, "guest_alias": "acme",
+                     "network_ports": [{"port": 9000, "reason": "media"}]})
+    assert list(problems(read)) == ["capabilities must be a list"]
+
+
+# --- the platform ids a plugin lists ---------------------------------------------------
+
+
+@pytest.mark.parametrize("platforms, message", [
+    (["all"], None),
+    (["win_x64", "linux_x64", "linux_arm64"], None),
+    (("linux_arm64",), None),
+    ("all", "platforms must be a list"),
+    (5, "platforms must be a list"),
+    ([], "platforms lists no platform; list 'all' or each platform the plugin runs on"),
+    (["linux_x64", "macos", 3],
+     "Unknown platforms: ['3', 'macos']; each must be one of "
+     "['all', 'linux_arm64', 'linux_x64', 'win_x64']"),
+])
+def test_platforms_problem(platforms, message):
+    from openavc.core.plugin_declarations import platforms_problem
+
+    assert platforms_problem({**_BASE_INFO, "platforms": platforms}) == message
+
+
+def test_no_platforms_or_unread_ones_are_no_problem():
+    from openavc.core.plugin_declarations import platforms_problem
+
+    assert platforms_problem(dict(_BASE_INFO)) is None
+    assert platforms_problem({**_BASE_INFO, "platforms": UNREAD}) is None
+    assert platforms_problem({**_BASE_INFO, UNREAD: UNREAD}) is None
+
+
+def test_the_loader_starts_a_plugin_that_also_lists_a_platform_it_does_not_know():
+    """A platform id a later release adds must not stop the plugin starting
+    on this one, on a machine the plugin does list."""
+    cls = type("AcmeWidgetPlugin", (), {"PLUGIN_INFO": {**_BASE_INFO, "platforms": ["linux_x64", "acme_os"]}})
+    assert validate_manifest(cls, "linux_x64") == (True, "")
+
+
+# --- which file is the plugin's --------------------------------------------------------
+
+
+def _folder(tmp_path, files):
+    folder = tmp_path / "acme_widget"
+    folder.mkdir()
+    for name, text in files.items():
+        (folder / name).write_text(text, encoding="utf-8")
+    return folder
+
+
+_PLUGIN_CLASS = f"class AcmeWidgetPlugin:\n    PLUGIN_INFO = {{{_INFO}}}\n"
+
+
+def test_candidate_files_in_the_order_the_loader_tries_them(tmp_path):
+    from openavc.core.plugin_source import candidate_files
+
+    folder = _folder(tmp_path, {name: "" for name in (
+        "zeta.py", "acme_widget_plugin.py", "_private.py", "__init__.py", "alpha.py", "notes.txt")})
+    assert [p.name for p in candidate_files(folder)] == [
+        "__init__.py", "acme_widget_plugin.py", "alpha.py", "zeta.py"]
+
+
+def test_read_folder_reads_the_file_the_loader_imports(tmp_path):
+    """The loader's first file holding a plugin class is the one read: a
+    helper that holds none is passed over, and a later plugin module is never
+    reached."""
+    from openavc.core.plugin_source import read_folder
+
+    other = _PLUGIN_CLASS.replace("Acme Widget", "Other Widget")
+    folder = _folder(tmp_path, {
+        "__init__.py": "HELPER = 1\n",
+        "acme_widget_plugin.py": _PLUGIN_CLASS,
+        "alpha_plugin.py": other,
+    })
+    read = read_folder(folder)
+    assert read.path == folder / "acme_widget_plugin.py"
+    assert read.declared.info["name"] == "Acme Widget"
+    assert read.passed_over == ()
+
+
+def test_read_folder_passes_over_a_file_that_does_not_read_and_says_why(tmp_path):
+    from openavc.core.plugin_source import read_folder
+
+    folder = _folder(tmp_path, {"acme_widget_plugin.py": "class A(:\n", "beta.py": _PLUGIN_CLASS})
+    (folder / "alpha.py").write_bytes(b"\xff\xfe")
+    read = read_folder(folder)
+    assert read.path == folder / "beta.py"
+    assert [(p.name, why.split(":")[0]) for p, why in read.passed_over] == [
+        ("acme_widget_plugin.py", "SyntaxError"),
+        ("alpha.py", "UnicodeDecodeError"),
+    ]
+
+
+def test_read_folder_with_no_plugin_class(tmp_path):
+    from openavc.core.plugin_source import read_folder
+
+    folder = _folder(tmp_path, {"acme_widget_plugin.py": 'class A:\n    PLUGIN_INFO = {}\n'})
+    read = read_folder(folder)
+    assert (read.path, read.declared, read.passed_over) == (None, None, ())
+
+
+#: A module whose PLUGIN_INFO reads a value through 5000 names: Python runs it,
+#: and following the names recurses past the interpreter's limit.
+_NAME_CHAIN = (
+    "A0 = 1\n" + "".join(f"A{i} = A{i - 1}\n" for i in range(1, 5000))
+    + f"class AcmeWidgetPlugin:\n    PLUGIN_INFO = {{{_INFO}, \"x\": A4999}}\n"
+)
+
+
+@pytest.mark.parametrize("text, errors", [
+    ("x = " + "-" * 100000 + "1\n", ("MemoryError", "RecursionError")),
+    (_NAME_CHAIN, ("RecursionError",)),
+])
+def test_a_source_too_deep_to_read_is_passed_over_rather_than_raising(tmp_path, text, errors):
+    from openavc.core.plugin_source import read_folder
+
+    folder = _folder(tmp_path, {"acme_widget_plugin.py": text, "beta.py": _PLUGIN_CLASS})
+    read = read_folder(folder)
+    assert read.path == folder / "beta.py"
+    (passed,) = read.passed_over
+    assert passed[0].name == "acme_widget_plugin.py"
+    assert passed[1].split(":")[0] in errors

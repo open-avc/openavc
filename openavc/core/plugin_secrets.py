@@ -53,7 +53,6 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
-from openavc.core.plugin_declarations import CONFIG_SECRETS_KEYS
 from openavc.core.plugin_declarations import config_secrets_problem as config_secrets_problem
 from openavc.drivers.spec import is_secret_setting
 from openavc.utils.logger import get_logger
@@ -65,9 +64,6 @@ log = get_logger(__name__)
 _MARKER = "<saved on this system>"
 
 _ITEM = re.compile(r"^(?P<list>[^\[\]]+)\[(?P<id_key>[^=\[\]]+)=(?P<id>.*)\]$")
-#: The keys a CONFIG_SECRETS entry may have, under the name openavc-plugins'
-#: tests compare its validate.py with.
-_LIST_DECLARATION_KEYS = CONFIG_SECRETS_KEYS
 
 
 @dataclass(frozen=True)

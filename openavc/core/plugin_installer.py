@@ -7,8 +7,9 @@ lifecycle.
 
 Dependency *installation* is not here. After the download, and before
 anything is installed for the plugin, this module reads what the plugin
-declares, once, without importing it: `plugin_source.read_source` on the file
-the loader will import (`plugin_import._candidate_files`). Only that class's
+declares, once, without importing it: `plugin_source.read_folder`, which
+reads the file the loader will import (`plugin_source.candidate_files`). Only
+that class's
 PLUGIN_INFO counts. Its `min_openavc_version` can refuse the install; its
 `dependencies` and `native_dependencies` go to the module that knows how to
 install that kind of thing: `plugin_wheels` for Python requirements,
@@ -35,7 +36,6 @@ import httpx
 
 from openavc.core.plugin_declarations import UNREAD, Declared, info_value
 from openavc.core.plugin_import import (
-    _candidate_files,
     add_deps_to_import_path,
     exec_plugin_in_package,
     plugin_class_in,
@@ -52,7 +52,7 @@ from openavc.core.plugin_artifacts import (
     _download_capped,
 )
 from openavc.core.plugin_native_deps import install_native_deps
-from openavc.core.plugin_source import read_source
+from openavc.core.plugin_source import candidate_files, read_folder
 from openavc.core.plugin_wheels import install_requirements
 from openavc.system_config import PLUGIN_DATA_DIR, PLUGIN_REPO_DIR
 from openavc.utils.community_integrity import (
@@ -474,18 +474,9 @@ async def _download_github_directory(
 
 
 def _read_declarations(plugin_dir: Path) -> Declared | None:
-    """The plugin's declarations, read from source without running it: the
-    first of the loader's candidate files that holds a plugin class. A file
-    that does not read or parse is passed over, as the loader passes over one
-    that does not import."""
-    for path in _candidate_files(plugin_dir):
-        try:
-            declared = read_source(path.read_text(encoding="utf-8"))
-        except (SyntaxError, ValueError, OSError):
-            continue
-        if declared is not None:
-            return declared
-    return None
+    """The plugin's declarations, read from source without running it, from
+    the file the loader would take its class from."""
+    return read_folder(plugin_dir).declared
 
 
 def _declared(plugin_id: str, declared: Declared | None, key: str) -> Any:
@@ -624,7 +615,7 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
     add_deps_to_import_path(PLUGIN_REPO_DIR / ".deps")
 
     # The files the loader tries at start, in its order, each once.
-    candidates = _candidate_files(plugin_dir)
+    candidates = candidate_files(plugin_dir)
     last_error: str | None = None
 
     for filepath in candidates:
