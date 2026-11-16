@@ -10,7 +10,7 @@
  * server retries devices waiting for their driver, and `onActivated` reads the
  * device again.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import * as api from "../../api/restClient";
 import { parseApiError } from "../../api/errors";
 import { BuiltInEquipmentNotice } from "../../components/shared/BuiltInEquipmentNotice";
@@ -80,6 +80,35 @@ function useCatalogInstall(driverId: string, match: CatalogMatch | null, onActiv
   return { installing, error, install };
 }
 
+/** What the banner is about: product hardware from another model, a driver
+ *  whose file is installed but did not load, or a driver not installed. */
+type OrphanKind = "builtIn" | "notLoaded" | "missing";
+
+function orphanKind(builtIn: boolean, loadError?: string | null): OrphanKind {
+  if (builtIn) return "builtIn";
+  return loadError ? "notLoaded" : "missing";
+}
+
+const TITLES: Record<OrphanKind, string> = {
+  builtIn: "Product hardware unavailable",
+  notLoaded: "Driver Did Not Load",
+  missing: "Driver Not Installed",
+};
+
+/** The install button's words: a file that did not load is installed again. */
+const INSTALL_LABELS: Record<OrphanKind, string> = {
+  builtIn: "Install from Community",
+  notLoaded: "Install Again from Community",
+  missing: "Install from Community",
+};
+
+/** What is missing (or installed but not loaded, in the server's sentence). */
+const WHAT_IS_MISSING: Record<OrphanKind, (driverId: string, reason?: string) => ReactNode> = {
+  builtIn: () => <BuiltInEquipmentNotice />,
+  notLoaded: (_driverId, reason) => <span style={{ whiteSpace: "pre-wrap" }}>{reason}</span>,
+  missing: (driverId) => <>This device needs the driver "{driverId}" which is not installed.</>,
+};
+
 const buttonStyle = {
   padding: "var(--space-xs) var(--space-md)",
   borderRadius: "var(--border-radius)",
@@ -107,7 +136,7 @@ export function OrphanBanner({
   const { match, lookupDone, builtIn } = useMissingDriverLookup(driverId);
   const { installing, error, install } = useCatalogInstall(driverId, match, onActivated);
   const notInCatalog = lookupDone && !match && !builtIn;
-  const notLoaded = !builtIn && Boolean(loadError) && Boolean(reason);
+  const kind = orphanKind(builtIn, loadError);
 
   return (
     <div
@@ -120,17 +149,11 @@ export function OrphanBanner({
       }}
     >
       <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: ERROR_RED, fontSize: "var(--font-size-md)" }}>
-        {builtIn ? "Product hardware unavailable" : notLoaded ? "Driver Did Not Load" : "Driver Not Installed"}
+        {TITLES[kind]}
       </div>
-      <OrphanMessage
-        driverId={driverId}
-        builtIn={builtIn}
-        notLoadedReason={notLoaded ? reason ?? null : null}
-        notInCatalog={notInCatalog}
-        error={error}
-      />
+      <OrphanMessage kind={kind} driverId={driverId} reason={reason} notInCatalog={notInCatalog} error={error} />
       <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-        {match && <InstallButton installing={installing} again={notLoaded} onClick={install} />}
+        {match && <InstallButton installing={installing} label={INSTALL_LABELS[kind]} onClick={install} />}
         {notInCatalog && onBrowseDrivers && (
           <button onClick={onBrowseDrivers} style={buttonStyle}>
             Browse Drivers
@@ -144,30 +167,23 @@ export function OrphanBanner({
   );
 }
 
-/** What is missing (or installed but not loaded, in the server's sentence),
- *  whether the catalog has it, and why an install failed. */
+/** What is missing, whether the catalog has it, and why an install failed. */
 function OrphanMessage({
+  kind,
   driverId,
-  builtIn,
-  notLoadedReason,
+  reason,
   notInCatalog,
   error,
 }: {
+  kind: OrphanKind;
   driverId: string;
-  builtIn: boolean;
-  notLoadedReason: string | null;
+  reason?: string;
   notInCatalog: boolean;
   error: string | null;
 }) {
   return (
     <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
-      {builtIn ? (
-        <BuiltInEquipmentNotice />
-      ) : notLoadedReason ? (
-        <span style={{ whiteSpace: "pre-wrap" }}>{notLoadedReason}</span>
-      ) : (
-        <>This device needs the driver "{driverId}" which is not installed.</>
-      )}
+      {WHAT_IS_MISSING[kind](driverId, reason)}
       {notInCatalog && (
         <div style={{ marginTop: "var(--space-xs)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
           This driver isn't in the community catalog. Reassign the device to a different
@@ -185,12 +201,11 @@ function OrphanMessage({
 
 function InstallButton({
   installing,
-  again,
+  label,
   onClick,
 }: {
   installing: boolean;
-  /** The driver's file is installed but did not load: this installs it again. */
-  again: boolean;
+  label: string;
   onClick: () => void;
 }) {
   return (
@@ -208,7 +223,7 @@ function InstallButton({
         opacity: installing ? 0.7 : 1,
       }}
     >
-      {installing ? "Installing..." : again ? "Install Again from Community" : "Install from Community"}
+      {installing ? "Installing..." : label}
     </button>
   );
 }

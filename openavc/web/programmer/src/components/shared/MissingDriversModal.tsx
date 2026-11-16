@@ -12,6 +12,25 @@ interface MissingDriversModalProps {
   onInstalled: () => void;
 }
 
+/** The sentence over the list: how many drivers are missing (or did not
+ *  load), and how many devices they hold up. */
+function MissingSummary({ missing }: { missing: MissingDriver[] }) {
+  const totalDevices = missing.reduce((sum, m) => sum + m.device_ids.length, 0);
+  const anyNotLoaded = missing.some((m) => m.load_error);
+  return (
+    <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)", color: "var(--text-secondary)" }}>
+      This project uses {missing.length} driver{missing.length === 1 ? "" : "s"} that{" "}
+      {missing.length === 1 ? "isn't" : "aren't"} installed{anyNotLoaded ? " or did not load" : ""}
+      {totalDevices > 0 && (
+        <>
+          , affecting {totalDevices} device{totalDevices === 1 ? "" : "s"}
+        </>
+      )}
+      .
+    </div>
+  );
+}
+
 /** Why a driver whose file is installed did not load, under its line. */
 function LoadError({ error }: { error?: string }) {
   if (!error) return null;
@@ -137,21 +156,10 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
   }
 
   // Selection view
-  const totalDevices = missing.reduce((sum, m) => sum + m.device_ids.length, 0);
-  const anyNotLoaded = missing.some((m) => m.load_error);
 
   return (
     <Dialog title="Missing drivers" onClose={onClose}>
-      <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)", color: "var(--text-secondary)" }}>
-        This project uses {missing.length} driver{missing.length === 1 ? "" : "s"} that{" "}
-        {missing.length === 1 ? "isn't" : "aren't"} installed{anyNotLoaded ? " or did not load" : ""}
-        {totalDevices > 0 && (
-          <>
-            , affecting {totalDevices} device{totalDevices === 1 ? "" : "s"}
-          </>
-        )}
-        .
-      </div>
+      <MissingSummary missing={missing} />
 
       {installable.length > 0 && (
         <div style={{ marginBottom: "var(--space-md)" }}>

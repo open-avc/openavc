@@ -131,13 +131,21 @@ def _admitted(change: DriverChange, gates: Gates, failed: str) -> Admitted:
     try:
         return admit(change, gates)
     except DriverRefused as e:
-        if e.errors:
-            raise definition_invalid(list(e.errors), preamble=e.detail, status_code=e.status_code)
-        raise HTTPException(status_code=e.status_code, detail=e.detail)
+        raise _refusal_answer(e)
     except (HTTPException, InstalledEquipmentError):
         raise
     except Exception as e:
         raise _api_error(500, failed, e)
+
+
+def _refusal_answer(refusal: DriverRefused) -> HTTPException:
+    """``admit``'s refusal as this API answers it: its status and sentence,
+    with the loader's reasons beneath it when there are any."""
+    if refusal.errors:
+        return definition_invalid(
+            list(refusal.errors), preamble=refusal.detail, status_code=refusal.status_code
+        )
+    return HTTPException(status_code=refusal.status_code, detail=refusal.detail)
 
 
 def enforce_declared_floor(declared: object) -> None:

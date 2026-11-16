@@ -116,7 +116,7 @@ async def list_missing_drivers() -> dict[str, Any]:
 
     Declared before /devices/{device_id} so the literal path wins routing.
     """
-    from openavc.discovery.community_index import COMMUNITY_REPO_URL, CommunityIndexCache
+    from openavc.discovery.community_index import CommunityIndexCache
 
     engine = _get_engine()
     missing_ids = engine.devices.get_missing_drivers()
@@ -138,30 +138,41 @@ async def list_missing_drivers() -> dict[str, Any]:
     result: list[dict[str, Any]] = []
     for driver_id in missing_ids:
         equipment = engine.installed_equipment.describe_missing_reference(driver_id, engine.project)
-        match = None if equipment else catalog_by_id.get(driver_id)
-        community_match: dict[str, Any] | None = None
-        if match and match.get("file"):
-            community_match = {
-                "id": match["id"],
-                "name": match.get("name", match["id"]),
-                "manufacturer": match.get("manufacturer", ""),
-                "category": match.get("category", ""),
-                "file_url": f"{COMMUNITY_REPO_URL}/{match['file']}",
-                "min_platform_version": match.get("min_platform_version"),
-            }
         entry = {
             "driver_id": driver_id,
             "device_ids": devices_per_driver.get(driver_id, []),
-            "community_match": community_match,
+            "community_match": None if equipment else _community_match(catalog_by_id.get(driver_id)),
         }
-        if equipment:
-            entry["built_in_equipment"] = equipment
-        else:
-            refusal = refusal_for(driver_id)
-            if refusal is not None:
-                entry["load_error"] = refusal.detail
+        entry.update(_why_missing(driver_id, equipment))
         result.append(entry)
     return {"missing": result}
+
+
+def _community_match(match: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A missing driver's catalog entry as the missing-drivers answer gives it,
+    with the URL to install it from; None when the catalog has no file for it."""
+    from openavc.discovery.community_index import COMMUNITY_REPO_URL
+
+    if not match or not match.get("file"):
+        return None
+    return {
+        "id": match["id"],
+        "name": match.get("name", match["id"]),
+        "manufacturer": match.get("manufacturer", ""),
+        "category": match.get("category", ""),
+        "file_url": f"{COMMUNITY_REPO_URL}/{match['file']}",
+        "min_platform_version": match.get("min_platform_version"),
+    }
+
+
+def _why_missing(driver_id: str, equipment: Any) -> dict[str, Any]:
+    """What a missing-drivers entry adds about why the driver is missing:
+    product hardware from another model, or a driver file that is installed
+    but did not load (``load_error``); nothing for one not installed."""
+    if equipment:
+        return {"built_in_equipment": equipment}
+    refusal = refusal_for(driver_id)
+    return {"load_error": refusal.detail} if refusal is not None else {}
 
 
 @router.get("/devices/ssh-key")

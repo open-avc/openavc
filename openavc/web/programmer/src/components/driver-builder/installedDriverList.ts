@@ -38,6 +38,11 @@ export function listedDrivers(
   };
 }
 
+/** Why an installed file did not load, as the server says it; null when it has no reason. */
+export function loadErrorOf(installedById: Map<string, InstalledDriver>, id: string): string | null {
+  return installedById.get(id)?.load_error ?? null;
+}
+
 /** What a driver page says when its file never registered and the server
  *  gave its reason, which is shown beneath it. */
 export const NOT_LOADED_WITH_REASON_TEXT =
