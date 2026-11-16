@@ -313,6 +313,8 @@ The **Appearance** card changes an element's look based on a state value. This i
 - **Inactive appearance**: the same, for when the condition is false. A color left empty draws the element's own color.
 - **Live preview**: the editor shows the current value and whether the condition is active or inactive right now.
 
+**How a state value matches what you wrote.** The panel compares the device's value with the value you typed the same way a macro condition does. Words match apart from case, so `on` matches a device reporting `ON`. `true` matches `on`, `yes`, `1` and any number but 0, and `false` matches `off`, `no` and 0. A number matches its text, so `5` matches `5.0`. With a multi-state map, a value takes the state spelled exactly as it is first, then one that differs only in case, then one it equals as a true/false or a number. A value the device has not reported yet matches nothing. The one exception is a Status LED's color map, which matches the value's exact words, case and all. Toggle buttons, a label's condition, Select options and List rows follow the same rule.
+
 **Conditional labels** let the element's text change based on state. For example, a power button can show "ON" with a green background when the projector is on, and "OFF" with a dark background when it is off.
 
 **Status text on a label:** a Label reads Appearance too, so the plain way to show a device's status in words is one label with a state map: `true` shows ONLINE in green, `false` shows OFFLINE in red. If a state sets only a color and no label text, the label keeps whatever text it already had, so you can tint a live value without replacing it.
@@ -346,6 +348,8 @@ Show or hide an element based on system state. In the **Visible when…** card, 
 For example, show video-conference controls only when `var.current_mode` equals `"video_conference"`, or hide an advanced-settings group unless `var.show_advanced` is truthy.
 
 You can add multiple conditions and choose AND or OR logic. With AND (the default), all conditions must be true. With OR, the element is visible when any condition is true. This card is universal -- every element type has it, including groups, so you can show or hide an entire section of the panel at once. Hiding a group hides everything inside it.
+
+A condition compares values the way a macro condition does (see [How a state value matches what you wrote](#shows-appearance)), with one difference: before the device reports, **not equal** holds and **equals** does not, so a Turn On control shown while the power is not on is there from the start. A condition with no value to compare never holds; use **falsy** to show a control while a value is unset.
 
 Visibility conditions are evaluated client-side in the panel, so they respond instantly without a server round-trip. They also work alongside the `ui.*.visible` state-key overrides (see [Direct UI control from macros and scripts](#direct-ui-control-from-macros-and-scripts)), which take priority when set.
 

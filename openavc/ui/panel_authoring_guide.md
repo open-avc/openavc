@@ -483,20 +483,34 @@ if the device supports them.
 
 ## How a bound value is compared
 
-Three rules, and they are not the same one. All three coerce to string first, so
-a boolean state matches a `"true"` map key and an integer `1` matches `"1"` --
-but only two of them ignore case.
+One rule, the one macro and trigger conditions use, for everything on the panel
+but a status LED's colours:
+
+- **Words compare apart from case**: `"On"` matches a device reporting `"ON"`.
+- **A boolean compares with the words and numbers that mean it**: `true` matches
+  `"true"`, `"on"`, `"yes"` and any number but 0; `false` matches `"false"`,
+  `"off"`, `"no"` and 0.
+- **A number compares by value with a number written as text**: `5` matches
+  `"5"`, `"5.0"` and `" 5 "`. Two values both written as text compare as words,
+  so `"5"` is not `"5.0"`.
+- **A value that has not arrived matches nothing**. In a `visible_when` it is
+  unequal to every value, so `ne` holds and `eq` does not: a control shown while
+  `power` is `ne` `"on"` shows before the projector reports. A condition whose
+  `value` is null never holds; use `falsy` for an unset value.
 
 | Where | Rule |
 |---|---|
-| A button's `toggle_value` against `toggle_key` | string, **case-insensitive** |
-| `show.value` with a `condition.equals` | string, **case-insensitive** |
-| `show.look.map` keys (a status LED's colours) | string, **case-sensitive** |
-| A `select` option's `value` against `show.value` | string, exact |
+| A button's `toggle_value` against `toggle_key` | the rule |
+| `show.value` with a `condition.equals` | the rule |
+| `show.look` with `condition.equals` (two-state) | the rule |
+| `show.look` `states` keys, a `select` option's `value`, a `list` row's `value` | the key the value picks: the exact one, then one apart from case, then one it equals as a boolean or number |
+| `show.visible_when` | the rule; every operator spelling a macro condition takes |
+| `show.look.map` keys (a status LED's colours) | exact, **case-sensitive** text |
 
-So `{"true": "#4CAF50"}` lights an LED bound to a boolean, and `{"True": ...}`
-does not -- while a toggle would have matched both. Write map keys in the
-device's own casing, and prefer lowercase `"true"` / `"false"` for booleans.
+So a look with states `on` and `off` follows a device reporting `ON` or `true`,
+and `{"true": "#4CAF50"}` lights an LED bound to a boolean while `{"True": ...}`
+does not. Write an LED's map keys in the device's own casing, and prefer
+lowercase `"true"` / `"false"` for booleans.
 
 ## A status LED lights on its value, not on the colour it matched
 
