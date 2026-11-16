@@ -34,13 +34,26 @@ MODULE = f"openavc_driver_{DRIVER_ID}"
 def folder(tmp_path, monkeypatch):
     repo = tmp_path / "driver_repo"
     repo.mkdir()
-    monkeypatch.setattr(registry, "_DRIVER_REGISTRY", dict(registry._DRIVER_REGISTRY))
+    # The folder starts empty, so the registry starts without this driver too:
+    # another test in the same process can leave an acme_widget registered.
+    monkeypatch.setattr(registry, "_DRIVER_REGISTRY",
+                        {k: v for k, v in registry._DRIVER_REGISTRY.items() if k != DRIVER_ID})
     before = sys.modules.get(MODULE)
     yield repo
     if before is None:
         sys.modules.pop(MODULE, None)
     else:
         sys.modules[MODULE] = before
+
+
+@pytest.fixture
+def leftover(monkeypatch):
+    """A registration another test in the same process left behind."""
+    monkeypatch.setitem(registry._DRIVER_REGISTRY, DRIVER_ID, object)
+
+
+def test_a_registration_left_by_another_test_is_not_carried_in(leftover, folder):
+    assert registry.get_driver_class(DRIVER_ID) is None
 
 
 def _yaml(**extra) -> bytes:
