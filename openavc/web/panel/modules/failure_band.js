@@ -17,6 +17,8 @@
  * read when a message is drawn.
  */
 
+import { panelSetting } from './project_values.js';
+
 const READ_FOR_MS = 5000;
 
 /** The one band (`#panel-failure-message`), drawn on the document's body (held as `app._failureBand`). */
@@ -27,12 +29,11 @@ export class FailureBand {
     }
 
     show(text) {
-        // One project-level switch, on by default. Off is for a room that draws
-        // its own status and would rather we kept quiet -- not a per-element
-        // setting, which would be authoring work for something that only ever
-        // happens when something is already wrong.
-        const settings = this._host.settings();
-        if (settings && settings.show_error_messages === false) return;
+        // One project-level switch, its blank the project schema's (on). Off is
+        // for a room that draws its own status and would rather we kept quiet
+        // -- not a per-element setting, which would be authoring work for
+        // something that only ever happens when something is already wrong.
+        if (panelSetting(this._host.settings(), 'show_error_messages') === false) return;
         const message = String(text == null ? '' : text).trim();
         if (!message) return;
 

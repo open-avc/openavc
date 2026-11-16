@@ -22,6 +22,7 @@
  */
 
 import { basePath } from './base_path.js';
+import { panelSetting } from './project_values.js';
 
 // The timeout is what turns a hung request into "could not ask" instead of a
 // lock screen whose Unlock button never comes back.
@@ -242,7 +243,7 @@ export class PanelLock {
     }
 
     _idlePage() {
-        const idlePage = this._host.uiSettings()?.idle_page || 'main';
+        const idlePage = panelSetting(this._host.uiSettings(), 'idle_page');
         const pages = this._host.pages() || [];
         if (pages.length && !pages.some(p => p.id === idlePage)) return pages[0].id;
         return idlePage;

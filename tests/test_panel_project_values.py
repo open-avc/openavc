@@ -25,9 +25,8 @@ from openavc.core.project_loader import UIElement, UISettings
 from openavc.core.project_migration import migrate_0_16_to_0_17
 from tests import gates
 
-MODULE = (
-    Path(__file__).resolve().parents[1] / "openavc" / "web" / "panel" / "modules" / "project_values.js"
-)
+MODULES = Path(__file__).resolve().parents[1] / "openavc" / "web" / "panel" / "modules"
+MODULE = MODULES / "project_values.js"
 
 #: Stands for a value nobody wrote: the key is left out.
 ABSENT = "<absent>"
@@ -37,6 +36,13 @@ ABSENT = "<absent>"
 #: control's decimals take it as unset.
 SETTINGS = ("page_transition_duration", "element_stagger_ms")
 SETTING_VALUES = [ABSENT, 0, -5, 5, 10, 45, 350, 1000, 1001, 99999]
+
+#: The panel settings with a blank and no range, each over its own values, and
+#: the module that reads it.
+BLANKS = {
+    "idle_page": ([ABSENT, "", "lobby"], "lock.js"),
+    "show_error_messages": ([ABSENT, True, False], "failure_band.js"),
+}
 
 DECIMAL_VALUES = [ABSENT, None, 0, -3, 1, 3, 20, 21, 25, 101, 999]
 
@@ -57,7 +63,9 @@ def _drawn() -> dict:
     """What the panel's reader gives for every case, run under Node."""
     if shutil.which("node") is None:
         gates.skip_or_fail(gates.NODE, "node not installed")
-    cases = {"settings": {field: SETTING_VALUES for field in SETTINGS}, "decimals": DECIMAL_VALUES}
+    settings = {field: SETTING_VALUES for field in SETTINGS}
+    settings.update({field: values for field, (values, _) in BLANKS.items()})
+    cases = {"settings": settings, "decimals": DECIMAL_VALUES}
     proc = subprocess.run(
         ["node", "--input-type=module", "-e", _SCRIPT, MODULE.as_uri(), json.dumps(cases)],
         capture_output=True, text=True, timeout=60,
@@ -91,6 +99,26 @@ def test_a_draft_draws_each_panel_setting_as_the_saved_project_keeps_it() -> Non
     for field in SETTINGS:
         saved = [_saved_setting(field, value) for value in SETTING_VALUES]
         assert drawn[field] == saved, f"{field} over {SETTING_VALUES}"
+
+
+def test_a_draft_reads_each_blank_setting_as_the_saved_project_keeps_it() -> None:
+    """Empty text is blank, as the panel and Panel Settings read it: the
+    loader keeps it as written, and both draw the default it fills for an
+    absent one."""
+    drawn = _drawn()["settings"]
+    for field, (values, _) in BLANKS.items():
+        saved = [_saved_setting(field, ABSENT if value == "" else value) for value in values]
+        assert drawn[field] == saved, f"{field} over {values}"
+
+
+def test_the_panel_reads_each_blank_setting_through_the_table() -> None:
+    """The idle page and the failure message are read by panelSetting, not
+    filled with a default the module writes itself."""
+    for field, (_, module) in BLANKS.items():
+        source = (MODULES / module).read_text(encoding="utf-8")
+        assert "panelSetting(" in source and f"'{field}')" in source, (
+            f"{module} reads {field} without panelSetting (modules/project_values.js)"
+        )
 
 
 def test_a_draft_draws_shown_decimals_as_the_saved_project_keeps_them() -> None:

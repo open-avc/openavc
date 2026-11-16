@@ -4,8 +4,9 @@
  * core/project_loader.py). The panel draws two kinds of project: a saved one,
  * which passed the loader, and the Builder's unsaved draft
  * (modules/builder_link.js), which never did. Both are read here, so a draft
- * draws what saving it would: a control's shown decimals, and the page
- * transition and entry stagger, are read only here.
+ * draws what saving it would: a control's shown decimals, the page transition
+ * and entry stagger, the idle page and the failure message switch are read
+ * only here.
  *
  * A number the table bounds is held to its range (the nearer end for one
  * outside it) and rounded where the schema takes whole numbers only. A blank
