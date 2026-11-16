@@ -55,13 +55,14 @@ function storedMasterBox(placements: Record<string, Placement>, orientation: str
 }
 
 /** A stored box as the panel draws it, or null when it is not numbers: the same
- *  defaults `placeElement` applies to a missing coordinate. */
+ *  defaults `placeElement` applies to a missing coordinate; a zero is kept, so a
+ *  master drawn zero wide or tall has no area. */
 function drawnBox(raw: Placement): Placement | null {
   const box = {
     x: Number(raw.x || 0),
     y: Number(raw.y || 0),
-    w: Number(raw.w || 100),
-    h: Number(raw.h || 100),
+    w: Number(raw.w ?? 100),
+    h: Number(raw.h ?? 100),
   };
   return Object.values(box).every((n) => Number.isFinite(n)) ? box : null;
 }

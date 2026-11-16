@@ -1038,7 +1038,7 @@
       "expected": null
     },
     {
-      "name": "missing and zero coordinates take the panel's defaults",
+      "name": "a missing coordinate takes the panel's default and a zero is kept",
       "master": {
         "id": "m",
         "placements": {
@@ -1053,7 +1053,7 @@
       "expected": {
         "x": 0.0,
         "y": 0.0,
-        "w": 100.0,
+        "w": 0.0,
         "h": 100.0
       }
     },

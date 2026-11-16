@@ -1040,6 +1040,20 @@ CASES["masters_zero_sized"] = _project(
     ],
 )
 
+# ...and a control laid where a zero-sized master sits is drawn over nothing:
+# the master has no area for it to hide, so neither review says it is buried.
+CASES["masters_zero_sized_under_a_control"] = _project(
+    [_page("main",
+           [{"id": "over_zero", "type": "button", "label": "Go"}],
+           [_landscape({"over_zero": _pct_box(0, 0, 30, 20)})])],
+    masters=[
+        {"id": "flat_wide", "type": "button", "label": "Home", "pages": "*",
+         "placements": {"landscape": _pct_box(0, 0, 0, 10)}},
+        {"id": "flat_tall", "type": "button", "label": "Back", "pages": "*",
+         "placements": {"landscape": _pct_box(5, 5, 10, 0)}},
+    ],
+)
+
 # ...and the other half of that: a master has no sibling in any layout, but the
 # controls on the pages it draws under are laid over the top of it. Masters are
 # appended to the page surface FIRST, so a control on top of one hides it and
@@ -1829,6 +1843,7 @@ def test_the_corpus_also_produces_silence(verdicts) -> None:
         "clean",                               # a custom page with nothing left on it
         "kept_btn", "kept_lbl", "orphan_btn",  # controls a custom page answers FOR
         "nav_clear",                           # beside a master, not on it
+        "over_zero",                           # on a master with no area to hide
         "nav_kid", "off_kid",                  # inside a container that answers for them
         "mode_b_lbl",                          # never on screen with the master it covers
         "hidden_ctl",                          # a custom page paints its masters on top

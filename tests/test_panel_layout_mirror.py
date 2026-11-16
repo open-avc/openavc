@@ -21,8 +21,6 @@ Left out of the corpus, because the two sides answer differently today:
   model refuses a null box);
 - two layouts sharing an id: the panel follows the first, the fold here the
   last (the project model refuses a duplicate);
-- a box whose width or height is 0: the panel draws it zero wide, the review
-  measures the whole box;
 - a coordinate that is not a number: the panel draws the default, the review
   drops the box.
 """
@@ -86,9 +84,11 @@ MASTERS = [
     {},
 ]
 
-#: Stored boxes with coordinates missing, as numbers and as numeric text.
+#: Stored boxes with coordinates missing, as numbers and as numeric text, and
+#: written as zero, which is a size and not a missing side.
 BOXES = [{}, {"x": 5}, {"w": 30}, {"y": 12, "h": 40}, {"x": "12", "w": "40.5"},
-         {"x": 0, "y": 0, "w": 50, "h": 50}, _BOX]
+         {"x": 0, "y": 0, "w": 50, "h": 50}, {"x": 0, "y": 0, "w": 0, "h": 10},
+         {"w": 10, "h": 0}, _BOX]
 
 #: What a master's `pages` can say, asked of two pages.
 MASTER_PAGES = ["*", ["home"], ["other"], ["home", "other"], [], "home", None, {"home": True}]

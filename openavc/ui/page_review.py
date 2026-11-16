@@ -1367,17 +1367,19 @@ def _stored_master_box(placements: Mapping[str, Any], orientation: str) -> Any:
 def _drawn_box(raw: Any) -> dict[str, float] | None:
     """A stored box as the panel draws it, or None when it is not numbers.
 
-    The same defaults ``placeElement`` applies to a missing coordinate. A
-    hand-edited file can carry a NaN, which compares False against every bound
-    and would otherwise report an overlap measured in "nan px".
+    The same defaults ``placeElement`` applies to a missing coordinate; a zero
+    is kept, so a master drawn zero wide or tall has no area. A hand-edited
+    file can carry a NaN, which compares False against every bound and would
+    otherwise report an overlap measured in "nan px".
     """
     box = _mapping(raw)
+    w, h = box.get("w"), box.get("h")
     try:
         out = {
             "x": float(box.get("x") or 0.0),
             "y": float(box.get("y") or 0.0),
-            "w": float(box.get("w") or 100.0),
-            "h": float(box.get("h") or 100.0),
+            "w": float(100.0 if w is None else w),
+            "h": float(100.0 if h is None else h),
         }
     except (TypeError, ValueError):
         return None
