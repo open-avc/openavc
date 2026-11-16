@@ -3,6 +3,14 @@ OpenAVC project file loader.
 
 Loads and validates project.avc using Pydantic models.
 All downstream code works with typed ProjectConfig objects, never raw dicts.
+
+The models are the one place a project value's bound and default are written:
+each range on its field (``Field(ge=, le=)``), each blank as the field's
+default. ``python -m openavc.core.project_values_gen`` renders them into one
+table for the Builder (``web/programmer/src/api/projectValues.gen.ts``) and the
+panel (``web/panel/modules/project_values.gen.js``), which draws the Builder's
+unsaved draft without it ever passing this loader; a test holds both files to
+the models.
 """
 
 import asyncio

@@ -1,0 +1,185 @@
+"""Render the project models' bounds and defaults into one table, in two files.
+
+What a project value may hold and what a blank one is are written once, on the
+models in ``project_loader.py``: each range as the field's ``Field(ge=, le=)``,
+each blank as the field's default. This walks every model a project is built
+from and writes the table to
+``openavc/web/programmer/src/api/projectValues.gen.ts`` (the Builder's fields)
+and ``openavc/web/panel/modules/project_values.gen.js`` (the panel, which draws
+the Builder's unsaved draft, a project that never passed the loader).
+
+The table carries every field that declares a bound, under the model that
+declares it, and every panel setting with a plain default, since the panel
+fills a blank setting itself. A bound the table has no word for stops the
+generator rather than being left out: left out, the Builder would offer a value
+the save refuses.
+
+Data only. Run:  python -m openavc.core.project_values_gen
+A test compares both committed files against a fresh render, so a bound changed
+without regenerating, or a file edited by hand, fails CI.
+"""
+
+from __future__ import annotations
+
+import json
+import typing
+from pathlib import Path
+from typing import Any
+
+import annotated_types
+from pydantic import BaseModel
+from pydantic.fields import FieldInfo
+
+from openavc.core.project_loader import ProjectConfig, UISettings
+
+TS_ARTIFACT = "openavc/web/programmer/src/api/projectValues.gen.ts"
+PANEL_ARTIFACT = "openavc/web/panel/modules/project_values.gen.js"
+
+#: Models whose every plain default is in the table, bounded or not.
+SETTINGS_MODELS: tuple[type[BaseModel], ...] = (UISettings,)
+
+#: The bound each ``annotated_types`` constraint becomes in the table.
+_BOUND_KEYS = {annotated_types.Ge: ("min", "ge"), annotated_types.Le: ("max", "le")}
+
+_PLAIN = (str, int, float, bool, type(None))
+
+
+class UnreadableBoundError(ValueError):
+    """A field's rule is one the table cannot carry."""
+
+
+def _models_in(annotation: Any) -> list[type[BaseModel]]:
+    """The project models an annotation names (``list[X]``, ``X | None`` ...)."""
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return [annotation]
+    return [m for arg in typing.get_args(annotation) for m in _models_in(arg)]
+
+
+def _walk(roots: tuple[type[BaseModel], ...]) -> list[type[BaseModel]]:
+    """Every model reachable from ``roots``, each once, in a fixed order."""
+    seen: dict[str, type[BaseModel]] = {}
+    pending = list(roots)
+    while pending:
+        model = pending.pop()
+        if model.__name__ in seen:
+            continue
+        seen[model.__name__] = model
+        for info in model.model_fields.values():
+            pending.extend(_models_in(info.annotation))
+    return [seen[name] for name in sorted(seen)]
+
+
+def _declares(model: type[BaseModel], field: str) -> bool:
+    """True when ``field`` is the model's own, not one a base model gives it."""
+    return not any(
+        field in getattr(base, "model_fields", {})
+        for base in model.__mro__[1:]
+        if isinstance(base, type) and issubclass(base, BaseModel)
+    )
+
+
+def _is_integer(annotation: Any) -> bool:
+    if annotation is int:
+        return True
+    args = [a for a in typing.get_args(annotation) if a is not type(None)]
+    return bool(args) and all(a is int for a in args)
+
+
+def _bounds(model: type[BaseModel], field: str, info: FieldInfo) -> dict[str, Any]:
+    bounds: dict[str, Any] = {}
+    for rule in info.metadata:
+        keys = _BOUND_KEYS.get(type(rule))
+        if keys is None:
+            raise UnreadableBoundError(
+                f"{model.__name__}.{field} declares {rule!r}, which the project-value "
+                f"table cannot carry; teach openavc/core/project_values_gen.py its word"
+            )
+        bounds[keys[0]] = getattr(rule, keys[1])
+    return bounds
+
+
+def _entry(model: type[BaseModel], field: str, info: FieldInfo, settings: bool) -> dict[str, Any] | None:
+    bounds = _bounds(model, field, info)
+    plain_default = (
+        not info.is_required() and info.default_factory is None and isinstance(info.default, _PLAIN)
+    )
+    if not bounds and not (settings and plain_default):
+        return None
+    entry: dict[str, Any] = {}
+    if plain_default:
+        entry["default"] = info.default
+    entry.update(bounds)
+    if bounds:
+        entry["integer"] = _is_integer(info.annotation)
+    return entry
+
+
+def project_values(roots: tuple[type[BaseModel], ...] = (ProjectConfig,)) -> dict[str, dict[str, Any]]:
+    """The table: model name -> field -> its default, min, max and integer."""
+    table: dict[str, dict[str, Any]] = {}
+    for model in _walk(roots):
+        settings = model in SETTINGS_MODELS
+        fields = {}
+        for field, info in model.model_fields.items():
+            if not _declares(model, field):
+                continue
+            entry = _entry(model, field, info, settings)
+            if entry is not None:
+                fields[field] = entry
+        if fields:
+            table[model.__name__] = fields
+    return table
+
+
+BANNER = """\
+// GENERATED FILE - DO NOT EDIT.
+// Rendered from the project models (openavc/core/project_loader.py).
+// Regenerate with:  python -m openavc.core.project_values_gen
+// A test compares this file against a fresh render, so hand edits fail CI.
+//
+// What a project value may hold and what a blank one is, by the model and the
+// field the project schema declares it on: `default` is what the schema stores
+// for a blank one, `min` and `max` the range it takes (both ends included),
+// `integer` that it refuses a fraction. A value outside its range fails the
+// whole project save.
+"""
+
+TS_BODY = """
+/** One project value: what a blank one is, and the range it may hold. */
+export interface ProjectValue {
+  readonly default?: string | number | boolean | null;
+  readonly min?: number;
+  readonly max?: number;
+  readonly integer?: boolean;
+}
+
+export const PROJECT_VALUES = %(table)s as const satisfies Record<string, Record<string, ProjectValue>>;
+"""
+
+PANEL_BODY = """
+export const PROJECT_VALUES = %(table)s;
+"""
+
+_BODIES = {TS_ARTIFACT: TS_BODY, PANEL_ARTIFACT: PANEL_BODY}
+
+#: The committed files, each rendered from the same table.
+ARTIFACTS = tuple(_BODIES)
+
+
+def render(artifact: str) -> str:
+    table = json.dumps(project_values(), indent=2, ensure_ascii=False)
+    return BANNER + _BODIES[artifact] % {"table": table}
+
+
+def main() -> int:
+    repo_root = Path(__file__).resolve().parents[2]
+    for artifact in ARTIFACTS:
+        path = repo_root / artifact
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(render(artifact), encoding="utf-8", newline="\n")
+        print(f"wrote {artifact}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
