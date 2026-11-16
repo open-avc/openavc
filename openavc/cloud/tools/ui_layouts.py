@@ -44,16 +44,23 @@ def rounded_placement(box: Any) -> Any:
     A side that is no finite number is left for the model to refuse, as it
     refuses one sent as text, naming the side.
     """
-    import math
-
     from openavc.core.project_loader import Placement
 
     data = box.model_dump() if hasattr(box, "model_dump") else dict(box)
     for key in ("x", "y", "w", "h"):
-        v = data.get(key)
-        if not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v):
-            data[key] = math.floor(v * 10_000 + 0.5) / 10_000
+        if key in data:
+            data[key] = _quantized(data[key])
     return Placement(**data)
+
+
+def _quantized(value: Any) -> Any:
+    """A finite number to 4 decimal places, a half rounded up as JS Math.round
+    does; anything else as it came, for the model to judge."""
+    import math
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    return math.floor(value * 10_000 + 0.5) / 10_000 if math.isfinite(value) else value
 
 
 def resolve_layout(page: Any, layout_id: Any) -> Any:

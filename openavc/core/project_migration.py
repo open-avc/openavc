@@ -13,12 +13,13 @@ projects of its day, so the steps that rewrite UI elements keep their own
 numbers and type lists rather than reading today's renderer or page review
 (each says so where it does), and reach elements through the walk they were
 written with: two walks, one per rule, so editing either changes old steps.
-The 0.8.0 grid-to-percent layout conversion is ``core/layout_migration.py``.
+The 0.8.0 grid-to-percent layout conversion is ``core/layout_migration.py``,
+and the 0.17.0 step's repair of saved boxes ``core/box_migration.py``.
 """
 
-import math
 from typing import NamedTuple
 
+from openavc.core.box_migration import repair_boxes_0_17
 from openavc.core.layout_migration import convert_grid_layout
 
 # Connection-related config fields that belong in the connections table. The
@@ -756,8 +757,6 @@ _PANEL_SETTINGS_0_17 = {
 }
 # The panel drew a 0 in these as its default (200 and 30 ms).
 _ZERO_IS_DEFAULT_0_17 = ("page_transition_duration", "element_stagger_ms")
-# An overlay's or sidebar's width and height, a percentage of the screen.
-_OVERLAY_BOX_0_17 = (5, 100)
 
 
 def _whole_number_0_17(value) -> int | None:
@@ -775,77 +774,6 @@ def _clamp_0_17(holder: dict, field: str, bounds: tuple[int, int]) -> None:
         holder.pop(field)
     elif value is not None:
         holder[field] = max(bounds[0], min(bounds[1], value))
-
-
-def _number_0_17(value) -> float | None:
-    """A measurement as the schema read it before this step: a number, true
-    or false, or text that reads as one ("NaN" and "1e999" included). None for
-    anything it refused, which it still does."""
-    if isinstance(value, bool | int | float):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            return None
-    return None
-
-
-def _boxes_0_17(ui: dict) -> list[dict]:
-    """Every stored box: each placement of every page arrangement, then each
-    of every master element's. A list that is missing, null or not the shape
-    it should be reads as nothing."""
-    holders = [
-        layout.get("placements")
-        for page in ui.get("pages", []) or []
-        if isinstance(page, dict)
-        for layout in page.get("layouts", []) or []
-        if isinstance(layout, dict)
-    ]
-    holders += [
-        master.get("placements")
-        for master in ui.get("master_elements", []) or []
-        if isinstance(master, dict)
-    ]
-    return [
-        box
-        for holder in holders
-        if isinstance(holder, dict)
-        for box in holder.values()
-        if isinstance(box, dict)
-    ]
-
-
-def _drop_non_finite_sides_0_17(box: dict) -> None:
-    """A side that is no finite number goes, so the box loads with the
-    default the panel drew for it (x and y 0, w and h 100)."""
-    for side in ("x", "y", "w", "h"):
-        number = _number_0_17(box.get(side))
-        if number is not None and not math.isfinite(number):
-            box.pop(side)
-
-
-def _overlays_0_17(ui: dict) -> list[dict]:
-    """Every page's overlay settings, read as the boxes are."""
-    return [
-        page["overlay"]
-        for page in ui.get("pages", []) or []
-        if isinstance(page, dict) and isinstance(page.get("overlay"), dict)
-    ]
-
-
-def _clamp_overlay_box_0_17(overlay: dict) -> None:
-    """A width or height outside 5..100 to the nearer end; one that is no
-    finite number goes, so it loads as the default box the panel drew."""
-    low, high = _OVERLAY_BOX_0_17
-    for side in ("width", "height"):
-        number = _number_0_17(overlay.get(side))
-        if number is None:
-            continue
-        if not math.isfinite(number):
-            overlay.pop(side)
-        elif not low <= number <= high:
-            overlay[side] = low if number < low else high
 
 
 def migrate_0_16_to_0_17(data: dict) -> dict:
@@ -895,10 +823,8 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
     if isinstance(settings, dict):
         for field, bounds in _PANEL_SETTINGS_0_17.items():
             _clamp_0_17(settings, field, bounds)
-    for box in _boxes_0_17(ui) if isinstance(ui, dict) else []:
-        _drop_non_finite_sides_0_17(box)
-    for overlay in _overlays_0_17(ui) if isinstance(ui, dict) else []:
-        _clamp_overlay_box_0_17(overlay)
+    if isinstance(ui, dict):
+        repair_boxes_0_17(ui)
 
     data["openavc_version"] = "0.17.0"
     return data
