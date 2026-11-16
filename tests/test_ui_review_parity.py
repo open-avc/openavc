@@ -1027,6 +1027,19 @@ CASES["masters"] = _project(
     ],
 )
 
+# A master box written zero wide or zero tall is drawn that size by the panel,
+# which keeps a zero and reads only a missing side as the whole screen. A zero
+# is a size, so both reviews measure it as one and say it cannot hold its dot.
+CASES["masters_zero_sized"] = _project(
+    [_page("main", [], [_landscape({})])],
+    masters=[
+        {"id": "zero_wide", "type": "status_led", "label": "Sys", "pages": "*",
+         "placements": {"landscape": _pct_box(0, 0, 0, 10)}},
+        {"id": "zero_tall", "type": "status_led", "label": "Sys", "pages": "*",
+         "placements": {"landscape": _pct_box(10, 0, 10, 0)}},
+    ],
+)
+
 # ...and the other half of that: a master has no sibling in any layout, but the
 # controls on the pages it draws under are laid over the top of it. Masters are
 # appended to the page surface FIRST, so a control on top of one hides it and
@@ -1860,6 +1873,29 @@ def test_a_portrait_arrangement_is_measured_against_portrait_glass(verdicts) -> 
         "it draws: 256px tall, needs 398px (matrix-tile is 91px). Give it h at least "
         "31.09% of the page."
     )
+
+
+def test_a_master_written_zero_wide_or_tall_is_measured_at_zero(verdicts) -> None:
+    """Named here too, because the guards above cannot see this case go.
+
+    Its kind is tripped elsewhere in the corpus, and a master that stops being
+    flagged only lengthens the silence. The defect it pins failed toward saying
+    NOTHING: one side read the zero as a missing side, measured the master as
+    the whole screen, and found it roomy.
+    """
+    python_side, builder_side = verdicts["masters_zero_sized"]
+    assert builder_side == python_side  # said again here so a drift names this case
+
+    assert [(f["element_id"], f["kind"], f["message"]) for f in python_side] == [
+        ("zero_wide", "too_small_for_contents",
+         "zero_wide (status_led) is 0x80px at the 1280x800 reference, too small for "
+         "what it draws: 0px wide, needs 29px (led-dot is 20px). Give it w at least "
+         "2.27% of the page in the landscape arrangement."),
+        ("zero_tall", "too_small_for_contents",
+         "zero_tall (status_led) is 128x0px at the 1280x800 reference, too small for "
+         "what it draws: 0px tall, needs 20px (led-dot is 20px). Give it h at least "
+         "2.5% of the page in the landscape arrangement."),
+    ]
 
 
 def test_a_zero_dimension_is_degenerate_not_uncomfortable(verdicts) -> None:

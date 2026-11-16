@@ -3092,14 +3092,16 @@ def _master_seat(orientation: str, raw: Any) -> Seat | None:
     A master carries its own orientation-keyed boxes, so the key IS the way
     round this one is drawn -- the portrait box is measured against a portrait
     screen even on a project whose pages are all landscape. Its only container
-    is the screen; a missing ``w`` or ``h`` is the whole of it.
+    is the screen; a missing ``w`` or ``h`` is the whole of it, and a zero is a
+    zero, as the panel draws it.
     """
     reference = reference_box(orientation)
     box = _mapping(raw)
+    w, h = box.get("w"), box.get("h")
     try:
         box_px = (
-            float(box.get("w") or 100.0) / 100 * reference[0],
-            float(box.get("h") or 100.0) / 100 * reference[1],
+            float(100.0 if w is None else w) / 100 * reference[0],
+            float(100.0 if h is None else h) / 100 * reference[1],
         )
     except (TypeError, ValueError):
         return None

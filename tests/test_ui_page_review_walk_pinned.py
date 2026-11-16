@@ -280,3 +280,30 @@ def test_a_missing_master_width_is_read_as_the_whole_screen():
     })
     assert len(findings) == 1
     assert "1280x8px" in findings[0].message
+
+
+def test_a_master_written_zero_wide_is_measured_at_zero():
+    """A zero is a size, not a missing side: the panel draws the master 0px wide."""
+    findings = review_master_element({
+        "id": "m", "type": "status_led", "label": "Ready",
+        "placements": {"landscape": {"x": 0, "y": 0, "w": 0, "h": 10}},
+    })
+    assert [(f.kind, f.message) for f in findings] == [
+        ("too_small_for_contents",
+         "m (status_led) is 0x80px at the 1280x800 reference, too small for what it "
+         "draws: 0px wide, needs 29px (led-dot is 20px). Give it w at least 2.27% of "
+         "the page in the landscape arrangement."),
+    ]
+
+
+def test_a_master_written_zero_tall_is_measured_at_zero():
+    findings = review_master_element({
+        "id": "m", "type": "status_led", "label": "Ready",
+        "placements": {"landscape": {"x": 0, "y": 0, "w": 10, "h": 0}},
+    })
+    assert [(f.kind, f.message) for f in findings] == [
+        ("too_small_for_contents",
+         "m (status_led) is 128x0px at the 1280x800 reference, too small for what it "
+         "draws: 0px tall, needs 20px (led-dot is 20px). Give it h at least 2.5% of "
+         "the page in the landscape arrangement."),
+    ]

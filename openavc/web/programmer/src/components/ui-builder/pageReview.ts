@@ -413,7 +413,8 @@ export function reviewMasterElement(
  * A master carries its own orientation-keyed boxes, so the key IS the way round
  * this one is drawn -- the portrait box is measured against a portrait screen
  * even on a project whose pages are all landscape. Its only container is the
- * screen; a missing `w` or `h` is the whole of it.
+ * screen; a missing `w` or `h` is the whole of it, and a zero is a zero, as the
+ * panel draws it.
  */
 function masterSeat(orientation: string, box: { w?: number; h?: number } | undefined): Seat | null {
   const reference = referenceBox(orientation);
