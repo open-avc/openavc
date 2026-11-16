@@ -357,6 +357,16 @@ def test_every_context_tag_has_a_section_case():
     )
     assert placed, "no errors.at(place, ...) calls found — did the tagging move?"
     assignments += placed
+    # A check that hands back a place with each message (errors.at_each) says
+    # where its messages land itself; each is pinned place by place: the
+    # shape walk's in tests/test_shape_walk.py, the conversion check's in
+    # tests/test_check_message_places.py.
+    handed_back = set(re.findall(
+        r"^\s*(?:errors|warnings)\.at_each\(\s*(\w+)\(", source, re.MULTILINE
+    ))
+    assert handed_back == {"unsaid", "value_conversion_issues"}, (
+        f"a check hands back its own places: {sorted(handed_back)} — pin where they land"
+    )
 
     # A tag is either a literal ("commands") or an f-string whose placeholders
     # are author-chosen names ("commands.{cmd_name}"). Reduce both to the shape

@@ -64,7 +64,7 @@ ERROR_PARTS = [
     ("quick_action_errors", "quick_actions"),
     ("action_entry_errors", "actions"),
     ("state_variable_errors", "state_variables.power"),
-    ("value_conversion_errors", "state_variables"),
+    ("value_conversion_issues", "state_variables"),
     ("frame_parser_errors", "frame_parser"),
     ("send_frame_errors", "send_frame"),
     ("RosterNames", "child_entity_types"),

@@ -84,3 +84,69 @@ def test_a_name_that_is_not_text_lands_on_its_map(definition, place):
 def test_two_names_that_are_not_text_both_land_on_their_map():
     definition = {"config_schema": {1.5: {"type": "string"}, None: {"type": "string"}}}
     assert _places(definition, NOT_TEXT, strict=True) == ["config_schema", "config_schema"]
+
+
+# --- a value conversion (scale, offset, unknown) ----------------------------
+#
+# The conversion check reads every declaration that may carry one, so each
+# message lands on the declaration it is about, spelled as the unknown-key
+# walk spells the same place.
+
+CONVERSION = "to use scale"
+
+
+@pytest.mark.parametrize("definition,place", [
+    pytest.param(
+        {"state_variables": {"power": {"type": "boolean", "label": "Power"},
+                             "gain": {"type": "string", "label": "G", "scale": 2}}},
+        "state_variables.gain",
+        id="a state variable",
+    ),
+    pytest.param(
+        {"child_entity_types": {"zone": {
+            "id_format": {"type": "integer", "min": 1, "max": 4},
+            "state_variables": {"level": {"type": "string", "label": "L", "scale": 2}},
+        }}},
+        "child_entity_types.zone.state_variables.level",
+        id="a child type's state variable",
+    ),
+    pytest.param(
+        {"commands": {"noop": {"send": "NOOP\r"}, "set": {"send": "SET\r", "params": {
+            "level": {"type": "string", "label": "L", "scale": 2}}}}},
+        "commands.set.params.level",
+        id="a command's parameter",
+    ),
+])
+@pytest.mark.parametrize("strict", [False, True])
+def test_a_conversion_lands_on_its_declaration(definition, place, strict):
+    assert _places(definition, CONVERSION, strict=strict) == [place]
+
+
+def _action(params: dict[str, Any]) -> dict[str, Any]:
+    return {"id": "go", "label": "Go", "kind": "command", "command": "noop", "params": params}
+
+
+ON_AN_ACTION = "an action's parameters are not converted"
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_a_conversion_on_an_actions_parameter_lands_on_that_parameter(strict):
+    definition = {"actions": [_action({"level": {"type": "integer", "label": "L", "scale": 2}})]}
+    assert _places(definition, ON_AN_ACTION, strict=strict) == ["actions[0].params.level"]
+
+
+def test_an_actions_place_counts_the_entries_before_it_that_are_not_actions():
+    definition = {"actions": ["go", _action({"level": {"type": "integer", "unknown": [1]}})]}
+    assert _places(definition, ON_AN_ACTION, strict=False) == ["actions[1].params.level"]
+
+
+def test_a_conversion_on_a_parameter_leaves_a_state_variables_own_problem_said():
+    """A label that is a number is a shape refusal about the state variable. A
+    conversion message about a command's parameter says nothing about it, so
+    it does not stand in for it."""
+    definition = {
+        "state_variables": {"power": {"type": "boolean", "label": 5}},
+        "commands": {"noop": {"send": "NOOP\r"}, "set": {"send": "SET\r", "params": {
+            "level": {"type": "string", "label": "L", "scale": 2}}}},
+    }
+    assert "state_variables.power.label" in _places(definition, "", strict=True)

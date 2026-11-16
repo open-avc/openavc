@@ -59,6 +59,7 @@ from openavc.drivers.child_type_checks import (
 from openavc.drivers.command_checks import CommandSection
 from openavc.drivers.conversion_checks import (
     value_conversion_errors as value_conversion_errors,
+    value_conversion_issues,
 )
 from openavc.drivers.declared_names import (
     UNEVALUATED_KEY as UNEVALUATED_KEY,
@@ -629,8 +630,9 @@ class _DefinitionWalk:
         """The driver's own state variables, each one's fields checked in
         state_variable_checks (which a child type's variables ask too); then
         where a value conversion may be declared, checked in conversion_checks
-        (python_info asks it with python=True), every message tagged
-        state_variables."""
+        (python_info asks it with python=True), each message tagged with the
+        declaration it is about: a state variable, a child type's, a
+        command's parameter or an action's."""
         errors = self.errors
         errors.ctx = "state_variables"
         if "state_variables" in self.declared.misshapen:
@@ -644,7 +646,7 @@ class _DefinitionWalk:
             else:
                 errors.append(f"State variable '{var_name}': must be a dict")
         errors.ctx = "state_variables"
-        errors.extend(value_conversion_errors(self.driver_def))
+        errors.at_each(value_conversion_issues(self.driver_def))
 
     def framing(self) -> None:
         """The framing each way, checked in framing_checks: how frames are cut

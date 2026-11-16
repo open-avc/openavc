@@ -16,9 +16,10 @@ Each place a conversion may be declared is one function in ``_PLACES``, in
 the order its messages have always come: the driver's state variables, each
 child type's, each command's parameters, each action's. A declaration is
 judged by one function whatever its place, so a new place is one function and
-one entry there. The
-walk reports every message under its ``state_variables`` tag, whichever place
-the message names.
+one entry there. Each site knows the place of the declaration it hands over,
+spelled as the unknown-key walk spells it (``commands.set.params.level``,
+``actions[0].params.level``), so ``value_conversion_issues`` returns every
+message with that place and the walk tags it there.
 
 Purity contract, as for ``avcdriver_semantic``: standard library and the
 sibling contract modules (``spec``, ``setting_checks``). The module is
@@ -29,7 +30,7 @@ openavc-sdk).
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, NamedTuple
 
 from openavc.drivers.setting_checks import python_setting_map_errors
 from openavc.drivers.spec import CONVERSION_KEYS
@@ -50,46 +51,79 @@ def value_conversion_errors(
     need a numeric type, a scale of 0 cannot be converted back, and an
     action's params are never converted (the command's own params are).
     """
-    errors = [
-        message
-        for place in _PLACES
-        for where, decl, in_action in place(driver_def)
-        for message in _declaration_errors(where, decl, python=python, in_action=in_action)
-    ]
+    errors = [message for _, message in value_conversion_issues(driver_def, python=python)]
     if python:
         errors.extend(python_setting_map_errors(driver_def))
     return errors
 
 
-def _variable_sites(driver_def: dict[str, Any]) -> Iterator[tuple[str, Any, bool]]:
+def value_conversion_issues(
+    driver_def: dict[str, Any], *, python: bool = False
+) -> list[tuple[str, str]]:
+    """``value_conversion_errors``' messages about declarations, each with the
+    place of the declaration it is about, in the same order. A Python
+    driver's setting ``map`` is not among them: that refusal is the setting
+    check's, reported after."""
+    return [
+        (site.place, message)
+        for sites in _PLACES
+        for site in sites(driver_def)
+        for message in _declaration_errors(
+            site.where, site.decl, python=python, in_action=site.in_action
+        )
+    ]
+
+
+class _Site(NamedTuple):
+    """One declaration that may carry a conversion: its ``place`` in the
+    definition, the ``where`` its messages open with, the declaration itself,
+    and whether it is an action's parameter (never converted)."""
+
+    place: str
+    where: str
+    decl: Any
+    in_action: bool = False
+
+
+def _variable_sites(driver_def: dict[str, Any]) -> Iterator[_Site]:
     for name, decl in _entries(driver_def.get("state_variables")):
-        yield f"State variable '{name}'", decl, False
+        yield _Site(f"state_variables.{name}", f"State variable '{name}'", decl)
 
 
-def _child_variable_sites(driver_def: dict[str, Any]) -> Iterator[tuple[str, Any, bool]]:
+def _child_variable_sites(driver_def: dict[str, Any]) -> Iterator[_Site]:
     for ctype, name, decl in _inner_entries(driver_def.get("child_entity_types"), "state_variables"):
-        yield f"child_entity_types.{ctype}.state_variables.{name}", decl, False
+        place = f"child_entity_types.{ctype}.state_variables.{name}"
+        yield _Site(place, place, decl)
 
 
-def _command_param_sites(driver_def: dict[str, Any]) -> Iterator[tuple[str, Any, bool]]:
+def _command_param_sites(driver_def: dict[str, Any]) -> Iterator[_Site]:
     for cmd_name, pname, pdef in _inner_entries(driver_def.get("commands"), "params"):
-        yield f"Command '{cmd_name}' param '{pname}'", pdef, False
+        yield _Site(
+            f"commands.{cmd_name}.params.{pname}", f"Command '{cmd_name}' param '{pname}'", pdef
+        )
 
 
-def _action_param_sites(driver_def: dict[str, Any]) -> Iterator[tuple[str, Any, bool]]:
-    """An action's parameters, which are never converted (the command's are)."""
+def _action_param_sites(driver_def: dict[str, Any]) -> Iterator[_Site]:
+    """An action's parameters, which are never converted (the command's are).
+    An action's place is its index in the whole list, entries that are not
+    actions counted."""
     actions = driver_def.get("actions")
-    for action in actions if isinstance(actions, list) else []:
+    for i, action in enumerate(actions if isinstance(actions, list) else []):
         if isinstance(action, dict):
             for pname, pdef in _entries(action.get("params")):
-                yield f"Action '{action.get('id')}' param '{pname}'", pdef, True
+                yield _Site(
+                    f"actions[{i}].params.{pname}",
+                    f"Action '{action.get('id')}' param '{pname}'",
+                    pdef,
+                    in_action=True,
+                )
 
 
 # Each place a conversion may be declared, in the order they report: each
-# yields ``(where, declaration, in_action)``, ``where`` written for every
-# entry, judged or not. A registry entry that gains the conversion fields
-# gains its place here (tests/test_conversion_keys.py names the entries).
-_PLACES: tuple[Callable[[dict[str, Any]], Iterator[tuple[str, Any, bool]]], ...] = (
+# yields a ``_Site`` for every entry, judged or not. A registry entry that
+# gains the conversion fields gains its place here
+# (tests/test_conversion_keys.py names the entries).
+_PLACES: tuple[Callable[[dict[str, Any]], Iterator[_Site]], ...] = (
     _variable_sites,
     _child_variable_sites,
     _command_param_sites,

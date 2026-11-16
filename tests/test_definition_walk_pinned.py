@@ -396,7 +396,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
  'config_schema_none': [],
  'config_schema_text': [('notice', 'config_schema', 'config_schema: must be a mapping')],
  'conversion_on_a_child': [('error',
-                            'state_variables',
+                            'child_entity_types.zone.state_variables.level',
                             'child_entity_types.zone.state_variables.level: the type must be '
                             'integer, number or float to use scale')],
  'device_settings_empty': [],
@@ -465,7 +465,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                 ('error', 'actions', "actions[0]: missing required 'id' (non-empty string)"),
                 ('error', 'state_variables.bad', "State variable 'bad': must be a dict"),
                 ('error',
-                 'state_variables',
+                 'state_variables.gain',
                  "State variable 'gain': the type must be integer, number or float to use scale"),
                 ('error',
                  'frame_parser',
@@ -658,7 +658,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                                                    'state_variables.bad',
                                                    "State variable 'bad': must be a dict"),
                                                   ('error',
-                                                   'state_variables',
+                                                   'state_variables.gain',
                                                    "State variable 'gain': the type must be "
                                                    'integer, number or float to use scale'),
                                                   ('error',
@@ -1123,7 +1123,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
  'config_schema_none': [],
  'config_schema_text': [('error', 'config_schema', 'config_schema: must be a mapping')],
  'conversion_on_a_child': [('error',
-                            'state_variables',
+                            'child_entity_types.zone.state_variables.level',
                             'child_entity_types.zone.state_variables.level: the type must be '
                             'integer, number or float to use scale')],
  'device_settings_empty': [],
@@ -1195,7 +1195,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                 ('error', 'actions', "actions[0]: missing required 'id' (non-empty string)"),
                 ('error', 'state_variables.bad', "State variable 'bad': must be a dict"),
                 ('error',
-                 'state_variables',
+                 'state_variables.gain',
                  "State variable 'gain': the type must be integer, number or float to use scale"),
                 ('error',
                  'frame_parser',
@@ -1398,7 +1398,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                                                    'state_variables.bad',
                                                    "State variable 'bad': must be a dict"),
                                                   ('error',
-                                                   'state_variables',
+                                                   'state_variables.gain',
                                                    "State variable 'gain': the type must be "
                                                    'integer, number or float to use scale'),
                                                   ('error',
