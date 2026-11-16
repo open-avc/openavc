@@ -112,20 +112,21 @@ def _bounds(model: type[BaseModel], field: str, info: FieldInfo) -> dict[str, An
     return bounds
 
 
+def _plain_default(info: FieldInfo) -> dict[str, Any]:
+    """``{"default": ...}`` when the field's blank is one plain value, else ``{}``."""
+    if info.is_required() or info.default_factory is not None:
+        return {}
+    return {"default": info.default} if isinstance(info.default, _PLAIN) else {}
+
+
 def _entry(model: type[BaseModel], field: str, info: FieldInfo, settings: bool) -> dict[str, Any] | None:
     bounds = _bounds(model, field, info)
-    plain_default = (
-        not info.is_required() and info.default_factory is None and isinstance(info.default, _PLAIN)
-    )
-    if not bounds and not (settings and plain_default):
-        return None
-    entry: dict[str, Any] = {}
-    if plain_default:
-        entry["default"] = info.default
-    entry.update(bounds)
+    blank = _plain_default(info)
     if bounds:
-        entry["integer"] = _is_integer(info.annotation)
-    return entry
+        return {**blank, **bounds, "integer": _is_integer(info.annotation)}
+    if settings and blank:
+        return blank
+    return None
 
 
 def project_values(roots: tuple[type[BaseModel], ...] = (ProjectConfig,)) -> dict[str, dict[str, Any]]:
