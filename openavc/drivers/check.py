@@ -30,6 +30,11 @@ the save doors, the loader and the catalog already call:
                  python_info.python_driver_refusals (a key the contract
                  does not declare, then python_driver_info_issues' strict
                  verdict, as the Code view's save asks it)
+    _sim.py      simulator_info.check_simulator_file, for a driver's
+                 companion simulator (<driver>_sim.py, checked with the
+                 driver, each finding opening with its file's name) and for
+                 a simulator named on its own; an unknown key there is a
+                 warning, not an error (the module says why)
 
 Posture is the authoring one: unknown keys are errors here, as they are at
 save and at catalog publish, not the warnings the runtime loader settles for.
@@ -63,13 +68,14 @@ from openavc.drivers.python_info import (
     python_driver_refusals,
     python_driver_reference_skips,
 )
+from openavc.drivers.simulator_info import check_simulator_file, companion_simulator
 
 @dataclass
 class FileCheckResult:
     """What the contract check found in one file."""
 
     path: Path
-    kind: str  # "yaml" | "python" | "unknown"
+    kind: str  # "yaml" | "python" | "simulator" | "unknown"
     errors: list[str] = field(default_factory=list)
     # Findings that never block anything: the list the Driver Builder shows
     # beside the errors. They never change the exit code.
@@ -93,11 +99,11 @@ def check_driver_file(path: Path) -> FileCheckResult:
     on a path. Callers decide how to print it and what to exit with; they do
     not re-derive it. It never raises: a check that does is this file's error.
     """
-    kind = _KINDS.get(path.suffix)
+    kind = _kind_of(path)
     if kind is None:
         return _unsupported(path)
     try:
-        return _check_yaml_driver(path) if kind == "yaml" else _check_python_driver(path)
+        return _CHECKS[kind](path)
     except Exception as exc:  # one file the check cannot take is that file's error
         return FileCheckResult(
             path, kind, errors=[f"could not be checked ({exc})"], readable=False
@@ -105,6 +111,14 @@ def check_driver_file(path: Path) -> FileCheckResult:
 
 
 _KINDS = {".avcdriver": "yaml", ".py": "python"}
+
+
+def _kind_of(path: Path) -> str | None:
+    """Which check a file gets: a simulator by its companion name, else a
+    driver by its extension."""
+    if path.name.endswith("_sim.py"):
+        return "simulator"
+    return _KINDS.get(path.suffix)
 
 
 def _unsupported(path: Path) -> FileCheckResult:
@@ -140,6 +154,29 @@ def _check_yaml_driver(path: Path) -> FileCheckResult:
     result.errors.extend(validate_driver_definition(driver_def, strict=True))
     result.warnings.extend(validate_driver_warnings(driver_def))
     return result
+
+
+def _check_simulator(path: Path) -> FileCheckResult:
+    """A simulator named on its own: its ``SIMULATOR_INFO``."""
+    result = FileCheckResult(path, "simulator")
+    _add_simulator_findings(result, path, "")
+    return result
+
+
+def _with_companion_simulator(result: FileCheckResult) -> FileCheckResult:
+    """A driver's findings, then its companion simulator's, each of those
+    opening with the simulator file's name."""
+    sim_path = companion_simulator(result.path)
+    if sim_path.is_file():
+        _add_simulator_findings(result, sim_path, f"{sim_path.name}: ")
+    return result
+
+
+def _add_simulator_findings(result: FileCheckResult, sim_path: Path, prefix: str) -> None:
+    verdict = check_simulator_file(sim_path)
+    result.errors.extend(prefix + message for message in verdict.errors)
+    result.warnings.extend(prefix + message for message in verdict.warnings)
+    result.notes.extend(f"{prefix}not checked: {skip}" for skip in verdict.skipped)
 
 
 def _check_python_driver(path: Path) -> FileCheckResult:
@@ -192,6 +229,13 @@ def _class_dependent_notes(info: dict) -> list[str]:
     if isinstance(info.get("device_settings"), dict) and info["device_settings"]:
         skipped.append(CLASS_DEPENDENT_CHECKS[1])
     return skipped
+
+
+_CHECKS = {
+    "yaml": lambda path: _with_companion_simulator(_check_yaml_driver(path)),
+    "python": lambda path: _with_companion_simulator(_check_python_driver(path)),
+    "simulator": _check_simulator,
+}
 
 
 # Directories a driver never lives in. Without this a walk of a driver repo

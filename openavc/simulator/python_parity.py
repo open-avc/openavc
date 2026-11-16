@@ -5,16 +5,22 @@ Both files are read from their source, never imported (a driver may need
 dependencies this tool does not have, and importing runs its code): the
 driver's ``DRIVER_INFO`` through ``scaffold.extract_driver_info``, the
 platform's own reader, which refuses a file it cannot honestly read; the
-simulator's ``SIMULATOR_INFO`` off the first class body that assigns it, through
-the same lenient evaluator (``python_info.lenient_ast_value``). A value either
-reader cannot resolve arrives as the ``UNEVALUATED`` marker, and a check that
-meets one says it could not check it rather than checking an invention.
+simulator's ``SIMULATOR_INFO`` through the contract's reader
+(``drivers/simulator_info.read_simulator_info``), each key written as a null
+read as absent, as the simulator reads it. A value either reader cannot
+resolve arrives as the ``UNEVALUATED`` marker, and a check that meets one says
+it could not check it rather than checking an invention.
 
-The pair's checks, in the order they report: the simulator's required fields;
-its declared capacity and single_client (``settings_checks``, as for a YAML
-driver); the two ids; state coverage, counted; each seed's type
-(``settings_checks``, as for a YAML driver); the two transports; whether each
-command's name appears in the simulator's source.
+Whether each ``SIMULATOR_INFO`` key is one the contract declares, holding the
+kind of value it declares, is the contract check's
+(``drivers/simulator_info.check_simulator_info``), which the command line runs
+first. The pair's checks, in the order they report: the simulator's required
+fields; its declared capacity and single_client (``settings_checks``, as for a
+YAML driver); its declared controls (``control_checks``, as for a YAML driver,
+never against the state keys: a Python simulator fills its state in code, so
+its seeds are not the whole set); the two ids; state coverage, counted; each
+seed's type (``settings_checks``, as for a YAML driver); the two transports;
+whether each command's name appears in the simulator's source.
 
 A Python simulator's ``state_machines`` are not checked here, though
 ``BaseSimulator._read_device_settings`` builds a Python simulator's machines as
@@ -24,12 +30,14 @@ section only).
 
 from __future__ import annotations
 
-import ast
 import re
 from pathlib import Path
 from typing import Any
 
-from openavc.drivers.python_info import ExtractError, lenient_ast_value
+from openavc.drivers.python_info import ExtractError
+from openavc.drivers.simulator_info import companion_simulator, read_simulator_info
+from openavc.drivers.spec import without_null_settings
+from openavc.simulator.control_checks import check_controls
 from openavc.simulator.settings_checks import check_declared_settings, check_initial_state_types
 from openavc.simulator.validation_result import ValidationResult, examples
 
@@ -68,11 +76,11 @@ def validate_python_driver(driver_path: Path) -> ValidationResult:
         result.error("driver_info", "Could not extract DRIVER_INFO from driver file")
         return result
 
-    sim_path = driver_path.parent / f"{driver_path.stem}_sim.py"
+    sim_path = companion_simulator(driver_path)
     if not sim_path.exists():
         result.warning("simulator_file", f"No simulator file found at {sim_path.name}")
         return result
-    sim_info = read_simulator_info(sim_path)
+    sim_info = without_null_settings(read_simulator_info(sim_path))
     if not sim_info:
         result.error("simulator_info", "Could not extract SIMULATOR_INFO from simulator file")
         return result
@@ -113,54 +121,6 @@ def _driver_id(driver_info: dict | None, driver_path: Path) -> str:
     return driver_id if isinstance(driver_id, str) else driver_path.stem
 
 
-def read_simulator_info(sim_path: Path) -> dict | None:
-    """``SIMULATOR_INFO`` from a Python simulator file, or None when there is
-    no readable mapping.
-
-    Reads the source rather than importing it, through the same lenient
-    evaluator the driver side uses. It used to be a ``literal_eval`` with a
-    regex fallback, and that fallback's worst habit was storing a value it
-    could not evaluate as **its own source text**. So a simulator seeding
-    ``"volume": _DEFAULT_VOLUME`` handed the type check the string
-    ``"_DEFAULT_VOLUME"``, which then reported that an integer state variable
-    held a str — a finding about the reader, printed as a finding about the
-    driver. 16 of the 59 shipped simulators take that path.
-
-    A value that genuinely cannot be resolved now comes back as the
-    UNEVALUATED marker.
-    """
-    try:
-        tree = ast.parse(sim_path.read_text(encoding="utf-8"))
-    except SyntaxError:
-        return None
-    for item in _class_body_items(tree):
-        if any(_names_simulator_info(target) for target in _assigned(item)):
-            value = lenient_ast_value(item.value, "SIMULATOR_INFO", [])
-            return value if isinstance(value, dict) else None
-    return None
-
-
-def _class_body_items(tree: ast.AST):
-    """Every statement in every class body, classes in ``ast.walk`` order."""
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            yield from node.body
-
-
-def _assigned(item: ast.stmt) -> list[ast.expr]:
-    """What a statement assigns to: an assignment's targets, or an annotated
-    assignment's target when it has a value."""
-    if isinstance(item, ast.Assign):
-        return item.targets
-    if isinstance(item, ast.AnnAssign) and item.value is not None:
-        return [item.target]
-    return []
-
-
-def _names_simulator_info(target: ast.expr) -> bool:
-    return isinstance(target, ast.Name) and target.id == "SIMULATOR_INFO"
-
-
 def _check_pair(
     result: ValidationResult, driver_info: dict, sim_info: dict, sim_path: Path,
 ) -> None:
@@ -171,6 +131,7 @@ def _check_pair(
     check_declared_settings(
         result, sim_info, 'SIMULATOR_INFO["{}"]', driver_info.get("transport"),
     )
+    check_controls(result, sim_info, set())
     _check_ids(result, driver_info.get("id"), sim_info.get("driver_id"))
     _check_state(result, driver_info, sim_info)
     _check_transports(

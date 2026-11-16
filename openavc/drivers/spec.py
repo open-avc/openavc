@@ -3355,16 +3355,85 @@ NULL_AS_ABSENT: tuple[str, ...] = tuple(
 )
 
 
+# THE top-level fields whose own keys a null reads as absent for too, each
+# with the block that declares those keys: a simulated device's settings
+# (``without_null_settings``). The published schema lets each of those keys
+# take a null.
+NULL_AS_ABSENT_WITHIN: dict[str, str] = {
+    'simulator': 'simulatorSection',
+}
+
+
 def without_null_sections(definition: object) -> object:
     """The definition as every reader reads it: each top-level field in
-    ``NULL_AS_ABSENT`` written as a null left out. A new mapping when one is
-    left out; the same object when none is (or it is not a mapping)."""
+    ``NULL_AS_ABSENT`` written as a null left out, and each key written as a
+    null left out of a field in ``NULL_AS_ABSENT_WITHIN``. A new mapping when
+    anything is left out; the same object when nothing is (or it is not a
+    mapping)."""
     if not isinstance(definition, dict):
         return definition
     nulls = [name for name in NULL_AS_ABSENT if name in definition and definition[name] is None]
-    if not nulls:
+    within = {
+        name: read for name in NULL_AS_ABSENT_WITHIN if name in definition
+        if (read := without_null_settings(definition[name])) is not definition[name]
+    }
+    if not nulls and not within:
         return definition
-    return {key: value for key, value in definition.items() if key not in nulls}
+    return {
+        key: within.get(key, value) for key, value in definition.items() if key not in nulls
+    }
+
+
+# THE keys a Python simulator's ``SIMULATOR_INFO`` carries beside a YAML
+# driver's ``simulator:`` section's own (``DEFS['simulatorSection']``): which
+# device it stands in for and how it is served. A YAML driver's simulator
+# takes these from the definition itself. ``SIMULATOR_INFO_FIELDS`` is every
+# key a ``SIMULATOR_INFO`` may carry, each declared by its node: the checks
+# read it (``simulator_info.check_simulator_info``), and one reader takes the
+# settings of both forms (``openavc/simulator/base.py``).
+SIMULATOR_IDENTITY: dict[str, dict] = {
+    'driver_id': {
+        'type': 'string',
+        'doc': "The id of the driver this simulator stands in for, as its DRIVER_INFO declares it.",
+    },
+    'name': {
+        'type': 'string',
+        'doc': 'The name the Simulator UI shows for the device; the driver id when left out.',
+    },
+    'transport': {
+        'type': 'string',
+        'doc': "The transport the simulator answers on; tcp when left out.",
+    },
+    'default_port': {
+        'type': 'integer',
+        'doc': 'The port the simulator listens on when the device names none.',
+    },
+    'category': {
+        'type': 'string',
+        'doc': 'The category the Simulator UI files the device under; generic when left out.',
+    },
+    'delimiter': {
+        'doc': 'What ends each message a TCP simulator reads, as text or bytes; a line ending when left out.',
+    },
+    'tls': {
+        'type': 'boolean',
+        'doc': 'Serve TLS, with a certificate made when the simulator starts (HTTP and MQTT simulators).',
+    },
+}
+SIMULATOR_INFO_FIELDS: dict[str, dict] = {
+    **DEFS['simulatorSection']['fields'],
+    **SIMULATOR_IDENTITY,
+}
+
+
+def without_null_settings(settings: object) -> object:
+    """A simulated device's settings (a ``simulator:`` section, a
+    ``SIMULATOR_INFO``) as every reader reads them: each key written as a null
+    left out, as for a definition's top-level sections. A new mapping when one
+    is left out; the same object when none is (or it is not a mapping)."""
+    if not isinstance(settings, dict) or not any(value is None for value in settings.values()):
+        return settings
+    return {key: value for key, value in settings.items() if value is not None}
 
 
 def block_has_fixed_keys(node: dict) -> bool:

@@ -813,14 +813,7 @@ YAML_EXPECTED: dict = {'bool_ref_after_the_seed_types': [('info',
                             ('error',
                              'capacity',
                              'simulator.capacity: capacity.process_ms is required')],
- 'capacity_null': [('info',
-                    'state_coverage',
-                    "'power' will use auto-gen default False. Add to simulator.initial_state to "
-                    'override.'),
-                   ('error',
-                    'capacity',
-                    'simulator.capacity: capacity must be a mapping with rx_buffer and '
-                    'process_ms')],
+ 'capacity_null': [],
  'capacity_text': [('info',
                     'state_coverage',
                     "'power' will use auto-gen default False. Add to simulator.initial_state to "
@@ -957,14 +950,7 @@ YAML_EXPECTED: dict = {'bool_ref_after_the_seed_types': [('info',
                            'state_coverage',
                            "'power' will use auto-gen default False. Add to "
                            'simulator.initial_state to override.')],
- 'single_client_null': [('info',
-                         'state_coverage',
-                         "'power' will use auto-gen default False. Add to simulator.initial_state "
-                         'to override.'),
-                        ('error',
-                         'single_client',
-                         'simulator.single_client: single_client must be newest, oldest or '
-                         'reject')],
+ 'single_client_null': [],
  'single_client_on_serial': [('info',
                               'state_coverage',
                               "'power' will use auto-gen default False. Add to "
@@ -1130,11 +1116,7 @@ PYTHON_EXPECTED: dict = {'capacity_and_single_client_bad_with_missing_name': {'d
                                    'capacity',
                                    'SIMULATOR_INFO["capacity"] is computed, so it could not be '
                                    'checked.')]},
- 'capacity_none': {'driver_id': 'acme_widget',
-                   'issues': [('error',
-                               'capacity',
-                               'SIMULATOR_INFO["capacity"]: capacity must be a mapping with '
-                               'rx_buffer and process_ms')]},
+ 'capacity_none': {'driver_id': 'acme_widget', 'issues': []},
  'capacity_valid': {'driver_id': 'acme_widget', 'issues': []},
  'commands_absent': {'driver_id': 'acme_widget', 'issues': []},
  'commands_all_mentioned': {'driver_id': 'acme_widget', 'issues': []},

@@ -4091,10 +4091,21 @@ has one keeps loading, and its entry on the Installed list says what to fix.
 A product with OpenAVC built in that describes itself with one still connects;
 the server log names it.
 
+A Python driver's simulator (`my_driver_sim.py`, beside the driver) is checked
+with it. Its `SIMULATOR_INFO` takes the keys a `simulator:` section takes, plus
+`driver_id`, `name`, `transport`, `default_port`, `category`, `delimiter` and
+`tls`. A value of the wrong kind is an error. A key the simulator never reads is
+a warning naming the key you probably meant:
+
+```
+my_driver.py: warning: my_driver_sim.py: SIMULATOR_INFO: unknown key 'errors' (did you mean 'error_modes'?); the simulator does not read it
+```
+
 A section left empty (`polling:` with nothing under it) loads as if it were not
-there. Leave it out of a driver you publish all the same: older OpenAVC
-releases refuse a driver with an empty section, so the community catalog asks
-you to remove it.
+there, and so does a simulator setting left empty (`initial_state:` with
+nothing under it, or `"initial_state": None`). Leave it out of a driver you
+publish all the same: older OpenAVC releases refuse a driver with an empty
+section, so the community catalog asks you to remove it.
 
 The command exits non-zero when anything is wrong and prints nothing when a
 single file is clean. It needs no project, no server and no particular folder

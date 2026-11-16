@@ -12,7 +12,11 @@ names a state key, and the type's own rules. A new control type is a row here
 and, when it has rules of its own, one function.
 
 A key is reported as unknown only when the device has state keys to compare it
-with: with none (``known_keys`` empty), nothing is said about it.
+with: with none (``known_keys`` empty), nothing is said about it. A Python
+simulator's controls are read from its source (``python_parity``): a control
+holding a value the reader could not see, or a list of them built in code, is
+not judged and is named (``python_info.holds_unread``, the skip every check of
+Python source asks); a YAML definition never holds one.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ import dataclasses
 from collections.abc import Callable
 from typing import Any
 
+from openavc.drivers.python_info import holds_unread
 from openavc.simulator.validation_result import ValidationResult
 
 
@@ -167,7 +172,10 @@ def check_controls(result: ValidationResult, sim: dict, known_keys: set[str]) ->
     if controls is None:
         return
     if not isinstance(controls, list):
-        result.error("controls", "simulator.controls must be a list")
+        if holds_unread(controls):
+            result.info("controls", "simulator.controls are built in code, so they were not checked")
+        else:
+            result.error("controls", "simulator.controls must be a list")
         return
     for i, control in enumerate(controls):
         _check_control(result, control, f"controls[{i}]", known_keys)
@@ -178,12 +186,30 @@ def _check_control(result: ValidationResult, fields: Any, where: str, known_keys
     the controls it holds. Each level of a group is one call of this function
     on the stack, so how deep a group can go before Python's recursion limit
     stops the check is a property of this function alone."""
+    if _unread_here(fields):
+        result.info(
+            "controls",
+            f"{where} holds a value that could not be read from the source, so it was not checked",
+        )
+        return
     kind = _control_type(result, fields, where)
     if kind is None:
         return
     _check_fields(_Control(result, fields, where, fields["type"], known_keys), kind)
     for i, child in enumerate(kind.children(fields)):
         _check_control(result, child, f"{where}.controls[{i}]", known_keys)
+
+
+def _unread_here(fields: Any) -> bool:
+    """Whether a control holds a value the source reader could not see, in
+    its own fields: the controls a group holds are each asked at their own
+    level, so this reads one level, never the whole group."""
+    if not isinstance(fields, dict):
+        return holds_unread(fields)
+    return holds_unread({
+        key: value for key, value in fields.items()
+        if not (key == "controls" and isinstance(value, list))
+    })
 
 
 def _control_type(result: ValidationResult, fields: Any, where: str) -> _ControlType | None:

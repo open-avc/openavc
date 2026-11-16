@@ -722,7 +722,7 @@ class _Coverage:
 
     def judged(self, place: str, unit: Any, reads: tuple[str, ...] = ()) -> bool:
         """Whether a check may judge ``unit`` (kept as a skip when not)."""
-        if _holds_unread(unit):
+        if holds_unread(unit):
             self._skip(place, "holds a value that could not be read from the source")
             return False
         for section in reads:
@@ -781,14 +781,15 @@ def _merged(value: Any) -> bool:
     return isinstance(value, dict) and UNEVALUATED_KEY in value
 
 
-def _holds_unread(value: Any) -> bool:
-    """Anything inside ``value`` the reader could not see."""
+def holds_unread(value: Any) -> bool:
+    """Anything inside ``value`` the reader could not see: THE test every
+    check of a value read from Python source asks before judging it."""
     if _unread_value(value) or _merged(value):
         return True
     if isinstance(value, dict):
-        return any(_holds_unread(entry) for entry in value.values())
+        return any(holds_unread(entry) for entry in value.values())
     if isinstance(value, (list, tuple)):
-        return any(_holds_unread(entry) for entry in value)
+        return any(holds_unread(entry) for entry in value)
     return False
 
 

@@ -78,8 +78,8 @@ def test_a_python_simulator_with_none_settings(caplog):
         sim = _python_sim({"capacity": None, "single_client": None})
     assert sim._capacity.declared is None and sim._single_client.declared is None
     assert _records(caplog) == []
-    with pytest.raises(TypeError):
-        _python_sim({"initial_state": None})
+    # A setting written as a null reads as absent.
+    assert _python_sim({"initial_state": None, "delays": None, "state_machines": None}).state == {}
     with pytest.raises(TypeError):
         _python_sim({"delays": 5})
     with pytest.raises(AttributeError):

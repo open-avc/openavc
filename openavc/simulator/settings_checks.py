@@ -31,8 +31,9 @@ for a ``simulator:`` section only.
 - ``check_declared_settings``: the declared capacity, then single_client, each
   when its key is present, against the simulator's own refusal
   (``capacity_problems``, ``single_client_problems``). A value the source
-  reader could not resolve is named and passed over. Where the reader skips a
-  setting declared as ``None``, this refuses it.
+  reader could not resolve is named and passed over. A setting written as a
+  null never reaches it: both doors read it as absent, as the reader does
+  (``spec.without_null_settings``).
 
 A declared type is matched by equality (``in`` a tuple), never by hashing it:
 a ``type:`` written as a list or mapping is passed over, not raised on.

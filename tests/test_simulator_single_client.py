@@ -390,7 +390,8 @@ def test_the_published_schema_states_the_modes():
         (Path(__file__).parents[1] / "openavc/drivers/avcdriver.schema.json").read_text("utf-8")
     )
     node = schema["$defs"]["simulatorSection"]["properties"]["single_client"]
-    assert node["enum"] == ["newest", "oldest", "reject"]
+    # A null reads as absent, as for every simulator setting.
+    assert node["enum"] == ["newest", "oldest", "reject", None]
     assert "Takes effect on platform 0.38.0" in node["description"]
 
 

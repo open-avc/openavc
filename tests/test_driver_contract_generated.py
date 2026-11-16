@@ -48,8 +48,8 @@ def test_python_variant_differs_only_in_the_python_tier() -> None:
     the Python-only param types ("file"), the platform floors that belong
     to a Python-only value, and a YAML-only floor (``yaml_since_values``),
     which the Python schema states as an enhancement. And one YAML-only
-    reading: a definition's top-level field left null is absent, while a
-    DRIVER_INFO is read as written."""
+    reading: a definition's top-level field left null is absent, and so is a
+    simulator setting left null, while a DRIVER_INFO is read as written."""
     from openavc.drivers.contract_gen import _node_to_schema
 
     yaml_schema = build_schema("yaml")
@@ -74,11 +74,25 @@ def test_python_variant_differs_only_in_the_python_tier() -> None:
     push_type["description"] = spec.node_doc(
         spec.DEFS["pushBlock"]["fields"]["type"], push_type["enum"], "python",
     )
+    # A YAML driver reads a null as absent for each simulator setting
+    # (spec.NULL_AS_ABSENT_WITHIN); a DRIVER_INFO is read as written.
+    for name in spec.NULL_AS_ABSENT_WITHIN.values():
+        for node in yaml_schema["$defs"][name]["properties"].values():
+            _take_back_the_null(node)
     yaml_schema["$id"] = python_schema["$id"]
     yaml_schema["title"] = python_schema["title"]
     yaml_schema["description"] = python_schema["description"]
 
     assert yaml_schema == python_schema
+
+
+def _take_back_the_null(node: dict) -> None:
+    """A schema node as it read before it took a null."""
+    node["type"] = [kind for kind in node["type"] if kind != "null"]
+    if len(node["type"]) == 1:
+        node["type"] = node["type"][0]
+    if "enum" in node:
+        node["enum"] = [value for value in node["enum"] if value is not None]
 
 
 def test_a_floor_is_only_rendered_for_a_value_the_surface_publishes() -> None:

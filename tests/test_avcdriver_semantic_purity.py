@@ -7,7 +7,7 @@ check modules it imports (``action_checks``, ``command_checks``, ``condition_che
 ``param_aid_checks``, ``push_block_checks``, ``query_entry_checks``,
 ``reply_name_checks``, ``response_rule_checks``, ``routing_checks``, ``serial_line``, ``setting_checks``,
 ``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``),
-``openavc/drivers/child_ids.py`` and ``openavc/drivers/python_info.py`` are shared beyond the server runtime (the
+``openavc/drivers/child_ids.py``, ``openavc/drivers/python_info.py`` and ``openavc/drivers/simulator_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
 no ``openavc`` package), so they must stay importable with nothing but the
 standard library and each other: no runtime, no transports, no discovery, no
@@ -106,4 +106,14 @@ def test_python_info_imports_nothing_beyond_itself():
     assert set(loaded) <= allowed, sorted(set(loaded) - allowed)
     # Still not YAML. The reader parses Python source, and the catalog CI job
     # it runs in has no yaml dependency to lean on.
+    assert "yaml" not in loaded
+
+
+def test_simulator_info_imports_nothing_beyond_the_python_reader():
+    """The check of a Python simulator's SIMULATOR_INFO is vendored beside the
+    Python-driver reader and runs in the same catalog CI job, so it is held to
+    the same budget, plus that reader."""
+    allowed = ALLOWED | {"openavc.drivers.python_info", "openavc.drivers.simulator_info"}
+    loaded = _loaded_modules("import openavc.drivers.simulator_info")
+    assert set(loaded) <= allowed, sorted(set(loaded) - allowed)
     assert "yaml" not in loaded

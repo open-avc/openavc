@@ -247,10 +247,17 @@ def build_schema(tier: str) -> dict[str, Any]:
             name: _top_level(name, node, tier) for name, node in spec.FIELDS.items()
         },
         "allOf": [_cross_field_rule(rule, tier) for rule in spec.CROSS_FIELD_RULES],
-        "$defs": {
-            name: _node_to_schema(node, tier) for name, node in spec.DEFS.items()
-        },
+        "$defs": {name: _definition(name, node, tier) for name, node in spec.DEFS.items()},
     }
+
+
+def _definition(name: str, node: dict[str, Any], tier: str) -> Any:
+    """One ``$defs`` block; in a YAML driver, a block whose keys a null reads
+    as absent for (``spec.NULL_AS_ABSENT_WITHIN``) lets each of them take one."""
+    out = _node_to_schema(node, tier)
+    if tier == "yaml" and name in spec.NULL_AS_ABSENT_WITHIN.values():
+        out["properties"] = {key: _with_null(prop) for key, prop in out["properties"].items()}
+    return out
 
 
 def render_schema(tier: str) -> str:

@@ -51,16 +51,22 @@ Checks performed:
   Python drivers (.py + _sim.py), in python_parity:
     1. SIMULATOR_INFO   — required fields present (driver_id, name, initial_state)
     2. Settings         — as for a YAML driver (settings_checks)
-    3. driver_id match  — DRIVER_INFO.id == SIMULATOR_INFO.driver_id
-    4. State coverage   — how much of the device the simulator seeds against
+    3. Controls         — as for a YAML driver (control_checks), a control
+                          built in code named, never against the seeds
+    4. driver_id match  — DRIVER_INFO.id == SIMULATOR_INFO.driver_id
+    5. State coverage   — how much of the device the simulator seeds against
                           how much the driver reads (a count: the two are
                           different namespaces, so the names rarely line up)
-    5. Type consistency — each seed against its declared type, as for YAML
-    6. Transport match  — the same transport, or TCP standing in for one the
+    6. Type consistency — each seed against its declared type, as for YAML
+    7. Transport match  — the same transport, or TCP standing in for one the
                           simulator has no server for
-    7. Command names    — each command's name appears in the simulator's
+    8. Command names    — each command's name appears in the simulator's
                           source (a heads-up: a binary simulator never
                           writes one)
+
+  Before either, the driver contract's own check (drivers.check), which for a
+  Python driver includes its _sim.py: each SIMULATOR_INFO key against the
+  contract (drivers/simulator_info.py).
 """
 
 from __future__ import annotations

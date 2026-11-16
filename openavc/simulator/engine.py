@@ -29,7 +29,7 @@ from pathlib import Path
 import yaml
 
 from openavc.core.connection_fault import SimulatorCause, simulator_error_text
-from openavc.drivers.spec import without_null_sections
+from openavc.drivers.spec import without_null_sections, without_null_settings
 from openavc.simulator.base import BaseSimulator
 from openavc.simulator.tcp_simulator import TCPSimulator
 from openavc.simulator.http_simulator import HTTPSimulator
@@ -216,12 +216,14 @@ class SimulatorManager:
                 and obj.SIMULATOR_INFO.get("driver_id")
             ):
                 driver_id = obj.SIMULATOR_INFO["driver_id"]
+                # A key written as a null reads as absent, as the device reads it.
+                info = without_null_settings(obj.SIMULATOR_INFO)
                 self._available[driver_id] = SimulatorInfo(
                     driver_id=driver_id,
-                    name=obj.SIMULATOR_INFO.get("name", driver_id),
-                    category=obj.SIMULATOR_INFO.get("category", "generic"),
-                    transport=obj.SIMULATOR_INFO.get("transport", "tcp"),
-                    default_port=obj.SIMULATOR_INFO.get("default_port", 0),
+                    name=info.get("name", driver_id),
+                    category=info.get("category", "generic"),
+                    transport=info.get("transport", "tcp"),
+                    default_port=info.get("default_port", 0),
                     source="python",
                     simulator_class=obj,
                 )

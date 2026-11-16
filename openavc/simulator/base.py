@@ -15,6 +15,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable
 
+from openavc.drivers.spec import without_null_settings
 from openavc.simulator.capacity import DeviceCapacity, capacity_problems
 from openavc.simulator.self_signed_tls import wants_tls
 from openavc.simulator.single_client import SingleClient, single_client_problems
@@ -70,6 +71,9 @@ class BaseSimulator(ABC):
         # self.child_entities to model per-child state and responses.
         self._child_entities: dict[str, dict[str, dict]] = {}
 
+        # A key written as a null reads as absent, here and wherever the
+        # device's info is read after this.
+        self.SIMULATOR_INFO = without_null_settings(self.SIMULATOR_INFO)
         self._read_device_settings(self.SIMULATOR_INFO)
 
     def _read_device_settings(self, settings: dict) -> None:
@@ -83,8 +87,10 @@ class BaseSimulator(ABC):
         when given; each state machine is built and its state seeded with its
         initial value, last, so it wins over a seeded key of the same name. A
         malformed machine is skipped (``_skip_malformed_machine``) rather than
-        aborting the device's construction.
+        aborting the device's construction. A setting written as a null reads
+        as absent (``spec.without_null_settings``).
         """
+        settings = without_null_settings(settings)
         self._state.update(settings.get("initial_state", {}))
         self._error_modes.update(settings.get("error_modes", {}))
         self._delays.update(settings.get("delays", {}))

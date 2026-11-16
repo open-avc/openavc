@@ -2661,27 +2661,45 @@
       "type": "object",
       "properties": {
         "push_state": {
-          "type": "boolean",
+          "type": [
+            "boolean",
+            "null"
+          ],
           "description": "Push state changes to connected drivers, matching real device feedback behavior."
         },
         "initial_state": {
-          "type": "object",
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "Override initial state values."
         },
         "delays": {
-          "type": "object",
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "Response delays in seconds, e.g. {command_response: 0.05}."
         },
         "error_modes": {
-          "type": "object",
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "Named error behaviors selectable in the simulator UI."
         },
         "controls": {
-          "type": "array",
+          "type": [
+            "array",
+            "null"
+          ],
           "description": "Declarative control widgets for the simulator UI."
         },
         "state_machines": {
-          "type": "object",
+          "type": [
+            "object",
+            "null"
+          ],
           "additionalProperties": {
             "type": "object",
             "required": [
@@ -2700,7 +2718,10 @@
           }
         },
         "command_handlers": {
-          "type": "array",
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "object",
             "properties": {
@@ -2733,11 +2754,17 @@
           }
         },
         "notifications": {
-          "type": "object",
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "Unsolicited messages emitted on state change, keyed by state variable."
         },
         "capacity": {
-          "type": "object",
+          "type": [
+            "object",
+            "null"
+          ],
           "description": "How much the device can take in at once, for the simulator's Capacity setting. Off until it is switched on for a device in the Simulator UI; then the simulated device holds rx_buffer bytes it has not read yet, takes one message every process_ms, and loses what arrives while it is full. Lets a driver that sends faster than the device reads fail in the simulator the way it fails on the device. Declare the numbers the manufacturer documents; a driver that declares nothing gets the simulator's own. Requires platform 0.37.0.",
           "required": [
             "rx_buffer",
@@ -2768,11 +2795,15 @@
           "additionalProperties": false
         },
         "single_client": {
-          "type": "string",
+          "type": [
+            "string",
+            "null"
+          ],
           "enum": [
             "newest",
             "oldest",
-            "reject"
+            "reject",
+            null
           ],
           "description": "For a device that serves one TCP control connection at a time: what it does when another connection arrives. newest: the new connection takes over, and the one already open stops being answered without being closed. oldest: the connection already open keeps the device, and the new one is held open and never answered. reject: the new one is closed at once. The simulated device behaves this way from the start, and the Simulator UI can change it per device. Lets a driver fail in the simulator the way it fails on the device when something else connects to it (a scan, a connection test, a second controller). Leave it out for a device that answers every connection. Takes effect on platform 0.38.0; an older platform ignores it and still runs the driver, so it does not raise min_platform_version."
         }
