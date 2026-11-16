@@ -740,6 +740,15 @@ def _login_masked(host: str) -> str:
     return f"{host[:colon + 1]}***{host[at:]}"
 
 
+def _shown_host(host: str) -> str:
+    """The host as a message shows it: blank when it is only spaces, quoted
+    when a space is around it, a typed login's password masked."""
+    if not host.strip():
+        return ""
+    shown = _login_masked(host)
+    return f'"{shown}"' if host != host.strip() else shown
+
+
 def _endpoint(host: str, port: object) -> str:
     """Render ``host:port`` for a message, degrading gracefully.
 
@@ -751,13 +760,7 @@ def _endpoint(host: str, port: object) -> str:
     the host, whose password is masked (:func:`_login_masked`): the sentence
     is published to everything that reads the device's state.
     """
-    host = host or ""
-    if not host.strip():
-        host = ""
-    elif host != host.strip():
-        host = f'"{_login_masked(host)}"'
-    else:
-        host = _login_masked(host)
+    host = _shown_host(host or "")
     has_port = port not in (None, "", 0)
     if host and has_port:
         return f"{host}:{port}"
