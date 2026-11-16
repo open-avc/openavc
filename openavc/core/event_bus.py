@@ -35,11 +35,13 @@ These two are complementary, not interchangeable:
   UI and recovery logic.
 
 * ``device.error.<id>`` fires when a command or poll completes against
-  a live transport but the protocol layer fails — a bad parameter, a
-  decode error, a malformed response, an HTTP 5xx, a timeout waiting
-  for a reply on a still-open socket. The connection is presumed
+  a live transport but the protocol layer fails — a command the device
+  rejects, a decode error, a malformed response, an HTTP 5xx, a timeout
+  waiting for a reply on a still-open socket. The connection is presumed
   alive; only this command went wrong. Use this for protocol-level
-  alerting that's distinct from "the device is gone."
+  alerting that's distinct from "the device is gone." A command the
+  platform refuses before sending (core/device_commands.py: a parameter
+  the declaration refuses, an undeclared name, offline) emits neither.
 
 If the same exception is both (e.g. a TCP write fails because the
 socket just died), only ``device.disconnected`` fires — the transport

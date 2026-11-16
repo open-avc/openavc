@@ -6,8 +6,9 @@ script, the cloud, REST). It refuses a command name the driver does not declare,
 and a file command sent from a door that cannot give or take a file, BEFORE it
 asks whether the device is connected: the sentence that helps there is about
 the name or the door, not the network. A send the driver raises on is published
-as ``device.error.<id>`` and raised again. The checks read off the driver's own
-declaration are core/command_gates.py.
+as ``device.error.<id>`` and raised again; a parameter the checks refuse is
+raised with no event, since nothing reached the device. The checks read off
+the driver's own declaration are core/command_gates.py.
 
 A step or a control's action that saved a secret parameter on this system
 names it in ``saved``, and the value is filled in here from this system's
@@ -63,6 +64,25 @@ def _saved_value(name: str) -> str | None:
     return device_logins().secret(param_owner(name), saved_params.FIELD)
 
 
+def _checked_params(
+    driver: BaseDriver, device_id: str, command: str, params: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """The command's parameters as the driver gets them: child ids coerced,
+    then checked against the declaration.
+
+    A parameter refused here never reached the device, so the device reported
+    nothing and send_command publishes no device.error for it. The refusal is
+    still marked with its command, so a control's script call words it as a
+    press on that command does.
+    """
+    try:
+        params = coerce_child_id_params(driver, command, params)
+        return validate_command_params(driver, command, params)
+    except Exception as exc:
+        mark_failed_command(exc, device_id, command)
+        raise
+
+
 class DeviceCommandsMixin:
     """The command door and the rule for whether a command goes out.
 
@@ -91,7 +111,9 @@ class DeviceCommandsMixin:
 
         Any exception raised by the driver's ``send_command`` is published as
         ``device.error.<device_id>`` (payload: ``{"device_id", "error"}``) and
-        then re-raised. Transport-level loss is reported separately as
+        then re-raised. A refusal before sending (an undeclared name, the
+        wrong door, offline, a parameter the declaration refuses) is raised
+        with no event. Transport-level loss is reported separately as
         ``device.disconnected.<device_id>`` from the transport callback; the
         two events are complementary — see ``event_bus.py`` for the policy.
 
@@ -133,9 +155,10 @@ class DeviceCommandsMixin:
             # so retry now instead of leaving them to wait out the interval.
             self.kick_reconnect(device_id)
             raise self._offline_refusal(device_id)
+        # Outside the try below on purpose: a refused parameter emits no
+        # device.error (_checked_params).
+        params = _checked_params(driver, device_id, command, params)
         try:
-            params = coerce_child_id_params(driver, command, params)
-            params = validate_command_params(driver, command, params)
             if file_command is None:
                 result = await driver.send_command(command, params)
             else:

@@ -860,6 +860,90 @@ async def test_send_command_emits_device_error(dm, core):
     ]
 
 
+class RangedDriver(ErroringDriver):
+    """An invented driver with one command whose parameter the platform checks."""
+
+    DRIVER_INFO = {
+        **ErroringDriver.DRIVER_INFO,
+        "id": "ranged_driver",
+        "commands": {
+            "set_level": {
+                "label": "Set Level",
+                "params": {"level": {"type": "integer", "min": 0, "max": 100, "required": True}},
+            },
+        },
+    }
+
+    def __init__(self, device_id, config, state, events):
+        super().__init__(device_id, config, state, events)
+        self.sent: list[tuple[str, dict | None]] = []
+
+    async def send_command(self, command: str, params: dict | None = None):
+        self.sent.append((command, params))
+        return None
+
+
+@pytest.mark.parametrize("params", [{"level": 200}, {}, {"level": "loud"}],
+                         ids=["out_of_range", "missing", "wrong_type"])
+async def test_a_refused_parameter_emits_no_device_error(dm, core, params):
+    """A parameter the platform refuses never reached the device, so the device
+    reported nothing: the caller gets the refusal, marked with the command it
+    was for, and no device.error is published."""
+    from openavc.core.device_errors import failed_command
+    from openavc.drivers.base import CommandParamError
+
+    state, events = core
+    driver = RangedDriver("dev_lvl", {}, state, events)
+    await driver.connect()
+    dm._devices["dev_lvl"] = driver
+    received: list[tuple[str, dict]] = []
+    events.on("device.error.dev_lvl", lambda name, payload: received.append((name, payload)))
+
+    with pytest.raises(CommandParamError) as refused:
+        await dm.send_command("dev_lvl", "set_level", params)
+
+    assert driver.sent == []
+    assert received == []
+    assert failed_command(refused.value) == ("dev_lvl", "set_level")
+    # A valid value still goes out.
+    await dm.send_command("dev_lvl", "set_level", {"level": 40})
+    assert driver.sent == [("set_level", {"level": 40})]
+
+
+async def test_a_yaml_drivers_refused_parameter_emits_no_device_error(dm, core):
+    """The same for a YAML driver, which also checks its parameters itself."""
+    from openavc.drivers.base import CommandParamError
+    from openavc.drivers.configurable import create_configurable_driver_class
+
+    state, events = core
+    cls = create_configurable_driver_class({
+        "id": "acme_level_yaml_test", "name": "Acme Level (test)", "manufacturer": "Acme",
+        "category": "audio", "version": "1.0.0", "transport": "tcp",
+        "default_config": {"host": "127.0.0.1", "port": 9999}, "config_schema": {},
+        "state_variables": {}, "responses": [],
+        "commands": {"set_level": {
+            "label": "Set Level", "string": "LEVEL {level}\r",
+            "params": {"level": {"type": "integer", "min": 0, "max": 100, "required": True}},
+        }},
+    })
+    driver = cls("acme1", {}, state, events)
+    sent: list[str] = []
+
+    async def record(data, *args, **kwargs):
+        sent.append(data)
+
+    driver.send = record
+    state.set("device.acme1.connected", True, source="driver")
+    dm._devices["acme1"] = driver
+    received: list[tuple[str, dict]] = []
+    events.on("device.error.acme1", lambda name, payload: received.append((name, payload)))
+
+    with pytest.raises(CommandParamError, match="100"):
+        await dm.send_command("acme1", "set_level", {"level": 200})
+
+    assert sent == [] and received == []
+
+
 async def test_send_command_not_connected_skips_device_error(dm, core):
     """Pre-flight not-connected guard raises ConnectionError but does NOT emit
     device.error — that path is the device.disconnected territory; the
