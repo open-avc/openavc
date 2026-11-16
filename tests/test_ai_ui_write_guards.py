@@ -311,6 +311,24 @@ async def test_a_master_element_gets_the_same_measurement(
     assert any("conn_led" in w for w in result["warnings"])
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", ["NaN", float("nan"), float("inf")])
+async def test_a_box_side_that_is_no_finite_number_is_refused_naming_the_side(
+    handler, mock_engine, mock_agent, value,
+):
+    """Saved, it would be written as a bare NaN that no browser reads, so the
+    panel would show nothing. The assistant is told which side, whichever form
+    it came in, and nothing is created."""
+    payload = await _run(handler, mock_engine, mock_agent, "add_ui_page", {
+        "id": "amp", "elements": [{
+            "id": "power", "type": "button", "placement": {"x": 0, "y": 0, "w": value, "h": 10},
+        }],
+    })
+    assert payload["success"] is False
+    assert payload["error"] == "w: Input should be a finite number"
+    assert all(p.id != "amp" for p in mock_engine.project.ui.pages)
+
+
 # --- Scope -----------------------------------------------------------------
 
 

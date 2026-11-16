@@ -317,7 +317,7 @@ def _converted_box(page: Any, layout: Any, element_id: str, new_parent_id: str |
 
 def _no_area(box: Any) -> bool:
     """Missing, or a side of zero or less. A side that is not a number passes,
-    and the rounding then raises on it."""
+    and the model then refuses the box built from it."""
     return not box or box["w"] <= 0 or box["h"] <= 0
 
 

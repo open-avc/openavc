@@ -5,7 +5,8 @@ Loads and validates project.avc using Pydantic models.
 All downstream code works with typed ProjectConfig objects, never raw dicts.
 
 The models are the one place a project value's bound and default are written:
-each range on its field (``Field(ge=, le=)``), each blank as the field's
+each range on its field (``Field(ge=, le=)``), a measurement that takes finite
+numbers only as ``FiniteFloat`` (a box's side), each blank as the field's
 default, or, for a blank another setting decides (the theme a project with no
 theme id draws, the format a clock with none draws), in the model's
 ``BLANK_FROM``, read by ``blank_drawn``; a style value whose 0 is blank (a
@@ -88,9 +89,10 @@ def _validate_id(value: str, label: str) -> str:
 # --- Pydantic Models ---
 #
 # A field that takes a range of numbers says so on the field (``Field(ge=,
-# le=)``): the schema refuses a value outside it, whoever sends it. A bound
-# added to a field a project could already hold comes with a format migration
-# step that brings a saved value inside it, so a project an earlier release
+# le=)``), and one that takes finite numbers only is a ``FiniteFloat``: the
+# schema refuses a value outside it, whoever sends it. A bound added to a field
+# a project could already hold comes with a format migration step that brings a
+# saved value inside it, so a project an earlier release
 # saved still loads; a door that writes into the running project without going
 # back through the schema checks the field the same way (the AI's element
 # doors validate each assignment).
