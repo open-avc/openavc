@@ -101,9 +101,17 @@ def test_the_corpus_reaches_every_form_of_the_rule() -> None:
     """A corpus of stretched sliders alone proves nothing about the dead space or a flat range."""
     elements = [case["element"] for case in CASES]
     assert {el["type"] for el in elements} == {"slider", "fader"}
-    stretched = [el for el in elements if "output_min" in el and el.get("scale_to_full") is not False]
+
+    def ends_set(el: dict) -> int:
+        return ("output_min" in el) + ("output_max" in el)
+
+    stretched = [el for el in elements if ends_set(el) and el.get("scale_to_full") is not False]
     held = [el for el in elements if el.get("scale_to_full") is False]
-    assert stretched and held and any("output_min" not in el for el in elements)
-    assert any(el["output_min"] == el["output_max"] for el in stretched + held)
-    assert any(el["min"] == el["max"] for el in elements if "min" in el)
-    assert any(el["output_min"] > el["output_max"] for el in stretched)
+    assert stretched and held and any(not ends_set(el) for el in elements)
+    assert any(ends_set(el) == 1 for el in stretched) and any(ends_set(el) == 1 for el in held)
+    both = [el for el in stretched + held if ends_set(el) == 2]
+    assert any(el["output_min"] == el["output_max"] for el in both)
+    assert any(el["output_min"] > el["output_max"] for el in both)
+    assert any(el.get("min") == el.get("max") for el in elements if "min" in el)
+    assert any("min" not in el for el in elements)
+    assert any(el["type"] == "fader" and el.get("min", 0) > el.get("max", 100) for el in elements)

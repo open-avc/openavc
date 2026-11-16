@@ -110,6 +110,30 @@
       "pairs": [[0, 0], [40, 102], [100, 255]]
     },
     {
+      "name": "a slider with only an Output Max stretches from its own Min",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1, "output_max": 80},
+      "ends": [0, 100],
+      "pairs": [[0, 0], [50, 40], [100, 80]]
+    },
+    {
+      "name": "a slider with only an Output Min stretches to its own Max",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1, "output_min": 20},
+      "ends": [0, 100],
+      "pairs": [[0, 20], [50, 60], [100, 100]]
+    },
+    {
+      "name": "a slider with only an Output Max, in dead space, stops at it",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1, "output_max": 80, "scale_to_full": false},
+      "ends": [0, 80],
+      "pairs": [[0, 0], [80, 80]]
+    },
+    {
+      "name": "a fader in dB with only an Output Min, in dead space, stops at it",
+      "element": {"type": "fader", "min": -80, "max": 0, "step": 0.5, "output_min": -60, "scale_to_full": false},
+      "ends": [-60, 0],
+      "pairs": [[-60, -60.0], [-30, -30.0], [0, 0.0]]
+    },
+    {
       "name": "a slider whose range is one value sends the bottom of its output range",
       "element": {"type": "slider", "min": 5, "max": 5, "step": 1, "output_min": 0, "output_max": 255},
       "ends": [5, 5],

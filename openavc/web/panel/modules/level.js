@@ -151,8 +151,11 @@ class LevelScale {
         this.span = max - min;
         this.response = settings.response;
         this.dbRange = settings.dbRange;
-        this.outputMin = settings.outputMin;
-        this.outputMax = settings.outputMax;
+        // A blank end of the output range is the control's own (the
+        // Builder's "Same as Min"); with both blank there is no output range.
+        const ranged = settings.outputMin != null || settings.outputMax != null;
+        this.outputMin = settings.outputMin ?? (ranged ? min : null);
+        this.outputMax = settings.outputMax ?? (ranged ? max : null);
         this.scaleToFull = settings.scaleToFull;
     }
 

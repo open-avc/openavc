@@ -675,7 +675,9 @@ class UIEventRuntime:
 
         Stretched from the display range onto output_min..output_max, or held
         inside the output range (the dead space, and an output range of one
-        value, which nothing can be stretched over). A display range of one
+        value, which nothing can be stretched over). A blank end of the output
+        range is the control's own Min or Max (the Builder's "Same as Min");
+        with both blank the value goes as it is. A display range of one
         value sends the bottom of the output range. The panel reads the same
         rule backwards to draw the device's reading (``LevelScale`` in
         ``web/panel/modules/level.js``); the two are held to one corpus,
@@ -685,14 +687,16 @@ class UIEventRuntime:
             return raw_value
         output_min = getattr(element, "output_min", None)
         output_max = getattr(element, "output_max", None)
-        if output_min is None or output_max is None:
+        if output_min is None and output_max is None:
             return raw_value
+        display_min, display_max = _display_range(element)
+        output_min = display_min if output_min is None else output_min
+        output_max = display_max if output_max is None else output_max
 
         val = float(raw_value)
         if getattr(element, "scale_to_full", None) is False or output_min == output_max:
             result = max(output_min, min(output_max, val))
         else:
-            display_min, display_max = _display_range(element)
             display_range = display_max - display_min
             frac = (val - display_min) / display_range if display_range else 0.0
             result = output_min + frac * (output_max - output_min)
