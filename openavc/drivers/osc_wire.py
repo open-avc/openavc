@@ -37,6 +37,7 @@ from typing import Any, Callable
 
 from openavc.core.state_store import is_flat_primitive
 from openavc.drivers import compiled_protocol
+from openavc.drivers.command_outcome import not_sent
 from openavc.drivers.contract_events import UNMATCHED_RESPONSE
 from openavc.drivers.json_replies import JSON_PATH_MISSING, extract_json_path
 from openavc.utils.logger import get_logger
@@ -157,6 +158,7 @@ class OscWire:
     _convert_declared: Callable[[Any, str], Any]
     _mapped_reading: Callable[..., Any]
     _convert_osc_value: Callable[[Any, str], Any]
+    _effective_transport: Callable[[], str]
 
     _osc_num = staticmethod(osc_num)
     _build_osc_args = staticmethod(build_osc_args)
@@ -168,18 +170,22 @@ class OscWire:
     async def _send_osc_command(
         self, command: str, cmd_def: dict[str, Any], params: dict[str, Any]
     ) -> Any:
-        """Send an OSC command: encode address + typed args and send."""
+        """Send an OSC command: encode address + typed args and send.
+
+        On a connection that is not OSC nothing goes out, and the command is
+        refused as not sent (``command_outcome.not_sent``), as the HTTP form
+        is: no OSC bytes on another kind of socket."""
         from openavc.transport.osc import OSCTransport
         from openavc.transport.osc_codec import osc_encode_message
 
-        # Mirrors the HTTP path's isinstance check: no OSC bytes on a
-        # non-OSC socket when a command's declared shape doesn't match.
         if not isinstance(self.transport, OSCTransport):
             log.error(
                 f"[{self.device_id}] Command '{command}' uses OSC fields "
                 f"but transport is not OSC"
             )
-            return None
+            raise not_sent(
+                command, cmd_def.get("label"), form="osc", transport=self._effective_transport(),
+            )
 
         all_params = {**self.config, **self._push_params(), **params}
         address = self._substitute_for_wire(

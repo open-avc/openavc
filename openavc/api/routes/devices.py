@@ -562,13 +562,15 @@ def setting_failure(device_id: str, key: str, exc: Exception) -> HTTPException:
         return _api_error(503, detail, exc)
     if isinstance(exc, NotImplementedError):
         return _api_error(501, detail, exc)
+    if isinstance(exc, CommandPartialError):
+        # Above the outcome branch: a partly done write answers with the
+        # driver's sentence, as Send Command does.
+        return _api_error(502, detail, exc)
     if isinstance(exc, CommandOutcomeError):
         return StructuredApiError(
             502 if exc.outcome == "failed" else 409, detail,
             code="command_incomplete", outcome=exc.outcome,
         )
-    if isinstance(exc, CommandPartialError):
-        return _api_error(502, detail, exc)
     if isinstance(exc, CommandRefusedError) and str(exc).strip():
         return HTTPException(status_code=409, detail=detail)
     return HTTPException(status_code=500, detail=detail)
@@ -613,6 +615,8 @@ def command_failure(device_id: str, command: str, exc: Exception) -> HTTPExcepti
     if isinstance(exc, ConnectionError):
         return _api_error(503, detail, exc)
     if isinstance(exc, CommandPartialError):
+        # Above the outcome branch below, which it subclasses.
+        #
         # The command DID something and could not confirm the rest, so the
         # generic wording below would be actively wrong -- it reads as "nothing
         # happened" to somebody who just watched the device react, and hides

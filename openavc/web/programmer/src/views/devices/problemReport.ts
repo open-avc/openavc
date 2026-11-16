@@ -19,8 +19,9 @@ import type {
 export const SUPPORT_EMAIL = "support@openavc.com";
 
 /** Report a problem after a failed command: the driver's own fault (500), an
- *  exchange that came apart partway (502), or an outcome the driver could not
- *  confirm (409 `command_incomplete`). Never a bad parameter (400), an unknown
+ *  exchange that came apart partway (502), or a command that did not complete
+ *  (409 `command_incomplete`: not confirmed, or not sent because of how it is
+ *  written for the device's connection). Never a bad parameter (400), an unknown
  *  command (404), a device that is not connected (503), or a device that said
  *  no in its own words (a plain 409). */
 export function reportableCommandFailure(

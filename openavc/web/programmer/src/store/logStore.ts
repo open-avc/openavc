@@ -55,6 +55,11 @@ export interface GroupCommandResult {
     success: boolean;
     error?: string;
     message?: string;
+    /** On a member that did not take it: whether the command reached it. */
+    sent?: boolean;
+    /** Why it was not a plain success, when that is known: not_sent, partial,
+     *  uncertain, pending, failed, rejected. */
+    outcome?: string;
   }>;
 }
 

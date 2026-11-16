@@ -31,6 +31,7 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
+from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.drivers.param_validation import CommandParamError
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.drivers.contract_events import UNKNOWN_COMMAND
@@ -745,7 +746,9 @@ async def test_a_byte_stream_command_with_no_send_string_is_not_read_back() -> N
     unit["commands"]["silent"]["read_back"] = "GL\r"
     cap = Capture()
     drv = _driver(unit, cap)
-    assert await drv.send_command("silent") is None
+    with pytest.raises(CommandOutcomeError) as refused:
+        await drv.send_command("silent")
+    assert refused.value.outcome == "not_sent"
     assert drv._read_back_tasks == set()
     assert cap.sent == []
 
@@ -771,8 +774,10 @@ async def test_an_osc_or_http_command_on_the_wrong_link_is_not_read_back(caplog)
     seen: list[Any] = []
     drv._read_back = lambda *args: seen.append(args)
     with caplog.at_level(logging.ERROR, logger="openavc.drivers.configurable"):
-        assert await drv.send_command("osc_cmd") is None
-        assert await drv.send_command("http_cmd") is None
+        for name in ("osc_cmd", "http_cmd"):
+            with pytest.raises(CommandOutcomeError) as refused:
+                await drv.send_command(name)
+            assert refused.value.outcome == "not_sent"
     assert seen == []
     assert "Command 'osc_cmd' uses OSC fields but transport is not OSC" in caplog.text
     assert "Command 'http_cmd' uses HTTP fields but transport is not HTTP" in caplog.text

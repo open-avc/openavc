@@ -16,6 +16,7 @@ import pytest
 from openavc.core.connection_fault import ConnectionFaultError
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
+from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.transport.http_client import HTTPClientTransport, HTTPResponse
 from openavc.drivers.configurable import (
     ConfigurableDriver,
@@ -680,12 +681,13 @@ _OSC_CMD_DEF = {
 @pytest.mark.asyncio
 async def test_osc_command_refused_on_non_osc_transport():
     """An OSC-shaped command does not emit OSC bytes when the live transport
-    isn't an OSCTransport."""
+    isn't an OSCTransport, and says it was not sent."""
     drv = _make_driver(_OSC_CMD_DEF)
     spy = _SpySend()
     drv.transport = spy
-    result = await drv.send_command("fade")
-    assert result is None
+    with pytest.raises(CommandOutcomeError) as refused:
+        await drv.send_command("fade")
+    assert refused.value.outcome == "not_sent"
     assert spy.sent == []  # nothing was put on the wire
 
 

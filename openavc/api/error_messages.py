@@ -150,7 +150,7 @@ def _describe_device_failure(
     host = str(state.get(f"device.{device_id}.host") or "")
 
     def for_the_room(worded: Exception) -> str:
-        return friendly_error(worded, device=name, host=host, at_panel=True)
+        return _for_the_room(worded, name=name, host=host, doing=doing)
 
     if isinstance(exc, (
         CommandParamError, UnknownCommandError, AdapterUnavailable,
@@ -194,6 +194,17 @@ def _describe_device_failure(
         f"{name} couldn't {what}. The Device Log on its page has the details.",
         f"{name} couldn't {what}. Contact support.",
     )
+
+
+def _for_the_room(
+    exc: Exception, *, name: str, host: str, doing: Callable[[], str],
+) -> str:
+    """A failure in words for somebody at a panel. A command that was not sent
+    because of how the driver writes it is the Programmer's to correct, so the
+    panel names the command and whom to call."""
+    if isinstance(exc, CommandOutcomeError) and not exc.for_the_panel:
+        return f"{name} couldn't {doing()}. Contact support."
+    return friendly_error(exc, device=name, host=host, at_panel=True)
 
 
 def friendly_error(

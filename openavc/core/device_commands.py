@@ -8,7 +8,10 @@ asks whether the device is connected: the sentence that helps there is about
 the name or the door, not the network. A send the driver raises on is published
 as ``device.error.<id>`` and raised again; a parameter the checks refuse is
 raised with no event, since nothing reached the device. The checks read off
-the driver's own declaration are core/command_gates.py.
+the driver's own declaration are core/command_gates.py. A return is a plain
+success; a send that went nowhere or only partly worked raises
+``CommandOutcomeError`` with its code, which is how a caller tells them apart
+(drivers/command_outcome.py).
 
 A step or a control's action that saved a secret parameter on this system
 names it in ``saved``, and the value is filled in here from this system's

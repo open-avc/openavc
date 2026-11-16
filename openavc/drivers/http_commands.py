@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
+from openavc.drivers.command_outcome import not_sent
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -59,6 +60,7 @@ class HttpCommands:
     _push_params: Callable[[], dict[str, Any]]
     _safe_substitute: Callable[[str, dict[str, Any]], str]
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
+    _effective_transport: Callable[[], str]
 
     def _is_http_command(self, cmd_def: dict[str, Any]) -> bool:
         """Check if a command definition uses HTTP-style fields."""
@@ -67,7 +69,10 @@ class HttpCommands:
     async def _send_http_command(
         self, command: str, cmd_def: dict[str, Any], params: dict[str, Any]
     ) -> Any:
-        """Send the command's request and read its answer; the answer."""
+        """Send the command's request and read its answer; the answer.
+
+        On a connection that is not HTTP nothing goes out, and the command is
+        refused as not sent (``command_outcome.not_sent``)."""
         from openavc.transport.http_client import HTTPClientTransport
 
         if not isinstance(self.transport, HTTPClientTransport):
@@ -75,7 +80,9 @@ class HttpCommands:
                 f"[{self.device_id}] Command '{command}' uses HTTP fields "
                 f"but transport is not HTTP"
             )
-            return None
+            raise not_sent(
+                command, cmd_def.get("label"), form="http", transport=self._effective_transport(),
+            )
 
         all_params = {**self.config, **self._push_params(), **params}
         response = await self._http_request(command, f"commands.{command}", cmd_def, all_params)

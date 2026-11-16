@@ -22,6 +22,7 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from openavc.core.macro_text import StepWording
 from openavc.core.state_store import StateStore
+from openavc.drivers.command_outcome import outcome_fields
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -168,6 +169,9 @@ class GroupCommand:
                     "device_id": did, "name": device_name, "success": False,
                     "error": failure.programmer,
                     "message": failure.panel,
+                    # A member that took the command partly, or unconfirmed,
+                    # reached its device: still not a success, but not "failed".
+                    **outcome_fields(result),
                 }
             else:
                 outcome[did] = {"device_id": did, "name": device_name, "success": True}

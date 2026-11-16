@@ -63,6 +63,7 @@ import {
   pluginActionSummary,
 } from "./pluginMacroActions";
 import { CopyButton } from "../shared/CopyButton";
+import { GroupMemberChips } from "./GroupMemberChips";
 import { issuesAt, issueLabel, issueSummary, issueText, type MacroIssue } from "./macroLint";
 import { StepNamesContext, stepDeviceIds, useCommandLabels, useStepNames } from "./commandLabels";
 import * as api from "../../api/restClient";
@@ -348,38 +349,7 @@ function SortableStepItem({
       )}
 
       {/* Group command per-device results */}
-      {groupResult && (
-        <div
-          style={{
-            padding: "var(--space-xs) var(--space-md)",
-            fontSize: 12,
-            borderTop: "1px solid var(--border-color)",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: "var(--space-xs)",
-          }}
-        >
-          {groupResult.deviceResults.map((dr) => (
-            <span
-              key={dr.device_id}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 3,
-                padding: "1px 6px",
-                borderRadius: 3,
-                fontSize: 11,
-                background: dr.success ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)",
-                color: dr.success ? "#10b981" : "#ef4444",
-              }}
-              title={dr.success ? "Success" : dr.message || dr.error || "Failed"}
-            >
-              {dr.success ? <CheckCircle size={10} /> : <XCircle size={10} />}
-              {dr.name}
-            </span>
-          ))}
-        </div>
-      )}
+      {groupResult && <GroupMemberChips groupResult={groupResult} />}
 
       {/* Expanded editor */}
       {isExpanded && (

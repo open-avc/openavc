@@ -33,6 +33,7 @@ import pytest
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
+from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.drivers.configurable import (
     ConfigurableDriver,
     create_configurable_driver_class,
@@ -659,7 +660,9 @@ async def test_an_http_command_on_another_transport_sends_nothing_and_warns_of_n
     unit["transport"] = "tcp"
     drv = _driver(unit, link)
     with caplog.at_level(logging.WARNING, logger=LOGGER):
-        assert await drv.send_command("h") is None
+        with pytest.raises(CommandOutcomeError) as refused:
+            await drv.send_command("h")
+    assert refused.value.outcome == "not_sent"
     assert link.sent == []
     assert [r.getMessage() for r in caplog.records if r.name == LOGGER] == [
         "[dev1] Command 'h' uses HTTP fields but transport is not HTTP",

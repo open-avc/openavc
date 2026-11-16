@@ -406,6 +406,23 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
     }
 
 
+async def _preview_send(driver: Any, command: str, params: dict[str, Any]) -> str | None:
+    """Send the command into the dry run's capture; why it was refused, or None.
+
+    A command with nothing to send yet (being written) previews blank:
+    nothing is what it would send. The capture follows the command's form, so
+    a form the connection cannot carry does not arise here.
+    """
+    from openavc.drivers.command_outcome import outcome_of
+
+    try:
+        await driver.send_command(command, params)
+    except Exception as e:
+        if outcome_of(e) != "not_sent":
+            return str(e)
+    return None
+
+
 async def _dry_run_command(body: TestCommandRequest) -> dict:
     """Build a command through the real driver and report what it would send.
 
@@ -448,10 +465,9 @@ async def _dry_run_command(body: TestCommandRequest) -> dict:
     # from the command is not sat out.
     driver._pace_lines = False
 
-    try:
-        await driver.send_command(command, body.params or {})
-    except Exception as e:
-        return {"dry_run": True, "success": False, "error": str(e), "route": route}
+    refused = await _preview_send(driver, command, body.params or {})
+    if refused is not None:
+        return {"dry_run": True, "success": False, "error": refused, "route": route}
 
     # What the command's read_back sends after it, recorded on the same
     # capture once the command's own message is in.

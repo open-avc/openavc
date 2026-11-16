@@ -22,6 +22,7 @@ from openavc.core.saved_params import saved_kwargs
 from openavc.core.script_engine import ScriptCallError
 from openavc.core.state_store import coerce_flat_primitive
 from openavc.core.value_resolver import resolve_ref
+from openavc.drivers.command_outcome import outcome_fields
 from openavc.ui.matrix_model import destination_for
 from openavc.utils.logger import get_logger
 
@@ -429,9 +430,11 @@ class UIEventRuntime:
                 record(device=device_id, command=command, params=params, sent=True)
             except Exception as exc:  # Catch-all: driver send_command may raise arbitrary errors
                 log.exception(f"Binding command failed: {device_id}.{command}")
+                # sent and outcome from the failure's own code: a partly done
+                # or unconfirmed command reached the device.
                 record(
-                    device=device_id, command=command, params=params,
-                    sent=False, error=self._command_error(device_id, command, exc),
+                    device=device_id, command=command, params=params, **outcome_fields(exc),
+                    error=self._command_error(device_id, command, exc),
                 )
 
         elif action == "state.set":

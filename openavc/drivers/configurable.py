@@ -53,6 +53,7 @@ from openavc.drivers.base import (
     BaseDriver,
     normalize_and_validate_command_params as _normalize_and_validate_command_params,
 )
+from openavc.drivers.command_outcome import not_sent
 from openavc.drivers.declared_roster import DeclaredRoster
 from openavc.drivers.http_commands import HttpCommands
 from openavc.drivers.http_credential import HttpCredential
@@ -366,14 +367,15 @@ class ConfigurableDriver(
     ) -> Any:
         """One command in the form its definition takes: an OSC message
         (``address``), an HTTP request (``path`` or ``method``), else a
-        byte-stream line. None when nothing went out."""
+        byte-stream line. A command that cannot go out (a form this device's
+        connection cannot carry, or nothing to send) raises ``not_sent``."""
         if self._is_osc_command(cmd_def):
             return await self._send_osc_command(command, cmd_def, params)
         if self._is_http_command(cmd_def):
             return await self._send_http_command(command, cmd_def, params)
         data = self.build_wire(command, params)
         if data is None:
-            return None
+            raise not_sent(command, cmd_def.get("label"), form=None, transport=None)
         await self.transport.send(data)
         log.debug(f"[{self.device_id}] Sent command '{command}': {data!r}")
         return True
