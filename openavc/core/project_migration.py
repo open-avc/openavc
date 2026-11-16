@@ -748,48 +748,30 @@ def migrate_0_15_to_0_16(data: dict) -> dict:
 # The bounds the schema took at 0.17.0, as they stood then. Written out rather
 # than read from the project models, for the reason the 0.15.0 table gives.
 _DECIMALS_0_17 = (0, 20)
-# Each panel setting's (lowest, highest); the panel drew a 0 in either as its
-# default.
-_MOTION_0_17 = {
+_PANEL_SETTINGS_0_17 = {
     "page_transition_duration": (50, 1000),
     "element_stagger_ms": (10, 200),
+    "idle_timeout_seconds": (0, 86400),
 }
-_IDLE_0_17 = (0, 86400)
+# The panel drew a 0 in these as its default (200 and 30 ms).
+_ZERO_IS_DEFAULT_0_17 = ("page_transition_duration", "element_stagger_ms")
 
 
 def _whole_number_0_17(value) -> int | None:
     """A count as a release could have saved it: a whole number, which the
     schema has always taken (a float with no fraction included). Anything else
     the schema refused before this step and still does, so it is left alone."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
     if isinstance(value, float) and value.is_integer():
         return int(value)
-    return None
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
-def _clamp_decimals_0_17(holder: dict) -> None:
-    count = _whole_number_0_17(holder.get("display_decimals"))
-    if count is not None:
-        low, high = _DECIMALS_0_17
-        holder["display_decimals"] = max(low, min(high, count))
-
-
-def _settle_panel_settings_0_17(settings: dict) -> None:
-    for field, (low, high) in _MOTION_0_17.items():
-        value = _whole_number_0_17(settings.get(field))
-        if value is None:
-            continue
-        if value == 0:
-            settings.pop(field)
-        else:
-            settings[field] = max(low, min(high, value))
-    idle = _whole_number_0_17(settings.get("idle_timeout_seconds"))
-    if idle is not None:
-        low, high = _IDLE_0_17
-        settings["idle_timeout_seconds"] = max(low, min(high, idle))
+def _clamp_0_17(holder: dict, field: str, bounds: tuple[int, int]) -> None:
+    value = _whole_number_0_17(holder.get(field))
+    if value == 0 and field in _ZERO_IS_DEFAULT_0_17:
+        holder.pop(field)
+    elif value is not None:
+        holder[field] = max(bounds[0], min(bounds[1], value))
 
 
 def migrate_0_16_to_0_17(data: dict) -> dict:
@@ -818,17 +800,14 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
     A value that is not a whole number is left as it was: the schema refused
     it before and still does.
     """
-    for el in _elements(data):
-        _clamp_decimals_0_17(el)
-    monitors = data.get("monitors")
-    if isinstance(monitors, list):
-        for monitor in monitors:
-            if isinstance(monitor, dict):
-                _clamp_decimals_0_17(monitor)
+    monitors = data.get("monitors") if isinstance(data.get("monitors"), list) else []
+    for holder in _elements(data) + [m for m in monitors if isinstance(m, dict)]:
+        _clamp_0_17(holder, "display_decimals", _DECIMALS_0_17)
     ui = data.get("ui")
     settings = ui.get("settings") if isinstance(ui, dict) else None
     if isinstance(settings, dict):
-        _settle_panel_settings_0_17(settings)
+        for field, bounds in _PANEL_SETTINGS_0_17.items():
+            _clamp_0_17(settings, field, bounds)
 
     data["openavc_version"] = "0.17.0"
     return data
