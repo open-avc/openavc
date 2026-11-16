@@ -11362,6 +11362,12 @@ const PANEL_CHECKS = {
         const node = m.app.root.querySelector(`[data-element-id="${id}"]`);
         assert(node && node.textContent === text, `${id} shows ${node && JSON.stringify(node.textContent)}, not ${JSON.stringify(text)}`);
     },
+    // The node a `keep` step held has had no entry animation started on it.
+    keptStillHidden: (m) => {
+        const n = m.kept.parentElement;
+        assert(m.kept.style.opacity === '0' || (n && n.style.opacity === '0'),
+            `the node shows: opacity ${JSON.stringify(m.kept.style.opacity)}, class ${JSON.stringify(m.kept.className)}`);
+    },
     // How many Theme Studio name tags the document holds.
     nameTags: (m, want) => {
         const n = [...document.body.children].filter((t) => t.style && t.style.zIndex === '9999' && t.style.position === 'fixed').length;
@@ -11418,6 +11424,68 @@ Object.assign(tests, {
         });
         const failures = failedChecks(steps);
         assert(failures.length === 0, failures.join('\n'));
+    },
+
+    the_surface_record_ends_what_it_was_given_once() {
+        const { Surface } = panelModule('surface.js');
+        withFakeTime((advance) => {
+            const ran = [];
+            const s = new Surface();
+            s.keep(setTimeout(() => ran.push('kept timeout'), 100));
+            s.keep(setInterval(() => ran.push('kept interval'), 100));
+            s.onEnd(() => ran.push('end a'));
+            const unhook = s.onEnd(() => ran.push('unhooked'));
+            unhook();
+            s.onEnd(() => { throw new Error('one end fails'); });
+            s.onEnd(() => ran.push('end b'));
+            s.bindings.push({ type: 'text' });
+            s.elementMap.x = { el: null };
+            const logged = [];
+            const realError = console.error;
+            console.error = (...a) => logged.push(a.map(String).join(' '));
+            try { s.end(); s.end(); } finally { console.error = realError; }
+            advance(500);
+            assert(JSON.stringify(ran) === JSON.stringify(['end a', 'end b']), `ran ${JSON.stringify(ran)}`);
+            assert(logged.length === 1 && /one end fails/.test(logged[0]), `logged ${JSON.stringify(logged)}`);
+            assert(s.bindings.length === 0 && Object.keys(s.elementMap).length === 0, 'bindings and element map let go');
+            // Given after it ended: a timer cleared at once, an end run at once.
+            s.keep(setTimeout(() => ran.push('late timeout'), 10));
+            s.onEnd(() => ran.push('late end'));
+            advance(100);
+            assert(JSON.stringify(ran) === JSON.stringify(['end a', 'end b', 'late end']), `after the end, ran ${JSON.stringify(ran)}`);
+        });
+    },
+
+    a_dialog_taken_down_lets_its_controls_ends_go() {
+        const { Surface } = panelModule('surface.js');
+        const ran = [];
+        const s = new Surface();
+        const dialog = document.createElement('div');
+        const inside = document.createElement('div');
+        dialog.appendChild(inside);
+        const page = document.createElement('div');
+        s.onEnd(() => ran.push('dialog control'), inside);
+        s.onEnd(() => ran.push('page control'), page);
+        s.onEnd(() => ran.push('no control'));
+        s.letGoWithin(dialog);
+        s.end();
+        assert(JSON.stringify(ran) === JSON.stringify(['page control', 'no control']), `ran ${JSON.stringify(ran)}`);
+    },
+
+    a_page_that_goes_starts_none_of_its_entry_animations() {
+        const ids = ['a', 'b', 'c', 'd'];
+        const steps = driveCase({
+            ui: pinUi('entry', [
+                pinPage('p', { elements: ids.map((id) => pinLabel(id)), placements: Object.fromEntries(ids.map((id, i) => [id, box(i + 1)])) }),
+                pinPage('q', { elements: [pinLabel('qa')] }),
+            ], { settings: { element_entry: 'stagger', element_stagger_ms: 100 } }),
+            steps: [['wait', 150], ['keep', '[data-element-id="d"]'], ['nav', 'q'], ['wait', 1000],
+                ['check', 'keptStillHidden']],
+        });
+        return steps.then((got) => {
+            const failures = failedChecks(got);
+            assert(failures.length === 0, failures.join('\n'));
+        });
     },
 
     async the_design_canvas_keeps_one_name_tag_however_often_it_is_drawn() {

@@ -939,6 +939,10 @@ class PanelApp {
         // this overlay — otherwise each open/dismiss cycle leaks one stale
         // listener (retaining the removed iframe's closure).
         releaseFramesIn(overlayEl);
+        // What else its controls left for the page to end (a fader, a
+        // matrix) is let go, so the closed dialog is not held until the page
+        // is next drawn.
+        this._page.letGoWithin(overlayEl);
         overlayEl.classList.add('dismissing');
         overlayEl.addEventListener('transitionend', () => overlayEl.remove(), { once: true });
         // Fallback in case transitionend doesn't fire (e.g., no transition defined)
@@ -1513,7 +1517,7 @@ class PanelApp {
             read: (key) => this.state[key],
             sendValue: (value) => this.send({ type: 'ui.change', element_id: elementId, value }),
             keepTimer: (timer) => surface.keep(timer),
-            onEnd: (fn) => surface.onEnd(fn),
+            onEnd: (fn, node) => surface.onEnd(fn, node),
             design: () => this.editMode,
             offline: () => {
                 const binding = bindingOf();
@@ -1807,7 +1811,7 @@ class PanelApp {
         if (element.label) el.appendChild(this._caption(el, element, 'div', 'matrix-label'));
         matrix.mount(el);
         // A drag-to-route still in progress when its surface ends sends nothing.
-        this._page.onEnd(() => { if (el._matrixDragCleanup) el._matrixDragCleanup(); });
+        this._page.onEnd(() => { if (el._matrixDragCleanup) el._matrixDragCleanup(); }, el);
 
         // The keys are listed by name rather than as a glob. The incremental
         // state.update filter matches on a prefix, and a concrete key is its

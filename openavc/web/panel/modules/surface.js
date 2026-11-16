@@ -14,7 +14,10 @@
  * `onEnd` run once. Something registered on a surface that has already ended
  * is ended on the spot, so a timer a control starts after its page went never
  * runs. `onEnd` hands back what unregisters it, for something that ends on
- * its own first (a hold let go, a dialog closed).
+ * its own first (a hold let go, a dialog closed); an end given the control's
+ * node is let go with every other one inside a dialog taken down before its
+ * page (`letGoWithin`), so nothing holds the closed dialog until the page
+ * is next drawn.
  *
  * The nodes a surface put on screen (`show`) go when the next page is drawn
  * (`takeAway`): at once with no page transition, else each animated out and
@@ -36,7 +39,8 @@ export class Surface {
         this.nodes = [];
         this.ended = false;
         this._timers = new Set();
-        this._ends = new Set();
+        // Each end -> the node of the control it belongs to, or null.
+        this._ends = new Map();
     }
 
     /** A node this surface put on screen, taken away with it; returns the node. */
@@ -56,14 +60,24 @@ export class Surface {
         return timer;
     }
 
-    /** `fn` runs once when the surface ends, or now if it has; returns what unregisters it. */
-    onEnd(fn) {
+    /**
+     * `fn` runs once when the surface ends, or now if it has; returns what
+     * unregisters it. `node`, when given, is the control it belongs to.
+     */
+    onEnd(fn, node = null) {
         if (this.ended) {
             runEnd(fn);
             return () => {};
         }
-        this._ends.add(fn);
+        this._ends.set(fn, node);
         return () => { this._ends.delete(fn); };
+    }
+
+    /** Unregister, without running, every end whose control is inside `container`. */
+    letGoWithin(container) {
+        for (const [fn, node] of this._ends) {
+            if (node && container.contains(node)) this._ends.delete(fn);
+        }
     }
 
     /** End everything registered, once: timers cleared, each end run, bindings and element map let go. */
@@ -72,7 +86,7 @@ export class Surface {
         this.ended = true;
         for (const timer of this._timers) clearTimeout(timer);
         this._timers.clear();
-        const ends = [...this._ends];
+        const ends = [...this._ends.keys()];
         this._ends.clear();
         for (const fn of ends) runEnd(fn);
         this.bindings = [];

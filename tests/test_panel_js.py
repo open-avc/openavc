@@ -391,6 +391,13 @@ SCENARIOS = [
     "a_page_change_inside_a_transition_lets_each_leaving_page_go_on_its_own_time",
     # The Theme Studio's name tag goes with the canvas draw that made it.
     "the_design_canvas_keeps_one_name_tag_however_often_it_is_drawn",
+    # The page surface record (modules/surface.js): its timers cleared and its
+    # ends run once, whatever is given after it ended ended at once, and a
+    # dialog taken down lets its controls' ends go; a page that goes starts
+    # none of the entry animations it had still to start.
+    "the_surface_record_ends_what_it_was_given_once",
+    "a_dialog_taken_down_lets_its_controls_ends_go",
+    "a_page_that_goes_starts_none_of_its_entry_animations",
     # Where an element goes: the arrangement for the way the glass is
     # turned, master boxes, aspect locks, containers, entry animations, the
     # coordinate space, a drag on the canvas, the vmin, the snap ruler and a
