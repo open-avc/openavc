@@ -122,8 +122,12 @@ async def get_python_driver_source(driver_id: str) -> dict:
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
 
+    from openavc.drivers.python_source import SourceDecodeError, python_source
+
     try:
-        source = filepath.read_text(encoding="utf-8")
+        source = python_source(filepath)
+    except SourceDecodeError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except OSError as e:
         raise _api_error(500, f"Could not read driver '{driver_id}'.", e)
 
@@ -198,17 +202,30 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     if not filepath.exists():
         raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
 
-    require_mutable_driver_file(filepath.name, source.encode("utf-8"))
+    data = _source_bytes(source)
+    require_mutable_driver_file(filepath.name, data)
     problems = _source_problems(source, filepath.name)
     if problems and body.get("require_valid_syntax"):
         return {"status": "error", "driver_id": driver_id, "saved": False, **problems}
 
     try:
-        filepath.write_text(source, encoding="utf-8")
+        filepath.write_bytes(data)
     except OSError as e:
         raise _api_error(500, f"Could not save driver '{driver_id}'.", e)
 
     return {"status": "saved", "driver_id": driver_id, **_kept(problems)}
+
+
+def _source_bytes(source: str) -> bytes:
+    """The bytes the Code view writes for ``source``: what the import reads
+    back as that text. Text they cannot hold is refused (422) whichever
+    button sent it, since no bytes would keep it as written."""
+    from openavc.drivers.python_source import SourceEncodeError, encode_python_source
+
+    try:
+        return encode_python_source(source)
+    except SourceEncodeError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
 
 
 def _source_problems(source: str, filename: str) -> dict[str, Any]:
@@ -266,15 +283,16 @@ async def create_python_driver(body: PythonDriverCreateRequest) -> dict:
 
     require_mutable_driver(body.id)
     filepath = _safe_driver_path(body.id)
-    require_mutable_driver_file(filepath.name, body.source.encode("utf-8"))
+    data = _source_bytes(body.source)
+    require_mutable_driver_file(filepath.name, data)
 
     # Ensure driver_repo/ exists
     DRIVER_REPO_DIR.mkdir(parents=True, exist_ok=True)
 
     # Atomic creation: 'x' mode fails if the file already exists
     try:
-        with open(filepath, "x", encoding="utf-8") as f:
-            f.write(body.source)
+        with open(filepath, "xb") as f:
+            f.write(data)
     except FileExistsError:
         raise HTTPException(status_code=409, detail=f"Python driver '{body.id}' already exists")
     except OSError as e:

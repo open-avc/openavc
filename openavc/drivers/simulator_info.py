@@ -39,6 +39,7 @@ from typing import Any
 from openavc.drivers.avcdriver_semantic import UNEVALUATED_KEY
 from openavc.drivers.declared_names import did_you_mean
 from openavc.drivers.python_info import _Coverage, lenient_ast_value
+from openavc.drivers.python_source import SourceDecodeError, python_source
 from openavc.drivers.shape_checks import ShapeWalk
 from openavc.drivers.spec import SIMULATOR_INFO_FIELDS, without_null_settings
 
@@ -64,7 +65,8 @@ def companion_simulator(driver_path: Path) -> Path:
 
 def read_simulator_info(sim_path: Path) -> dict | None:
     """``SIMULATOR_INFO`` from a Python simulator file, or None when there is
-    no readable mapping (the file does not parse, or no class assigns one).
+    no readable mapping (the import cannot decode the file, it does not
+    parse, or no class assigns one).
 
     Read off the first class body that assigns it, through the lenient
     evaluator the driver side uses (``python_info.lenient_ast_value``): a
@@ -72,7 +74,15 @@ def read_simulator_info(sim_path: Path) -> dict | None:
     its own source text, so a check never judges an invention.
     """
     try:
-        tree = ast.parse(sim_path.read_text(encoding="utf-8"))
+        return _simulator_info_in(python_source(sim_path))
+    except SourceDecodeError:
+        return None
+
+
+def _simulator_info_in(source: str) -> dict | None:
+    """``read_simulator_info`` on source text already read."""
+    try:
+        tree = ast.parse(source)
     except SyntaxError:
         return None
     for item in _class_body_items(tree):
@@ -128,7 +138,10 @@ def check_simulator_info(info: dict[str, Any]) -> SimulatorInfoVerdict:
 def check_simulator_file(sim_path: Path) -> SimulatorInfoVerdict:
     """The verdict on a simulator file's ``SIMULATOR_INFO``; one it cannot
     read is an error, never a pass."""
-    info = read_simulator_info(sim_path)
+    try:
+        info = _simulator_info_in(python_source(sim_path))
+    except SourceDecodeError as e:
+        return SimulatorInfoVerdict(errors=[f"the file {e.without_name}"])
     if info is None:
         return SimulatorInfoVerdict(errors=[
             f"no {_PLACE} could be read: the file does not parse, or no class in it "

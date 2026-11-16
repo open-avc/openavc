@@ -45,6 +45,7 @@ from openavc.drivers.python_modules import (
     read_python_driver_file as read_python_driver_file,
     reload_python_driver as reload_python_driver,
 )
+from openavc.drivers.python_source import python_source
 from openavc.drivers.registry import (
     is_driver_registered,
     register_driver,
@@ -396,7 +397,7 @@ def _definition_refusals(
 
 def _python_driver_id(filepath: Path) -> str | None:
     """Extract ``DRIVER_INFO['id']`` from a .py driver via AST (no import)."""
-    tree = ast.parse(filepath.read_text(encoding="utf-8"))
+    tree = ast.parse(python_source(filepath))
     # DRIVER_INFO may be a module-level assignment or a class attribute;
     # ast.walk covers both. The first dict that names an id decides: an empty
     # one reads as no id.
@@ -1062,7 +1063,7 @@ def _first_class_driver_info(filepath: Path) -> dict[str, str | int | float | bo
     body, so a helper class written first leaves the defaults. Loading and
     ``driver_id_from_file`` read a file's id by other rules.
     """
-    tree = ast.parse(filepath.read_text(encoding="utf-8"))
+    tree = ast.parse(python_source(filepath))
     first_class = next(
         (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)), None
     )

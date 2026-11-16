@@ -4072,6 +4072,16 @@ community catalog. A driver already installed that has one of these mistakes
 keeps loading: its entry on the Installed list, and the answer to an upload,
 say what to fix.
 
+A Python file is read the way Python reads it when the driver loads. The
+invisible byte-order mark some editors put at the start is ignored, and a
+coding line such as `# -*- coding: latin-1 -*-` names the encoding the rest of
+the file is in. A file Python cannot read at all, such as one whose coding line
+names an encoding Python does not know, is an error here, in the community
+catalog and in the Code view, which says why it cannot open the file. When the
+Code view saves a file with a coding line, it writes the file in that encoding.
+If a character cannot be written in that encoding, it refuses the save and
+names the line.
+
 A Python driver's `DRIVER_INFO` is held to the same rules as a `.avcdriver`
 for the sections both kinds of driver declare: each state variable, each child
 type, each command's parameter aids (`pattern`, `min`/`max`, `map`, the pickers)

@@ -4,7 +4,7 @@ A ``.py`` driver's contract lives in a ``DRIVER_INFO`` dict on its class. Every
 door that wants to check that contract before the driver runs — the standalone
 checker, ``openavc.simulator.validate``, the community catalog's CI — has to read it
 from the source text, because importing a driver executes arbitrary code and
-needs its dependencies present.
+needs its dependencies present (read as the import reads it: ``python_source``).
 
 This module is that reader, plus THE verdict on a ``DRIVER_INFO``
 (``check_python_driver_info``): the rules a Python driver has always been held
@@ -52,6 +52,7 @@ from openavc.drivers.command_checks import SharedCommandChecks, state_name_error
 from openavc.drivers.declared_names import DeclaredSections
 from openavc.drivers.param_aid_checks import one_param_aid_errors, sibling_refs
 from openavc.drivers.push_block_checks import push_block_errors
+from openavc.drivers.python_source import SourceDecodeError, python_source
 from openavc.drivers.serial_line import SERIAL_LINE_SETTINGS, line_setting_errors
 from openavc.drivers.spec import CONFIG_FIELD_SOURCES
 from openavc.drivers.state_variable_checks import DEVICE_VARIABLE, state_variable_errors
@@ -154,7 +155,11 @@ def driver_info_ast(filepath: Path) -> ast.Dict:
     rejecting it here meant a file was recognised as a driver and then
     reported as having no ``DRIVER_INFO`` at all.
     """
-    return _driver_info_node(filepath.read_text(encoding="utf-8"), filepath.name)
+    try:
+        source = python_source(filepath)
+    except SourceDecodeError as e:
+        raise ExtractError(str(e)) from e
+    return _driver_info_node(source, filepath.name)
 
 
 def _driver_info_node(source: str, filename: str) -> ast.Dict:
@@ -203,25 +208,26 @@ def declares_driver_info(filepath: Path) -> bool:
     A plain substring match would also catch build scripts, docs and helpers
     that mention the name in a comment or string literal, and the tools would
     then report them as broken drivers. Parsing the AST keeps it honest.
+
+    A file the import cannot decode answers True, so a walk reports it.
     """
     try:
-        tree = ast.parse(filepath.read_text(encoding="utf-8"))
-    except (SyntaxError, OSError, UnicodeDecodeError):
+        tree = ast.parse(python_source(filepath))
+    except SourceDecodeError:
+        return True
+    except (SyntaxError, OSError):
         return False
-    candidates = list(tree.body)
-    for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            candidates.extend(node.body)
-    for node in candidates:
-        if isinstance(node, ast.Assign):
-            if any(
-                isinstance(t, ast.Name) and t.id == "DRIVER_INFO"
-                for t in node.targets
-            ):
-                return True
-        elif isinstance(node, ast.AnnAssign):
-            if isinstance(node.target, ast.Name) and node.target.id == "DRIVER_INFO":
-                return True
+    classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
+    statements = [*tree.body, *(item for node in classes for item in node.body)]
+    return any(_binds_driver_info(node) for node in statements)
+
+
+def _binds_driver_info(node: ast.stmt) -> bool:
+    """A statement assigning the name ``DRIVER_INFO``, among others or annotated."""
+    if isinstance(node, ast.Assign):
+        return any(isinstance(t, ast.Name) and t.id == "DRIVER_INFO" for t in node.targets)
+    if isinstance(node, ast.AnnAssign):
+        return isinstance(node.target, ast.Name) and node.target.id == "DRIVER_INFO"
     return False
 
 

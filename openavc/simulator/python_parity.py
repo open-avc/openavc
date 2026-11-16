@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc.drivers.python_info import ExtractError
+from openavc.drivers.python_source import python_source
 from openavc.drivers.simulator_info import companion_simulator, read_simulator_info
 from openavc.drivers.spec import without_null_settings
 from openavc.simulator.control_checks import check_controls
@@ -138,7 +139,7 @@ def _check_pair(
         result, driver_info.get("transport", "tcp"), sim_info.get("transport", "tcp"),
     )
     _check_command_names(
-        result, sim_path.read_text(encoding="utf-8"), driver_info.get("commands", {}),
+        result, python_source(sim_path), driver_info.get("commands", {}),
     )
 
 

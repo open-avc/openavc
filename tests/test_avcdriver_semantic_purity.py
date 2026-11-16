@@ -7,7 +7,7 @@ check modules it imports (``action_checks``, ``command_checks``, ``condition_che
 ``param_aid_checks``, ``push_block_checks``, ``query_entry_checks``,
 ``reply_name_checks``, ``response_rule_checks``, ``routing_checks``, ``serial_line``, ``setting_checks``,
 ``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``),
-``openavc/drivers/child_ids.py``, ``openavc/drivers/python_info.py`` and ``openavc/drivers/simulator_info.py`` are shared beyond the server runtime (the
+``openavc/drivers/child_ids.py``, ``openavc/drivers/python_info.py`` (with ``python_source``, the source read it asks) and ``openavc/drivers/simulator_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
 no ``openavc`` package), so they must stay importable with nothing but the
 standard library and each other: no runtime, no transports, no discovery, no
@@ -41,6 +41,7 @@ ALLOWED = {
     "openavc.drivers.param_aid_checks",
     "openavc.drivers.platform_floor_checks",
     "openavc.drivers.push_block_checks",
+    "openavc.drivers.python_source",
     "openavc.drivers.query_entry_checks",
     "openavc.drivers.reply_name_checks",
     "openavc.drivers.response_rule_checks",
