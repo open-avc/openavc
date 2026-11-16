@@ -157,7 +157,7 @@ def _repair_pin_0_17(settings: dict, noted: _Noted) -> None:
         return
     if typed:
         noted.changed(
-            "Lock Code (PIN) changed to its first six digits, the PIN the panel's lock screen takes."
+            "Lock Code (PIN) changed to the PIN the panel's lock screen takes: its digits only, at most six."
         )
     else:
         noted.changed(
@@ -185,10 +185,15 @@ _TRIGGER_FIELD_NAMES_0_17 = {
 
 def _repair_trigger_0_17(trigger: dict, noted: _Noted) -> None:
     for field in _TRIGGER_SECONDS_0_17:
+        was_on = trigger.get("enabled", True) is not False
         old = _time_inside_0_17(trigger, field)
         if old == math.inf:
             trigger["enabled"] = False
-            noted.changed(_ENDLESS_TRIGGER_0_17[field])
+            name = _TRIGGER_FIELD_NAMES_0_17[field]
+            noted.changed(
+                _ENDLESS_TRIGGER_0_17[field] if was_on
+                else f"{name} cleared: it never ended. The trigger was already off."
+            )
         elif old is not None:
             _say_time_0_17(noted, _TRIGGER_FIELD_NAMES_0_17[field], old)
 

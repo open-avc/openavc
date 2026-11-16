@@ -86,8 +86,8 @@ def test_a_note_names_the_page_and_control_it_is_on():
 
 def test_a_lock_pin_note_never_holds_a_digit_of_it():
     for pin, says in (
-        ("12345678", "changed to its first six digits"),
-        ("98 76", "changed to its first six digits"),
+        ("12345678", "its digits only, at most six"),
+        ("98 76", "its digits only, at most six"),
         ("letmein", "cleared"),
     ):
         notes = _notes(_v016(lock_code=pin))
@@ -176,6 +176,22 @@ def test_notes_from_a_later_load_join_the_ones_nobody_dismissed(tmp_path):
     project_update.record(tmp_path, first)
     project_update.record(tmp_path, second)
     assert [n["message"] for n in project_update.read(tmp_path)["notes"]] == ["One.", "Two."]
+
+
+def test_the_same_repair_made_twice_is_said_once(tmp_path):
+    """An update rolled back and installed again repairs the same values."""
+    for _ in range(2):
+        notes = MigrationNotes()
+        notes.changed("One.", "Panel Settings")
+        project_update.record(tmp_path, notes)
+    assert [n["message"] for n in project_update.read(tmp_path)["notes"]] == ["One."]
+
+
+def test_an_endless_time_on_a_trigger_already_off_says_so():
+    data = _v016()
+    data["macros"][0]["triggers"][0]["enabled"] = False
+    said = [n.message for n in _notes(data).notes if n.location == "Macros > Warm Up > t1"]
+    assert said == ["Delay cleared: it never ended. The trigger was already off."]
 
 
 def test_a_project_that_replaces_the_running_one_replaces_its_notice(tmp_path):

@@ -94,15 +94,18 @@ def _marker_path(folder: Path) -> Path:
 
 def record(folder: Path, notes: MigrationNotes) -> None:
     """Keep ``notes`` in ``folder``'s record. Notes from an earlier load that
-    nobody dismissed stay ahead of them: both describe the project there.
-    Nothing to note writes nothing. Never raises: a load that worked must still
-    come up, and losing the notice is not worth losing the project."""
-    if not notes:
+    nobody dismissed stay ahead of them: both describe the project there. A
+    note the record already holds is not added again (the same repair made
+    twice: an update rolled back and installed again). Nothing new to note
+    writes nothing. Never raises: a load that worked must still come up, and
+    losing the notice is not worth losing the project."""
+    earlier = list((read(folder) or {}).get("notes", []))
+    added = [asdict(n) for n in notes.notes if asdict(n) not in earlier]
+    if not added:
         return
-    earlier = read(folder) or {}
     data = {
         "at": datetime.now(timezone.utc).isoformat(),
-        "notes": list(earlier.get("notes", [])) + [asdict(n) for n in notes.notes],
+        "notes": earlier + added,
     }
     try:
         folder.mkdir(parents=True, exist_ok=True)

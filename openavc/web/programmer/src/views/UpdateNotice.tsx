@@ -74,7 +74,8 @@ const BUTTON: React.CSSProperties = {
 export function UpdateNotice() {
   const [notes, dismiss] = useUpdateNotes();
   const project = useProjectStore((s) => s.project);
-  const issues = useProjectIssues(project);
+  // Validate runs only while there is a notice to count for.
+  const issues = useProjectIssues(notes.length ? project : null);
   if (!notes.length) return null;
   const summary = updateSummary(notes, issues?.length ?? null);
 
