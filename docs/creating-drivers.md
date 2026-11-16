@@ -4088,8 +4088,8 @@ How a YAML command sends (`send`, `path`, `address`), a device setting's
 never held to them. The checker, the community catalog and the Code view's
 Save & Reload refuse these mistakes. A Python driver already installed that
 has one keeps loading, and its entry on the Installed list says what to fix.
-A product with OpenAVC built in that describes itself with one still connects;
-the server log names it.
+A product with OpenAVC built in that describes itself with one still connects,
+and its device page names it.
 
 A Python driver's simulator (`my_driver_sim.py`, beside the driver) is checked
 with it. Its `SIMULATOR_INFO` takes the keys a `simulator:` section takes, plus

@@ -170,7 +170,7 @@ class DeviceInfoMixin:
         from openavc.drivers.actions import resolve_device_actions
 
         config = self._device_configs.get(device_id, {})
-        return {
+        info = {
             "id": device_id,
             "name": config.get("name", device_id),
             "driver": config.get("driver", ""),
@@ -195,6 +195,12 @@ class DeviceInfoMixin:
             # Names only, never a value.
             "needs_login": marked_fields(driver.config),
         }
+        # A product describing itself (drivers/equipment.py): what of its
+        # description OpenAVC reads past or works around, for the device page.
+        model_notices = getattr(driver, "model_notices", ())
+        if model_notices:
+            info["model_notices"] = list(model_notices)
+        return info
 
     def _link_config(self, device_id: str, driver: BaseDriver) -> dict[str, Any]:
         """The config a link action's URL is built from: the driver's own,

@@ -3808,6 +3808,49 @@ def required_platform_version(driver_def: object, tier: str = "yaml") -> str | N
     return requirements[0][1] if requirements else None
 
 
+# --- the equipment model -----------------------------------------------------
+
+# THE surface of an equipment model: the declaration a manufacturer's product
+# serves at /v1/description over the equipment protocol (equipment_protocol.py),
+# built into its firmware by the manufacturer SDK's tools. Two halves: what a
+# product file may declare, and what the SDK's own build adds around it (an
+# HTTP transport with its settings, and each command's request), which the
+# platform reads past. The SDK's build refuses a product key outside the first
+# half. A connect keeps both halves and leaves out any other key, naming it on
+# the device page instead of copying it into the device
+# (openavc/drivers/equipment.py). Every name is a FIELDS key, or a field of a
+# command's entry (tests/test_equipment_surface.py).
+EQUIPMENT_PRODUCT_FIELDS: tuple[str, ...] = (
+    "id", "name", "manufacturer", "category", "version", "author", "source_url",
+    "description", "tags", "compatible_models", "state_variables",
+    "child_entity_types", "commands", "device_settings", "quick_actions", "actions",
+)
+EQUIPMENT_BUILD_FIELDS: tuple[str, ...] = ("transport", "config_schema")
+EQUIPMENT_PRODUCT_COMMAND_FIELDS: tuple[str, ...] = (
+    "label", "help", "params", "sets", "query_for", "confirm", "restarts_device_for",
+)
+EQUIPMENT_BUILD_COMMAND_FIELDS: tuple[str, ...] = ("method", "path")
+
+# The equipment surface's floor: the first platform release that speaks the
+# equipment protocol. A product is offered to every release from this one, so
+# a model uses only what this release understands. A field newer than it joins
+# the surface together with a new protocol.
+EQUIPMENT_SINCE = "0.37.0"
+
+
+def equipment_floor_problems(model: object) -> list[str]:
+    """Each field ``model`` uses that the equipment surface's floor release
+    does not understand, as a sentence naming the field and the release it
+    needs. Empty for a model every equipment release reads in full."""
+    floor = parse_version(EQUIPMENT_SINCE) or ()
+    return [
+        f"{location} needs OpenAVC {version}; a product works with every "
+        f"release from {EQUIPMENT_SINCE}, so describe it without this"
+        for location, version in platform_requirements(model, "python")
+        if (parse_version(version) or ()) > floor
+    ]
+
+
 # Cross-field rules that live at the document root (JSON Schema allOf):
 # a deprecated driver must name its replacement, and naming a replacement
 # implies deprecation.

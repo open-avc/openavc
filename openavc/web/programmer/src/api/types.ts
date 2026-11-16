@@ -731,6 +731,10 @@ export interface DeviceInfo {
    *  this system does not have: the device waits for them ("Needs login").
    *  Names only, never a value. */
   needs_login?: string[];
+  /** A product describing itself (equipment): what of its description
+   *  OpenAVC reads past or works around, one sentence a kind. Absent when
+   *  there is nothing to say. */
+  model_notices?: string[];
 }
 
 /** A device that waits for its login to be entered, as the doors that bring a

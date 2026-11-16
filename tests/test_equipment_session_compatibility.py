@@ -1,6 +1,7 @@
 """A restarted TLS peer must be described again before further control."""
 
 import asyncio
+import contextlib
 import copy
 from datetime import datetime, timedelta, timezone
 import ipaddress
@@ -21,6 +22,25 @@ from openavc.drivers.equipment_protocol import PROTOCOL
 from openavc.drivers.registry import _DRIVER_REGISTRY
 
 
+def _built_model():
+    """A model as the manufacturer SDK's build serves it: the product's own
+    fields, an HTTP transport with its settings, and each command's request."""
+    return {
+        "id": "acme_equipment", "name": "Example equipment", "manufacturer": "Acme",
+        "category": "audio", "version": "1.0.0", "author": "Acme",
+        "description": "An example product.", "source_url": "https://example.com/acme",
+        "transport": "http",
+        "config_schema": {
+            "url": {"type": "string", "label": "Endpoint URL", "required": True},
+            "token": {"type": "string", "label": "Endpoint Credential", "required": True,
+                      "secret": True},
+        },
+        "state_variables": {"counter": {"type": "integer", "label": "Counter"}},
+        "commands": {"increment": {"label": "Increment", "params": {},
+                                   "method": "POST", "path": "/v1/command"}},
+    }
+
+
 @pytest.fixture
 async def equipment_peer(tmp_path, monkeypatch):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -38,11 +58,7 @@ async def equipment_peer(tmp_path, monkeypatch):
         serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     tls.load_cert_chain(pem)
-    model = copy.deepcopy(EquipmentDriver.DRIVER_INFO)
-    model.update(id="acme_equipment", manufacturer="Acme", name="Example equipment",
-        config_schema={}, state_variables={"counter": {"type": "integer"}},
-        commands={"increment": {"params": {}}})
-    peer = {"protocol": PROTOCOL, "session": "first", "model": model,
+    peer = {"protocol": PROTOCOL, "session": "first", "model": _built_model(),
             "commands": [], "descriptions": [], "snapshot_session": None, "children": []}
 
     async def description(request):
@@ -171,28 +187,100 @@ async def test_a_command_that_completed_stays_completed_when_the_product_restart
     assert peer["descriptions"] == [("first", PROTOCOL), ("second", PROTOCOL)]
 
 
+@contextlib.asynccontextmanager
+async def _managed(driver, monkeypatch):
+    """A device manager holding the peer's product as device 'amp'."""
+    monkeypatch.setitem(_DRIVER_REGISTRY, "openavc_equipment", EquipmentDriver)
+    state, events = StateStore(), EventBus()
+    state.set_event_bus(events)
+    manager = DeviceManager(state, events)
+    try:
+        await manager.add_device({"id": "amp", "driver": "openavc_equipment", "name": "Amp",
+                                  "config": dict(driver.config)})
+        yield manager, state
+    finally:
+        await manager.disconnect_all()
+
+
 @pytest.mark.asyncio
-async def test_a_model_holding_what_a_driver_check_refuses_still_connects(equipment_peer, caplog):
+async def test_a_model_the_sdk_builds_connects_with_nothing_named(equipment_peer, monkeypatch, caplog):
+    """Everything the SDK's build serves is the equipment surface: its
+    transport, settings and command requests included."""
+    driver, peer = equipment_peer
+    async with _managed(driver, monkeypatch) as (manager, state):
+        assert state.get("device.amp.connected") is True
+        assert "model_notices" not in manager.get_device_info("amp")
+    assert not [r for r in caplog.records if "describes" in r.getMessage()]
+
+
+@pytest.mark.asyncio
+async def test_a_key_outside_the_equipment_surface_is_left_out_and_named(
+        equipment_peer, monkeypatch):
+    """A key the surface does not declare never reaches the device, and one
+    whose value a check refuses (a routing block with no planes) never
+    refuses the model."""
+    driver, peer = equipment_peer
+    peer["model"]["commands"]["increment"]["send"] = "INC"
+    peer["model"]["web_ui"] = False
+    peer["model"]["routing"] = {"planes": 5}
+    async with _managed(driver, monkeypatch) as (manager, state):
+        assert state.get("device.amp.connected") is True
+        info = manager.get_device_info("amp")
+        assert info["model_notices"] == [
+            "This device describes settings OpenAVC does not use: "
+            "commands.increment.send, web_ui, routing.",
+        ]
+        assert not {"web_ui", "routing"} & set(info["driver_info"])
+        assert "send" not in info["driver_info"]["commands"]["increment"]
+        await manager.send_command("amp", "increment")
+        assert peer["commands"][-1]["command"] == "increment"
+
+
+@pytest.mark.asyncio
+async def test_the_mistakes_a_model_is_worked_around_for_are_named_once(
+        equipment_peer, monkeypatch, caplog):
     """The fix is in the product's firmware, never in the integrator's hands:
-    the device connects, and what is wrong is logged once while the model
-    says it."""
+    the device connects, the device page names what is wrong while the model
+    says it, and the log says it once."""
     driver, peer = equipment_peer
     peer["model"]["state_variables"]["counter"] = {"type": "bool", "label": "Counter"}
     peer["model"]["push"] = {"type": "tcp_listner", "port": 0}
-    await driver.connect()
-    assert driver._connected
-    await driver.disconnect()
-    await driver.connect()
-    said = [r.getMessage() for r in caplog.records if "describes itself" in r.getMessage()]
+    async with _managed(driver, monkeypatch) as (manager, state):
+        assert state.get("device.amp.connected") is True
+        await manager.reconnect_device("amp")
+        assert state.get("device.amp.connected") is True
+        assert manager.get_device_info("amp")["model_notices"] == [
+            "This device describes settings OpenAVC does not use: push.",
+            "This device describes itself with mistakes OpenAVC works around: "
+            "State variable 'counter': unknown type 'bool'; use 'boolean'.",
+        ]
+    said = [r.getMessage() for r in caplog.records if "describes" in r.getMessage()]
     assert len(said) == 1
-    assert "State variable 'counter': unknown type 'bool'; use 'boolean'" in said[0]
-    assert "push: missing or unknown 'type'" in said[0]
 
 
 @pytest.mark.asyncio
-async def test_a_model_the_connect_has_always_refused_is_still_refused(equipment_peer):
+@pytest.mark.parametrize("refused, why", [
+    ({"actions": [{"id": "go", "command": "nope"}]},
+     "actions[0]: command 'nope' is not a declared command"),
+    ({"state_variables": {"_sdk_model": {"type": "string", "label": "Model"}}},
+     "state variable '_sdk_model' uses a name OpenAVC keeps for itself"),
+    ({"commands": {"load": {"label": "Load", "params": {"show": {"type": "file"}}}}},
+     "command 'load' takes or hands back a file, which equipment cannot declare"),
+])
+async def test_a_refused_model_says_why_on_the_device_card_and_connects_once_corrected(
+        equipment_peer, monkeypatch, refused, why):
     driver, peer = equipment_peer
-    peer["model"]["actions"] = [{"id": "go", "command": "nope"}]
-    with pytest.raises(ValueError, match="actions\\[0\\]: command 'nope' is not a declared command"):
-        await driver.connect()
-    assert not driver._connected
+    corrected = copy.deepcopy(peer["model"])
+    peer["model"].update(refused)
+    async with _managed(driver, monkeypatch) as (manager, state):
+        assert state.get("device.amp.connected") is False
+        assert state.get("device.amp.offline_reason") == "no_response"
+        assert state.get("device.amp.offline_detail") == (
+            f"OpenAVC can't use how this product describes itself: {why}. "
+            "Ask its manufacturer for firmware that corrects this."
+        )
+        # New firmware: the retry connects, with no one pressing Reconnect.
+        peer["model"] = corrected
+        async with asyncio.timeout(10):
+            while not state.get("device.amp.connected"):
+                await asyncio.sleep(.05)

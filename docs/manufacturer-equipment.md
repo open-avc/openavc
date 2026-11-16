@@ -17,6 +17,13 @@ After the equipment restarts, OpenAVC reconnects and reads its current protocol
 and capabilities before accepting more commands. An incompatible product stays
 disconnected. Commands interrupted by the restart are not replayed.
 
+A product that describes settings OpenAVC does not use, or describes itself
+with a mistake OpenAVC can work around, still connects, and its device page
+names what OpenAVC read past. When OpenAVC cannot use the product's description
+at all, the device stays offline and its card says why. OpenAVC keeps trying,
+so the product connects once it runs firmware that corrects the description.
+Either correction is the manufacturer's to make, in the product's firmware.
+
 A command is reported as done when the product confirms it finished. OpenAVC
 waits for that confirmation for up to the advanced **Wait for completion**
 setting, 5 seconds unless you change it; raise it for hardware that takes

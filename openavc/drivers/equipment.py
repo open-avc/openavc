@@ -24,7 +24,13 @@ from openavc.drivers.base import (
 from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.drivers.child_ids import coerce_child_local_id
 from openavc.drivers.python_info import check_python_driver_info
-from openavc.drivers.spec import is_file_command
+from openavc.drivers.spec import (
+    EQUIPMENT_BUILD_COMMAND_FIELDS,
+    EQUIPMENT_BUILD_FIELDS,
+    EQUIPMENT_PRODUCT_COMMAND_FIELDS,
+    EQUIPMENT_PRODUCT_FIELDS,
+    is_file_command,
+)
 from openavc.drivers.equipment_protocol import MAX_MESSAGE_BYTES, PROTOCOL
 from openavc.system_config import get_data_dir
 from openavc.utils.logger import get_logger
@@ -40,6 +46,91 @@ COMPLETION_WAIT_MAX = 600
 _RESULT_POLL_S = 0.1
 # A reply body that is not JSON, told apart from a JSON ``null``.
 _UNREADABLE = object()
+
+# What a model keeps at connect: the equipment surface, both halves of it.
+_MODEL_FIELDS = frozenset(EQUIPMENT_PRODUCT_FIELDS + EQUIPMENT_BUILD_FIELDS)
+_COMMAND_FIELDS = frozenset(EQUIPMENT_PRODUCT_COMMAND_FIELDS + EQUIPMENT_BUILD_COMMAND_FIELDS)
+# The state names the platform writes on every product.
+_RESERVED_STATES = ("_sdk_identity", "_sdk_model")
+# How many names a sentence lists before it counts the rest.
+_NAMED_AT_MOST = 6
+
+
+def equipment_surface(info):
+    """A served model as the platform reads it: only the keys of the
+    equipment surface (drivers/spec.py), and the place of every other key, in
+    the model's own order. A key is left out whatever its value, so one it
+    would be refused for never refuses the model."""
+    model, unused = {}, []
+    for key, value in info.items():
+        if key not in _MODEL_FIELDS:
+            unused.append(str(key))
+        elif key == "commands" and isinstance(value, dict):
+            model[key] = {name: _command_surface(name, entry, unused) for name, entry in value.items()}
+        else:
+            model[key] = value
+    return model, unused
+
+
+def _command_surface(name, entry, unused):
+    if not isinstance(entry, dict):
+        return entry
+    unused.extend(f"commands.{name}.{key}" for key in entry if key not in _COMMAND_FIELDS)
+    return {key: value for key, value in entry.items() if key in _COMMAND_FIELDS}
+
+
+def _equipment_only_issues(model):
+    """What a model may not declare as equipment that a Python driver may."""
+    return [*_file_commands(model.get("commands")), *_reserved_states(model.get("state_variables"))]
+
+
+def _file_commands(commands):
+    # The equipment protocol carries a command's params as JSON values, so a
+    # model cannot declare a command that takes a file (a Python driver's
+    # CommandFile).
+    if not isinstance(commands, dict):
+        return []
+    return [f"command '{name}' takes or hands back a file, which equipment cannot declare"
+            for name, cmd in commands.items() if is_file_command(cmd)]
+
+
+def _reserved_states(states):
+    if not isinstance(states, dict):
+        return []
+    return [f"state variable '{name}' uses a name OpenAVC keeps for itself"
+            for name in _RESERVED_STATES if name in states]
+
+
+def _model_notices(unused, notices):
+    """The device page's sentences for a model it connected with: the keys
+    it read past, then the mistakes it works around."""
+    sentences = []
+    if unused:
+        sentences.append(f"This device describes settings OpenAVC does not use: {_listed(unused)}.")
+    if notices:
+        sentences.append(
+            f"This device describes itself with mistakes OpenAVC works around: {_listed(notices, '; ')}."
+        )
+    return tuple(sentences)
+
+
+def _refused_model(issues):
+    """The fault a refused model reads as on the device card. Retried, as
+    absence is: firmware that corrects the model connects with no one
+    pressing Reconnect."""
+    return ConnectionFaultError(
+        f"OpenAVC can't use how this product describes itself: {_listed(issues, '; ')}. "
+        "Ask its manufacturer for firmware that corrects this.",
+        code="no_response",
+    )
+
+
+def _listed(items, joiner=", "):
+    """Up to _NAMED_AT_MOST items, then how many more."""
+    items = list(items)
+    shown = joiner.join(items[:_NAMED_AT_MOST])
+    hidden = len(items) - _NAMED_AT_MOST
+    return f"{shown}, and {hidden} more" if hidden > 0 else shown
 
 
 class RequestJournal:
@@ -199,6 +290,9 @@ class EquipmentDriver(BaseDriver):
         },
         "discovery": {"mdns": [{"service": "_openavc-device._tcp.local."}]},
     }
+    # What the product's model holds that OpenAVC reads past or works around,
+    # one sentence a kind, while the model says it: the device page shows them.
+    model_notices: tuple[str, ...] = ()
 
     @classmethod
     def discovered_control_port(cls, evidence):
@@ -217,32 +311,28 @@ class EquipmentDriver(BaseDriver):
         raise ValueError("The equipment control port was not discovered. Scan again or add the product manually using its configured port.")
 
     def _check_model(self, info):
-        """Refuse a model the connect has always refused. What a driver's
-        author would be refused at the checker, a connect never refuses: the
-        fix is in the product's firmware, never in the integrator's hands, so
-        the device connects and the sentence is logged once while the model
-        says it."""
-        verdict = check_python_driver_info(info, overrides_set_device_setting=True)
-        # The equipment protocol carries a command's params as JSON values,
-        # so a model cannot declare a command that takes or hands back a
-        # file (a Python driver's CommandFile / DeviceFile).
-        issues = verdict.errors + [
-            f"Command '{name}' takes or hands back a file, which equipment cannot declare"
-            for name, cmd in (info.get("commands") or {}).items()
-            if is_file_command(cmd)
-        ]
+        """The model the device runs: the served one less every key outside
+        the equipment surface (drivers/spec.py), which is named on the device
+        page instead. Refuses only what the connect has always refused, as a
+        fault whose sentence the device card shows; the device keeps retrying,
+        so firmware that corrects it connects. What a driver's author would be
+        refused at the checker, a connect never refuses: the fix is in the
+        product's firmware, never in the integrator's hands, so the device
+        connects and the page names it while the model says it."""
+        # The page names nothing a model the device no longer runs said; the
+        # log says a sentence again only when it changes.
+        said, self.model_notices = self.model_notices, ()
+        if not isinstance(info, dict):
+            raise _refused_model(["it is not a JSON object"])
+        model, unused = equipment_surface(info)
+        verdict = check_python_driver_info(model, overrides_set_device_setting=True)
+        issues = [*verdict.errors, *_equipment_only_issues(model)]
         if issues:
-            raise ValueError("Invalid endpoint model: " + "; ".join(issues))
-        self._note_model_notices(verdict.notices)
-
-    def _note_model_notices(self, notices):
-        notices = tuple(notices)
-        if notices and notices != getattr(self, "_sdk_model_notices", ()):
-            log.warning(
-                f"Device '{self.device_id}': the product describes itself with mistakes "
-                f"OpenAVC works around: {'; '.join(notices)}"
-            )
-        self._sdk_model_notices = notices
+            raise _refused_model(issues)
+        self.model_notices = _model_notices(unused, verdict.notices)
+        if self.model_notices and self.model_notices != said:
+            log.warning(f"Device '{self.device_id}': {' '.join(self.model_notices)}")
+        return model
 
     async def connect(self):
         # Automatic retry can enter without an intervening disconnect().
@@ -313,15 +403,12 @@ class EquipmentDriver(BaseDriver):
                 )
             self.config["identity"] = description["identity"]
             self._sdk_identity = description["identity"]
-            info = description["capabilities"]
+            info = self._check_model(description["capabilities"])
             if local and self.config.get("integration") != info.get("id"):
                 raise ConnectionFaultError(
                     "The product hardware model does not match the product firmware configuration.",
                     code="invalid_config",
                 )
-            self._check_model(info)
-            if {"_sdk_identity", "_sdk_model"} & set(info.get("state_variables", {})):
-                raise ValueError("Endpoint model uses reserved SDK state names.")
             self._sdk_model = info["id"]
             # Registration belongs to the host; remote model describes behavior.
             self.DRIVER_INFO = {

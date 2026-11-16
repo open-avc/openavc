@@ -1,9 +1,10 @@
 /**
  * What the top of a device's page says about its condition, under the header:
  * the one away banner `awayBanner` (deviceAway.ts) chooses, product hardware's
- * own panel, and the line for children in trouble, in this order: the missing
- * driver, paused, restarting or asleep; children in trouble; product
- * hardware's panel; the login box or the Offline banner.
+ * own panel, the line for children in trouble and a product's notes on its
+ * own description, in this order: the missing driver, paused, restarting or
+ * asleep; children in trouble; the product's notes; product hardware's panel;
+ * the login box or the Offline banner.
  *
  * `AWAY_BANNERS` holds every banner `awayBanner` can choose, with which side of
  * product hardware's panel it sits on and how it is drawn. It is keyed by the
@@ -19,6 +20,7 @@ import { OrphanBanner } from "./OrphanBanner";
 import { NeedsLoginBanner } from "./NeedsLoginBanner";
 import { ChildTroubleBanner } from "./ChildTroubleBanner";
 import { InstalledEquipment } from "./InstalledEquipment";
+import { ModelNoticesBanner } from "./ModelNoticesBanner";
 
 /** What any away banner may need to draw itself. */
 interface BannerContext {
@@ -113,6 +115,7 @@ export function DeviceBanners({
         childTypes={info?.driver_info?.child_entity_types}
         liveState={liveState}
       />
+      <ModelNoticesBanner notices={info?.model_notices} />
       {installed && (
         <InstalledEquipment
           deviceId={deviceId}
