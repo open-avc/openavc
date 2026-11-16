@@ -28,7 +28,10 @@
  *
  * `drawElementTree` is lent `how`: `element(def)`, the panel's renderer, and
  * `visibleWhen(node, def)`, which registers the node's visibility rule, both
- * asked as each element is drawn; and the page's entry motion,
+ * asked as each element is drawn; `keep(timer)`, which hands each entry
+ * animation's timer to the surface being drawn (modules/surface.js), so a
+ * page that goes before its elements have all come in starts none of the
+ * rest; and the page's entry motion,
  * `entryAnimation` ('none', 'stagger' or a class suffix), `staggerMs` and
  * `staggerStyle`, as the panel settings give them with every blank already
  * filled (modules/project_values.js). With no `entryAnimation` nothing
@@ -443,8 +446,8 @@ function animateEntry(node, ctx) {
     const animClass = ctx.entryAnimation === 'stagger'
         ? `element-entry-${ctx.staggerStyle}`
         : `element-entry-${ctx.entryAnimation}`;
-    setTimeout(() => {
+    ctx.how.keep(setTimeout(() => {
         node.style.opacity = '';
         node.classList.add(animClass);
-    }, ctx.staggerMs * index);
+    }, ctx.staggerMs * index));
 }

@@ -233,8 +233,8 @@ class LevelScale {
  * sends v now and drops anything held, so nothing stale can follow it. On a
  * control that streams (`streaming`), a release that only repeats the value
  * the stream just sent is skipped, so a tap or an arrow key press is one
- * command, not two. Each timer is handed to `keepTimer`, for a page redraw to
- * clear. Times come from performance.now(), never Date.now(): a wall clock
+ * command, not two. Each timer is handed to `keepTimer`, for the surface the
+ * control is drawn on to clear when it ends. Times come from performance.now(), never Date.now(): a wall clock
  * that steps (a time sync at boot) would hold the stream for as long as the
  * step.
  */
@@ -485,18 +485,6 @@ function keyStep(key) {
     return 0;
 }
 
-// The fader each drawn track belongs to, so a page about to be redrawn can
-// end a drag still in progress (endFaderDrags).
-const FADERS = new WeakMap();
-
-/** End every fader drag under `root`: its release goes out and it stops listening to the document. */
-export function endFaderDrags(root) {
-    for (const wrap of root.querySelectorAll('.panel-fader .fader-track-wrap')) {
-        const fader = FADERS.get(wrap);
-        if (fader) fader.release();
-    }
-}
-
 /**
  * A fader: a handle on a track, dragged by mouse or touch or stepped with the
  * arrow keys, beside an optional scale of marks, over an optional readout.
@@ -559,7 +547,6 @@ export class FaderControl extends LevelControl {
         if (this.scale.limited) this.drawDeadSpace(trackWrap);
         this.handle = this.drawHandle();
         trackWrap.appendChild(this.handle);
-        FADERS.set(trackWrap, this);
         return trackWrap;
     }
 
@@ -639,6 +626,9 @@ export class FaderControl extends LevelControl {
         // The keys go through the same rate as a drag, so a held key streams
         // and its last step always lands.
         this.handle.addEventListener('keydown', (e) => this.stepByKey(e));
+        // A drag still going when the surface it is drawn on ends lands its
+        // last value and stops listening to the document.
+        this.host.onEnd(() => this.release());
     }
 
     grab(e) {

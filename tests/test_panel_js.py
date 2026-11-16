@@ -379,9 +379,16 @@ SCENARIOS = [
     # dropdown's choice and a fader's drag on a dialog closed, every dialog
     # closed or the page drawn over it; a dialog opened twice, reopened inside
     # the half second its close is given, or with a quote in its id; three page
-    # changes inside one transition; a page drawn while a macro runs, pinned
-    # whole (tests/fixtures/panel_surface_pins.json).
+    # changes, or a double tap on the page showing, inside one transition; a
+    # page drawn while a macro runs, pinned whole
+    # (tests/fixtures/panel_surface_pins.json).
     "surfaces_tear_down_as_today",
+    # Two or three page changes, or a double tap on the page showing, inside
+    # one page transition: once it is over the root holds the page asked for
+    # and nothing else, its readings arrive, and the next change shows the
+    # page it asks for. Each leaving page goes when its own transition ends.
+    "page_changes_inside_one_transition_leave_the_page_asked_for",
+    "a_page_change_inside_a_transition_lets_each_leaving_page_go_on_its_own_time",
     # Where an element goes: the arrangement for the way the glass is
     # turned, master boxes, aspect locks, containers, entry animations, the
     # coordinate space, a drag on the canvas, the vmin, the snap ruler and a

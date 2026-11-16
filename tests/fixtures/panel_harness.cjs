@@ -1949,11 +1949,9 @@ const tests = {
             const stays = app.renderClock({ id: 'pgc', type: 'clock', format: 'HH:mm:ss' });
             app.root.appendChild(stays);
             overlay.appendChild(clock);
-            const plug = document.createElement('div');
-            plug.className = 'panel-plugin';
-            const handler = () => {};
-            plug._pluginMessageHandler = handler;
-            app._pluginMessageHandlers.add(handler);
+            const plug = app.renderCustomElement({ id: 'cu', type: 'custom', custom_file: 'w/index.html' });
+            const handler = plug._pluginMessageHandler;
+            assert(app._pluginMessageHandlers.has(handler), 'the frame listens');
             overlay.appendChild(plug);
             document.body.appendChild(overlay);
             app.overlayStack = ['ov1'];
@@ -10543,6 +10541,9 @@ const PANEL_STEPS = {
         for (const k of keys.slice(0, -1)) o = o[k];
         o[keys[keys.length - 1]] = value;
     },
+    // An assertion on what the panel holds now, by name (PANEL_CHECKS); one
+    // that fails is the step's `threw`.
+    check: (m, name, ...args) => PANEL_CHECKS[name](m, ...args),
 };
 
 /**
@@ -11035,7 +11036,8 @@ const PAGE_CASES = {
     choice_no_pages: { ui: pinUi('none', []), steps: [['nav', 'x'], ['edit', 'pages', '=undefined'], ['render']] },
     choice_no_definition: { draw: false, steps: [['render'], ['nav', 'main'], ['nav', '$back']] },
     // A page change animated: the page leaving keeps drawing for the
-    // transition, the page arriving runs its own; two in one transition.
+    // transition, the page arriving runs its own; two in one transition, each
+    // leaving page gone when its own transition ends.
     transition_between_pages: {
         ui: pinUi('moving', NAV_PAGES(), { settings: { page_transition: 'slide', page_transition_duration: 300 } }),
         steps: [['nav', 'main'], ['wait', 299], ['wait', 1], ['nav', 'p2'], ['nav', 'p3'], ['wait', 300]],
@@ -11301,10 +11303,18 @@ const SURFACE_CASES = {
         elementMap: true,
         steps: [['nav', 'o"v'], ['nav', '$back'], ['state', { 'var.x': 1 }], ['wait', 500], ['nav', '$dismiss']],
     },
-    // Three page changes inside one page transition.
+    // Three page changes inside one page transition: each leaving page goes
+    // when its own transition ends, and the last page asked for stays.
     three_page_changes_inside_one_transition: {
         ui: pinUi('moving', NAV_PAGES(), { settings: { page_transition: 'slide', page_transition_duration: 300 } }),
         steps: [['nav', 'main'], ['wait', 300], ['nav', 'p2'], ['nav', 'p3'], ['nav', 'p4'], ['wait', 300]],
+    },
+    // A double tap on the page showing, inside one page transition, then a
+    // reading for it.
+    double_tap_on_the_page_showing_inside_one_transition: {
+        ui: pinUi('moving', NAV_PAGES(), { settings: { page_transition: 'slide', page_transition_duration: 300 } }),
+        state: { 'var.x': 1 },
+        steps: [['nav', 'main'], ['wait', 300], ['nav', 'main'], ['nav', 'main'], ['wait', 300], ['state', { 'var.x': 2 }]],
     },
     // A macro already running when its page is drawn, and a run that starts
     // on its page before the page is drawn again: the button's busy mark and
@@ -11330,6 +11340,79 @@ Object.assign(tests, {
     async surfaces_tear_down_as_today() {
         const got = await driveCases({}, SURFACE_CASES);
         comparePins('surfaces', got, SURFACE_PINS.surfaces);
+    },
+});
+
+// --- Page changes faster than the page transition ---------------------------
+
+/** What the root holds, one entry per node: the first control on each page, else its class. */
+function pagesInRoot(m) {
+    return [...m.app.root.children].map((n) => n.querySelector('[data-element-id]')?.dataset.elementId || n.className);
+}
+
+/** The page rig's checks (its `check` step), each throwing when the panel is not as named. */
+const PANEL_CHECKS = {
+    // The root holds these pages, by their first control, and nothing else.
+    rootHolds: (m, want) => {
+        const have = pagesInRoot(m);
+        assert(JSON.stringify(have) === JSON.stringify(want), `the root holds ${JSON.stringify(have)}, not ${JSON.stringify(want)}`);
+    },
+    // The control `id` on screen shows `text`.
+    shows: (m, id, text) => {
+        const node = m.app.root.querySelector(`[data-element-id="${id}"]`);
+        assert(node && node.textContent === text, `${id} shows ${node && JSON.stringify(node.textContent)}, not ${JSON.stringify(text)}`);
+    },
+};
+
+/** A failed check's message, else nothing: each step's `threw`. */
+function failedChecks(steps) {
+    return steps.filter((s) => s.op === 'check' && s.threw).map((s) => s.threw);
+}
+
+Object.assign(tests, {
+    async page_changes_inside_one_transition_leave_the_page_asked_for() {
+        const failures = [];
+        const taps = {
+            two: [['p2', 'p3'], 'p3l'],
+            three: [['p2', 'p3', 'p4'], 'p4l'],
+            double_tap_on_the_page_showing: [['main', 'main'], 'm1'],
+            triple_tap_on_the_page_showing: [['main', 'main', 'main'], 'm1'],
+        };
+        for (const transition of ['slide', 'fade']) {
+            for (const [name, [pages, shows]] of Object.entries(taps)) {
+                const steps = await driveCase({
+                    ui: pinUi('moving', NAV_PAGES(), { settings: { page_transition: transition, page_transition_duration: 300 } }),
+                    state: { 'var.x': 1 },
+                    steps: [
+                        ['nav', 'main'], ['wait', 300],
+                        ...pages.map((p) => ['nav', p]),
+                        ['wait', 300], ['check', 'rootHolds', [shows]],
+                        // Readings reach the page on screen.
+                        ['state', { 'var.x': 2 }], ...(shows === 'm1' ? [['check', 'shows', 'm1', '2']] : []),
+                        // The next change shows the page it asks for, and only it.
+                        ['nav', 'p2'], ['wait', 300], ['check', 'rootHolds', ['p2l']],
+                    ],
+                });
+                for (const why of failedChecks(steps)) failures.push(`${transition} ${name}: ${why}`);
+            }
+        }
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_page_change_inside_a_transition_lets_each_leaving_page_go_on_its_own_time() {
+        // The first page starts leaving at 0 and the second at 200: the first
+        // is gone at 300, the second still leaving until 500.
+        const steps = await driveCase({
+            ui: pinUi('moving', NAV_PAGES(), { settings: { page_transition: 'slide', page_transition_duration: 300 } }),
+            steps: [
+                ['nav', 'main'], ['wait', 300],
+                ['nav', 'p2'], ['wait', 200], ['nav', 'p3'],
+                ['wait', 100], ['check', 'rootHolds', ['p2l', 'p3l']],
+                ['wait', 200], ['check', 'rootHolds', ['p3l']],
+            ],
+        });
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
     },
 });
 

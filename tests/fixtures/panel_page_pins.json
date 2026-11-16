@@ -1617,14 +1617,14 @@
    },
    {
     "op": "nav",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide page-exit-slide\" style=\"position: absolute; inset: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">--</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p2l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p2l</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p3l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p3l</div></div></div>",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide page-exit-slide\" style=\"position: absolute; inset: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">--</div></div><div class=\"panel-page page-enter-slide page-exit-slide\" style=\"position: absolute; inset: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"p2l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p2l</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p3l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p3l</div></div></div>",
     "f": "2,3,4",
     "n": "p3||home,main,p2"
    },
    {
     "op": "wait",
-    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p2l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p2l</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p3l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p3l</div></div></div>",
-    "f": "3,4",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p3l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p3l</div></div></div>",
+    "f": "4",
     "n": "p3||home,main,p2"
    }
   ],

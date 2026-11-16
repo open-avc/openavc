@@ -264,13 +264,6 @@ function closeMatrixChooser() {
     document.querySelectorAll('.matrix-chooser').forEach(node => node.remove());
 }
 
-/** End every drag-to-route still in progress under `root`, sending nothing. */
-export function endMatrixGestures(root) {
-    for (const el of root.querySelectorAll('.panel-matrix')) {
-        if (el._matrixDragCleanup) el._matrixDragCleanup();
-    }
-}
-
 /**
  * Remove what a matrix put on document.body: a drag line and a source
  * chooser. Both live outside the element, so a re-render does not take them

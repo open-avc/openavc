@@ -11,14 +11,12 @@ import { lookPictures, pickLook, withTwoStateWords } from './modules/looks.js';
 import {
     applyStyle, clearStateColours, dropFadedBackground, updateImageTint,
 } from './modules/paint.js';
-import {
-    clearMatrixOverlays, createMatrix, endMatrixGestures,
-} from './modules/matrix.js';
-import { FaderControl, SliderControl, endFaderDrags } from './modules/level.js';
+import { clearMatrixOverlays, createMatrix } from './modules/matrix.js';
+import { FaderControl, SliderControl } from './modules/level.js';
 import { boundedNumber, panelSetting } from './modules/project_values.js';
 import {
     FrameStatusWatch, drawFrame, fetchExtToken, framePlaceholder, loadPanelElementExtensions,
-    pushToFrames, releaseFrames, releaseFramesIn,
+    pushToFrames, releaseFramesIn,
 } from './modules/frames.js';
 import { ListControl, rowsFromState, showListSelection } from './modules/list.js';
 import { GaugeControl } from './modules/gauge.js';
@@ -64,6 +62,7 @@ import {
 } from './modules/fields.js';
 import { installSessionBridge } from './modules/session.js';
 import { EVALUATORS, RENDERERS } from './modules/dispatch.js';
+import { Surface, takeAway } from './modules/surface.js';
 
 // The Programmer's sign-in, carried on every /api request and the socket
 // when the IDE embeds this panel; installed before anything fetches.
@@ -156,8 +155,11 @@ class PanelApp {
         this.snapshotReceived = false;
         this.root = document.getElementById('panel-root');
         this.statusEl = document.getElementById('connection-status');
-        this.bindings = [];          // Active bindings to evaluate on state change
-        this.elementMap = {};        // element_id -> {el, elementDef} for ui.* overrides
+        // The page drawn last and everything its controls started
+        // (modules/surface.js): its bindings, its element map (element_id ->
+        // {el, elementDef}), its timers and what else it ends. An overlay's
+        // controls register on the page it opened over.
+        this._page = new Surface();
         // Whether what a control shows can be believed and whether a press on
         // it can land, and Preview's copy of what each press reaches
         // (modules/availability.js).
@@ -168,10 +170,10 @@ class PanelApp {
         // ui.<id>.* overrides a script or macro sets (modules/overrides.js).
         this._overrides = new UiOverrides(this._overridesHost());
         this.holdTimers = {};        // element_id -> interval for hold-repeat mode
+        this._holdEnds = {};         // element_id -> unregisters its hold from its surface
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) this._endAllHolds();
         });
-        this.debounceTimers = [];    // Track all debounce timeouts for cleanup
         this._pluginMessageHandlers = new Set(); // Track all plugin iframe message handlers
         this._clocks = new ClockTicker();  // Every clock on screen, one interval; meeting starts outlive a redraw
         this._pendingBindingKeys = null; // Batched binding keys for rAF
@@ -211,6 +213,16 @@ class PanelApp {
         // What each frame's own request answered, for its file check.
         this._frameStatus = new FrameStatusWatch();
     }
+
+    /** Every binding drawn from state: the page surface's. */
+    get bindings() { return this._page.bindings; }
+
+    set bindings(list) { this._page.bindings = list; }
+
+    /** Every control on screen, by element id: the page surface's. */
+    get elementMap() { return this._page.elementMap; }
+
+    set elementMap(map) { this._page.elementMap = map; }
 
     /** What the availability rule reads from the panel, each at call time. */
     _availabilityHost() {
@@ -926,7 +938,7 @@ class PanelApp {
         // Remove window 'message' listeners registered by plugin iframes in
         // this overlay — otherwise each open/dismiss cycle leaks one stale
         // listener (retaining the removed iframe's closure).
-        releaseFramesIn(overlayEl, this._pluginMessageHandlers);
+        releaseFramesIn(overlayEl);
         overlayEl.classList.add('dismissing');
         overlayEl.addEventListener('transitionend', () => overlayEl.remove(), { once: true });
         // Fallback in case transitionend doesn't fire (e.g., no transition defined)
@@ -995,8 +1007,10 @@ class PanelApp {
         // with no portrait arrangement falls back to its landscape one, and the
         // review measured that arrangement as landscape. The two have to agree.
         this._drawnOrientation = layout.orientation || 'landscape';
+        const drawnOn = this._page;
         drawElementTree(page, layout, surface, {
             ...opts,
+            keep: timer => drawnOn.keep(timer),
             element: def => this.renderElement(def),
             visibleWhen: (node, def) => this.registerVisibleWhen(node, def),
         });
@@ -1082,23 +1096,12 @@ class PanelApp {
 
         // Clean up overlays
         this.dismissAllOverlays();
-        this._stopOldPageActivity();
 
         const motion = this._pageMotion();
         this.root.style.setProperty('--page-transition-duration', motion.duration + 'ms');
-        this._swapOutOldPage(motion);
-
-        // Every frame on the page being replaced stops listening.
-        releaseFrames(this._pluginMessageHandlers);
+        this._leavePage(motion);
 
         clearMatrixOverlays();
-
-        this.bindings = [];
-        this.elementMap = {};
-        // Frames from the page being replaced are about to be discarded, so
-        // drop what they were waiting to hear. Every frame this render builds
-        // registers again below.
-        this._frameStatus.clear();
 
         // Apply theme
         this.theme.apply(this.uiDef.settings || {});
@@ -1113,7 +1116,7 @@ class PanelApp {
 
         // The page surface. Elements are absolutely positioned inside it in
         // percentages, so the same design fills any screen of the same shape.
-        const surface = document.createElement('div');
+        const surface = this._page.show(document.createElement('div'));
         surface.className = 'panel-page';
         this.theme.paintBackground(surface, page.background);
         if (motion.transition !== 'none') surface.classList.add(`page-enter-${motion.transition}`);
@@ -1132,14 +1135,17 @@ class PanelApp {
         }
     }
 
-    /** What the page being replaced was doing stops: holds, pending sends, drags, gestures, clocks. */
-    _stopOldPageActivity() {
-        this._endAllHolds();
-        for (const t of this.debounceTimers) clearTimeout(t);
-        this.debounceTimers = [];
-        endFaderDrags(this.root);
-        endMatrixGestures(this.root);
-        this._clocks.stop();
+    /**
+     * The page on screen goes: everything its controls started ends now
+     * (nothing on it sends once the next page is drawn), and its nodes leave,
+     * at once or when its own transition ends. The page about to be drawn
+     * gets a surface of its own.
+     */
+    _leavePage(motion) {
+        const leaving = this._page;
+        leaving.end();
+        takeAway(this.root, leaving, motion);
+        this._page = new Surface();
     }
 
     /** A project with no pages at all says so. */
@@ -1166,19 +1172,6 @@ class PanelApp {
             staggerMs: panelSetting(settings, 'element_stagger_ms'),
             staggerStyle: panelSetting(settings, 'element_stagger_style'),
         };
-    }
-
-    /** The page on screen leaves: animated out when there is a transition, else at once. */
-    _swapOutOldPage({ transition, duration }) {
-        const oldGrid = this.root.querySelector('.panel-page');
-        if (!oldGrid || transition === 'none') {
-            this.root.innerHTML = '';
-            return;
-        }
-        oldGrid.classList.add(`page-exit-${transition}`);
-        oldGrid.style.position = 'absolute';
-        oldGrid.style.inset = '0';
-        setTimeout(() => oldGrid.remove(), duration);
     }
 
     /** What draws on a page's surface, in the order that keeps each on top of the last. */
@@ -1297,21 +1290,25 @@ class PanelApp {
     }
 
     /** End a button's hold-repeat: a held button sends its press on a timer
-     *  until it is released. */
+     *  until it is released, or its surface ends. */
     _endHold(elementId) {
         if (this.holdTimers[elementId]) {
             clearInterval(this.holdTimers[elementId]);
             delete this.holdTimers[elementId];
         }
+        if (this._holdEnds[elementId]) {
+            this._holdEnds[elementId]();
+            delete this._holdEnds[elementId];
+        }
     }
 
     /** End every hold-repeat. A press can lose its release: the panel goes to
      *  the background, its socket drops (and the panel stops taking
-     *  touches), a new page is drawn, or a screen covers the panel. A timer
-     *  left running would go on pressing the button. */
+     *  touches), or a screen covers the panel; a new page drawn ends the
+     *  holds on the page it replaces. A timer left running would go on
+     *  pressing the button. */
     _endAllHolds() {
-        for (const t of Object.values(this.holdTimers)) clearInterval(t);
-        this.holdTimers = {};
+        for (const id of Object.keys({ ...this.holdTimers, ...this._holdEnds })) this._endHold(id);
     }
 
     renderButton(element) {
@@ -1364,14 +1361,17 @@ class PanelApp {
     }
 
     /** What a button's press borrows from the panel, each at call time: its
-     *  send, its state, and the hold timers every page change ends. */
+     *  send, its state, and a hold timer that ends when it is let go or the
+     *  surface it was drawn on ends. */
     _pressHost() {
+        const surface = this._page;
         return {
             send: (msg) => this.send(msg),
             read: (key) => this.state[key],
             repeat: (elementId, ms, fn) => {
                 this._endHold(elementId);
                 this.holdTimers[elementId] = setInterval(fn, ms);
+                this._holdEnds[elementId] = surface.onEnd(() => this._endHold(elementId));
             },
             endHold: (elementId) => this._endHold(elementId),
         };
@@ -1500,16 +1500,19 @@ class PanelApp {
     }
 
     /**
-     * What a slider or fader borrows from the panel, read when called: the
-     * state object is replaced on a full update, the timer list on a page
-     * redraw. `bindingOf` gives the control's value binding once it is
-     * registered; a slider never asks whether its device is reachable.
+     * What a slider or fader borrows from the panel, read when called (the
+     * state object is replaced on a full update), and the surface it is drawn
+     * on, which keeps its timers and ends its drag. `bindingOf` gives the
+     * control's value binding once it is registered; a slider never asks
+     * whether its device is reachable.
      */
     _levelHost(elementId, bindingOf = () => null) {
+        const surface = this._page;
         return {
             read: (key) => this.state[key],
             sendValue: (value) => this.send({ type: 'ui.change', element_id: elementId, value }),
-            keepTimer: (timer) => this.debounceTimers.push(timer),
+            keepTimer: (timer) => surface.keep(timer),
+            onEnd: (fn) => surface.onEnd(fn),
             design: () => this.editMode,
             offline: () => {
                 const binding = bindingOf();
@@ -1802,6 +1805,8 @@ class PanelApp {
 
         if (element.label) el.appendChild(this._caption(el, element, 'div', 'matrix-label'));
         matrix.mount(el);
+        // A drag-to-route still in progress when its surface ends sends nothing.
+        this._page.onEnd(() => { if (el._matrixDragCleanup) el._matrixDragCleanup(); });
 
         // The keys are listed by name rather than as a glob. The incremental
         // state.update filter matches on a prefix, and a concrete key is its
@@ -2028,7 +2033,7 @@ class PanelApp {
 
         applyStyle(el, this.theme.styleFor(element.type, element.style));
 
-        this._clocks.add(el, clock);
+        this._clocks.add(el, clock, this._page);
         return el;
     }
 
@@ -2039,9 +2044,10 @@ class PanelApp {
         el.className = 'panel-element panel-keypad';
         el.dataset.elementId = element.id;
 
+        const surface = this._page;
         const keypad = new KeypadControl(element, {
             send: (frame) => this.send(frame),
-            keepTimer: (timer) => this.debounceTimers.push(timer),
+            keepTimer: (timer) => surface.keep(timer),
             icon: (name) => iconNode(name),
         });
 
@@ -2189,23 +2195,27 @@ class PanelApp {
     }
 
     /** What a list, a dropdown or a text field asks of the panel (modules/list.js,
-     *  modules/fields.js), read when it asks: tests replace `send` on the app,
-     *  and a page redraw replaces the timers' list. */
+     *  modules/fields.js), read when it asks (tests replace `send` on the app),
+     *  and the surface it is drawn on, which keeps its timers. */
     _choiceHost() {
         const app = this;
+        const surface = this._page;
         return {
             get state() { return app.state; },
             send: (msg) => app.send(msg),
-            keepTimer: (timer) => app.debounceTimers.push(timer),
+            keepTimer: (timer) => surface.keep(timer),
             remBasePx: REM_BASE_PX,
         };
     }
 
-    /** What a frame asks of the panel (modules/frames.js), read when it asks:
-     *  tests replace these on the app. */
+    /** What a frame asks of the panel (modules/frames.js), read when it asks
+     *  (tests replace these on the app), and the surface it is drawn on, which
+     *  ends its listener and its status waiter. */
     _frameHost() {
         const app = this;
+        const surface = this._page;
         return {
+            onEnd: (fn) => surface.onEnd(fn),
             get state() { return app.state; },
             get editMode() { return app.editMode; },
             get handlers() { return app._pluginMessageHandlers; },

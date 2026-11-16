@@ -4,8 +4,9 @@
  *
  * `ClockControl` draws its display and says what it shows at a moment, one
  * method per mode. `ClockTicker` is the panel's one interval: every clock on
- * screen is shown once a second by it, a page redraw stops them all (`stop`)
- * and a dismissed overlay stops its own (`releaseIn`). It also remembers when
+ * screen is shown once a second by it until the surface it is drawn on ends
+ * or a dismissed overlay stops its own (`releaseIn`), and the interval stops
+ * with the last clock. It also remembers when
  * each meeting started, which outlives a redraw, so a meeting keeps counting
  * from its start when the page is drawn again.
  *
@@ -186,29 +187,35 @@ export class ClockTicker {
         this._meetingStarts = {};
     }
 
-    /** Show a clock now and once a second until it is released; `node` is its element. */
-    add(node, clock) {
+    /**
+     * Show a clock now and once a second until it is released, or until
+     * `surface` (the one it is drawn on, modules/surface.js) ends; `node` is
+     * its element.
+     */
+    add(node, clock, surface) {
         clock.show();
-        this._clocks.push({ node, clock });
+        const entry = { node, clock, unhook: () => {} };
+        this._clocks.push(entry);
         if (!this._interval) {
             this._interval = setInterval(() => {
                 for (const c of this._clocks) c.clock.show();
             }, 1000);
         }
+        entry.unhook = surface.onEnd(() => this._release(entry));
     }
 
     /** Stop the clocks drawn inside `container` (a dismissed overlay). */
     releaseIn(container) {
-        this._clocks = this._clocks.filter((c) => !container.contains(c.node));
+        for (const entry of this._clocks.filter((c) => container.contains(c.node))) this._release(entry);
     }
 
-    /** Stop every clock and the interval (a page redraw draws them again). */
-    stop() {
-        if (this._interval) {
-            clearInterval(this._interval);
-            this._interval = null;
-        }
-        this._clocks = [];
+    /** One clock stops; the interval stops with the last. */
+    _release(entry) {
+        entry.unhook();
+        this._clocks = this._clocks.filter((c) => c !== entry);
+        if (this._clocks.length || !this._interval) return;
+        clearInterval(this._interval);
+        this._interval = null;
     }
 
     /** When the meeting on element `id` started: `now`, the first time it is asked. */

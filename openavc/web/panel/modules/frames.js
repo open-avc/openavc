@@ -23,7 +23,9 @@
  *
  * The node a frame draws carries what the panel and its tests read off it:
  * `_pluginIframe`, `_pluginMessageHandler`, `_pluginConfig`, `_grant`,
- * `_ownNamespace` and `_stateFilter`. The grant is read off the node each time
+ * `_ownNamespace`, `_stateFilter` and `_releaseFrame`. A frame stops (its
+ * listener and its status waiter) when the surface it is drawn on ends
+ * (the host's `onEnd`, modules/surface.js), or when its dialog closes. The grant is read off the node each time
  * a message arrives, never a copy, so a re-render that changes it is obeyed.
  *
  * The page review reads this module's text for what a custom control or a
@@ -216,6 +218,9 @@ class PanelFrame {
         this.element = element;
         this.source = source;
         this.who = source.pluginId ? `plugin '${source.pluginId}'` : `custom control '${element.id}'`;
+        // What stops this frame: its listener and its status waiter.
+        this._stops = [];
+        this.stopped = false;
         this.node = this._drawBox();
         // Is the page actually there? Registered before the frame is in the
         // document, so the answer cannot arrive before something is listening.
@@ -225,6 +230,17 @@ class PanelFrame {
         this.iframe.addEventListener('load', () => this.open());
         this._listen();
         applyStyle(this.node, host.themedStyle(source.styleType, element.style));
+        // It stops when the surface it is drawn on ends, or before then when
+        // its dialog closes (releaseFramesIn), which also lets the surface go
+        // of it.
+        const unhook = host.onEnd(() => this._stop());
+        this.node._releaseFrame = () => { unhook(); this._stop(); };
+    }
+
+    /** Stop listening and stop waiting to hear about the file, once. */
+    _stop() {
+        this.stopped = true;
+        for (const stop of this._stops.splice(0)) stop();
     }
 
     _drawBox() {
@@ -287,15 +303,22 @@ class PanelFrame {
         window.addEventListener('message', handler);
         this.node._pluginMessageHandler = handler;
         this.host.handlers.add(handler);
+        this._stops.push(() => {
+            window.removeEventListener('message', handler);
+            this.host.handlers.delete(handler);
+        });
     }
 
     /** Say so in the element's box if the control's file never arrived. Reads
      *  the status off the frame's own request where the browser will tell (no
      *  extra traffic), and only asks for it where it will not. */
     _checkFile() {
-        const failed = (status) => this.showFault(status
-            ? `${this.source.fileLabel} could not be loaded (${status})`
-            : `${this.source.fileLabel} could not be loaded`);
+        const failed = (status) => {
+            if (this.stopped) return;
+            this.showFault(status
+                ? `${this.source.fileLabel} could not be loaded (${status})`
+                : `${this.source.fileLabel} could not be loaded`);
+        };
         // The second request, for when the frame's own status is not knowable.
         // `no-store` because its whole purpose is to find out what is there now.
         const ask = () => {
@@ -310,7 +333,7 @@ class PanelFrame {
         }
         // The timeline names resources absolutely; `iframe.src` reflects the
         // resolved URL, which is the same string.
-        watch.wait(this.iframe.src, (status) => {
+        this._stops.push(watch.wait(this.iframe.src, (status) => {
             // A status of 0 is not a verdict -- it is the browser declining to
             // give one. A request that never got an answer reads that way, and
             // so does one the browser will not report on. Asking is right for
@@ -319,7 +342,7 @@ class PanelFrame {
             // have been wrong.
             if (status === 0) ask();
             else if (status >= 400) failed(status);
-        });
+        }));
     }
 
     /** Say, in the element's own box, that the page in it failed. A control
@@ -487,22 +510,11 @@ export function pushToFrames(elementMap, key, value) {
     }
 }
 
-/** Every frame stops listening (the page is being redrawn). */
-export function releaseFrames(handlers) {
-    for (const handler of handlers) {
-        window.removeEventListener('message', handler);
-    }
-    handlers.clear();
-}
-
-/** The frames inside `container` stop listening (an overlay going away); each
- *  open and dismiss would otherwise leak a listener holding a removed frame. */
-export function releaseFramesIn(container, handlers) {
+/** The frames inside `container` stop (an overlay going away); each open and
+ *  dismiss would otherwise leak a listener holding a removed frame. */
+export function releaseFramesIn(container) {
     container.querySelectorAll('.panel-plugin, .panel-custom').forEach((el) => {
-        if (el._pluginMessageHandler) {
-            window.removeEventListener('message', el._pluginMessageHandler);
-            handlers.delete(el._pluginMessageHandler);
-        }
+        if (el._releaseFrame) el._releaseFrame();
     });
 }
 
@@ -558,7 +570,12 @@ export class FrameStatusWatch {
         }
     }
 
-    /** `fn(status)` once, when the timeline reports a frame's request for `url`. */
+    /**
+     * `fn(status)` once, when the timeline reports a frame's request for
+     * `url`. Returns what stops the wait: a frame that goes first stops
+     * waiting, since a callback held here keeps the element it draws into
+     * alive.
+     */
     wait(url, fn) {
         let waiting = this.waiters.get(url);
         if (!waiting) {
@@ -566,12 +583,10 @@ export class FrameStatusWatch {
             this.waiters.set(url, waiting);
         }
         waiting.add(fn);
-    }
-
-    /** Frames from a page being replaced are about to be discarded: a callback
-     *  held here keeps the element it draws into alive. */
-    clear() {
-        this.waiters.clear();
+        return () => {
+            waiting.delete(fn);
+            if (!waiting.size && this.waiters.get(url) === waiting) this.waiters.delete(url);
+        };
     }
 }
 

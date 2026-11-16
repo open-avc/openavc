@@ -5,8 +5,8 @@
  * a PIN pad. Only what is drawn is masked: the entry sent is the digits.
  *
  * `KeypadControl` draws the display and the keys and holds the entry and the
- * pending auto send, which a page redraw drops with the keypad (its timer is
- * kept by the panel, which clears them all). The panel keeps the element, its
+ * pending auto send, which goes unsent when the surface the keypad is drawn
+ * on ends (`keepTimer` hands its timer to that surface). The panel keeps the element, its
  * theme style and its caption, and lends `send`, `keepTimer` and `icon`, read
  * at call time.
  *
