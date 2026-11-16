@@ -28,8 +28,8 @@ import {
   type CustomUiFile,
 } from "../api/customUiClient";
 import { filesFromList, type DroppedFile } from "../components/shared/dropFiles";
-import { showError, showLastingWarning, showSuccess } from "../store/toastStore";
-import { importedWithNotices } from "../components/driver-builder/installedDriverList";
+import { showError, showSuccess } from "../store/toastStore";
+import { announceImport } from "../components/driver-builder/installedDriverList";
 import type { PythonDriverInfo } from "../api/types";
 
 type EditorTarget = "script" | "driver" | "ui";
@@ -584,12 +584,7 @@ export function ScriptView() {
         const drivers = await loadPythonDrivers();
         const activated = result.activated_devices ?? [];
         const extra = activated.length > 0 ? `, connected ${activated.length} waiting device(s)` : "";
-        const notices = result.notices ?? [];
-        if (notices.length > 0) {
-          showLastingWarning(importedWithNotices(result.driver_id, extra, notices));
-        } else {
-          showSuccess(`Imported driver "${result.driver_id}"${extra}`);
-        }
+        announceImport(result.driver_id, extra, result.notices ?? []);
         // A YAML driver (e.g. an .avcdriver inside a bundle) lives in the
         // Driver Builder, not this tree — only open it here when it actually
         // shows up as a Python driver.

@@ -38,6 +38,7 @@ ALLOWED = {
     "openavc.drivers.framing_checks",
     "openavc.drivers.liveness_checks",
     "openavc.drivers.param_aid_checks",
+    "openavc.drivers.platform_floor_checks",
     "openavc.drivers.push_block_checks",
     "openavc.drivers.query_entry_checks",
     "openavc.drivers.response_rule_checks",

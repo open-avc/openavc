@@ -216,6 +216,12 @@ RUNTIME_BLIND_SPOTS = {
         "runtime reader asks (utils/log_redaction, core/device_logins, "
         "core/typed_fields, core/learned_config, the validator). spec.py is "
         "the registry and is left out of this search.",
+    "configSchemaEntry.default":
+        "Read by drivers/driver_warnings.py masked_default_warnings (a "
+        "default set on a secret field), which names no distinctive sibling "
+        "of the block. The only file the search found it in before was "
+        "avcdriver_semantic, through a docstring's \"Off by default:\" that "
+        "moved to platform_floor_checks.py with the text it described.",
 }
 
 # Empty since 2026-08-25. configSchemaEntry.secret sat here because the file

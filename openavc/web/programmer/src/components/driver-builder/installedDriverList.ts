@@ -1,3 +1,4 @@
+import { showLastingWarning, showSuccess } from "../../store/toastStore";
 import type { CommunityDriver, DriverInfo, InstalledDriver } from "../../api/types";
 
 /** The built-in generic devices, which the Installed list leaves out. */
@@ -38,17 +39,7 @@ export function listedDrivers(
   };
 }
 
-/** Why an installed file did not load, as the server says it; null when it has no reason. */
-export function loadErrorOf(installedById: Map<string, InstalledDriver>, id: string): string | null {
-  return installedById.get(id)?.load_error ?? null;
-}
-
-/** What is wrong in an installed file that loaded anyway; empty when nothing is. */
-export function loadNoticesOf(installedById: Map<string, InstalledDriver>, id: string): string[] {
-  return installedById.get(id)?.load_notices ?? [];
-}
-
-/** What a driver page says above those mistakes. */
+/** What a driver page says above the mistakes in a file that loaded anyway. */
 export const LOADED_WITH_NOTICES_TEXT =
   "This driver loaded and devices can use it, but its file has mistakes the Driver Builder " +
   "would not save. Fix them in the file, or send them to whoever wrote the driver:";
@@ -60,6 +51,16 @@ export function importedWithNotices(driverId: string, extra: string, notices: st
     `Imported driver "${driverId}"${extra}. Its file has mistakes the Driver Builder ` +
     `would not save; fix them in the file: ${notices.join("; ")}`
   );
+}
+
+/** Say an import went in: a lasting warning naming the mistakes when its
+ *  file has some, else a passing success. */
+export function announceImport(driverId: string, extra: string, notices: string[]): void {
+  if (notices.length > 0) {
+    showLastingWarning(importedWithNotices(driverId, extra, notices));
+  } else {
+    showSuccess(`Imported driver "${driverId}"${extra}`);
+  }
 }
 
 /** What a driver page says when its file never registered and the server

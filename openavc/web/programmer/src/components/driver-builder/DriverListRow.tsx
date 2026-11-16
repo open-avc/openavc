@@ -1,6 +1,6 @@
 import { UpdateRowButton } from "../shared/CatalogUpdateControls";
 import type { CatalogUpdate } from "../shared/catalogUpdates";
-import type { DriverInfo } from "../../api/types";
+import type { DriverInfo, InstalledDriver } from "../../api/types";
 import {
   LOADED_WITH_NOTICES_TEXT,
   NOT_LOADED_TEXT,
@@ -147,5 +147,16 @@ export function LoadNoticesNote({ notices }: { notices: string[] }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+/** What a driver page says above its details about how its file loaded:
+ *  that it did not, with why, or the mistakes in a file that loaded anyway. */
+export function LoadNotes({ notLoaded, installed }: { notLoaded: boolean; installed?: InstalledDriver }) {
+  return (
+    <>
+      <NotLoadedNote show={notLoaded} reason={installed?.load_error ?? null} />
+      <LoadNoticesNote notices={installed?.load_notices ?? []} />
+    </>
   );
 }

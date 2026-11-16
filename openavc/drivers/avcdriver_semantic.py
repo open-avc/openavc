@@ -78,6 +78,9 @@ from openavc.drivers.framing_checks import (
     send_frame_errors,
 )
 from openavc.drivers.liveness_checks import liveness_errors
+from openavc.drivers.platform_floor_checks import (
+    platform_version_errors as platform_version_errors,
+)
 from openavc.drivers.push_block_checks import push_block_errors
 from openavc.drivers.query_entry_checks import (
     FollowUp,
@@ -88,7 +91,7 @@ from openavc.drivers.response_rule_checks import response_rule_errors
 from openavc.drivers.routing_checks import (
     routing_block_errors as routing_block_errors,
 )
-from openavc.drivers.shape_checks import shape_of as _shape_of, shape_refusals
+from openavc.drivers.shape_checks import shape_of as _shape_of, shape_refusals, unsaid
 from openavc.drivers.setting_checks import (
     config_learned_from_errors as config_learned_from_errors,
     device_setting_errors,
@@ -103,8 +106,6 @@ from openavc.drivers.spec import (
     REQUIRED_FIELDS,
     YAML_TRANSPORTS,
     block_has_fixed_keys,
-    parse_version,
-    platform_requirements,
     without_null_sections,
 )
 from openavc.drivers.state_variable_checks import (
@@ -277,82 +278,6 @@ def _inside(loc: str, key: Any) -> str:
     return f"{loc}.{key}" if loc else str(key)
 
 
-# How many offending fields a min_platform_version message names before it
-# stops listing. Enough to see the pattern; the author only has to fix the
-# declaration once regardless of how many fields forced it.
-_MAX_NAMED_REQUIREMENTS = 4
-
-
-def _requirement_summary(
-    requirements: list[tuple[str, str]], floor: str
-) -> tuple[str, str]:
-    """The offending field list, and how to refer back to it in the sentence."""
-    names = [where for where, version in requirements if version == floor]
-    shown = ", ".join(names[:_MAX_NAMED_REQUIREMENTS])
-    rest = len(names) - _MAX_NAMED_REQUIREMENTS
-    if rest > 0:
-        return f"{shown} (+{rest} more)", "those fields"
-    return shown, "that field" if len(names) == 1 else "those fields"
-
-
-def platform_version_errors(
-    driver_def: dict[str, Any],
-    *,
-    require_declaration: bool = False,
-    tier: str = "yaml",
-) -> list[str]:
-    """Check ``min_platform_version`` against the fields the driver uses.
-
-    Every field the platform grew carries the release that grew it (``since``
-    in the registry), so what a driver needs is computable rather than
-    remembered. Declaring less than that is not a lint: the install gate
-    honours the declaration, so the driver installs on a release that reads
-    the file, ignores the fields it does not know, and runs wrong — a push
-    subscription that never arms, a command whose framing is dropped.
-
-    ``require_declaration`` additionally rejects a driver that uses a gated
-    field and declares nothing at all. Off by default: a locally authored
-    driver has no install gate to satisfy and is being written against the
-    platform it is sitting on. On for publishing, where the field is what
-    stops the driver reaching someone running an older release.
-
-    ``tier`` is the driver's format ("yaml" or "python"); a few floors bind
-    one format only (``spec.platform_requirements``).
-    """
-    if not isinstance(driver_def, dict):
-        return []
-    requirements = platform_requirements(driver_def, tier)
-    if not requirements:
-        return []
-    floor = requirements[0][1]
-    declared = driver_def.get("min_platform_version")
-
-    named, them = _requirement_summary(requirements, floor)
-    if declared is None or declared == "":
-        if not require_declaration:
-            return []
-        return [
-            f"min_platform_version is not declared, but this driver uses "
-            f"{named}, which needs platform {floor}. Without it the driver "
-            f"installs on older releases that ignore {them}. Add "
-            f'min_platform_version: "{floor}".'
-        ]
-
-    parsed = parse_version(declared)
-    if parsed is None:
-        return [
-            f"min_platform_version must be a version number like "
-            f'"{floor}" (got {declared!r})'
-        ]
-    if parsed >= parse_version(floor):
-        return []
-    return [
-        f'min_platform_version is "{declared}", but this driver uses {named}, '
-        f'which needs platform {floor}. Raise it to "{floor}", or drop '
-        f"{them} if the driver has to keep installing on {declared}."
-    ]
-
-
 def validate_driver_definition(
     driver_def: dict[str, Any],
     *,
@@ -446,28 +371,12 @@ def check_driver_definition(
 
 def _shape_gaps(errors: _TaggedErrors, driver_def: dict[str, Any], said: _TaggedErrors) -> None:
     """The shape walk's refusals the definition walk left unsaid, each
-    tagged with its own place."""
-    for loc, message in shape_refusals(driver_def):
-        if not _said_at(said, loc):
-            errors.ctx = loc
-            errors.append(message)
-
-
-def _said_at(said: _TaggedErrors, loc: str) -> bool:
-    """Whether the definition walk said something tagged with ``loc``, a
-    place inside it, or a place holding it. A part that could not be checked
-    said nothing about the value, so its message counts for nothing here."""
-    for message, tag in zip(said, said.tags):
-        if tag and _UNCHECKED not in message and _overlaps(tag, loc):
-            return True
-    return False
-
-
-def _overlaps(tag: str, loc: str) -> bool:
-    return any(
-        a == b or a.startswith(b + ".") or a.startswith(b + "[")
-        for a, b in ((tag, loc), (loc, tag))
-    )
+    tagged with its own place. A part that could not be checked said nothing
+    about the value, so its message names no place here."""
+    places = [tag for message, tag in zip(said, said.tags) if _UNCHECKED not in message]
+    for loc, message in unsaid(shape_refusals(driver_def), [p for p in places if p]):
+        errors.ctx = loc
+        errors.append(message)
 
 
 def _undeclared(errors: _TaggedErrors, driver_def: dict[str, Any]) -> None:
@@ -559,11 +468,8 @@ class _DefinitionWalk:
         for field in REQUIRED_FIELDS:
             if field not in driver_def:
                 errors.append(f"Missing required field: {field}")
-        # Every reader keys the driver by its id as text: one that is not text
-        # is refused wherever the driver is loaded, in the shape walk's words.
-        if "id" in driver_def and not isinstance(driver_def["id"], str):
-            errors.ctx = "id"
-            errors.extend(message for _, message in _shape_of("id", driver_def["id"]))
+        self._id()
+        errors.ctx = ""
         transport = driver_def.get("transport", "")
         # "bridge" is the sentinel transport for a device that emits through a
         # live bridge instance (an IR device on an emitter port) rather than
@@ -580,6 +486,15 @@ class _DefinitionWalk:
                 "ir_codes: must be a boolean (the code-set lives in "
                 "default_config.ir_codes / the device config)"
             )
+
+    def _id(self) -> None:
+        """Every reader keys the driver by its id as text: one that is not
+        text is refused wherever the driver is loaded, in the shape walk's
+        words."""
+        errors = self.errors
+        errors.ctx = "id"
+        if "id" in self.driver_def:
+            errors.extend(message for _, message in _shape_of("id", self.driver_def["id"]))
 
     def response_rules(self) -> None:
         """What each rule says about itself, checked in response_rule_checks.

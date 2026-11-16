@@ -91,25 +91,38 @@ def _node_to_schema(node: dict[str, Any], tier: str) -> Any:
         raise ValueError(f"registry node has unknown key(s) {sorted(unknown)}: {node}")
     if node.get("any") is True:
         return True
-
     out: dict[str, Any] = {}
     if "ref" in node:
         out["$ref"] = f"#/$defs/{node['ref']}"
-    for reg_key, schema_key in _DIRECT_KEYS:
-        if reg_key in node:
-            value = node[reg_key]
-            out[schema_key] = list(value) if isinstance(value, tuple) else value
+    for part in (_direct, _enum_and_doc, _members, _combinations, _raw):
+        part(node, tier, out)
+    return out
+
+
+def _direct(node: dict[str, Any], tier: str, out: dict[str, Any]) -> None:
+    """The keys that map one to one onto a JSON Schema keyword."""
+    for reg_key, schema_key in [k for k in _DIRECT_KEYS if k[0] in node]:
+        value = node[reg_key]
+        out[schema_key] = list(value) if isinstance(value, tuple) else value
+
+
+def _enum_and_doc(node: dict[str, Any], tier: str, out: dict[str, Any]) -> None:
+    """The value set (the tier's own, where it is wider) and the description
+    the floors are rendered into."""
     enum = None
     if "enum" in node:
-        enum = node["enum"]
-        if tier == "python" and "python_enum" in node:
-            enum = node["python_enum"]
+        enum = node.get("python_enum", node["enum"]) if tier == "python" else node["enum"]
         out["enum"] = list(enum)
     doc = spec.node_doc(node, enum, tier)
     if doc:
         out["description"] = doc
     if "required" in node:
         out["required"] = list(node["required"])
+
+
+def _members(node: dict[str, Any], tier: str, out: dict[str, Any]) -> None:
+    """What a block or a list holds: its fields, its other keys' values, its
+    key names and its items."""
     if "fields" in node:
         out["properties"] = {
             name: _node_to_schema(sub, tier) for name, sub in node["fields"].items()
@@ -119,10 +132,12 @@ def _node_to_schema(node: dict[str, Any], tier: str) -> Any:
         out["additionalProperties"] = (
             extra if isinstance(extra, bool) else _node_to_schema(extra, tier)
         )
-    if "prop_names" in node:
-        out["propertyNames"] = _node_to_schema(node["prop_names"], tier)
-    if "items" in node:
-        out["items"] = _node_to_schema(node["items"], tier)
+    for reg_key, schema_key in (("prop_names", "propertyNames"), ("items", "items")):
+        if reg_key in node:
+            out[schema_key] = _node_to_schema(node[reg_key], tier)
+
+
+def _combinations(node: dict[str, Any], tier: str, out: dict[str, Any]) -> None:
     for reg_key, schema_key in (
         ("one_of", "oneOf"),
         ("any_of", "anyOf"),
@@ -132,39 +147,58 @@ def _node_to_schema(node: dict[str, Any], tier: str) -> Any:
             out[schema_key] = [_node_to_schema(sub, tier) for sub in node[reg_key]]
     if "not_" in node:
         out["not"] = node["not_"]
-    if "raw" in node:
-        for key, value in node["raw"].items():
-            if key in out:
-                raise ValueError(f"raw fragment overwrites emitted key {key!r}")
-            out[key] = value
-    return out
+
+
+def _raw(node: dict[str, Any], tier: str, out: dict[str, Any]) -> None:
+    """The escape hatch, merged in verbatim; it never overwrites a key."""
+    for key, value in (node.get("raw") or {}).items():
+        if key in out:
+            raise ValueError(f"raw fragment overwrites emitted key {key!r}")
+        out[key] = value
 
 
 _JUDGES_A_NULL = frozenset({"const", "not", "allOf", "anyOf", "oneOf", "$ref", "if"})
 
 
+def _takes_null(name: str, tier: str) -> bool:
+    """A YAML definition reads a null as absent for this top-level field
+    (``spec.NULL_AS_ABSENT``); a Python driver's DRIVER_INFO is read as
+    written."""
+    return tier == "yaml" and name in spec.NULL_AS_ABSENT
+
+
 def _top_level(name: str, node: dict[str, Any], tier: str) -> Any:
-    """A top-level field's schema; in a YAML driver, one a null reads as
-    absent for (``spec.NULL_AS_ABSENT``) also takes a null, as every reader
-    of a definition does. A Python driver's DRIVER_INFO is read as written."""
+    """A top-level field's schema, taking a null where a reader reads one as
+    absent."""
     out = _node_to_schema(node, tier)
-    if tier != "yaml" or name not in spec.NULL_AS_ABSENT or not isinstance(out, dict):
-        return out
-    kinds = out.get("type")
-    # A keyword that also judges a null (a fixed value, a reference, a
-    # combination) keeps the field's own schema whole beside the null.
-    if kinds is not None and not set(out) & _JUDGES_A_NULL:
-        kinds = kinds if isinstance(kinds, list) else [kinds]
-        if "null" not in kinds:
-            out["type"] = [*kinds, "null"]
-        if "enum" in out and None not in out["enum"]:
-            out["enum"] = [*out["enum"], None]
-        return out
-    description = out.pop("description", None)
-    nullable: dict[str, Any] = {"anyOf": [out, {"type": "null"}]}
-    if description:
-        nullable = {"description": description, **nullable}
-    return nullable
+    return _with_null(out) if _takes_null(name, tier) else out
+
+
+def _with_null(out: dict[str, Any]) -> dict[str, Any]:
+    """``out`` taking a null too: in its own kinds when it names them, else
+    (or when a keyword of its own also judges a null: a fixed value, a
+    reference, a combination) whole beside a null."""
+    if _judged_whole(out):
+        return _beside_null(out)
+    out["type"] = _also(out["type"], "null")
+    if "enum" in out:
+        out["enum"] = _also(out["enum"], None)
+    return out
+
+
+def _judged_whole(out: dict[str, Any]) -> bool:
+    return "type" not in out or bool(set(out) & _JUDGES_A_NULL)
+
+
+def _also(values: Any, extra: Any) -> list[Any]:
+    """``values`` (one, or a list) with ``extra`` at the end, once."""
+    listed = values if isinstance(values, list) else [values]
+    return list(dict.fromkeys([*listed, extra]))
+
+
+def _beside_null(out: dict[str, Any]) -> dict[str, Any]:
+    described = {"description": out.pop("description")} if "description" in out else {}
+    return {**described, "anyOf": [out, {"type": "null"}]}
 
 
 def _cross_field_rule(rule: dict[str, Any], tier: str) -> dict[str, Any]:
@@ -174,14 +208,15 @@ def _cross_field_rule(rule: dict[str, Any], tier: str) -> dict[str, Any]:
     out = json.loads(json.dumps(rule))
     if tier != "yaml":
         return out
-    for part in (out.get("if"), out.get("then")):
-        if not isinstance(part, dict):
-            continue
-        for name in part.get("required", ()):
-            if name in spec.NULL_AS_ABSENT:
-                held = part.setdefault("properties", {}).setdefault(name, {})
-                held["not"] = {"type": "null"}
+    for part in [p for p in (out.get("if"), out.get("then")) if isinstance(p, dict)]:
+        _required_not_null(part)
     return out
+
+
+def _required_not_null(part: dict[str, Any]) -> None:
+    for name in [n for n in part.get("required", ()) if n in spec.NULL_AS_ABSENT]:
+        held = part.setdefault("properties", {}).setdefault(name, {})
+        held["not"] = {"type": "null"}
 
 
 def build_schema(tier: str) -> dict[str, Any]:

@@ -80,42 +80,88 @@ LEFT_KEYS = frozenset({
 })
 
 
-def kind_fits(kind: str, value: Any) -> bool:
-    """Whether ``value`` is of the JSON kind ``kind``, as the published
-    schema reads it (a boolean is never a number, ``5.0`` is an integer)."""
-    if kind == "string":
-        return isinstance(value, str)
-    if kind == "boolean":
-        return isinstance(value, bool)
-    if kind == "integer":
-        if isinstance(value, bool):
-            return False
-        return isinstance(value, int) or (isinstance(value, float) and value.is_integer())
-    if kind == "number":
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
-    if kind == "object":
-        return isinstance(value, dict)
-    if kind == "array":
-        return isinstance(value, list)
-    if kind == "null":
-        return value is None
+def _is_text(value: Any) -> bool:
+    return isinstance(value, str)
+
+
+def _is_boolean(value: Any) -> bool:
+    return isinstance(value, bool)
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_integer(value: Any) -> bool:
+    return _is_number(value) and (isinstance(value, int) or value.is_integer())
+
+
+def _is_mapping(value: Any) -> bool:
+    return isinstance(value, dict)
+
+
+def _is_list(value: Any) -> bool:
+    return isinstance(value, list)
+
+
+def _is_null(value: Any) -> bool:
+    return value is None
+
+
+def _anything(value: Any) -> bool:
     return True
 
 
+# How the published schema reads each JSON kind: a boolean is never a number,
+# and ``5.0`` is an integer.
+_KIND_TESTS = {
+    "string": _is_text,
+    "boolean": _is_boolean,
+    "integer": _is_integer,
+    "number": _is_number,
+    "object": _is_mapping,
+    "array": _is_list,
+    "null": _is_null,
+}
+
+# Which value set each tier of driver is held to.
+_TIER_ENUM = {"python": "python_enum"}
+
+# What to say about the commonest wrong kinds: (the kind wanted, the kinds
+# found, what to do). A single entry written where a list belongs, and a YAML
+# word or number where text belongs.
+_HINTS = (
+    ("array", (str, dict), "; write a single entry as a one-item list"),
+    ("string", (bool, int, float), "; put it in quotes"),
+)
+
+
+def kind_fits(kind: str, value: Any) -> bool:
+    """Whether ``value`` is of the JSON kind ``kind``, as the published
+    schema reads it."""
+    return _KIND_TESTS.get(kind, _anything)(value)
+
+
 def _kinds(node: dict[str, Any]) -> tuple[str, ...]:
-    declared = node.get("type")
-    if declared is None:
-        return ()
+    declared = node.get("type") or ()
     return (declared,) if isinstance(declared, str) else tuple(declared)
+
+
+def _names_a_ref(node: Any) -> bool:
+    return isinstance(node, dict) and "ref" in node
 
 
 def _resolved(node: Any) -> dict[str, Any]:
     """The registry node a reference names, followed until it names none."""
-    seen = 0
-    while isinstance(node, dict) and "ref" in node and seen < 32:
+    for _ in range(32):
+        if not _names_a_ref(node):
+            break
         node = DEFS.get(node["ref"], {})
-        seen += 1
     return node if isinstance(node, dict) else {}
+
+
+def _accepts_anything(node: dict[str, Any]) -> bool:
+    return not node or node.get("any") is True
 
 
 def _join(words: list[str], last: str = "or") -> str:
@@ -152,67 +198,70 @@ class ShapeWalk:
 
     def walk_definition(self, definition: dict[str, Any]) -> list[tuple[str, str]]:
         """Each top-level field the definition carries, against its node."""
-        for name, node in FIELDS.items():
-            if name in definition and name not in LEFT_FIELDS:
-                self.walk(node, definition[name], name)
+        for name in [n for n in FIELDS if n in definition and n not in LEFT_FIELDS]:
+            self.walk(FIELDS[name], definition[name], name)
         return self.refusals
 
     def walk(self, node: Any, value: Any, loc: str) -> None:
+        """``value`` at ``loc`` against ``node``: judged, then descended."""
         node = _resolved(node)
-        if not node or node.get("any") is True:
+        if _accepts_anything(node) or not self._judged(node, value, loc):
             return
-        if not self._fits_kind(node, value, loc):
-            return
-        if not self._fits_values(node, value, loc):
-            return
-        for alternatives in _NODE_KINDS:
-            if alternatives in node and not self._fits_a_form(node[alternatives], value, loc):
-                return
+        self._descend(node, value, loc)
+
+    def refuses(self, node: Any, value: Any) -> bool:
+        """Whether ``node`` refuses ``value`` anywhere (this walk's list is
+        used for the answer)."""
+        self.walk(node, value, "")
+        return bool(self.refusals)
+
+    def _refuse(self, loc: str, sentence: str) -> None:
+        self.refusals.append((loc, f"{_at(loc)}{sentence}"))
+
+    def _judged(self, node: dict[str, Any], value: Any, loc: str) -> bool:
+        """The value's kind, then its value set, then its forms: the first
+        that refuses says so, and nothing after it is asked."""
+        checks = (self._fits_kind, self._fits_const, self._fits_enum, self._fits_forms)
+        return all(check(node, value, loc) for check in checks)
+
+    def _descend(self, node: dict[str, Any], value: Any, loc: str) -> None:
         for part in node.get("all_of") or ():
             self.walk(part, value, loc)
         if isinstance(value, dict):
             self._mapping(node, value, loc)
-        elif isinstance(value, list) and "items" in node:
-            for i, entry in enumerate(value):
-                self.walk(node["items"], entry, f"{loc}[{i}]")
+        elif isinstance(value, list):
+            self._entries(node.get("items"), value, loc)
 
-    def _refuse(self, loc: str, sentence: str) -> None:
-        self.refusals.append((loc, f"{_at(loc)}{sentence}"))
+    def _entries(self, item: Any, value: list[Any], loc: str) -> None:
+        if item is None:
+            return
+        for i, entry in enumerate(value):
+            self.walk(item, entry, f"{loc}[{i}]")
 
     def _fits_kind(self, node: dict[str, Any], value: Any, loc: str) -> bool:
         kinds = _kinds(node)
         if not kinds or any(kind_fits(kind, value) for kind in kinds):
             return True
-        words = [_KIND_WORDS.get(k, k) for k in kinds]
-        required = node.get("required") or ()
-        if kinds == ("object",) and required:
-            # The keys it has to carry are part of what it must be.
-            words = [f"a mapping with {_join(list(required), 'and')}"]
-        self._refuse(loc, f"must be {_join(words)}{_hint(kinds, value)}")
+        self._refuse(loc, f"must be {_kind_words(node, kinds)}{_hint(kinds, value)}")
         return False
 
-    def _fits_values(self, node: dict[str, Any], value: Any, loc: str) -> bool:
-        if "const" in node and value != node["const"]:
-            self._refuse(loc, f"must be {_shown(node['const'])}")
-            return False
-        allowed = node.get("enum")
-        if allowed is None:
+    def _fits_const(self, node: dict[str, Any], value: Any, loc: str) -> bool:
+        if node.get("const", value) == value:
             return True
-        if self.tier == "python" and "python_enum" in node:
-            allowed = node["python_enum"]
+        self._refuse(loc, f"must be {_shown(node['const'])}")
+        return False
+
+    def _fits_enum(self, node: dict[str, Any], value: Any, loc: str) -> bool:
+        if "enum" not in node:
+            return True
+        allowed = node.get(_TIER_ENUM.get(self.tier, "enum"), node["enum"])
         if _in_set(value, allowed):
             return True
-        if _in_set(value, node.get("python_enum") or ()):
-            self._refuse(
-                loc,
-                f"{_shown(value)} needs a Python driver; a YAML driver takes "
-                f"{_join([_shown(v) for v in allowed])}",
-            )
-        else:
-            self._refuse(
-                loc, f"must be {_join([_shown(v) for v in allowed])}, not {_shown(value)}"
-            )
+        self._refuse(loc, _enum_sentence(node, allowed, value))
         return False
+
+    def _fits_forms(self, node: dict[str, Any], value: Any, loc: str) -> bool:
+        return all(self._fits_a_form(node[k], value, loc) for k in _NODE_KINDS if k in node)
 
     def _fits_a_form(self, forms: tuple[Any, ...], value: Any, loc: str) -> bool:
         """A value the node lets take one of several forms: it passes when one
@@ -222,15 +271,16 @@ class ShapeWalk:
             return self._carries_one_of(resolved, value, loc)
         if any(not ShapeWalk(self.tier).refuses(form, value) for form in resolved):
             return True
-        by_kind = [form for form in resolved if _form_takes_kind(form, value)]
+        self._no_form_takes(resolved, value, loc)
+        return False
+
+    def _no_form_takes(self, forms: list[dict[str, Any]], value: Any, loc: str) -> None:
+        """Said through the one form of the value's kind when there is one."""
+        by_kind = [form for form in forms if _form_takes_kind(form, value)]
         if len(by_kind) == 1:
             self.walk(by_kind[0], value, loc)
-        elif not by_kind:
-            words = [_KIND_WORDS.get(k, k) for k in _form_kinds(resolved)]
-            self._refuse(loc, f"must be {_join(words)}{_hint(_form_kinds(resolved), value)}")
-        else:
-            self._refuse(loc, "is not in any of the forms it can take")
-        return False
+            return
+        self._refuse(loc, _no_form_sentence(forms, by_kind, value))
 
     def _carries_one_of(self, forms: list[dict[str, Any]], value: Any, loc: str) -> bool:
         if not isinstance(value, dict):
@@ -241,27 +291,46 @@ class ShapeWalk:
         self._refuse(loc, f"needs one of {_join([repr(k) for k in choices])}")
         return False
 
-    def refuses(self, node: Any, value: Any) -> bool:
-        """Whether ``node`` refuses ``value`` anywhere (this walk's list is
-        used for the answer)."""
-        self.walk(node, value, "")
-        return bool(self.refusals)
-
     def _mapping(self, node: dict[str, Any], value: dict[Any, Any], loc: str) -> None:
         # Never asked of the definition itself (``walk_definition`` reads its
         # fields), whose required fields the definition walk names.
-        for key in node.get("required") or ():
-            if key not in value:
-                self._refuse(loc, f"missing required '{key}'")
+        for key in [k for k in node.get("required") or () if k not in value]:
+            self._refuse(loc, f"missing required '{key}'")
         fields = node.get("fields") or {}
-        for key, sub in fields.items():
-            if key in value:
-                self.walk(sub, value[key], _inside(loc, key))
-        extra = node.get("extra")
-        if isinstance(extra, dict):
-            for key, sub in value.items():
-                if key not in fields:
-                    self.walk(extra, sub, _inside(loc, key))
+        for key in [k for k in fields if k in value]:
+            self.walk(fields[key], value[key], _inside(loc, key))
+        self._extra(node.get("extra"), fields, value, loc)
+
+    def _extra(self, extra: Any, fields: dict[str, Any], value: dict[Any, Any], loc: str) -> None:
+        """The keys a block of author-chosen names holds, each against the
+        node its values are declared by."""
+        if not isinstance(extra, dict):
+            return
+        for key in [k for k in value if k not in fields]:
+            self.walk(extra, value[key], _inside(loc, key))
+
+
+def _kind_words(node: dict[str, Any], kinds: tuple[str, ...]) -> str:
+    """What the value must be: its kinds, or a mapping with the keys it has
+    to carry."""
+    required = list(node.get("required") or ())
+    if kinds != ("object",) or not required:
+        return _join([_KIND_WORDS.get(k, k) for k in kinds])
+    return f"a mapping with {_join(required, 'and')}"
+
+
+def _enum_sentence(node: dict[str, Any], allowed: Any, value: Any) -> str:
+    named = _join([_shown(v) for v in allowed])
+    if _in_set(value, node.get("python_enum") or ()):
+        return f"{_shown(value)} needs a Python driver; a YAML driver takes {named}"
+    return f"must be {named}, not {_shown(value)}"
+
+
+def _no_form_sentence(forms: list[dict[str, Any]], by_kind: list[Any], value: Any) -> str:
+    if by_kind:
+        return "is not in any of the forms it can take"
+    kinds = _form_kinds(forms)
+    return f"must be {_join([_KIND_WORDS.get(k, k) for k in kinds])}{_hint(kinds, value)}"
 
 
 def _in_set(value: Any, allowed: Any) -> bool:
@@ -275,15 +344,17 @@ def _keys_only(node: dict[str, Any]) -> bool:
     return set(node) == {"required"}
 
 
+def _alternatives(form: dict[str, Any]) -> list[dict[str, Any]]:
+    return [_resolved(f) for k in _NODE_KINDS for f in form.get(k, ())]
+
+
+def _kinds_of_form(form: dict[str, Any]) -> tuple[str, ...]:
+    return _kinds(form) or tuple(_form_kinds(_alternatives(form)))
+
+
 def _form_kinds(forms: list[dict[str, Any]]) -> list[str]:
-    kinds: list[str] = []
-    for form in forms:
-        for kind in _kinds(form) or _form_kinds(
-            [_resolved(f) for k in _NODE_KINDS for f in form.get(k, ())]
-        ):
-            if kind not in kinds:
-                kinds.append(kind)
-    return kinds
+    """Every kind the forms take, each once, in order."""
+    return list(dict.fromkeys(kind for form in forms for kind in _kinds_of_form(form)))
 
 
 def _form_takes_kind(form: dict[str, Any], value: Any) -> bool:
@@ -291,14 +362,31 @@ def _form_takes_kind(form: dict[str, Any], value: Any) -> bool:
     return not kinds or any(kind_fits(kind, value) for kind in kinds)
 
 
+def _hint_applies(kinds: Any, kind: str, found: tuple[type, ...], value: Any) -> bool:
+    if kind not in kinds or "number" in kinds:
+        return False
+    return isinstance(value, found)
+
+
 def _hint(kinds: tuple[str, ...] | list[str], value: Any) -> str:
-    """What to do about the commonest wrong kinds: a single entry written
-    where a list belongs, and a YAML word or number where text belongs."""
-    if "array" in kinds and isinstance(value, (str, dict)):
-        return "; write a single entry as a one-item list"
-    if "string" in kinds and isinstance(value, (bool, int, float)) and "number" not in kinds:
-        return "; put it in quotes"
+    """What to do about the commonest wrong kinds (``_HINTS``)."""
+    for kind, found, hint in _HINTS:
+        if _hint_applies(kinds, kind, found, value):
+            return hint
     return ""
+
+
+def _within(inner: str, outer: str) -> bool:
+    return inner == outer or inner.startswith((outer + ".", outer + "["))
+
+
+def unsaid(refusals: list[tuple[str, str]], places: list[str]) -> list[tuple[str, str]]:
+    """The refusals no other message speaks about: none tagged with the
+    refusal's place, a place inside it, or a place holding it."""
+    return [
+        (loc, message) for loc, message in refusals
+        if not any(_within(loc, place) or _within(place, loc) for place in places)
+    ]
 
 
 def shape_refusals(definition: dict[str, Any], tier: str = "yaml") -> list[tuple[str, str]]:
