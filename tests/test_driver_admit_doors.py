@@ -88,8 +88,11 @@ def lib(tmp_path, monkeypatch):
     monkeypatch.setattr("httpx.AsyncClient", catalog)
     monkeypatch.setattr(routes, "_get_driver_repo_dir", lambda: repo)
     monkeypatch.setattr("openavc.system_config.DRIVER_REPO_DIR", repo)
-    # The real registry, on a copy this test owns.
-    monkeypatch.setattr(registry, "_DRIVER_REGISTRY", dict(registry._DRIVER_REGISTRY))
+    # The real registry, on a copy this test owns, without this driver: the
+    # repo starts empty, and another test in the same process can leave an
+    # acme_widget registered.
+    monkeypatch.setattr(registry, "_DRIVER_REGISTRY",
+                        {k: v for k, v in registry._DRIVER_REGISTRY.items() if k != DRIVER_ID})
 
     async def _hashes(driver_id, force=False):
         return ArtifactHashes(f"Driver '{driver_id}'", catalog.hashes, source="catalog")
@@ -118,6 +121,16 @@ def lib(tmp_path, monkeypatch):
             sys.modules[name] = modules_before[name]
         else:
             sys.modules.pop(name, None)
+
+
+@pytest.fixture
+def leftover(monkeypatch):
+    """A registration another test in the same process left behind."""
+    monkeypatch.setitem(registry._DRIVER_REGISTRY, DRIVER_ID, object)
+
+
+def test_a_registration_left_by_another_test_is_not_carried_in(leftover, lib):
+    assert registry.get_driver_class(DRIVER_ID) is None
 
 
 def _yaml(**extra) -> bytes:

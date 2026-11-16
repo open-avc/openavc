@@ -295,7 +295,9 @@ def test_a_replaced_link_is_put_back_as_the_same_link(folder, monkeypatch):
         admit(_change(folder, {"acme_widget.avcdriver": data, "acme_widget_discovery.py": b"X\n"}))
     link = folder / "acme_widget_discovery.py"
     assert link.is_symlink()
-    assert os.readlink(link) == str(outside)
+    # Where the link points, not how the system spells it: Windows hands back
+    # the target with a \\?\ prefix.
+    assert link.resolve() == outside.resolve()
     assert outside.read_bytes() == b"MINE = 1\n"
 
 
