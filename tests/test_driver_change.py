@@ -330,3 +330,30 @@ def test_a_required_file_with_a_folder_in_its_place_refuses_the_change(folder):
         admit(_change(folder, {"acme_widget.avcdriver": data, "acme_widget_discovery.py": b"X\n"}))
     assert _tree(folder) == {"acme_widget.avcdriver": b"old yaml\n"}
     assert (folder / "acme_widget_discovery.py").is_dir()
+
+
+# --- what a refusal leaves for the next import, and for the log ----------------------
+
+
+def test_a_staged_python_file_that_fails_to_import_is_logged_with_its_traceback(folder, caplog):
+    with caplog.at_level(logging.ERROR, logger="openavc.drivers.driver_loader"):
+        with pytest.raises(DriverRefused):
+            admit(_change(folder, {"acme_widget.py": b"import acme_missing_package\n"}))
+    failures = [r for r in caplog.records if "Failed to load Python driver" in r.getMessage()]
+    assert failures and failures[0].exc_info is not None
+    assert "acme_missing_package" in str(failures[0].exc_info[1])
+
+
+def test_a_staged_python_file_that_imports_a_retired_name_is_told_to_update(folder, caplog):
+    with caplog.at_level(logging.ERROR, logger="openavc.drivers.driver_loader"):
+        with pytest.raises(DriverRefused):
+            admit(_change(folder, {"acme_widget.py": b"import server.drivers\n"}))
+    assert any("was written for an older OpenAVC" in r.getMessage() for r in caplog.records)
+
+
+def test_a_put_back_python_file_is_not_served_from_the_refused_file_s_bytecode(folder, monkeypatch):
+    _installed_python(folder)
+    monkeypatch.setattr(driver_change, "register_driver", _explode)
+    with pytest.raises(RuntimeError):
+        admit(_change(folder, {"acme_widget.py": _python("new")}))
+    assert load_python_driver_file(folder / "acme_widget.py").MARK == "old"

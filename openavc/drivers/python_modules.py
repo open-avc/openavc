@@ -138,7 +138,16 @@ def load_python_driver_file(filepath: Path) -> type | None:
     behind, it would read as loaded in the Code view and confuse a later
     reload. One that imports but defines no driver class stays.
     """
-    name = module_name(filepath)
+    driver_class = _imported_driver_class(filepath, module_name(filepath))
+    if driver_class is not None:
+        _warn_python_driver_info_issues(driver_class)
+    return driver_class
+
+
+def _imported_driver_class(filepath: Path, name: str) -> type | None:
+    """Import a driver file as module ``name`` and return its driver class,
+    or None with the reason logged: a failed import with its traceback (or
+    the retired-name sentence), and its module removed."""
     try:
         module = _import(filepath, name)
     except Exception as exc:  # Catch-all: exec_module runs arbitrary driver code
@@ -152,8 +161,6 @@ def load_python_driver_file(filepath: Path) -> type | None:
     driver_class = driver_class_in(module, name)
     if driver_class is None:
         log.warning(f"No BaseDriver subclass with DRIVER_INFO found in {filepath}")
-    else:
-        _warn_python_driver_info_issues(driver_class)
     return driver_class
 
 
@@ -259,13 +266,13 @@ def _trial_import(filepath: Path) -> type | dict[str, Any]:
 def trial_driver_class(filepath: Path) -> type | None:
     """The driver class a file defines, imported under a throwaway name that
     is removed afterwards, so nothing it imports stays loaded and the module
-    a running driver came from is left as it was; None, with the reason
-    logged, when it defines none or does not import."""
-    trial = _trial_import(filepath)
-    if isinstance(trial, dict):
-        log.warning(f"Python driver {filepath.name} was not loaded: {trial['error']}")
-        return None
-    return trial
+    a running driver came from is left as it was; None when it defines none
+    or does not import, logged as ``load_python_driver_file`` logs it."""
+    name = f"{_TRIAL_PREFIX}{filepath.stem}"
+    try:
+        return _imported_driver_class(filepath, name)
+    finally:
+        sys.modules.pop(name, None)
 
 
 def reload_python_driver(filepath: Path) -> dict[str, Any]:

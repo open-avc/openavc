@@ -327,6 +327,7 @@ class _Before:
             _write_in_place(self.path, self.data or b"", self.mode)
         else:
             self.path.unlink(missing_ok=True)
+        _forget_bytecode(self.path)
 
 
 def _write_in_place(path: Path, data: bytes, mode: int) -> None:
