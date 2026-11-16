@@ -15,10 +15,11 @@ Part of ``python -m openavc.drivers.contract_gen``; pure stdlib.
 
 from __future__ import annotations
 
+import json
 import textwrap
 from typing import Any, Callable
 
-from openavc.drivers import spec
+from openavc.drivers import serial_line, spec
 
 BANNER = """\
 // GENERATED FILE - DO NOT EDIT.
@@ -742,6 +743,55 @@ def _contract_keys() -> str:
     return out
 
 
+def _serial_line_settings() -> str:
+    """Emit the serial line-setting table (``serial_line.SERIAL_LINE_SETTINGS``) for
+    the Builder's Connection tab and the device form, which read it through
+    ``components/shared/serialLine.ts``. Each setting is its JSON, as the
+    table holds it."""
+    out = _doc_block(
+        "One choice a serial line setting may take: its value, the label a "
+        "picker shows, and the other ways it may be written.", "",
+    )
+    out += (
+        "export interface SerialLineChoice {\n"
+        "  readonly value: string | number;\n"
+        "  readonly label?: string;\n"
+        "  readonly spellings?: readonly string[];\n"
+        "}\n\n"
+    )
+    out += _doc_block(
+        "A serial line setting: its label, the value it has when nothing is "
+        "written, what a refusal says it must be, and either its choices or, "
+        "for the baud rate (any whole number above zero), the rates a picker "
+        "offers.", "",
+    )
+    out += (
+        "export interface SerialLineSetting {\n"
+        "  readonly label: string;\n"
+        "  readonly default: string | number;\n"
+        "  readonly allowed: string;\n"
+        "  readonly offered?: readonly number[];\n"
+        "  readonly choices?: readonly SerialLineChoice[];\n"
+        "}\n\n"
+    )
+    keys = " | ".join(f'"{key}"' for key in serial_line.SERIAL_LINE_SETTINGS)
+    out += f"export type SerialLineKey = {keys};\n\n"
+    out += _doc_block(
+        "THE serial line-setting table: what each setting may be and how "
+        "each way of writing one reads (serialLine.ts reads it). A value "
+        "written in a word or as text reads as the choice it names: Even, "
+        "even and E are one parity.", "",
+    )
+    out += (
+        "export const SERIAL_LINE_SETTINGS: "
+        "Readonly<Record<SerialLineKey, SerialLineSetting>> = {\n"
+    )
+    for key, setting in serial_line.SERIAL_LINE_SETTINGS.items():
+        out += f"  {key}: {json.dumps(setting, ensure_ascii=False)},\n"
+    out += "};\n"
+    return out
+
+
 def _render_member(
     name: str,
     node: dict[str, Any],
@@ -799,6 +849,7 @@ def render_types_ts() -> str:
         sections.append(_render_constant(name, shape, getter(), doc) + "\n")
     sections.append(_push_keys_by_type() + "\n")
     sections.append(_contract_keys() + "\n")
+    sections.append(_serial_line_settings() + "\n")
 
     sections.append("// --- driver definition types ---\n\n")
     rendered = {name for name, *_ in INTERFACES}

@@ -85,7 +85,7 @@ TCP = "openavc.transport.tcp.TCPTransport.create"
         ("bytesize", "eight", "Data bits", "5, 6, 7 or 8"),
         ("stopbits", 3, "Stop bits", "1, 1.5 or 2"),
         ("stopbits", "one", "Stop bits", "1, 1.5 or 2"),
-        ("baudrate", "fast", "Baud rate", "a number, such as 9600"),
+        ("baudrate", "fast", "Baud rate", "a whole number, such as 9600"),
     ],
 )
 async def test_a_serial_line_setting_that_cannot_work_names_itself(

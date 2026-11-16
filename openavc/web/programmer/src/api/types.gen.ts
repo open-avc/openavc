@@ -157,6 +157,44 @@ export const DRIVER_CONTRACT_KEYS: Readonly<Record<string, ReadonlySet<string>>>
   amxDdpItem: new Set(["cross_vendor", "make", "model_pattern"]),
 };
 
+/**
+ * One choice a serial line setting may take: its value, the label a picker
+ * shows, and the other ways it may be written.
+ */
+export interface SerialLineChoice {
+  readonly value: string | number;
+  readonly label?: string;
+  readonly spellings?: readonly string[];
+}
+
+/**
+ * A serial line setting: its label, the value it has when nothing is written,
+ * what a refusal says it must be, and either its choices or, for the baud rate
+ * (any whole number above zero), the rates a picker offers.
+ */
+export interface SerialLineSetting {
+  readonly label: string;
+  readonly default: string | number;
+  readonly allowed: string;
+  readonly offered?: readonly number[];
+  readonly choices?: readonly SerialLineChoice[];
+}
+
+export type SerialLineKey = "baudrate" | "bytesize" | "parity" | "stopbits" | "flow_control";
+
+/**
+ * THE serial line-setting table: what each setting may be and how each way of
+ * writing one reads (serialLine.ts reads it). A value written in a word or as
+ * text reads as the choice it names: Even, even and E are one parity.
+ */
+export const SERIAL_LINE_SETTINGS: Readonly<Record<SerialLineKey, SerialLineSetting>> = {
+  baudrate: {"label": "Baud rate", "default": 9600, "allowed": "a whole number, such as 9600", "offered": [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 230400]},
+  bytesize: {"label": "Data bits", "default": 8, "allowed": "5, 6, 7 or 8", "choices": [{"value": 5}, {"value": 6}, {"value": 7}, {"value": 8}]},
+  parity: {"label": "Parity", "default": "N", "allowed": "N (none), E (even), O (odd), M (mark) or S (space)", "choices": [{"value": "N", "label": "None"}, {"value": "E", "label": "Even"}, {"value": "O", "label": "Odd"}, {"value": "M", "label": "Mark"}, {"value": "S", "label": "Space"}]},
+  stopbits: {"label": "Stop bits", "default": 1, "allowed": "1, 1.5 or 2", "choices": [{"value": 1}, {"value": 1.5}, {"value": 2}]},
+  flow_control: {"label": "Flow control", "default": "none", "allowed": "none, hardware (RTS/CTS) or software (XON/XOFF)", "choices": [{"value": "none", "label": "None"}, {"value": "hardware", "label": "Hardware (RTS/CTS)", "spellings": ["rtscts", "rts/cts"]}, {"value": "software", "label": "Software (XON/XOFF)", "spellings": ["xonxoff", "xon/xoff"]}]},
+};
+
 // --- driver definition types ---
 
 /**

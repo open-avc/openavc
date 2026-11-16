@@ -211,6 +211,66 @@ async def test_serial_two_stop_bits_and_software_flow(monkeypatch, control_ip):
     assert (kwargs["rtscts"], kwargs["xonxoff"]) == (False, True)
 
 
+async def test_serial_line_settings_written_as_words(monkeypatch, control_ip):
+    # The way a manual writes them: each is read by the contract's one table.
+    _, kwargs = await _build_created(
+        monkeypatch, "openavc.transport.serial_transport.SerialTransport.create", "serial",
+        {
+            "port": "COM3", "baudrate": "19200.0", "bytesize": 7.0, "parity": "Even",
+            "stopbits": "1.0", "flow_control": "RTS/CTS",
+        },
+    )
+    assert (kwargs["baudrate"], kwargs["bytesize"], kwargs["parity"]) == (19200, 7, "E")
+    assert kwargs["stopbits"] == 1 and isinstance(kwargs["stopbits"], int)
+    assert (kwargs["rtscts"], kwargs["xonxoff"]) == (True, False)
+
+
+async def test_serial_parity_none_is_no_parity(monkeypatch, control_ip):
+    _, kwargs = await _build_created(
+        monkeypatch, "openavc.transport.serial_transport.SerialTransport.create", "serial",
+        {"port": "COM3", "parity": "None"},
+    )
+    assert kwargs["parity"] == "N"
+
+
+async def test_serial_flow_control_with_no_reading_opens_without_and_says_so(
+    monkeypatch, control_ip, caplog
+):
+    # Refused where a driver is written; a device that connects today still does.
+    with caplog.at_level("WARNING", logger="openavc.drivers.base"):
+        _, kwargs = await _build_created(
+            monkeypatch, "openavc.transport.serial_transport.SerialTransport.create", "serial",
+            {"port": "COM3", "flow_control": "sideways"},
+        )
+    assert (kwargs["rtscts"], kwargs["xonxoff"]) == (False, False)
+    assert "Flow control setting is 'sideways'" in caplog.text
+
+
+async def test_a_device_retrying_says_its_flow_control_has_no_reading_once(
+    monkeypatch, control_ip, caplog
+):
+    _created(monkeypatch, "openavc.transport.serial_transport.SerialTransport.create")
+    driver = _driver({"port": "COM3", "flow_control": "sideways"})
+    with caplog.at_level("WARNING", logger="openavc.drivers.base"):
+        for _ in range(3):
+            await driver._create_transport("serial")
+    assert caplog.text.count("Flow control setting is 'sideways'") == 1
+
+
+@pytest.mark.parametrize(
+    ("config", "complaint"),
+    [
+        ({"baudrate": 0}, "This device's Baud rate setting is 0"),
+        ({"baudrate": True}, "This device's Baud rate setting is True"),
+        ({"stopbits": True}, "This device's Stop bits setting is True"),
+        ({"parity": None}, "This device's Parity setting is None"),
+    ],
+)
+def test_serial_settings_with_no_reading_are_refused(config, complaint):
+    with pytest.raises(ConnectionFaultError, match=f"^{complaint}"):
+        BaseDriver._coerce_serial_params(config)
+
+
 async def test_serial_settings_the_port_cannot_take(monkeypatch, control_ip):
     create = _created(monkeypatch, "openavc.transport.serial_transport.SerialTransport.create")
     with pytest.raises(ConnectionFaultError, match=r"Parity setting is 'Q'") as caught:

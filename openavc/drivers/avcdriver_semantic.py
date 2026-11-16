@@ -13,8 +13,9 @@ setting and learned config field (``setting_checks``), the push block
 framing each way (``framing_checks``), the sign-in (``sign_in_checks``), the
 watchdog (``liveness_checks``), the ``routing:`` block
 (``routing_checks``), where a value conversion may be declared
-(``conversion_checks``) and the ``{name}`` placeholders in its wire templates
-(``substitution_checks``). The walk is ``_DefinitionWalk``, one method per
+(``conversion_checks``), the ``{name}`` placeholders in its wire templates
+(``substitution_checks``) and the serial line settings its default_config
+holds (``serial_line``). The walk is ``_DefinitionWalk``, one method per
 part in the order they report; the sections other parts name into are read
 once (``declared_names.DeclaredSections``) and handed to the checks that
 follow a name into them. ``validate_driver_warnings`` walks it the same
@@ -97,6 +98,7 @@ from openavc.drivers.routing_checks import (
     routing_block_errors as routing_block_errors,
 )
 from openavc.drivers.shape_checks import shape_of as _shape_of, shape_refusals, unsaid
+from openavc.drivers.serial_line import line_setting_errors
 from openavc.drivers.setting_checks import (
     config_learned_from_errors as config_learned_from_errors,
     device_setting_errors,
@@ -474,7 +476,11 @@ class _DefinitionWalk:
     def authors_parts(self) -> list[tuple[Callable[[], None], str]]:
         """The parts only the author's doors refuse on, in the order they
         report, each with the section it is tagged with until it says where."""
-        return [(self.rule_names, "responses"), (self.child_fault_codes, "responses")]
+        return [
+            (self.rule_names, "responses"),
+            (self.child_fault_codes, "responses"),
+            (self.line_settings, "default_config"),
+        ]
 
     def rule_names(self) -> None:
         """The state variables each response rule writes and gates on, read
@@ -491,6 +497,14 @@ class _DefinitionWalk:
         for i, rule in enumerate(self.declared.responses):
             errors.ctx = f"responses[{i}]"
             errors.extend(child_fault_code_errors(i, rule))
+
+    def line_settings(self) -> None:
+        """Each serial line setting default_config holds, read by the
+        contract's one table (serial_line)."""
+        errors = self.authored
+        for key, message in line_setting_errors(self.driver_def.get("default_config")):
+            errors.ctx = f"default_config.{key}"
+            errors.append(message)
 
     def parts(
         self,

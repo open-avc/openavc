@@ -5,12 +5,14 @@
 // editor the same way.
 
 import type { EnumOption } from "../../api/types";
+import { SERIAL_LINE_SETTINGS } from "../../api/types.gen";
 
 /** Config keys the Builder owns rather than listing as Configuration Fields:
  *  the connection fields its transport writes, and the settings the
- *  Connection tab edits directly. */
+ *  Connection tab edits directly (every serial line setting the contract's
+ *  table holds among them). */
 export const BUILTIN_CONFIG_KEYS: ReadonlySet<string> = new Set([
-  "host", "port", "baudrate", "parity", "poll_interval", "inter_command_delay",
+  "host", "port", "poll_interval", "inter_command_delay", ...Object.keys(SERIAL_LINE_SETTINGS),
 ]);
 
 export interface ConfigFieldDef {

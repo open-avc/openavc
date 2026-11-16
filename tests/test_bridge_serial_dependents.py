@@ -51,6 +51,7 @@ class _AcmeBridge(BaseDriver):
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.prepared: list[tuple[str, int | None]] = []
+        self.handed: list[dict] = []
         self.prepare_raises = False
 
     async def send_command(self, command: str, params: dict | None = None) -> Any:
@@ -60,6 +61,7 @@ class _AcmeBridge(BaseDriver):
         if self.prepare_raises:
             raise RuntimeError("bridge said no")
         self.prepared.append((port_id, params.get("baudrate")))
+        self.handed.append(dict(params))
 
 
 class _AcmeWidget(BaseDriver):
@@ -201,6 +203,23 @@ def test_a_bridge_coming_online_re_pushes_its_dependents_line_settings():
     asyncio.run(dm._on_device_connected("device.connected.b1", {}))
 
     assert bridge.prepared == [("serial:1", 9600)]
+
+
+def test_a_bridge_is_handed_the_line_settings_as_the_contract_reads_them():
+    # A bridge's own table holds what its hardware takes; how a setting is
+    # written is read once, by the platform, before the bridge sees it.
+    dm, bridge, widget = _rig(bridge_online=True)
+    widget.config.update(
+        {"baudrate": "19200", "parity": "Even", "stopbits": "1", "flow_control": "RTS/CTS"}
+    )
+
+    asyncio.run(dm._prepare_bridge_for("w1", widget.config))
+
+    [handed] = bridge.handed
+    assert (handed["baudrate"], handed["parity"], handed["stopbits"], handed["flow_control"]) == (
+        19200, "E", 1, "hardware",
+    )
+    assert widget.config["parity"] == "Even", "the device keeps its own config as written"
 
 
 def test_an_ordinary_device_connecting_prepares_nothing():

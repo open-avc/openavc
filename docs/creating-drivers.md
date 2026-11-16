@@ -106,7 +106,7 @@ The **Publishing** section holds catalog metadata (`min_platform_version`, `prot
 The Transport section is required — pick TCP, serial, UDP, OSC, HTTP, or Bridge (for a device with no address of its own that emits through a bridge's port, such as an IR-controlled device). Transport-specific fields appear:
 
 - **TCP**: default port, message delimiter, TLS.
-- **Serial**: baudrate, parity, bytesize, stopbits.
+- **Serial**: default baud rate, parity, data bits, stop bits and flow control (see [Serial config fields](#serial-config-fields)).
 - **HTTP**: base URL form, default headers, auth (token / api key), timeout.
 - **OSC**: dual UDP socket settings.
 - **UDP**: default port.
@@ -2370,6 +2370,22 @@ These fields in `config_schema` (or `default_config`) are recognized by the TCP 
 
 `ssl` / `verify_ssl` mirror the HTTP transport's fields, so a single `transport: tcp` driver reaches a plaintext or a TLS-wrapped device just by toggling `ssl` in config — no Python `connect()` override needed.
 
+#### Serial config fields
+
+These fields in `default_config` are a serial device's line settings. Add Device and the Builder's Connection tab offer each one, starting at the driver's value.
+
+| Field | Values | Default |
+|-------|--------|---------|
+| `port` | The serial port, such as `COM3` or `/dev/ttyUSB0` (required) | No default |
+| `baudrate` | Any whole number above zero. The pickers list 1200 to 230400 and show any other rate a driver sets. | 9600 |
+| `bytesize` | Data bits: 5, 6, 7 or 8 | 8 |
+| `parity` | `N` (none), `E` (even), `O` (odd), `M` (mark) or `S` (space) | `N` |
+| `stopbits` | 1, 1.5 or 2 | 1 |
+| `flow_control` | `none`, `hardware` (RTS/CTS) or `software` (XON/XOFF) | `none` |
+| `inter_command_delay` | Minimum seconds between sends (default: 0) | 0 |
+
+Each setting reads the same wherever OpenAVC reads it. Parity and flow control may be written as the letter, the word or the other name in any capitals (`Even`, `even` and `E` are one parity; `None` is no parity; `RTS/CTS` is hardware flow control), and the numbers as numbers or as text (`"1"`, `"1.5"`). Validate, the Builder's save, `python -m openavc.drivers.check` and the community catalog refuse a value no serial port can use, such as parity `X`, a baud rate that is not a whole number or a flow control not in the list, and name the setting and what to write. A driver that already holds one still loads, with the problem shown on its entry under Installed. OpenAVC 0.40.0 and earlier read only the letters, the short words and plain numbers, so a driver for the community library writes `E`, `hardware` and `9600`.
+
 #### HTTP config fields
 
 These fields in `config_schema` are recognized by the HTTP transport:
@@ -2640,7 +2656,7 @@ bridge:
       label: "RS-232 Port 1"
 ```
 
-A downstream device binds to a bridge from its own Connection settings (choose `Through a bridge`, then pick the bridge and port). For a serial port, the platform routes the downstream over the bridge's pass-through with no extra code. Pushing baud and parity to the hardware needs a Python driver that overrides `prepare_bridge_port` (see Method 3). Make that method idempotent: the platform calls it before a bound device connects, and again for every bound port whenever the bridge reconnects, so a bridge that was power-cycled sets its ports back up by itself. The second call can arrive while the bound device is already connected through the pass-through, so use the bridge's own command connection rather than anything that disturbs the data path. The Global Cache iTach IP2SL driver in the community library is a complete example.
+A downstream device binds to a bridge from its own Connection settings (choose `Through a bridge`, then pick the bridge and port). For a serial port, the platform routes the downstream over the bridge's pass-through with no extra code. Pushing baud and parity to the hardware needs a Python driver that overrides `prepare_bridge_port` (see Method 3). The settings it is handed are read the way the device's own connection reads them: `parity` as one letter, `flow_control` as `none`, `hardware` or `software`, and the numbers as numbers, however the device's settings spell them (OpenAVC 0.40.0 and earlier hand them on as written). A setting OpenAVC cannot read is handed on as written, for the bridge to refuse. Make that method idempotent: the platform calls it before a bound device connects, and again for every bound port whenever the bridge reconnects, so a bridge that was power-cycled sets its ports back up by itself. The second call can arrive while the bound device is already connected through the pass-through, so use the bridge's own command connection rather than anything that disturbs the data path. The Global Cache iTach IP2SL driver in the community library is a complete example.
 
 ### IR devices and IR bridges
 

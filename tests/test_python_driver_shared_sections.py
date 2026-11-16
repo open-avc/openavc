@@ -278,6 +278,34 @@ def test_routing_into_commands_built_at_runtime_is_not_judged() -> None:
     ]
 
 
+# --- the serial line settings default_config holds ------------------------------------
+
+
+def test_a_line_setting_with_no_reading_is_named() -> None:
+    found = issues(transport="serial", default_config={"port": "", "baudrate": "fast", "parity": "Even"})
+    assert found == [
+        "default_config.baudrate: a serial port can't use 'fast' as its baud rate; "
+        "write a whole number, such as 9600"
+    ]
+
+
+def test_a_computed_line_setting_is_not_judged() -> None:
+    sections = {"transport": "serial", "default_config": {"port": "", "parity": UNEVALUATED}}
+    assert issues(**sections) == []
+    assert skips(**sections) == [
+        "default_config.parity (holds a value that could not be read from the source)"
+    ]
+
+
+def test_a_line_setting_with_no_reading_is_only_said_where_a_driver_loads() -> None:
+    driver = info(transport="serial", default_config={"port": "", "flow_control": "auto"})
+    assert check_python_driver_info(driver).errors == []
+    assert check_python_driver_info(driver).notices == [
+        "default_config.flow_control: a serial port can't use 'auto' as its flow control; "
+        "write none, hardware (RTS/CTS) or software (XON/XOFF)"
+    ]
+
+
 # --- a check that raises is the driver's message, never an exception ------------------
 
 
@@ -309,6 +337,6 @@ def test_the_shared_checks_refuse_only_at_the_author_s_doors() -> None:
 
 @pytest.mark.parametrize("value", [UNEVALUATED, ["a"], 5, "text"])
 def test_a_section_of_another_kind_never_raises(value: Any) -> None:
-    for section in ("state_variables", "child_entity_types", "commands", "push", "routing"):
+    for section in ("state_variables", "child_entity_types", "commands", "push", "routing", "default_config"):
         python_driver_info_issues(info(**{section: value}))
         python_driver_reference_skips(info(**{section: value}))

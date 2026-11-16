@@ -247,6 +247,21 @@ CASES: dict[str, Any] = {
     "child_list_offline_reason_not_a_code": _list_resp(
         type="zone", element=r"(\d+)", id="$1", state={"offline_reason": "down"}
     ),
+    # A serial line setting the driver's default_config holds is one the
+    # contract's table reads; one with no reading is refused where a driver is
+    # written (the port refuses it at every connect).
+    "default_config_parity_no_reading": _d(
+        transport="serial", default_config={"port": "", "parity": "X"}
+    ),
+    "default_config_baudrate_not_a_number": _d(
+        transport="serial", default_config={"port": "", "baudrate": "fast"}
+    ),
+    "default_config_flow_control_unknown": _d(
+        transport="serial", default_config={"port": "", "flow_control": "auto"}
+    ),
+    "default_config_stopbits_null": _d(
+        transport="serial", default_config={"port": "", "stopbits": None}
+    ),
     "response_json_child_set_entry_not_mapping": _resp(
         json=True, set={"power": "$.p"}, child_set=["zone"]
     ),
@@ -1118,7 +1133,7 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
             "param_aid_checks.py",
             "push_block_checks.py",
             "query_entry_checks.py", "reply_name_checks.py", "response_rule_checks.py",
-            "child_fault_checks.py",
+            "child_fault_checks.py", "serial_line.py",
             "routing_checks.py", "setting_checks.py",
             "sign_in_checks.py", "state_variable_checks.py", "substitution_checks.py",
             "python_info.py",

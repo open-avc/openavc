@@ -384,6 +384,18 @@
  "config_learned_from_undeclared": [
   "Config field 'model': learned_from 'ghost' is not a declared state variable, so the field would never be filled in"
  ],
+ "default_config_baudrate_not_a_number": [
+  "default_config.baudrate: a serial port can't use 'fast' as its baud rate; write a whole number, such as 9600"
+ ],
+ "default_config_flow_control_unknown": [
+  "default_config.flow_control: a serial port can't use 'auto' as its flow control; write none, hardware (RTS/CTS) or software (XON/XOFF)"
+ ],
+ "default_config_parity_no_reading": [
+  "default_config.parity: a serial port can't use 'X' as its parity; write N (none), E (even), O (odd), M (mark) or S (space)"
+ ],
+ "default_config_stopbits_null": [
+  "default_config.stopbits: a serial port can't use null as its stop bits; write 1, 1.5 or 2"
+ ],
  "device_setting_map_boolean_key_not_boolean": [
   "Device setting 'knob': map key 'maybe' is not a value a boolean setting takes; use \"true\" and \"false\""
  ],

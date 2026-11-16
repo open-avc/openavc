@@ -9,6 +9,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 
 import { TransportPicker } from "./TransportPicker";
 import { connectionFieldsFor, switchConnectionFields } from "./transportPickerHelpers";
+import { BUILTIN_CONFIG_KEYS } from "./configSchemaHelpers";
 import { useDriverBuilderStore } from "../../store/driverBuilderStore";
 import type { DriverDefinition } from "../../api/types";
 
@@ -90,5 +91,44 @@ describe("pickers over a driver's config fields", () => {
       default_config: { port: 23 },
     } as never);
     expect(options.map((o) => o.value)).toEqual(["mac_address"]);
+  });
+});
+
+describe("a serial driver's default line settings", () => {
+  const serial = (default_config: Record<string, unknown>) =>
+    ({
+      id: "acme_widget",
+      name: "Acme Widget",
+      transport: "serial",
+      delimiter: "\r",
+      default_config,
+      config_schema: connectionFieldsFor("serial"),
+      state_variables: {},
+      commands: {},
+      responses: [],
+    }) as unknown as DriverDefinition;
+
+  it("are the Connection tab's own, never Configuration Fields", () => {
+    for (const key of ["baudrate", "bytesize", "parity", "stopbits", "flow_control"]) {
+      expect(BUILTIN_CONFIG_KEYS.has(key)).toBe(true);
+    }
+  });
+
+  it("show a value written as a word, and a rate the list does not name", () => {
+    render(<TransportPicker draft={serial({ parity: "Even", baudrate: 14400 })} onUpdate={vi.fn()} />);
+    expect(screen.getByDisplayValue("Even")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("14400")).toBeInTheDocument();
+  });
+
+  it("are written as the value they read as, flow control included", () => {
+    const onUpdate = vi.fn();
+    render(<TransportPicker draft={serial({ parity: "N", stopbits: 1 })} onUpdate={onUpdate} />);
+    const picker = (label: string) => screen.getByText(label).parentElement!.querySelector("select")!;
+    fireEvent.change(picker("Default Parity"), { target: { value: "M" } });
+    expect(onUpdate.mock.calls.at(-1)![0].default_config.parity).toBe("M");
+    fireEvent.change(picker("Stop Bits"), { target: { value: "1.5" } });
+    expect(onUpdate.mock.calls.at(-1)![0].default_config.stopbits).toBe(1.5);
+    fireEvent.change(picker("Flow Control"), { target: { value: "software" } });
+    expect(onUpdate.mock.calls.at(-1)![0].default_config.flow_control).toBe("software");
   });
 });

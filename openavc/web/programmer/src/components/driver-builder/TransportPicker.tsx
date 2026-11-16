@@ -3,6 +3,8 @@ import type { DriverDefinition } from "../../api/types";
 import { INTERCHANGEABLE_TRANSPORTS } from "../../api/types";
 import { scrubForTransport } from "./validateDriver";
 import { KeyValueList } from "./KeyValueList";
+import { LineSettingSelect } from "../shared/LineSettingSelect";
+import { readLineSetting, type SerialLineKey } from "../shared/serialLine";
 import {
   displayDelimiter,
   normalizeDelimiter,
@@ -43,6 +45,15 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
     if (parsed === null) delete next[key];
     else next[key] = parsed;
     onUpdate({ default_config: next });
+  };
+
+  // A serial line setting picked from the contract's table, written as the
+  // value it reads as: a number for the numeric ones, the letter or word for
+  // parity and flow control.
+  const setLineSetting = (key: SerialLineKey, picked: string) => {
+    onUpdate({
+      default_config: { ...draft.default_config, [key]: readLineSetting(key, picked) ?? picked },
+    });
   };
 
   const numericValue = (key: string): number | "" =>
@@ -473,95 +484,49 @@ export function TransportPicker({ draft, onUpdate }: TransportPickerProps) {
         <>
           <div style={rowStyle}>
             <label style={labelStyle}>Default Baud Rate</label>
-            <select
-              value={
-                String(
-                  (draft.default_config.baudrate as number | undefined) ?? 9600
-                )
-              }
-              onChange={(e) =>
-                onUpdate({
-                  default_config: {
-                    ...draft.default_config,
-                    baudrate: parseInt(e.target.value),
-                  },
-                })
-              }
+            <LineSettingSelect
+              setting="baudrate"
+              written={draft.default_config.baudrate}
+              onChange={(value) => setLineSetting("baudrate", value)}
               style={{ width: 160 }}
-            >
-              {[1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map(
-                (r) => (
-                  <option key={r} value={String(r)}>
-                    {r}
-                  </option>
-                )
-              )}
-            </select>
+            />
           </div>
-          <div style={{ display: "flex", gap: "var(--space-lg)", ...rowStyle }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-lg)", ...rowStyle }}>
             <div>
               <label style={labelStyle}>Default Parity</label>
-              <select
-                value={
-                  (draft.default_config.parity as string | undefined) ?? "N"
-                }
-                onChange={(e) =>
-                  onUpdate({
-                    default_config: {
-                      ...draft.default_config,
-                      parity: e.target.value,
-                    },
-                  })
-                }
+              <LineSettingSelect
+                setting="parity"
+                written={draft.default_config.parity}
+                onChange={(value) => setLineSetting("parity", value)}
                 style={{ width: 120 }}
-              >
-                <option value="N">None</option>
-                <option value="E">Even</option>
-                <option value="O">Odd</option>
-              </select>
+              />
             </div>
             <div>
               <label style={labelStyle}>Data Bits</label>
-              <select
-                value={String(
-                  (draft.default_config.bytesize as number | undefined) ?? 8
-                )}
-                onChange={(e) =>
-                  onUpdate({
-                    default_config: {
-                      ...draft.default_config,
-                      bytesize: parseInt(e.target.value),
-                    },
-                  })
-                }
+              <LineSettingSelect
+                setting="bytesize"
+                written={draft.default_config.bytesize}
+                onChange={(value) => setLineSetting("bytesize", value)}
                 style={{ width: 100 }}
-              >
-                <option value="5">5</option>
-                <option value="6">6</option>
-                <option value="7">7</option>
-                <option value="8">8</option>
-              </select>
+              />
             </div>
             <div>
               <label style={labelStyle}>Stop Bits</label>
-              <select
-                value={String(
-                  (draft.default_config.stopbits as number | undefined) ?? 1
-                )}
-                onChange={(e) =>
-                  onUpdate({
-                    default_config: {
-                      ...draft.default_config,
-                      stopbits: parseFloat(e.target.value),
-                    },
-                  })
-                }
+              <LineSettingSelect
+                setting="stopbits"
+                written={draft.default_config.stopbits}
+                onChange={(value) => setLineSetting("stopbits", value)}
                 style={{ width: 100 }}
-              >
-                <option value="1">1</option>
-                <option value="1.5">1.5</option>
-                <option value="2">2</option>
-              </select>
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Flow Control</label>
+              <LineSettingSelect
+                setting="flow_control"
+                written={draft.default_config.flow_control}
+                onChange={(value) => setLineSetting("flow_control", value)}
+                style={{ width: 180 }}
+              />
             </div>
           </div>
           <div

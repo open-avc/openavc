@@ -10,6 +10,8 @@ import { normalizeOptionList } from "../../components/shared/paramOptions";
 import { buildConfigFromForm, configFieldKind, splitConnectionFields, CONNECTION_FIELDS, SERIAL_PICKER_FIELDS, IR_PICKER_FIELDS, prefillConfigValues, withConfigValue, type ConnectionMode } from "./deviceConfigCoerce";
 import { parseApiError } from "../../api/errors";
 import { booleanWord } from "../../components/shared/booleanWords";
+import { LineSettingSelect } from "../../components/shared/LineSettingSelect";
+import { SERIAL_LINE_SETTINGS, type SerialLineKey } from "../../api/types.gen";
 import { holdsTypedLogin, keepSavedLogins, SAVED_LOGIN, withoutSavedLogins } from "./deviceLogins";
 
 // --- Typed Config Fields ---
@@ -324,11 +326,6 @@ export function ConfigFieldInputs({
 // their connection UI is unchanged.
 
 const NETWORK_TRANSPORTS = ["tcp", "udp", "http", "osc"];
-const BAUD_RATES = ["1200", "2400", "4800", "9600", "19200", "38400", "57600", "115200"];
-const PARITY_OPTS: [string, string][] = [["N", "None"], ["E", "Even"], ["O", "Odd"]];
-const DATABITS_OPTS = ["5", "6", "7", "8"];
-const STOPBITS_OPTS = ["1", "1.5", "2"];
-const FLOW_OPTS: [string, string][] = [["none", "None"], ["hardware", "Hardware (RTS/CTS)"]];
 
 export function driverSerialCapable(d: DriverInfo | undefined): boolean {
   if (!d) return false;
@@ -442,13 +439,13 @@ function applyConnMode(
   return v;
 }
 
-const LINE_SETTINGS = ["baudrate", "bytesize", "parity", "stopbits", "flow_control"];
+const LINE_SETTINGS = Object.keys(SERIAL_LINE_SETTINGS) as SerialLineKey[];
 
 // A line setting the form holds no value for: the driver's own default, which
-// is what the device connects at when nothing is saved.
-function lineDefault(d: DriverInfo | undefined, key: string, fallback: string): string {
+// is what the device connects at when nothing is saved, else the table's.
+function lineDefault(d: DriverInfo | undefined, key: SerialLineKey): string {
   const dv = d?.default_config?.[key];
-  return dv != null && dv !== "" ? String(dv) : fallback;
+  return dv != null && dv !== "" ? String(dv) : String(SERIAL_LINE_SETTINGS[key].default);
 }
 
 // A saved line setting outranks the driver's default, so a form switched to
@@ -458,7 +455,7 @@ function lineDefault(d: DriverInfo | undefined, key: string, fallback: string): 
 function seedLineSettings(v: Record<string, string>, d: DriverInfo | undefined): void {
   for (const key of LINE_SETTINGS) {
     if (v[key] != null) continue;
-    if (key === "baudrate") v[key] = lineDefault(d, key, "9600");
+    if (key === "baudrate") v[key] = lineDefault(d, key);
     else if (d?.default_config?.[key] != null && d.default_config[key] !== "") v[key] = String(d.default_config[key]);
   }
 }
@@ -732,40 +729,25 @@ export function ConnectionModePicker({
     (driverInfo?.config_schema as Record<string, { required?: unknown }> | undefined)?.[key]
       ?.required === true;
 
+  const lineSelect = (key: SerialLineKey) =>
+    field(
+      SERIAL_LINE_SETTINGS[key].label,
+      <LineSettingSelect
+        setting={key}
+        written={configValues[key] ?? lineDefault(driverInfo, key)}
+        onChange={(value) => set(key, value)}
+        style={{ width: "100%" }}
+      />,
+    );
   const serialParams = (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-sm)" }}>
-        {field(
-          "Baud rate",
-          <select value={configValues.baudrate ?? lineDefault(driverInfo, "baudrate", "9600")} onChange={(e) => set("baudrate", e.target.value)} style={{ width: "100%" }}>
-            {BAUD_RATES.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>,
-        )}
-        {field(
-          "Parity",
-          <select value={configValues.parity ?? lineDefault(driverInfo, "parity", "N")} onChange={(e) => set("parity", e.target.value)} style={{ width: "100%" }}>
-            {PARITY_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>,
-        )}
-        {field(
-          "Data bits",
-          <select value={configValues.bytesize ?? lineDefault(driverInfo, "bytesize", "8")} onChange={(e) => set("bytesize", e.target.value)} style={{ width: "100%" }}>
-            {DATABITS_OPTS.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>,
-        )}
-        {field(
-          "Stop bits",
-          <select value={configValues.stopbits ?? lineDefault(driverInfo, "stopbits", "1")} onChange={(e) => set("stopbits", e.target.value)} style={{ width: "100%" }}>
-            {STOPBITS_OPTS.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>,
-        )}
+        {lineSelect("baudrate")}
+        {lineSelect("parity")}
+        {lineSelect("bytesize")}
+        {lineSelect("stopbits")}
       </div>
-      {field(
-        "Flow control",
-        <select value={configValues.flow_control ?? lineDefault(driverInfo, "flow_control", "none")} onChange={(e) => set("flow_control", e.target.value)} style={{ width: "100%" }}>
-          {FLOW_OPTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>,
-      )}
+      {lineSelect("flow_control")}
     </>
   );
 

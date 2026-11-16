@@ -273,6 +273,11 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
         "config_schema.host",
     ),
     (
+        "default_config.* (a serial line setting with no reading)",
+        _d(transport="serial", default_config={"port": "", "parity": "X"}),
+        "default_config.parity",
+    ),
+    (
         "a name that is not text, after a sibling the walk descended into",
         _d(state_variables={"power": {"type": "string", "label": "Power"},
                             1: {"type": "string", "label": "One"}}),

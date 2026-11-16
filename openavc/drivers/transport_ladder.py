@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import weakref
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -58,6 +59,7 @@ from openavc.core.connection_fault import (
     no_port_message,
     no_serial_port_message,
 )
+from openavc.drivers.serial_line import SERIAL_LINE_SETTINGS, read_line_setting
 from openavc.transport.frame_parsers import FrameParser
 from openavc.utils.logger import get_logger
 
@@ -151,65 +153,29 @@ def _delimiter_not_text(delimiter: object, from_driver: bool) -> str:
 
 
 # --- Serial line settings -----------------------------------------------------
-
-_BYTESIZES = (5, 6, 7, 8)
-_PARITIES = ("N", "E", "O", "M", "S")
-# pyserial wants ints for 1/2 and the float 1.5 for one-and-a-half.
-_STOPBITS: dict[float, int | float] = {1.0: 1, 2.0: 2, 1.5: 1.5}
-# The UI offers none / hardware (RTS/CTS); the software (XON/XOFF) spelling
-# is accepted too.
-_HARDWARE_FLOW = ("hardware", "rtscts", "rts/cts")
-_SOFTWARE_FLOW = ("software", "xonxoff", "xon/xoff")
-
-
-# The words for each line setting a serial port cannot use: the device form's
-# label (views/devices/DeviceDialogs.tsx) and what it may be.
-_SERIAL_SETTINGS = {
-    "baudrate": ("Baud rate", "a number, such as 9600"),
-    "bytesize": ("Data bits", "5, 6, 7 or 8"),
-    "parity": ("Parity", "N (none), E (even), O (odd), M (mark) or S (space)"),
-    "stopbits": ("Stop bits", "1, 1.5 or 2"),
-}
+# What each setting may be, and how each way of writing one reads, is the
+# driver contract's one table (serial_line.SERIAL_LINE_SETTINGS, read_line_setting):
+# the refusal names the setting as the device form does and says what it must
+# be in the table's words.
 
 
 def _serial_refused(key: str, value: object) -> ConnectionFaultError:
-    label, allowed = _SERIAL_SETTINGS[key]
+    setting = SERIAL_LINE_SETTINGS[key]
+    label = setting["label"]
     return _refused(
         f"This device's {label} setting is {value!r}, which a serial port "
-        f"can't use. {label} must be {allowed}. Set it in Edit Device."
+        f"can't use. {label} must be {setting['allowed']}. Set it in Edit Device."
     )
 
 
-def _serial_int(config: dict[str, Any], key: str, default: int) -> int:
-    try:
-        return int(config.get(key, default))
-    except (TypeError, ValueError):
-        raise _serial_refused(key, config.get(key)) from None
-
-
-def _serial_bytesize(config: dict[str, Any]) -> int:
-    bytesize = _serial_int(config, "bytesize", 8)
-    if bytesize not in _BYTESIZES:
-        raise _serial_refused("bytesize", config.get("bytesize"))
-    return bytesize
-
-
-def _serial_parity(config: dict[str, Any]) -> str:
-    parity = str(config.get("parity", "N")).upper()
-    if parity not in _PARITIES:
-        raise _serial_refused("parity", config.get("parity"))
-    return parity
-
-
-def _serial_stopbits(config: dict[str, Any]) -> int | float:
-    raw = config.get("stopbits", 1)
-    try:
-        as_float = float(raw)
-    except (TypeError, ValueError):
-        raise _serial_refused("stopbits", raw) from None
-    if as_float not in _STOPBITS:
-        raise _serial_refused("stopbits", raw)
-    return _STOPBITS[as_float]
+def _serial_setting(config: dict[str, Any], key: str) -> Any:
+    """The reading of one line setting, absent read as the table's default,
+    or the typed refusal naming it."""
+    raw = config.get(key, SERIAL_LINE_SETTINGS[key]["default"])
+    value = read_line_setting(key, raw)
+    if value is None:
+        raise _serial_refused(key, raw)
+    return value
 
 
 def _serial_port(config: dict[str, Any]) -> Any:
@@ -223,11 +189,36 @@ def _serial_port(config: dict[str, Any]) -> Any:
 
 
 def _serial_flow(config: dict[str, Any]) -> tuple[bool, bool]:
-    """``(rtscts, xonxoff)``. An unrecognised value is no flow control
-    rather than a refusal: a stray value should not make the device
-    unconnectable."""
-    flow = str(config.get("flow_control", "none")).strip().lower()
-    return flow in _HARDWARE_FLOW, flow in _SOFTWARE_FLOW
+    """``(rtscts, xonxoff)``. A value with no reading opens with no flow
+    control rather than refusing, so a device that connected before still
+    does (``_note_unread_flow`` says so); the author's doors refuse it in a
+    driver."""
+    flow = read_line_setting("flow_control", _flow_written(config))
+    return flow == "hardware", flow == "software"
+
+
+def _flow_written(config: dict[str, Any]) -> Any:
+    return config.get("flow_control", SERIAL_LINE_SETTINGS["flow_control"]["default"])
+
+
+# Each driver whose flow control has no reading, with the value the log last
+# named, so a device retrying its connection says so once, not every retry.
+_UNREAD_FLOW: weakref.WeakKeyDictionary[Any, Any] = weakref.WeakKeyDictionary()
+
+
+def _note_unread_flow(driver: TransportLadder) -> None:
+    """Log, once per driver and value, a flow control the port opens without."""
+    written = _flow_written(driver.config)
+    if read_line_setting("flow_control", written) is not None:
+        _UNREAD_FLOW.pop(driver, None)
+        return
+    if driver in _UNREAD_FLOW and _UNREAD_FLOW[driver] == written:
+        return
+    _UNREAD_FLOW[driver] = written
+    log.warning(
+        "[%s] %s It opens with no flow control.",
+        driver.device_id, _serial_refused("flow_control", written),
+    )
 
 
 def _set_or_none(config: dict[str, Any], key: str) -> Any:
@@ -300,6 +291,7 @@ async def _serial(driver: TransportLadder, asked: _Asked) -> dict[str, Any]:
     baudrate, bytesize, parity, stopbits, rtscts, xonxoff = (
         driver._coerce_serial_params(config)
     )
+    _note_unread_flow(driver)
     kwargs = dict(
         port=_serial_port(config),
         baudrate=baudrate,
@@ -696,21 +688,22 @@ class TransportLadder:
     def _coerce_serial_params(
         config: dict[str, Any],
     ) -> tuple[int, int, str, int | float, bool, bool]:
-        """Coerce + validate serial params from untyped project config.
+        """Read the serial line settings from untyped project config.
 
-        Project config is untyped JSON, so an integrator / AI tool / hand-edit
-        can store ``bytesize: "8"`` or ``stopbits: "1.5"`` as strings, or a
-        flat-out invalid value. pyserial does exact membership tests. Coerce
-        string forms to the right type and refuse a value no serial port can
-        use as ``invalid_config``, naming the setting as the device form does,
-        checked in the order returned.
+        Project config is untyped JSON, so an integrator, the AI or a
+        hand-edit can store ``bytesize: "8"``, ``parity: "Even"`` or a value
+        no port takes, and pyserial does exact membership tests. Each setting
+        is read by the contract's one table (``serial_line.read_line_setting``), and
+        one with no reading is refused as ``invalid_config``, naming the
+        setting as the device form does, checked in the order returned; flow
+        control falls back to none (``_serial_flow``).
 
         Returns ``(baudrate, bytesize, parity, stopbits, rtscts, xonxoff)``.
         """
-        baudrate = _serial_int(config, "baudrate", 9600)
-        bytesize = _serial_bytesize(config)
-        parity = _serial_parity(config)
-        stopbits = _serial_stopbits(config)
+        baudrate, bytesize, parity, stopbits = (
+            _serial_setting(config, key)
+            for key in ("baudrate", "bytesize", "parity", "stopbits")
+        )
         rtscts, xonxoff = _serial_flow(config)
         return baudrate, bytesize, parity, stopbits, rtscts, xonxoff
 

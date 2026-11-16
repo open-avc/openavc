@@ -3823,6 +3823,86 @@
   },
   "transport": "tcp"
  },
+ "default_config_baudrate_not_a_number": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "default_config": {
+   "baudrate": "fast",
+   "port": ""
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "serial"
+ },
+ "default_config_flow_control_unknown": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "default_config": {
+   "flow_control": "auto",
+   "port": ""
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "serial"
+ },
+ "default_config_parity_no_reading": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "default_config": {
+   "parity": "X",
+   "port": ""
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "serial"
+ },
+ "default_config_stopbits_null": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "default_config": {
+   "port": "",
+   "stopbits": null
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "serial"
+ },
  "device_setting_map_boolean_key_not_boolean": {
   "commands": {
    "noop": {

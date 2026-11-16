@@ -354,7 +354,9 @@ class SerialTransport:
             timeout: Connection timeout in seconds.
             inter_command_delay: Seconds to wait between sends.
             bytesize: Data bits (5, 6, 7, 8). Default 8.
-            parity: Parity ('N', 'E', 'O'). Default 'N'.
+            parity: Parity letter, as pyserial takes it (N, E, O, M or S).
+                Default 'N'. A device's config is read into these by the
+                driver contract's line-setting table (serial_line.read_line_setting).
             stopbits: Stop bits (1, 1.5, 2). Default 1.
             rtscts: Enable hardware (RTS/CTS) flow control. Default off.
             xonxoff: Enable software (XON/XOFF) flow control. Default off.

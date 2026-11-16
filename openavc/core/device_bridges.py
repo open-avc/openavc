@@ -25,6 +25,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
+from openavc.drivers.serial_line import with_line_settings_read
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -68,7 +69,10 @@ class DeviceBridgesMixin:
 
         The bridge driver instance owns the bridge's command socket; preparing
         the port (for serial, pushing baud/parity via the bridge protocol) makes
-        the transparent pass-through carry bytes at the right line settings. A
+        the transparent pass-through carry bytes at the right line settings.
+        The bridge is handed the line settings as the driver contract reads
+        them (``serial_line.with_line_settings_read``: ``Even`` arrives as ``E``), so
+        its own table says only what its hardware takes. A
         missing / not-yet-live bridge is logged and skipped — bridges are
         ordered ahead of their dependents on load, and serial config persists on
         the hardware, so a transient miss self-heals on the next add/edit. Never
@@ -86,7 +90,7 @@ class DeviceBridgesMixin:
             )
             return
         try:
-            await bridge.prepare_bridge_port(bridge_port, config)
+            await bridge.prepare_bridge_port(bridge_port, with_line_settings_read(config))
         except Exception:
             log.warning(
                 "Bridge '%s' failed to prepare port '%s' for device '%s' — "

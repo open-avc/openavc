@@ -199,6 +199,39 @@ async def test_the_upload_answers_with_a_child_s_fault_code(repo) -> None:
     assert (await _installed(repo))["acme_widget.avcdriver"]["load_notices"] == [CHILD_CLAIM]
 
 
+PARITY_X = (
+    "default_config.parity: a serial port can't use 'X' as its parity; write "
+    "N (none), E (even), O (odd), M (mark) or S (space)"
+)
+
+
+def _serial(**default_config: Any) -> bytes:
+    return _yaml(transport="serial", default_config={"port": "", **default_config})
+
+
+def test_the_loader_loads_a_line_setting_with_no_reading_and_names_it(repo) -> None:
+    path = repo / "acme_widget.avcdriver"
+    path.write_bytes(_serial(parity="X"))
+    read = driver_loader.read_driver_file(path)
+    assert read.definition is not None and read.reasons == ()
+    assert read.notices == (PARITY_X,)
+
+
+async def test_the_upload_answers_with_a_line_setting_with_no_reading(repo) -> None:
+    answer = await routes.upload_driver(_form("acme_widget.avcdriver", _serial(parity="X")))
+    assert answer["status"] == "uploaded" and registry.is_driver_registered(DRIVER_ID)
+    assert answer["notices"] == [PARITY_X]
+
+
+def test_line_settings_written_as_words_are_no_notice(repo) -> None:
+    path = repo / "acme_widget.avcdriver"
+    path.write_bytes(
+        _serial(parity="Even", stopbits="1", baudrate="19200", flow_control="RTS/CTS")
+    )
+    read = driver_loader.read_driver_file(path)
+    assert read.definition is not None and read.reasons == () and read.notices == ()
+
+
 async def test_a_clean_upload_answers_with_no_notices(repo) -> None:
     answer = await routes.upload_driver(_form("acme_widget.avcdriver", _yaml()))
     assert answer["notices"] == []
