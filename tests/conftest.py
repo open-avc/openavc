@@ -135,6 +135,28 @@ def pytest_collection_modifyitems(config, items):
         item.add_marker(pytest.mark.xdist_group(module.__name__))
 
 
+#: pytest writes each test's id into the PYTEST_CURRENT_TEST environment
+#: variable as "<id> (teardown)", and Windows refuses a variable longer than
+#: 32767 characters: the test errors at setup and teardown there and nowhere
+#: else. Held here so a long generated id fails on every platform, with room
+#: for the "@<module>" group name a parallel run appends after collection.
+_MAX_TEST_ID = 32767 - len("PYTEST_CURRENT_TEST=") - len(" (teardown)") - 256
+
+
+def pytest_itemcollected(item):
+    if len(item.nodeid) > _MAX_TEST_ID:
+        item.fixturenames.insert(0, "_test_id_too_long_for_windows")
+
+
+@pytest.fixture
+def _test_id_too_long_for_windows(request):
+    pytest.fail(
+        f"This test's id is {len(request.node.nodeid)} characters, too long for "
+        "Windows to run it: give its parametrize short ids=.",
+        pytrace=False,
+    )
+
+
 def pytest_terminal_summary(terminalreporter):
     note = e2e_availability_note()
     if note:

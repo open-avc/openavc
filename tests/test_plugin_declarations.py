@@ -586,7 +586,7 @@ _NAME_CHAIN = (
 @pytest.mark.parametrize("text, errors", [
     ("x = " + "-" * 100000 + "1\n", ("MemoryError", "RecursionError")),
     (_NAME_CHAIN, ("RecursionError",)),
-])
+], ids=["deep_expression", "long_name_chain"])
 def test_a_source_too_deep_to_read_is_passed_over_rather_than_raising(tmp_path, text, errors):
     from openavc.core.plugin_source import read_folder
 
