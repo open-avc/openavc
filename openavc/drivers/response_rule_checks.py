@@ -15,6 +15,9 @@ with the poll's) and whether a paged query can place the list a
 ``child_list:`` rule fills, both in ``query_entry_checks``, and the
 placeholders in its ``match:``, in ``substitution_checks``.
 
+Whether the state variables a rule writes and gates on are declared is
+``reply_name_checks``', which only the author's doors refuse on.
+
 A rule's ``child_set:`` is one check for all three forms. What an entry's id
 and its values may be depends on what the form has to route on (a capture, an
 address segment, a JSON path), so each form is a ``_Routes`` subclass that

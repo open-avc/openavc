@@ -8909,6 +8909,33 @@
   },
   "transport": "tcp"
  },
+ "response_mappings_target_undeclared": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "mappings": [
+     {
+      "group": 1,
+      "state": "source"
+     }
+    ],
+    "match": "IN=(\\w+)"
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "response_missing_pattern": {
   "commands": {
    "noop": {
@@ -8942,6 +8969,68 @@
   "name": "Acme Widget",
   "responses": [
    "PWR=1"
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "response_only_when_group_key_undeclared": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "PWR=(\\w+)",
+    "only_when": {
+     "any": [
+      {
+       "key": "var.room_mode"
+      },
+      {
+       "key": "zone_count"
+      }
+     ]
+    },
+    "set": {
+     "power": "$1"
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "response_only_when_key_undeclared": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "PWR=(\\w+)",
+    "only_when": {
+     "key": "mode",
+     "value": "1"
+    },
+    "set": {
+     "power": "$1"
+    }
+   }
   ],
   "state_variables": {
    "power": {
@@ -9105,6 +9194,30 @@
     "require": 5,
     "set": {
      "power": "$.p"
+    }
+   }
+  ],
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "response_set_target_undeclared": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "responses": [
+   {
+    "match": "PWR=(\\w+)",
+    "set": {
+     "powr": "$1"
     }
    }
   ],

@@ -3,7 +3,8 @@
 Every cross-field rule that decides whether a driver definition is valid
 is reached through this module: ``validate_driver_definition`` walks the
 definition section by section and asks a check module about each command
-(``command_checks``), response rule (``response_rule_checks``), query entry
+(``command_checks``), response rule (``response_rule_checks``, and the
+state variables it names, ``reply_name_checks``), query entry
 (``query_entry_checks``), child type and the references into it
 (``child_type_checks``), state variable (``state_variable_checks``), device
 setting and learned config field (``setting_checks``), the push block
@@ -88,6 +89,7 @@ from openavc.drivers.query_entry_checks import (
     QueryEntries,
     then_query_errors,
 )
+from openavc.drivers.reply_name_checks import undeclared_name_errors
 from openavc.drivers.response_rule_checks import response_rule_errors
 from openavc.drivers.routing_checks import (
     routing_block_errors as routing_block_errors,
@@ -356,14 +358,15 @@ def check_driver_definition(
 
     Two kinds of refusal come out. The definition walk's refuse at every
     door, as they always have. The author's-door refusals (the shape walk's,
-    then a key the contract does not declare, then the platform release the
-    driver's fields need) refuse only in ``strict`` mode, the shape walk's
-    first. At a door that loads a driver the shape walk's are ``notices``, so
-    a driver that loaded before still loads and the door can say what is
-    wrong with it; the other two are not asked there (the loader logs an
-    undeclared key, ``unknown_key_errors`` says why: a correct driver written
-    for a newer platform carries keys this one does not know). Every refusal
-    the author's doors add later is a notice at load.
+    then the definition walk's own, ``_DefinitionWalk.authored``, then a key
+    the contract does not declare, then the platform release the driver's
+    fields need) refuse only in ``strict`` mode, the shape walk's first and
+    the rest after the definition walk's. At a door that loads a driver the
+    first two are ``notices``, so a driver that loaded before still loads and
+    the door can say what is wrong with it; the other two are not asked there
+    (the loader logs an undeclared key, ``unknown_key_errors`` says why: a
+    correct driver written for a newer platform carries keys this one does
+    not know). Every refusal the author's doors add later is a notice at load.
     """
     # A file can parse to something other than a mapping. It is reported, not
     # raised on, so one bad file never stops the others loading.
@@ -373,17 +376,25 @@ def check_driver_definition(
     walk = _DefinitionWalk(driver_def)
     for part, section in walk.parts(discovery_validator):
         _guarded(walk.errors, part, section)
+    for part, section in walk.authors_parts():
+        _guarded(walk.authored, part, section)
     shapes = _TaggedErrors()
     _guarded(shapes, partial(_shape_gaps, shapes, driver_def, walk.errors), "")
     if not strict:
-        return DefinitionVerdict(walk.errors, shapes)
+        return DefinitionVerdict(walk.errors, _joined(shapes, walk.authored))
     undeclared = _TaggedErrors()
     _guarded(undeclared, partial(_undeclared, undeclared, driver_def), "")
-    errors = _TaggedErrors()
-    errors.extend(shapes)
-    errors.extend(walk.errors)
-    errors.extend(undeclared)
-    return DefinitionVerdict(errors, _TaggedErrors())
+    return DefinitionVerdict(
+        _joined(shapes, walk.errors, walk.authored, undeclared), _TaggedErrors()
+    )
+
+
+def _joined(*parts: _TaggedErrors) -> _TaggedErrors:
+    """The messages of each list in turn, each keeping its place."""
+    joined = _TaggedErrors()
+    for part in parts:
+        joined.extend(part)
+    return joined
 
 
 def _shape_gaps(errors: _TaggedErrors, driver_def: dict[str, Any], said: _TaggedErrors) -> None:
@@ -446,12 +457,30 @@ class _DefinitionWalk:
     whether a section of another shape is refused is written where the
     section is checked, and the shape walk (``check_driver_definition``)
     names any it leaves unsaid.
+
+    A rule only the author's doors refuse is a part of its own
+    (``authors_parts``), saying what it finds into ``authored``, which a door
+    loading the driver reports as notices.
     """
 
     def __init__(self, driver_def: dict[str, Any]) -> None:
         self.driver_def = driver_def
         self.errors = _TaggedErrors()
+        self.authored = _TaggedErrors()
         self.declared = DeclaredSections(driver_def)
+
+    def authors_parts(self) -> list[tuple[Callable[[], None], str]]:
+        """The parts only the author's doors refuse on, in the order they
+        report, each with the section it is tagged with until it says where."""
+        return [(self.rule_names, "responses")]
+
+    def rule_names(self) -> None:
+        """The state variables each response rule writes and gates on, read
+        against those the driver declares (reply_name_checks)."""
+        errors = self.authored
+        for i, rule in enumerate(self.declared.responses):
+            errors.ctx = f"responses[{i}]"
+            errors.extend(undeclared_name_errors(i, rule, self.declared))
 
     def parts(
         self,

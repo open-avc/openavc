@@ -918,11 +918,20 @@
   "Response 0: missing match or address",
   "responses[0]: unknown key 'pattern'"
  ],
+ "response_mappings_target_undeclared": [
+  "Response 0: mappings[0] writes 'source', a state variable this driver does not declare; declare it under state_variables"
+ ],
  "response_missing_pattern": [
   "Response 0: missing match or address"
  ],
  "response_not_mapping": [
   "Response 0: must be a mapping"
+ ],
+ "response_only_when_group_key_undeclared": [
+  "Response 0: only_when.any[1] key 'zone_count' is not a state variable this driver declares; declare it under state_variables, or write a full state key such as var.<name> or device.$id.<name>"
+ ],
+ "response_only_when_key_undeclared": [
+  "Response 0: only_when key 'mode' is not a state variable this driver declares; declare it under state_variables, or write a full state key such as var.<name> or device.$id.<name>"
  ],
  "response_osc_address_no_slash": [
   "Response 0: OSC address must start with '/'"
@@ -944,6 +953,9 @@
  ],
  "response_require_wrong_type": [
   "Response 0: require must be a JSON key name or a list of them"
+ ],
+ "response_set_target_undeclared": [
+  "Response 0: set 'powr' writes a state variable this driver does not declare (did you mean 'power'?); declare it under state_variables"
  ],
  "response_set_value_is_list": [
   "Response 0: set.power must be a capture reference like \"$1\" or a static value; move a value map into mappings:"

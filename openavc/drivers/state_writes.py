@@ -34,6 +34,7 @@ from typing import Any
 
 from openavc.core.state_store import StateStore, is_flat_primitive
 from openavc.drivers.contract_events import TYPE_MISMATCH, UNDECLARED_STATE
+from openavc.drivers.spec import PLATFORM_STATE_PROPS
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the driver runtime's name, which the
@@ -210,7 +211,8 @@ class StateWrites:
     # the driver declares, so an author is never asked to declare them.
     # `connected` is seeded by _init_state_variables() and thereafter owned by
     # the DeviceManager; a driver that also declares it is fine either way.
-    _PLATFORM_STATE_PROPS: frozenset[str] = frozenset({"connected"})
+    # The contract's list, so the checker passes a reply rule writing one.
+    _PLATFORM_STATE_PROPS: frozenset[str] = PLATFORM_STATE_PROPS
 
     def set_state(self, property_name: str, value: Any) -> None:
         """Set a state value under this device's namespace.

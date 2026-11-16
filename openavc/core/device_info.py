@@ -30,6 +30,10 @@ from openavc.core.device_errors import DeviceNotFoundError
 from openavc.core.device_logins import SAVED_LOGIN, login_fields, marked_fields
 from openavc.core.installed_equipment import is_product_hardware_id, missing_driver_reason
 from openavc.drivers.refused_files import refusal_for
+# The device.<id>.<key> keys the device manager writes for every device: the
+# driver contract's list, where a reply rule's gate reads it too. The AI's
+# property check and the device audit import it from here.
+from openavc.drivers.spec import PLATFORM_DEVICE_KEYS as PLATFORM_DEVICE_KEYS
 from openavc.utils.log_redaction import redact_config
 
 if TYPE_CHECKING:
@@ -44,20 +48,6 @@ if TYPE_CHECKING:
 # flows to the cloud AI (cloud/tools/device_tools.py::_get_device_info): a
 # missing driver must not turn a simple get_device_info into a credential dump.
 _redact_config = redact_config
-
-
-#: The ``device.<id>.<key>`` keys the device manager writes for every device:
-#: its name and switches, whether it is connected, why it is away, its pause,
-#: sleep and restart, its reconnect count, its web page. No driver declares
-#: them. The AI's property check and the device audit both read this; a new key
-#: the manager writes is added here, and tests/test_platform_device_keys.py
-#: fails until it is.
-PLATFORM_DEVICE_KEYS = frozenset({
-    "name", "enabled", "connected", "offline_reason", "offline_detail",
-    "paused", "paused_for", "restarting", "asleep", "wake_command",
-    "orphaned", "orphan_reason", "reconnect_attempt", "reconnect_failed",
-    "web_ui_url",
-})
 
 
 # What every listing gives each device, live or not.

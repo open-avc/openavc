@@ -220,6 +220,20 @@ CASES: dict[str, Any] = {
         match="OK", set={"power": "$1"}, after_json=True
     ),
     "response_osc_address_no_slash": _d(transport="osc", responses=[{"address": "zone"}]),
+    # A rule writes, and gates on, state variables the driver declares; a
+    # name it does not declare is refused where a driver is written.
+    "response_set_target_undeclared": _resp(match=r"PWR=(\w+)", set={"powr": "$1"}),
+    "response_mappings_target_undeclared": _resp(
+        match=r"IN=(\w+)", mappings=[{"group": 1, "state": "source"}]
+    ),
+    "response_only_when_key_undeclared": _resp(
+        match=r"PWR=(\w+)", set={"power": "$1"}, only_when={"key": "mode", "value": "1"}
+    ),
+    "response_only_when_group_key_undeclared": _resp(
+        match=r"PWR=(\w+)",
+        set={"power": "$1"},
+        only_when={"any": [{"key": "var.room_mode"}, {"key": "zone_count"}]},
+    ),
     "response_json_child_set_entry_not_mapping": _resp(
         json=True, set={"power": "$.p"}, child_set=["zone"]
     ),
@@ -1090,7 +1104,7 @@ def test_no_message_the_contract_check_can_emit_carries_an_em_dash():
             "liveness_checks.py",
             "param_aid_checks.py",
             "push_block_checks.py",
-            "query_entry_checks.py", "response_rule_checks.py",
+            "query_entry_checks.py", "reply_name_checks.py", "response_rule_checks.py",
             "routing_checks.py", "setting_checks.py",
             "sign_in_checks.py", "state_variable_checks.py", "substitution_checks.py",
             "python_info.py",

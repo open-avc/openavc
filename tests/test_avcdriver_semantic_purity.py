@@ -5,7 +5,7 @@ check modules it imports (``action_checks``, ``command_checks``, ``condition_che
 ``child_type_checks``, ``conversion_checks``, ``declared_names``, ``driver_warnings``, ``framing_checks``,
 ``liveness_checks``,
 ``param_aid_checks``, ``push_block_checks``, ``query_entry_checks``,
-``response_rule_checks``, ``routing_checks``, ``setting_checks``,
+``reply_name_checks``, ``response_rule_checks``, ``routing_checks``, ``setting_checks``,
 ``sign_in_checks``, ``state_variable_checks``, ``substitution_checks``),
 ``openavc/drivers/child_ids.py`` and ``openavc/drivers/python_info.py`` are shared beyond the server runtime (the
 community driver catalog runs the same rules in its CI, in a job that installs
@@ -41,6 +41,7 @@ ALLOWED = {
     "openavc.drivers.platform_floor_checks",
     "openavc.drivers.push_block_checks",
     "openavc.drivers.query_entry_checks",
+    "openavc.drivers.reply_name_checks",
     "openavc.drivers.response_rule_checks",
     "openavc.drivers.routing_checks",
     "openavc.drivers.setting_checks",

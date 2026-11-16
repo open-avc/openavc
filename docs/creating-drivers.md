@@ -1443,7 +1443,7 @@ The shorthand `set` format is recommended (cleaner, matches community driver con
 ```
 
 - `match`: A regular expression. Use capture groups `()` to extract values.
-- `set`: Maps capture groups to state variables. `"$1"` refers to the first capture group, `"$2"` to the second, etc. Literal strings without `$` set a static value. A literal `null` leaves the variable empty, the same as a device that has nothing to report (platform 0.37.0+).
+- `set`: Maps capture groups to state variables declared under `state_variables`. `"$1"` refers to the first capture group, `"$2"` to the second, etc. Literal strings without `$` set a static value. A literal `null` leaves the variable empty, the same as a device that has nothing to report (platform 0.37.0+).
 
 A `set:` value on a `match:` rule is always one of those two — a capture reference or a static. It is **not** the place for a value map, even though the `{ group, map }` shape is what you write inside `child_set:` and on a `json: true` rule. Put a value map on a `match:` rule in the verbose `mappings:` list below; writing one under `set:` is rejected when the driver is validated.
 
@@ -1456,7 +1456,7 @@ A `set:` value on a `match:` rule is always one of those two — a capture refer
 ```
 
 - `mappings[].group`: Which regex capture group (1-based).
-- `mappings[].state`: Which state variable to update.
+- `mappings[].state`: Which state variable to update, one declared under `state_variables`.
 - `mappings[].type` (optional): How to convert the captured text: `string`, `integer`, `float`, `boolean`. Leave it out and the state variable's own declared type is used, which is normally what you want.
 - `mappings[].map` (optional): A lookup table. If the captured value is a key in this object, the mapped value is used instead. The mapped value is then converted with `type` just like an unmapped capture, so the stored state matches its declared type regardless of transport. A mapped value of `null` leaves the variable empty instead, whatever its type, so a device's "no reading" code can map straight to empty: `map: { "--": null }` (platform 0.37.0+). The same holds for a `map:` or a literal in `child_set:` and `child_list:`, on a `json: true` rule and on an OSC rule.
 
@@ -1494,7 +1494,7 @@ A response entry may declare `only_when:` to gate the whole rule on a state cond
     - { type: output, id: "$1", state: { audio_input: "$2" } }
 ```
 
-A bare `key` is one of this driver's own state variables. Write a full state key (`device.$id.…`, `var.…`) to read anything else; `$id` expands to the device's own id, the same as in an action's `visible_when`. The operators are `visible_when`'s, and a `{ any: [...] }` / `{ all: [...] }` group works the same way.
+A bare `key` is one of this driver's own state variables, or a key the platform keeps for every device such as `connected`. Write a full state key (`device.$id.…`, `var.…`) to read anything else; `$id` expands to the device's own id, the same as in an action's `visible_when`. The operators are `visible_when`'s, and a `{ any: [...] }` / `{ all: [...] }` group works the same way.
 
 The condition is checked when the frame arrives, so **the value it reads has to be one this driver keeps current** — poll the mode, or parse it from the same status dump. A mode read once at connect leaves the gate stuck wherever it was.
 
@@ -4026,6 +4026,14 @@ my_driver.avcdriver: error: version: must be a string; put it in quotes
 ```
 
 The second is the YAML trap: `version: 1.0` is a number until it is quoted.
+
+A response rule writes, and gates its `only_when:` on, the state variables the
+driver declares, so a misspelled name is caught here rather than on the device:
+
+```
+my_driver.avcdriver: error: Response 2: set 'powr' writes a state variable this driver does not declare (did you mean 'power'?); declare it under state_variables
+```
+
 The same checks run in the Driver Builder's Validate and save and in the
 community catalog. A driver already installed that has one of these mistakes
 keeps loading: its entry on the Installed list, and the answer to an upload,
