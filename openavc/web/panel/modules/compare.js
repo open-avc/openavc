@@ -68,28 +68,44 @@ function booleanOf(value) {
     return number === null ? null : number !== 0;
 }
 
-/** Whether two values, neither of them missing, are equal under the rule. */
-function same(actual, target) {
-    if (typeof actual === 'boolean' || typeof target === 'boolean') {
-        const a = booleanOf(actual);
-        const t = booleanOf(target);
-        if (a !== null && t !== null) return a === t;
-    }
-    if (typeof actual !== typeof target) {
-        const a = numberOf(actual);
-        const t = numberOf(target);
-        if (a !== null && t !== null) return a === t;
-    }
-    return typeof actual === 'string' && typeof target === 'string'
-        ? actual.toLowerCase() === target.toLowerCase()
-        : actual === target;
+/** Both sides read by `reader`, or null when either reads as nothing. */
+function bothAs(reader, actual, target) {
+    const pair = [reader(actual), reader(target)];
+    return pair.includes(null) ? null : pair;
 }
 
-function ordered(op, a, t) {
-    if (op === 'gt') return a > t;
-    if (op === 'lt') return a < t;
-    if (op === 'gte') return a >= t;
-    return a <= t;
+/** Whether two values, neither of them missing, are equal under the rule:
+ *  as booleans when one side is one, else as numbers when the types differ,
+ *  else as words apart from case. */
+function same(actual, target) {
+    const asBooleans = (typeof actual === 'boolean' || typeof target === 'boolean')
+        && bothAs(booleanOf, actual, target);
+    if (asBooleans) return asBooleans[0] === asBooleans[1];
+    const asNumbers = typeof actual !== typeof target && bothAs(numberOf, actual, target);
+    if (asNumbers) return asNumbers[0] === asNumbers[1];
+    const asWords = typeof actual === 'string' && typeof target === 'string';
+    return asWords ? actual.toLowerCase() === target.toLowerCase() : actual === target;
+}
+
+/** The orderings, each as the comparison it makes. */
+const ORDERINGS = new Map([
+    ['gt', (a, t) => a > t], ['lt', (a, t) => a < t], ['gte', (a, t) => a >= t], ['lte', (a, t) => a <= t],
+]);
+
+/** `eq` or `ne`: never equal, and not-equal only in the surface mode, while
+ *  the reading has not arrived; never either against an authored null. */
+function equality(op, actual, target, mode) {
+    if (notArrived(target)) return false;
+    if (notArrived(actual)) return op === 'ne' && MODES.get(mode) === true;
+    return same(actual, target) === (op === 'eq');
+}
+
+/** An ordering: as numbers when both read as one, else two words as text. */
+function ordering(order, actual, target) {
+    if (notArrived(actual) || notArrived(target)) return false;
+    const numbers = bothAs(numberOf, actual, target);
+    if (numbers) return order(numbers[0], numbers[1]);
+    return typeof actual === 'string' && typeof target === 'string' && order(actual, target);
 }
 
 /** Python's bool() over a reading: only null, false, 0 and '' are false. */
@@ -104,22 +120,10 @@ function truthy(value) {
  */
 export function evalOperator(op, actual, target, mode = SURFACE) {
     const canonical = OPERATOR_SPELLINGS.get(op);
-    if (canonical === 'eq' || canonical === 'ne') {
-        if (notArrived(target)) return false;
-        if (notArrived(actual)) return canonical === 'ne' && MODES.get(mode) === true;
-        return canonical === 'eq' ? same(actual, target) : !same(actual, target);
-    }
-    if (canonical === 'gt' || canonical === 'lt' || canonical === 'gte' || canonical === 'lte') {
-        if (notArrived(actual) || notArrived(target)) return false;
-        const a = numberOf(actual);
-        const t = numberOf(target);
-        if (a !== null && t !== null) return ordered(canonical, a, t);
-        if (typeof actual === 'string' && typeof target === 'string') return ordered(canonical, actual, target);
-        return false;
-    }
+    if (canonical === 'eq' || canonical === 'ne') return equality(canonical, actual, target, mode);
+    if (ORDERINGS.has(canonical)) return ordering(ORDERINGS.get(canonical), actual, target);
     if (canonical === 'truthy') return truthy(actual);
-    if (canonical === 'falsy') return !truthy(actual);
-    return false;
+    return canonical === 'falsy' && !truthy(actual);
 }
 
 /** Whether a reading equals an authored value; never while it has not arrived. */

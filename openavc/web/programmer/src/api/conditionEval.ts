@@ -92,25 +92,52 @@ function pythonTruthy(value: unknown): boolean {
   return true;
 }
 
-function compare<T extends number | string>(op: string, a: T, t: T): boolean {
-  if (op === "gt") return a > t;
-  if (op === "lt") return a < t;
-  if (op === "gte") return a >= t;
-  return a <= t;
+type Order = <T extends number | string>(a: T, t: T) => boolean;
+const ORDERINGS: Record<string, Order> = {
+  gt: (a, t) => a > t,
+  lt: (a, t) => a < t,
+  gte: (a, t) => a >= t,
+  lte: (a, t) => a <= t,
+};
+
+/** `eq` or `ne`: never equal, and not-equal only in the surface mode, while
+ *  the reading has not arrived; never either against an authored null. */
+function equality(op: string, actual: unknown, target: unknown, mode: ConditionMode): boolean {
+  if (target == null) return false;
+  if (actual == null) return op === "ne" && MODES[mode];
+  return same(actual, target) === (op === "eq");
 }
 
-/** Whether two values, neither of them missing, are equal under the rule. */
+/** An ordering: as numbers when both read as one, else two words as text. */
+function ordering(order: Order, actual: unknown, target: unknown): boolean {
+  if (actual == null || target == null) return false;
+  const a = coerceNumeric(actual);
+  const t = coerceNumeric(target);
+  if (a !== null && t !== null) return order(a, t);
+  return typeof actual === "string" && typeof target === "string" && order(actual, target);
+}
+
+/** Equal as booleans when one side is a boolean and both read as one; else null. */
+function booleansEqual(actual: unknown, target: unknown): boolean | null {
+  if (typeof actual !== "boolean" && typeof target !== "boolean") return null;
+  const a = asBool(actual);
+  const t = asBool(target);
+  return a === null || t === null ? null : a === t;
+}
+
+/** Equal as numbers when the types differ and both read as one; else null. */
+function numbersEqual(actual: unknown, target: unknown): boolean | null {
+  if (typeof actual === typeof target) return null;
+  const a = coerceNumeric(actual);
+  const t = coerceNumeric(target);
+  return a === null || t === null ? null : a === t;
+}
+
+/** Whether two values, neither of them missing, are equal under the rule:
+ *  as booleans, else as numbers, else as words apart from case. */
 function same(actual: unknown, target: unknown): boolean {
-  if (typeof actual === "boolean" || typeof target === "boolean") {
-    const a = asBool(actual);
-    const t = asBool(target);
-    if (a !== null && t !== null) return a === t;
-  }
-  if (typeof actual !== typeof target) {
-    const a = coerceNumeric(actual);
-    const t = coerceNumeric(target);
-    if (a !== null && t !== null) return a === t;
-  }
+  const answer = booleansEqual(actual, target) ?? numbersEqual(actual, target);
+  if (answer !== null) return answer;
   return typeof actual === "string" && typeof target === "string"
     ? actual.toLowerCase() === target.toLowerCase()
     : actual === target;
@@ -123,24 +150,8 @@ export function evalOperator(
   op: string, actual: unknown, target: unknown, mode: ConditionMode = DECIDE,
 ): boolean {
   const canonical = canonicalOperator(op);
-
-  if (canonical === "eq" || canonical === "ne") {
-    if (target == null) return false;
-    if (actual == null) return canonical === "ne" && MODES[mode];
-    return canonical === "eq" ? same(actual, target) : !same(actual, target);
-  }
-
-  if (canonical === "gt" || canonical === "lt" || canonical === "gte" || canonical === "lte") {
-    if (actual == null || target == null) return false;
-    const a = coerceNumeric(actual);
-    const t = coerceNumeric(target);
-    if (a !== null && t !== null) return compare(canonical, a, t);
-    if (typeof actual === "string" && typeof target === "string") {
-      return compare(canonical, actual, target);
-    }
-    return false;
-  }
-
+  if (canonical === "eq" || canonical === "ne") return equality(canonical, actual, target, mode);
+  if (canonical in ORDERINGS) return ordering(ORDERINGS[canonical], actual, target);
   if (canonical === "truthy") return pythonTruthy(actual);
   if (canonical === "falsy") return !pythonTruthy(actual);
   throw new Error(

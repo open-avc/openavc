@@ -29,7 +29,8 @@ copies and the corpus in the same commit.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+import operator
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from openavc.core.monitors import as_number
@@ -132,26 +133,9 @@ def eval_operator(op: str, actual: Any, target: Any, mode: str = DECIDE) -> bool
     op = _OPERATOR_ALIASES.get(op, op)
 
     if op in ("eq", "ne"):
-        # An authored None compares with nothing (the falsy operator is the
-        # one for an unset value); a reading that has not arrived is never
-        # equal, and not-equal only to a reader that shows or hides.
-        if target is None:
-            return False
-        if actual is None:
-            return op == "ne" and MODES[mode]
-        return _same(actual, target) if op == "eq" else not _same(actual, target)
-
-    if op in ("gt", "lt", "gte", "lte"):
-        if actual is None or target is None:
-            return False
-        a_num = _coerce_numeric(actual)
-        t_num = _coerce_numeric(target)
-        if a_num is not None and t_num is not None:
-            return _ordered(op, a_num, t_num)
-        if isinstance(actual, str) and isinstance(target, str):
-            return _ordered(op, actual, target)
-        return False
-
+        return _equality(op, actual, target, mode)
+    if op in _ORDERINGS:
+        return _ordering(_ORDERINGS[op], actual, target)
     if op == "truthy":
         return bool(actual)
     if op == "falsy":
@@ -162,32 +146,65 @@ def eval_operator(op: str, actual: Any, target: Any, mode: str = DECIDE) -> bool
     )
 
 
-def _ordered(op: str, a: Any, t: Any) -> bool:
-    if op == "gt":
-        return a > t
-    if op == "lt":
-        return a < t
-    if op == "gte":
-        return a >= t
-    return a <= t
+_ORDERINGS: dict[str, Callable[[Any, Any], bool]] = {
+    "gt": operator.gt, "lt": operator.lt, "gte": operator.ge, "lte": operator.le,
+}
 
 
-def _same(actual: Any, target: Any) -> bool:
-    """Whether two values, neither of them None, are equal under the rule."""
-    if isinstance(actual, bool) or isinstance(target, bool):
-        a_bool, t_bool = _as_bool(actual), _as_bool(target)
-        if a_bool is not None and t_bool is not None:
-            return a_bool == t_bool
-    if type(actual) is not type(target):
-        a_num, t_num = _coerce_numeric(actual), _coerce_numeric(target)
-        if a_num is not None and t_num is not None:
-            return a_num == t_num
-    # Words compare apart from case, so `power == "On"` matches a device
-    # reporting "on" (device casing varies by vendor). Distinct tokens stay
-    # distinct: "on" and "true" are not made equivalent here.
+def _equality(op: str, actual: Any, target: Any, mode: str) -> bool:
+    """``eq`` or ``ne``. An authored None compares with nothing (the falsy
+    operator is the one for an unset value); a reading that has not arrived
+    is never equal, and not-equal only to a reader that shows or hides."""
+    if target is None:
+        return False
+    if actual is None:
+        return op == "ne" and MODES[mode]
+    return _same(actual, target) == (op == "eq")
+
+
+def _ordering(compare: Callable[[Any, Any], bool], actual: Any, target: Any) -> bool:
+    """An ordering: as numbers when both read as one, else two words as text."""
+    if actual is None or target is None:
+        return False
+    a_num, t_num = _coerce_numeric(actual), _coerce_numeric(target)
+    if a_num is not None and t_num is not None:
+        return compare(a_num, t_num)
+    return isinstance(actual, str) and isinstance(target, str) and compare(actual, target)
+
+
+def _booleans_equal(actual: Any, target: Any) -> bool | None:
+    """Equal as booleans, when one side is a boolean and both read as one; else None."""
+    if not (isinstance(actual, bool) or isinstance(target, bool)):
+        return None
+    a_bool, t_bool = _as_bool(actual), _as_bool(target)
+    return None if a_bool is None or t_bool is None else a_bool == t_bool
+
+
+def _numbers_equal(actual: Any, target: Any) -> bool | None:
+    """Equal as numbers, when the types differ and both read as one; else None."""
+    if type(actual) is type(target):
+        return None
+    a_num, t_num = _coerce_numeric(actual), _coerce_numeric(target)
+    return None if a_num is None or t_num is None else a_num == t_num
+
+
+def _words_equal(actual: Any, target: Any) -> bool:
+    """Words apart from case, so `power == "On"` matches a device reporting
+    "on" (device casing varies by vendor); anything else as given. Distinct
+    tokens stay distinct: "on" and "true" are not made equivalent here."""
     if isinstance(actual, str) and isinstance(target, str):
         return actual.casefold() == target.casefold()
     return bool(actual == target)
+
+
+def _same(actual: Any, target: Any) -> bool:
+    """Whether two values, neither of them None, are equal under the rule:
+    as booleans, else as numbers, else as words."""
+    for reading in (_booleans_equal, _numbers_equal):
+        answer = reading(actual, target)
+        if answer is not None:
+            return answer
+    return _words_equal(actual, target)
 
 
 def same_value(actual: Any, target: Any) -> bool:
