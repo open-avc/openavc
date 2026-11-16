@@ -28,6 +28,7 @@ from openavc.core.device_logins import (
     FoundView,
     StoreView,
     device_logins,
+    held_as_saved,
     in_project,
     move_logins,
     saved_logins_of,
@@ -332,7 +333,7 @@ def move_library_logins(logins=None) -> None:
         logins.drop_library(gone)
     backups = lib.parent / "backups"
     if not pending:
-        _end_library_backups(backups, logins)
+        _end_library_backups(backups, logins, present)
         return
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -357,28 +358,53 @@ def move_library_logins(logins=None) -> None:
                  "stay in %s until every one is rewritten", rewritten, len(pending), backup)
         return
     log.info("Moved the device logins out of %d library project(s)", len(pending))
-    _end_library_backups(backups, logins)
+    _end_library_backups(backups, logins, present)
 
 
 #: The name of the zip a move of the library's logins backs the copies up in.
 _LIBRARY_BACKUP_PREFIX = "library-before-moving-device-logins-"
 
 
-def _end_library_backups(backups: Path, logins) -> None:
-    """Delete every zip a move of the library's logins left in ``backups``.
-    Each holds copies as they were, logins in the clear; once no copy is left
-    to rewrite, each of those logins is in the login file or still in its
-    copy. Kept while the login file is missing or will not open, when a zip
-    may be the one place a moved login can still be read."""
+def _end_library_backups(backups: Path, logins, present: set[str]) -> None:
+    """Delete every zip a move of the library's logins left in ``backups``
+    whose logins are all saved on this system. Each holds copies as they
+    were, logins in the clear; once no copy is left to rewrite, each of those
+    logins is in the login file or still in its copy, unless it is not the
+    one saved for that copy (the move kept the saved one), and then the zip
+    is kept (``held_as_saved``). A copy no longer in the library is not
+    asked: its logins went with it. Every zip is kept while the login file is
+    missing or will not open, when one may be the only place a moved login
+    can still be read."""
     if not logins.path.exists() or logins.unreadable is not None:
         return
     for leftover in sorted(backups.glob(f"{_LIBRARY_BACKUP_PREFIX}*.zip")):
+        if not _saved_here(leftover, logins, present):
+            log.info("Kept %s: a library login in it is not the one saved on this system", leftover.name)
+            continue
         try:
             leftover.unlink()
         except OSError:
             log.warning("Could not delete %s, which holds library logins in the clear", leftover)
             continue
         log.info("Deleted %s: the library logins it held are saved on this system", leftover.name)
+
+
+def _saved_here(backup: Path, logins, present: set[str]) -> bool:
+    """Whether every copy in a library zip that is still in the library
+    holds only logins saved on this system for it. False for a zip that
+    cannot be read, which is kept."""
+    try:
+        with zipfile.ZipFile(backup) as zf:
+            for member in zf.namelist():
+                sid, _, name = member.partition("/")
+                if name != "project.avc" or sid not in present:
+                    continue
+                raw = json.loads(zf.read(member).decode("utf-8"))
+                if isinstance(raw, dict) and not held_as_saved(raw, logins, library=sid):
+                    return False
+    except (OSError, ValueError, zipfile.BadZipFile):
+        return False
+    return True
 
 
 def _write_private_zip(folder: Path, name: str, members: dict[str, bytes]) -> Path:

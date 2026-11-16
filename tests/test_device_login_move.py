@@ -326,6 +326,9 @@ async def test_once_the_move_is_done_the_start_backup_keeps_the_file_as_it_was_w
            "devices": [{"id": "proj1", "driver": DRIVER, "name": "P", "config": {"api_key": "k-c"}}],
            "connections": {"proj1": {"host": "192.0.2.30", "password": "Room-C-Pass"}}}
     _write(engine.project_path, old)
+    picture = bytes(range(256)) * 4096  # an uploaded image, copied as it is
+    (engine.project_path.parent / "assets").mkdir()
+    (engine.project_path.parent / "assets" / "floor-plan.png").write_bytes(picture)
     await _start_until_loaded(engine, monkeypatch)
     await engine._move_logins_at_start()
     [info] = list_backups(engine.project_path)
@@ -334,6 +337,7 @@ async def test_once_the_move_is_done_the_start_backup_keeps_the_file_as_it_was_w
     with zipfile.ZipFile(backup) as zf:
         as_it_was = json.loads(zf.read("project.avc"))
         names = zf.namelist()
+        assert zf.read("assets/floor-plan.png") == picture
     taken = backup.stat().st_mtime_ns
 
     await engine._seal_the_start_backup()
@@ -342,6 +346,8 @@ async def test_once_the_move_is_done_the_start_backup_keeps_the_file_as_it_was_w
         assert zf.namelist() == names + ([] if "device_logins.json" in names else ["device_logins.json"])
         kept = json.loads(zf.read("project.avc"))
         sealed = zf.read("device_logins.json").decode()
+        assert zf.read("assets/floor-plan.png") == picture
+        assert zf.testzip() is None
     as_it_was["devices"][0]["config"]["api_key"] = SAVED_LOGIN
     as_it_was["connections"]["proj1"]["password"] = SAVED_LOGIN
     assert kept == as_it_was
@@ -353,6 +359,26 @@ async def test_once_the_move_is_done_the_start_backup_keeps_the_file_as_it_was_w
     restored.restore_copy(sealed, lambda owner: True, where="the test")
     assert restored.login("proj1", DRIVER, "password") == "Room-C-Pass"
     assert restored.login("proj1", DRIVER, "api_key") == "k-c"
+
+
+async def test_a_start_backup_holding_a_login_other_than_the_saved_one_keeps_it(engine, data, monkeypatch):
+    """The saved login wins over the file's (a copy never replaces one), so
+    the backup is the one place the file's value is left: it stays."""
+    from openavc.core.backup_manager import list_backups
+
+    DeviceLogins(data).save("proj1", DRIVER, {"password": "Saved-Earlier"})
+    _write(engine.project_path, _document("Typed-Into-The-File"))
+    await _start_until_loaded(engine, monkeypatch)
+    await engine._move_logins_at_start()
+    [info] = list_backups(engine.project_path)
+    backup = engine.project_path.parent / info.filename
+    before = backup.read_bytes()
+
+    await engine._seal_the_start_backup()
+
+    assert backup.read_bytes() == before
+    with zipfile.ZipFile(backup) as zf:
+        assert json.loads(zf.read("project.avc"))["connections"]["proj1"]["password"] == "Typed-Into-The-File"
 
 
 async def test_a_start_with_nothing_to_move_rewrites_nothing(engine, data, monkeypatch):
@@ -628,6 +654,26 @@ def test_a_start_with_nothing_left_to_move_deletes_the_backups_earlier_moves_lef
 
     assert not leftover.exists()
     assert other.exists()
+
+
+def test_a_library_backup_holding_a_login_other_than_the_saved_one_is_kept(data):
+    logins = DeviceLogins(data)
+    logins.save("proj1", DRIVER, {"password": "Saved-Earlier"}, library="room_b")
+    _library_copy(data, "room_b", _document("Typed-Into-The-Copy"))
+
+    library.move_library_logins(DeviceLogins(data))
+
+    [backup] = (data / "backups").glob("library-before-moving-device-logins-*.zip")
+    with zipfile.ZipFile(backup) as zf:
+        kept = json.loads(zf.read("room_b/project.avc"))
+    assert kept["connections"]["proj1"]["password"] == "Typed-Into-The-Copy"
+
+
+def test_the_backup_of_a_library_copy_since_deleted_goes_with_its_logins(data):
+    _leftover_library_backup(data)  # room_b, no longer in the library
+    DeviceLogins(data).save("proj1", DRIVER, {"password": "Hall-Pass"})
+    library.move_library_logins(DeviceLogins(data))
+    assert list((data / "backups").glob("library-before-moving-device-logins-*.zip")) == []
 
 
 @pytest.mark.parametrize("login_file", ["missing", "will not open"])

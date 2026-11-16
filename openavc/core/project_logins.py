@@ -37,6 +37,7 @@ from openavc.core.device_logins import (
     SAVED_LOGIN,
     FoundLogin,
     StoreView,
+    held_as_saved,
     in_project,
     marked_fields,
     move_logins,
@@ -231,8 +232,10 @@ class ProjectLoginsMixin:
         it adopted is saved: written again with the marker in place of each
         login it holds in the clear and the logins sealed beside it, the file
         as it was otherwise (``backup_manager.seal_logins_in_backup``). A save
-        that failed leaves it as it is. Run once the plugins' half of the
-        move has run, or failed; never fatal."""
+        that failed leaves it as it is, and so does a login in it other than
+        the one saved here, which the move kept the saved one over
+        (``held_as_saved``). Run once the plugins' half of the move has run,
+        or failed; never fatal."""
         backup, self._logins_backup_at_start = self._logins_backup_at_start, None
         if backup is None or self._logins_unsaved_at_start:
             return
@@ -240,12 +243,20 @@ class ProjectLoginsMixin:
 
         try:
             built_in = {d.id for d in self.project.devices if self.installed_equipment.matches(d)}
-            move = functools.partial(
-                move_logins, logins=self.device_logins, typed=False, skip=built_in.__contains__,
+            await asyncio.to_thread(
+                seal_logins_in_backup, backup,
+                functools.partial(self._moved_if_saved, skip=built_in.__contains__),
             )
-            await asyncio.to_thread(seal_logins_in_backup, backup, move)
         except Exception:
             log.exception("Could not take the logins out of the backup taken before they moved")
+
+    def _moved_if_saved(self, raw: dict, *, skip) -> dict:
+        """``raw`` (the start backup's project file) with its logins moved,
+        or ``raw`` itself while one of them is not the one saved here."""
+        if not held_as_saved(raw, self.device_logins, skip=skip):
+            log.warning("The backup taken before the logins moved keeps them: one is not the login saved here")
+            return raw
+        return move_logins(raw, self.device_logins, typed=False, skip=skip)
 
     async def _back_up_before_moving_logins(self) -> bool:
         """Back up the project file before the move rewrites it. False when

@@ -802,6 +802,23 @@ def find_logins(project: Any, *, skip: Callable[[str], bool] | None = None) -> l
     return found
 
 
+def held_as_saved(
+    project: Any, logins: DeviceLogins, *, library: str | None = None,
+    skip: Callable[[str], bool] | None = None,
+) -> bool:
+    """Whether each login ``project`` holds in the clear (``find_logins``) is
+    the one saved on this system for it. A copy that is not holds the one
+    place its value is left: a move keeps the saved login and marks the
+    copy's (a copy never replaces one), so a copy of it taken before the move
+    is kept. A saved command parameter is always filed by a move, so it never
+    decides this."""
+    for found in find_logins(project, skip=skip):
+        for name, value in found.fields.items():
+            if logins.secret(found.owner, name, library=library) != value:
+                return False
+    return True
+
+
 def _marked_copy(project: Any, found: list[FoundLogin]) -> Any:
     """A copy of ``project`` with the marker in every place a login in
     ``found`` was held in the clear."""
