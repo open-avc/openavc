@@ -884,7 +884,7 @@ def test_reload_step3_failure_preserves_old_driver(tmp_path, monkeypatch):
     # (a TOCTOU edit/delete of the file between validation and reload).
     import openavc.drivers.python_modules as dl
 
-    monkeypatch.setattr(dl, "load_python_driver_file", lambda fp: None)
+    monkeypatch.setattr(dl, "read_python_driver_file", lambda fp: dl.PythonRead(None))
 
     try:
         result = reload_python_driver(filepath)
