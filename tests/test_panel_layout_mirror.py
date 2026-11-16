@@ -35,6 +35,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from openavc.core.project_loader import ProjectConfig
+from openavc.core.project_migration import migrate_project
 from openavc.ui.page_geometry import resolved_placements
 from openavc.ui.page_review import _Arrangement, _drawn_box, _stored_master_box, master_draws_on
 from tests import gates
@@ -90,6 +92,10 @@ BOXES = [{}, {"x": 5}, {"w": 30}, {"y": 12, "h": 40}, {"x": "12", "w": "40.5"},
          {"x": 0, "y": 0, "w": 50, "h": 50}, {"x": 0, "y": 0, "w": 0, "h": 10},
          {"w": 10, "h": 0}, _BOX]
 
+#: Sides that are no finite number, as text; the panel is handed each both as
+#: written and as JavaScript reads it as a number (NaN, Infinity, -Infinity).
+NON_FINITE = ["NaN", " nan ", "inf", "-inf", "Infinity", "-Infinity", "1e999"]
+
 #: What a master's `pages` can say, asked of two pages.
 MASTER_PAGES = ["*", ["home"], ["other"], ["home", "other"], [], "home", None, {"home": True}]
 PAGE_IDS = ["home", "other"]
@@ -100,7 +106,7 @@ _SCRIPT = """
 const layout = await import(process.argv[1]);
 const pages = await import(process.argv[2]);
 const corpus = JSON.parse(process.argv[3]);
-const out = { pages: [], masters: [], boxes: [], names: [] };
+const out = { pages: [], masters: [], boxes: [], names: [], non_finite: [] };
 for (const page of corpus.pages) {
     for (const o of corpus.orientations) {
         const got = layout.selectLayout(page, o);
@@ -111,6 +117,10 @@ for (const placements of corpus.masters) {
     for (const o of corpus.orientations) out.masters.push(layout.masterPlacement({ placements }, o));
 }
 for (const box of corpus.boxes) out.boxes.push(layout.boxOf(box));
+for (const t of corpus.non_finite) {
+    const n = Number(t);
+    out.non_finite.push([layout.boxOf({ x: t, y: t, w: t, h: t }), layout.boxOf({ x: n, y: n, w: n, h: n })]);
+}
 for (const on of corpus.master_pages) {
     for (const id of corpus.page_ids) out.names.push(pages.namesPage({ pages: on }, { id }));
 }
@@ -124,7 +134,7 @@ def panel_answers() -> dict:
         gates.skip_or_fail(gates.NODE, "node not installed")
     corpus = json.dumps({
         "pages": PAGES, "masters": MASTERS, "orientations": ORIENTATIONS, "boxes": BOXES,
-        "master_pages": MASTER_PAGES, "page_ids": PAGE_IDS,
+        "master_pages": MASTER_PAGES, "page_ids": PAGE_IDS, "non_finite": NON_FINITE,
     })
     proc = subprocess.run(
         ["node", "--input-type=module", "-e", _SCRIPT,
@@ -165,6 +175,28 @@ def test_the_panel_picks_a_masters_box_the_way_the_review_does(panel_answers: di
 def test_the_panel_fills_a_missing_coordinate_the_way_the_review_does(panel_answers: dict) -> None:
     for box, got in zip(BOXES, panel_answers["boxes"], strict=True):
         assert got == _drawn_box(box), box
+
+
+def _loaded_box(side: str) -> dict:
+    """A box saved with every side ``side`` by a release before the bound, as it loads."""
+    saved = {
+        "openavc_version": "0.16.0",
+        "project": {"id": "acme_room", "name": "Acme Room"},
+        "ui": {"pages": [{"id": "main", "name": "Main", "elements": [], "layouts": [{
+            "id": "landscape", "primary": True,
+            "placements": {"e1": {"x": side, "y": side, "w": side, "h": side}},
+        }]}]},
+    }
+    migrated, _ = migrate_project(saved)
+    return ProjectConfig(**migrated).ui.pages[0].layouts[0].placements["e1"].model_dump()
+
+
+def test_a_side_that_is_no_finite_number_loads_as_the_box_the_panel_drew(panel_answers: dict) -> None:
+    """The project format's 0.17.0 step removes such a side, and the schema's
+    default fills it: the box the panel drew for it, as text or as a number."""
+    for side, drawn in zip(NON_FINITE, panel_answers["non_finite"], strict=True):
+        loaded = _loaded_box(side)
+        assert drawn == [loaded, loaded], side
 
 
 def test_a_master_draws_on_the_pages_the_review_says(panel_answers: dict) -> None:

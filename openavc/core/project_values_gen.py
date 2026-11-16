@@ -8,8 +8,9 @@ from and writes the table to
 and ``openavc/web/panel/modules/project_values.gen.js`` (the panel, which draws
 the Builder's unsaved draft, a project that never passed the loader).
 
-The table carries every field that declares a bound, under the model that
-declares it, and every panel setting with a plain default, since the panel
+The table carries every field that declares a bound (a range, or that it
+takes finite numbers only), under the model that declares it, and every panel
+setting with a plain default, since the panel
 fills a blank setting itself; a blank another setting decides (a model's
 ``BLANK_FROM``: the theme a project with no theme id draws, the format a clock
 with none draws) carries that setting's values too, and a style value whose 0
@@ -33,6 +34,7 @@ from typing import Any
 import annotated_types
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
+from pydantic.types import AllowInfNan
 
 from openavc.core.project_loader import ProjectConfig, UISettings, blank_rule
 
@@ -103,16 +105,26 @@ def _is_integer(annotation: Any) -> bool:
     return bool(args) and all(a is int for a in args)
 
 
+def _bound(rule: Any) -> dict[str, Any] | None:
+    """The table's word for one rule on a field, or None when it has none."""
+    keys = _BOUND_KEYS.get(type(rule))
+    if keys is not None:
+        return {keys[0]: getattr(rule, keys[1])}
+    if isinstance(rule, AllowInfNan) and not rule.allow_inf_nan:
+        return {"finite": True}
+    return None
+
+
 def _bounds(model: type[BaseModel], field: str, info: FieldInfo) -> dict[str, Any]:
     bounds: dict[str, Any] = {}
     for rule in info.metadata:
-        keys = _BOUND_KEYS.get(type(rule))
-        if keys is None:
+        word = _bound(rule)
+        if word is None:
             raise UnreadableBoundError(
                 f"{model.__name__}.{field} declares {rule!r}, which the project-value "
                 f"table cannot carry; teach openavc/core/project_values_gen.py its word"
             )
-        bounds[keys[0]] = getattr(rule, keys[1])
+        bounds.update(word)
     return bounds
 
 
@@ -182,7 +194,7 @@ def _zero_blanks(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
 
 
 def project_values(roots: tuple[type[BaseModel], ...] = (ProjectConfig,)) -> dict[str, dict[str, Any]]:
-    """The table: model name -> field -> its default, min, max and integer."""
+    """The table: model name -> field -> its default, min, max, integer and finite."""
     table: dict[str, dict[str, Any]] = {}
     for model in _walk(roots):
         settings = model in SETTINGS_MODELS
@@ -208,7 +220,8 @@ BANNER = """\
 // What a project value may hold and what a blank one is, by the model and the
 // field the project schema declares it on: `default` is what the schema stores
 // for a blank one, `min` and `max` the range it takes (both ends included),
-// `integer` that it refuses a fraction. A value outside its range fails the
+// `integer` that it refuses a fraction, `finite` that it refuses a value that
+// is no finite number (NaN or infinity). A value outside its range fails the
 // whole project save. `blank_from` says what a blank one draws when another
 // setting decides it: that setting's value names it (null: that value draws
 // none), and a value not named, a blank one included, reads as the one
@@ -224,6 +237,7 @@ export interface ProjectValue {
   readonly min?: number;
   readonly max?: number;
   readonly integer?: boolean;
+  readonly finite?: boolean;
   readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string | null>>>>;
   readonly otherwise?: string;
   readonly zero_is_blank?: boolean;

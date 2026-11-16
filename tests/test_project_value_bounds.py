@@ -23,13 +23,14 @@ from pydantic import ValidationError
 from openavc.api.rest import router, set_engine
 from openavc.core.project_loader import (
     MonitorConfig,
+    Placement,
     ProjectConfig,
     UIElement,
     UISettings,
     load_project,
 )
 from openavc.core.project_migration import CURRENT_VERSION
-from tests.test_ui_tools_doors_pinned import _call, _el, _engine
+from tests.test_ui_tools_doors_pinned import _call, _dump, _el, _engine
 
 
 def _settings(field: str, value):
@@ -218,3 +219,89 @@ async def test_an_ai_element_created_past_a_bound_is_refused_by_name():
     assert "display_decimals" in json.dumps(result)
     assert all(el.id != "fresh" for el in engine.project.ui.pages[0].elements)
 
+
+
+# --- a box's sides are finite numbers ------------------------------------------
+#
+# A side the schema read as no finite number was written to the file as a bare
+# `NaN` or `Infinity`, which no browser reads: the panel showed none of the
+# project and the Programmer could not open it.
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf"), "NaN", "1e999"])
+def test_a_side_that_is_no_finite_number_is_refused(value):
+    for side in ("x", "y", "w", "h"):
+        with pytest.raises(ValidationError):
+            Placement(**{side: value})
+
+
+def test_a_negative_or_zero_side_is_taken():
+    # A container's child may sit past its edge on purpose; a negative or zero
+    # size is Validate's to report.
+    box = Placement(x=-10, y=-5, w=0, h=-20)
+    assert (box.x, box.y, box.w, box.h) == (-10, -5, 0, -20)
+
+
+def _older_project_with_a_nan_side(version: str = "0.16.0") -> str:
+    """A project file as a release wrote one: the side a bare NaN token."""
+    project = {
+        "openavc_version": version,
+        "project": {"id": "acme_room", "name": "Acme Room"},
+        "ui": {"pages": [{
+            "id": "main", "name": "Main",
+            "elements": [{"id": "power", "type": "button"}],
+            "layouts": [{"id": "landscape", "orientation": "landscape", "primary": True,
+                         "placements": {"power": {"x": 10, "y": 10, "w": "__NAN__", "h": 20}}}],
+        }]},
+    }
+    return json.dumps(project).replace('"__NAN__"', "NaN")
+
+
+def test_an_older_project_file_with_a_nan_side_loads_and_is_written_back_readable(tmp_path):
+    path = tmp_path / "project.avc"
+    path.write_text(_older_project_with_a_nan_side(), encoding="utf-8")
+
+    project = load_project(path)
+
+    box = project.ui.pages[0].layouts[0].placements["power"]
+    assert (box.x, box.y, box.w, box.h) == (10, 10, 100, 20)
+    written = path.read_text(encoding="utf-8")
+    assert "NaN" not in written
+    json.loads(written, parse_constant=lambda token: pytest.fail(f"{token} written back"))
+
+
+def test_an_older_project_with_a_nan_side_saved_through_the_api_loads(client):
+    http, engine = client
+    resp = http.put(
+        "/api/project", content=_older_project_with_a_nan_side(),
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 200, resp.text
+    box = engine.apply_project.call_args.args[0].ui.pages[0].layouts[0].placements["power"]
+    assert box.w == 100
+
+
+def test_a_current_project_with_a_nan_side_is_refused_by_name(client):
+    http, engine = client
+    resp = http.put(
+        "/api/project", content=_older_project_with_a_nan_side(CURRENT_VERSION),
+        headers={"content-type": "application/json"},
+    )
+    assert resp.status_code == 422, resp.text
+    assert "placements" in resp.json()["detail"]
+    assert "finite" in resp.json()["detail"]
+    engine.apply_project.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), "NaN"])
+async def test_an_ai_box_that_is_no_finite_number_is_refused_by_the_schema(value):
+    """Refused as the schema refuses it, whichever form it came in, so the
+    assistant is told which side; nothing changes."""
+    engine = _engine()
+    before = _dump(engine)
+    with pytest.raises(ValidationError, match="finite number"):
+        await _call(engine, "update_ui_element", {
+            "element_id": "lbl", "placement": {"w": value},
+        })
+    assert _dump(engine) == before

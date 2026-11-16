@@ -28,7 +28,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator, model_validator
 
 
 class _ForwardCompatModel(BaseModel):
@@ -370,12 +370,17 @@ class Placement(_ForwardCompatModel):
     ``UIElement.parent``. Percentages mean a panel drawn once looks the same on
     any screen of the same shape, which whole-cell grid coordinates could never
     promise.
+
+    Each side is a finite number: one that is not would be written to the file
+    as a bare ``NaN`` or ``Infinity``, which no browser reads. A negative one is
+    taken: a container's child may sit past its edge on purpose, and a
+    negative size is Validate's to report.
     """
 
-    x: float = 0.0
-    y: float = 0.0
-    w: float = 100.0
-    h: float = 100.0
+    x: FiniteFloat = 0.0
+    y: FiniteFloat = 0.0
+    w: FiniteFloat = 100.0
+    h: FiniteFloat = 100.0
 
 
 class Layout(_ForwardCompatModel):

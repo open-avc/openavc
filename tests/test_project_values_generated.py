@@ -56,7 +56,10 @@ def _bounded_fields() -> set[tuple[str, str]]:
         if cls.__module__ != project_loader.__name__:
             continue
         for field, info in cls.model_fields.items():
-            if any(hasattr(m, "ge") or hasattr(m, "le") for m in info.metadata):
+            if any(
+                hasattr(m, "ge") or hasattr(m, "le") or getattr(m, "allow_inf_nan", True) is False
+                for m in info.metadata
+            ):
                 found.add((cls.__name__, field))
     return found
 
@@ -115,6 +118,13 @@ def test_the_table_carries_each_bound_and_default_as_the_model_declares_it() -> 
             "max": project_loader.DISPLAY_DECIMALS_MAX, "integer": True,
         }
     assert "MasterElement" not in table
+    # A box's sides take finite numbers only, and a missing one is the whole box.
+    assert table["Placement"] == {
+        "x": {"default": 0.0, "finite": True, "integer": False},
+        "y": {"default": 0.0, "finite": True, "integer": False},
+        "w": {"default": 100.0, "finite": True, "integer": False},
+        "h": {"default": 100.0, "finite": True, "integer": False},
+    }
 
 
 def test_every_panel_setting_has_its_blank_in_the_table() -> None:

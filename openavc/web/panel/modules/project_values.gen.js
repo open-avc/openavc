@@ -6,7 +6,8 @@
 // What a project value may hold and what a blank one is, by the model and the
 // field the project schema declares it on: `default` is what the schema stores
 // for a blank one, `min` and `max` the range it takes (both ends included),
-// `integer` that it refuses a fraction. A value outside its range fails the
+// `integer` that it refuses a fraction, `finite` that it refuses a value that
+// is no finite number (NaN or infinity). A value outside its range fails the
 // whole project save. `blank_from` says what a blank one draws when another
 // setting decides it: that setting's value names it (null: that value draws
 // none), and a value not named, a blank one included, reads as the one
@@ -21,6 +22,28 @@ export const PROJECT_VALUES = {
       "min": 0,
       "max": 20,
       "integer": true
+    }
+  },
+  "Placement": {
+    "x": {
+      "default": 0.0,
+      "finite": true,
+      "integer": false
+    },
+    "y": {
+      "default": 0.0,
+      "finite": true,
+      "integer": false
+    },
+    "w": {
+      "default": 100.0,
+      "finite": true,
+      "integer": false
+    },
+    "h": {
+      "default": 100.0,
+      "finite": true,
+      "integer": false
     }
   },
   "UIElement": {

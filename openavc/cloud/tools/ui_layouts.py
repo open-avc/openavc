@@ -40,6 +40,9 @@ def rounded_placement(box: Any) -> Any:
     with JS Math.round, which rounds a half toward +infinity, while Python's
     round() is banker's -- so mirror the JS arithmetic, or the same reparent
     stores different bytes depending on who performed it.
+
+    A side that is no finite number is left for the model to refuse, as it
+    refuses one sent as text, naming the side.
     """
     import math
 
@@ -48,7 +51,7 @@ def rounded_placement(box: Any) -> Any:
     data = box.model_dump() if hasattr(box, "model_dump") else dict(box)
     for key in ("x", "y", "w", "h"):
         v = data.get(key)
-        if not isinstance(v, bool) and isinstance(v, (int, float)):
+        if not isinstance(v, bool) and isinstance(v, (int, float)) and math.isfinite(v):
             data[key] = math.floor(v * 10_000 + 0.5) / 10_000
     return Placement(**data)
 

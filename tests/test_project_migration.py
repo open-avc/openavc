@@ -1,6 +1,7 @@
 """Tests for project format migration system."""
 
 import copy
+import json
 
 
 from openavc.core.project_migration import (
@@ -889,9 +890,115 @@ class TestMigrate016To017:
             {"openavc_version": "0.16.0", "project": {"id": "p", "name": "P"}},
             {"openavc_version": "0.16.0", "ui": "not a ui", "monitors": None},
             {"openavc_version": "0.16.0", "ui": {"settings": None, "pages": None}},
+            {"openavc_version": "0.16.0", "ui": {"pages": [
+                "not a page",
+                {"id": "a", "layouts": None},
+                {"id": "b", "layouts": ["not a layout", {"id": "l", "placements": None}]},
+                {"id": "c", "layouts": [{"id": "l", "placements": {"e": "not a box"}}]},
+                {"id": "d", "layouts": [{"id": "l", "placements": ["not", "a", "map"]}]},
+            ], "master_elements": [
+                "not a master", {"id": "m", "placements": None},
+                {"id": "n", "placements": {"landscape": None}},
+            ]}},
         ):
             result = migrate_0_16_to_0_17(copy.deepcopy(data))
             assert result["openavc_version"] == "0.17.0"
+
+
+#: Every way a 0.16.0 project could hold a side the schema read as no finite
+#: number: the tokens the file writer put down for one (Python's json reads
+#: `NaN`, `Infinity` and `1e999` as these), and text the schema read as one.
+NON_FINITE_SIDES = [
+    float("nan"), float("inf"), float("-inf"),
+    "NaN", "nan", " nan ", "inf", "-inf", "+inf", "Infinity", "-Infinity", "infinity", "1e999",
+]
+
+
+def make_v016_project_with_boxes(side) -> dict:
+    """A page with two arrangements and a master, every box holding ``side``
+    on one coordinate, beside a box with a negative position and size."""
+    return {
+        "openavc_version": "0.16.0",
+        "project": {"id": "p", "name": "P"},
+        "ui": {
+            "pages": [{
+                "id": "main", "name": "Main",
+                "elements": [
+                    {"id": "a", "type": "button"}, {"id": "b", "type": "button"},
+                    {"id": "c", "type": "button"},
+                ],
+                "layouts": [
+                    {"id": "landscape", "orientation": "landscape", "primary": True,
+                     "placements": {
+                         "a": {"x": side, "y": 10, "w": 20, "h": 30},
+                         "b": {"x": 5, "y": 6, "w": side, "h": side},
+                         "c": {"x": -10, "y": -5, "w": -20, "h": -1},
+                     }},
+                    {"id": "portrait", "orientation": "portrait", "inherits": "landscape",
+                     "placements": {"a": {"x": 1, "y": side, "w": 2, "h": 3}}},
+                ],
+            }],
+            "master_elements": [{
+                "id": "bar", "type": "label", "pages": "*",
+                "placements": {"landscape": {"x": 0, "y": 0, "w": 100, "h": side}},
+            }],
+        },
+    }
+
+
+class TestMigrate016To017Boxes:
+    @staticmethod
+    def _boxes(result: dict) -> tuple[dict, dict, dict]:
+        page = result["ui"]["pages"][0]
+        primary, variant = page["layouts"]
+        return primary["placements"], variant["placements"], result["ui"]["master_elements"][0]["placements"]
+
+    def test_a_side_that_is_no_finite_number_loads_as_the_default_the_panel_draws(self):
+        """The panel draws a coordinate that is not a finite number as the
+        whole box's (x and y 0, w and h 100); that is what loads."""
+        for side in NON_FINITE_SIDES:
+            result, migrated = migrate_project(make_v016_project_with_boxes(side))
+            assert migrated is True
+            loaded = ProjectConfig(**result)
+            page = loaded.ui.pages[0]
+            primary, variant = (lay.placements for lay in page.layouts)
+            assert primary["a"].model_dump() == {"x": 0, "y": 10, "w": 20, "h": 30}, side
+            assert primary["b"].model_dump() == {"x": 5, "y": 6, "w": 100, "h": 100}, side
+            assert variant["a"].model_dump() == {"x": 1, "y": 0, "w": 2, "h": 3}, side
+            master = loaded.ui.master_elements[0].placements["landscape"]
+            assert master.model_dump() == {"x": 0, "y": 0, "w": 100, "h": 100}, side
+
+    def test_the_repaired_project_is_one_a_browser_can_read(self):
+        result, _ = migrate_project(make_v016_project_with_boxes(float("nan")))
+        dumped = ProjectConfig(**result).model_dump(mode="json")
+        json.dumps(dumped, allow_nan=False)
+
+    def test_the_side_is_removed_rather_than_rewritten(self):
+        result = migrate_0_16_to_0_17(make_v016_project_with_boxes(float("nan")))
+        primary, variant, master = self._boxes(result)
+        assert primary["a"] == {"y": 10, "w": 20, "h": 30}
+        assert primary["b"] == {"x": 5, "y": 6}
+        assert variant["a"] == {"x": 1, "w": 2, "h": 3}
+        assert master["landscape"] == {"x": 0, "y": 0, "w": 100}
+
+    def test_a_negative_position_or_size_is_left_as_written(self):
+        """A container's child may sit past its edge on purpose, and a
+        negative size is Validate's to report, not the load's to change."""
+        result = migrate_0_16_to_0_17(make_v016_project_with_boxes(float("nan")))
+        primary, _, _ = self._boxes(result)
+        assert primary["c"] == {"x": -10, "y": -5, "w": -20, "h": -1}
+
+    def test_a_finite_side_in_any_form_the_schema_took_is_left_as_written(self):
+        for side in (12.5, 0, -3, "40.5", True, "1_000"):
+            result = migrate_0_16_to_0_17(make_v016_project_with_boxes(side))
+            primary, _, _ = self._boxes(result)
+            assert primary["a"]["x"] == side
+
+    def test_a_side_the_schema_refused_before_is_left_for_the_load_to_refuse(self):
+        for side in ("wide", None, [1]):
+            result = migrate_0_16_to_0_17(make_v016_project_with_boxes(side))
+            primary, _, _ = self._boxes(result)
+            assert primary["a"]["x"] == side
 
 
 # ---------------------------------------------------------------------------

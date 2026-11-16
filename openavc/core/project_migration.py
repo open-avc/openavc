@@ -16,6 +16,7 @@ written with: two walks, one per rule, so editing either changes old steps.
 The 0.8.0 grid-to-percent layout conversion is ``core/layout_migration.py``.
 """
 
+import math
 from typing import NamedTuple
 
 from openavc.core.layout_migration import convert_grid_layout
@@ -774,6 +775,54 @@ def _clamp_0_17(holder: dict, field: str, bounds: tuple[int, int]) -> None:
         holder[field] = max(bounds[0], min(bounds[1], value))
 
 
+def _number_0_17(value) -> float | None:
+    """A measurement as the schema read it before this step: a number, true
+    or false, or text that reads as one ("NaN" and "1e999" included). None for
+    anything it refused, which it still does."""
+    if isinstance(value, bool | int | float):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _boxes_0_17(ui: dict) -> list[dict]:
+    """Every stored box: each placement of every page arrangement, then each
+    of every master element's. A list that is missing, null or not the shape
+    it should be reads as nothing."""
+    holders = [
+        layout.get("placements")
+        for page in ui.get("pages", []) or []
+        if isinstance(page, dict)
+        for layout in page.get("layouts", []) or []
+        if isinstance(layout, dict)
+    ]
+    holders += [
+        master.get("placements")
+        for master in ui.get("master_elements", []) or []
+        if isinstance(master, dict)
+    ]
+    return [
+        box
+        for holder in holders
+        if isinstance(holder, dict)
+        for box in holder.values()
+        if isinstance(box, dict)
+    ]
+
+
+def _drop_non_finite_sides_0_17(box: dict) -> None:
+    """A side that is no finite number goes, so the box loads with the
+    default the panel drew for it (x and y 0, w and h 100)."""
+    for side in ("x", "y", "w", "h"):
+        number = _number_0_17(box.get(side))
+        if number is not None and not math.isfinite(number):
+            box.pop(side)
+
+
 def migrate_0_16_to_0_17(data: dict) -> dict:
     """
     Migrate from 0.16.0 to 0.17.0 -- a saved value the schema now bounds is
@@ -799,6 +848,14 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
 
     A value that is not a whole number is left as it was: the schema refused
     it before and still does.
+
+    A box's side (x, y, w or h, on a page arrangement or a master element)
+    that is no finite number is removed, so it loads as the default the
+    panel drew for it: x and y 0, w and h 100. The file writer put such a
+    side down as a bare `NaN` or `Infinity`, which a browser cannot read, so
+    the panel showed none of the project and the Programmer could not open
+    it. A negative side is left as written: a container's child may sit past
+    its edge on purpose, and a negative size is reported by Validate.
     """
     monitors = data.get("monitors") if isinstance(data.get("monitors"), list) else []
     for holder in _elements(data) + [m for m in monitors if isinstance(m, dict)]:
@@ -808,6 +865,8 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
     if isinstance(settings, dict):
         for field, bounds in _PANEL_SETTINGS_0_17.items():
             _clamp_0_17(settings, field, bounds)
+    for box in _boxes_0_17(ui) if isinstance(ui, dict) else []:
+        _drop_non_finite_sides_0_17(box)
 
     data["openavc_version"] = "0.17.0"
     return data
