@@ -98,6 +98,8 @@ The Assets and Backups lists refresh when a project is opened, imported or resto
 
 The **Backups** section at the bottom of the Program view lists your backup history with the reason each was created. Click **Restore** on any backup to replace the current project with that snapshot. You can also click **Create Backup** to save a manual checkpoint at any time. A periodic auto-backup runs every 30 minutes if the project has been modified.
 
+The list keeps the 15 most recent backups, removing the oldest to make room for a new one. Restoring first backs up the current project as "Before restore", and that never removes the backup you are restoring, even when it is the oldest.
+
 If the project file cannot be read when OpenAVC starts, usually after a power cut during a save, it loads the most recent backup that opens. The Dashboard then shows a notice naming that backup and the time it was taken: anything saved after that time is not in the restored project, so check the Backups list before carrying on. If no backup opens, OpenAVC starts an empty project and the notice says so. The notice stays through restarts until you dismiss it.
 
 ## Log View

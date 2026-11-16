@@ -936,9 +936,11 @@ async def restore_backup(filename: str) -> dict[str, Any]:
     if not (backup_path.name.endswith(".zip") or backup_path.name.endswith(".avc.bak")):
         raise HTTPException(status_code=400, detail="Not a valid backup file")
 
-    # Create a backup before restoring
+    # Create a backup before restoring. Its rotation spares the one chosen,
+    # which is the oldest when somebody goes back the furthest, so it is
+    # still there to read.
     import asyncio
-    await asyncio.to_thread(create_backup, engine.project_path, "Before restore")
+    await asyncio.to_thread(create_backup, engine.project_path, "Before restore", spare=backup_path)
 
     from openavc.core.installed_equipment import validate_backup
     validate_backup(backup_path)
@@ -948,11 +950,16 @@ async def restore_backup(filename: str) -> dict[str, Any]:
     if engine.persister:
         engine.persister.stop()
 
-    restore_from_backup(backup_path, engine.project_path)
-    await engine.reload_project()
-    # Re-apply the restored state.json to the store + restart the persister, so
-    # the restore takes effect immediately and isn't written back over.
-    engine.reload_persisted_state()
+    try:
+        restore_from_backup(backup_path, engine.project_path)
+        await engine.reload_project()
+    finally:
+        # Re-apply state.json to the store and start the persister again,
+        # whatever the restore did: on success the restored values take effect
+        # and are not written back over; on a failure the store follows the
+        # state.json on disk and values go on being saved, never stopped until
+        # a restart.
+        engine.reload_persisted_state()
     return {
         "status": "restored",
         "filename": filename,

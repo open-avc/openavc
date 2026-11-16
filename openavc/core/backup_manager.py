@@ -257,12 +257,17 @@ def create_backup(
     reason: str,
     *,
     max_backups: int = MAX_BACKUPS,
+    spare: Path | None = None,
 ) -> Path | None:
     """Create a ZIP backup of the current project state.
 
     ``project_file`` is the project file itself; the scripts, assets, ui/,
     themes and state.json beside it go into the same archive. Returns the
     backup path, or None if there's nothing to back up.
+
+    ``spare`` is a backup this one's rotation leaves alone: the one a restore
+    is about to read, which is the oldest when somebody goes back the furthest
+    (``cleanup_backups``).
     """
     project_dir = project_file.parent
     if not project_file.exists():
@@ -338,7 +343,7 @@ def create_backup(
                 counter += 1
             os.replace(tmp_path, backup_path)
             tmp_path = None
-            cleanup_backups(backup_d, keep=max_backups)
+            cleanup_backups(backup_d, keep=max_backups, spare=spare)
 
         log.info(f"Backup created: {backup_path.name} ({reason})")
         return backup_path
@@ -568,10 +573,18 @@ def restore_from_backup(backup_path: Path, project_file: Path) -> None:
             raise ValueError(f"Unrecognized backup format: {backup_path.name}")
 
 
-def cleanup_backups(backup_dir: Path, *, keep: int = MAX_BACKUPS) -> int:
-    """Remove oldest backups beyond the retention limit. Returns count removed."""
+def cleanup_backups(backup_dir: Path, *, keep: int = MAX_BACKUPS, spare: Path | None = None) -> int:
+    """Remove oldest backups beyond the retention limit. Returns count removed.
+
+    ``spare`` is neither removed nor counted, so the list holds one more while
+    it is spared and nothing else goes in its place: a person going back
+    through the oldest backups one at a time still finds the next one. Paths
+    are compared resolved, since a data directory reached through a link
+    names the same file two ways.
+    """
+    spared = spare.resolve() if spare is not None else None
     backups = sorted(
-        backup_dir.glob("backup_*.zip"),
+        (p for p in backup_dir.glob("backup_*.zip") if spared is None or p.resolve() != spared),
         key=lambda p: p.stat().st_mtime,
     )
     removed = 0
