@@ -389,7 +389,7 @@ class Engine(
         """Send a message to every connected WS client (panels, IDE).
 
         The engine-wide broadcast door — macros, triggers, discovery, and the
-        REST routes all reach panels through here. Delivery, per-client
+        REST routes all send through here. Delivery, per-client
         queues, and namespace filtering live in ``core.ws_hub``.
         ``client_type`` narrows delivery to one kind of client, as there
         (``"programmer"`` for a message that is the Programmer's business).

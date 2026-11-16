@@ -44,7 +44,7 @@ router = APIRouter(
 )
 
 _engine: DiscoveryEngine | None = None
-_broadcast_fn = None  # async fn to broadcast WebSocket messages
+_broadcast_fn = None  # the engine's WebSocket broadcast, set by main.py
 
 
 def set_discovery_engine(discovery_engine: DiscoveryEngine) -> None:
@@ -53,9 +53,23 @@ def set_discovery_engine(discovery_engine: DiscoveryEngine) -> None:
 
 
 def set_broadcast_fn(fn) -> None:
-    """Set the WebSocket broadcast function for live scan updates."""
+    """Set the WebSocket broadcast (``Engine.broadcast_ws``) the scan's updates
+    go out through. It takes ``client_type``; ``_send_to_programmers`` names it."""
     global _broadcast_fn
     _broadcast_fn = fn
+
+
+async def _send_to_programmers(message: dict[str, Any]) -> None:
+    """Send one ``discovery.*`` update to the Programmer clients, never a panel.
+
+    Every update discovery sends goes through here: the scan's live feed and
+    the re-match after a driver change. A device's update carries its whole
+    record (address, MAC, hostname, serial number, firmware, open ports and
+    their banners, SNMP, mDNS and SSDP records), which over REST takes a
+    Programmer sign-in; a panel draws none of it.
+    """
+    if _broadcast_fn is not None:
+        await _broadcast_fn(message, client_type="programmer")
 
 
 def _get_engine() -> DiscoveryEngine:
@@ -84,9 +98,9 @@ async def refresh_all_device_matches() -> None:
 
     for ip in list(_engine.results.keys()):
         updated = await _engine.refresh_device_matches(ip)
-        if updated and _broadcast_fn:
+        if updated:
             try:
-                await _broadcast_fn({
+                await _send_to_programmers({
                     "type": "discovery.update",
                     "device": updated,
                     "phase": "refresh",
@@ -263,7 +277,7 @@ async def start_scan(req: ScanRequest) -> dict[str, Any]:
         scan_id = await engine.start_scan(
             subnets=req.subnets,
             extra_subnets=req.extra_subnets,
-            on_update=_broadcast_fn,
+            on_update=_send_to_programmers,
             timeout=req.timeout,
             ignore_control_interface=req.ignore_control_interface,
         )
