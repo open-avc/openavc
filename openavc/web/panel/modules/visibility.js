@@ -13,7 +13,10 @@
  * evaluates and what each one means, and tests/test_ui_page_review_mirrors.py
  * runs OPERATORS here and holds the reviews' sets to them; the AI's binding
  * check (cloud/tools/ui_bindings.py) takes the canonical names. A new
- * spelling goes into those too. No DOM and no panel state.
+ * spelling goes into those too. How each operator compares is not the
+ * server's rule (core/condition_eval.py): tests/test_panel_condition_parity.py
+ * runs these operators over the server's condition corpus and pins every
+ * place they differ. No DOM and no panel state.
  */
 
 /** A comparison that holds only when both sides are set (neither null nor undefined). */

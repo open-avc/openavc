@@ -7,7 +7,10 @@ Used by MacroEngine (skip_if, conditional steps) and TriggerEngine (guard condit
 Mirrored by ``conditionEval.ts`` in the Programmer, for the trigger editor's
 "Evaluated now". Both run ``tests/fixtures/condition_parity_cases.json``
 (``tests/test_condition_parity.py`` and ``conditionEval.test.ts``): a change
-here goes into the mirror and the corpus in the same commit.
+here goes into the mirror and the corpus in the same commit. The panel's
+comparers are not copies of this rule yet: ``tests/test_panel_condition_parity.py``
+runs them over the same corpus and pins where each one differs, so a change
+here or in the corpus moves those pins too.
 """
 
 from __future__ import annotations

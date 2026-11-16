@@ -1,5 +1,5 @@
 {
-  "_comment": "The condition rule, answer for answer: tests/test_condition_parity.py runs it over openavc/core/condition_eval.py, conditionEval.test.ts over the IDE's mirror. expected is what the runtime answers; 'error' is an operator it refuses.",
+  "_comment": "The condition rule, answer for answer: tests/test_condition_parity.py runs it over openavc/core/condition_eval.py, conditionEval.test.ts over the IDE's mirror. tests/test_panel_condition_parity.py runs the panel's comparers over it and pins where each differs, so a new case can move those pins. expected is what the runtime answers; 'error' is an operator it refuses.",
   "cases": [
     {
       "name": "text equals regardless of case",
