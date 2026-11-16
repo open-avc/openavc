@@ -17,9 +17,10 @@ other request ever sees a change half made:
    under the name it will have. The folder goes when ``admit`` returns,
    whatever happened, and one left by a crash goes at the next change.
 3. **Admit the staged copy.** The loader's own checks on the staged driver
-   file, judged as the file it is about to become (the companion a YAML names
-   is looked for in the driver folder, where an arriving one counts), a Python
-   file imported under a throwaway module name; then the door's own gates.
+   file, a Python file imported under a throwaway module name; then the door's
+   own gates. The staging folder holds the driver as it will be: a companion a
+   YAML names that is already installed, and not brought, is copied in beside
+   it, so the loader finds it where it will find it after the swap.
 4. **Swap.** What each target holds is noted (nothing, a link, or its bytes),
    then each staged file replaces its target (``os.replace``) and each file
    the change removes goes.
@@ -50,12 +51,13 @@ import sys
 import tempfile
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from openavc.drivers.driver_loader import (
     DRIVER_EXTENSION,
     DRIVER_FILE_STEM,
+    companion_relpath_from_yaml,
     declared_driver_info,
     load_driver_file,
     load_python_driver_file,
@@ -204,7 +206,8 @@ def admit(change: DriverChange, gates: Gates = Gates()) -> Admitted:
     staging = tempfile.mkdtemp(prefix=_STAGING_PREFIX, dir=folder)
     try:
         staged = _write_beside(os.path.realpath(staging), change.files)
-        driver_class = _staged_class(staged[change.main], change, gates)
+        _installed_companion_beside(folder, os.path.realpath(staging), change)
+        driver_class = _staged_class(staged[change.main], gates)
         return _Swap(folder, change, staged).register(driver_class, gates)
     finally:
         shutil.rmtree(staging, ignore_errors=True)
@@ -241,20 +244,37 @@ def _write_beside(staging: str, files: Mapping[str, bytes]) -> dict[str, Path]:
     return staged
 
 
-def _staged_class(staged: Path, change: DriverChange, gates: Gates) -> type:
+def _installed_companion_beside(folder: str, staging: str, change: DriverChange) -> None:
+    """Copy the companion a YAML driver names into the staging folder when it
+    is already installed and the change does not bring it: the loader refuses
+    a definition whose companion is not beside it, and after the swap it will
+    be. Only a companion named by a driver file name, from the folder itself;
+    the copy is never swapped in."""
+    if not change.main.endswith(DRIVER_EXTENSION):
+        return
+    relpath = companion_relpath_from_yaml(change.files[change.main])
+    name = PurePosixPath(relpath).name if relpath else ""
+    if not _FILE_NAME.fullmatch(name) or name in change.files:
+        return
+    installed = _path_in(folder, name)
+    if installed.is_file():
+        shutil.copyfile(installed, _path_in(staging, name))
+
+
+def _staged_class(staged: Path, gates: Gates) -> type:
     """The class the staged driver file is, by the loader's checks and then
     the door's gates."""
     if staged.suffix == DRIVER_EXTENSION:
-        return _gated(_staged_definition_class(staged, change, gates), gates)
+        return _gated(_staged_definition_class(staged, gates), gates)
     return _python_class(trial_driver_class(staged), gates)
 
 
-def _staged_definition_class(staged: Path, change: DriverChange, gates: Gates) -> type:
-    """A staged YAML driver's class, judged as the file it is about to
-    become, its definition held to the door's definition gate."""
+def _staged_definition_class(staged: Path, gates: Gates) -> type:
+    """A staged YAML driver's class, its definition held to the door's
+    definition gate."""
     from openavc.drivers.configurable import create_configurable_driver_class
 
-    definition = load_driver_file(staged, folder=change.folder, arriving=set(change.files))
+    definition = load_driver_file(staged)
     if definition is None:
         raise DriverRefused(422, gates.not_a_definition)
     if gates.definition is not None:

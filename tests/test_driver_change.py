@@ -114,6 +114,15 @@ def test_a_yaml_driver_whose_companion_is_already_installed_goes_in(folder):
     data = _yaml(discovery={"python": {"file": "./acme_widget_discovery.py"}})
     admit(_change(folder, {"acme_widget.avcdriver": data}))
     assert registry.get_driver_class(DRIVER_ID) is not None
+    assert _tree(folder) == {"acme_widget.avcdriver": data, "acme_widget_discovery.py": b"X = 1\n"}
+    assert _no_staging(folder)
+
+
+def test_a_yaml_driver_whose_companion_is_neither_brought_nor_installed_is_refused(folder):
+    data = _yaml(discovery={"python": {"file": "./acme_widget_discovery.py"}})
+    with pytest.raises(DriverRefused):
+        admit(_change(folder, {"acme_widget.avcdriver": data}))
+    assert _tree(folder) == {}
 
 
 def test_a_python_driver_registers_from_its_final_place(folder):
