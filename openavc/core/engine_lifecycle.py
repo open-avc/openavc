@@ -158,6 +158,16 @@ def _move_legacy_project_dir(sys_config, project_dir: Path) -> None:
     migrate_legacy_project_dir()
 
 
+def _make_backups_owner_only(sys_config, project_dir: Path) -> None:
+    # The data folder's backups/ holds logins (a paired system's cloud key in
+    # each pre-update zip, the Project Library's zip taken before its logins
+    # moved); an earlier version wrote them under the umask, readable by
+    # every account on the computer. Every install type, every start.
+    from openavc.updater.backup import make_backups_private
+
+    make_backups_private(Path(sys_config.data_dir))
+
+
 # Each with the line the log gets when it fails, in the order they run.
 # system.json is made sure of between the two lists.
 _BEFORE_SYSTEM_JSON = (
@@ -172,6 +182,7 @@ _AFTER_SYSTEM_JSON = (
     (_warn_if_only_an_api_key, "Could not check the admin credential posture"),
     (_move_legacy_repos, "migrate_legacy_repos failed"),
     (_move_legacy_project_dir, "migrate_legacy_project_dir failed"),
+    (_make_backups_owner_only, "Could not make the data folder's backups readable by this account only"),
 )
 
 

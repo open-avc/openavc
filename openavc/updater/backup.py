@@ -5,6 +5,14 @@ Creates a zip archive of user data (projects, drivers, plugins,
 system.json) before applying an update, so it can be restored if
 the update fails.
 
+**Owner-only.** The data folder's ``backups/`` holds what the platform backs
+up on its own: each pre-update zip (the projects tree, so a paired system's
+cloud key in ``cloud.json``) and the Project Library's zip taken before its
+logins moved (``core/project_library.py``). The folder and every zip in it are
+readable by the server's account only (``utils/fileio.py``): each zip is
+created owner-only, never changed afterwards, and a start makes what an
+earlier version left there owner-only too (``make_backups_private``).
+
 **Links.** A project tree (``projects/``, or a project kept outside the
 data directory) is backed up as the project sees it: a linked folder or
 file in it is followed, because it is the project's own data and the update
@@ -21,11 +29,13 @@ import json
 import logging
 import os
 import shutil
+import tempfile
 import zipfile
 import zlib
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath, PureWindowsPath
 
+from openavc.utils.fileio import make_private, private_dir
 from openavc.utils.paths import files_below, is_link
 
 log = logging.getLogger(__name__)
@@ -62,17 +72,20 @@ def create_backup(
 
     Returns the path to the created backup file.
     """
-    backup_dir = data_dir / "backups"
-    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_dir = private_dir(data_dir / "backups")
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     backup_name = f"pre-update-v{current_version}-{timestamp}.zip"
     backup_path = backup_dir / backup_name
     # Write to a temp name and atomically rename on success. A mid-write failure
-    # (disk full, cancellation) then leaves only a *.zip.tmp that doesn't match
-    # the pre-update-*.zip glob, so list_backups/cleanup_old_backups never count
-    # a truncated archive as a real restore slot.
-    tmp_path = backup_dir / f"{backup_name}.tmp"
+    # (disk full, cancellation) then leaves only a temp that doesn't match the
+    # pre-update-*.zip glob, so list_backups/cleanup_old_backups never count a
+    # truncated archive as a real restore slot. mkstemp creates it owner-only,
+    # and the rename keeps that, so the zip is never in place readable by
+    # another account.
+    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(backup_dir), prefix=f".{backup_name}.", suffix=".tmp")
+    os.close(tmp_fd)
+    tmp_path = Path(tmp_name)
 
     log.info("Creating pre-update backup: %s", backup_path)
 
@@ -679,6 +692,20 @@ def _restore_external_files(
     if restored:
         log.warning("Restored external project files from pre-update backup: %s", external_dir)
     return restored
+
+
+def make_backups_private(data_dir: Path) -> None:
+    """The data folder's ``backups/`` and every file in it readable by the
+    server's account only (the module docstring): what an earlier version
+    wrote there under the umask. Run at every start. A link in it is left as
+    it is, and a file whose mode cannot be set is logged and skipped."""
+    backup_dir = data_dir / "backups"
+    if not backup_dir.is_dir():
+        return
+    make_private(backup_dir)
+    for path in sorted(backup_dir.iterdir()):
+        if path.is_file() and not path.is_symlink():
+            make_private(path)
 
 
 def list_backups(data_dir: Path) -> list[dict]:

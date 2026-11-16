@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import shutil
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -45,6 +47,7 @@ from openavc.system_config import (
     SEED_TEMPLATES_DIR,
 )
 from openavc.utils.fileio import atomic_write_text as _atomic_write_text
+from openavc.utils.fileio import private_dir
 from openavc.utils.logger import get_logger
 from openavc.utils.paths import files_below, plain_file_in, safe_path_within
 from openavc.drivers.registry import is_driver_registered, register_driver
@@ -305,9 +308,10 @@ def move_library_logins(logins=None) -> None:
     start, once the drivers that say which settings are logins are loaded.
 
     Every copy this rewrites is backed up first, together, in one zip in the
-    data folder's ``backups/``; if that backup cannot be written, no copy is
-    rewritten. Copies are left in whatever format version they were saved
-    in. The logins of a copy no longer in the library are deleted.
+    data folder's ``backups/``, readable by the server's account only (the
+    folder too: ``updater/backup.py``); if that backup cannot be written, no
+    copy is rewritten. Copies are left in whatever format version they were
+    saved in. The logins of a copy no longer in the library are deleted.
     """
     logins = logins if logins is not None else device_logins()
     lib = _lib_dir()
@@ -327,16 +331,12 @@ def move_library_logins(logins=None) -> None:
         return
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup = lib.parent / "backups" / f"library-before-moving-device-logins-{stamp}.zip"
     try:
-        backup.parent.mkdir(parents=True, exist_ok=True)
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-            for sid, _, original, _ in pending:
-                zf.writestr(f"{sid}/project.avc", original)
-        tmp = backup.with_suffix(".zip.tmp")
-        tmp.write_bytes(buf.getvalue())
-        tmp.replace(backup)
+        backup = _write_private_zip(
+            private_dir(lib.parent / "backups"),
+            f"library-before-moving-device-logins-{stamp}.zip",
+            {f"{sid}/project.avc": original for sid, _, original, _ in pending},
+        )
     except OSError:
         log.exception("Could not back up the library, so its device logins stay in its copies for now")
         return
@@ -347,6 +347,24 @@ def move_library_logins(logins=None) -> None:
             log.exception("Could not rewrite library project '%s' without its device logins", sid)
     log.info("Moved the device logins out of %d library project(s); the copies as they were: %s",
              len(pending), backup)
+
+
+def _write_private_zip(folder: Path, name: str, members: dict[str, bytes]) -> Path:
+    """``members`` zipped into ``folder / name``, owner-only from the first
+    byte (``mkstemp``) and in place only once complete."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for member, content in members.items():
+            zf.writestr(member, content)
+    fd, tmp = tempfile.mkstemp(dir=str(folder), prefix=f".{name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(buf.getvalue())
+        os.replace(tmp, folder / name)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return folder / name
 
 
 def _project_meta(project_id: str, data: dict[str, Any],
