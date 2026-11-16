@@ -13,9 +13,10 @@ and the two checks only an imported class on a running platform can answer:
 - the handlers: whether a ``MACRO_ACTIONS`` or ``SCRIPT_API`` entry names a
   method the class has, and whether that method is async.
 
-The installer reads ``min_openavc_version`` with its own walk of the plugin's
-files after the download (``plugin_installer._extract_min_openavc_version``),
-so a change to the version rule is made there too.
+The installer reads ``min_openavc_version`` from the plugin's source after
+the download, through ``plugin_source`` and ``plugin_declarations.info_value``,
+and compares it itself (``plugin_installer._check_min_openavc_version``), so a
+change to the version comparison is made there too.
 
 The declaration tables stay importable from here for openavc-plugins' tests,
 which compare its ``validate.py`` with them.

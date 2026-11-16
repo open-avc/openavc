@@ -5,13 +5,17 @@ Mirrors the driver install system: fetches index.json from the community
 repository, downloads plugin files, and handles the install/uninstall
 lifecycle.
 
-Dependency *installation* is not here. This module reads what a plugin
-declares — the `dependencies` and `native_dependencies` entries in its
-PLUGIN_INFO, parsed straight out of the source without importing it — and
-hands each list to the module that knows how to install that kind of thing:
-`plugin_wheels` for Python requirements, `plugin_native_deps` for system
-libraries. Both sit on `plugin_artifacts`, which bounds what any downloaded
-byte stream can do to us.
+Dependency *installation* is not here. After the download, and before
+anything is installed for the plugin, this module reads what the plugin
+declares, once, without importing it: `plugin_source.read_source` on the file
+the loader will import (`plugin_import._candidate_files`). Only that class's
+PLUGIN_INFO counts. Its `min_openavc_version` can refuse the install; its
+`dependencies` and `native_dependencies` go to the module that knows how to
+install that kind of thing: `plugin_wheels` for Python requirements,
+`plugin_native_deps` for system libraries. Both sit on `plugin_artifacts`,
+which bounds what any downloaded byte stream can do to us. A value the source
+computes when the plugin runs cannot be read; nothing is installed or checked
+for it here, and the log says which value.
 """
 
 import asyncio
@@ -29,7 +33,9 @@ from urllib.parse import urlparse
 
 import httpx
 
+from openavc.core.plugin_declarations import UNREAD, Declared, info_value
 from openavc.core.plugin_import import (
+    _candidate_files,
     add_deps_to_import_path,
     exec_plugin_in_package,
     plugin_class_in,
@@ -46,6 +52,7 @@ from openavc.core.plugin_artifacts import (
     _download_capped,
 )
 from openavc.core.plugin_native_deps import install_native_deps
+from openavc.core.plugin_source import read_source
 from openavc.core.plugin_wheels import install_requirements
 from openavc.system_config import PLUGIN_DATA_DIR, PLUGIN_REPO_DIR
 from openavc.utils.community_integrity import (
@@ -356,16 +363,19 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
                 catalog.require_complete()
                 log.info(f"Installed plugin '{plugin_id}' from directory")
 
+        # What the plugin declares, read once from the file the loader will
+        # import, before anything is installed for it.
+        declared = _read_declarations(plugin_dir)
+
         # Reject the install up front if the plugin needs a newer OpenAVC.
         # Without this, the plugin's pip deps would be installed first and
         # the incompatibility wouldn't surface until enable.
-        _check_min_openavc_version(plugin_id, plugin_dir)
+        _check_min_openavc_version(plugin_id, declared)
 
-        # Install pip dependencies if we can find them
-        await _install_pip_deps(plugin_id, plugin_dir)
+        await _install_pip_deps(plugin_id, declared)
 
-        # Install native dependencies (e.g. hidapi.dll for Stream Deck)
-        await _install_native_deps(plugin_id, plugin_dir)
+        # Native dependencies (e.g. hidapi.dll for Stream Deck)
+        await _install_native_deps(plugin_id, declared)
 
         # Try to register the plugin class immediately. On failure, write
         # an .install-error sidecar so list_installed_plugins() can surface
@@ -472,30 +482,65 @@ async def _download_github_directory(
             )
 
 
-async def _install_pip_deps(plugin_id: str, plugin_dir: Path) -> None:
-    """Install pip dependencies for a plugin into plugin_repo/.deps/."""
-    # Try to find PLUGIN_INFO to get dependencies
-    deps: list[str] = []
+# ──── What the plugin declares ────
 
-    for py_file in plugin_dir.glob("*.py"):
+
+def _read_declarations(plugin_dir: Path) -> Declared | None:
+    """The plugin's declarations, read from source without running it: the
+    first of the loader's candidate files that holds a plugin class. A file
+    that does not read or parse is passed over, as the loader passes over one
+    that does not import."""
+    for path in _candidate_files(plugin_dir):
         try:
-            content = py_file.read_text(encoding="utf-8")
-            if '"dependencies"' in content or "'dependencies'" in content:
-                # Quick parse: look for dependencies list
-                import ast
-                tree = ast.parse(content)
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Dict):
-                        for key, value in zip(node.keys, node.values):
-                            if (isinstance(key, ast.Constant) and
-                                    key.value == "dependencies" and
-                                    isinstance(value, ast.List)):
-                                for elt in value.elts:
-                                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                                        deps.append(elt.value)
+            declared = read_source(path.read_text(encoding="utf-8"))
         except (SyntaxError, ValueError, OSError):
-            pass  # AST parse errors, literal_eval errors, or file read errors
+            continue
+        if declared is not None:
+            return declared
+    return None
 
+
+def _declared(plugin_id: str, declared: Declared | None, key: str) -> Any:
+    """``PLUGIN_INFO[key]``, or None. A value the source computes is None
+    here too, and the log names it."""
+    if declared is None:
+        return None
+    value = info_value(declared.info, key)
+    if value is UNREAD:
+        log.warning(
+            f"Plugin '{plugin_id}': PLUGIN_INFO['{key}'] is built when the plugin "
+            "runs, so it could not be read before installing and nothing was done for it"
+        )
+        return None
+    return value
+
+
+def _declared_entries(
+    plugin_id: str, declared: Declared | None, key: str, entry_type: type
+) -> list:
+    """The entries of the list ``PLUGIN_INFO[key]`` that are ``entry_type``.
+    Anything else in its place installs nothing, and the log names it."""
+    value = _declared(plugin_id, declared, key)
+    if value is None:
+        return []
+    if not isinstance(value, (list, tuple)):
+        log.warning(f"Plugin '{plugin_id}': PLUGIN_INFO['{key}'] is not a list, so nothing was installed for it")
+        return []
+    entries = [entry for entry in value if isinstance(entry, entry_type)]
+    if len(entries) < len(value):
+        log.warning(
+            f"Plugin '{plugin_id}': PLUGIN_INFO['{key}'] has entries that are not "
+            f"{_ENTRY_WORDS[entry_type]}; they were left out"
+        )
+    return entries
+
+
+_ENTRY_WORDS = {str: "text", dict: "a dict"}
+
+
+async def _install_pip_deps(plugin_id: str, declared: Declared | None) -> None:
+    """Install a plugin's declared pip dependencies into plugin_repo/.deps/."""
+    deps = _declared_entries(plugin_id, declared, "dependencies", str)
     if not deps:
         return
 
@@ -507,59 +552,23 @@ async def _install_pip_deps(plugin_id: str, plugin_dir: Path) -> None:
     await install_requirements(deps, deps_dir, plugin_id)
 
 
-async def _install_native_deps(plugin_id: str, plugin_dir: Path) -> None:
+async def _install_native_deps(plugin_id: str, declared: Declared | None) -> None:
     """Check and install native dependencies declared in PLUGIN_INFO."""
-    native_deps = _parse_native_deps(plugin_dir)
+    native_deps = _declared_entries(plugin_id, declared, "native_dependencies", dict)
     if not native_deps:
         return
     await install_native_deps(plugin_id, native_deps)
 
 
-def _extract_min_openavc_version(plugin_dir: Path) -> str | None:
-    """Find the plugin's declared min_openavc_version without importing it.
-
-    Walks every .py file in plugin_dir, parses the AST, and returns the
-    first `"min_openavc_version": "..."` value it finds inside any dict
-    literal. The convention is that this lives in PLUGIN_INFO, but the
-    scan is shape-tolerant so it also catches near-misses (e.g. devs who
-    keep min_openavc_version on the class rather than in the dict).
-
-    Returns None when the plugin file doesn't declare a minimum — those
-    plugins install unconditionally.
-    """
-    import ast
-
-    for py_file in plugin_dir.glob("*.py"):
-        try:
-            content = py_file.read_text(encoding="utf-8")
-            if "min_openavc_version" not in content:
-                continue
-            tree = ast.parse(content)
-        except (SyntaxError, OSError, UnicodeDecodeError):
-            continue
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Dict):
-                continue
-            for key, value in zip(node.keys, node.values):
-                if (
-                    isinstance(key, ast.Constant)
-                    and key.value == "min_openavc_version"
-                    and isinstance(value, ast.Constant)
-                    and isinstance(value.value, str)
-                ):
-                    return value.value
-    return None
-
-
-def _check_min_openavc_version(plugin_id: str, plugin_dir: Path) -> None:
+def _check_min_openavc_version(plugin_id: str, declared: Declared | None) -> None:
     """Raise ValueError if the plugin requires a newer OpenAVC than running.
 
     Called during install (before pip deps install + class registration)
     so the user doesn't pay for a download that's going to fail to enable
     later anyway. Mirrors the runtime check in core/plugin_manifest.py.
     """
-    min_version = _extract_min_openavc_version(plugin_dir)
-    if not min_version:
+    min_version = _declared(plugin_id, declared, "min_openavc_version")
+    if not min_version or not isinstance(min_version, str):
         return
     from openavc.version import __version__
     try:
@@ -579,31 +588,6 @@ def _check_min_openavc_version(plugin_id: str, plugin_dir: Path) -> None:
         # not a runtime blocker. Let it through; validate_manifest will
         # surface it on enable.
         return
-
-
-def _parse_native_deps(plugin_dir: Path) -> list[dict]:
-    """Parse native_dependencies from a plugin's source files."""
-    import ast
-
-    for py_file in plugin_dir.glob("*.py"):
-        try:
-            content = py_file.read_text(encoding="utf-8")
-            if "native_dependencies" not in content:
-                continue
-            tree = ast.parse(content)
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Dict):
-                    for key, value in zip(node.keys, node.values):
-                        if (
-                            isinstance(key, ast.Constant)
-                            and key.value == "native_dependencies"
-                            and isinstance(value, ast.List)
-                        ):
-                            # Evaluate the list literal
-                            return ast.literal_eval(value)
-        except (SyntaxError, ValueError, OSError):
-            pass  # AST parse errors, literal_eval errors, or file read errors
-    return []
 
 
 def _clear_installed_bytecode(plugin_dir: Path) -> None:
@@ -639,29 +623,11 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
     purge_plugin_modules(f"plugin_{plugin_dir.name}")
     add_deps_to_import_path(PLUGIN_REPO_DIR / ".deps")
 
-    # Look for plugin file
-    candidates = [
-        plugin_dir / "__init__.py",
-        plugin_dir / f"{plugin_id}_plugin.py",
-    ]
-    candidates.extend(sorted(plugin_dir.glob("*.py")))
-
+    # The files the loader tries at start, in its order, each once.
+    candidates = _candidate_files(plugin_dir)
     last_error: str | None = None
-    candidates_tried = 0
 
     for filepath in candidates:
-        # Skip files that don't exist on disk. The original code special-
-        # cased `__init__.py` to always proceed, which caused a phantom
-        # FileNotFoundError to be logged when the plugin shipped without
-        # one. Skip outright and let the next candidate try.
-        if not filepath.exists():
-            continue
-        # Skip "private" files (starting with "_") except __init__.py,
-        # which is the canonical Python package entry point.
-        if filepath.name.startswith("_") and filepath.name != "__init__.py":
-            continue
-
-        candidates_tried += 1
         try:
             module = exec_plugin_in_package(filepath, plugin_dir)
             if module is None:
@@ -686,7 +652,7 @@ def _register_installed_plugin(plugin_id: str, plugin_dir: Path) -> str | None:
                 f"{type(e).__name__}: {e}"
             )
 
-    if candidates_tried == 0:
+    if not candidates:
         return f"no plugin module found in {plugin_dir.name}/"
     if last_error:
         return last_error

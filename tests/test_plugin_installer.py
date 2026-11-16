@@ -17,6 +17,7 @@ import pytest
 from openavc.core.plugin_installer import (
     CommunityPluginCache,
     _install_pip_deps,
+    _read_declarations,
     _register_installed_plugin,
     get_plugin_data_info,
     install_plugin,
@@ -128,16 +129,17 @@ class SamplePlugin:
 '''
 
 PLUGIN_WITH_DEPS_SOURCE = '''\
-PLUGIN_INFO = {
-    "id": "deps_plugin",
-    "name": "Deps Plugin",
-    "version": "1.0.0",
-    "author": "Test",
-    "description": "Plugin with dependencies.",
-    "category": "utility",
-    "license": "MIT",
-    "dependencies": ["some-library>=1.0", "another-lib"],
-}
+class DepsPlugin:
+    PLUGIN_INFO = {
+        "id": "deps_plugin",
+        "name": "Deps Plugin",
+        "version": "1.0.0",
+        "author": "Test",
+        "description": "Plugin with dependencies.",
+        "category": "utility",
+        "license": "MIT",
+        "dependencies": ["some-library>=1.0", "another-lib"],
+    }
 '''
 
 
@@ -739,7 +741,7 @@ def _mock_pip_proc(returncode: int = 0, stderr: bytes = b""):
 class TestInstallPipDeps:
 
     async def test_parses_and_installs_deps(self, plugin_repo):
-        """Finds dependencies list via AST and calls pip install."""
+        """Installs the dependencies PLUGIN_INFO lists, through pip."""
         plugin_dir = plugin_repo / "deps_plugin"
         plugin_dir.mkdir()
         (plugin_dir / "deps_plugin.py").write_text(
@@ -749,7 +751,7 @@ class TestInstallPipDeps:
         with patch(
             "asyncio.create_subprocess_exec", new=AsyncMock(return_value=_mock_pip_proc())
         ) as mock_exec, patch("subprocess.run") as mock_run:
-            await _install_pip_deps("deps_plugin", plugin_dir)
+            await _install_pip_deps("deps_plugin", _read_declarations(plugin_dir))
 
         # Async subprocess, never the sync blocking call
         mock_run.assert_not_called()
@@ -796,7 +798,7 @@ class TestInstallPipDeps:
             with patch(
                 "asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)
             ), patch("subprocess.run"):
-                await _install_pip_deps("deps_plugin", plugin_dir)
+                await _install_pip_deps("deps_plugin", _read_declarations(plugin_dir))
         finally:
             hb.cancel()
         assert ticks >= 3, "event loop starved during pip install"
@@ -806,12 +808,12 @@ class TestInstallPipDeps:
         plugin_dir = plugin_repo / "no_deps"
         plugin_dir.mkdir()
         (plugin_dir / "no_deps.py").write_text(
-            "PLUGIN_INFO = {'id': 'no_deps', 'name': 'No Deps'}\n",
+            "class NoDeps:\n    PLUGIN_INFO = {'id': 'no_deps', 'name': 'No Deps'}\n",
             encoding="utf-8",
         )
 
         with patch("asyncio.create_subprocess_exec", new=AsyncMock()) as mock_exec:
-            await _install_pip_deps("no_deps", plugin_dir)
+            await _install_pip_deps("no_deps", _read_declarations(plugin_dir))
 
         mock_exec.assert_not_called()
 
@@ -828,7 +830,7 @@ class TestInstallPipDeps:
             new=AsyncMock(return_value=_mock_pip_proc(returncode=1, stderr=b"error")),
         ):
             # Should not raise
-            await _install_pip_deps("deps_plugin", plugin_dir)
+            await _install_pip_deps("deps_plugin", _read_declarations(plugin_dir))
 
     async def test_deps_dir_created(self, plugin_repo):
         """The .deps directory is created when dependencies are found."""
@@ -841,12 +843,12 @@ class TestInstallPipDeps:
         with patch(
             "asyncio.create_subprocess_exec", new=AsyncMock(return_value=_mock_pip_proc())
         ):
-            await _install_pip_deps("deps_plugin", plugin_dir)
+            await _install_pip_deps("deps_plugin", _read_declarations(plugin_dir))
 
         assert (plugin_repo / ".deps").is_dir()
 
     async def test_syntax_error_in_file_skipped(self, plugin_repo):
-        """Files with syntax errors are skipped gracefully."""
+        """A plugin whose only file does not parse declares nothing to install."""
         plugin_dir = plugin_repo / "bad_syntax"
         plugin_dir.mkdir()
         (plugin_dir / "bad.py").write_text(
@@ -854,7 +856,7 @@ class TestInstallPipDeps:
         )
 
         with patch("asyncio.create_subprocess_exec", new=AsyncMock()) as mock_exec:
-            await _install_pip_deps("bad_syntax", plugin_dir)
+            await _install_pip_deps("bad_syntax", _read_declarations(plugin_dir))
 
         mock_exec.assert_not_called()
 
@@ -1017,7 +1019,7 @@ class TestInstallDepsFromPyPI:
             mock_sys.frozen = True
             mock_sys.version_info = MagicMock(major=3, minor=12)
             mock_sys.platform = "win32"
-            await _install_pip_deps("deps_plugin", plugin_dir)
+            await _install_pip_deps("deps_plugin", _read_declarations(plugin_dir))
 
         mock_pypi.assert_called_once()
         # Verify the parsed deps were passed through

@@ -135,9 +135,10 @@ def _declares(value: Any) -> bool:
     return value is not None and value is not UNREAD
 
 
-def _get(info: dict, key: str, default: Any = None) -> Any:
+def info_value(info: dict, key: str, default: Any = None) -> Any:
     """``info[key]``, or ``default`` when it is plainly absent: ``UNREAD`` when
-    keys the source computes (an ``UNREAD`` key) may hold it."""
+    keys the source computes (an ``UNREAD`` key) may hold it. THE read of one
+    ``PLUGIN_INFO`` value, for the rules here and the installer alike."""
     if key in info:
         return info[key]
     return UNREAD if UNREAD in info else default
@@ -189,7 +190,7 @@ class _Judging:
 
     @property
     def plugin_id(self) -> Any:
-        return _get(self.info, "id", UNREAD)
+        return info_value(self.info, "id", UNREAD)
 
 
 def first_problem(
@@ -222,7 +223,7 @@ def _required_fields(j: _Judging) -> str | None:
 
 
 def _license(j: _Judging) -> str | None:
-    license_name = _get(j.info, "license", "")
+    license_name = info_value(j.info, "license", "")
     if not _known(license_name):
         return None
     if not _is_mit_compatible(license_name):
@@ -235,7 +236,7 @@ def _is_mit_compatible(license_name: Any) -> bool:
 
 
 def _category(j: _Judging) -> str | None:
-    category = _get(j.info, "category", "")
+    category = info_value(j.info, "category", "")
     if not _known(category):
         return None
     if not (isinstance(category, str) and category in VALID_CATEGORIES):
@@ -244,7 +245,7 @@ def _category(j: _Judging) -> str | None:
 
 
 def _capabilities(j: _Judging) -> str | None:
-    capabilities = _get(j.info, "capabilities", [])
+    capabilities = info_value(j.info, "capabilities", [])
     if not _known(capabilities):
         return None
     if not isinstance(capabilities, (list, tuple)):
@@ -266,12 +267,12 @@ def _as_text(value: Any) -> str:
 def _lacks_capability(info: dict, capability: str) -> bool:
     """Whether the plugin plainly does not declare ``capability``: False when
     its capabilities could not be read."""
-    capabilities = _get(info, "capabilities", [])
+    capabilities = info_value(info, "capabilities", [])
     return _known(capabilities) and capability not in capabilities
 
 
 def _guest_alias(j: _Judging) -> str | None:
-    alias = _get(j.info, "guest_alias")
+    alias = info_value(j.info, "guest_alias")
     if not _declares(alias):
         return None
     if not _is_url_segment(alias):
@@ -383,7 +384,7 @@ def platform_supported(info: dict, platform_id: str) -> bool:
     """Whether a manifest's ``platforms`` (default ``["all"]``) includes
     ``platform_id``: True when they could not be read, False when they are not
     a list (a string is not read as one)."""
-    platforms = _get(info, "platforms", ["all"])
+    platforms = info_value(info, "platforms", ["all"])
     if not _known(platforms):
         return True
     if not isinstance(platforms, (list, tuple)):

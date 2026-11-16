@@ -8,7 +8,9 @@ other's, and no plugin folder goes on ``sys.path``. An import that fails takes
 back every module it added, so a broken file cannot leave half a plugin behind
 for the next one. The startup scan (``PluginLoader.scan_plugins``) and an
 install (``plugin_installer._register_installed_plugin``) both import through
-here; each picks its own candidate files.
+here, trying the files ``_candidate_files`` names, in its order: THE rule for
+which file is a plugin's. The installer reads the plugin's declarations from
+the same files before it installs anything for it.
 
 ``.deps`` is the folder plugin dependencies are installed into. It goes on the
 END of ``sys.path``, so a package a plugin brought can never shadow the
@@ -120,12 +122,11 @@ def plugin_folders(plugin_repo_dir: Path) -> list[Path]:
 
 
 def find_plugin_class(plugin_dir: Path) -> type | None:
-    """Import a plugin folder's candidate files in turn; the first plugin class found.
+    """Import a plugin folder's candidate files (``_candidate_files``) in
+    turn; the first plugin class found.
 
-    The candidates: ``__init__.py``, then ``<folder>_plugin.py``, then every
-    other ``.py`` in name order except those starting with ``_``. A file that
-    holds no plugin class has its modules purged before the next one runs; a
-    file that raises is logged and the next one tried.
+    A file that holds no plugin class has its modules purged before the next
+    one runs; a file that raises is logged and the next one tried.
     """
     for filepath in _candidate_files(plugin_dir):
         plugin_class = _load_plugin_class(filepath, plugin_dir)
@@ -135,6 +136,9 @@ def find_plugin_class(plugin_dir: Path) -> type | None:
 
 
 def _candidate_files(plugin_dir: Path) -> list[Path]:
+    """The files that may hold a plugin's class, in the order they are tried,
+    each once: ``__init__.py``, then ``<folder>_plugin.py``, then every other
+    ``.py`` in name order except those starting with ``_``."""
     first = [plugin_dir / "__init__.py", plugin_dir / f"{plugin_dir.name}_plugin.py"]
     candidates = [path for path in first if path.exists()]
     candidates.extend(

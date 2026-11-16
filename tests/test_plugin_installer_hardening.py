@@ -343,13 +343,14 @@ class TestSafeRequirement:
         plugin_dir = tmp_path / "evilpip"
         plugin_dir.mkdir()
         (plugin_dir / "evilpip.py").write_text(
-            'PLUGIN_INFO = {"id": "evilpip", '
+            'class EvilPip:\n'
+            '    PLUGIN_INFO = {"id": "evilpip", '
             '"dependencies": ["--index-url=http://evil/simple/", "requests"]}\n',
             encoding="utf-8",
         )
         with patch("subprocess.run") as mock_run:
             with pytest.raises(ValueError, match="Unsafe dependency"):
-                await pi._install_pip_deps("evilpip", plugin_dir)
+                await pi._install_pip_deps("evilpip", pi._read_declarations(plugin_dir))
         mock_run.assert_not_called()  # never reached pip
 
 
