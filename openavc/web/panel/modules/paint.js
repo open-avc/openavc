@@ -425,16 +425,14 @@ function drawOnEffectLayer(node, picture, { effect, blend, opacity, tintColor })
  * even where frameless has made the background transparent.
  */
 export function applyImageEffect(node, imageRef, options = {}) {
+    // The picture drawn before goes first, so a reference that names no
+    // picture (assetUrl) leaves none.
+    node.querySelector(':scope > .panel-button-image-layer')?.remove();
     const url = assetUrl(imageRef);
-    if (!url) {
-        // Names no picture: none drawn, and one on an effect layer goes.
-        node.querySelector(':scope > .panel-button-image-layer')?.remove();
-        return;
-    }
+    if (!url) return;
     const opacity = options.opacity != null ? Number(options.opacity) : 1;
     const picture = { urlCss: `url("${sanitizeCssUrl(url)}")`, sizeCss: fitCss(options.fit || 'cover') };
 
-    node.querySelector(':scope > .panel-button-image-layer')?.remove();
     node.style.webkitMaskImage = '';
     node.style.maskImage = '';
 
