@@ -295,12 +295,12 @@
    {
     "op": "dismiss",
     "o": [
-     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 10%; top: 10%; width: 80%; height: 30%;\">--</div></div></div></div>",
-     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 10%; top: 10%; width: 80%; height: 30%;\">--</div></div></div></div>"
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 10%; top: 10%; width: 80%; height: 30%;\">--</div></div></div></div>",
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 10%; top: 10%; width: 80%; height: 30%;\">--</div></div></div></div>"
     ],
     "f": "1,2,3",
     "n": "home|dlg|",
-    "b": "mn_home:nav_look mn_main:nav_look mn_dlg:nav_look mn_side:nav_look mn_back:nav_look"
+    "b": "mn_home:nav_look mn_main:nav_look mn_dlg:nav_look mn_side:nav_look mn_back:nav_look d1:text"
    },
    {
     "op": "wait",
@@ -310,20 +310,26 @@
    {
     "op": "dismiss",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-page-nav nav-current\" data-element-id=\"mn_home\" aria-label=\"Navigate to mn_home\" data-element-type=\"page_nav\" style=\"position: absolute; left: 0%; top: 90%; width: 10%; height: 10%; background-color: rgb(33, 150, 243); color: rgb(17, 17, 17);\" aria-current=\"page\">mn_home</button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"mn_main\" aria-label=\"Navigate to mn_main\" data-element-type=\"page_nav\" style=\"position: absolute; left: 10%; top: 90%; width: 10%; height: 10%;\">mn_main</button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"mn_dlg\" aria-label=\"Navigate to mn_dlg\" data-element-type=\"page_nav\" style=\"position: absolute; left: 20%; top: 90%; width: 10%; height: 10%;\">mn_dlg</button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"mn_side\" aria-label=\"Navigate to mn_side\" data-element-type=\"page_nav\" style=\"position: absolute; left: 30%; top: 90%; width: 10%; height: 10%;\">mn_side</button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"mn_back\" aria-label=\"Navigate to mn_back\" data-element-type=\"page_nav\" style=\"position: absolute; left: 40%; top: 90%; width: 10%; height: 10%;\">mn_back</button><button type=\"button\" class=\"panel-element panel-page-nav\" data-element-id=\"mn_plain\" aria-label=\"Navigate to mn_plain\" data-element-type=\"page_nav\" style=\"position: absolute; left: 50%; top: 90%; width: 10%; height: 10%;\">mn_plain</button><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">h1</div></div></div>",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 10%; top: 10%; width: 80%; height: 30%;\">--</div></div></div></div>",
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 10%; top: 10%; width: 80%; height: 30%;\">--</div></div></div></div>"
+    ],
     "f": "1,2,3",
-    "n": "home||"
+    "n": "home||",
+    "b": "mn_home:nav_look mn_main:nav_look mn_dlg:nav_look mn_side:nav_look mn_back:nav_look"
    },
    {
     "op": "wait",
     "o": [
-     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 10%; top: 10%; width: 80%; height: 30%;\">--</div></div></div></div>"
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 10%; top: 10%; width: 80%; height: 30%;\">--</div></div></div></div>"
     ],
-    "f": "1,3",
+    "f": "1,2",
     "n": "home||"
    },
    {
     "op": "wait",
-    "f": "1,3",
+    "o": [],
+    "f": "1",
     "n": "home||"
    }
   ],
@@ -656,23 +662,29 @@
    },
    {
     "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"o&quot;v\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"in&quot;o\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div></div></div></div>"
+    ],
     "f": "1,2",
     "n": "a\"b||",
-    "threw": "'.panel-overlay,,data-page-id,,,o,,v,,' is not a valid selector"
+    "b": ""
    },
    {
     "op": "nav",
     "o": [
-     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"o&quot;v\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"in&quot;o\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div></div></div></div>",
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"o&quot;v\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"in&quot;o\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div></div></div></div>",
      "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"o&quot;v\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"in&quot;o\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div></div></div></div>"
     ],
     "f": "1,2,3",
     "n": "a\"b|o\"v|",
-    "b": "in\"o:text in\"o:text"
+    "b": "in\"o:text"
    },
    {
     "op": "wait",
-    "f": "1,2,3",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"o&quot;v\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"in&quot;o\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">--</div></div></div></div>"
+    ],
+    "f": "1,3",
     "n": "a\"b|o\"v|"
    }
   ],
@@ -3572,7 +3584,8 @@
     "op": "dismissAll",
     "o": [],
     "f": "1",
-    "n": "home||"
+    "n": "home||",
+    "b": "mn_home:nav_look mn_main:nav_look mn_dlg:nav_look mn_side:nav_look mn_back:nav_look"
    },
    {
     "op": "nav",
@@ -3772,7 +3785,8 @@
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div style=\"padding: 2rem; text-align: center; color: var(--panel-text); opacity: 0.5;\">No panels configured</div></div>",
     "o": [],
     "f": "",
-    "n": "home||"
+    "n": "home||",
+    "b": ""
    }
   ],
   "nav_look_without_highlight": [

@@ -16,7 +16,7 @@ import { FaderControl, SliderControl } from './modules/level.js';
 import { boundedNumber, panelSetting } from './modules/project_values.js';
 import {
     FrameStatusWatch, drawFrame, fetchExtToken, framePlaceholder, loadPanelElementExtensions,
-    pushToFrames, releaseFramesIn,
+    pushToFrames,
 } from './modules/frames.js';
 import { ListControl, rowsFromState, showListSelection } from './modules/list.js';
 import { GaugeControl } from './modules/gauge.js';
@@ -51,8 +51,8 @@ import {
     masterOrientation, masterPlacement, placeElement, selectLayout, viewportOrientation,
 } from './modules/layout.js';
 import {
-    drawOverlayFrame, fallbackPage, isCustomPage, namesPage, opensOver, pageBehind, pageDrawsNothing,
-    pageRunsAuthorMarkup, rememberPage,
+    closeOverlayFrame, drawOverlayFrame, fallbackPage, isCustomPage, namesPage, opensOver, pageBehind,
+    pageDrawsNothing, pageRunsAuthorMarkup, rememberPage,
 } from './modules/pages.js';
 import {
     carries, definitionIn, demoStateOf, isBuilderFrame, listenToBuilder, postToBuilder, startingTextSizes,
@@ -62,7 +62,7 @@ import {
 } from './modules/fields.js';
 import { installSessionBridge } from './modules/session.js';
 import { EVALUATORS, RENDERERS } from './modules/dispatch.js';
-import { Surface, takeAway } from './modules/surface.js';
+import { Surface, Surfaces, takeAway } from './modules/surface.js';
 
 // The Programmer's sign-in, carried on every /api request and the socket
 // when the IDE embeds this panel; installed before anything fetches.
@@ -155,11 +155,11 @@ class PanelApp {
         this.snapshotReceived = false;
         this.root = document.getElementById('panel-root');
         this.statusEl = document.getElementById('connection-status');
-        // The page drawn last and everything its controls started
-        // (modules/surface.js): its bindings, its element map (element_id ->
-        // {el, elementDef}), its timers and what else it ends. An overlay's
-        // controls register on the page it opened over.
-        this._page = new Surface();
+        // The page drawn last, and each overlay open over it, oldest first,
+        // with everything their controls started (modules/surface.js): their
+        // bindings, their element maps (element_id -> {el, elementDef}), their
+        // timers and what else each ends.
+        this._surfaces = new Surfaces();
         // Whether what a control shows can be believed and whether a press on
         // it can land, and Preview's copy of what each press reaches
         // (modules/availability.js).
@@ -178,7 +178,6 @@ class PanelApp {
         this._clocks = new ClockTicker();  // Every clock on screen, one interval; meeting starts outlive a redraw
         this._pendingBindingKeys = null; // Batched binding keys for rAF
         this._bindingRafId = null;       // requestAnimationFrame ID
-        this.overlayStack = [];      // Stack of overlay page IDs (newest on top)
         this.pageHistory = [];       // Stack of previously-visited regular pages (newest on top) for $back
         this._previewPageId = null;  // Page the builder's preview last asked for (see _showPageAsRuntimeWould)
         this._navigatingBack = false; // Skip history push when navigateToPage is recursing for $back
@@ -214,30 +213,35 @@ class PanelApp {
         this._frameStatus = new FrameStatusWatch();
     }
 
-    /** Every binding drawn from state: the page surface's. */
-    get bindings() { return this._page.bindings; }
+    /** The bindings a control being drawn registers: the surface being drawn's.
+     *  Every binding on screen is `_surfaces.everyBinding()`. */
+    get bindings() { return this._surfaces.drawing.bindings; }
 
-    set bindings(list) { this._page.bindings = list; }
+    set bindings(list) { this._surfaces.drawing.bindings = list; }
 
-    /** Every control on screen, by element id: the page surface's. */
-    get elementMap() { return this._page.elementMap; }
+    /** The controls of the surface being drawn, by element id.
+     *  Every control on screen is `_surfaces.everyControl()`. */
+    get elementMap() { return this._surfaces.drawing.elementMap; }
 
-    set elementMap(map) { this._page.elementMap = map; }
+    set elementMap(map) { this._surfaces.drawing.elementMap = map; }
+
+    /** The page ids of the overlays open, oldest first. */
+    get overlayStack() { return this._surfaces.overlays.map((surface) => surface.pageId); }
 
     /** What the availability rule reads from the panel, each at call time. */
     _availabilityHost() {
         return {
             state: () => this.state,
             editMode: () => this.editMode,
-            elementMap: () => this.elementMap,
+            elementMap: () => this._surfaces.everyControl(),
         };
     }
 
     /** What the macro runs read from the panel and ask of it, each at call time. */
     _macroRunsHost() {
         return {
-            elementMap: () => this.elementMap,
-            bindings: () => this.bindings,
+            elementMap: () => this._surfaces.everyControl(),
+            bindings: () => this._surfaces.everyBinding(),
             recordSource: (node, path) => this._textEditor.recordSource(node, path),
             showFailure: (text) => this._failureBand.show(text),
             revert: () => this._revertRefusedInteraction(null),
@@ -250,7 +254,7 @@ class PanelApp {
             settings: () => this.uiSettings,
             touchedNode: () => {
                 const entry = this._lastTouchedElementId
-                    ? this.elementMap[this._lastTouchedElementId]
+                    ? this._surfaces.everyControl()[this._lastTouchedElementId]
                     : null;
                 return entry && entry.el;
             },
@@ -825,7 +829,7 @@ class PanelApp {
      * says it should look, whatever is on screen.
      */
     _redrawElement(id) {
-        for (const b of this.bindings) {
+        for (const b of this._surfaces.everyBinding()) {
             if (b.elementDef?.id !== id) continue;
             forgetDrawn(b);
             this._drawBinding(b);
@@ -870,7 +874,6 @@ class PanelApp {
         this._failureBand.dismiss();
 
         if (opensOver(targetPage)) {
-            this.overlayStack.push(pageId);
             this.renderOverlay(targetPage);
             return;
         }
@@ -907,82 +910,61 @@ class PanelApp {
         finally { this._navigatingBack = false; }
     }
 
+    /** The overlay on top closes: everything its controls started ends, and its own box animates away. */
     dismissOverlay() {
-        if (this.overlayStack.length === 0) return;
-        const dismissed = this.overlayStack.pop();
+        const closing = this._surfaces.overlays.pop();
+        if (!closing) return;
         // Closing it in preview means the builder's page selection no longer
         // matches what is on screen, so selecting that page again should reopen
         // it rather than read as "already showing".
-        if (this._previewPageId === dismissed) this._previewPageId = null;
-        // Remove the topmost overlay DOM element
-        const overlayEl = document.querySelector(`.panel-overlay[data-page-id="${dismissed}"]`);
-        if (overlayEl) this._takeDownOverlay(overlayEl);
-        // Clean up bindings from the dismissed overlay
-        this.bindings = this.bindings.filter(b => {
-            const elId = b.elementDef?.id;
-            if (!elId) return true;
-            return !overlayEl?.querySelector(`[data-element-id="${elId}"]`);
-        });
+        if (this._previewPageId === closing.pageId) this._previewPageId = null;
+        closing.end();
+        for (const node of closing.nodes) closeOverlayFrame(node);
         this._refreshPageNavs();
     }
 
-    /** End what an overlay's controls were doing, then let it animate away. */
-    _takeDownOverlay(overlayEl) {
-        overlayEl.querySelectorAll('[data-element-id]').forEach(el => {
-            const eid = el.dataset.elementId;
-            if (eid) this._endHold(eid);
-        });
-        // Its clocks stop: removing the element alone would leave the
-        // shared interval showing them every second forever.
-        this._clocks.releaseIn(overlayEl);
-        // Remove window 'message' listeners registered by plugin iframes in
-        // this overlay — otherwise each open/dismiss cycle leaks one stale
-        // listener (retaining the removed iframe's closure).
-        releaseFramesIn(overlayEl);
-        // What else its controls left for the page to end (a fader, a
-        // matrix) is let go, so the closed dialog is not held until the page
-        // is next drawn.
-        this._page.letGoWithin(overlayEl);
-        overlayEl.classList.add('dismissing');
-        overlayEl.addEventListener('transitionend', () => overlayEl.remove(), { once: true });
-        // Fallback in case transitionend doesn't fire (e.g., no transition defined)
-        setTimeout(() => { if (overlayEl.parentNode) overlayEl.remove(); }, 500);
-    }
-
+    /** Every overlay closes at once, newest first, each ending what its controls started. */
     dismissAllOverlays() {
-        while (this.overlayStack.length > 0) {
-            this.overlayStack.pop();
-        }
-        document.querySelectorAll('.panel-overlay').forEach(el => {
-            el.remove();
-        });
+        for (const closing of this._surfaces.overlays.splice(0).reverse()) closing.end();
+        // Every overlay box goes now, one still animating away from an
+        // earlier close included.
+        document.querySelectorAll('.panel-overlay').forEach(el => el.remove());
     }
 
+    /**
+     * Open an overlay or a sidebar over the page: a surface of its own on top
+     * of the overlay stack, which its controls register on while it draws.
+     */
     renderOverlay(page) {
+        const overlay = new Surface(page.id);
         const { container, content } = drawOverlayFrame(page, () => this.dismissOverlay());
+        overlay.show(container);
+        this._surfaces.overlays.push(overlay);
 
-        // The overlay's surface runs the same renderer as a full page. Its
+        // The overlay's page runs the same renderer as a full page. Its
         // elements are percentages of the overlay box, exactly like a
         // container's children.
-        const surface = document.createElement('div');
-        surface.className = 'panel-page';
-        surface.style.width = '100%';
-        surface.style.height = '100%';
+        const pageNode = document.createElement('div');
+        pageNode.className = 'panel-page';
+        pageNode.style.width = '100%';
+        pageNode.style.height = '100%';
 
-        // A dialog can be hand-written too -- it is the same frame, sized to the
-        // overlay box instead of the screen, so refusing it here would be a
-        // special case to explain rather than one to write.
-        const customFrame = isCustomPage(page) ? this._renderCustomPageFrame(page) : null;
-        if (customFrame) surface.appendChild(customFrame);
-        else this._renderPageElements(page, surface);
+        this._surfaces.drawOn(overlay, () => {
+            // A dialog can be hand-written too -- it is the same frame, sized to the
+            // overlay box instead of the screen, so refusing it here would be a
+            // special case to explain rather than one to write.
+            const customFrame = isCustomPage(page) ? this._renderCustomPageFrame(page) : null;
+            if (customFrame) pageNode.appendChild(customFrame);
+            else this._renderPageElements(page, pageNode);
+        });
 
-        this.theme.paintBackground(surface, page.background);
-        content.appendChild(surface);
+        this.theme.paintBackground(pageNode, page.background);
+        content.appendChild(pageNode);
         container.appendChild(content);
 
         // Append to root (on top of everything)
         document.body.appendChild(container);
-        applyCoordinateSpaces(surface);
+        applyCoordinateSpaces(pageNode);
 
         // Keep a newly-opened overlay non-interactive while offline; commands
         // would be silently dropped but local optimistic UI would still flip.
@@ -1011,7 +993,7 @@ class PanelApp {
         // with no portrait arrangement falls back to its landscape one, and the
         // review measured that arrangement as landscape. The two have to agree.
         this._drawnOrientation = layout.orientation || 'landscape';
-        const drawnOn = this._page;
+        const drawnOn = this._surfaces.drawing;
         drawElementTree(page, layout, surface, {
             ...opts,
             keep: timer => drawnOn.keep(timer),
@@ -1120,7 +1102,7 @@ class PanelApp {
 
         // The page surface. Elements are absolutely positioned inside it in
         // percentages, so the same design fills any screen of the same shape.
-        const surface = this._page.show(document.createElement('div'));
+        const surface = this._surfaces.page.show(document.createElement('div'));
         surface.className = 'panel-page';
         this.theme.paintBackground(surface, page.background);
         if (motion.transition !== 'none') surface.classList.add(`page-enter-${motion.transition}`);
@@ -1135,7 +1117,7 @@ class PanelApp {
         // to jump to its section in the editor. Hover shows an outline + type label.
         if (this.editMode) {
             const picker = new ThemeStudioPicker(surface, (msg) => this._postToParent(msg));
-            this._page.onEnd(() => picker.remove());
+            this._surfaces.page.onEnd(() => picker.remove());
             this._reportTextDefaults();
         }
     }
@@ -1147,10 +1129,10 @@ class PanelApp {
      * gets a surface of its own.
      */
     _leavePage(motion) {
-        const leaving = this._page;
+        const leaving = this._surfaces.page;
         leaving.end();
         takeAway(this.root, leaving, motion);
-        this._page = new Surface();
+        this._surfaces.page = new Surface();
     }
 
     /** A project with no pages at all says so. */
@@ -1369,7 +1351,7 @@ class PanelApp {
      *  send, its state, and a hold timer that ends when it is let go or the
      *  surface it was drawn on ends. */
     _pressHost() {
-        const surface = this._page;
+        const surface = this._surfaces.drawing;
         return {
             send: (msg) => this.send(msg),
             read: (key) => this.state[key],
@@ -1512,12 +1494,12 @@ class PanelApp {
      * whether its device is reachable.
      */
     _levelHost(elementId, bindingOf = () => null) {
-        const surface = this._page;
+        const surface = this._surfaces.drawing;
         return {
             read: (key) => this.state[key],
             sendValue: (value) => this.send({ type: 'ui.change', element_id: elementId, value }),
             keepTimer: (timer) => surface.keep(timer),
-            onEnd: (fn, node) => surface.onEnd(fn, node),
+            onEnd: (fn) => surface.onEnd(fn),
             design: () => this.editMode,
             offline: () => {
                 const binding = bindingOf();
@@ -1574,7 +1556,7 @@ class PanelApp {
      * re-renders nothing under it, so a tab to the overlay would stay lit.
      */
     _refreshPageNavs() {
-        for (const b of this.bindings) {
+        for (const b of this._surfaces.everyBinding()) {
             if (b.type === 'nav_look') this._drawBinding(b);
         }
         this.evaluateUiOverrides();
@@ -1811,7 +1793,7 @@ class PanelApp {
         if (element.label) el.appendChild(this._caption(el, element, 'div', 'matrix-label'));
         matrix.mount(el);
         // A drag-to-route still in progress when its surface ends sends nothing.
-        this._page.onEnd(() => { if (el._matrixDragCleanup) el._matrixDragCleanup(); }, el);
+        this._surfaces.drawing.onEnd(() => { if (el._matrixDragCleanup) el._matrixDragCleanup(); });
 
         // The keys are listed by name rather than as a glob. The incremental
         // state.update filter matches on a prefix, and a concrete key is its
@@ -2038,7 +2020,7 @@ class PanelApp {
 
         applyStyle(el, this.theme.styleFor(element.type, element.style));
 
-        this._clocks.add(el, clock, this._page);
+        this._clocks.add(el, clock, this._surfaces.drawing);
         return el;
     }
 
@@ -2049,7 +2031,7 @@ class PanelApp {
         el.className = 'panel-element panel-keypad';
         el.dataset.elementId = element.id;
 
-        const surface = this._page;
+        const surface = this._surfaces.drawing;
         const keypad = new KeypadControl(element, {
             send: (frame) => this.send(frame),
             keepTimer: (timer) => surface.keep(timer),
@@ -2204,7 +2186,7 @@ class PanelApp {
      *  and the surface it is drawn on, which keeps its timers. */
     _choiceHost() {
         const app = this;
-        const surface = this._page;
+        const surface = this._surfaces.drawing;
         return {
             get state() { return app.state; },
             send: (msg) => app.send(msg),
@@ -2218,7 +2200,7 @@ class PanelApp {
      *  ends its listener and its status waiter. */
     _frameHost() {
         const app = this;
-        const surface = this._page;
+        const surface = this._surfaces.drawing;
         return {
             onEnd: (fn) => surface.onEnd(fn),
             get state() { return app.state; },
@@ -2231,13 +2213,13 @@ class PanelApp {
             fetchToken: (pluginId) => app._fetchPluginExtToken(pluginId),
             postToParent: (msg) => app._postToParent(msg),
             themedStyle: (type, style) => app.theme.styleFor(type, style),
-            register: (id, entry) => { app.elementMap[id] = entry; },
+            register: (id, entry) => { surface.elementMap[id] = entry; },
         };
     }
 
     // Send state update to plugin iframes
     _notifyPluginIframes(key, value) {
-        pushToFrames(this.elementMap, key, value);
+        pushToFrames(this._surfaces.everyControl(), key, value);
     }
 
     // --- Bindings ---
@@ -2296,7 +2278,7 @@ class PanelApp {
         // Which devices just changed reachability: a binding reading one of
         // them is drawn again even though its own key did not move.
         const flipped = devicesFlipped(changedKeys);
-        for (const b of this.bindings) {
+        for (const b of this._surfaces.everyBinding()) {
             try {
                 if (changedKeys && !changeReaches(b, changedKeys, flipped)) continue;
                 this._evaluateBinding(b);
@@ -2334,7 +2316,7 @@ class PanelApp {
 
     /** Draw every control's ui.<id>.* overrides from current state (modules/overrides.js). */
     evaluateUiOverrides() {
-        this._overrides.apply(this.elementMap);
+        this._overrides.apply(this._surfaces.everyControl());
     }
 
     /** Show or hide a control by its visible_when (modules/visibility.js). */

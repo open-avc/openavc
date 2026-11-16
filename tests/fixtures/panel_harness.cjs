@@ -1941,20 +1941,22 @@ const tests = {
     m002_m003_overlay_cleanup() {
         withFakeTime((advance) => {
             const app = mkApp();
-            const overlay = document.createElement('div');
-            overlay.className = 'panel-overlay';
-            overlay.dataset.pageId = 'ov1';
             // Two clocks that change every second: one on the overlay, one not.
-            const clock = app.renderClock({ id: 'ovc', type: 'clock', format: 'HH:mm:ss' });
-            const stays = app.renderClock({ id: 'pgc', type: 'clock', format: 'HH:mm:ss' });
-            app.root.appendChild(stays);
-            overlay.appendChild(clock);
-            const plug = app.renderCustomElement({ id: 'cu', type: 'custom', custom_file: 'w/index.html' });
-            const handler = plug._pluginMessageHandler;
+            const proj = project({ elements: [el('pgc', 'clock', { format: 'HH:mm:ss' })], placements: { pgc: { x: 0, y: 0, w: 50, h: 20 } } });
+            proj.ui.pages.push({
+                id: 'ov1', name: 'Overlay', page_type: 'overlay',
+                elements: [el('ovc', 'clock', { format: 'HH:mm:ss' }), el('cu', 'custom', { custom_file: 'w/index.html' })],
+                layouts: [{ id: 'landscape', orientation: 'landscape', primary: true, placements: {
+                    ovc: { x: 0, y: 0, w: 50, h: 20 }, cu: { x: 0, y: 50, w: 50, h: 50 },
+                }, hidden: [] }],
+            });
+            renderProject(app, proj);
+            app.navigateToPage('ov1');
+            const overlay = document.querySelector('.panel-overlay[data-page-id="ov1"]');
+            const clock = overlay.querySelector('[data-element-id="ovc"]');
+            const stays = app.root.querySelector('[data-element-id="pgc"]');
+            const handler = overlay.querySelector('[data-element-id="cu"]')._pluginMessageHandler;
             assert(app._pluginMessageHandlers.has(handler), 'the frame listens');
-            overlay.appendChild(plug);
-            document.body.appendChild(overlay);
-            app.overlayStack = ['ov1'];
             const shown = (node) => node.querySelector('.clock-display').textContent;
             advance(1000);
             const before = [shown(clock), shown(stays)];
@@ -1964,6 +1966,7 @@ const tests = {
             assert(shown(clock) === before[0], 'overlay clock closure unregistered on dismiss');
             assert(shown(stays) !== before[1], 'a clock outside the overlay keeps ticking');
             assert(!app._pluginMessageHandlers.has(handler), 'overlay plugin listener removed on dismiss');
+            app.dismissAllOverlays();
         });
     },
 
@@ -7907,21 +7910,23 @@ Object.assign(tests, {
             advance(700);
             assert(shown(first) === '14:05:10' && shown(second) === '14:05:10',
                 `both tick on the first clock's second, got ${shown(first)} and ${shown(second)}`);
-            const overlay = document.createElement('div');
-            overlay.className = 'panel-overlay';
-            overlay.dataset.pageId = 'ov2';
-            const group = document.createElement('div');
-            overlay.appendChild(group);
-            const nested = app.renderClock({ id: 'c', type: 'clock', format: 'HH:mm:ss' });
-            group.appendChild(nested);
-            document.body.appendChild(overlay);
-            app.overlayStack = ['ov2'];
+            app.uiDef = { settings: {}, master_elements: [], pages: [{
+                id: 'ov2', name: 'Overlay', page_type: 'overlay',
+                elements: [el('grp', 'group'), el('c', 'clock', { format: 'HH:mm:ss', parent: 'grp' })],
+                layouts: [{ id: 'landscape', orientation: 'landscape', primary: true, placements: {
+                    grp: { x: 0, y: 0, w: 100, h: 100 }, c: { x: 0, y: 0, w: 50, h: 50 },
+                }, hidden: [] }],
+            }] };
+            app.navigateToPage('ov2');
+            const nested = document.querySelector('.panel-overlay [data-element-id="grp"] [data-element-id="c"]');
+            assert(nested, 'the clock is drawn inside its container on the overlay');
             advance(1000);
             const frozen = shown(nested);
             app.dismissOverlay();
             advance(2000);
             assert(shown(nested) === frozen, `a clock inside a container on the overlay stops, got ${shown(nested)}`);
             assert(shown(first) === '14:05:13', `the page's clock keeps ticking, got ${shown(first)}`);
+            app.dismissAllOverlays();
         });
     },
 });
@@ -10474,6 +10479,13 @@ const PANEL_STEPS = {
         node.value = value;
         node.dispatchEvent(new window.Event('change', { bubbles: true }));
     },
+    // A person types `text` into the first text field the selector finds.
+    typeText: (m, selector, text) => {
+        const node = document.querySelector(selector);
+        if (!node) throw new Error(`nothing at ${selector}`);
+        node.value = text;
+        node.dispatchEvent(new window.Event('input', { bubbles: true }));
+    },
     // A mouse event of `type` at (x, y), on the first node the selector finds
     // or on the document itself ('document'). jsdom lays nothing out, so a
     // node is given a 200 by 100 box at (10, 20) first.
@@ -10723,7 +10735,7 @@ async function driveCase(spec) {
         }), step);
         step.f = [...document.querySelectorAll('.panel-page')].map(serial).join(',');
         step.n = `${app.currentPage}|${app.overlayStack.join(',')}|${app.pageHistory.join(',')}`;
-        changed('b', app.bindings.map((b) => `${b.elementDef?.id ?? '-'}:${b.type}`).join(' '), step);
+        changed('b', app._surfaces.everyBinding().map((b) => `${b.elementDef?.id ?? '-'}:${b.type}`).join(' '), step);
         changed('v', doc.getAttribute('style') || '', step);
         changed('x', {
             edit: app.editMode, embedded: app.embedded, ui: app.uiDef ? (app.uiDef.tag ?? 'untagged') : null,
@@ -10735,7 +10747,7 @@ async function driveCase(spec) {
         if (c.recordDefs) changed('def', (app.uiDef?.pages || []).map((p) => p.elements), step);
         // The element map, and which of its nodes are no longer on the document.
         if (c.elementMap) {
-            changed('em', Object.entries(app.elementMap || {})
+            changed('em', Object.entries(app._surfaces.everyControl() || {})
                 .map(([id, entry]) => (entry && entry.el && entry.el.isConnected ? id : `${id} (detached)`)).join(' '), step);
         }
         if (m.audio.length) step.au = m.audio.splice(0);
@@ -11373,6 +11385,21 @@ const PANEL_CHECKS = {
         const n = [...document.body.children].filter((t) => t.style && t.style.zIndex === '9999' && t.style.position === 'fixed').length;
         assert(n === want, `${n} name tags on the document, not ${want}`);
     },
+    // How many overlay boxes the document holds, leaving ones included.
+    overlays: (m, want) => {
+        const n = document.querySelectorAll('.panel-overlay').length;
+        assert(n === want, `${n} overlays on the document, not ${want}`);
+    },
+    // The overlays open, by page id, oldest first.
+    stack: (m, want) => {
+        const have = [...m.app.overlayStack];
+        assert(JSON.stringify(have) === JSON.stringify(want), `the overlays open are ${JSON.stringify(have)}, not ${JSON.stringify(want)}`);
+    },
+    // The control `id` on the overlay showing shows `text`.
+    overlayShows: (m, id, text) => {
+        const node = document.querySelector(`.panel-overlay:not(.dismissing) [data-element-id="${id}"]`);
+        assert(node && node.textContent === text, `${id} on the overlay shows ${node && JSON.stringify(node.textContent)}, not ${JSON.stringify(text)}`);
+    },
 };
 
 /** A failed check's message, else nothing: each step's `threw`. */
@@ -11456,22 +11483,6 @@ Object.assign(tests, {
         });
     },
 
-    a_dialog_taken_down_lets_its_controls_ends_go() {
-        const { Surface } = panelModule('surface.js');
-        const ran = [];
-        const s = new Surface();
-        const dialog = document.createElement('div');
-        const inside = document.createElement('div');
-        dialog.appendChild(inside);
-        const page = document.createElement('div');
-        s.onEnd(() => ran.push('dialog control'), inside);
-        s.onEnd(() => ran.push('page control'), page);
-        s.onEnd(() => ran.push('no control'));
-        s.letGoWithin(dialog);
-        s.end();
-        assert(JSON.stringify(ran) === JSON.stringify(['page control', 'no control']), `ran ${JSON.stringify(ran)}`);
-    },
-
     a_page_that_goes_starts_none_of_its_entry_animations() {
         const ids = ['a', 'b', 'c', 'd'];
         const steps = driveCase({
@@ -11495,6 +11506,67 @@ Object.assign(tests, {
             steps: [['check', 'nameTags', 1], ['render'], ['render'], ['nav', 'p2'], ['check', 'nameTags', 1]],
         });
         const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+});
+
+// --- What a dialog's controls leave behind when it closes --------------------
+
+/** A text field on the dialog, which sends 300 ms after the last keystroke. */
+const SURFACE_TEXT = { id: 'tx', type: 'text_input', label: 'Name' };
+/** A dialog's control, the step that starts its pending send, and how long that send waits. */
+const PENDING_SENDS = {
+    keypad: [SURFACE_KEYPAD, TYPE_ONE, 1500],
+    dropdown: [SURFACE_DROPDOWN, PICK_B, 100],
+    text_field: [SURFACE_TEXT, ['typeText', '.panel-overlay [data-element-id="tx"] input', 'Al'], 300],
+};
+
+/** What a case sent from step `from` on, one entry per frame. */
+const sentFrom = (steps, from) => steps.slice(from).flatMap((s) => s.s || []);
+
+Object.assign(tests, {
+    async a_dialog_sends_nothing_once_it_closes() {
+        const failures = [];
+        for (const [control, [element, start, pause]] of Object.entries(PENDING_SENDS)) {
+            for (const [how, step] of Object.entries(DIALOG_GOES)) {
+                // mount, open, start the send: the close is step 3.
+                const steps = await driveCase(dialogCase(element, [start, step, ['wait', pause]]));
+                const late = sentFrom(steps, 3);
+                if (late.length) failures.push(`${control}, dialog ${how}: sent ${JSON.stringify(late)}`);
+            }
+        }
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async the_same_keypad_on_a_page_still_sends() {
+        const steps = await driveCase({
+            ui: pinUi('surface', [pinPage('home', { elements: [SURFACE_KEYPAD], placements: { kp: box(1) } })]),
+            steps: [['click', '[data-element-id="kp"] [aria-label="Key 1"]'], ['wait', 1500]],
+        });
+        const sent = sentFrom(steps, 0);
+        assert(JSON.stringify(sent) === JSON.stringify([{ type: 'ui.submit', element_id: 'kp', value: '1' }]),
+            `sent ${JSON.stringify(sent)}`);
+    },
+
+    async two_quick_closes_of_a_dialog_reopened_while_leaving_leave_nothing_drawn() {
+        const steps = await driveCase(dialogCase(SURFACE_LABEL, [
+            ['nav', '$back'], ['nav', 'dlg'], ['state', { 'var.x': 1 }], ['check', 'overlayShows', 'd1', '1'],
+            ['nav', '$back'], ['check', 'stack', []],
+            ['wait', 500], ['check', 'overlays', 0],
+        ]));
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_dialog_with_a_quote_in_its_id_closes() {
+        const steps = await driveCase({
+            ui: pinUi('surface', [
+                pinPage('home', { elements: [pinLabel('h1')] }),
+                pinPage('o"v', { page_type: 'overlay', elements: [pinLabel('in"o')] }),
+            ]),
+            steps: [['nav', 'o"v'], ['nav', '$back'], ['check', 'stack', []], ['wait', 500], ['check', 'overlays', 0]],
+        });
+        const failures = [...failedChecks(steps), ...steps.filter((s) => s.op !== 'check' && s.threw).map((s) => `${s.op} threw ${s.threw}`)];
         assert(failures.length === 0, failures.join('\n'));
     },
 });

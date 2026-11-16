@@ -4,9 +4,9 @@
  *
  * `ClockControl` draws its display and says what it shows at a moment, one
  * method per mode. `ClockTicker` is the panel's one interval: every clock on
- * screen is shown once a second by it until the surface it is drawn on ends
- * or a dismissed overlay stops its own (`releaseIn`), and the interval stops
- * with the last clock. It also remembers when
+ * screen is shown once a second by it until the surface it is drawn on (a
+ * page, or an overlay) ends, and the interval stops with the last clock. It
+ * also remembers when
  * each meeting started, which outlives a redraw, so a meeting keeps counting
  * from its start when the page is drawn again.
  *
@@ -202,11 +202,6 @@ export class ClockTicker {
             }, 1000);
         }
         entry.unhook = surface.onEnd(() => this._release(entry));
-    }
-
-    /** Stop the clocks drawn inside `container` (a dismissed overlay). */
-    releaseIn(container) {
-        for (const entry of this._clocks.filter((c) => container.contains(c.node))) this._release(entry);
     }
 
     /** One clock stops; the interval stops with the last. */

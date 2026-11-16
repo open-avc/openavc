@@ -23,10 +23,11 @@
  *
  * The node a frame draws carries what the panel and its tests read off it:
  * `_pluginIframe`, `_pluginMessageHandler`, `_pluginConfig`, `_grant`,
- * `_ownNamespace`, `_stateFilter` and `_releaseFrame`. A frame stops (its
- * listener and its status waiter) when the surface it is drawn on ends
- * (the host's `onEnd`, modules/surface.js), or when its dialog closes. The grant is read off the node each time
- * a message arrives, never a copy, so a re-render that changes it is obeyed.
+ * `_ownNamespace` and `_stateFilter`. A frame stops (its listener and its
+ * status waiter) when the surface it is drawn on, a page or an overlay, ends
+ * (the host's `onEnd`, modules/surface.js). The grant is read off the node
+ * each time a message arrives, never a copy, so a re-render that changes it
+ * is obeyed.
  *
  * The page review reads this module's text for what a custom control or a
  * plugin panel reads off its definition (tests/test_ui_page_review_mirrors.py
@@ -230,11 +231,8 @@ class PanelFrame {
         this.iframe.addEventListener('load', () => this.open());
         this._listen();
         applyStyle(this.node, host.themedStyle(source.styleType, element.style));
-        // It stops when the surface it is drawn on ends, or before then when
-        // its dialog closes (releaseFramesIn), which also lets the surface go
-        // of it.
-        const unhook = host.onEnd(() => this._stop());
-        this.node._releaseFrame = () => { unhook(); this._stop(); };
+        // It stops when the surface it is drawn on ends.
+        host.onEnd(() => this._stop());
     }
 
     /** Stop listening and stop waiting to hear about the file, once. */
@@ -508,14 +506,6 @@ export function pushToFrames(elementMap, key, value) {
             value,
         }, '*');  // sandboxed iframe has opaque origin; source check provides security
     }
-}
-
-/** The frames inside `container` stop (an overlay going away); each open and
- *  dismiss would otherwise leak a listener holding a removed frame. */
-export function releaseFramesIn(container) {
-    container.querySelectorAll('.panel-plugin, .panel-custom').forEach((el) => {
-        if (el._releaseFrame) el._releaseFrame();
-    });
 }
 
 /**

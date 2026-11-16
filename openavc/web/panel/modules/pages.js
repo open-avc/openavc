@@ -19,8 +19,9 @@
  * `tests/test_panel_layout_mirror.py`), so the two agree on what draws.
  *
  * Functions of the definition, except `rememberPage`, which adds to the
- * history it is handed, and `drawOverlayFrame`, which builds the nodes an
- * overlay's page is drawn into and reads nothing of the panel.
+ * history it is handed, and `drawOverlayFrame` and `closeOverlayFrame`, which
+ * build the nodes an overlay's page is drawn into and animate them away, and
+ * read nothing of the panel.
  */
 
 import { pct } from './layout.js';
@@ -160,6 +161,16 @@ export function drawOverlayFrame(page, dismiss) {
     const content = document.createElement('div');
     sizeOverlayBox(content, page, overlay);
     return { container, content };
+}
+
+/**
+ * An overlay's container animates away and is removed when its transition
+ * ends, or after half a second when none runs.
+ */
+export function closeOverlayFrame(container) {
+    container.classList.add('dismissing');
+    container.addEventListener('transitionend', () => container.remove(), { once: true });
+    setTimeout(() => { if (container.parentNode) container.remove(); }, 500);
 }
 
 /** A sidebar is a strip on one side of the screen; anything else is a dialog. */

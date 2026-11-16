@@ -628,7 +628,7 @@ export class FaderControl extends LevelControl {
         this.handle.addEventListener('keydown', (e) => this.stepByKey(e));
         // A drag still going when the surface it is drawn on ends lands its
         // last value and stops listening to the document.
-        this.host.onEnd(() => this.release(), this.trackWrap);
+        this.host.onEnd(() => this.release());
     }
 
     grab(e) {

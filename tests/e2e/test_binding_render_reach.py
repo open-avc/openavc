@@ -357,33 +357,44 @@ def test_a_missing_picture_says_so_once_and_a_good_one_clears_it(panel_page) -> 
 # --- A page nav: lit while its page is showing, and a button's Appearance -----
 
 # Render one page nav on page `main`, then walk steps: a page change, an overlay
-# opened or closed, or new state. Each step reports what the nav draws.
+# opened or closed, or new state. Each step reports what the nav draws. The
+# overlay `help` is an empty dialog, opened the way a press opens it.
 NAV_STEPS_JS = r"""
 ([element, steps]) => {
   const app = window.__openavcPanel;
   const box = document.getElementById('box');
+  const ui = app.uiDef;
   box.innerHTML = '';
+  app.dismissAllOverlays();
   app.bindings = [];
   app.state = {};
-  app.overlayStack = [];
+  app.uiDef = { settings: {}, master_elements: [], pages: [
+    { id: 'main', name: 'Main', elements: [] },
+    { id: 'help', name: 'Help', page_type: 'overlay', elements: [] },
+  ] };
   app.currentPage = 'main';
-  const node = app.renderElement(Object.assign({ id: 'probe', type: 'page_nav' }, element));
-  box.appendChild(node);
-  const btn = node.matches('button') ? node : node.querySelector('button');
   const seen = [];
-  for (const step of steps) {
-    if (step.state) app.state = step.state;
-    if (step.page) app.currentPage = step.page;
-    if (step.open) { app.overlayStack.push(step.open); app.evaluateAllBindings(); }
-    else if (step.close) app.dismissOverlay();
-    else app.evaluateAllBindings();
-    seen.push({
-      registered: app.bindings.map(b => b.type),
-      lit: btn.classList.contains('nav-current'),
-      current: btn.getAttribute('aria-current'),
-      bg: btn.style.backgroundColor,
-      text: (btn.textContent || '').trim(),
-    });
+  try {
+    const node = app.renderElement(Object.assign({ id: 'probe', type: 'page_nav' }, element));
+    box.appendChild(node);
+    const btn = node.matches('button') ? node : node.querySelector('button');
+    for (const step of steps) {
+      if (step.state) app.state = step.state;
+      if (step.page) app.currentPage = step.page;
+      if (step.open) app.navigateToPage(step.open);
+      else if (step.close) app.dismissOverlay();
+      else app.evaluateAllBindings();
+      seen.push({
+        registered: app.bindings.map(b => b.type),
+        lit: btn.classList.contains('nav-current'),
+        current: btn.getAttribute('aria-current'),
+        bg: btn.style.backgroundColor,
+        text: (btn.textContent || '').trim(),
+      });
+    }
+  } finally {
+    app.dismissAllOverlays();
+    app.uiDef = ui;
   }
   return seen;
 }
