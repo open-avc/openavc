@@ -1,0 +1,101 @@
+{
+  "_comment": [
+    "The output-range rule of a slider and a fader, display to device to display.",
+    "Read by tests/test_level_scale_parity.py, which runs each half over it: the",
+    "server's UIEventRuntime.scale_value_forward (openavc/core/ui_events.py) turns",
+    "each pair's display value into its device value, compared by repr so an int",
+    "and a float differ; the panel's own control (SliderControl or FaderControl in",
+    "openavc/web/panel/modules/level.js, built from the same element) turns the",
+    "device value back into the display value it draws, and reports the value it",
+    "sends at each end of its travel (ends). A pair's display value is one the",
+    "control can send: it lies between the two ends. A change to either half",
+    "that moves a number here fails the test, so a control can never send one",
+    "number and draw another."
+  ],
+  "cases": [
+    {
+      "name": "a slider stretched over a wider output range",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1, "output_min": 0, "output_max": 255},
+      "ends": [0, 100],
+      "pairs": [[0, 0], [20, 51], [33, 84.15], [50, 127.5], [100, 255]]
+    },
+    {
+      "name": "a slider below zero stretched over a positive output range",
+      "element": {"type": "slider", "min": -40, "max": 40, "step": 1, "output_min": 0, "output_max": 255},
+      "ends": [-40, 40],
+      "pairs": [[-40, 0], [0, 127.5], [40, 255]]
+    },
+    {
+      "name": "a slider whose output range is its own: a whole number stays whole",
+      "element": {"type": "slider", "min": 1, "max": 64, "step": 1, "output_min": 1, "output_max": 64},
+      "ends": [1, 64],
+      "pairs": [[1, 1], [26, 26], [64, 64]]
+    },
+    {
+      "name": "a slider onto a fraction",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1, "output_min": 0, "output_max": 1},
+      "ends": [0, 100],
+      "pairs": [[0, 0], [26, 0.26], [50, 0.5], [100, 1]]
+    },
+    {
+      "name": "a slider stepping in tenths",
+      "element": {"type": "slider", "min": 0, "max": 1, "step": 0.1, "output_min": 0, "output_max": 255},
+      "ends": [0, 1],
+      "pairs": [[0, 0.0], [0.3, 76.5], [1, 255.0]]
+    },
+    {
+      "name": "a slider onto a reversed output range",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1, "output_min": 100, "output_max": 0},
+      "ends": [0, 100],
+      "pairs": [[0, 100], [25, 75], [100, 0]]
+    },
+    {
+      "name": "a fader in dB onto a percentage",
+      "element": {"type": "fader", "min": -80, "max": 0, "step": 0.5, "output_min": 0, "output_max": 100},
+      "ends": [-80, 0],
+      "pairs": [[-80, 0.0], [-40, 50.0], [-12.5, 84.375], [0, 100.0]]
+    },
+    {
+      "name": "a slider with no output range sends what it shows",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1},
+      "ends": [0, 100],
+      "pairs": [[0, 0], [50, 50], [100, 100]]
+    },
+    {
+      "name": "a slider held inside its output range (dead space)",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1, "output_min": 20, "output_max": 80, "scale_to_full": false},
+      "ends": [20, 80],
+      "pairs": [[20, 20], [50, 50], [80, 80]]
+    },
+    {
+      "name": "a fader in dB held inside its output range (dead space)",
+      "element": {"type": "fader", "min": -80, "max": 0, "output_min": -60, "output_max": -10, "scale_to_full": false},
+      "ends": [-60, -10],
+      "pairs": [[-60, -60], [-35, -35], [-10, -10]]
+    },
+    {
+      "name": "a slider whose output range is one value is held at it",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1, "output_min": 7, "output_max": 7},
+      "ends": [7, 7],
+      "pairs": [[7, 7]]
+    },
+    {
+      "name": "a fader whose output range is one value is held at it",
+      "element": {"type": "fader", "min": 0, "max": 100, "step": 1, "output_min": 7, "output_max": 7},
+      "ends": [7, 7],
+      "pairs": [[7, 7]]
+    },
+    {
+      "name": "a slider whose output range is one value, in dead space, is held at it",
+      "element": {"type": "slider", "min": 0, "max": 100, "step": 1, "output_min": 7, "output_max": 7, "scale_to_full": false},
+      "ends": [7, 7],
+      "pairs": [[7, 7]]
+    },
+    {
+      "name": "a slider whose range is one value sends the bottom of its output range",
+      "element": {"type": "slider", "min": 5, "max": 5, "step": 1, "output_min": 0, "output_max": 255},
+      "ends": [5, 5],
+      "pairs": [[5, 0]]
+    }
+  ]
+}

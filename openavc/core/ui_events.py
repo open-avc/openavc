@@ -651,7 +651,16 @@ class UIEventRuntime:
 
     @staticmethod
     def scale_value_forward(element: Any, raw_value: Any) -> Any:
-        """Scale a display value to a device value using output_min/output_max."""
+        """Scale a slider's or fader's display value to its device value.
+
+        Stretched from the display range onto output_min..output_max, or held
+        inside the output range (the dead space, and an output range of one
+        value, which nothing can be stretched over). A display range of one
+        value sends the bottom of the output range. The panel reads the same
+        rule backwards to draw the device's reading (``LevelScale`` in
+        ``web/panel/modules/level.js``); the two are held to one corpus,
+        ``tests/fixtures/level_scale_cases.json``.
+        """
         if raw_value is None or element is None:
             return raw_value
         output_min = getattr(element, "output_min", None)
@@ -660,7 +669,7 @@ class UIEventRuntime:
             return raw_value
 
         val = float(raw_value)
-        if getattr(element, "scale_to_full", None) is False:
+        if getattr(element, "scale_to_full", None) is False or output_min == output_max:
             result = max(output_min, min(output_max, val))
         else:
             display_min = getattr(element, "min", None)
@@ -668,9 +677,7 @@ class UIEventRuntime:
             if display_min is None or display_max is None:
                 return raw_value
             display_range = display_max - display_min
-            if display_range == 0:
-                return output_min
-            frac = (val - display_min) / display_range
+            frac = (val - display_min) / display_range if display_range else 0.0
             result = output_min + frac * (output_max - output_min)
 
         # Kill floating-point noise from the division so an identity/whole-number

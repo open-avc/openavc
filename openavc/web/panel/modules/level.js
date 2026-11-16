@@ -8,8 +8,10 @@
  * space). A reading comes in through it (`reading`, device to display); what
  * the control sends is the display value, which the server scales onto the
  * output range (`scale_value_forward` in openavc/core/ui_events.py), so the
- * two directions of that rule are written in two languages. Both send through
- * one rate (`liveSender`).
+ * two directions of that rule are written in two languages, held to one
+ * corpus (tests/fixtures/level_scale_cases.json, run by
+ * tests/test_level_scale_parity.py). Both send through one rate
+ * (`liveSender`).
  *
  * The two controls read some settings differently, and each keeps its own
  * reading: the slider takes its range as written and places readings against
@@ -154,9 +156,16 @@ class LevelScale {
         this.scaleToFull = settings.scaleToFull;
     }
 
-    /** Whether the device's output range is reached inside the travel rather than across it: the dead space. */
+    /**
+     * Whether the device's output range is reached inside the travel rather
+     * than across it: the dead space. An output range of one value is held
+     * the same way whatever Scale to Full says, since nothing can be
+     * stretched over it: the control stays at that value, which is what the
+     * server sends from anywhere along the travel.
+     */
     get limited() {
-        return this.outputMin != null && this.outputMax != null && !this.scaleToFull;
+        if (this.outputMin == null || this.outputMax == null) return false;
+        return !this.scaleToFull || this.outputMin === this.outputMax;
     }
 
     /** The display value at `travel` (0..1) along the control. */
@@ -191,13 +200,15 @@ class LevelScale {
         return low + (high - low) / 2;
     }
 
-    /** A device value on the display range: stretched back from the output range, or as it is in dead-space mode. */
+    /**
+     * A device value on the display range: stretched back from the output
+     * range, or as it is where the control is held to it. The server's
+     * stretch forward is `scale_value_forward` (core/ui_events.py); the two
+     * are held to one corpus, tests/fixtures/level_scale_cases.json.
+     */
     fromDevice(deviceValue) {
-        if (this.outputMin == null || this.outputMax == null) return deviceValue;
-        if (this.scaleToFull === false) return deviceValue;
-        const outputRange = this.outputMax - this.outputMin;
-        if (outputRange === 0) return this.min;
-        const frac = (deviceValue - this.outputMin) / outputRange;
+        if (this.outputMin == null || this.outputMax == null || this.limited) return deviceValue;
+        const frac = (deviceValue - this.outputMin) / (this.outputMax - this.outputMin);
         return this.min + frac * this.span;
     }
 }
@@ -412,9 +423,14 @@ export class SliderControl extends LevelControl {
         else this.fill.style.width = pct + '%';
     }
 
+    /** The display value a reading draws at: placed against the range read as numbers. */
+    readingOf(raw) {
+        return this.readings.reading(raw, this.host.design());
+    }
+
     /** Show the device's reading, or that there is none. */
     show(raw, offline) {
-        const value = this.readings.reading(raw, this.host.design());
+        const value = this.readingOf(raw);
         if (offline || value === null) {
             this.showUnknown();
             return;
@@ -629,14 +645,19 @@ export class FaderControl extends LevelControl {
         if (!this.sendOnRelease) this.sender.live(val);
     }
 
-    /** The display value under the pointer: on the curve, held to any dead space, snapped to the step. */
+    /** The display value under the pointer. */
     valueAtPointer(e) {
         const rect = this.trackWrap.getBoundingClientRect();
         const point = e.touches ? e.touches[0] : e;
         const frac = this.horizontal
             ? clamp((point.clientX - rect.left) / rect.width, 0, 1)
             : 1 - clamp((point.clientY - rect.top) / rect.height, 0, 1);
-        let val = this.scale.valueAt(frac);
+        return this.valueAtTravel(frac);
+    }
+
+    /** The display value at `travel` (0..1) along the track: on the curve, held to any dead space, snapped to the step. */
+    valueAtTravel(travel) {
+        let val = this.scale.valueAt(travel);
         if (this.scale.limited) val = this.scale.toOutput(val);
         return snapToStep(val, this.step);
     }
@@ -675,10 +696,15 @@ export class FaderControl extends LevelControl {
         this.sender.live(next);
     }
 
+    /** The display value a reading draws at. */
+    readingOf(raw) {
+        return this.scale.reading(raw, this.host.design());
+    }
+
     /** Show the device's reading, or that there is none; never while the handle is held. */
     show(raw, offline) {
         if (this.handle._dragging) return;
-        const value = this.scale.reading(raw, this.host.design());
+        const value = this.readingOf(raw);
         if (offline || value === null) {
             this.showUnknown();
             return;
