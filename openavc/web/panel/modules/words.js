@@ -60,7 +60,7 @@ export function nameAfterWords(button, text) {
  * inline size would beat any rule there.
  */
 export function iconNode(iconName, size, color) {
-    if (!iconName) return null;
+    if (!namesIcon(iconName)) return null;
     if (iconName.startsWith('assets://')) return uploadedIcon(iconName, size, color);
 
     const svg = document.createElementNS(SVG, 'svg');
@@ -80,6 +80,14 @@ export function iconNode(iconName, size, color) {
     svg.setAttribute('stroke-linejoin', 'round');
     svg.style.flexShrink = '0';
     return svg;
+}
+
+/**
+ * Whether a value names an icon: text only, so a number (which only a
+ * hand-edited or generated file carries) names none, the same as no icon.
+ */
+function namesIcon(icon) {
+    return typeof icon === 'string' && icon !== '';
 }
 
 /** An uploaded icon, drawn dark when the control asks for a colour (a picture cannot take a stroke). */
@@ -106,7 +114,7 @@ function sizeInRem(node, size) {
  */
 export function drawIcon(el, element) {
     const icon = element.style?.icon || element.icon;
-    if (!icon) return;
+    if (!namesIcon(icon)) return;
     const { position, size, color } = iconSettings(element);
 
     // The picture layer is a child of its own and goes back first; the words

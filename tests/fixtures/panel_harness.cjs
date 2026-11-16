@@ -13378,6 +13378,34 @@ Object.assign(tests, {
     },
 });
 
+// --- An icon that is not text -----------------------------------------------
+//
+// An icon is named by text (an icon's name, or `assets://<name>`); anything
+// else names no icon, the same as none, and the control and its page are
+// drawn without one.
+
+Object.assign(tests, {
+    an_icon_that_is_not_text_draws_no_icon() {
+        const logged = [];
+        const out = {};
+        const run = loggingTo(logged, () => {
+            const own = levelMount({ id: 'b', type: 'button', label: 'Own', icon: 7 }, { state: { 'device.d.connected': true } });
+            out.own = own.node()?.textContent;
+            out.ownIcons = own.node()?.querySelectorAll('svg, img').length;
+            const look = { key: 'device.d.m', states: { a: { icon: 7, label: 'A' }, b: { label: 'B' } } };
+            const st = levelMount({ id: 'c', type: 'button', label: 'Own', bindings: { show: { look } } },
+                { state: { 'device.d.connected': true, 'device.d.m': 'b' } });
+            st.set('device.d.m', 'a');
+            out.look = st.node()?.textContent;
+            out.lookIcons = st.node()?.querySelectorAll('svg, img').length;
+        });
+        assert(!run.threw, `drawing threw: ${run.threw}`);
+        assert(out.own === 'Own' && out.ownIcons === 0, `its own icon a number: drew "${out.own}" with ${out.ownIcons} icons`);
+        assert(out.look === 'A' && out.lookIcons === 0, `a state's icon a number: drew "${out.look}" with ${out.lookIcons} icons`);
+        assert(!logged.some((l) => /error/i.test(l)), `logged: ${logged.join(' | ')}`);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.
