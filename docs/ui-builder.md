@@ -660,6 +660,10 @@ default color, a button bound to a device state goes back to its own label
 and color rather than claiming the device is on or muted, and an image goes
 back to its own picture.
 
+A gauge, slider, fader or level meter shows the same `--` while its device
+reports something that is not a number, such as a word, a blank or a yes/no
+reading, rather than drawing a number the device did not send.
+
 **A button or camera preset that only sends a command gets a lighter version of the same mark.**
 It keeps its color, its label and its artwork -- none of those are wrong just
 because the device is away -- and takes the dashed edge on its own, so you can
