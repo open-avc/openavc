@@ -19,9 +19,11 @@ the runtime fills are not read here yet (a liveness probe's line, a device
 setting's write, an HTTP command's query parameters). A placeholder is
 ``spec.PLACEHOLDER``.
 
-Each message opens with where its template sits; the walk
-(``avcdriver_semantic.validate_driver_definition``) tags each message by that
-opening.
+Each message opens with where its template sits, and ``substitution_issues``
+hands that place back beside it, so the walk
+(``avcdriver_semantic.validate_driver_definition``) tags each message with the
+template it was found in, never with text cut from the message (a command
+named ``zone:set`` holds a colon).
 
 Purity contract: standard library plus the sibling contract modules, like the
 rest of the validator, which the community catalog and the SDK run copies of.
@@ -64,8 +66,14 @@ def validate_substitutions(driver_def: dict[str, Any]) -> list[str]:
     and ``udp:`` block, a response's ``match`` pattern, and the query lists
     (the poll, the start-up and each response rule's ``then_query``).
     """
+    return [message for _, message in substitution_issues(driver_def)]
+
+
+def substitution_issues(driver_def: dict[str, Any]) -> list[tuple[str, str]]:
+    """``validate_substitutions``' messages, each with the place of the
+    template it was found in, in the same order."""
     return [
-        message
+        (where, message)
         for where, template, fills in _template_positions(driver_def)
         for message in _unresolved_substitutions(where, template, fills)
     ]

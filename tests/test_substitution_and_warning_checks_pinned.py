@@ -7,7 +7,9 @@ queries and its ``udp:`` payload, host and port take the command's own
 parameters and the config, once the command declares parameters; a response
 pattern and the query lists (the poll, the start-up and each rule's
 ``then_query``) take the config alone. Each message opens with where the
-template sits, and the walk tags it from that opening.
+template sits, and the walk tags it with that same place, which the check
+hands back beside the message (a command or header named with a colon
+included).
 
 The warnings never block a driver: a masked config field with a default, a
 ``port_open`` hint on a driver with no TCP transport, a command parameter with
@@ -756,7 +758,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
                   "commands.set.headers.7: '{num}' resolves to nothing. It names no parameter of "
                   'this command and no config field, so it would be sent to the device as written'),
                  ('error',
-                  'commands.set.headers.X',
+                  'commands.set.headers.X:C',
                   "commands.set.headers.X:C: '{colon}' resolves to nothing. It names no parameter "
                   'of this command and no config field, so it would be sent to the device as '
                   'written')],
@@ -766,7 +768,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('wa
                     "Command 'set': must have 'send' (TCP/serial), 'path'/'method' (HTTP), "
                     "'address' (OSC), or 'udp' (a datagram beside the main transport)")],
  'cmd_name_with_colon': [('error',
-                          'commands.a',
+                          'commands.a:b.send',
                           "commands.a:b.send: '{q}' resolves to nothing. It names no parameter of "
                           'this command and no config field, so it would be sent to the device as '
                           'written')],

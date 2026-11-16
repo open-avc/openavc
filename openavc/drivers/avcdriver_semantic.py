@@ -114,6 +114,7 @@ from openavc.drivers.state_variable_checks import (
     state_variable_errors,
 )
 from openavc.drivers.substitution_checks import (
+    substitution_issues,
     validate_substitutions as validate_substitutions,
 )
 
@@ -732,15 +733,12 @@ class _DefinitionWalk:
 
     def placeholders(self) -> None:
         """Every {name} the driver writes into a wire template has to resolve
-        (substitution_checks). Each message opens with its own place, and they
-        land in several sections at once (a command, a response, the polling
-        list), so each is tagged from its own opening rather than one section
-        tag; otherwise the Builder would anchor a polling issue to a command."""
+        (substitution_checks). The messages land in several sections at once
+        (a command, a response, the polling list), so the check hands back
+        each template's place with its message and each is tagged there;
+        otherwise the Builder would anchor a polling issue to a command."""
         errors = self.errors
-        for message in validate_substitutions(self.driver_def):
-            substitution_loc = message.split(":", 1)[0]
-            errors.ctx = substitution_loc
-            errors.append(message)
+        errors.at_each(substitution_issues(self.driver_def))
 
     def _each(self, name: str, entries: Any, check: Callable[[str, Any], list[str]]) -> None:
         """Ask ``check`` about each entry of a list, tagging what it says with

@@ -70,7 +70,7 @@ ERROR_PARTS = [
     ("RosterNames", "child_entity_types"),
     ("QueryEntries", "polling"),
     ("routing_block_errors", "routing"),
-    ("validate_substitutions", ""),
+    ("substitution_issues", ""),
 ]
 
 

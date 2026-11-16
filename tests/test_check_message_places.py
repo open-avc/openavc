@@ -150,3 +150,36 @@ def test_a_conversion_on_a_parameter_leaves_a_state_variables_own_problem_said()
             "level": {"type": "string", "label": "L", "scale": 2}}}},
     }
     assert "state_variables.power.label" in _places(definition, "", strict=True)
+
+
+# --- a {name} that resolves to nothing --------------------------------------
+#
+# The placeholder check reads every template a driver writes, so each message
+# lands on the template it was found in, whatever the names on the way there
+# hold.
+
+UNRESOLVED = "resolves to nothing"
+
+
+@pytest.mark.parametrize("definition,place", [
+    pytest.param(
+        {"commands": {"noop": {"send": "NOOP\r"}, "set": {"send": "SET {levl}\r", "params": {
+            "level": {"type": "integer", "label": "L"}}}}},
+        "commands.set.send",
+        id="a command's send",
+    ),
+    pytest.param(
+        {"commands": {"noop": {"send": "NOOP\r"}, "zone:set": {"send": "SET {levl}\r", "params": {
+            "level": {"type": "integer", "label": "L"}}}}},
+        "commands.zone:set.send",
+        id="a command whose name holds a colon",
+    ),
+    pytest.param(
+        {"polling": {"queries": ["{missing} STA\r"]}},
+        "polling.queries[0]",
+        id="a poll's query",
+    ),
+])
+@pytest.mark.parametrize("strict", [False, True])
+def test_a_placeholder_lands_on_its_template(definition, place, strict):
+    assert _places(definition, UNRESOLVED, strict=strict) == [place]

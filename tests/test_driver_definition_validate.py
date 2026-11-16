@@ -359,12 +359,12 @@ def test_every_context_tag_has_a_section_case():
     assignments += placed
     # A check that hands back a place with each message (errors.at_each) says
     # where its messages land itself; each is pinned place by place: the
-    # shape walk's in tests/test_shape_walk.py, the conversion check's in
-    # tests/test_check_message_places.py.
+    # shape walk's in tests/test_shape_walk.py, the conversion and
+    # placeholder checks' in tests/test_check_message_places.py.
     handed_back = set(re.findall(
         r"^\s*(?:errors|warnings)\.at_each\(\s*(\w+)\(", source, re.MULTILINE
     ))
-    assert handed_back == {"unsaid", "value_conversion_issues"}, (
+    assert handed_back == {"unsaid", "value_conversion_issues", "substitution_issues"}, (
         f"a check hands back its own places: {sorted(handed_back)} — pin where they land"
     )
 
@@ -378,12 +378,10 @@ def test_every_context_tag_has_a_section_case():
             # through the section that supplies it: `loc` by the unknown-key
             # cases and the name that is not text (each lands on the block it
             # was found in), `name` by polling.queries / on_connect, `frame_key` by
-            # command_prefix / command_suffix, `substitution_loc` by the two
-            # unresolved-placeholder cases (a command and a polling query),
-            # which is why both are in the table rather than one. `section`
-            # is the guard's: each walk's parts() lists them as literals, and
+            # command_prefix / command_suffix. `section` is the guard's: each
+            # walk's parts() lists them as literals, and
             # tests/test_driver_checks_report_not_raise.py raises in each.
-            assert expr in {"loc", "name", "frame_key", "substitution_loc", "section"}, (
+            assert expr in {"loc", "name", "frame_key", "section"}, (
                 f"new computed context tag {expr!r} — add a case for what it produces"
             )
             continue

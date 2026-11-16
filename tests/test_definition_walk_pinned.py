@@ -753,7 +753,7 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error'
                       'on_connect: must be a list; write a single entry as a one-item list')],
  'on_connect_true': [('notice', 'on_connect', 'on_connect: must be a list')],
  'placeholder_in_a_command_named_with_a_colon': [('error',
-                                                  'commands.a',
+                                                  'commands.a:b.send',
                                                   "commands.a:b.send: '{levl}' resolves to nothing "
                                                   "(did you mean 'level'?). It names no parameter "
                                                   'of this command and no config field, so it '
@@ -1505,7 +1505,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [(
                       'on_connect: must be a list; write a single entry as a one-item list')],
  'on_connect_true': [('error', 'on_connect', 'on_connect: must be a list')],
  'placeholder_in_a_command_named_with_a_colon': [('error',
-                                                  'commands.a',
+                                                  'commands.a:b.send',
                                                   "commands.a:b.send: '{levl}' resolves to nothing "
                                                   "(did you mean 'level'?). It names no parameter "
                                                   'of this command and no config field, so it '
