@@ -27,6 +27,7 @@ from fastapi import HTTPException
 from openavc.api.models import CommunityDriverInstallRequest
 from openavc.api import driver_catalog
 from openavc.api.routes import drivers as routes
+from openavc.drivers import driver_change
 from openavc.api.routes.drivers import (
     _remove_other_copies,
     install_community_driver,
@@ -101,7 +102,7 @@ def world(tmp_path, monkeypatch):
     def _register(cls):
         events.append(("register", cls.DRIVER_INFO.get("id")))
 
-    monkeypatch.setattr(routes, "register_driver", _register)
+    monkeypatch.setattr(driver_change, "register_driver", _register)
     monkeypatch.setattr(
         routes, "unregister_driver", lambda driver_id: events.append(("unregister", driver_id))
     )
@@ -310,7 +311,7 @@ async def test_install_answers_a_failed_download_by_naming_the_driver(world):
 
 
 @pytest.mark.asyncio
-async def test_install_writes_then_removes_a_yaml_above_this_platform_even_over_a_copy(world):
+async def test_install_of_a_yaml_above_this_platform_keeps_the_copy_already_here(world):
     (world.repo / "acme_widget.avcdriver").write_bytes(b"the copy already here")
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(
         min_platform_version="999.0.0"
@@ -318,8 +319,20 @@ async def test_install_writes_then_removes_a_yaml_above_this_platform_even_over_
     refusal = await _refused(_install("acme_widget.avcdriver"))
     assert refusal.status_code == 422
     assert refusal.detail.startswith("This driver requires OpenAVC 999.0.0 or later.")
-    assert _tree(world.repo) == {}
+    assert _tree(world.repo) == {"acme_widget.avcdriver": b"the copy already here"}
     assert world.events == [("get", "acme_widget.avcdriver")]
+
+
+@pytest.mark.asyncio
+async def test_install_of_a_python_driver_above_this_platform_is_refused_before_its_companions(world):
+    world.catalog.pages[CATALOG + "acme_widget.py"] = _python().replace(
+        b"'transport': 'tcp',", b"'transport': 'tcp', 'min_platform_version': '999.0.0',"
+    )
+    refusal = await _refused(_install("acme_widget.py"))
+    assert refusal.status_code == 422
+    assert refusal.detail.startswith("This driver requires OpenAVC 999.0.0 or later.")
+    assert _tree(world.repo) == {}
+    assert world.events == [("get", "acme_widget.py")]
 
 
 @pytest.mark.asyncio
@@ -404,12 +417,17 @@ async def test_install_of_a_python_driver_whose_registration_fails(world, monkey
     def _explode(cls):
         raise RuntimeError("registry full")
 
-    monkeypatch.setattr(routes, "register_driver", _explode)
+    monkeypatch.setattr(driver_change, "register_driver", _explode)
     world.catalog.pages[CATALOG + "acme_widget.py"] = _python()
+    world.catalog.pages[CATALOG + "acme_widget_sim.py"] = b"SIM = 1\n"
     refusal = await _refused(_install("acme_widget.py"))
     assert (refusal.status_code, refusal.detail) == (500, "Failed to load driver 'acme_widget'")
     assert _tree(world.repo) == {}
-    assert world.events == [("get", "acme_widget.py")]
+    assert world.events == [
+        ("get", "acme_widget.py"),
+        ("get", "acme_widget_discovery.py"),
+        ("get", "acme_widget_sim.py"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -420,7 +438,11 @@ async def test_install_of_a_python_file_without_a_driver_class(world):
         422, "No valid driver class found in Python file",
     )
     assert _tree(world.repo) == {}
-    assert world.events == [("get", "acme_widget.py")]
+    assert world.events == [
+        ("get", "acme_widget.py"),
+        ("get", "acme_widget_discovery.py"),
+        ("get", "acme_widget_sim.py"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -428,7 +450,7 @@ async def test_install_whose_registration_fails_removes_both_files_with_a_500(wo
     def _explode(cls):
         raise RuntimeError("registry full")
 
-    monkeypatch.setattr(routes, "register_driver", _explode)
+    monkeypatch.setattr(driver_change, "register_driver", _explode)
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(
         companion="./acme_widget_discovery.py"
     )
@@ -439,7 +461,7 @@ async def test_install_whose_registration_fails_removes_both_files_with_a_500(wo
 
 
 @pytest.mark.asyncio
-async def test_install_of_a_python_driver_fetches_its_companions_after_registering(world):
+async def test_install_of_a_python_driver_fetches_its_companions_before_registering(world):
     world.catalog.pages[CATALOG + "acme_widget.py"] = _python()
     world.catalog.pages[CATALOG + "acme_widget_sim.py"] = b"SIM = 1\n"
     world.catalog.pages[CATALOG + "acme_widget_discovery.py"] = httpx.ConnectError("down")
@@ -447,9 +469,9 @@ async def test_install_of_a_python_driver_fetches_its_companions_after_registeri
     assert result["file"] == "acme_widget.py"
     assert world.events == [
         ("get", "acme_widget.py"),
-        ("register", DRIVER_ID),
         ("get", "acme_widget_discovery.py"),
         ("get", "acme_widget_sim.py"),
+        ("register", DRIVER_ID),
         ("refresh",),
         ("retry",),
         ("announce", DRIVER_ID),
@@ -528,7 +550,7 @@ async def test_update_passes_over_a_yaml_of_another_id(world):
 
 
 @pytest.mark.asyncio
-async def test_update_whose_new_companion_fails_with_no_old_companion(world):
+async def test_update_whose_new_companion_fails_keeps_the_old_yaml(world):
     (world.repo / "acme_widget.avcdriver").write_bytes(_yaml())
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(
         companion="./acme_widget_discovery.py", version="2.0.0"
@@ -540,7 +562,7 @@ async def test_update_whose_new_companion_fails_with_no_old_companion(world):
         "Driver 'acme_widget' references companion 'acme_widget_discovery.py', "
         "but GitHub returned 404 for it. Install aborted.",
     )
-    assert _tree(world.repo) == {}
+    assert _tree(world.repo) == {"acme_widget.avcdriver": _yaml()}
 
 
 @pytest.mark.asyncio
@@ -566,7 +588,6 @@ async def test_update_finds_a_yaml_by_the_id_it_declares_and_removes_the_old_nam
     }
     assert world.events == [
         ("get", "acme_widget.avcdriver"),
-        ("unregister", DRIVER_ID),
         ("register", DRIVER_ID),
         ("using", DRIVER_ID),
         ("reload", DRIVER_ID),
@@ -582,8 +603,8 @@ async def test_update_finds_a_yaml_by_the_id_it_declares_and_removes_the_old_nam
     [("acme-widget", "acme-widget.avcdriver"), ("acme.widget", "acme_widget.avcdriver")],
 )
 async def test_update_names_the_file_for_the_id_in_safe_characters(world, driver_id, file_name):
-    (world.repo / f"{driver_id}.avcdriver").write_bytes(_yaml())
-    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(version="2.0.0")
+    (world.repo / f"{driver_id}.avcdriver").write_bytes(_yaml(driver_id))
+    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(driver_id, version="2.0.0")
     result = await update_driver(
         driver_id, _json_request({"file_url": CATALOG + "acme_widget.avcdriver"})
     )
@@ -631,7 +652,7 @@ async def test_update_to_a_yaml_above_this_platform_leaves_the_old_driver(world)
 
 
 @pytest.mark.asyncio
-async def test_update_whose_new_companion_fails_leaves_neither_driver_nor_companion(world):
+async def test_update_whose_new_companion_fails_keeps_the_driver_and_its_companion(world):
     (world.repo / "acme_widget.avcdriver").write_bytes(
         _yaml(companion="./acme_widget_discovery.py")
     )
@@ -642,10 +663,12 @@ async def test_update_whose_new_companion_fails_leaves_neither_driver_nor_compan
     world.catalog.pages[CATALOG + "acme_widget_discovery.py"] = 500
     refusal = await _refused(_update("acme_widget.avcdriver"))
     assert refusal.status_code == 502
-    assert _tree(world.repo) == {}
+    assert _tree(world.repo) == {
+        "acme_widget.avcdriver": _yaml(companion="./acme_widget_discovery.py"),
+        "acme_widget_discovery.py": b"OLD = 1\n",
+    }
     assert world.events == [
         ("get", "acme_widget.avcdriver"),
-        ("unregister", DRIVER_ID),
         ("get", "acme_widget_discovery.py"),
     ]
 
@@ -696,28 +719,42 @@ async def test_update_reads_an_unreadable_old_yaml_as_naming_no_companion(world,
 
 
 @pytest.mark.asyncio
-async def test_update_to_a_yaml_the_loader_refuses_leaves_it_written_and_unregistered(world):
+async def test_update_to_a_yaml_the_loader_refuses_keeps_the_old_one_registered(world):
     (world.repo / "acme_widget.avcdriver").write_bytes(_yaml())
-    bad = _yaml(transport="carrier_pigeon")
-    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = bad
+    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(transport="carrier_pigeon")
     refusal = await _refused(_update("acme_widget.avcdriver"))
     assert (refusal.status_code, refusal.detail) == (422, "Invalid driver definition file")
-    assert _tree(world.repo) == {"acme_widget.avcdriver": bad}
-    assert world.events == [("get", "acme_widget.avcdriver"), ("unregister", DRIVER_ID)]
+    assert _tree(world.repo) == {"acme_widget.avcdriver": _yaml()}
+    assert world.events == [("get", "acme_widget.avcdriver")]
 
 
 @pytest.mark.asyncio
-async def test_update_to_a_python_file_without_a_class(world):
+async def test_update_to_a_driver_of_another_id_is_refused_before_its_companions(world):
+    (world.repo / "acme_widget.avcdriver").write_bytes(_yaml())
+    world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(
+        "someone_else", companion="./acme_widget_discovery.py"
+    )
+    refusal = await _refused(_update("acme_widget.avcdriver"))
+    assert (refusal.status_code, refusal.detail) == (
+        422,
+        "Downloaded driver declares id 'someone_else', not the requested 'acme_widget'. "
+        "Install it under id 'someone_else'.",
+    )
+    assert _tree(world.repo) == {"acme_widget.avcdriver": _yaml()}
+    assert world.events == [("get", "acme_widget.avcdriver")]
+
+
+@pytest.mark.asyncio
+async def test_update_to_a_python_file_without_a_class_keeps_the_old_one(world):
     (world.repo / "acme_widget.py").write_bytes(_python(mark="old"))
     world.catalog.pages[CATALOG + "acme_widget.py"] = b"VALUE = 2\n"
     refusal = await _refused(_update("acme_widget.py"))
     assert (refusal.status_code, refusal.detail) == (
         422, "No valid driver class found in Python file",
     )
-    assert _tree(world.repo) == {"acme_widget.py": b"VALUE = 2\n"}
+    assert _tree(world.repo) == {"acme_widget.py": _python(mark="old")}
     assert world.events == [
         ("get", "acme_widget.py"),
-        ("unregister", DRIVER_ID),
         ("get", "acme_widget_discovery.py"),
         ("get", "acme_widget_sim.py"),
     ]
@@ -728,7 +765,7 @@ async def test_update_whose_registration_fails_answers_500(world, monkeypatch):
     def _explode(cls):
         raise RuntimeError("registry full")
 
-    monkeypatch.setattr(routes, "register_driver", _explode)
+    monkeypatch.setattr(driver_change, "register_driver", _explode)
     (world.repo / "acme_widget.avcdriver").write_bytes(_yaml())
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(version="2.0.0")
     refusal = await _refused(_update("acme_widget.avcdriver"))
@@ -750,9 +787,8 @@ async def test_update_of_a_python_driver_refreshes_its_companions_before_registe
         "acme_widget.py": _python(mark="new"),
         "acme_widget_discovery.py": b"OLD_DISCOVERY = 1\n",
     }
-    assert world.events[:5] == [
+    assert world.events[:4] == [
         ("get", "acme_widget.py"),
-        ("unregister", DRIVER_ID),
         ("get", "acme_widget_discovery.py"),
         ("get", "acme_widget_sim.py"),
         ("register", DRIVER_ID),
@@ -867,7 +903,7 @@ async def test_upload_whose_registration_fails(world, monkeypatch):
     def _explode(cls):
         raise RuntimeError("registry full")
 
-    monkeypatch.setattr(routes, "register_driver", _explode)
+    monkeypatch.setattr(driver_change, "register_driver", _explode)
     refusal = await _refused(upload_driver(_form("acme_widget.avcdriver", _yaml())))
     assert (refusal.status_code, refusal.detail) == (
         500, "Failed to load uploaded driver 'acme_widget.avcdriver'",
@@ -961,14 +997,14 @@ async def test_bundle_whose_yaml_has_a_misspelled_key(world):
 
 
 @pytest.mark.asyncio
-async def test_bundle_without_a_class_keeps_a_file_it_overwrote(world):
+async def test_bundle_without_a_class_keeps_the_file_it_would_replace(world):
     (world.repo / "acme_widget.py").write_bytes(b"PREVIOUS = 1\n")
     data = _zip({"acme_widget.py": b"VALUE = 1\n", "acme_widget_sim.py": b"SIM = 1\n"})
     refusal = await _refused(upload_driver_bundle(_form("b.zip", data)))
     assert (refusal.status_code, refusal.detail) == (
         422, "No valid driver class found in the bundle's Python file.",
     )
-    assert _tree(world.repo) == {"acme_widget.py": b"VALUE = 1\n"}
+    assert _tree(world.repo) == {"acme_widget.py": b"PREVIOUS = 1\n"}
 
 
 @pytest.mark.asyncio
@@ -976,7 +1012,7 @@ async def test_bundle_whose_registration_fails(world, monkeypatch):
     def _explode(cls):
         raise RuntimeError("registry full")
 
-    monkeypatch.setattr(routes, "register_driver", _explode)
+    monkeypatch.setattr(driver_change, "register_driver", _explode)
     data = _zip({"acme_widget.py": _python(), "acme_widget_sim.py": b"SIM = 1\n"})
     refusal = await _refused(upload_driver_bundle(_form("bundle.zip", data)))
     assert (refusal.status_code, refusal.detail) == (

@@ -2,10 +2,11 @@
 
 Two layers, and the second is the one that took a while to arrive:
 
-* **The rule itself** — the semver comparison, the YAML peek, and what an
-  unparseable version does. A65 added it so that
+* **The rule itself** — the semver comparison, the floor a file declares (read
+  from its bytes, YAML and Python alike, never by running it), and what an
+  unparseable version does. Its home is ``drivers/driver_change.py``, so
   ``/api/discovery/install-and-match`` and any other caller that doesn't carry
-  the field on the request still gets the check parsed out of the YAML body.
+  the field on the request still gets the check read out of the file.
 * **The doors** — the catalog install honoured the floor while *hand import*
   (upload, upload a bundle) and the Driver Builder's save did not, so the same
   file installed or refused depending on which way it came in, and the
@@ -36,45 +37,21 @@ from openavc.api.routes.driver_definitions import (
     update_driver_definition,
 )
 from openavc.api.routes.drivers import (
-    _declared_min_platform_version,
     _enforce_min_platform_version,
-    _parse_semver,
-    _peek_min_platform_version,
     upload_driver,
     upload_driver_bundle,
 )
+from openavc.drivers.driver_change import declared_floor as _declared_min_platform_version
+from openavc.drivers.driver_change import parse_version as _parse_semver
 from openavc.drivers.driver_loader import save_driver_definition
 
 
-def test_peek_yaml_min_platform_version():
-    yaml_text = """
-id: foo
-name: Foo
-transport: tcp
-min_platform_version: "0.6.0"
-"""
-    assert _peek_min_platform_version(yaml_text) == "0.6.0"
-
-
-def test_peek_returns_none_when_absent():
-    yaml_text = """
-id: foo
-name: Foo
-transport: tcp
-"""
-    assert _peek_min_platform_version(yaml_text) is None
-
-
-def test_peek_handles_malformed_yaml():
-    assert _peek_min_platform_version("::: not yaml :::") is None
-
-
-def test_peek_handles_non_string():
-    yaml_text = """
+def test_a_yaml_floor_that_is_not_a_string_is_none():
+    yaml_text = b"""
 id: foo
 min_platform_version: 5
 """
-    assert _peek_min_platform_version(yaml_text) is None
+    assert _declared_min_platform_version("foo.avcdriver", yaml_text) is None
 
 
 def test_enforce_blocks_when_running_is_older(monkeypatch):
@@ -197,7 +174,7 @@ def driver_repo(tmp_path, monkeypatch):
     repo = tmp_path / "driver_repo"
     repo.mkdir()
     monkeypatch.setattr(drivers_routes, "_get_driver_repo_dir", lambda: repo)
-    monkeypatch.setattr(drivers_routes, "register_driver", lambda cls: None)
+    monkeypatch.setattr("openavc.drivers.driver_change.register_driver", lambda cls: None)
     fake_engine = MagicMock()
     fake_engine.devices.retry_all_orphans = AsyncMock(return_value=[])
     monkeypatch.setattr(drivers_routes, "_get_engine", lambda: fake_engine)

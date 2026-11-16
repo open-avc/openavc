@@ -256,6 +256,18 @@ def _trial_import(filepath: Path) -> type | dict[str, Any]:
     return driver_class
 
 
+def trial_driver_class(filepath: Path) -> type | None:
+    """The driver class a file defines, imported under a throwaway name that
+    is removed afterwards, so nothing it imports stays loaded and the module
+    a running driver came from is left as it was; None, with the reason
+    logged, when it defines none or does not import."""
+    trial = _trial_import(filepath)
+    if isinstance(trial, dict):
+        log.warning(f"Python driver {filepath.name} was not loaded: {trial['error']}")
+        return None
+    return trial
+
+
 def reload_python_driver(filepath: Path) -> dict[str, Any]:
     """Hot-reload a Python driver from disk.
 

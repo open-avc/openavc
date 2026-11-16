@@ -28,6 +28,7 @@ from fastapi import HTTPException
 
 from openavc.api.models import CommunityDriverInstallRequest
 from openavc.api.routes import drivers as routes
+from openavc.drivers import driver_change
 from openavc.api.routes.drivers import install_community_driver, uninstall_driver, update_driver
 from openavc.discovery.community_index import CommunityIndexCache
 from openavc.utils.outbound import internet_failure
@@ -131,7 +132,7 @@ def cat(tmp_path, monkeypatch):
     monkeypatch.setattr(routes, "_get_driver_repo_dir", lambda: repo)
     monkeypatch.setattr("openavc.system_config.DRIVER_REPO_DIR", repo)
     monkeypatch.setattr(
-        routes, "register_driver", lambda cls: events.append(("register", cls.DRIVER_INFO.get("id")))
+        driver_change, "register_driver", lambda cls: events.append(("register", cls.DRIVER_INFO.get("id")))
     )
     monkeypatch.setattr(
         routes, "unregister_driver", lambda driver_id: events.append(("unregister", driver_id))
@@ -369,19 +370,19 @@ async def test_a_yaml_companion_refused_with_a_status_names_it_and_aborts(cat):
 
 
 @pytest.mark.asyncio
-async def test_a_yaml_companion_that_cannot_be_written_is_not_answered_as_a_download_failure(cat):
-    # The write is outside what the companion download answers for: the
-    # OSError reaches the door, which removes only what an HTTPException says.
+async def test_a_yaml_companion_that_cannot_be_put_in_place_is_not_answered_as_a_download_failure(cat):
+    # The download answered; putting the file in place did not, so the install
+    # is the door's 500 and nothing it brought is left.
     cat.network.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(
         companion="./acme_widget_discovery.py"
     )
     cat.network.pages[CATALOG + "acme_widget_discovery.py"] = COMPANION
     (cat.repo / "acme_widget_discovery.py").mkdir()
 
-    with pytest.raises(OSError):
-        await _install("acme_widget.avcdriver")
+    refused = await _refused(_install("acme_widget.avcdriver"))
 
-    assert _tree(cat.repo) == {"acme_widget.avcdriver": _yaml(companion="./acme_widget_discovery.py")}
+    assert (refused.status_code, refused.detail) == (500, "Failed to load driver 'acme_widget'")
+    assert _tree(cat.repo) == {}
     assert ("register", DRIVER_ID) not in cat.events
 
 
@@ -604,10 +605,9 @@ async def test_an_unreachable_catalog_publishes_no_hashes(cat, monkeypatch, capl
 
 
 @pytest.mark.asyncio
-async def test_a_python_update_whose_simulator_fails_the_check_is_left_unregistered(cat):
-    # The new main file and discovery companion are written and the driver
-    # unregistered before the simulator is checked, so the refusal leaves
-    # the update half done (see the doors' pins for the other rollbacks).
+async def test_a_python_update_whose_simulator_fails_the_check_changes_nothing(cat):
+    # Every file is checked before any is written, so the refusal leaves the
+    # installed driver, its simulator and its registration as they were.
     _python_catalog(cat)
     (cat.repo / "acme_widget.py").write_bytes(_python("old"))
     (cat.repo / "acme_widget_sim.py").write_bytes(b"old simulator\n")
@@ -623,13 +623,10 @@ async def test_a_python_update_whose_simulator_fails_the_check_is_left_unregiste
 
     assert (refused.status_code, refused.detail) == (502, NOT_YET)
     assert _tree(cat.repo) == {
-        "acme_widget.py": _python(),
-        "acme_widget_discovery.py": COMPANION,
+        "acme_widget.py": _python("old"),
         "acme_widget_sim.py": b"old simulator\n",
     }
-    assert [e for e in cat.events if e[0] in ("register", "unregister", "announce")] == [
-        ("unregister", DRIVER_ID)
-    ]
+    assert [e for e in cat.events if e[0] in ("register", "unregister", "announce")] == []
 
 
 # --- Browse Community -----------------------------------------------------------

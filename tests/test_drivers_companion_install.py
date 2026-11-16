@@ -89,7 +89,7 @@ def test_relpath_handles_non_dict_yaml():
 
 
 @pytest.mark.asyncio
-async def test_download_companion_writes_to_repo(tmp_path):
+async def test_download_companion_answers_its_name_and_bytes(tmp_path):
     yaml_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/foo.avcdriver"
 
     mock_resp = MagicMock()
@@ -108,8 +108,8 @@ async def test_download_companion_writes_to_repo(tmp_path):
             "./foo_discovery.py"
         )
 
-    assert local == tmp_path / "foo_discovery.py"
-    assert local.read_text(encoding="utf-8") == "async def probe(ctx): pass\n"
+    assert local == ("foo_discovery.py", b"async def probe(ctx): pass\n")
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.asyncio
@@ -245,11 +245,11 @@ def silence_register_and_refresh(monkeypatch):
     these tests don't set up. We replace them with no-ops so the
     companion-fetch logic is what's under test.
     """
-    # Patch the route module, not the registry that defines these: the
-    # route imports both names at module scope, so that binding is what
-    # the handler actually calls.
+    # Patch the modules that call these, not the registry that defines them:
+    # each imports its name at module scope, so that binding is what runs.
+    # The install and update register through the driver-change step.
     monkeypatch.setattr(
-        "openavc.api.routes.drivers.register_driver",
+        "openavc.drivers.driver_change.register_driver",
         lambda cls: None,
     )
     monkeypatch.setattr(

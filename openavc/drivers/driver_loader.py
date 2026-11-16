@@ -19,7 +19,7 @@ import ast
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Collection, Iterator, Sequence
 
 import yaml
 
@@ -263,11 +263,18 @@ def count_comment_lines(filepath: Path) -> int:
     return sum(1 for line in text.splitlines() if line.lstrip().startswith("#"))
 
 
-def load_driver_file(filepath: Path) -> dict[str, Any] | None:
+def load_driver_file(
+    filepath: Path, *, folder: Path | None = None, arriving: Collection[str] = ()
+) -> dict[str, Any] | None:
     """
     Load and validate a single driver definition file (.avcdriver YAML).
 
     Returns the driver definition dict, or None if invalid.
+
+    A staged copy (``driver_change.admit``) is judged as the file it is about
+    to become: the discovery companion it names is looked for from
+    ``folder``, the folder it is going into, and a name in ``arriving`` (a
+    file staged with it, going into that folder too) counts as there.
     """
     try:
         text = filepath.read_text(encoding="utf-8")
@@ -308,8 +315,9 @@ def load_driver_file(filepath: Path) -> dict[str, Any] | None:
     # in theory and silently invisible in practice. Reject up front.
     companion_relpath = companion_relpath_from_def(driver_def)
     if companion_relpath:
-        companion_path = (filepath.parent / companion_relpath).resolve()
-        if not companion_path.is_file():
+        base = Path(folder) if folder is not None else filepath.parent
+        companion_path = (base / companion_relpath).resolve()
+        if not _companion_there(companion_path, base, arriving):
             log.warning(
                 f"Driver {filepath.name} declares discovery.python "
                 f"file={companion_relpath!r} but no such file exists "
@@ -318,6 +326,14 @@ def load_driver_file(filepath: Path) -> dict[str, Any] | None:
             return None
 
     return driver_def
+
+
+def _companion_there(companion_path: Path, base: Path, arriving: Collection[str]) -> bool:
+    """Whether the companion a definition names is there: a file at its
+    path, or a file arriving in ``base`` under its name."""
+    if companion_path.is_file():
+        return True
+    return companion_path.parent == base.resolve() and companion_path.name in arriving
 
 
 def _python_driver_id(filepath: Path) -> str | None:

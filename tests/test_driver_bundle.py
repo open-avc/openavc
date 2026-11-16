@@ -60,13 +60,13 @@ def driver_repo(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def stub_engine_wiring(monkeypatch):
     """No-op the engine registration / discovery refresh / orphan retry."""
-    # Both route modules import the registry functions at module scope, so
-    # each namespace needs its own patch (same reason the engine is patched
-    # twice below).
+    # Each module that writes the registry imports its functions at module
+    # scope, so each namespace needs its own patch (same reason the engine is
+    # patched twice below): the Code view's routes, and the driver-change
+    # step the install, update and import doors register through.
+    for module in ("openavc.api.routes.python_drivers", "openavc.drivers.driver_change"):
+        monkeypatch.setattr(f"{module}.register_driver", lambda cls: None)
     for module in ("drivers", "python_drivers"):
-        monkeypatch.setattr(
-            f"openavc.api.routes.{module}.register_driver", lambda cls: None
-        )
         monkeypatch.setattr(
             f"openavc.api.routes.{module}.unregister_driver", lambda driver_id: None
         )
@@ -112,6 +112,13 @@ def _fake_driver_class(driver_id: str):
     return cls
 
 
+def _load_python_as(monkeypatch, load) -> None:
+    """Every Python driver file these doors load is ``load(path)``: the
+    staged copy's trial import and the import from its final place alike."""
+    monkeypatch.setattr("openavc.drivers.driver_change.trial_driver_class", load)
+    monkeypatch.setattr("openavc.drivers.driver_change.load_python_driver_file", load)
+
+
 def _make_zip(files: dict[str, bytes]) -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -140,7 +147,7 @@ def _request_with_file(filename: str | None, data: bytes = b"") -> MagicMock:
 
 
 @pytest.mark.asyncio
-async def test_companion_writes_on_200(tmp_path):
+async def test_companion_answers_its_bytes_on_200_and_writes_nothing(tmp_path):
     main_url = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/switchers/foo.py"
     resp = MagicMock(status_code=200, text="async def probe(ctx): pass\n")
     resp.content = resp.text.encode("utf-8")
@@ -154,9 +161,9 @@ async def test_companion_writes_on_200(tmp_path):
         out = await CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
             "foo_discovery.py"
         )
-    assert out.path == tmp_path / "foo_discovery.py"
-    assert out.path.read_text(encoding="utf-8") == "async def probe(ctx): pass\n"
+    assert out.content == b"async def probe(ctx): pass\n"
     assert out.published is True
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.asyncio
@@ -172,7 +179,7 @@ async def test_companion_reports_not_published_on_404(tmp_path):
         out = await CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
             "foo_sim.py"
         )
-    assert out.path is None
+    assert out.content is None
     # The one case update may act on: a definite 404 means this version
     # ships without the companion, so a stale local copy should be removed.
     assert out.published is False
@@ -186,7 +193,7 @@ async def test_companion_rejects_bad_filename(tmp_path):
     out = await CatalogFiles("foo", main_url, tmp_path, None).conventional_companion(
         "foo.py"
     )
-    assert out.path is None
+    assert out.content is None
     # Not a 404 — we never asked. `published` stays True so update leaves any
     # local file alone rather than deleting on a name it refused to fetch.
     assert out.published is True
@@ -197,7 +204,7 @@ async def test_companion_rejects_off_allowlist_host(tmp_path):
     out = await CatalogFiles("foo", "https://attacker.example/switchers/foo.py", tmp_path, None).conventional_companion(
         "foo_discovery.py"
     )
-    assert out.path is None
+    assert out.content is None
     assert out.published is True
 
 
@@ -223,10 +230,7 @@ def _mock_three(main_src: str, disc_src: str, sim_src: str) -> MagicMock:
 
 @pytest.mark.asyncio
 async def test_install_python_driver_pulls_both_companions(driver_repo, monkeypatch):
-    monkeypatch.setattr(
-        "openavc.drivers.driver_loader.load_python_driver_file",
-        lambda p: _fake_driver_class("chazy_control_pro"),
-    )
+    _load_python_as(monkeypatch, lambda p: _fake_driver_class("chazy_control_pro"))
     body = CommunityDriverInstallRequest(
         driver_id="chazy_control_pro",
         file_url="https://raw.githubusercontent.com/open-avc/openavc-drivers/main/switchers/chazy_control_pro.py",
@@ -243,10 +247,7 @@ async def test_install_python_driver_pulls_both_companions(driver_repo, monkeypa
 
 @pytest.mark.asyncio
 async def test_install_python_driver_tolerates_missing_companions(driver_repo, monkeypatch):
-    monkeypatch.setattr(
-        "openavc.drivers.driver_loader.load_python_driver_file",
-        lambda p: _fake_driver_class("solo_driver"),
-    )
+    _load_python_as(monkeypatch, lambda p: _fake_driver_class("solo_driver"))
     body = CommunityDriverInstallRequest(
         driver_id="solo_driver",
         file_url="https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/solo_driver.py",
@@ -274,10 +275,7 @@ async def test_install_python_driver_tolerates_missing_companions(driver_repo, m
 
 @pytest.mark.asyncio
 async def test_bundle_round_trip_lands_all_files(driver_repo, monkeypatch):
-    monkeypatch.setattr(
-        "openavc.drivers.driver_loader.load_python_driver_file",
-        lambda p: _fake_driver_class("chazy_control_pro"),
-    )
+    _load_python_as(monkeypatch, lambda p: _fake_driver_class("chazy_control_pro"))
     zip_bytes = _make_zip({
         "chazy_control_pro.py": b"# main\n",
         "chazy_control_pro_discovery.py": b"# discovery\n",
@@ -349,10 +347,7 @@ async def test_bundle_strips_directory_paths(driver_repo, monkeypatch):
     # Entries with directory components are reduced to their basename, so a
     # traversal attempt lands flat in driver_repo (and only if it's a valid
     # driver-file name).
-    monkeypatch.setattr(
-        "openavc.drivers.driver_loader.load_python_driver_file",
-        lambda p: _fake_driver_class("foo"),
-    )
+    _load_python_as(monkeypatch, lambda p: _fake_driver_class("foo"))
     zip_bytes = _make_zip({"nested/dir/foo.py": b"# m\n"})
     req = _request_with_file("foo.zip", zip_bytes)
     result = await upload_driver_bundle(req)
@@ -482,10 +477,7 @@ _UPDATE_URL = (
 
 
 async def _run_update(monkeypatch, repo, client):
-    monkeypatch.setattr(
-        "openavc.drivers.driver_loader.load_python_driver_file",
-        lambda p: type("D", (), {"DRIVER_INFO": {"id": "foo"}}),
-    )
+    _load_python_as(monkeypatch, lambda p: type("D", (), {"DRIVER_INFO": {"id": "foo"}}))
     req = MagicMock()
     req.json = AsyncMock(return_value={"file_url": _UPDATE_URL})
     with patch("httpx.AsyncClient", return_value=client):

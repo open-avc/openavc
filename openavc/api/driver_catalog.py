@@ -16,9 +16,10 @@ list and Discovery keep caches of their own.
 Each of the three files an install may bring answers a failure in its own
 words (the main file, a YAML driver's declared companion, a Python driver's
 conventional companions), and those differ on purpose or by history:
-``tests/test_driver_catalog_fetch_pins.py`` holds each as it is. What a door
-does around them (the version floor, the rollback, the registry) is the
-door's own, in ``routes/drivers.py``.
+``tests/test_driver_catalog_fetch_pins.py`` holds each as it is. Nothing here
+writes a file: each download comes back as bytes, and the door hands them all
+to ``drivers/driver_change.admit``, which checks them, stages them and puts
+them in place, or leaves the installed driver as it was.
 """
 
 import re
@@ -35,6 +36,7 @@ from openavc.drivers.driver_loader import (
     DISCOVERY_COMPANION_SUFFIX,
     DRIVER_FILE_STEM,
     companion_relpath_from_yaml,
+    declared_driver_info,
     require_mutable_driver_file,
 )
 from openavc.utils.logger import get_logger
@@ -193,7 +195,7 @@ _CONVENTIONAL_COMPANION_NAME = _companion_name(COMPANION_SUFFIXES)
 
 
 class CompanionFetch(NamedTuple):
-    """Outcome of a best-effort companion fetch.
+    """Outcome of a best-effort companion fetch: its bytes, or None.
 
     ``published`` is the field that matters to update, and it is deliberately
     narrow: it is ``False`` **only** when the catalog answered a definite 404,
@@ -205,8 +207,44 @@ class CompanionFetch(NamedTuple):
     simulator every time the network hiccuped.
     """
 
-    path: Path | None
+    content: bytes | None
     published: bool = True
+
+
+class PythonCompanions(NamedTuple):
+    """A Python driver's conventional companions as the catalog answered:
+    the ones fetched, by file name, and the names it definitely does not
+    publish (a 404)."""
+
+    fetched: dict[str, bytes]
+    unpublished: list[str]
+
+
+class CatalogDownload(NamedTuple):
+    """Everything a catalog driver brings, downloaded and checked against
+    the catalog with nothing written: the files by name, the optional ones
+    among them (a Python driver's conventional companions), and the
+    companions the catalog definitely no longer publishes."""
+
+    files: dict[str, bytes]
+    optional: tuple[str, ...]
+    unpublished: list[str]
+
+
+def refuse_another_id(internal_id: object, expected_id: str) -> None:
+    """The 422 for a downloaded driver that declares an id other than the one
+    asked for; nothing for one that declares none, or none readable."""
+    if not isinstance(internal_id, str):
+        return
+    if internal_id in ("", expected_id):
+        return
+    raise HTTPException(
+        status_code=422,
+        detail=(
+            f"Downloaded driver declares id '{internal_id}', not the "
+            f"requested '{expected_id}'. Install it under id '{internal_id}'."
+        ),
+    )
 
 
 def _driver_file_kind(url: str) -> str:
@@ -229,8 +267,8 @@ class CatalogFiles:
     each with its own answer to a failure: the main file (a 502 naming the
     driver), the companion a YAML driver names (required: a 502 naming the
     companion) and a Python driver's conventional companions (optional: only
-    a definite 404 says one is not published). What each door does around
-    them, the version floor, the rollback and the registry, is the door's own.
+    a definite 404 says one is not published). Every file comes back as
+    bytes; putting them in place is ``drivers/driver_change.admit``'s.
     """
 
     def __init__(self, driver_id: str, url: str, driver_repo: Path, catalog: Any) -> None:
@@ -278,10 +316,27 @@ class CatalogFiles:
         require_mutable_driver_file(self.file_name, resp.content)
         return resp.text, resp.content
 
-    async def yaml_companion(self, yaml_text: str) -> Path | None:
-        """Download the companion a YAML driver names, beside it. ``None`` for
-        a Python driver or a YAML that names none; a failure raises, and the
-        door removes what it wrote."""
+    async def download(self, check: Callable[[str, bytes], None]) -> CatalogDownload:
+        """The driver file, then the companion a YAML driver names (required)
+        or a Python driver's conventional ones (optional). ``check`` is asked
+        of the driver file, and its declared id held to the one asked for,
+        before anything else is fetched, so a driver this platform cannot run
+        or that is not the one asked for costs no more requests."""
+        yaml_text, content = await self.main_file()
+        check(self.file_name, content)
+        refuse_another_id(declared_driver_info(self.file_name, content).get("id"), self.driver_id)
+        brought = {self.file_name: content}
+        companion = await self.yaml_companion(yaml_text)
+        if companion is not None:
+            brought[companion[0]] = companion[1]
+        python = await self.python_companions()
+        brought.update(python.fetched)
+        return CatalogDownload(brought, tuple(python.fetched), python.unpublished)
+
+    async def yaml_companion(self, yaml_text: str) -> tuple[str, bytes] | None:
+        """Download the companion a YAML driver names: its file name and
+        bytes. ``None`` for a Python driver or a YAML that names none; a
+        failure raises, with nothing written."""
         if self.kind != ".avcdriver":
             return None
         relpath = companion_relpath_from_yaml(yaml_text)
@@ -289,10 +344,10 @@ class CatalogFiles:
             return None
         return await self.declared_companion(relpath)
 
-    async def declared_companion(self, companion_relpath: str) -> Path:
-        """Download the companion a YAML driver declares and write it to the
-        driver folder; its local path. Any failure raises a descriptive 422 or
-        502 so the door can roll back what it wrote."""
+    async def declared_companion(self, companion_relpath: str) -> tuple[str, bytes]:
+        """Download the companion a YAML driver declares: the name it has in
+        the driver folder, and its bytes. Any failure raises a descriptive
+        422 or 502."""
         import httpx
 
         companion_filename, companion_url = self._declared_companion_source(companion_relpath)
@@ -314,9 +369,7 @@ class CatalogFiles:
                 f"{companion_filename!r} but the download failed",
                 e,
             )
-        companion_filepath = self.driver_repo / companion_filename
-        companion_filepath.write_bytes(resp.content)
-        return companion_filepath
+        return companion_filename, resp.content
 
     def _declared_companion_source(self, companion_relpath: str) -> tuple[str, str]:
         """The file name and catalog address a YAML's companion declaration
@@ -359,27 +412,27 @@ class CatalogFiles:
             )
         return companion_filename, companion_url
 
-    async def python_companions(
-        self, on_unpublished: Callable[[Path], None] | None = None
-    ) -> None:
+    async def python_companions(self) -> PythonCompanions:
         """Fetch a Python driver's discovery and simulator files, named from
         the URL's file name, so discovery's backup path works and the device
-        can be simulated. A missing one is no failure; ``on_unpublished`` is
-        told the local file each definite 404 leaves stale, right after it.
+        can be simulated. A missing one is no failure; a definite 404 is
+        named in ``unpublished``, for an update to remove the copy it had.
 
         The main file is named from the id instead, so the two names agree
         only while a catalog driver's file name matches its id.
         """
-        if self.kind != ".py":
-            return
+        companions = PythonCompanions({}, [])
         stem = PurePosixPath(urlparse(self.url).path).stem
-        if not stem:
-            return
+        if self.kind != ".py" or not stem:
+            return companions
         for suffix in COMPANION_SUFFIXES:
             name = f"{stem}{suffix}"
-            fetched = await self.conventional_companion(name)
-            if not fetched.published and on_unpublished is not None:
-                on_unpublished(self.driver_repo / name)
+            fetch = await self.conventional_companion(name)
+            if fetch.content is not None:
+                companions.fetched[name] = fetch.content
+            elif not fetch.published:
+                companions.unpublished.append(name)
+        return companions
 
     async def conventional_companion(self, companion_filename: str) -> CompanionFetch:
         """Best-effort fetch of one of a Python driver's sibling companions.
@@ -402,20 +455,18 @@ class CatalogFiles:
         if not _is_catalog_url(companion_url):
             return CompanionFetch(None)
 
-        companion_filepath = self.driver_repo / companion_filename
         try:
             # A companion that fails the catalog check is NOT swallowed like a
             # fetch error below: "optional" means it may be absent, not that a
             # wrong-bytes copy may be installed. Raises past this handler.
             resp = await self._fetch(companion_url, absent_ok=True)
-            if resp is None:
-                # The one case we can be sure about: this version ships without
-                # that companion.
-                return CompanionFetch(None, published=False)
-            companion_filepath.write_bytes(resp.content)
-        except (httpx.HTTPStatusError, httpx.RequestError, OSError) as e:
+        except (httpx.HTTPStatusError, httpx.RequestError) as e:
             log.warning(
                 "Optional companion %s not installed: %s", companion_filename, e
             )
             return CompanionFetch(None)
-        return CompanionFetch(companion_filepath)
+        if resp is None:
+            # The one case we can be sure about: this version ships without
+            # that companion.
+            return CompanionFetch(None, published=False)
+        return CompanionFetch(resp.content)

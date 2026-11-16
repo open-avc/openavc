@@ -179,7 +179,7 @@ async def test_ai_install_completes_via_rest_path(tmp_path, monkeypatch) -> None
     repo.mkdir()
     # The REST handler reads its repo dir + engine wiring, so target those.
     monkeypatch.setattr("openavc.api.routes.drivers._get_driver_repo_dir", lambda: repo)
-    monkeypatch.setattr("openavc.api.routes.drivers.register_driver", lambda cls: None)
+    monkeypatch.setattr("openavc.drivers.driver_change.register_driver", lambda cls: None)
     monkeypatch.setattr(
         "openavc.api.discovery.refresh_all_device_matches",
         AsyncMock(return_value=None),

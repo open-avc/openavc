@@ -95,7 +95,7 @@ def silence_engine(monkeypatch):
         raising=False,
     )
     monkeypatch.setattr(
-        "openavc.api.routes.drivers.register_driver", lambda cls: None
+        "openavc.drivers.driver_change.register_driver", lambda cls: None
     )
 
 

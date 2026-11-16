@@ -337,6 +337,8 @@ A newer version that needs a later release of OpenAVC shows **Needs OpenAVC v&lt
 
 Updating a driver replaces its companion files too, so a driver's simulator and discovery logic stay in step with the driver itself. If a newer version stops shipping one, the old copy is removed rather than left behind.
 
+An update that fails (the download breaks off, a file doesn't match the library, or the new version doesn't load) changes nothing: the version you had, its companion files and the devices using it carry on as before. The same goes for installing a driver over one you already have.
+
 Devices already using the driver are rebuilt on the new version as part of the update, so there is no need to restart the server to pick it up. If a device does not come back, its name appears in a message and you can reconnect it from Devices.
 
 For a few minutes after a driver is updated in the library, GitHub can serve the new file alongside the previous list of hashes, or the other way around. OpenAVC checks a download that doesn't match against a fresh copy of the list before refusing it. If they still disagree, the update is refused with "This driver was updated a few minutes ago and cannot be installed yet. Try again in five minutes."
