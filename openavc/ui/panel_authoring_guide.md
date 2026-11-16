@@ -509,8 +509,9 @@ but a status LED's colours:
 
 So a look with states `on` and `off` follows a device reporting `ON` or `true`,
 and `{"true": "#4CAF50"}` lights an LED bound to a boolean while `{"True": ...}`
-does not. Write an LED's map keys in the device's own casing, and prefer
-lowercase `"true"` / `"false"` for booleans.
+does not. Write every map key and condition value in the device's own casing
+and spelling anyway, and prefer lowercase `"true"` / `"false"` for booleans:
+that matches on every OpenAVC version, including ones older than this rule.
 
 ## A status LED lights on its value, not on the colour it matched
 
