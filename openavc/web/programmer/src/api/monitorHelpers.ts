@@ -144,9 +144,10 @@ export function monitorLabel(monitor: MonitorConfig): string {
   return monitor.key ?? "";
 }
 
-/** The clamp on a declared decimal place count, copied from the panel's
- *  `_displayDecimals`: `toFixed` throws a RangeError outside 0..100, and a
- *  stray project value must not take a tile down mid-render. */
+/** The clamp on a declared decimal place count: the project schema's bound on
+ *  a monitor's `display_decimals` (core/project_loader.py). `toFixed` throws a
+ *  RangeError outside 0..100, and a stray value must not take a tile down
+ *  mid-render. */
 const MAX_DECIMALS = 20;
 
 /** Above this `toFixed` returns exponential notation; past it both sides print

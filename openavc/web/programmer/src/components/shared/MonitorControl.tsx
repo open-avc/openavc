@@ -24,9 +24,13 @@ import { useState } from "react";
 import { Activity, ChevronDown, ChevronRight } from "lucide-react";
 import type { MonitorConfig, MonitorStateEntry } from "../../api/types";
 import { monitorStatus, hasLimits, normalValues, ABNORMAL } from "../../api/monitorHelpers";
+import { PROJECT_VALUES } from "../../api/projectValues.gen";
 import { booleanWord } from "./booleanWords";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { NumericInput } from "./NumericInput";
+
+/** The range a monitor's decimals take: the project schema's. */
+const DECIMALS = PROJECT_VALUES.MonitorConfig.display_decimals;
 
 /** What the driver or the variable already says about this reading. Everything
  *  here is pre-filled and stays editable — a driver's 0–10000 lamp-hour range
@@ -355,14 +359,14 @@ function MonitorLimits({
                 which is why the placeholder says so: a blank box next to "Unit"
                 otherwise reads as 0 decimal places. */}
             <Field label="Decimals" width={110}>
-              {/* A whole number from 0 to 20 as it commits: the server
-                  refuses a fraction or a count past 20, and a "2.5" or a "50"
+              {/* Inside the project schema's range as it commits: the server
+                  refuses a fraction or a count past it, and a "2.5" or a "50"
                   typed here would fail the whole save over a display hint. */}
               <NumericInput
                 owner={`monitor/${monitor.key}/display_decimals`}
-                integer
-                min={0}
-                max={20}
+                integer={DECIMALS.integer}
+                min={DECIMALS.min}
+                max={DECIMALS.max}
                 step={1}
                 allowEmpty
                 value={monitor.display_decimals}

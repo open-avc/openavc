@@ -38,6 +38,7 @@ from openavc.cloud.alert_monitor import AlertMonitor
 from openavc.core import monitors
 from openavc.core.event_bus import EventBus
 from openavc.core.project_loader import MonitorConfig
+from openavc.core.project_values_gen import project_values
 from openavc.core.state_store import StateStore
 
 #: The reading that prompted all of this, at the width it actually arrives.
@@ -272,15 +273,20 @@ def test_the_form_can_never_write_a_value_the_loader_refuses():
     Pydantic refuses a float with a fraction or a count past either end -- so
     a "2.5" or a "50" typed into the form would fail the whole project save,
     over a display hint. A number input hands back "2.5" even when its step
-    says 1, so the form's box commits a whole number inside the bound
-    (MonitorControl.decimals.test.tsx types into it)."""
+    says 1, so the form's box commits a whole number inside the bound, read
+    from the schema's generated table (projectValues.fields.test.tsx and
+    MonitorControl.decimals.test.tsx type into it)."""
     for refused in (2.5, -1, 21):
         with pytest.raises(ValidationError):
             MonitorConfig(key="var.n", display_decimals=refused)
     assert MonitorConfig(key="var.n", display_decimals=2.0).display_decimals == 2
+    assert project_values()["MonitorConfig"]["display_decimals"] == {
+        "default": None, "min": 0, "max": 20, "integer": True,
+    }
 
     src = MONITOR_CONTROL.read_text(encoding="utf-8")
+    assert "const DECIMALS = PROJECT_VALUES.MonitorConfig.display_decimals;" in src
     decimals_at = src.index("owner={`monitor/${monitor.key}/display_decimals`}")
     box = src[decimals_at - 200:decimals_at + 300]
-    for prop in ("<NumericInput", "integer", "min={0}", "max={20}"):
-        assert prop in box, f"the decimals box must commit a whole number from 0 to 20 ({prop})"
+    for prop in ("<NumericInput", "integer={DECIMALS.integer}", "min={DECIMALS.min}", "max={DECIMALS.max}"):
+        assert prop in box, f"the decimals box must commit a whole number in the schema's range ({prop})"

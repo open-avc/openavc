@@ -5,20 +5,26 @@
  * whole draft back as one edit, and only when something changed; Cancel,
  * Escape or the backdrop ask before throwing a changed draft away.
  *
- * Each choice is listed under the value the panel reads (panel.js). Where the
- * project leaves a setting blank the dialog shows a value of its own: for the
- * transition and the stagger, the 200 ms, 30 ms and fade-up that panel.js and
- * the project loader fall back to as well, so a change to one of those is a
- * change in all three; for the accent, #2196F3, which the panel draws only
- * when the theme has no accent of its own.
+ * Each choice is listed under the value the panel reads (panel.js). The range
+ * each number takes and what a blank setting shows are the project schema's,
+ * from its generated table (projectValues.gen.ts), so a box never offers a
+ * value the save refuses. The accent is the one exception: a blank one shows
+ * #2196F3, which the panel draws only when the theme has no accent of its own.
  */
 import { useState, type CSSProperties, type ReactNode } from "react";
+import { PROJECT_VALUES } from "../../api/projectValues.gen";
 import type { UIPage, UISettings } from "../../api/types";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { Modal } from "../../components/shared/Modal";
 import { NumericInput } from "../../components/shared/NumericInput";
 
 type Choice = readonly [value: string, label: string];
+
+/** Each setting's range and blank, as the project schema declares them. */
+const SETTINGS = PROJECT_VALUES.UISettings;
+const IDLE = SETTINGS.idle_timeout_seconds;
+const DURATION = SETTINGS.page_transition_duration;
+const STAGGER = SETTINGS.element_stagger_ms;
 
 const FONTS: readonly Choice[] = [
   ["Inter, system-ui, sans-serif", "Inter (Default)"],
@@ -166,11 +172,11 @@ function LockIdleAndErrorFields({ draft, patch, pages }: DraftProps & { pages: U
           style={INPUT}
         />
       </Field>
-      <Field label="Idle Timeout (seconds)" hint="Return to idle page after this many seconds of inactivity, up to 86400 (one day). 0 = disabled.">
+      <Field label="Idle Timeout (seconds)" hint={`Return to idle page after this many seconds of inactivity, up to ${IDLE.max} (one day). 0 = disabled.`}>
         <NumberBox
           owner="panel-settings/idle_timeout_seconds"
           value={draft.idle_timeout_seconds}
-          range={{ min: 0, max: 86400 }}
+          range={{ min: IDLE.min, max: IDLE.max }}
           onChange={(idle_timeout_seconds) => patch({ idle_timeout_seconds })}
         />
       </Field>
@@ -198,8 +204,9 @@ function LockIdleAndErrorFields({ draft, patch, pages }: DraftProps & { pages: U
 
 /** How the panel moves: between pages, and as a page's controls appear. */
 function MotionFields({ draft, patch }: DraftProps) {
-  const transition = draft.page_transition || "none";
-  const stagger = draft.element_entry === "stagger";
+  const transition = draft.page_transition || SETTINGS.page_transition.default;
+  const entry = draft.element_entry || SETTINGS.element_entry.default;
+  const stagger = entry === "stagger";
   return (
     <>
       <Field label="Page Transition">
@@ -209,20 +216,20 @@ function MotionFields({ draft, patch }: DraftProps) {
         <Field label="Transition Duration">
           <NumberBox
             owner="panel-settings/page_transition_duration"
-            value={draft.page_transition_duration || 200}
-            range={{ min: 50, max: 1000, step: 50 }}
+            value={draft.page_transition_duration || DURATION.default}
+            range={{ min: DURATION.min, max: DURATION.max, step: 50 }}
             unit="ms"
             onChange={(page_transition_duration) => patch({ page_transition_duration })}
           />
         </Field>
       )}
       <Field label="Element Entry Animation">
-        <Choices value={draft.element_entry || "none"} choices={ENTRIES} onChange={(element_entry) => patch({ element_entry })} />
+        <Choices value={entry} choices={ENTRIES} onChange={(element_entry) => patch({ element_entry })} />
       </Field>
       {stagger && (
         <Field label="Stagger Style" hint="How each element animates in as the stagger sweeps across the page.">
           <Choices
-            value={draft.element_stagger_style || "fade-up"}
+            value={draft.element_stagger_style || SETTINGS.element_stagger_style.default}
             choices={STAGGER_STYLES}
             onChange={(element_stagger_style) => patch({ element_stagger_style })}
           />
@@ -232,8 +239,8 @@ function MotionFields({ draft, patch }: DraftProps) {
         <Field label="Stagger Delay">
           <NumberBox
             owner="panel-settings/element_stagger_ms"
-            value={draft.element_stagger_ms || 30}
-            range={{ min: 10, max: 200, step: 10 }}
+            value={draft.element_stagger_ms || STAGGER.default}
+            range={{ min: STAGGER.min, max: STAGGER.max, step: 10 }}
             unit="ms per element"
             onChange={(element_stagger_ms) => patch({ element_stagger_ms })}
           />

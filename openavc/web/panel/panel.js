@@ -1966,8 +1966,10 @@ class PanelApp {
 
     // The fixed decimal count an element asked for in its readout, or null when
     // the author said nothing (each element type decides its own default from
-    // that). Clamped to the range toFixed accepts, so a stray project value
-    // can't throw part-way through a render pass and leave the page half drawn.
+    // that). Clamped to the project schema's bound on display_decimals
+    // (core/project_loader.py): a Builder draft reaches the panel without the
+    // loader, and toFixed throws past 100, so a stray value can't throw
+    // part-way through a render pass and leave the page half drawn.
     _displayDecimals(elementDef) {
         const raw = elementDef?.display_decimals;
         if (raw == null) return null;

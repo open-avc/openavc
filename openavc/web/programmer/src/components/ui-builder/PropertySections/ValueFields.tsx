@@ -9,6 +9,7 @@
  * sending decide what a device is sent, and its driver formats the value.
  */
 import { Plus, X } from "lucide-react";
+import { PROJECT_VALUES } from "../../../api/projectValues.gen";
 import type { Placement } from "../../../api/types";
 import { NumericInput } from "../../shared/NumericInput";
 import { showInfo } from "../../../store/toastStore";
@@ -344,6 +345,9 @@ function ResponseCurveFields({ element, onChange }: FieldProps) {
   );
 }
 
+/** The range a control's decimals take: the project schema's. */
+const DECIMALS = PROJECT_VALUES.UIElement.display_decimals;
+
 /**
  * How many decimal places a readout shows. Every element that DRAWS a number
  * offers this, because a device float arrives at full float64 width: an amp
@@ -361,17 +365,17 @@ export function ShownDecimalsRow({
 }: FieldProps & { placeholder: string }) {
   return (
     <FieldRow label="Shown decimals">
-      {/* Clamped as it commits to the project's own bound, which refuses a
+      {/* Clamped as it commits to the project schema's range, which refuses a
           count past it: a typed 50 would otherwise fail the whole save. */}
       <NumericInput
         owner={`${element.id}/display_decimals`}
         value={element.display_decimals}
         onCommit={(display_decimals) => onChange({ display_decimals })}
         allowEmpty
-        integer
+        integer={DECIMALS.integer}
         placeholder={placeholder}
-        min={0}
-        max={20}
+        min={DECIMALS.min}
+        max={DECIMALS.max}
         step={1}
         style={{ flex: 1 }}
       />
