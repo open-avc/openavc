@@ -15,7 +15,7 @@
  * it a definition, so it reads only the meter's own properties.
  */
 
-import { nothingToShow } from './readings.js';
+import { numberToShow } from './readings.js';
 
 export class LevelMeterControl {
     /** `style` is the element's style over the theme's level meter defaults. */
@@ -48,11 +48,12 @@ export class LevelMeterControl {
 
     /** Light the segments up to a reading and mark the held peak; none lit without one. */
     show(raw, offline) {
-        if (nothingToShow(raw, offline)) {
+        const reading = numberToShow(raw, offline);
+        if (reading === null) {
             this._clear();
             return;
         }
-        const value = Math.max(this.min, Math.min(this.max, Number(raw)));
+        const value = Math.max(this.min, Math.min(this.max, reading));
         const span = this.max - this.min;
         const litCount = Math.round(this._shareOf(value, span) * this.segments);
         this._holdPeak(value);

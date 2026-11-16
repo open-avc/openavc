@@ -428,6 +428,12 @@ SCENARIOS = [
     # registers has its evaluator (modules/dispatch.js), apart from a macro's
     # progress line, and every evaluator is reached.
     "every_binding_a_control_registers_has_its_evaluator",
+    # A reading that is not a value: a gauge, slider, fader and meter draw
+    # their placeholder for a reading that does not spell a number, a slider
+    # and fader their design sample, and an LED lights nothing.
+    "a_reading_that_is_not_a_number_draws_no_reading",
+    "a_reading_that_is_not_a_number_shows_the_design_sample",
+    "a_status_led_lights_nothing_without_a_reading",
 ]
 
 

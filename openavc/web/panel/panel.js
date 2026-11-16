@@ -22,6 +22,7 @@ import {
 import { ListControl, rowsFromState, showListSelection } from './modules/list.js';
 import { GaugeControl } from './modules/gauge.js';
 import { LevelMeterControl } from './modules/meter.js';
+import { nothingToShow } from './modules/readings.js';
 import { ClockControl, ClockTicker } from './modules/clock.js';
 import { KeypadControl } from './modules/keypad.js';
 import { TextEditor } from './modules/text_edit.js';
@@ -2595,17 +2596,18 @@ class PanelApp {
         // An unreachable device lights nothing. A status LED holding its last
         // colour is the smallest and most persuasive of these lies -- it is the
         // control an integrator puts on a page precisely to be glanced at.
-        const value = offline ? undefined : this.state[binding.key];
+        const value = this.state[binding.key];
+        const noReading = nothingToShow(value, offline);
         const colorMap = binding.map || {};
         const defaultColor = binding.default || '#9E9E9E';
-        const color = offline ? defaultColor : (colorMap[value] || defaultColor);
+        const color = noReading ? defaultColor : (colorMap[value] || defaultColor);
 
         element.style.backgroundColor = color;
         element.style.color = color;
         // Treat all off-like values as inactive, not just the literal string
         // 'off' — 0 / false / '' / '0' / 'false' from a device should not light
         // the LED's active/glow treatment.
-        const isOff = value === null || value === undefined || value === false || value === 0 ||
+        const isOff = noReading || value === false || value === 0 ||
             (typeof value === 'string' && ['', 'off', 'false', '0', 'no'].includes(value.trim().toLowerCase()));
         element.classList.toggle('active', !isOff);
 

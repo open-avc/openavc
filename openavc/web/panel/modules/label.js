@@ -15,6 +15,7 @@
  */
 
 import { sameWords } from './looks.js';
+import { nothingToShow } from './readings.js';
 
 /** Where a bound value's words are authored; frozen, since every caller is handed the same one. */
 const VALUE = Object.freeze(['bindings', 'show', 'value']);
@@ -32,7 +33,7 @@ const NO_READING = '--';
 export function valueWords(binding, value, offline, decimals) {
     if (offline) return withoutReading(binding);
     if (binding.condition) return conditionWords(binding, value);
-    if (value === undefined || value === null) return withoutReading(binding);
+    if (nothingToShow(value)) return withoutReading(binding);
     const shown = printedValue(value, decimals);
     // A bare value with no format around it is not authored text. The editor
     // opens it seeded with the literal `{value}` instead, so typing a

@@ -26,6 +26,8 @@
  * panel.js.
  */
 
+import { numberToShow } from './readings.js';
+
 const DEFAULT_DB_RANGE = 60;
 const SLIDER_RATE_MS = 100;
 const FADER_RATE_MS = 50;
@@ -173,13 +175,16 @@ class LevelScale {
     }
 
     /**
-     * A device's reading as a display value. With none, null, except in the
-     * design canvas (`design`): there a sample in the middle of the usable
-     * range, so an author sees the handle, fill and readout before choosing a
-     * binding or connecting equipment. The sample never enters state.
+     * A device's reading as a display value. With none to show (none
+     * reported, or one that is not a number: numberToShow, modules/readings.js),
+     * null, except in the design canvas (`design`): there a sample in the
+     * middle of the usable range, so an author sees the handle, fill and
+     * readout before choosing a binding or connecting equipment. The sample
+     * never enters state.
      */
     reading(raw, design) {
-        if (raw !== undefined && raw !== null) return this.fromDevice(Number(raw));
+        const reported = numberToShow(raw);
+        if (reported !== null) return this.fromDevice(reported);
         if (!design) return null;
         const low = this.limited ? Math.max(this.min, this.outputMin) : this.min;
         const high = this.limited ? Math.min(this.max, this.outputMax) : this.max;

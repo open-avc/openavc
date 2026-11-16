@@ -14,7 +14,7 @@
  * definition, so it reads only the gauge's own properties.
  */
 
-import { nothingToShow } from './readings.js';
+import { numberToShow } from './readings.js';
 
 const SVG = 'http://www.w3.org/2000/svg';
 /** The drawing's own units: a 120 by 120 box, scaled to the element. */
@@ -83,13 +83,14 @@ export class GaugeControl {
 
     /** Show a reading: the arc to its place, the zone's colour, the number. */
     show(raw, offline) {
-        if (nothingToShow(raw, offline)) {
+        const reading = numberToShow(raw, offline);
+        if (reading === null) {
             // Never a frozen last reading and never an arc at zero.
             this.fill.setAttribute('d', '');
             if (this.showValue) this.readout.textContent = `--${this.unit}`;
             return;
         }
-        const value = Math.max(this.min, Math.min(this.max, Number(raw)));
+        const value = Math.max(this.min, Math.min(this.max, reading));
         const frac = this.max > this.min ? (value - this.min) / (this.max - this.min) : 0;
         const angle = this.startAngle + frac * (this.endAngle - this.startAngle);
         this.fill.setAttribute('d', frac > 0.001 ? this._arc(this.startAngle, angle) : '');

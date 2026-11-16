@@ -13121,6 +13121,102 @@ Object.assign(tests, {
     },
 });
 
+// --- What a reading that is not a value draws --------------------------------
+//
+// One rule for every control (modules/readings.js): a value nobody reported,
+// a device that is away, and, on a control that shows a number, a reading
+// that does not spell one, all draw the control's placeholder. A number is
+// what the platform's monitors read as one: a finite number, or text that
+// spells one with spaces around it allowed; never a boolean, a blank, a word
+// or a hexadecimal spelling.
+
+const NOT_NUMBERS = ['abc', '', ' ', true, false, '0x10', 'Infinity', 'NaN', '1,000'];
+const SPELLED_NUMBERS = [['55', 55], [' 7 ', 7], ['.5', 0.5], ['5.', 5], ['1e3', 1000], ['-20', -20], ['+3', 3]];
+
+/** What a value control shows, read off its nodes, for comparing two draws. */
+const SHOWN = {
+    gauge: (n) => `${n.querySelector('[data-role="gauge-value"]').textContent} | arc=${n.querySelector('[data-role="gauge-fg"]').getAttribute('d')}`
+        + ` | ${n.querySelector('[data-role="gauge-fg"]').getAttribute('stroke')}`,
+    slider: (n) => `${n.querySelector('.slider-value').textContent} | ${n.querySelector('input').value}`
+        + ` | ${n.querySelector('input').className} | ${n.querySelector('.slider-fill').getAttribute('style')}`,
+    fader: (n) => `${n.querySelector('.fader-value').textContent} | ${n.querySelector('.fader-handle').className}`
+        + ` | ${n.querySelector('.fader-handle').getAttribute('style')}`,
+    level_meter: (n) => [...n.querySelectorAll('.meter-segment')].map((s) => s.className).join(','),
+};
+
+Object.assign(tests, {
+    // A gauge, slider, fader and meter given a reading that is not a number
+    // after a real one draw exactly what a reading of nothing draws; one
+    // that spells a number draws that number.
+    a_reading_that_is_not_a_number_draws_no_reading() {
+        const KEY = 'device.d.v';
+        const bound = { bindings: { show: { value: { key: KEY } } } };
+        const defs = [
+            { id: 'g', type: 'gauge', unit: '%', min: -100, max: 2000, ...bound },
+            { id: 's', type: 'slider', unit: 'dB', min: -100, max: 2000, style: { show_value: true }, ...bound },
+            { id: 'f', type: 'fader', unit: 'dB', min: -100, max: 2000, ...bound },
+            { id: 'm', type: 'level_meter', min: -100, max: 2000, ...bound },
+        ];
+        const after40 = (def, value) => {
+            const m = levelMount(def, { state: { 'device.d.connected': true, [KEY]: 40 } });
+            m.set(KEY, value);
+            return SHOWN[def.type](m.node());
+        };
+        const wrong = [];
+        for (const def of defs) {
+            const nothing = after40(def, null);
+            for (const value of NOT_NUMBERS) {
+                const got = after40(def, value);
+                if (got !== nothing) wrong.push(`${def.type} ${JSON.stringify(value)}: ${got} (no reading: ${nothing})`);
+            }
+            for (const [text, number] of SPELLED_NUMBERS) {
+                const got = after40(def, text);
+                const want = after40(def, number);
+                if (got !== want) wrong.push(`${def.type} ${JSON.stringify(text)}: ${got} (${number}: ${want})`);
+            }
+        }
+        assert(wrong.length === 0, wrong.join(' ;; '));
+    },
+
+    // On the design canvas a slider and a fader with no reading show a
+    // sample in the middle of their range; a reading that is not a number
+    // is no reading there too.
+    a_reading_that_is_not_a_number_shows_the_design_sample() {
+        const KEY = 'device.d.v';
+        const bound = { bindings: { show: { value: { key: KEY } } } };
+        const wrong = [];
+        for (const def of [
+            { id: 's', type: 'slider', min: 0, max: 10, style: { show_value: true }, ...bound },
+            { id: 'f', type: 'fader', min: 0, max: 10, ...bound },
+        ]) {
+            const drawn = (value) => {
+                const m = levelMount(def, { state: { 'device.d.connected': true, [KEY]: 3 }, edit: true });
+                m.set(KEY, value);
+                return SHOWN[def.type](m.node());
+            };
+            const sample = drawn(undefined);
+            if (drawn('abc') !== sample) wrong.push(`${def.type}: ${drawn('abc')} (sample: ${sample})`);
+        }
+        assert(wrong.length === 0, wrong.join(' ;; '));
+    },
+
+    // An LED lights nothing for a reading that is not there, even where its
+    // colour map names the word "null".
+    a_status_led_lights_nothing_without_a_reading() {
+        const KEY = 'device.d.v';
+        const led = { id: 'led', type: 'status_led', bindings: { show: { look: {
+            key: KEY, map: { null: '#ff0000', undefined: '#00ff00', on: '#0000ff' }, default: '#9e9e9e' } } } };
+        const m = levelMount(led, { state: { 'device.d.connected': true, [KEY]: 'on' } });
+        const dot = () => m.node().querySelector('.led-dot');
+        const lit = () => `${dot().style.backgroundColor} ${dot().classList.contains('active')}`;
+        assert(lit() === 'rgb(0, 0, 255) true', `a reported "on" lights blue, got ${lit()}`);
+        m.set(KEY, null);
+        assert(lit() === 'rgb(158, 158, 158) false', `a null reading lights nothing, got ${lit()}`);
+        m.set(KEY, undefined);
+        assert(lit() === 'rgb(158, 158, 158) false', `a missing reading lights nothing, got ${lit()}`);
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

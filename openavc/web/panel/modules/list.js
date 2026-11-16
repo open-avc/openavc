@@ -20,6 +20,8 @@
  * here only through a parameter named `element`.
  */
 
+import { nothingToShow } from './readings.js';
+
 const DEFAULT_ITEM_BG = '#2a2a4e';
 const DEFAULT_ITEM_ACTIVE_BG = '#42a5f5';
 
@@ -65,7 +67,7 @@ export class ListControl {
     /** The selection the device reports, if it reports one, replaces the picks. */
     _takeReportedPick() {
         const picked = this._selection();
-        if (picked === undefined || picked === null) return;
+        if (nothingToShow(picked)) return;
         this.selectedValues.clear();
         this.selectedValues.add(String(picked));
     }
@@ -130,8 +132,7 @@ export function rowsFromState(state, keyPattern) {
  * reading of nothing leaves the rows as they are.
  */
 export function showListSelection(list, value, offline) {
-    const reported = value !== undefined && value !== null;
-    if (!offline && !reported) return;
+    if (!offline && nothingToShow(value)) return;
     const { scrollArea, itemBg, itemActiveBg, selectedValues } = list;
     selectedValues.clear();
     if (!offline) selectedValues.add(String(value));

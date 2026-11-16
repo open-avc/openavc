@@ -721,10 +721,14 @@ def test_the_guide_states_the_off_values_the_led_renderer_uses(
     literals = re.findall(r"'([^']*)'", off_strings[0])
     assert set(literals) == {"", "off", "false", "0", "no"}, literals
 
-    # ...and the non-string values it also treats as off.
+    # ...and the non-string values it also treats as off: null and a missing
+    # reading through the panel's no-reading rule (modules/readings.js).
     normalized = re.sub(r"\s+", "", body)
-    for token in ("value===null", "value===undefined", "value===false", "value===0"):
+    for token in ("noReading=nothingToShow(value,offline)", "noReading||", "value===false", "value===0"):
         assert token in normalized, f"evaluateColor no longer checks {token}"
+    readings = (PACKAGE_DIR / "web" / "panel" / "modules" / "readings.js").read_text(encoding="utf-8")
+    rule = re.sub(r"\s+", "", readings.partition("export function nothingToShow")[2].partition("}")[0])
+    assert "value===undefined||value===null" in rule, "the no-reading rule no longer reads null and missing as none"
 
     section = guide.partition("## A status LED lights on its value")[2]
     assert section, "the guide no longer documents the LED lit/unlit rule"
