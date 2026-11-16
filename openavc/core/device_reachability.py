@@ -14,7 +14,11 @@ speaking the protocol:
 - http: a HEAD request to the URL the transport builds from host, port and
   ``ssl``, with the certificate checked per ``verify_ssl``. A ``base_url`` in
   the config is used only when there is no host: the transport never reads it.
-- serial: the port opened and closed.
+- serial: the port opened and closed. A device bound to a USB adapter's
+  serial number opens the port that adapter has now, and one whose adapter is
+  not plugged in is refused without opening anything
+  (``transport/serial_transport.require_usb_adapter``, the device manager's
+  rule at every dial).
 - udp, snmp, OSC over UDP: there is nothing to connect to. The socket is
   pointed at the address, which proves the name resolves and a route exists,
   and the result says that is all it proves.
@@ -71,6 +75,7 @@ from openavc.core.device_config import connection_of, resolve_device_config
 from openavc.discovery.network_scanner import resolve_address
 from openavc.discovery.port_guard import held_ports
 from openavc.transport.endpoint import control_bind_address
+from openavc.transport.serial_transport import require_usb_adapter
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport
 
@@ -443,6 +448,10 @@ async def _head(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
 
 
 async def _open_serial(cfg: dict[str, Any]) -> str | None:
+    try:
+        cfg = require_usb_adapter(cfg, "serial")
+    except ConnectionFaultError as refused:
+        return str(refused)
     # pyserial's open is a blocking syscall: a locked port or a slow
     # USB-serial adapter would stall the event loop for its whole duration.
     serial_port = str(cfg.get("port") or "")

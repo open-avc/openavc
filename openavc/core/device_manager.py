@@ -3,8 +3,10 @@ OpenAVC DeviceManager — manages all device driver instances.
 
 What it keeps itself: each device's lifecycle (add, the deferred bring-up,
 edit, remove, shutdown), the config it was handed and the live driver it built
-from it, a driver reload, the connect and drop events, and the rule that a
-missing simulator never falls through to physical control.
+from it, a driver reload, the connect and drop events, and the one dial every
+door goes through (``_connect_driver``): a missing simulator never falls
+through to physical control, and a USB-serial device is dialled only through
+its own adapter.
 
 The rule worth knowing before changing it: a driver gets its OWN copy of its
 config, because the copy kept here is what the project reconcile compares
@@ -34,6 +36,7 @@ from typing import Any, TYPE_CHECKING
 
 from openavc.core.connection_fault import (
     ConnectionFault,
+    ConnectionFaultError,
     no_simulator_fault,
 )
 from openavc.core.device_away import DeviceAwayMixin
@@ -728,5 +731,37 @@ class DeviceManager(
             raise NoSimulatorError(device_id, self._no_simulator_fault(device_id, gap).message)
 
     async def _connect_driver(self, device_id: str, driver: Any) -> None:
+        """Dial a device: the one door bring-up, the reconnect loop,
+        Reconnect, Resume and a setup action's reconnect all go through."""
         self._require_control_target(device_id)
+        self._follow_usb_adapter(device_id, driver)
         await driver.connect()
+
+    @staticmethod
+    def _follow_usb_adapter(device_id: str, driver: Any) -> None:
+        """Point a USB-serial device at the port its adapter has now, or
+        refuse the dial when the adapter is not plugged in.
+
+        The rule is ``require_usb_adapter`` (transport/serial_transport.py).
+        Asked at every dial because a replug can move the adapter
+        (ttyUSB0 -> ttyUSB1) while the server runs, and an unplugged
+        adapter's old name can be given to another one. No-op for anything
+        but a local usb_serial-bound serial device.
+        """
+        from openavc.transport.serial_transport import require_usb_adapter
+
+        driver_transport = (getattr(driver, "DRIVER_INFO", None) or {}).get("transport", "tcp")
+        try:
+            followed = require_usb_adapter(driver.config, driver_transport)
+        except ConnectionFaultError:
+            raise
+        except Exception:
+            # Listing the ports failed: nothing to compare the stored port with.
+            log.debug(f"[{device_id}] Could not list the serial ports", exc_info=True)
+            return
+        if followed is not driver.config:
+            log.info(
+                f"[{device_id}] Serial adapter moved: port "
+                f"{driver.config.get('port')!r} -> {followed.get('port')!r}"
+            )
+            driver.config = followed

@@ -45,9 +45,8 @@ class DeviceManualReconnectMixin:
     Holds no state of its own. From its host (DeviceManager) it reads
     ``state``, ``_devices`` and ``_intentional_disconnect``, and asks
     ``_live_driver`` and ``_connect_driver``; ``is_paused`` and ``_end_pause``
-    (core/device_pause.py); ``_cancel_reconnect``, ``_start_reconnect``,
-    ``_paused_for_refused_login`` and ``_refresh_usb_serial_port``
-    (core/device_reconnect.py); ``_set_offline_reason``,
+    (core/device_pause.py); ``_cancel_reconnect``, ``_start_reconnect`` and
+    ``_paused_for_refused_login`` (core/device_reconnect.py); ``_set_offline_reason``,
     ``_clear_offline_reason`` and ``_failure_text`` (core/device_away.py);
     ``_note_bridge_offline_if_down`` (core/device_bridges.py);
     ``_apply_pending_settings`` (core/pending_settings.py) and
@@ -102,7 +101,6 @@ class DeviceManualReconnectMixin:
         """Reconnect's one attempt. A failure is published and, unless the
         device refused its login, handed to the reconnect loop."""
         try:
-            self._refresh_usb_serial_port(device_id, driver)
             await self._connect_driver(device_id, driver)
             log.info(f"Reconnected device: {device_id}")
             # The reason was cleared up front by reconnect_device.

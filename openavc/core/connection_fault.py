@@ -169,6 +169,18 @@ def bridge_port_missing_message() -> str:
     return _BRIDGE_PORT_MISSING_MESSAGE
 
 
+def usb_adapter_missing_message(usb_serial: str) -> str:
+    """What a device bound to a USB-to-serial adapter that is not plugged in
+    says: on its card (an ``unreachable`` fault, raised before anything is
+    dialled by ``transport.serial_transport.require_usb_adapter``) and from
+    the connection test."""
+    return (
+        f"The USB serial adapter this device uses (serial number {usb_serial}) "
+        "is not plugged in to this system. Plug it back in, or if it was "
+        "replaced, choose the new adapter in Edit Device."
+    )
+
+
 def default_fault_message(code: str, where: str = "the device") -> str:
     """The taxonomy's standard integrator-facing sentence for ``code``."""
     template = _DEFAULT_MESSAGES.get(code) or _DEFAULT_MESSAGES[TRANSPORT_DISCONNECTED]

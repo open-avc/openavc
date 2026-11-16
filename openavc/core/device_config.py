@@ -78,11 +78,10 @@ def resolve_device_config(device, project) -> dict:
     # dials it, so a project saved with one connects without an edit.
     merged = trim_typed_fields(cfg.get("driver", ""), merged)
     cfg["config"] = resolve_bridge_binding(merged, project)
-    # Rewrite a USB-serial device's volatile port from its stable adapter id —
-    # the local-serial analog of the bridge rewrite above. The logic lives in
-    # the transport module so the device manager can re-resolve on every
-    # reconnect attempt too: the path can change when the adapter is replugged
-    # mid-run.
+    # Rewrite a USB-serial device's volatile port from its stable adapter id,
+    # the local-serial analog of the bridge rewrite above. An adapter that is
+    # not plugged in leaves the stored port in the record; the device manager
+    # asks the same rule (require_usb_adapter) at every dial, which refuses it.
     driver_transport = get_driver_transport(cfg.get("driver", ""))
     cfg["config"] = resolve_usb_binding(cfg["config"], driver_transport)
     return cfg

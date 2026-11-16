@@ -237,7 +237,7 @@ async def test_reconnect_starts_clean_and_flushes_the_queue(dm, monkeypatch):
     applied = AsyncMock()
     refreshed = Mock()
     monkeypatch.setattr(dm, "_apply_pending_settings", applied)
-    monkeypatch.setattr(dm, "_refresh_usb_serial_port", refreshed)
+    monkeypatch.setattr(dm, "_follow_usb_adapter", refreshed)
     # The widget connects without announcing it, so nothing else clears the reason.
 
     await dm.reconnect_device("dev")

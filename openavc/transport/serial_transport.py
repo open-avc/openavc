@@ -18,9 +18,11 @@ from typing import Any
 
 from openavc.core.connection_fault import (
     INVALID_CONFIG,
+    UNREACHABLE,
     ConnectionFault,
     ConnectionFaultError,
     typed_fault_from_exc,
+    usb_adapter_missing_message,
 )
 from openavc.core.device_traffic import RX, TX, record_chunk, record_traffic
 from openavc.transport.frame_parsers import DelimiterFrameParser, FrameParser
@@ -70,11 +72,20 @@ def list_serial_ports() -> list[dict[str, Any]]:
     binds to the path and accepts that it may move. Returns an empty list if
     pyserial's platform enumeration backend can't be imported.
     """
+    ports = _attached_ports()
+    if ports is None:
+        log.warning("serial.tools.list_ports unavailable; cannot enumerate serial ports")
+        return []
+    return ports
+
+
+def _attached_ports() -> list[dict[str, Any]] | None:
+    """The ports :func:`list_serial_ports` lists, or ``None`` when this host
+    cannot enumerate its ports at all, which is not the same as having none."""
     try:
         from serial.tools import list_ports
     except ImportError:
-        log.warning("serial.tools.list_ports unavailable; cannot enumerate serial ports")
-        return []
+        return None
 
     ports: list[dict[str, Any]] = []
     for p in list_ports.comports():
@@ -107,38 +118,30 @@ def list_serial_ports() -> list[dict[str, Any]]:
     return ports
 
 
-def resolve_serial_port_by_serial(usb_serial: str) -> str | None:
-    """Return the live OS device path of the attached adapter whose USB serial
-    number matches ``usb_serial``, or ``None`` if no attached port matches.
+def require_usb_adapter(config: dict, driver_transport: str = "") -> dict:
+    """The config a USB-serial device dials now, or a refusal when its adapter
+    is not plugged in.
 
-    Used by the connection resolver to turn a stored, stable ``usb_serial`` into
-    the volatile path (COM3 / /dev/ttyUSB0) the OS assigns it this boot.
-    """
-    if not usb_serial:
-        return None
-    for p in list_serial_ports():
-        if p["serial_number"] and p["serial_number"] == usb_serial:
-            return p["device"]
-    return None
+    THE rule for a device bound to a USB-to-serial adapter. The OS gives a
+    directly-attached adapter a port name (COM3 / /dev/ttyUSB0) that is not
+    stable across reboot or replug. When the connection stored the adapter's
+    ``usb_serial`` (USB serial number), the device follows its cable: the port
+    becomes whatever path the OS assigned that adapter right now. Asked before
+    every dial (the device manager's connect, the connection test), since the
+    path can change mid-run when the adapter is replugged.
 
-
-def resolve_usb_binding(config: dict, driver_transport: str = "") -> dict:
-    """Rewrite a USB-serial device's volatile port from its stable adapter id.
-
-    A directly-attached USB-to-serial adapter is given a port name by the OS
-    (COM3 / /dev/ttyUSB0) that is not stable across reboot or replug. When the
-    connection stored the adapter's ``usb_serial`` (USB serial number), resolve
-    it to whatever path the OS assigned that adapter right now, so the device
-    follows its cable instead of a fixed name. Called wherever a serial device
-    is (re)dialed: startup/reload/edit config resolution and each reconnect
-    attempt — the path can change mid-run when the adapter is replugged.
+    When no attached adapter carries that serial number, the stored port is
+    not dialled: the OS hands a free name to the next adapter it enumerates,
+    so opening it would reach another adapter's equipment. The refusal is an
+    ``unreachable`` fault, so the device keeps retrying and connects once the
+    adapter is back. The stored port is dialled only when nothing can tell
+    the adapter there from the bound one: the port there reports no serial
+    number, or this host cannot list its ports.
 
     Only applies to a real local serial connection: a bridge-bound serial
     device has been rewritten to ``transport=tcp`` by the bridge resolver and
-    is left alone, and an explicit network transport is skipped. If no attached
-    adapter carries that serial (unplugged, or a clone that exposes none), the
-    stored ``port`` is left as-is — the device then fails to connect with the
-    normal serial open error rather than silently dialing the wrong port.
+    is left alone, and an explicit network transport is skipped (the
+    simulation redirect sets ``tcp`` and leaves ``usb_serial`` in place).
 
     ``driver_transport`` is the device's driver-declared transport
     (``DRIVER_INFO['transport']``). When the saved config omits ``transport``,
@@ -147,19 +150,71 @@ def resolve_usb_binding(config: dict, driver_transport: str = "") -> dict:
     path just because a matching adapter happens to be attached.
 
     Returns the same dict when nothing changed, a copy with ``port`` rewritten
-    when it did.
+    when it did. Raises :class:`ConnectionFaultError` when the adapter is not
+    plugged in.
     """
-    usb_serial = config.get("usb_serial")
-    transport = config.get("transport") or driver_transport
-    if not usb_serial or config.get("bridge") or transport not in ("", "serial"):
+    usb_serial = _bound_usb_serial(config, driver_transport)
+    ports = _attached_ports() if usb_serial else None
+    if ports is None:
         return config
+    live = _port_carrying(ports, usb_serial)
+    if live is not None:
+        return _with_port(config, live)
+    if _unidentified_port_at(ports, config.get("port")):
+        return config
+    raise ConnectionFaultError(
+        usb_adapter_missing_message(str(usb_serial)), code=UNREACHABLE,
+    )
 
-    live = resolve_serial_port_by_serial(usb_serial)
-    if live and live != config.get("port"):
-        resolved = dict(config)
-        resolved["port"] = live
-        return resolved
-    return config
+
+def _bound_usb_serial(config: dict, driver_transport: str) -> str:
+    """The adapter serial number a local serial device is bound to, or ""
+    when its port is not the adapter's to decide (a bridge, a network
+    transport, no ``usb_serial``)."""
+    if config.get("bridge"):
+        return ""
+    if (config.get("transport") or driver_transport) not in ("", "serial"):
+        return ""
+    return config.get("usb_serial") or ""
+
+
+def _port_carrying(ports: list[dict[str, Any]], usb_serial: str) -> str | None:
+    """The path of the attached adapter whose serial number is ``usb_serial``."""
+    return next(
+        (p["device"] for p in ports if p["serial_number"] == usb_serial), None,
+    )
+
+
+def _with_port(config: dict, port: str) -> dict:
+    """``config`` dialling ``port``: the same dict when it already does."""
+    if port == config.get("port"):
+        return config
+    return {**config, "port": port}
+
+
+def _unidentified_port_at(ports: list[dict[str, Any]], port: object) -> bool:
+    """True when an attached port at ``port`` reports no serial number."""
+    from openavc.core.device_config import same_serial_port
+
+    stored = str(port or "")
+    return bool(stored) and any(
+        same_serial_port(p["device"], stored) and not p["serial_number"]
+        for p in ports
+    )
+
+
+def resolve_usb_binding(config: dict, driver_transport: str = "") -> dict:
+    """The port a USB-serial device is set to, for its resolved record.
+
+    :func:`require_usb_adapter`'s answer, except that an adapter that is not
+    plugged in leaves the stored ``port`` as it is: the record says what the
+    device is set to, and the dial, which asks :func:`require_usb_adapter`
+    again, refuses it.
+    """
+    try:
+        return require_usb_adapter(config, driver_transport)
+    except ConnectionFaultError:
+        return config
 
 
 def _log_task_exception(task: asyncio.Task) -> None:

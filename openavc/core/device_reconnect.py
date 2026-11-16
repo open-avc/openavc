@@ -609,7 +609,6 @@ class DeviceReconnectMixin:
         once its start-up and queued settings have run, or paused for a
         refused login. A connection that drops on the way is a failed attempt.
         """
-        self._refresh_usb_serial_port(device_id, driver)
         # A device dropped because it stopped answering (its polls or its
         # liveness probe) is not announced again until it answers:
         # re-announcing it at every reconnect made its card read connected for
@@ -699,27 +698,3 @@ class DeviceReconnectMixin:
             return False
         self._stop_reconnect_for_permanent_fault(device_id, code)
         return True
-
-    def _refresh_usb_serial_port(self, device_id: str, driver) -> None:
-        """Re-resolve a usb_serial-bound adapter to its current OS path.
-
-        A replug can move the adapter (ttyUSB0 -> ttyUSB1) while the stored
-        path goes stale; the stable USB serial number is the truth, so each
-        reconnect attempt follows the adapter instead of redialing the old
-        path. No-op for anything but a local usb_serial-bound serial device.
-        """
-        try:
-            from openavc.transport.serial_transport import resolve_usb_binding
-
-            driver_transport = driver.DRIVER_INFO.get("transport", "tcp")
-            refreshed = resolve_usb_binding(driver.config, driver_transport)
-            if refreshed is not driver.config:
-                log.info(
-                    f"[{device_id}] Serial adapter moved: port "
-                    f"{driver.config.get('port')!r} -> {refreshed.get('port')!r}"
-                )
-                driver.config = refreshed
-        except Exception:
-            log.debug(
-                f"[{device_id}] USB serial re-resolution failed", exc_info=True
-            )
