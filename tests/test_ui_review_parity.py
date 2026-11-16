@@ -1054,6 +1054,22 @@ CASES["masters_zero_sized_under_a_control"] = _project(
     ],
 )
 
+# A box written with a negative width or height is kept as written (a load
+# never changes it), and the panel draws nothing there: CSS refuses a negative
+# size. Both reviews measure it as written and say it draws nothing, on a page
+# control and on a master alike, so Validate reports what the load leaves.
+CASES["negative_sizes"] = _project(
+    [_page("main",
+           [{"id": "gauge_negative_w", "type": "gauge"},
+            {"id": "slider_negative_h", "type": "slider"}],
+           [_landscape({"gauge_negative_w": _pct_box(0, 0, -20, 30),
+                        "slider_negative_h": _pct_box(40, 40, 20, -10)})])],
+    masters=[
+        {"id": "led_negative_w", "type": "status_led", "label": "Sys", "pages": "*",
+         "placements": {"landscape": _pct_box(80, 0, -5, 10)}},
+    ],
+)
+
 # A crosspoint cell size of 0 is unset: the panel draws the cell that fits the
 # box, at least 44px, exactly as it does with none written. So a two-by-two
 # matrix written with one needs the same box as one written without, and a box
@@ -1934,6 +1950,19 @@ def test_a_master_written_zero_wide_or_tall_is_measured_at_zero(verdicts) -> Non
          "what it draws: 0px tall, needs 20px (led-dot is 20px). Give it h at least "
          "2.5% of the page in the landscape arrangement."),
     ]
+
+
+def test_a_negative_width_or_height_is_reported_not_measured_away(verdicts) -> None:
+    """Named here too: a negative size is left as written at load, so the
+    review is where it is said, and a review that dropped such a box would go
+    quiet about a control the panel does not draw."""
+    python_side, builder_side = verdicts["negative_sizes"]
+    assert builder_side == python_side  # said again here so a drift names this case
+
+    found = {(f["element_id"], f["kind"]) for f in python_side}
+    assert ("gauge_negative_w", "too_small_to_draw") in found
+    assert ("slider_negative_h", "too_small_for_contents") in found
+    assert ("led_negative_w", "too_small_for_contents") in found
 
 
 def test_a_crosspoint_cell_size_of_zero_is_measured_as_unset(verdicts) -> None:
