@@ -155,6 +155,15 @@ function backgroundLayer(className) {
     return layer;
 }
 
+/**
+ * A page picture's size as CSS. Stretch fills the page, as a button's picture
+ * does (paint.js): the word itself is no size a browser draws.
+ */
+export function pagePictureSize(bg) {
+    const size = bg.image_size || 'cover';
+    return size === 'stretch' ? '100% 100%' : size;
+}
+
 /** Draw a page.background-shaped object onto a page surface. */
 function drawBackground(surface, bg) {
     surface.style.position = 'relative';
@@ -168,7 +177,7 @@ function drawBackground(surface, bg) {
         const imgLayer = backgroundLayer('panel-page-bg-image');
         drawFadedPicture(imgLayer, {
             url: imageUrl,
-            size: bg.image_size || 'cover',
+            size: pagePictureSize(bg),
             position: bg.image_position || 'center',
             opacity: bg.image_opacity ?? 1,
         });
