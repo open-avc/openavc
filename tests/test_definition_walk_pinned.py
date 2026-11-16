@@ -13,8 +13,8 @@ refused or read as empty, and where the discovery check it is handed runs.
 Each case is a set of top-level keys over one driver. The expected value is
 every issue ``validate_driver_issues`` reports for the whole definition, in
 order, each with its severity and the section tag the Driver Builder anchors
-it to, lenient and strict. A few shapes raise, and are pinned by the exception
-they raise. The discovery hook, the tagged list itself and the issue records'
+it to, lenient and strict; a part the walk could not check is one of those
+issues. The discovery hook, the tagged list itself and the issue records'
 fallback are pinned directly.
 
 These record what the walk does today, so a restructuring that keeps the
@@ -277,10 +277,8 @@ CASES: dict[str, dict[str, Any]] = {
         "actions": [5],
         "on_connect": "x",
     },
-}
-
-# Shapes the walk raises on, with what it raises (the expected value).
-RAISING_CASES: dict[str, dict[str, Any]] = {
+    # Shapes a part of the walk cannot read: each is reported as a part it
+    # could not check, at the place it was reading.
     "id_a_number": {"id": 5},
     "id_a_list": {"id": ["acme"]},
     "actions_a_number": {"actions": 5},
@@ -309,7 +307,38 @@ def _issues(definition: Any, *, strict: bool) -> list[tuple[str, str, str]]:
     ]
 
 
-EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
+EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error', 'actions', 'actions: must be a list'),
+ ('error',
+  'actions',
+  "actions: could not be checked ('int' object is not iterable). One of its values is not the kind "
+  'it should be, such as a number or true/false where a name goes; correct it and check again')],
+ 'actions_true': [('error', 'actions', 'actions: must be a list'),
+ ('error',
+  'actions',
+  "actions: could not be checked ('bool' object is not iterable). One of its values is not the "
+  'kind it should be, such as a number or true/false where a name goes; correct it and check '
+  'again')],
+ 'id_a_list': [('error',
+  'discovery',
+  "discovery: could not be checked ('list' object has no attribute 'startswith'). One of its "
+  'values is not the kind it should be, such as a number or true/false where a name goes; correct '
+  'it and check again')],
+ 'id_a_number': [('error',
+  'discovery',
+  "discovery: could not be checked ('int' object has no attribute 'startswith'). One of its values "
+  'is not the kind it should be, such as a number or true/false where a name goes; correct it and '
+  'check again')],
+ 'then_query_on_a_rule_whose_mappings_is_a_number': [('error',
+  'responses[0]',
+  "responses[0]: could not be checked ('int' object is not iterable). One of its values is not the "
+  'kind it should be, such as a number or true/false where a name goes; correct it and check '
+  'again'),
+ ('warning',
+  'liveness',
+  'Nothing notices if the device stops answering over tcp: it sends no poll at its default config, '
+  'and there is no liveness block, so the device reads connected for as long as the connection '
+  'stays open. Add a liveness block that asks something the device answers in every state.')],
+ 'actions_empty': [],
  'actions_empty_mapping': [('error', 'actions', 'actions: must be a list')],
  'actions_empty_text': [('error', 'actions', 'actions: must be a list')],
  'actions_entries': [('error', 'actions', 'actions[0]: must be a mapping'),
@@ -967,7 +996,38 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
  'transport_none': [],
  'transport_unknown': [('error', '', 'Unsupported transport: carrier_pigeon')]}
 
-STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
+STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_a_number': [('error', 'actions', 'actions: must be a list'),
+ ('error',
+  'actions',
+  "actions: could not be checked ('int' object is not iterable). One of its values is not the kind "
+  'it should be, such as a number or true/false where a name goes; correct it and check again')],
+ 'actions_true': [('error', 'actions', 'actions: must be a list'),
+ ('error',
+  'actions',
+  "actions: could not be checked ('bool' object is not iterable). One of its values is not the "
+  'kind it should be, such as a number or true/false where a name goes; correct it and check '
+  'again')],
+ 'id_a_list': [('error',
+  'discovery',
+  "discovery: could not be checked ('list' object has no attribute 'startswith'). One of its "
+  'values is not the kind it should be, such as a number or true/false where a name goes; correct '
+  'it and check again')],
+ 'id_a_number': [('error',
+  'discovery',
+  "discovery: could not be checked ('int' object has no attribute 'startswith'). One of its values "
+  'is not the kind it should be, such as a number or true/false where a name goes; correct it and '
+  'check again')],
+ 'then_query_on_a_rule_whose_mappings_is_a_number': [('error',
+  'responses[0]',
+  "responses[0]: could not be checked ('int' object is not iterable). One of its values is not the "
+  'kind it should be, such as a number or true/false where a name goes; correct it and check '
+  'again'),
+ ('warning',
+  'liveness',
+  'Nothing notices if the device stops answering over tcp: it sends no poll at its default config, '
+  'and there is no liveness block, so the device reads connected for as long as the connection '
+  'stays open. Add a liveness block that asks something the device answers in every state.')],
+ 'actions_empty': [],
  'actions_empty_mapping': [('error', 'actions', 'actions: must be a list')],
  'actions_empty_text': [('error', 'actions', 'actions: must be a list')],
  'actions_entries': [('error', 'actions', 'actions[0]: must be a mapping'),
@@ -1652,15 +1712,6 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'actions_empty': [],
  'transport_none': [],
  'transport_unknown': [('error', '', 'Unsupported transport: carrier_pigeon')]}
 
-RAISES: dict[str, type[BaseException]] = {
-    'actions_a_number': TypeError,
-    'actions_true': TypeError,
-    'id_a_list': AttributeError,
-    'id_a_number': AttributeError,
-    'then_query_on_a_rule_whose_mappings_is_a_number': TypeError,
-}
-
-
 @pytest.mark.parametrize("case", sorted(CASES))
 def test_issues_their_order_and_their_tags(case: str) -> None:
     assert _issues(_definition(case), strict=False) == EXPECTED[case]
@@ -1682,16 +1733,6 @@ def test_the_error_list_is_a_list_with_a_tag_for_each_message(case: str) -> None
         assert errors.tags == [  # type: ignore[attr-defined]
             p for s, p, _ in (STRICT_EXPECTED if strict else EXPECTED)[case] if s == "error"
         ]
-
-
-@pytest.mark.parametrize("case", sorted(RAISING_CASES))
-def test_shapes_that_raise(case: str) -> None:
-    definition = _definition(case, RAISING_CASES)
-    for strict in (False, True):
-        with pytest.raises(RAISES[case]):
-            validate_driver_definition(definition, strict=strict)
-        with pytest.raises(RAISES[case]):
-            validate_driver_issues(definition, strict=strict)
 
 
 @pytest.mark.parametrize("value", [None, [], "driver", 5, ("id",)])
@@ -1771,22 +1812,27 @@ def test_anything_else_is_handed_to_the_discovery_check(over: dict[str, Any]) ->
     assert errors.tags[list(errors).index("discovery: x")] == "discovery"  # type: ignore[attr-defined]
 
 
-def test_a_discovery_check_that_raises_is_not_caught() -> None:
+def test_a_discovery_check_that_raises_is_reported_in_its_place() -> None:
     def hook(definition: dict[str, Any]) -> list[str]:
         raise RuntimeError("discovery parser broke")
 
-    with pytest.raises(RuntimeError, match="discovery parser broke"):
-        validate_driver_definition(_definition("everything"), discovery_validator=hook)
-    with pytest.raises(RuntimeError, match="discovery parser broke"):
-        validate_driver_issues(_definition("clean"), discovery_validator=hook)
+    errors = validate_driver_definition(_definition("everything"), discovery_validator=hook)
+    tagged = list(zip(errors.tags, errors))  # type: ignore[attr-defined]
+    at = [i for i, (_, m) in enumerate(tagged) if "discovery parser broke" in m]
+    assert len(at) == 1 and tagged[at[0]][0] == "discovery"
+    assert tagged[at[0] - 1][0] == "device_settings.mode"
+    assert tagged[at[0] + 1][0] == "push"
+    issues = validate_driver_issues(_definition("clean"), discovery_validator=hook)
+    assert [i["path"] for i in issues] == ["discovery"]
+    assert issues[0]["message"].startswith("discovery: could not be checked (discovery parser broke). ")
 
 
-def test_a_number_for_an_id_raises_with_or_without_a_discovery_check() -> None:
+def test_a_number_for_an_id_is_reported_with_or_without_a_discovery_check() -> None:
     hook = _Recorder([])
-    with pytest.raises(AttributeError):
-        validate_driver_definition({**BASE, "id": 5})
-    with pytest.raises(AttributeError):
-        validate_driver_definition({**BASE, "id": 5}, discovery_validator=hook)
+    without = validate_driver_definition({**BASE, "id": 5})
+    with_hook = validate_driver_definition({**BASE, "id": 5}, discovery_validator=hook)
+    assert list(without) == list(with_hook)
+    assert without.tags == with_hook.tags == ["discovery"]  # type: ignore[attr-defined]
     assert hook.seen == []
 
 

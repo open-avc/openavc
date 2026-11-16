@@ -18,7 +18,7 @@ from __future__ import annotations
 import ast
 import tempfile
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Callable, Iterator, Sequence
 
 import yaml
 
@@ -282,7 +282,16 @@ def load_driver_file(filepath: Path) -> dict[str, Any] | None:
     if not isinstance(driver_def, dict):
         log.warning(f"Driver file {filepath} is not a valid YAML mapping")
         return None
+    try:
+        return _checked_definition(filepath, driver_def)
+    except Exception as exc:  # one file a check cannot take is that file's problem
+        log.warning(f"Driver file {filepath} could not be checked, so it was not loaded: {exc}")
+        return None
 
+
+def _checked_definition(filepath: Path, driver_def: dict[str, Any]) -> dict[str, Any] | None:
+    """``load_driver_file``'s verdict on a definition it read: the
+    definition, or None (with the reason logged) when the loader drops it."""
     errors = validate_driver_definition(driver_def)
     if errors:
         log.warning(
@@ -566,22 +575,35 @@ def load_driver_files(directories: Sequence[Path | str]) -> int:
     # driver_id -> (index of the dir it loaded from, the file it loaded from)
     registered: dict[str, tuple[int, Path]] = {}
     for dir_index, filepath in _library_files(directories, f"*{DRIVER_EXTENSION}"):
-        driver_def = load_driver_file(filepath)
-        if driver_def is None:
-            continue
-
-        driver_id = driver_def.get("id", "")
-        if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
-            continue
         try:
-            driver_class = create_configurable_driver_class(driver_def)
-            register_driver(driver_class)
-            registered[driver_id] = (dir_index, filepath)
-            log.info(f"Loaded driver: {driver_id} from {filepath.name}")
-        except Exception:  # Catch-all: YAML parsing/validation can fail in many ways
-            log.exception(f"Failed to create driver class from {filepath}")
+            _load_definition_file(filepath, dir_index, registered, create_configurable_driver_class)
+        except Exception:  # one file that cannot be taken never stops the pass
+            log.exception(f"Failed to load driver file {filepath}")
 
     return len(registered)
+
+
+def _load_definition_file(
+    filepath: Path,
+    dir_index: int,
+    registered: dict[str, tuple[int, Path]],
+    create_class: Callable[[dict[str, Any]], type],
+) -> None:
+    """One ``.avcdriver`` of the library pass: read, checked, and registered
+    when it serves its id (``registered`` records it)."""
+    driver_def = load_driver_file(filepath)
+    if driver_def is None:
+        return
+    driver_id = driver_def.get("id", "")
+    if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
+        return
+    try:
+        driver_class = create_class(driver_def)
+        register_driver(driver_class)
+        registered[driver_id] = (dir_index, filepath)
+        log.info(f"Loaded driver: {driver_id} from {filepath.name}")
+    except Exception:  # Catch-all: YAML parsing/validation can fail in many ways
+        log.exception(f"Failed to create driver class from {filepath}")
 
 
 def load_python_drivers(directories: Sequence[Path | str]) -> int:
@@ -597,21 +619,31 @@ def load_python_drivers(directories: Sequence[Path | str]) -> int:
     # driver_id -> (index of the dir it loaded from, the file it loaded from)
     registered: dict[str, tuple[int, Path]] = {}
     for dir_index, filepath in _python_driver_files(directories):
-        driver_class = load_python_driver_file(filepath)
-        if driver_class is None:
-            continue
-
-        driver_id = driver_class.DRIVER_INFO.get("id", "")
-        if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
-            continue
         try:
-            register_driver(driver_class)
-            registered[driver_id] = (dir_index, filepath)
-            log.info(f"Loaded Python driver: {driver_id} from {filepath.name}")
-        except Exception:
-            log.exception(f"Failed to register Python driver from {filepath}")
+            _load_python_file(filepath, dir_index, registered)
+        except Exception:  # one file that cannot be taken never stops the pass
+            log.exception(f"Failed to load Python driver file {filepath}")
 
     return len(registered)
+
+
+def _load_python_file(
+    filepath: Path, dir_index: int, registered: dict[str, tuple[int, Path]]
+) -> None:
+    """One ``.py`` driver of the library pass: imported, and registered when
+    it serves its id (``registered`` records it)."""
+    driver_class = load_python_driver_file(filepath)
+    if driver_class is None:
+        return
+    driver_id = driver_class.DRIVER_INFO.get("id", "")
+    if not _takes_the_id(registered.get(driver_id), dir_index, filepath, driver_id):
+        return
+    try:
+        register_driver(driver_class)
+        registered[driver_id] = (dir_index, filepath)
+        log.info(f"Loaded Python driver: {driver_id} from {filepath.name}")
+    except Exception:
+        log.exception(f"Failed to register Python driver from {filepath}")
 
 
 def load_all_drivers(directories: Sequence[Path | str]) -> int:

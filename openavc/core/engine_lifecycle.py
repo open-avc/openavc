@@ -13,9 +13,11 @@ command. ``_reconcile`` (core/project_reconcile.py) shares these orderings, so
 a change to one is checked against the other.
 
 A part of the start that fails is counted in ``system.startup_errors`` and
-named in one warning; it never stops the rest of the start. Each step that
-settles a decision or converts something on disk before the project loads
-(``prepare_host``) is the same: logged, never fatal.
+named in one warning; it never stops the rest of the start. The driver
+library's load is one of them: a start whose load fails goes on, and the
+devices whose driver did not register wait for it. Each step that settles a
+decision or converts something on disk before the project loads
+(``prepare_host``) is logged and never fatal, but not counted.
 
 Mixed into Engine (core/engine.py). Logs under the engine's name.
 """
@@ -195,24 +197,16 @@ def _run_steps(steps, sys_config, project_dir: Path) -> None:
 
 
 def prepare_host(project_dir: Path):
-    """Everything a start settles before the project loads, in order;
-    returns the system config.
-
-    Ends by registering every driver on disk — built-in definitions and
-    anything installed into driver_repo/. That has to happen here: after the
-    repo migration (so drivers left in the old layout are seen on this same
-    startup) and before the project loads, since resolving a device's config
-    and reporting its driver dependencies both ask the registry what exists.
-    """
+    """Everything a start settles before the drivers and the project load,
+    in order; returns the system config. The repo migration is here, so
+    drivers left in the old layout are seen by the driver load that follows
+    on this same start (``_load_drivers_at_start``)."""
     from openavc.system_config import get_system_config
 
     sys_config = get_system_config()
     _run_steps(_BEFORE_SYSTEM_JSON, sys_config, project_dir)
     sys_config.ensure_file()
     _run_steps(_AFTER_SYSTEM_JSON, sys_config, project_dir)
-    from openavc.drivers.driver_loader import load_builtin_drivers
-
-    load_builtin_drivers()
     return sys_config
 
 
@@ -251,12 +245,13 @@ class EngineLifecycleMixin:
         log.info("Engine starting...")
         self._start_time = time.monotonic()
         self._push_state_to_clients()
+        startup_errors: list[str] = []
         sys_config = prepare_host(self.project_path.parent)
+        self._load_drivers_at_start(startup_errors)
         self._publish_system_keys(sys_config)
         await self._load_project_at_start()
         self._start_variables()
         self._load_macro_definitions(macros=True, groups=True)
-        startup_errors: list[str] = []
         await self._add_devices_at_start(startup_errors)
         await self._start_plugins_at_start(startup_errors)
         await self._seal_the_start_backup()
@@ -318,6 +313,21 @@ class EngineLifecycleMixin:
         # Publish the idle help state so a panel bound to it draws something on
         # a quiet day rather than a blank that reads as a broken binding.
         self.help.declare_keys()
+
+    def _load_drivers_at_start(self, startup_errors: list[str]) -> None:
+        """Register every driver on disk: the built-in definitions and
+        anything installed into driver_repo/. After ``prepare_host`` (its
+        repo migration) and before the project loads, since resolving a
+        device's config and reporting its driver dependencies both ask the
+        registry what exists. The load skips a file it cannot take on its
+        own; a load that fails anyway is counted and the start goes on."""
+        from openavc.drivers.driver_loader import load_builtin_drivers
+
+        try:
+            load_builtin_drivers()
+        except Exception as e:
+            log.exception("Could not load the driver library")
+            startup_errors.append(f"Drivers: {e}")
 
     async def _load_project_at_start(self) -> None:
         """The project, with corruption recovery, composed with the product

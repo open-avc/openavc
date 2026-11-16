@@ -12,8 +12,8 @@ tagged ``actions[i]``: ``kind: setup`` needs a Python driver, and an entry's
 
 Each YAML case is a set of top-level keys over one driver. The expected value
 is every error ``validate_driver_issues`` reports for the whole definition, in
-order, each with the section tag the Driver Builder anchors it to. A case that
-raises is pinned by the exception's type. The direct cases record what
+order, each with the section tag the Driver Builder anchors it to; a part the
+walk could not check is one of those errors. The direct cases record what
 ``validate_actions`` answers on its own, and the Python cases what
 ``python_driver_info_issues`` and ``python_driver_reference_skips`` answer for a
 ``DRIVER_INFO`` holding the reader's markers.
@@ -280,6 +280,12 @@ CASES: dict[str, dict[str, Any]] = {
         {"id": "noop", "visible_when": VISIBLE, "label": "Ping"},
         quick_actions=["noop"],
     ),
+    # The walk's YAML-only pass enumerates ``actions or []`` without a list
+    # check of its own, so a truthy value that cannot be iterated is reported
+    # as a part it could not check, after the shared rule has named it.
+    "actions_a_number": {"actions": 5},
+    "actions_true": {"actions": True},
+    "actions_a_float": {"actions": 1.5},
 }
 
 
@@ -298,15 +304,6 @@ def _definition(case: str) -> dict[str, Any]:
         over.update(extra)
     return {**BASE, **over}
 
-
-# The walk's YAML-only pass enumerates ``actions or []`` without a list check
-# of its own, so a truthy value that cannot be iterated raises after the
-# shared rule has named it.
-RAISES: dict[str, dict[str, Any]] = {
-    "actions_a_number": {"actions": 5},
-    "actions_true": {"actions": True},
-    "actions_a_float": {"actions": 1.5},
-}
 
 # ``validate_actions`` on its own: the shared rule both surfaces call.
 DIRECT_CASES: dict[str, dict[str, Any]] = {
@@ -388,7 +385,27 @@ def python_info(case: str) -> dict[str, Any]:
     return {"id": "acme_widget", "name": "Acme Widget", "transport": "tcp", **PYTHON_CASES[case]}
 
 
-EXPECTED: dict[str, list[tuple[str, str]]] = {'a_good_block': [('commands.upload',
+EXPECTED: dict[str, list[tuple[str, str]]] = {'actions_a_float': [('commands.upload', "Command 'upload' param 'data': type 'file' requires a Python driver"),
+ ('commands.fetch', "Command 'fetch': 'returns_file' requires a Python driver"),
+ ('actions', 'actions: must be a list'),
+ ('actions',
+  "actions: could not be checked ('float' object is not iterable). One of its values is not the "
+  'kind it should be, such as a number or true/false where a name goes; correct it and check '
+  'again')],
+ 'actions_a_number': [('commands.upload', "Command 'upload' param 'data': type 'file' requires a Python driver"),
+ ('commands.fetch', "Command 'fetch': 'returns_file' requires a Python driver"),
+ ('actions', 'actions: must be a list'),
+ ('actions',
+  "actions: could not be checked ('int' object is not iterable). One of its values is not the kind "
+  'it should be, such as a number or true/false where a name goes; correct it and check again')],
+ 'actions_true': [('commands.upload', "Command 'upload' param 'data': type 'file' requires a Python driver"),
+ ('commands.fetch', "Command 'fetch': 'returns_file' requires a Python driver"),
+ ('actions', 'actions: must be a list'),
+ ('actions',
+  "actions: could not be checked ('bool' object is not iterable). One of its values is not the "
+  'kind it should be, such as a number or true/false where a name goes; correct it and check '
+  'again')],
+ 'a_good_block': [('commands.upload',
                    "Command 'upload' param 'data': type 'file' requires a Python driver"),
                   ('commands.fetch', "Command 'fetch': 'returns_file' requires a Python driver")],
  'actions_a_mapping': [('commands.upload',
@@ -1197,9 +1214,6 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_good_block': [('commands.upload
                           "actions[0]: visible_when: condition missing 'key' (state key string)")]}
 
 
-RAISES_EXPECTED: dict[str, str] = {'actions_a_float': 'TypeError', 'actions_a_number': 'TypeError', 'actions_true': 'TypeError'}
-
-
 DIRECT_EXPECTED: dict[str, list[str]] = {'a_file_command_that_is_not_a_mapping': [],
  'a_file_param_not_a_mapping': [],
  'both_blocks_wrong': ["quick_actions[0]: 'missing' is not a declared command",
@@ -1275,17 +1289,6 @@ def test_errors_their_order_and_their_tags(case: str) -> None:
 
 def test_every_case_has_an_expectation() -> None:
     assert set(CASES) == set(EXPECTED)
-
-
-@pytest.mark.parametrize("case", sorted(RAISES_EXPECTED))
-def test_what_the_walk_raises_on(case: str) -> None:
-    with pytest.raises(Exception) as raised:
-        validate_driver_definition({**BASE, **RAISES[case]})
-    assert type(raised.value).__name__ == RAISES_EXPECTED[case]
-
-
-def test_every_raising_case_has_an_expectation() -> None:
-    assert set(RAISES) == set(RAISES_EXPECTED)
 
 
 @pytest.mark.parametrize("case", sorted(DIRECT_EXPECTED))

@@ -23,7 +23,7 @@ template reader and read-back coverage check.
 Each YAML case is a set of top-level keys over one driver. The expected value
 is every issue ``validate_driver_issues`` reports for the whole definition, in
 order, each with its severity and the section tag the Driver Builder anchors
-it to. A few shapes raise, and are pinned by the exception they raise.
+it to; a warning rule that could not read a shape says so as a warning.
 
 These record what the checks say today, so a restructuring that keeps the
 contract keeps every message, its position and its tag.
@@ -505,13 +505,8 @@ CASES: dict[str, dict[str, Any]] = {
         "responses": [RULE],
         "bogus_key": 1,
     },
-}
-
-# Cases also run with strict=True (the unknown-key and floor checks after
-# every other error).
-STRICT = {"warnings_and_errors", "every_list_in_order", "cmd_every_place_in_order"}
-
-RAISING_CASES: dict[str, dict[str, Any]] = {
+    # Shapes a warning rule cannot read: each is a warning that the part could
+    # not be checked, and the error walk accepts or refuses it as before.
     "silence_transport_unhashable": {"transport": ["tcp"], "responses": [RULE]},
     "silence_extra_unhashable": {"responses": [RULE], "transports": [["tcp"]]},
     "poll_each_child_unhashable": poll(
@@ -536,22 +531,10 @@ RAISING_CASES: dict[str, dict[str, Any]] = {
     },
 }
 
-# Raised by validate_driver_warnings (and so by validate_driver_issues);
-# validate_driver_definition alone accepts or refuses each shape without
-# raising.
-RAISES: dict[str, type[BaseException]] = {
-    'poll_delay_too_large': OverflowError,
-    'poll_each_child_unhashable': TypeError,
-    'poll_interval_too_large': OverflowError,
-    'poll_interval_too_large_at_no_gap': OverflowError,
-    'poll_tcp_delay_infinite': OverflowError,
-    'poll_udp_delay_infinite': OverflowError,
-    'poll_udp_delay_nan': ValueError,
-    'silence_extra_unhashable': TypeError,
-    'silence_interval_too_large': OverflowError,
-    'silence_interval_too_large_no_queries': OverflowError,
-    'silence_transport_unhashable': TypeError,
-}
+# Cases also run with strict=True (the unknown-key and floor checks after
+# every other error).
+STRICT = {"warnings_and_errors", "every_list_in_order", "cmd_every_place_in_order"}
+
 
 # One template per entry, run through every reader of the token.
 TOKENS: list[str] = [
@@ -611,7 +594,70 @@ def _token_readings(template: str) -> dict[str, Any]:
 
 # --- recorded from the code as it is ----------------------------------------
 
-EXPECTED: dict[str, list[tuple[str, str, str]]] = {'cmd_clean': [],
+EXPECTED: dict[str, list[tuple[str, str, str]]] = {'poll_delay_too_large': [('warning',
+  'polling.queries',
+  'polling.queries: could not be checked for warnings (int too large to convert to float). One of '
+  'its values is not the kind it should be, such as a number or true/false where a name goes; '
+  'correct it and check again')],
+ 'poll_each_child_unhashable': [('error',
+  'polling.queries[0]',
+  "polling.queries[0]: each_child type ['output'] is not a declared child_entity_type"),
+ ('error',
+  'polling.queries[0]',
+  "polling.queries[0]: 'send' must contain {child_id} (a format spec like {child_id:02d} works "
+  'too)'),
+ ('warning',
+  'polling.queries',
+  "polling.queries: could not be checked for warnings (unhashable type: 'list'). One of its values "
+  'is not the kind it should be, such as a number or true/false where a name goes; correct it and '
+  'check again')],
+ 'poll_interval_too_large': [('warning',
+  'polling.queries',
+  'polling.queries: could not be checked for warnings (int too large to convert to float). One of '
+  'its values is not the kind it should be, such as a number or true/false where a name goes; '
+  'correct it and check again')],
+ 'poll_interval_too_large_at_no_gap': [('warning',
+  'polling.queries',
+  'polling.queries: could not be checked for warnings (int too large to convert to float). One of '
+  'its values is not the kind it should be, such as a number or true/false where a name goes; '
+  'correct it and check again')],
+ 'poll_tcp_delay_infinite': [('warning',
+  'polling.queries',
+  'polling.queries: could not be checked for warnings (cannot convert float infinity to integer). '
+  'One of its values is not the kind it should be, such as a number or true/false where a name '
+  'goes; correct it and check again')],
+ 'poll_udp_delay_infinite': [('warning',
+  'polling.queries',
+  'polling.queries: could not be checked for warnings (cannot convert float infinity to integer). '
+  'One of its values is not the kind it should be, such as a number or true/false where a name '
+  'goes; correct it and check again')],
+ 'poll_udp_delay_nan': [('warning',
+  'polling.queries',
+  'polling.queries: could not be checked for warnings (cannot convert float NaN to integer). One '
+  'of its values is not the kind it should be, such as a number or true/false where a name goes; '
+  'correct it and check again')],
+ 'silence_extra_unhashable': [('warning',
+  'liveness',
+  "liveness: could not be checked for warnings (unhashable type: 'list'). One of its values is not "
+  'the kind it should be, such as a number or true/false where a name goes; correct it and check '
+  'again')],
+ 'silence_interval_too_large': [('warning',
+  'liveness',
+  'liveness: could not be checked for warnings (int too large to convert to float). One of its '
+  'values is not the kind it should be, such as a number or true/false where a name goes; correct '
+  'it and check again')],
+ 'silence_interval_too_large_no_queries': [('warning',
+  'liveness',
+  'liveness: could not be checked for warnings (int too large to convert to float). One of its '
+  'values is not the kind it should be, such as a number or true/false where a name goes; correct '
+  'it and check again')],
+ 'silence_transport_unhashable': [('error', '', "Unsupported transport: ['tcp']"),
+ ('warning',
+  'liveness',
+  "liveness: could not be checked for warnings (unhashable type: 'list'). One of its values is not "
+  'the kind it should be, such as a number or true/false where a name goes; correct it and check '
+  'again')],
+ 'cmd_clean': [],
  'cmd_config_typo': [('error',
                       'commands.set.send',
                       "commands.set.send: '{zon}' resolves to nothing (did you mean 'zone'?). It "
@@ -1878,16 +1924,6 @@ def test_strict_keeps_them_first(case: str) -> None:
     assert _issues(_definition(case), strict=True) == STRICT_EXPECTED[case]
 
 
-@pytest.mark.parametrize("case", sorted(RAISES))
-def test_shapes_that_raise(case: str) -> None:
-    definition = {**BASE, **RAISING_CASES[case]}
-    with pytest.raises(RAISES[case]):
-        validate_driver_warnings(definition)
-    with pytest.raises(RAISES[case]):
-        validate_driver_issues(definition)
-    validate_driver_definition(definition)
-
-
 @pytest.mark.parametrize("template", sorted(TOKEN_EXPECTED))
 def test_every_reader_of_the_token(template: str) -> None:
     assert _token_readings(template) == TOKEN_EXPECTED[template]
@@ -1923,5 +1959,4 @@ def test_a_name_is_written_into_a_tag_only_when_a_warning_names_it() -> None:
 def test_every_case_has_an_expectation() -> None:
     assert set(CASES) == set(EXPECTED)
     assert STRICT == set(STRICT_EXPECTED)
-    assert set(RAISES) == set(RAISING_CASES)
     assert set(TOKENS) == set(TOKEN_EXPECTED)

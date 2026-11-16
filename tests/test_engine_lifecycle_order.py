@@ -529,16 +529,34 @@ async def test_a_host_step_that_fails_is_logged_and_the_start_goes_on(
         await eng.stop()
 
 
-@pytest.mark.parametrize("failing", ["system.json", "drivers"])
 @pytest.mark.asyncio
-async def test_system_json_and_the_driver_registry_are_not_optional(
-        tmp_path, monkeypatch, no_update_checks, failing):
+async def test_system_json_is_not_optional(tmp_path, monkeypatch, no_update_checks):
     eng = Engine(_project(tmp_path))
     _quiet_services(eng, [])
-    _record_host_steps(monkeypatch, [], failing=failing)
-    with pytest.raises(RuntimeError, match=f"{failing} broke"):
+    _record_host_steps(monkeypatch, [], failing="system.json")
+    with pytest.raises(RuntimeError, match="system.json broke"):
         await eng.start()
     await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_a_driver_load_that_fails_is_counted_and_the_start_goes_on(
+        tmp_path, monkeypatch, caplog, no_update_checks):
+    eng = Engine(_project(tmp_path))
+    _quiet_services(eng, [])
+    order = []
+    _record_host_steps(monkeypatch, order, failing="drivers")
+    try:
+        with caplog.at_level(logging.WARNING, logger=ENGINE_LOG):
+            await eng.start()
+        assert order == [label for _, _, label in _HOST_STEPS]
+        assert eng.state.get("system.started") is True
+        assert eng.state.get("system.startup_errors") == 1
+        lines = [r.getMessage() for r in caplog.records if r.name == ENGINE_LOG]
+        assert "Could not load the driver library" in lines
+        assert "Engine started with 1 error(s): Drivers: drivers broke" in lines
+    finally:
+        await eng.stop()
 
 
 # ── the rest of the start ──

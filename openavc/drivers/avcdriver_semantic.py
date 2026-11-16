@@ -22,6 +22,14 @@ discovery engine's parser), and the community driver catalog runs a copy of
 the same rules in its CI, so a definition that passes catalog review is
 exactly a definition the platform will load.
 
+Judging a definition returns messages; it never raises. Each part of both
+walks is asked through ``_guarded``: a part that raises on a value of a kind
+it does not read is reported at the place it was reading, what it said before
+is kept, and the rest of the walk still runs. So one malformed file is one
+message to every caller (the loader, the Builder's Validate and save,
+``drivers.check``, the AI's driver tool, the catalog), never an exception
+that stops it.
+
 Purity contract: standard library plus the sibling contract modules (the
 ``spec`` constants table and the check modules). Nothing here may import
 the server runtime, transports, or discovery machinery; checks that need
@@ -366,30 +374,45 @@ def validate_driver_definition(
     every caller, but it also carries the section each message came from, so
     ``validate_driver_issues`` can hand the Driver Builder something to anchor
     each issue to. ``_DefinitionWalk`` sets the tag as it enters each part of
-    the definition; the parts are asked here in the order they report.
+    the definition; the parts are asked in the order they report
+    (``_DefinitionWalk.parts``), each through ``_guarded``, so this never
+    raises.
     """
     # A file can parse to something other than a mapping. It is reported, not
     # raised on, so one bad file never stops the others loading.
     if not isinstance(driver_def, dict):
         return _TaggedErrors(["Driver definition must be a mapping"])
     walk = _DefinitionWalk(driver_def)
-    walk.driver_fields()
-    walk.response_rules()
-    walk.commands()
-    walk.config_fields()
-    walk.device_settings()
-    walk.discovery(discovery_validator)
-    walk.connection_blocks()
-    walk.actions()
-    walk.state_variables()
-    walk.framing()
-    walk.child_types()
-    walk.query_entries()
-    walk.routing()
-    walk.placeholders()
-    if strict:
-        walk.undeclared()
+    for part, section in walk.parts(discovery_validator, strict=strict):
+        _guarded(walk.errors, part, section)
     return walk.errors
+
+
+_UNCHECKED = "could not be checked"
+
+
+def _guarded(
+    errors: _TaggedErrors, part: Callable[[], None], section: str, checked: str = _UNCHECKED
+) -> None:
+    """Ask one part of a walk, tagged with ``section`` until the part says
+    where it is. A part that raises is reported at the place it was reading
+    (the tag it had set), after what it said before, and the walk goes on."""
+    errors.ctx = section
+    try:
+        part()
+    except Exception as exc:  # a value of a kind the part does not read
+        errors.append(_unchecked_message(errors.ctx, exc, checked))
+
+
+def _unchecked_message(where: str, exc: Exception, checked: str) -> str:
+    """What a part that raised says: the place, the exception's own words, and
+    what to do about it."""
+    opening = f"{where}: {checked}" if where else f"This driver {checked}"
+    detail = str(exc) or type(exc).__name__
+    return (
+        f"{opening} ({detail}). One of its values is not the kind it should be, "
+        "such as a number or true/false where a name goes; correct it and check again"
+    )
 
 
 class _DefinitionWalk:
@@ -414,6 +437,34 @@ class _DefinitionWalk:
         self.driver_def = driver_def
         self.errors = _TaggedErrors()
         self.declared = DeclaredSections(driver_def)
+
+    def parts(
+        self,
+        discovery_validator: Callable[[dict[str, Any]], list[str]] | None,
+        *,
+        strict: bool,
+    ) -> list[tuple[Callable[[], None], str]]:
+        """Each part in the order they report, with the section a message it
+        raises is tagged with when it raises before setting its own place."""
+        parts: list[tuple[Callable[[], None], str]] = [
+            (self.driver_fields, ""),
+            (self.response_rules, "responses"),
+            (self.commands, "commands"),
+            (self.config_fields, "config_schema"),
+            (self.device_settings, "device_settings"),
+            (partial(self.discovery, discovery_validator), "discovery"),
+            (self.connection_blocks, "push"),
+            (self.actions, "actions"),
+            (self.state_variables, "state_variables"),
+            (self.framing, "frame_parser"),
+            (self.child_types, "child_entity_types"),
+            (self.query_entries, "polling"),
+            (self.routing, "routing"),
+            (self.placeholders, ""),
+        ]
+        if strict:
+            parts.append((self.undeclared, ""))
+        return parts
 
     def driver_fields(self) -> None:
         """The driver's own fields, tagged with no section."""
@@ -702,29 +753,55 @@ def validate_driver_warnings(driver_def: dict[str, Any]) -> list[str]:
 
     Same tagging as the error walk: ``warnings.ctx`` marks where each message
     belongs. A config field's or a parameter's name is written into the tag
-    only when a rule says something about it.
+    only when a rule says something about it. Each part is asked through
+    ``_guarded`` too, and one that raises is a warning like the rest: a file
+    that loads today keeps loading.
     """
-    warnings = _TaggedErrors()
     if not isinstance(driver_def, dict):
-        return warnings
+        return _TaggedErrors()
+    walk = _WarningWalk(driver_def)
+    for part, section in walk.parts():
+        _guarded(walk.warnings, part, section, f"{_UNCHECKED} for warnings")
+    return walk.warnings
 
-    for field_name, found in masked_default_warnings(driver_def):
-        warnings.ctx = f"config_schema.{field_name}"
-        warnings.extend(found)
 
-    warnings.ctx = "discovery"
-    warnings.extend(port_open_warnings(driver_def))
+class _WarningWalk:
+    """``validate_driver_warnings``' walk: a method per rule that only warns,
+    asked in the order they report."""
 
-    for cmd_name, param_name, found in unlabeled_param_warnings(driver_def):
-        warnings.ctx = f"commands.{cmd_name}.params.{param_name}"
-        warnings.extend(found)
+    def __init__(self, driver_def: dict[str, Any]) -> None:
+        self.driver_def = driver_def
+        self.warnings = _TaggedErrors()
 
-    warnings.ctx = "polling.queries"
-    warnings.extend(poll_length_warnings(driver_def))
-    warnings.ctx = "liveness"
-    warnings.extend(unwatched_silence_warnings(driver_def))
+    def parts(self) -> list[tuple[Callable[[], None], str]]:
+        return [
+            (self.masked_defaults, "config_schema"),
+            (self.port_open, "discovery"),
+            (self.unlabeled_params, "commands"),
+            (self.poll_length, "polling.queries"),
+            (self.silence, "liveness"),
+        ]
 
-    return warnings
+    def masked_defaults(self) -> None:
+        warnings = self.warnings
+        for field_name, found in masked_default_warnings(self.driver_def):
+            warnings.ctx = f"config_schema.{field_name}"
+            warnings.extend(found)
+
+    def port_open(self) -> None:
+        self.warnings.extend(port_open_warnings(self.driver_def))
+
+    def unlabeled_params(self) -> None:
+        warnings = self.warnings
+        for cmd_name, param_name, found in unlabeled_param_warnings(self.driver_def):
+            warnings.ctx = f"commands.{cmd_name}.params.{param_name}"
+            warnings.extend(found)
+
+    def poll_length(self) -> None:
+        self.warnings.extend(poll_length_warnings(self.driver_def))
+
+    def silence(self) -> None:
+        self.warnings.extend(unwatched_silence_warnings(self.driver_def))
 
 
 def _as_issues(messages: list[str], severity: str) -> list[dict[str, str]]:

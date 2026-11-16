@@ -39,7 +39,9 @@ to protect.
 
 Coverage is reported, never implied. A file it cannot read is an error, not a
 skip; a Python value it cannot evaluate is named; and the two structural
-checks that need the loaded class are listed rather than silently passed.
+checks that need the loaded class are listed rather than silently passed. A
+check that raises on one file is that file's error, so a folder's other files
+are still reported.
 """
 
 from __future__ import annotations
@@ -87,12 +89,23 @@ def check_driver_file(path: Path) -> FileCheckResult:
     The single entry point for every caller — the CLI below,
     ``openavc.simulator.validate``, and any other door that wants the contract verdict
     on a path. Callers decide how to print it and what to exit with; they do
-    not re-derive it.
+    not re-derive it. It never raises: a check that does is this file's error.
     """
-    if path.suffix == ".avcdriver":
-        return _check_yaml_driver(path)
-    if path.suffix == ".py":
-        return _check_python_driver(path)
+    kind = _KINDS.get(path.suffix)
+    if kind is None:
+        return _unsupported(path)
+    try:
+        return _check_yaml_driver(path) if kind == "yaml" else _check_python_driver(path)
+    except Exception as exc:  # one file the check cannot take is that file's error
+        return FileCheckResult(
+            path, kind, errors=[f"could not be checked ({exc})"], readable=False
+        )
+
+
+_KINDS = {".avcdriver": "yaml", ".py": "python"}
+
+
+def _unsupported(path: Path) -> FileCheckResult:
     return FileCheckResult(
         path,
         "unknown",

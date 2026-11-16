@@ -12,8 +12,8 @@ same function a Python driver's ``DRIVER_INFO`` reaches through
 
 Each YAML case is a set of top-level keys over one driver. The expected value
 is every error ``validate_driver_issues`` reports for the whole definition, in
-order, each with the section tag the Driver Builder anchors it to. A case that
-raises is pinned by the exception's type. The reference cases record
+order, each with the section tag the Driver Builder anchors it to; a part the
+walk could not check is one of those errors. The reference cases record
 ``child_param_reference_errors``' two lists, and the Python cases what
 ``python_driver_info_issues`` and ``python_driver_reference_skips`` answer.
 
@@ -346,6 +346,15 @@ CASES: dict[str, dict[str, Any]] = {
         },
     },
     "child_id_commands_a_list": {"child_entity_types": ZONE_TYPE, "commands": [{"z": CHILD_ID}]},
+    # Each reads a value the shape check before it has already named, through
+    # a membership test that cannot take it; the part is reported as one it
+    # could not check.
+    "child_var_type_a_list": zone(state_variables={"a": {"type": ["number"]}}),
+    "var_type_a_list": {"state_variables": {"a": {"type": ["number"], "label": "A"}}},
+    "count_from_state_over_a_number_of_variables": {
+        **roster(count=2, count_from_state="power"),
+        "state_variables": 5,
+    },
 }
 
 _ABSENT = "<absent>"
@@ -357,19 +366,6 @@ def _definition(case: str) -> dict[str, Any]:
         if value == _ABSENT:
             del definition[key]
     return definition
-
-
-# Definitions the walk raises on today, by the exception's type. Each reads a
-# value the shape check above it has already named, through a membership
-# test that cannot take it.
-RAISES: dict[str, dict[str, Any]] = {
-    "child_var_type_a_list": zone(state_variables={"a": {"type": ["number"]}}),
-    "var_type_a_list": {"state_variables": {"a": {"type": ["number"], "label": "A"}}},
-    "count_from_state_over_a_number_of_variables": {
-        **roster(count=2, count_from_state="power"),
-        "state_variables": 5,
-    },
-}
 
 
 def _ref_info(commands: Any, child_types: Any = _ABSENT) -> dict[str, Any]:
@@ -453,8 +449,20 @@ REASON_CASES: dict[str, tuple[str, dict[str, Any]]] = {
 }
 
 
-
-EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest': [('child_entity_types.zone',
+EXPECTED: dict[str, list[tuple[str, str]]] = {'child_var_type_a_list': [('child_entity_types.zone',
+  "child_entity_types.zone: could not be checked (unhashable type: 'list'). One of its values is "
+  'not the kind it should be, such as a number or true/false where a name goes; correct it and '
+  'check again')],
+ 'count_from_state_over_a_number_of_variables': [('state_variables', 'state_variables: must be a mapping'),
+ ('child_entity_types.zone',
+  "child_entity_types.zone: could not be checked (argument of type 'int' is not iterable). One of "
+  'its values is not the kind it should be, such as a number or true/false where a name goes; '
+  'correct it and check again')],
+ 'var_type_a_list': [('state_variables.a',
+  "state_variables.a: could not be checked (unhashable type: 'list'). One of its values is not the "
+  'kind it should be, such as a number or true/false where a name goes; correct it and check '
+  'again')],
+ 'a_bad_declaration_skips_the_rest': [('child_entity_types.zone',
                                        'child_entity_types.zone: must be a mapping'),
                                       ('child_entity_types.mic',
                                        'child_entity_types.mic.instances: must be a mapping')],
@@ -952,10 +960,6 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'a_bad_declaration_skips_the_rest'
  'vars_empty': [],
  'vars_none': [('state_variables', 'state_variables: must be a mapping')]}
 
-RAISES_EXPECTED: dict[str, str] = {'child_var_type_a_list': 'TypeError',
- 'count_from_state_over_a_number_of_variables': 'TypeError',
- 'var_type_a_list': 'TypeError'}
-
 REFERENCE_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_command_named_like_the_marker': ([],
                                      ['0 of an unknown number of commands were readable; params of the rest '
                                       'were not checked']),
@@ -1091,17 +1095,6 @@ def test_errors_their_order_and_their_tags(case: str) -> None:
 
 def test_every_case_has_an_expectation() -> None:
     assert set(CASES) == set(EXPECTED)
-
-
-@pytest.mark.parametrize("case", sorted(RAISES_EXPECTED))
-def test_what_the_walk_raises_on(case: str) -> None:
-    with pytest.raises(Exception) as raised:
-        validate_driver_definition({**BASE, **RAISES[case]})
-    assert type(raised.value).__name__ == RAISES_EXPECTED[case]
-
-
-def test_every_raising_case_has_an_expectation() -> None:
-    assert set(RAISES) == set(RAISES_EXPECTED)
 
 
 @pytest.mark.parametrize("case", sorted(REFERENCE_EXPECTED))

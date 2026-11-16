@@ -20,8 +20,7 @@ Each YAML case is a set of top-level keys over one driver. The expected value
 is every error ``validate_driver_issues`` reports for the whole definition, in
 order, each with the section tag the Driver Builder anchors it to. A Python
 case is a ``DRIVER_INFO`` through ``python_driver_info_issues``, which asks
-the routing and settings rules the YAML walk asks. A few shapes raise, and are
-pinned by the exception they raise.
+the routing and settings rules the YAML walk asks.
 
 These record what the checks say today, so a restructuring that keeps the
 contract keeps every message, its position and its tag.
@@ -516,21 +515,15 @@ CASES: dict[str, dict[str, Any]] = {
     },
     # A fixed extra whose name is not text, and not a parameter, is named as text.
     "routing_params_numeric_keys": routed(plane(params={1: "a", 2.5: "b"})),
+    # A device setting whose type is not hashable reaches the lookup of the
+    # known types, which cannot take it; the part is reported as one it could
+    # not check.
+    "settings_type_list": setting(type=["integer"]),
+    "settings_type_mapping": setting(type={"integer": 1}),
 }
 
 # Strict cases also reject keys the contract does not declare.
 STRICT = {"order_strict"}
-
-# A device setting whose type is not hashable reaches the lookup of the known
-# types, which cannot take it; the walk raises.
-WALK_RAISES: dict[str, type[BaseException]] = {
-    "settings_type_list": TypeError,
-    "settings_type_mapping": TypeError,
-}
-WALK_RAISING_CASES: dict[str, dict[str, Any]] = {
-    "settings_type_list": setting(type=["integer"]),
-    "settings_type_mapping": setting(type={"integer": 1}),
-}
 
 # --- the Python surface --------------------------------------------------
 
@@ -632,7 +625,15 @@ DIRECT: dict[str, Any] = {
 }
 
 
-EXPECTED: dict[str, list[tuple[str, str]]] = {'routing_params_numeric_keys': [('routing',
+EXPECTED: dict[str, list[tuple[str, str]]] = {'settings_type_list': [('device_settings.volume',
+  "device_settings.volume: could not be checked (unhashable type: 'list'). One of its values is "
+  'not the kind it should be, such as a number or true/false where a name goes; correct it and '
+  'check again')],
+ 'settings_type_mapping': [('device_settings.volume',
+  "device_settings.volume: could not be checked (unhashable type: 'dict'). One of its values is "
+  'not the kind it should be, such as a number or true/false where a name goes; correct it and '
+  'check again')],
+ 'routing_params_numeric_keys': [('routing',
                                   "routing.planes[0]: params.1 is not a parameter of command 'route'"),
                                  ('routing',
                                   "routing.planes[0]: params.2.5 is not a parameter of command 'route'")],
@@ -1464,12 +1465,6 @@ def test_errors_their_order_and_their_tags(case: str) -> None:
     assert list(validate_driver_definition(definition, strict=strict)) == [m for _, m in got]
 
 
-@pytest.mark.parametrize("case", sorted(WALK_RAISES))
-def test_settings_that_raise(case: str) -> None:
-    with pytest.raises(WALK_RAISES[case]):
-        validate_driver_definition({**BASE, **WALK_RAISING_CASES[case]})
-
-
 @pytest.mark.parametrize("case", sorted(PY_EXPECTED))
 def test_the_python_surface(case: str) -> None:
     assert python_driver_info_issues(_python_info(case)) == PY_EXPECTED[case]
@@ -1484,4 +1479,3 @@ def test_every_case_has_an_expectation() -> None:
     assert set(CASES) == set(EXPECTED)
     assert set(PY_CASES) == set(PY_EXPECTED)
     assert set(DIRECT) == set(DIRECT_EXPECTED)
-    assert set(WALK_RAISES) == set(WALK_RAISING_CASES)
