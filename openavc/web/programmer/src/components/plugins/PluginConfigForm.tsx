@@ -69,6 +69,18 @@ export function configValueAt(config: Record<string, unknown>, path: string[]): 
   return at;
 }
 
+/** The schema's fields that are objects. OpenAVC refuses to start a plugin
+ *  whose field (or group's `fields`) is anything else, and its card says
+ *  which; the form still draws the rest. */
+function drawableFields(schema: unknown): [string, SchemaField][] {
+  if (!isObject(schema)) return [];
+  return Object.entries(schema).filter((entry): entry is [string, SchemaField] => isObject(entry[1]));
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function SchemaFormRenderer({
   schema,
   values,
@@ -87,7 +99,7 @@ export function SchemaFormRenderer({
 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-lg)" }}>
-      {Object.entries(schema).map(([key, field]) => {
+      {drawableFields(schema).map(([key, field]) => {
         // Conditional visibility
         if (field.visible_when) {
           const match = Object.entries(field.visible_when).every(
