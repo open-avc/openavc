@@ -60,10 +60,11 @@ function routedNumber(value: number): number | null {
   return Number.isFinite(value) && value !== 0 ? value : null;
 }
 
-/** Text a device reported: a number written out compares as that number. */
+/** Text a device reported: a number written out compares as that number, and
+ *  is unrouted as that number is ("00" and "0.0" are a zero). */
 function routedText(text: string): number | string | null {
-  if (text === "" || text === "0") return null;
-  if (MATRIX_NUMERIC.test(text)) return Number(text);
+  if (text === "") return null;
+  if (MATRIX_NUMERIC.test(text)) return routedNumber(Number(text));
   return text.toLowerCase();
 }
 

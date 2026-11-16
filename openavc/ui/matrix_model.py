@@ -126,14 +126,21 @@ def route_value(value: Any) -> float | int | str | None:
     # takes it down the string branch. Python would call it an int and compare
     # True equal to 1.
     if isinstance(value, int | float) and not isinstance(value, bool):
-        number = _as_double(value)
-        return _whole(number) if math.isfinite(number) and number != 0 else None
+        return _routed_number(_as_double(value))
     text = str(value).strip(_JS_SPACE)
-    if text in ("", "0"):
+    if text == "":
         return None
     if _NUMERIC.match(text):
-        return _whole(float(text))
+        # Unrouted as the number it spells: "00" and "0.0" are a zero.
+        return _routed_number(float(text))
     return text.lower()
+
+
+def _routed_number(number: float) -> int | float | None:
+    """A number a device reported: 0 and the non-finite ones mean nothing is routed."""
+    if not math.isfinite(number) or number == 0:
+        return None
+    return int(number) if number.is_integer() else number
 
 
 def _as_double(value: int | float) -> float:
@@ -143,10 +150,6 @@ def _as_double(value: int | float) -> float:
         return float(value)
     except OverflowError:
         return math.inf
-
-
-def _whole(number: float) -> int | float:
-    return int(number) if number.is_integer() else number
 
 
 def _route_digits(text: str) -> int | None:

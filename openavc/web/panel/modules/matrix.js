@@ -136,10 +136,13 @@ function routedNumber(v) {
     return Number.isFinite(v) && v !== 0 ? v : null;
 }
 
-/** Text a device reported: a number written out compares as that number. */
+/**
+ * Text a device reported: a number written out compares as that number, and
+ * is unrouted as that number is ("00" and "0.0" are a zero).
+ */
 function routedText(s) {
-    if (s === '' || s === '0') return null;
-    if (NUMBER_TEXT.test(s)) return Number(s);
+    if (s === '') return null;
+    if (NUMBER_TEXT.test(s)) return routedNumber(Number(s));
     return s.toLowerCase();
 }
 
