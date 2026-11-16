@@ -816,7 +816,7 @@ class TestHandshakeErrorClassification:
         import ast
         from pathlib import Path
 
-        tree = ast.parse(Path("openavc/cloud/agent.py").read_text())
+        tree = ast.parse(Path("openavc/cloud/agent.py").read_text(encoding="utf-8"))
         loop = next(
             n for n in ast.walk(tree)
             if isinstance(n, ast.AsyncFunctionDef) and n.name == "_connection_loop"
@@ -883,7 +883,7 @@ class TestExceptionHandlerWiring:
         import ast
         from pathlib import Path
 
-        src = Path("openavc/cloud/agent.py").read_text()
+        src = Path("openavc/cloud/agent.py").read_text(encoding="utf-8")
         tree = ast.parse(src)
 
         bad_handlers: list[tuple[int, str]] = []
