@@ -152,3 +152,53 @@ async def test_a_project_bundle_s_driver_loads_with_its_notices_on_the_installed
     with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as archive:
         assert project_library._install_bundled_drivers(archive) == [DRIVER_ID]
     assert (await _installed(repo))["acme_widget.avcdriver"]["load_notices"] == [ON_CONNECT]
+
+
+# --- a Python driver: what the author's doors refuse, said where it loads ------------
+
+PY_RELAY = "State variable 'relay': unknown type 'bool'; use 'boolean'"
+
+
+def _py(state_type: str = "boolean") -> bytes:
+    return (
+        "from openavc.drivers.base import BaseDriver\n\n\n"
+        "class AcmeWidget(BaseDriver):\n"
+        "    DRIVER_INFO = {\n"
+        f"        'id': '{DRIVER_ID}',\n"
+        "        'name': 'Acme Widget',\n"
+        "        'transport': 'tcp',\n"
+        f"        'state_variables': {{'relay': {{'type': '{state_type}', 'label': 'Relay'}}}},\n"
+        "    }\n"
+    ).encode()
+
+
+async def test_the_start_up_pass_loads_a_python_driver_and_lists_its_notices(repo) -> None:
+    (repo / "acme_widget.py").write_bytes(_py("bool"))
+    assert driver_loader.load_all_drivers([repo]) == 1
+    entry = (await _installed(repo))["acme_widget.py"]
+    assert entry["load_error"] is None
+    assert entry["load_notices"] == [PY_RELAY]
+
+
+async def test_a_clean_python_driver_has_no_notices(repo) -> None:
+    (repo / "acme_widget.py").write_bytes(_py())
+    driver_loader.load_all_drivers([repo])
+    assert (await _installed(repo))["acme_widget.py"]["load_notices"] == []
+
+
+async def test_a_python_upload_loads_it_and_answers_with_the_notices(repo) -> None:
+    answer = await routes.upload_driver(_form("acme_widget.py", _py("bool")))
+    assert answer["status"] == "uploaded" and registry.is_driver_registered(DRIVER_ID)
+    assert answer["notices"] == [PY_RELAY]
+    assert (await _installed(repo))["acme_widget.py"]["load_notices"] == [PY_RELAY]
+
+
+async def test_a_python_reload_answers_with_the_notices_and_lists_them(repo) -> None:
+    path = repo / "acme_widget.py"
+    path.write_bytes(_py())
+    driver_loader.load_all_drivers([repo])
+    path.write_bytes(_py("bool"))
+    result = driver_loader.reload_python_driver(path)
+    assert result["status"] == "reloaded"
+    assert result["notices"] == [PY_RELAY]
+    assert (await _installed(repo))["acme_widget.py"]["load_notices"] == [PY_RELAY]

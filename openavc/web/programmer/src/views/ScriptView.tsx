@@ -10,6 +10,7 @@ import { CreateDriverDialog } from "../components/scripts/CreateDriverDialog";
 import { SCRIPT_TEMPLATES } from "../components/scripts/scriptTemplates";
 import { DRIVER_TEMPLATES } from "../components/scripts/driverTemplates";
 import { CustomUiEditor } from "../components/scripts/CustomUiEditor";
+import { problemsToFix } from "../components/scripts/driverProblems";
 import { isEditableUiPath, starterUiContent } from "../components/scripts/customUiFiles";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
@@ -350,6 +351,9 @@ export function ScriptView() {
           );
         } else {
           setDriverReloadErrors([]);
+          if (res.issues?.length) {
+            showError(`Saved.\n${problemsToFix(res.issues)}`);
+          }
         }
       }
       setOriginalSource(source);
@@ -433,18 +437,19 @@ export function ScriptView() {
   const handleReloadDriver = useCallback(async () => {
     if (!selectedId || selectedType !== "driver") return;
 
-    // Save first if dirty — but refuse to persist source that will not parse.
-    // "Save & Reload" means "make this the live driver"; writing a file that
-    // cannot load leaves the running process working while the copy on disk is
-    // dead, and the next restart drops the driver and its devices with it.
+    // Save first if dirty — but refuse to persist source that will not parse,
+    // or that the driver check refuses. "Save & Reload" means "make this the
+    // live driver"; writing a file that cannot load leaves the running process
+    // working while the copy on disk is dead, and the next restart drops the
+    // driver and its devices with it.
     if (isDirty) {
       setSaving(true);
       try {
         const res = await api.savePythonDriverSource(selectedId, source, true);
         if (res.status === "error") {
-          showError(
-            `Not saved. ${res.error}. The file on disk is unchanged and still loads.`
-          );
+          showError(res.issues?.length
+            ? `Not saved. The file on disk is unchanged and still loads.\n${problemsToFix(res.issues)}`
+            : `Not saved. ${res.error}. The file on disk is unchanged and still loads.`);
           if (res.line) {
             setDriverReloadErrors([
               { line: res.line, message: res.error ?? "Syntax error" },
@@ -489,9 +494,14 @@ export function ScriptView() {
       } else {
         setDriverReloadErrors([]);
         const devCount = result.devices_reconnected?.length ?? 0;
-        showSuccess(devCount > 0
-          ? `Driver reloaded, ${devCount} device(s) reconnected`
-          : "Driver reloaded");
+        const reloaded = devCount > 0
+          ? `Driver reloaded, ${devCount} device(s) reconnected.`
+          : "Driver reloaded.";
+        if (result.notices?.length) {
+          showError(`${reloaded}\n${problemsToFix(result.notices)}`);
+        } else {
+          showSuccess(reloaded.slice(0, -1));
+        }
         useLogStore.getState().addLogEntry({
           timestamp: Date.now() / 1000,
           level: "INFO",

@@ -168,18 +168,22 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     """Save the source code of a Python driver file.
 
     ``require_valid_syntax`` decides what happens to source that will not
-    parse, and the two answers belong to the two buttons in the Code view:
+    parse, or that the driver check refuses (``python_driver_refusals``, what
+    ``python -m openavc.drivers.check`` says about the same file), and the two
+    answers belong to the two buttons in the Code view:
 
     * **Save** (default, flag absent) writes it and *says so* —
-      ``{"status": "saved", "syntax_error": ..., "line": N}``. Half-finished
-      code is the normal state of an editor and refusing to keep it would lose
-      work; what the author must not do is walk away believing the file is
-      fine. The old behaviour wrote it and said nothing at all.
+      ``{"status": "saved", "syntax_error": ..., "line": N}``, or
+      ``"issues": [...]`` for what the check refuses. Half-finished code is
+      the normal state of an editor and refusing to keep it would lose work;
+      what the author must not do is walk away believing the file is fine.
     * **Save & Reload** (flag set) refuses: ``{"status": "error", ...}`` and
       **nothing is written**. That button means "make this the live driver",
       and a file that cannot parse cannot load on any future startup — so
       persisting it swaps a working driver on disk for one that drops its
       devices at the next restart, while the still-running process hides it.
+      A file the check refuses would load, so the refusal is the author's
+      door holding it to the rules the catalog and the checker hold it to.
 
     A refusal is reported at HTTP 200 in the body, matching the reload route
     next door (documented behaviour), because the editor needs the structured
@@ -200,6 +204,12 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     syntax = python_source_syntax_error(source, filepath.name)
     if syntax and body.get("require_valid_syntax"):
         return {"status": "error", "driver_id": driver_id, "saved": False, **syntax}
+    issues = [] if syntax else _source_refusals(source, filepath.name)
+    if issues and body.get("require_valid_syntax"):
+        return {
+            "status": "error", "driver_id": driver_id, "saved": False,
+            "error": _issues_sentence(issues), "issues": issues,
+        }
 
     try:
         filepath.write_text(source, encoding="utf-8")
@@ -210,7 +220,33 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     if syntax:
         result["syntax_error"] = syntax["error"]
         result["line"] = syntax["line"]
+    if issues:
+        result["issues"] = issues
     return result
+
+
+def _source_refusals(source: str, filename: str) -> list[str]:
+    """What the driver check refuses in source that parses: the file's
+    DRIVER_INFO read without importing it, as ``drivers.check`` reads it.
+    Source with no DRIVER_INFO written as a literal class attribute has
+    nothing the check can read; whether it loads is the reload's answer."""
+    from openavc.drivers.python_info import (
+        ExtractError,
+        extract_python_driver_info_from_source,
+        python_driver_refusals,
+    )
+
+    try:
+        info, _ = extract_python_driver_info_from_source(source, filename)
+    except ExtractError:
+        return []
+    return python_driver_refusals(info)
+
+
+def _issues_sentence(issues: list[str]) -> str:
+    """The refusal's one line: how many problems the driver check found."""
+    count = len(issues)
+    return f"The driver check found {count} problem{'s' if count != 1 else ''} to fix first"
 
 
 @router.post("/python-drivers", dependencies=[Depends(require_claimed_auth)])

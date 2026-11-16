@@ -31,6 +31,7 @@ from pathlib import Path
 import pytest
 
 from openavc.drivers import registry
+from openavc.drivers.python_modules import PythonRead
 from openavc.drivers.driver_loader import (
     delete_driver_definition,
     is_builtin_driver,
@@ -255,6 +256,7 @@ def test_reload_same_id_registers_the_new_class(tmp_path, isolated, caplog):
         "status": "reloaded",
         "driver_id": "pin_rl_same",
         "old_driver_id": "pin_rl_same",
+        "notices": [],
     }
     new_class = registry._DRIVER_REGISTRY["pin_rl_same"]
     assert new_class is not old_class
@@ -279,6 +281,7 @@ def test_reload_with_a_new_id_unregisters_the_old_one(tmp_path, isolated):
         "status": "reloaded",
         "driver_id": "pin_rl_after",
         "old_driver_id": "pin_rl_before",
+        "notices": [],
     }
     assert "pin_rl_before" not in registry._DRIVER_REGISTRY
     assert registry._DRIVER_REGISTRY["pin_rl_after"].DRIVER_INFO["id"] == "pin_rl_after"
@@ -288,7 +291,7 @@ def test_reload_of_a_file_never_loaded(tmp_path, isolated):
     path = tmp_path / "pin_rl_fresh.py"
     path.write_text(_driver("FreshDriver", "pin_rl_fresh"), encoding="utf-8")
     result = reload_python_driver(path)
-    assert result == {"status": "reloaded", "driver_id": "pin_rl_fresh", "old_driver_id": None}
+    assert result == {"status": "reloaded", "driver_id": "pin_rl_fresh", "old_driver_id": None, "notices": []}
     assert registry._DRIVER_REGISTRY["pin_rl_fresh"].__module__ == "openavc_driver_pin_rl_fresh"
 
 
@@ -298,7 +301,7 @@ def test_reload_when_the_resident_module_holds_no_driver(tmp_path, isolated):
     stand_in = types.ModuleType("openavc_driver_pin_rl_stub")
     sys.modules["openavc_driver_pin_rl_stub"] = stand_in
     result = reload_python_driver(path)
-    assert result == {"status": "reloaded", "driver_id": "pin_rl_stub", "old_driver_id": None}
+    assert result == {"status": "reloaded", "driver_id": "pin_rl_stub", "old_driver_id": None, "notices": []}
     assert sys.modules["openavc_driver_pin_rl_stub"] is not stand_in
 
 
@@ -341,7 +344,7 @@ def test_reload_reads_the_old_id_by_the_same_rule(tmp_path, isolated):
     path.write_text(_driver("NewDriver", "pin_rl_new"), encoding="utf-8")
     result = reload_python_driver(path)
 
-    assert result == {"status": "reloaded", "driver_id": "pin_rl_new", "old_driver_id": "pin_rl_old_b"}
+    assert result == {"status": "reloaded", "driver_id": "pin_rl_new", "old_driver_id": "pin_rl_old_b", "notices": []}
     assert "pin_rl_old_b" not in registry._DRIVER_REGISTRY
     assert registry._DRIVER_REGISTRY["pin_rl_old_z"] is old.Zed
 
@@ -425,7 +428,7 @@ def test_reload_of_a_missing_file_has_no_line(tmp_path, isolated):
 def test_reload_whose_second_import_fails_with_nothing_resident(tmp_path, isolated, monkeypatch):
     path = tmp_path / "pin_rl_toctou.py"
     path.write_text(_driver("TocTou", "pin_rl_toctou"), encoding="utf-8")
-    monkeypatch.setattr(f"{RELOAD_HOME}.load_python_driver_file", lambda _p: None)
+    monkeypatch.setattr(f"{RELOAD_HOME}.read_python_driver_file", lambda _p: PythonRead(None))
     assert reload_python_driver(path) == {
         "status": "error",
         "error": (
@@ -444,9 +447,9 @@ def test_reload_returns_the_validated_id_and_registers_the_second_import(
     path = tmp_path / "pin_rl_split.py"
     path.write_text(_driver("FirstDriver", "pin_rl_first"), encoding="utf-8")
     second = type("SecondDriver", (), {"DRIVER_INFO": {"id": "pin_rl_second"}})
-    monkeypatch.setattr(f"{RELOAD_HOME}.load_python_driver_file", lambda _p: second)
+    monkeypatch.setattr(f"{RELOAD_HOME}.read_python_driver_file", lambda _p: PythonRead(second))
     result = reload_python_driver(path)
-    assert result == {"status": "reloaded", "driver_id": "pin_rl_first", "old_driver_id": None}
+    assert result == {"status": "reloaded", "driver_id": "pin_rl_first", "old_driver_id": None, "notices": []}
     assert registry._DRIVER_REGISTRY["pin_rl_second"] is second
     assert "pin_rl_first" not in registry._DRIVER_REGISTRY
 
@@ -725,7 +728,7 @@ def test_reload_whose_second_import_fails_puts_the_old_module_back(
     assert load_python_drivers([tmp_path]) == 1
     resident = sys.modules["openavc_driver_pin_rl_restore"]
     registered = registry._DRIVER_REGISTRY["pin_rl_restore"]
-    monkeypatch.setattr(f"{RELOAD_HOME}.load_python_driver_file", lambda _p: None)
+    monkeypatch.setattr(f"{RELOAD_HOME}.read_python_driver_file", lambda _p: PythonRead(None))
     result = reload_python_driver(path)
     assert result["status"] == "error" and result["old_driver_preserved"] is True
     assert sys.modules["openavc_driver_pin_rl_restore"] is resident

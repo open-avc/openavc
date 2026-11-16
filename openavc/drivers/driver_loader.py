@@ -692,7 +692,7 @@ def read_library_definition(filepath: Path) -> DefinitionRead:
 
 def read_library_python_driver(filepath: Path) -> PythonRead:
     """``read_python_driver_file`` for a file in the driver library, imported
-    where it is, its verdict kept in ``refused_files`` as
+    where it is, its verdict and its notices kept in ``refused_files`` as
     ``read_library_definition`` keeps a definition's."""
     read = read_python_driver_file(filepath)
     if read.driver_class is None:
@@ -701,6 +701,9 @@ def read_library_python_driver(filepath: Path) -> PythonRead:
         )
     else:
         refused_files.clear(filepath)
+        refused_files.record_notices(
+            filepath, read.driver_class.DRIVER_INFO.get("id") or filepath.stem, read.notices
+        )
     return read
 
 

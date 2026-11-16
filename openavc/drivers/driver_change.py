@@ -281,7 +281,7 @@ def _staged_class(staged: Path, gates: Gates) -> tuple[type, tuple[str, ...]]:
         driver_class, notices = _staged_definition_class(staged, gates)
         return _gated(driver_class, gates), notices
     read = trial_driver_import(staged)
-    return _python_class(read.driver_class, gates, read.reason), ()
+    return _python_class(read.driver_class, gates, read.reason), read.notices
 
 
 def _staged_definition_class(staged: Path, gates: Gates) -> tuple[type, tuple[str, ...]]:

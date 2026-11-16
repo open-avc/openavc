@@ -169,3 +169,30 @@ async def test_a_command_that_completed_stays_completed_when_the_product_restart
             await asyncio.sleep(.01)
     await driver.connect()
     assert peer["descriptions"] == [("first", PROTOCOL), ("second", PROTOCOL)]
+
+
+@pytest.mark.asyncio
+async def test_a_model_holding_what_a_driver_check_refuses_still_connects(equipment_peer, caplog):
+    """The fix is in the product's firmware, never in the integrator's hands:
+    the device connects, and what is wrong is logged once while the model
+    says it."""
+    driver, peer = equipment_peer
+    peer["model"]["state_variables"]["counter"] = {"type": "bool", "label": "Counter"}
+    peer["model"]["push"] = {"type": "tcp_listner", "port": 0}
+    await driver.connect()
+    assert driver._connected
+    await driver.disconnect()
+    await driver.connect()
+    said = [r.getMessage() for r in caplog.records if "describes itself" in r.getMessage()]
+    assert len(said) == 1
+    assert "State variable 'counter': unknown type 'bool'; use 'boolean'" in said[0]
+    assert "push: missing or unknown 'type'" in said[0]
+
+
+@pytest.mark.asyncio
+async def test_a_model_the_connect_has_always_refused_is_still_refused(equipment_peer):
+    driver, peer = equipment_peer
+    peer["model"]["actions"] = [{"id": "go", "command": "nope"}]
+    with pytest.raises(ValueError, match="actions\\[0\\]: command 'nope' is not a declared command"):
+        await driver.connect()
+    assert not driver._connected

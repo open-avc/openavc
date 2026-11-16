@@ -2919,10 +2919,10 @@ The editor opens with a pre-filled template. Edit the code, then click **Save & 
 
 **The two save buttons differ on purpose.**
 
-- **Save & Reload Driver** makes the edit the live driver, so it won't write a file that can't be parsed. If your code has a syntax error, nothing is written, the copy on disk is left alone, and the message tells you which line stopped the parser. That matters because the running driver would go on working either way — the damage shows up at the next restart, when a file that can't load takes its devices offline with it.
-- **Save** keeps whatever you've got, finished or not, because a half-written edit is the normal state of an editor and losing it would be worse. If what it kept won't parse, it says so and marks the line, so you know the file on disk no longer loads even though the device in the room is still responding.
+- **Save & Reload Driver** makes the edit the live driver, so it won't write a file that can't be parsed, or one the driver check refuses (the same check `python -m openavc.drivers.check` runs, described under [Checking the file against the driver contract](#checking-the-file-against-the-driver-contract)). If your code has a syntax error, nothing is written, the copy on disk is left alone, and the message tells you which line stopped the parser. If the check finds something in your `DRIVER_INFO`, nothing is written either, and the message lists each problem and what to write instead. That matters because the running driver would go on working either way — the damage shows up at the next restart, when a file that can't load takes its devices offline with it.
+- **Save** keeps whatever you've got, finished or not, because a half-written edit is the normal state of an editor and losing it would be worse. If what it kept won't parse, it says so and marks the line, so you know the file on disk no longer loads even though the device in the room is still responding. If the driver check finds something, it keeps the file and lists each problem.
 
-Only a *syntax* error stops the save. Code that parses but can't import yet — a package you haven't installed, a module you're about to write — saves normally; that's ordinary work in progress, and the reload is where you'll hear about it.
+Only a syntax error or the driver check stops Save & Reload. Code that parses but can't import yet — a package you haven't installed, a module you're about to write — saves normally; that's ordinary work in progress, and the reload is where you'll hear about it. A driver that reloads with something the check refuses still loads, and the reload lists the same problems.
 
 ### A Python driver is a bundle
 
@@ -4031,6 +4031,25 @@ community catalog. A driver already installed that has one of these mistakes
 keeps loading: its entry on the Installed list, and the answer to an upload,
 say what to fix.
 
+A Python driver's `DRIVER_INFO` is held to the same rules as a `.avcdriver`
+for the sections both kinds of driver declare: each state variable, each child
+type, each command's parameter aids (`pattern`, `min`/`max`, `map`, the pickers)
+and what its `sets:` and `query_for:` name, the `push:` block and the
+`routing:` block. The message names what to write instead where there is one:
+
+```
+my_driver.py: error: State variable 'relay_1': unknown type 'bool'; use 'boolean'
+my_driver.py: error: push: missing or unknown 'type' (supported: multicast, sse, tcp_listener, http_listener, udp_listener)
+```
+
+How a YAML command sends (`send`, `path`, `address`), a device setting's
+`write` block and the transport list are YAML rules, and a Python driver is
+never held to them. The checker, the community catalog and the Code view's
+Save & Reload refuse these mistakes. A Python driver already installed that
+has one keeps loading, and its entry on the Installed list says what to fix.
+A product with OpenAVC built in that describes itself with one still connects;
+the server log names it.
+
 A section left empty (`polling:` with nothing under it) loads as if it were not
 there. Leave it out of a driver you publish all the same: older OpenAVC
 releases refuse a driver with an empty section, so the community catalog asks
@@ -4074,15 +4093,24 @@ constant, a call or a comprehension); keys nested under them are unchecked:
 commands.set_input.params.input.values
 ```
 
+Nothing that holds such a value is judged, so a label read from a table is
+never reported as a missing label. The checker names each part it left
+unchecked:
+
+```
+my_driver.py: note: not checked: state_variables.power (holds a value that
+could not be read from the source)
+```
+
 The same applies to a reference whose *target* is built at runtime. If your
 driver fills in `commands` in code — a legitimate pattern when the device
 tells you what it supports — the checker cannot know whether an action's
 command exists, so it skips that reference and says so rather than guessing:
 
 ```
-my_driver.py: note: cross-reference not checked: 6 action/quick_action
-reference(s) into commands, because commands is only partly visible (15 key(s)
-read, the rest merged or built at runtime)
+my_driver.py: note: not checked: 6 action/quick_action reference(s) into
+commands, because commands is only partly visible (15 key(s) read, the rest
+merged or built at runtime)
 ```
 
 A skip is never a pass. It is the command telling you which of your

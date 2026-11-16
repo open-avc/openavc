@@ -50,9 +50,7 @@ from types import ModuleType
 from typing import Any
 
 from openavc.drivers import refused_files
-from openavc.drivers.python_info import (
-    python_driver_info_issues as _python_driver_info_issues,
-)
+from openavc.drivers.python_info import check_python_driver_info
 from openavc.drivers.registry import register_driver, unregister_driver
 from openavc.utils.logger import get_logger
 
@@ -161,10 +159,12 @@ NO_DRIVER_CLASS = (
 class PythonRead:
     """What importing a Python driver file came to: its driver class, or
     None with why, in a sentence that names no folder (at an import the file
-    is in a staging folder)."""
+    is in a staging folder); and with a class, what the author's doors would
+    refuse in it (``notices``), which loading it only reports."""
 
     driver_class: type | None
     reason: str | None = None
+    notices: tuple[str, ...] = ()
 
 
 def _import_failure_reason(filepath: Path, exc: Exception) -> str:
@@ -197,7 +197,9 @@ def read_python_driver_file(filepath: Path) -> PythonRead:
     whether a Python driver file loads and, when it does not, why."""
     read = _import_driver(filepath, module_name(filepath))
     if read.driver_class is not None:
-        _warn_python_driver_info_issues(read.driver_class)
+        driver_id = read.driver_class.DRIVER_INFO.get("id", read.driver_class.__name__)
+        for message in read.notices:
+            log.warning(f"Python driver '{driver_id}': {message}")
     return read
 
 
@@ -219,33 +221,32 @@ def _import_driver(filepath: Path, name: str) -> PythonRead:
     if driver_class is None:
         log.warning(f"No BaseDriver subclass with DRIVER_INFO found in {filepath}")
         return PythonRead(None, NO_DRIVER_CLASS)
-    return PythonRead(driver_class)
+    return PythonRead(driver_class, notices=load_notices(driver_class))
 
 
-def _warn_python_driver_info_issues(driver_class: type) -> None:
-    """Structural sanity warnings for a Python driver's DRIVER_INFO.
+def load_notices(driver_class: type) -> tuple[str, ...]:
+    """What the author's doors refuse in a Python driver that loads anyway:
+    ``check_python_driver_info``'s whole verdict on the class's DRIVER_INFO,
+    with the two facts only the loaded class knows.
 
-    Warn-only, never rejects — a driver written for a newer platform must not
-    vanish at load and take its devices offline. The rules themselves live in
-    ``python_info``, so ``python -m openavc.drivers.check`` and the community
-    catalog reach the same verdict from the source text; this door adds the two
-    facts only the loaded class knows.
+    A notice, never a refusal: a driver written for a newer platform must not
+    vanish at load and take its devices offline. ``drivers.check``, catalog CI
+    and the Code view's save reach the same rules from the source text and
+    refuse; a load logs each and keeps it for the driver's Installed entry
+    (``refused_files.record_notices``).
     """
     from openavc.drivers.base import BaseDriver
 
-    info = getattr(driver_class, "DRIVER_INFO", {}) or {}
-    driver_id = info.get("id", driver_class.__name__)
-
-    for msg in _python_driver_info_issues(
-        info,
+    verdict = check_python_driver_info(
+        getattr(driver_class, "DRIVER_INFO", {}) or {},
         overrides_run_setup_action=(
             driver_class.run_setup_action is not BaseDriver.run_setup_action
         ),
         overrides_set_device_setting=(
             driver_class.set_device_setting is not BaseDriver.set_device_setting
         ),
-    ):
-        log.warning(f"Python driver '{driver_id}': {msg}")
+    )
+    return tuple(verdict.errors) + tuple(verdict.notices)
 
 
 def syntax_error_report(exc: SyntaxError, filename: str) -> dict[str, Any]:
@@ -342,8 +343,10 @@ def reload_python_driver(filepath: Path) -> dict[str, Any]:
     imported for real, the previous id is dropped when the id changed, and the
     new class is registered.
 
-    Returns ``{status, driver_id, old_driver_id}``, or ``{status: "error",
-    error, ...}``. Reconnecting the devices that use it is the caller's job.
+    Returns ``{status, driver_id, old_driver_id, notices}`` (``notices``,
+    what the author's doors refuse in a driver that loads anyway, kept for
+    its Installed entry too), or ``{status: "error", error, ...}``.
+    Reconnecting the devices that use it is the caller's job.
     """
     trial = _trial_import(filepath)
     if isinstance(trial, dict):
@@ -357,7 +360,8 @@ def reload_python_driver(filepath: Path) -> dict[str, Any]:
     old_driver_id = old_class.DRIVER_INFO["id"] if old_class is not None else None
     sys.modules.pop(name, None)
 
-    final_class = load_python_driver_file(filepath)
+    final = read_python_driver_file(filepath)
+    final_class = final.driver_class
     if final_class is None:
         # The previous class is still registered and serving devices: put its
         # module back so sys.modules and the registry agree.
@@ -376,9 +380,11 @@ def reload_python_driver(filepath: Path) -> dict[str, Any]:
         unregister_driver(old_driver_id)
     register_driver(final_class)
     refused_files.clear(filepath)
+    refused_files.record_notices(filepath, new_driver_id, final.notices)
     log.info(f"Hot-reloaded Python driver: {new_driver_id} from {filepath.name}")
     return {
         "status": "reloaded",
         "driver_id": new_driver_id,
         "old_driver_id": old_driver_id,
+        "notices": list(final.notices),
     }

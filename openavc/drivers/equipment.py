@@ -23,7 +23,7 @@ from openavc.drivers.base import (
 )
 from openavc.drivers.command_outcome import CommandOutcomeError
 from openavc.drivers.child_ids import coerce_child_local_id
-from openavc.drivers.python_info import python_driver_info_issues
+from openavc.drivers.python_info import check_python_driver_info
 from openavc.drivers.spec import is_file_command
 from openavc.drivers.equipment_protocol import MAX_MESSAGE_BYTES, PROTOCOL
 from openavc.system_config import get_data_dir
@@ -216,6 +216,19 @@ class EquipmentDriver(BaseDriver):
             raise ValueError("More than one equipment control port was discovered. Add the product manually using its configured port.")
         raise ValueError("The equipment control port was not discovered. Scan again or add the product manually using its configured port.")
 
+    def _note_model_notices(self, notices):
+        """What the product's model says wrong that a driver's author would be
+        refused at the checker but a connect never is: the fix is in the
+        product's firmware, never in the integrator's hands, so the device
+        connects and the sentence is logged once while the model says it."""
+        notices = tuple(notices)
+        if notices and notices != getattr(self, "_sdk_model_notices", ()):
+            log.warning(
+                f"Device '{self.device_id}': the product describes itself with mistakes "
+                f"OpenAVC works around: {'; '.join(notices)}"
+            )
+        self._sdk_model_notices = notices
+
     async def connect(self):
         # Automatic retry can enter without an intervening disconnect().
         # Close the old HTTP session and lease before replacing their handles.
@@ -291,17 +304,18 @@ class EquipmentDriver(BaseDriver):
                     "The product hardware model does not match the product firmware configuration.",
                     code="invalid_config",
                 )
-            issues = python_driver_info_issues(info, overrides_set_device_setting=True)
+            verdict = check_python_driver_info(info, overrides_set_device_setting=True)
             # The equipment protocol carries a command's params as JSON values,
             # so a model cannot declare a command that takes or hands back a
             # file (a Python driver's CommandFile / DeviceFile).
-            issues += [
+            issues = verdict.errors + [
                 f"Command '{name}' takes or hands back a file, which equipment cannot declare"
                 for name, cmd in (info.get("commands") or {}).items()
                 if is_file_command(cmd)
             ]
             if issues:
                 raise ValueError("Invalid endpoint model: " + "; ".join(issues))
+            self._note_model_notices(verdict.notices)
             if {"_sdk_identity", "_sdk_model"} & set(info.get("state_variables", {})):
                 raise ValueError("Endpoint model uses reserved SDK state names.")
             self._sdk_model = info["id"]

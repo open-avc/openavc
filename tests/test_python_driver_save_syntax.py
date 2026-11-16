@@ -182,3 +182,49 @@ async def test_missing_driver_is_still_a_404_before_any_parsing(driver_repo):
     with pytest.raises(HTTPException) as exc:
         await _save("no_such_driver", BROKEN_SOURCE, require_valid_syntax=True)
     assert exc.value.status_code == 404
+
+
+# --- the driver check: Save & Reload refuses what the checker refuses ----------
+
+# Parses and imports, but holds what python -m openavc.drivers.check refuses.
+CHECK_REFUSED_SOURCE = GOOD_SOURCE.replace(
+    '"transport": "tcp",',
+    '"transport": "tcp",\n        "push": {"type": "tcp_listner", "port": 0},',
+)
+
+
+@pytest.mark.asyncio
+async def test_save_and_reload_refuses_what_the_driver_check_refuses(driver_repo):
+    path = driver_repo / "acme_widget.py"
+    path.write_text(GOOD_SOURCE, encoding="utf-8")
+
+    result = await _save("acme_widget", CHECK_REFUSED_SOURCE, require_valid_syntax=True)
+
+    assert result["status"] == "error"
+    assert result["saved"] is False
+    assert result["error"] == "The driver check found 1 problem to fix first"
+    assert len(result["issues"]) == 1
+    assert result["issues"][0].startswith("push: missing or unknown 'type'")
+    assert path.read_text(encoding="utf-8") == GOOD_SOURCE
+
+
+@pytest.mark.asyncio
+async def test_plain_save_keeps_it_and_names_what_the_check_refuses(driver_repo):
+    path = driver_repo / "acme_widget.py"
+    path.write_text(GOOD_SOURCE, encoding="utf-8")
+
+    result = await _save("acme_widget", CHECK_REFUSED_SOURCE)
+
+    assert result["status"] == "saved"
+    assert path.read_text(encoding="utf-8") == CHECK_REFUSED_SOURCE
+    assert [i for i in result["issues"] if i.startswith("push: missing or unknown 'type'")]
+
+
+@pytest.mark.asyncio
+async def test_a_clean_driver_reports_no_issues(driver_repo):
+    path = driver_repo / "acme_widget.py"
+    path.write_text("# placeholder\n", encoding="utf-8")
+
+    result = await _save("acme_widget", GOOD_SOURCE)
+
+    assert "issues" not in result

@@ -221,7 +221,9 @@ export async function getPythonDriverSource(
   return request(`/python-drivers/${id}/source`);
 }
 
-/** What a save returns when the source does not parse. */
+/** What a save returns when the source does not parse, or the driver check
+ *  (the rules `python -m openavc.drivers.check` holds the file to) finds
+ *  something to fix. */
 export interface SaveDriverSourceResult {
   /** "saved" — bytes are on disk; "error" — nothing was written. */
   status: string;
@@ -231,6 +233,9 @@ export interface SaveDriverSourceResult {
   syntax_error?: string;
   /** 1-based line the parser stopped on, for the editor's error marker. */
   line?: number | null;
+  /** Each problem the driver check found: the reason Save & Reload refused,
+   *  or what a plain Save kept. Absent when there are none. */
+  issues?: string[];
 }
 
 /**
@@ -277,6 +282,9 @@ export async function reloadPythonDriver(
   error?: string;
   line?: number;
   old_driver_preserved?: boolean;
+  /** What the driver check refuses in the driver that reloaded anyway;
+   *  its Installed entry lists the same. */
+  notices?: string[];
 }> {
   return request(`/python-drivers/${id}/reload`, { method: "POST" });
 }
