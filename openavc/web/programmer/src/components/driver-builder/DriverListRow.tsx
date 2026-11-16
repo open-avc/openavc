@@ -1,7 +1,7 @@
 import { UpdateRowButton } from "../shared/CatalogUpdateControls";
 import type { CatalogUpdate } from "../shared/catalogUpdates";
 import type { DriverInfo } from "../../api/types";
-import { NOT_LOADED_TEXT } from "./installedDriverList";
+import { NOT_LOADED_TEXT, NOT_LOADED_WITH_REASON_TEXT } from "./installedDriverList";
 
 /** One driver in the list: its name (a PY mark for a Python driver), its
  *  maker and category or that it did not load, and Update when there is one. */
@@ -96,11 +96,12 @@ export function DriverListRow({
   );
 }
 
-/** Said above a driver's page when its file never registered. */
-export function NotLoadedNote({ show }: { show: boolean }) {
+/** Said above a driver's page when its file never registered, with the
+ *  server's reason for it when there is one. */
+export function NotLoadedNote({ show, reason }: { show: boolean; reason?: string | null }) {
   if (!show) return null;
   return (
-    <p
+    <div
       style={{
         margin: "0 0 var(--space-md)",
         padding: "var(--space-sm) var(--space-md)",
@@ -110,7 +111,10 @@ export function NotLoadedNote({ show }: { show: boolean }) {
         color: "var(--color-warning)",
       }}
     >
-      {NOT_LOADED_TEXT}
-    </p>
+      <p style={{ margin: 0 }}>{reason ? NOT_LOADED_WITH_REASON_TEXT : NOT_LOADED_TEXT}</p>
+      {reason && (
+        <p style={{ margin: "var(--space-xs) 0 0", whiteSpace: "pre-wrap" }}>Reason: {reason}</p>
+      )}
+    </div>
   );
 }

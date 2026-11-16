@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from openavc.cloud.tools import ToolEditError
+from openavc.drivers.refused_files import load_error, not_loaded_sentence
 from openavc.drivers.registry import (
     is_driver_registered,
     list_registered_drivers,
@@ -68,7 +69,10 @@ def _installed_yaml_entry(filepath: Path) -> dict | None:
     try:
         data = yaml.safe_load(filepath.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError, ValueError):
-        return {"id": filepath.stem, "name": filepath.stem, "format": "avcdriver", "filename": filepath.name}
+        return {
+            "id": filepath.stem, "name": filepath.stem, "format": "avcdriver",
+            "filename": filepath.name, "load_error": load_error(filepath),
+        }
     if not isinstance(data, dict):
         return None
     return {
@@ -76,6 +80,7 @@ def _installed_yaml_entry(filepath: Path) -> dict | None:
         "name": data.get("name", filepath.stem),
         "format": "avcdriver",
         "filename": filepath.name,
+        "load_error": load_error(filepath),
     }
 
 
@@ -85,6 +90,7 @@ def _installed_python_entry(filepath: Path) -> dict:
         "name": filepath.stem.replace("_", " ").title(),
         "format": "python",
         "filename": filepath.name,
+        "load_error": load_error(filepath),
     }
 
 
@@ -210,6 +216,14 @@ class DriverToolsMixin:
             )
             return introspected
 
+        not_loaded = not_loaded_sentence(driver_id)
+        if not_loaded:
+            return {
+                "error": (
+                    f"{not_loaded}. Install it again from the community catalog, or "
+                    "replace its file, to use it."
+                )
+            }
         return {
             "error": (
                 f"No driver '{driver_id}' is installed. Use get_installed_drivers to see "

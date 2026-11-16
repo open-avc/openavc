@@ -552,38 +552,39 @@ async def test_reload_of_an_id_with_no_file_is_a_404(env):
 
 
 @pytest.mark.parametrize(
-    "load_answer, raw, errors",
+    "raw, errors",
     [
-        ("invalid", {**WIDGET, "transport": 7}, "validator"),
-        ("invalid", ["not", "a", "mapping"], ["not a YAML mapping"]),
-        ("invalid", "unreadable", []),
+        ({**WIDGET, "transport": 7}, "validator"),
+        (["not", "a", "mapping"], ["The file holds no driver definition: its top level is not a YAML mapping."]),
+        ("unreadable", "yaml"),
     ],
     ids=["the validator's errors", "not a mapping", "unreadable"],
 )
-async def test_reload_of_a_file_that_does_not_load_names_the_file(env, monkeypatch, load_answer, raw, errors):
+async def test_reload_of_a_file_that_does_not_load_names_the_file(env, monkeypatch, raw, errors):
+    """The answer is the loader's own reasons, whatever stopped the file: the
+    checker's errors, a top level that is not a mapping, YAML that does not
+    parse."""
     path = env.repo / "acme_widget.avcdriver"
-    path.write_text(yaml.safe_dump(WIDGET), encoding="utf-8")
-    monkeypatch.setattr(driver_loader, "load_driver_file", lambda fp: None)
     if raw == "unreadable":
         path.write_text("key: [unclosed", encoding="utf-8")
-        monkeypatch.setattr(driver_loader, "find_driver_file_by_id", lambda dirs, did: path)
     else:
         path.write_text(yaml.safe_dump(raw), encoding="utf-8")
-        monkeypatch.setattr(driver_loader, "find_driver_file_by_id", lambda dirs, did: path)
+    monkeypatch.setattr(driver_loader, "find_driver_file_by_id", lambda dirs, did: path)
     if errors == "validator":
         errors = driver_loader.validate_driver_definition(raw)
         assert errors
+    elif errors == "yaml":
+        errors = list(driver_loader.read_driver_file(path).reasons)
+        assert len(errors) == 1 and errors[0].startswith("The file is not valid YAML: ")
 
     with pytest.raises(HTTPException) as exc:
         await ROUTES.reload_driver_definition("acme_widget")
 
     status, detail, got = _refusal(exc)
-    preamble = (
-        "Driver file 'acme_widget.avcdriver' is invalid or its discovery companion "
-        "is missing (see server log)"
-    )
+    fix = "Fix this first" if len(errors) == 1 else "Fix these first"
+    preamble = f"Driver file 'acme_widget.avcdriver' did not load. {fix}"
     assert status == 422 and got == errors
-    assert detail == (f"{preamble}:\n" + "\n".join(errors) if errors else preamble)
+    assert detail == f"{preamble}:\n" + "\n".join(errors)
     assert env.events == []
 
 
@@ -645,7 +646,7 @@ async def test_installed_is_empty_without_a_driver_folder(tmp_path, monkeypatch)
 async def test_installed_lists_definitions_then_python_drivers_by_file_name(installed):
     repo = installed.repo
     (repo / "b_widget.avcdriver").write_text(
-        yaml.safe_dump({"id": "acme_widget", "name": "Acme Widget", "version": "2.1.0"}), encoding="utf-8")
+        yaml.safe_dump({"id": "acme_widget", "name": "Acme Widget", "version": "2.1.0", "load_error": None}), encoding="utf-8")
     (repo / "a_bare.avcdriver").write_text(yaml.safe_dump({"transport": "tcp"}), encoding="utf-8")
     (repo / "c_list.avcdriver").write_text(yaml.safe_dump(["not", "a", "mapping"]), encoding="utf-8")
     (repo / "d_broken.avcdriver").write_text("key: [unclosed", encoding="utf-8")
@@ -657,20 +658,20 @@ async def test_installed_lists_definitions_then_python_drivers_by_file_name(inst
     installed.classes.extend([
         ("other", _driver_class("openavc_driver_other", {"id": "other"})),
         ("noid", _driver_class("openavc_driver_acme_cube", {"name": "No Id"})),
-        ("cube", _driver_class("openavc_driver_acme_cube", {"id": "acme_cube_id", "name": "Acme Cube", "version": "3.0"})),
+        ("cube", _driver_class("openavc_driver_acme_cube", {"id": "acme_cube_id", "name": "Acme Cube", "version": "3.0", "load_error": None})),
         ("cube2", _driver_class("openavc_driver_acme_cube", {"id": "second", "name": "Second"})),
     ])
 
     answer = await INSTALL_ROUTES.list_installed_community_drivers()
 
     assert answer == {"drivers": [
-        {"id": "a_bare", "name": "a_bare", "format": "avcdriver", "filename": "a_bare.avcdriver", "version": ""},
+        {"id": "a_bare", "name": "a_bare", "format": "avcdriver", "filename": "a_bare.avcdriver", "version": "", "load_error": None},
         {"id": "acme_widget", "name": "Acme Widget", "format": "avcdriver", "filename": "b_widget.avcdriver",
-         "version": "2.1.0"},
-        {"id": "d_broken", "name": "d_broken", "format": "avcdriver", "filename": "d_broken.avcdriver", "version": ""},
-        {"id": "acme_box", "name": "Acme Box", "format": "python", "filename": "acme_box.py", "version": ""},
+         "version": "2.1.0", "load_error": None},
+        {"id": "d_broken", "name": "d_broken", "format": "avcdriver", "filename": "d_broken.avcdriver", "version": "", "load_error": None},
+        {"id": "acme_box", "name": "Acme Box", "format": "python", "filename": "acme_box.py", "version": "", "load_error": None},
         {"id": "acme_cube_id", "name": "Acme Cube", "format": "python", "filename": "acme_cube.py",
-         "version": "3.0"},
+         "version": "3.0", "load_error": None},
     ]}
 
 
@@ -683,7 +684,7 @@ async def test_installed_matches_a_python_driver_by_its_name_inside_the_module_n
     answer = await INSTALL_ROUTES.list_installed_community_drivers()
 
     assert answer == {"drivers": [
-        {"id": "acme_box", "name": "Box", "format": "python", "filename": "box.py", "version": ""},
+        {"id": "acme_box", "name": "Box", "format": "python", "filename": "box.py", "version": "", "load_error": None},
     ]}
 
 
@@ -692,15 +693,15 @@ async def test_installed_lists_a_definition_that_is_not_utf8_by_its_file_name(in
     one is, and the rest of the list still answers."""
     (installed.repo / "acme_widget.avcdriver").write_bytes(b"id: acme_widget\nname: Caf\xe9\n")
     (installed.repo / "acme_gadget.avcdriver").write_text(
-        yaml.safe_dump({"id": "acme_gadget", "name": "Acme Gadget", "version": "1.0.0"}), encoding="utf-8")
+        yaml.safe_dump({"id": "acme_gadget", "name": "Acme Gadget", "version": "1.0.0", "load_error": None}), encoding="utf-8")
 
     answer = await INSTALL_ROUTES.list_installed_community_drivers()
 
     assert answer == {"drivers": [
         {"id": "acme_gadget", "name": "Acme Gadget", "format": "avcdriver", "filename": "acme_gadget.avcdriver",
-         "version": "1.0.0"},
+         "version": "1.0.0", "load_error": None},
         {"id": "acme_widget", "name": "acme_widget", "format": "avcdriver", "filename": "acme_widget.avcdriver",
-         "version": ""},
+         "version": "", "load_error": None},
     ]}
 
 

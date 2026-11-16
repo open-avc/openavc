@@ -110,6 +110,27 @@ describe("Installed Drivers: a driver that did not load", () => {
     expect(screen.getByRole("button", { name: /Open in Code Editor/ })).toBeTruthy();
   });
 
+  it("says the server's reason when it has one", () => {
+    setup();
+    storeState.installedDrivers = storeState.installedDrivers.map((d) =>
+      (d as { id: string }).id === "acme_widget"
+        ? { ...(d as object), load_error: "ModuleNotFoundError: No module named 'acme_lib' (line 1)" }
+        : d,
+    );
+    const { rerender } = render(<InstalledDriversView />);
+    fireEvent.click(screen.getByText("Acme Widget"));
+    rerender(<InstalledDriversView />);
+
+    expect(
+      screen.getByText(
+        "This driver did not load, so devices can't use it. Update it, or uninstall it and " +
+          "install it again from Browse Community.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("Reason: ModuleNotFoundError: No module named 'acme_lib' (line 1)")).toBeTruthy();
+    expect(screen.queryByText(/The Log has the reason/)).toBeNull();
+  });
+
   it("is found by search like any other driver", () => {
     setup();
     render(<InstalledDriversView />);

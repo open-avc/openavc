@@ -10,13 +10,19 @@ Directories scanned:
     - openavc/drivers/definitions/  (built-in .avcdriver definitions)
     - driver_repo/                 (community/user drivers — .avcdriver and .py)
 
-Each valid driver is registered in the global driver registry.
+Each valid driver is registered in the global driver registry. Whether a
+file loads, and why not, is decided once per kind (``read_driver_file``,
+``python_modules.read_python_driver_file``); the library pass keeps each
+refused file's reasons in ``refused_files`` (``read_library_definition``,
+``read_library_python_driver``), which every reader that would otherwise call
+the driver not installed asks.
 """
 
 from __future__ import annotations
 
 import ast
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Sequence
 
@@ -27,10 +33,14 @@ from openavc.drivers.avcdriver_semantic import (
     validate_driver_definition as _validate_definition_rules,
     validate_driver_issues as _validate_definition_issues,
 )
+from openavc.drivers import refused_files
 from openavc.drivers.python_modules import (
+    NO_DRIVER_CLASS,
+    PythonRead,
     is_imported as _is_imported,
     load_python_driver_file as load_python_driver_file,
     python_source_syntax_error as python_source_syntax_error,
+    read_python_driver_file as read_python_driver_file,
     reload_python_driver as reload_python_driver,
 )
 from openavc.drivers.registry import (
@@ -263,42 +273,72 @@ def count_comment_lines(filepath: Path) -> int:
     return sum(1 for line in text.splitlines() if line.lstrip().startswith("#"))
 
 
+@dataclass(frozen=True)
+class DefinitionRead:
+    """What reading one ``.avcdriver`` came to: the checked definition, or
+    None with the reasons it does not load (sentences without the file's
+    path, which at an import is a staging folder's); and the id it declares,
+    when one can be read."""
+
+    definition: dict[str, Any] | None
+    reasons: tuple[str, ...] = ()
+    declared_id: str | None = None
+
+
 def load_driver_file(filepath: Path) -> dict[str, Any] | None:
     """
     Load and validate a single driver definition file (.avcdriver YAML).
 
-    Returns the driver definition dict, or None if invalid.
+    Returns the driver definition dict, or None if invalid (``read_driver_file``
+    has the reasons).
     """
+    return read_driver_file(filepath).definition
+
+
+def read_driver_file(filepath: Path) -> DefinitionRead:
+    """Read and check one driver definition file: THE verdict on whether an
+    ``.avcdriver`` loads and, when it does not, why. Each reason is also
+    logged, with the file's path."""
     try:
         text = filepath.read_text(encoding="utf-8")
         driver_def = yaml.safe_load(text)
     except UnicodeDecodeError:
         log.warning(f"Driver file {filepath} is not UTF-8 text; save it as UTF-8 to load it")
-        return None
-    except (OSError, yaml.YAMLError) as e:
+        return DefinitionRead(None, ("The file is not UTF-8 text. Save it as UTF-8.",))
+    except OSError as e:
         log.warning(f"Failed to load driver file {filepath}: {e}")
-        return None
+        return DefinitionRead(None, (f"The file could not be read: {e.strerror or e}",))
+    except yaml.YAMLError as e:
+        log.warning(f"Failed to load driver file {filepath}: {e}")
+        return DefinitionRead(None, (f"The file is not valid YAML: {e}",))
 
     if not isinstance(driver_def, dict):
         log.warning(f"Driver file {filepath} is not a valid YAML mapping")
-        return None
+        return DefinitionRead(
+            None, ("The file holds no driver definition: its top level is not a YAML mapping.",)
+        )
+    declared = driver_def.get("id")
+    declared_id = declared if isinstance(declared, str) and declared else None
     try:
-        return _checked_definition(filepath, driver_def)
+        reasons = _definition_refusals(filepath, driver_def)
     except Exception as exc:  # one file a check cannot take is that file's problem
         log.warning(f"Driver file {filepath} could not be checked, so it was not loaded: {exc}")
-        return None
+        reasons = (f"The driver check could not read it: {exc}",)
+    if reasons:
+        return DefinitionRead(None, reasons, declared_id)
+    return DefinitionRead(driver_def, (), declared_id)
 
 
-def _checked_definition(filepath: Path, driver_def: dict[str, Any]) -> dict[str, Any] | None:
-    """``load_driver_file``'s verdict on a definition it read: the
-    definition, or None (with the reason logged) when the loader drops it."""
+def _definition_refusals(filepath: Path, driver_def: dict[str, Any]) -> tuple[str, ...]:
+    """``read_driver_file``'s verdict on a definition it read: why the loader
+    drops it (each reason logged), or nothing when it loads."""
     errors = validate_driver_definition(driver_def)
     if errors:
         log.warning(
             f"Invalid driver definition in {filepath}: "
             + "; ".join(errors)
         )
-        return None
+        return tuple(errors)
 
     # Loud, but not fatal. A key the contract doesn't declare is nearly always
     # a typo — and a typo'd section silently does nothing, which is why it is
@@ -324,9 +364,13 @@ def _checked_definition(filepath: Path, driver_def: dict[str, Any]) -> dict[str,
                 f"file={companion_relpath!r} but no such file exists "
                 f"at {companion_path}; skipping driver"
             )
-            return None
+            return (
+                f"It names the discovery file {companion_relpath!r} "
+                "(discovery.python.file), which is not in the driver folder. "
+                "Add that file first.",
+            )
 
-    return driver_def
+    return ()
 
 
 def _python_driver_id(filepath: Path) -> str | None:
@@ -590,8 +634,9 @@ def _load_definition_file(
     create_class: Callable[[dict[str, Any]], type],
 ) -> None:
     """One ``.avcdriver`` of the library pass: read, checked, and registered
-    when it serves its id (``registered`` records it)."""
-    driver_def = load_driver_file(filepath)
+    when it serves its id (``registered`` records it); a file that does not
+    load is kept in ``refused_files`` with why."""
+    driver_def = read_library_definition(filepath).definition
     if driver_def is None:
         return
     driver_id = driver_def.get("id", "")
@@ -602,8 +647,38 @@ def _load_definition_file(
         register_driver(driver_class)
         registered[driver_id] = (dir_index, filepath)
         log.info(f"Loaded driver: {driver_id} from {filepath.name}")
-    except Exception:  # Catch-all: YAML parsing/validation can fail in many ways
+    except Exception as exc:  # Catch-all: YAML parsing/validation can fail in many ways
         log.exception(f"Failed to create driver class from {filepath}")
+        refused_files.record(filepath, driver_id, (f"{type(exc).__name__}: {exc}",))
+
+
+def read_library_definition(filepath: Path) -> DefinitionRead:
+    """``read_driver_file`` for a file in the driver library, loaded where it
+    is: its verdict is kept in ``refused_files`` (why it did not load, or no
+    record once it does), for every reader that would otherwise call the
+    driver not installed. The start-up pass, a project bundle's driver
+    install and the Builder's reload read a library file through here; a
+    staged copy (an install, an update, an import) never does."""
+    read = read_driver_file(filepath)
+    if read.definition is None:
+        refused_files.record(filepath, read.declared_id or filepath.stem, read.reasons)
+    else:
+        refused_files.clear(filepath)
+    return read
+
+
+def read_library_python_driver(filepath: Path) -> PythonRead:
+    """``read_python_driver_file`` for a file in the driver library, imported
+    where it is, its verdict kept in ``refused_files`` as
+    ``read_library_definition`` keeps a definition's."""
+    read = read_python_driver_file(filepath)
+    if read.driver_class is None:
+        refused_files.record(
+            filepath, driver_id_from_file(filepath) or filepath.stem, (read.reason or NO_DRIVER_CLASS,)
+        )
+    else:
+        refused_files.clear(filepath)
+    return read
 
 
 def load_python_drivers(directories: Sequence[Path | str]) -> int:
@@ -631,8 +706,9 @@ def _load_python_file(
     filepath: Path, dir_index: int, registered: dict[str, tuple[int, Path]]
 ) -> None:
     """One ``.py`` driver of the library pass: imported, and registered when
-    it serves its id (``registered`` records it)."""
-    driver_class = load_python_driver_file(filepath)
+    it serves its id (``registered`` records it); a file that does not load
+    is kept in ``refused_files`` with why."""
+    driver_class = read_library_python_driver(filepath).driver_class
     if driver_class is None:
         return
     driver_id = driver_class.DRIVER_INFO.get("id", "")
@@ -642,8 +718,9 @@ def _load_python_file(
         register_driver(driver_class)
         registered[driver_id] = (dir_index, filepath)
         log.info(f"Loaded Python driver: {driver_id} from {filepath.name}")
-    except Exception:
+    except Exception as exc:
         log.exception(f"Failed to register Python driver from {filepath}")
+        refused_files.record(filepath, driver_id, (f"{type(exc).__name__}: {exc}",))
 
 
 def load_all_drivers(directories: Sequence[Path | str]) -> int:
@@ -982,13 +1059,16 @@ def _is_plain_driver_info(node: ast.stmt) -> bool:
 def _load_status(driver_id: str, filepath: Path) -> tuple[bool, str | None]:
     """``(loaded, load_error)`` for a listed file.
 
-    Registered under its id: loaded. Otherwise the Code view says why: its
-    module is in ``sys.modules`` but nothing is registered under this id (a
-    duplicate id, a class it could not find, or a last reload that left
-    another id registered), or it never imported.
+    Registered under its id: loaded. Otherwise the Code view says why: the
+    reason it did not load (``refused_files``), else its module is in
+    ``sys.modules`` but nothing is registered under this id (a duplicate id,
+    or a last reload that left another id registered), or it never imported.
     """
     if is_driver_registered(driver_id):
         return True, None
+    refused = refused_files.load_error(filepath)
+    if refused is not None:
+        return False, refused
     if _is_imported(filepath):
         return False, (
             "Imported but not registered — duplicate driver ID "

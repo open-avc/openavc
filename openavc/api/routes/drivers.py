@@ -64,6 +64,7 @@ from openavc.drivers.driver_loader import (
     driver_files_for,
     require_mutable_driver_file,
 )
+from openavc.drivers.refused_files import load_error
 from openavc.utils.logger import get_logger
 from openavc.drivers.registry import (
     list_registered_drivers,
@@ -660,7 +661,8 @@ def _installed_definition_entry(filepath: Path) -> dict[str, Any] | None:
     """An ``.avcdriver`` in the driver folder as Installed lists it: by its own
     id, name and version; by its file name when it cannot be read, decoded as
     UTF-8 (``UnicodeDecodeError`` is a ``ValueError``) or parsed; and not at
-    all when it parses to something other than a mapping."""
+    all when it parses to something other than a mapping. ``load_error`` is
+    why it did not load (``refused_files``), else None."""
     import yaml
 
     try:
@@ -676,13 +678,15 @@ def _installed_definition_entry(filepath: Path) -> dict[str, Any] | None:
         "format": "avcdriver",
         "filename": filepath.name,
         "version": data.get("version", ""),
+        "load_error": load_error(filepath),
     }
 
 
 def _installed_python_entry(filepath: Path) -> dict[str, Any]:
     """A Python driver file as Installed lists it: by the id, name and version
     of the first registered class with an id whose module name contains the
-    file's name, else by the file name made readable, with no version."""
+    file's name, else by the file name made readable, with no version; and
+    why it did not load (``load_error``), as a definition's entry has it."""
     info: dict[str, Any] = {"id": filepath.stem}
     for _registered_id, cls in registered_driver_classes():
         if cls.DRIVER_INFO.get("id") and filepath.stem in getattr(cls, "__module__", ""):
@@ -694,6 +698,7 @@ def _installed_python_entry(filepath: Path) -> dict[str, Any]:
         "format": "python",
         "filename": filepath.name,
         "version": info.get("version", ""),
+        "load_error": load_error(filepath),
     }
 
 

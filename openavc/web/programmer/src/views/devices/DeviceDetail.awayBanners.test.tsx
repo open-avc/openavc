@@ -518,6 +518,28 @@ describe("the missing-driver banner", () => {
     expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: "amp", driver: "acme_amp" }));
   });
 
+  it("says in the server's words why an installed driver did not load, and installs it again", async () => {
+    const reason = "Driver 'acme_amp' is installed but did not load: state_variables.power: unknown type 'bogus'";
+    setInfo({ orphaned: true, orphan_reason: reason, driver_load_error: "state_variables.power: unknown type 'bogus'" });
+    mocks.listMissingDrivers.mockResolvedValue([
+      { driver_id: "acme_amp", community_match: { file_url: "u", min_platform_version: null } },
+    ]);
+    setLive(orphaned);
+    await showPage();
+    expect(await screen.findByText("Driver Did Not Load")).toBeTruthy();
+    expect(screen.getByText(reason)).toBeTruthy();
+    expect(screen.queryByText(/which is not installed/)).toBeNull();
+    expect(await screen.findByRole("button", { name: "Install Again from Community" })).toBeTruthy();
+  });
+
+  it("keeps its own sentence for a driver that is not installed", async () => {
+    setInfo({ orphaned: true, orphan_reason: "Driver 'acme_amp' is not installed" });
+    setLive(orphaned);
+    await showPage();
+    expect(screen.getByText("Driver Not Installed")).toBeTruthy();
+    expect(screen.getByText('This device needs the driver "acme_amp" which is not installed.')).toBeTruthy();
+  });
+
   it("asks the catalog about this device's own driver", async () => {
     setProject(true, "acme_other");
     setLive(orphaned);

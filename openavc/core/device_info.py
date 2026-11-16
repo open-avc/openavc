@@ -28,7 +28,8 @@ from typing import Any, TYPE_CHECKING
 from openavc.core.device_config import DeviceConnection, connection_of
 from openavc.core.device_errors import DeviceNotFoundError
 from openavc.core.device_logins import SAVED_LOGIN, login_fields, marked_fields
-from openavc.core.installed_equipment import missing_driver_reason
+from openavc.core.installed_equipment import is_product_hardware_id, missing_driver_reason
+from openavc.drivers.refused_files import refusal_for
 from openavc.utils.log_redaction import redact_config
 
 if TYPE_CHECKING:
@@ -76,12 +77,19 @@ def _summary_without_driver(device_id: str, config: dict[str, Any]) -> dict[str,
 
 
 def _orphan_summary(device_id: str, config: dict[str, Any]) -> dict[str, Any]:
-    """The summary of a device waiting for its driver, and why."""
-    return {
+    """The summary of a device waiting for its driver, and why: the sentence
+    (``orphan_reason``), and, only when the driver's file is installed but did
+    not load, its reasons alone (``driver_load_error``)."""
+    driver_id = config.get("driver", "")
+    summary = {
         **_summary_without_driver(device_id, config),
         "orphaned": True,
-        "orphan_reason": missing_driver_reason(config.get("driver", "")),
+        "orphan_reason": missing_driver_reason(driver_id),
     }
+    refusal = None if is_product_hardware_id(driver_id) else refusal_for(driver_id)
+    if refusal is not None:
+        summary["driver_load_error"] = refusal.detail
+    return summary
 
 
 def _orphan_config(config: dict[str, Any]) -> dict[str, Any]:

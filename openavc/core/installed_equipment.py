@@ -7,6 +7,9 @@ import os
 import re
 from pathlib import Path
 
+from openavc.drivers.refused_files import not_loaded_sentence
+
+
 def model_driver_id(model):
     """Model registration identity, independent of the physical unit and firmware build."""
     if not isinstance(model, str) or not model.strip():
@@ -29,10 +32,12 @@ def driver_label(driver_id):
 
 
 def missing_driver_reason(driver_id):
-    """What a device whose driver is not here says about it."""
+    """What a device whose driver is not here says about it: product hardware
+    from another model, a driver file that is installed but did not load (with
+    why, from ``drivers/refused_files``), or a driver that is not installed."""
     if is_product_hardware_id(driver_id):
         return "Product hardware from another product model is not available on this server."
-    return f"Driver '{driver_id}' is not installed"
+    return not_loaded_sentence(driver_id) or f"Driver '{driver_id}' is not installed"
 
 
 

@@ -717,7 +717,10 @@ export interface DeviceInfo {
   connected: boolean;
   connection?: DeviceAddress;
   orphaned?: boolean;
+  /** Why the device waits for its driver, in the server's words. */
   orphan_reason?: string;
+  /** Present only when its driver's file is installed but did not load: why. */
+  driver_load_error?: string;
   enabled?: boolean;
   state: Record<string, unknown>;
   commands: Record<string, unknown>;
@@ -943,6 +946,8 @@ export interface InstalledDriver {
   format: string;
   filename: string;
   version: string;
+  /** Why this file did not load; null when it loaded or the server has no reason. */
+  load_error?: string | null;
 }
 
 interface ParsedSemver {

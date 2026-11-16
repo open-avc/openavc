@@ -49,6 +49,8 @@ const AWAY_BANNERS: Record<AwayBanner, PlacedBanner> = {
     draw: (c) => (
       <OrphanBanner
         driverId={c.config?.driver ?? ""}
+        reason={c.info?.orphan_reason}
+        loadError={c.info?.driver_load_error}
         onReassign={() => c.config && c.onEdit(c.config)}
         onBrowseDrivers={c.onBrowseDrivers}
         onActivated={c.onActivated}

@@ -416,11 +416,11 @@ async def test_installed_drivers_list_the_driver_folder(tmp_path):
     answer = await handler._get_installed_drivers({})
 
     assert answer == {"drivers": [
-        {"id": "a_bare", "name": "a_bare", "format": "avcdriver", "filename": "a_bare.avcdriver"},
-        {"id": "acme_switch", "name": "Acme Switch", "format": "avcdriver", "filename": "b_switch.avcdriver"},
-        {"id": "c_broken", "name": "c_broken", "format": "avcdriver", "filename": "c_broken.avcdriver"},
-        {"id": "acme_widget", "name": "Acme Widget", "format": "python", "filename": "acme_widget.py"},
-        {"id": "acme_widget_sim", "name": "Acme Widget Sim", "format": "python", "filename": "acme_widget_sim.py"},
+        {"id": "a_bare", "name": "a_bare", "format": "avcdriver", "filename": "a_bare.avcdriver", "load_error": None},
+        {"id": "acme_switch", "name": "Acme Switch", "format": "avcdriver", "filename": "b_switch.avcdriver", "load_error": None},
+        {"id": "c_broken", "name": "c_broken", "format": "avcdriver", "filename": "c_broken.avcdriver", "load_error": None},
+        {"id": "acme_widget", "name": "Acme Widget", "format": "python", "filename": "acme_widget.py", "load_error": None},
+        {"id": "acme_widget_sim", "name": "Acme Widget Sim", "format": "python", "filename": "acme_widget_sim.py", "load_error": None},
     ]}
 
 

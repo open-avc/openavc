@@ -812,8 +812,11 @@ class TestBundledDriverIdDedup:
 
         # A bundle file under a NEW name but declaring the already-registered id.
         new_class = type("NewDriver", (), {"DRIVER_INFO": {"id": "dup_id"}})
+        from openavc.drivers.python_modules import PythonRead
+
         monkeypatch.setattr(
-            "openavc.drivers.driver_loader.load_python_driver_file", lambda path: new_class
+            "openavc.drivers.driver_loader.read_library_python_driver",
+            lambda path: PythonRead(new_class),
         )
 
         with zipfile.ZipFile(io.BytesIO(_zip_bytes({"drivers/renamed.py": "# x"}))) as zf:

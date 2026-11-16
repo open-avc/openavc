@@ -368,12 +368,9 @@ async def reload_driver_definition(driver_id: str) -> dict:
     project reload or restart. This mirrors the Python driver hot-reload route
     for declarative YAML drivers.
     """
-    import yaml as _yaml
-
     from openavc.drivers.driver_loader import (
         find_driver_file_by_id,
-        load_driver_file,
-        validate_driver_definition,
+        read_library_definition,
     )
     from openavc.drivers.configurable import create_configurable_driver_class
 
@@ -384,19 +381,15 @@ async def reload_driver_definition(driver_id: str) -> dict:
             detail=f"No .avcdriver file declaring '{driver_id}' found on disk",
         )
 
-    driver_def = load_driver_file(filepath)
+    read = read_library_definition(filepath)
+    driver_def = read.definition
     if driver_def is None:
-        # load_driver_file logs the cause; surface the concrete validation
-        # errors when we can so a hand-edit mistake is correctable.
-        try:
-            raw = _yaml.safe_load(filepath.read_text(encoding="utf-8"))
-            errors = validate_driver_definition(raw) if isinstance(raw, dict) else ["not a YAML mapping"]
-        except (OSError, _yaml.YAMLError):
-            errors = []
         raise definition_invalid(
-            errors,
-            preamble=f"Driver file '{filepath.name}' is invalid or its "
-                     f"discovery companion is missing (see server log)",
+            list(read.reasons),
+            preamble=(
+                f"Driver file '{filepath.name}' did not load. "
+                + ("Fix this first" if len(read.reasons) == 1 else "Fix these first")
+            ),
         )
 
     # Re-register, then reconnect live devices so they pick up the disk version

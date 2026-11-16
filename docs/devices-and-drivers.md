@@ -282,7 +282,7 @@ The left panel lists all registered drivers. Click a driver to see its details. 
 
 A driver with a newer version in the community library shows **Update to v&lt;version&gt;** on its row, and the top of the list counts the updates available. See [Updating Drivers](#updating-drivers).
 
-An installed driver that did not load (one written for an older OpenAVC, for example) is listed too, marked **Did not load**. Devices can't use it until it loads: update it, or uninstall it and install it again from Browse Community. The Log says why it did not load.
+An installed driver that did not load (one written for an older OpenAVC, or a file with a mistake in it) is listed too, marked **Did not load**, and its page says why: the problems the driver check found, the Python error, or the file it names that is missing. Devices can't use it until it loads: update it, or uninstall it and install it again from Browse Community. A file changed on disk since OpenAVC last read it has no reason on the page; the Log has it.
 
 The body of the detail panel shows:
 
@@ -370,6 +370,8 @@ Each orphaned device also shows a **Driver Not Installed** banner in its detail 
 - **Reassign Driver** — opens the device editor so you can switch to a driver that is installed.
 
 If the driver isn't in the community catalog, the banner says so and offers **Browse Drivers** (to upload manually) plus **Reassign Driver** instead of the install button.
+
+When the driver's file is installed but did not load, the banner reads **Driver Did Not Load** and says why, and its install button reads **Install Again from Community**. A project import names such a driver the same way in its warnings: installed but did not load, with the reason, rather than not installed.
 
 ## Device Discovery
 

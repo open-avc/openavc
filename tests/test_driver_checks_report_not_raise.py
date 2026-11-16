@@ -215,14 +215,14 @@ def test_top_level_keys_that_are_not_text_load_with_a_warning_each(library, capl
 
 
 def test_a_definition_whose_load_raises_is_skipped_and_the_rest_load(library, monkeypatch, caplog):
-    real = driver_loader.load_driver_file
+    real = driver_loader.read_driver_file
 
     def load(filepath):
         if filepath.name.startswith("a_"):
             raise RuntimeError("broke here")
         return real(filepath)
 
-    monkeypatch.setattr(driver_loader, "load_driver_file", load)
+    monkeypatch.setattr(driver_loader, "read_driver_file", load)
     _write(library, "a_first.avcdriver", {**BASE, "id": "acme_widget_first"})
     _write(library, "b_good.avcdriver", BASE)
     with caplog.at_level(logging.ERROR, logger="openavc.drivers.driver_loader"):
@@ -248,14 +248,14 @@ PYTHON_DRIVER = (
 
 
 def test_a_python_driver_whose_load_raises_is_skipped_and_the_rest_load(library, monkeypatch, caplog):
-    real = driver_loader.load_python_driver_file
+    real = driver_loader.read_python_driver_file
 
     def load(filepath):
         if filepath.name.startswith("a_"):
             raise RuntimeError("broke here")
         return real(filepath)
 
-    monkeypatch.setattr(driver_loader, "load_python_driver_file", load)
+    monkeypatch.setattr(driver_loader, "read_python_driver_file", load)
     (library / "a_first.py").write_text(PYTHON_DRIVER.format(id="acme_widget_first"), encoding="utf-8")
     (library / "acme_widget.py").write_text(PYTHON_DRIVER.format(id="acme_widget"), encoding="utf-8")
     with caplog.at_level(logging.ERROR, logger="openavc.drivers.driver_loader"):

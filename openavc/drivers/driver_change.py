@@ -18,7 +18,9 @@ other request ever sees a change half made:
    whatever happened, and one left by a crash goes at the next change.
 3. **Admit the staged copy.** The loader's own checks on the staged driver
    file, a Python file imported under a throwaway module name; then the door's
-   own gates. The staging folder holds the driver as it will be: a companion a
+   own gates. A staged file the loader refuses is answered with the loader's
+   reasons (``read_driver_file``, ``trial_driver_import``) and recorded nowhere:
+   the file in the folder is still the one it was. The staging folder holds the driver as it will be: a companion a
    YAML names that is already installed, and not brought, is copied in beside
    it, so the loader finds it where it will find it after the swap.
 4. **Swap.** What each target holds is noted (nothing, a link, or its bytes),
@@ -26,7 +28,8 @@ other request ever sees a change half made:
    the change removes goes.
 5. **Register.** A Python driver is imported again from its final path,
    because its module name and file are what the rest of the platform reads,
-   and then the class is registered over the previous one.
+   and then the class is registered over the previous one, and any record of
+   the file it replaced not loading (``refused_files``) is dropped.
 
 A failure in the swap or the register puts every target back as it was noted,
 and the previous module back in ``sys.modules``. The previous class was never
@@ -36,8 +39,9 @@ be put in place is left out with a warning, and the driver goes in without it.
 
 What follows a change (rebuilding devices, Discovery, the announcement) is the
 door's, after ``admit`` returns. There is no FastAPI here: ``admit`` raises
-``DriverRefused`` (a status and a sentence) for its own refusals, and a door's
-gates raise what the door raises. Logs as ``openavc.api.routes.drivers``,
+``DriverRefused`` (a status, a sentence, and the loader's reasons when it
+refused the file) for its own refusals, and a door's gates raise what the door
+raises. Logs as ``openavc.api.routes.drivers``,
 where the install doors' lines have always been filed.
 """
 
@@ -54,16 +58,17 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+from openavc.drivers import refused_files
 from openavc.drivers.driver_loader import (
     DRIVER_EXTENSION,
     DRIVER_FILE_STEM,
     companion_relpath_from_yaml,
     declared_driver_info,
-    load_driver_file,
     load_python_driver_file,
+    read_driver_file,
     require_mutable_driver_file,
 )
-from openavc.drivers.python_modules import module_name, trial_driver_class
+from openavc.drivers.python_modules import module_name, trial_driver_import
 from openavc.drivers.registry import register_driver
 from openavc.utils.logger import get_logger
 
@@ -80,12 +85,15 @@ _STAGING_PREFIX = ".staging-"
 
 
 class DriverRefused(Exception):
-    """A change ``admit`` refused, with the status and sentence a door answers."""
+    """A change ``admit`` refused, with the status and sentence a door answers,
+    and, when the loader refused the staged driver file, its reasons
+    (``errors``), which the door answers beneath the sentence."""
 
-    def __init__(self, status_code: int, detail: str) -> None:
+    def __init__(self, status_code: int, detail: str, errors: Collection[str] = ()) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
+        self.errors = tuple(errors)
 
 
 @dataclass(frozen=True)
@@ -104,9 +112,11 @@ class DriverChange:
 @dataclass(frozen=True)
 class Gates:
     """What a door holds the staged driver to beyond the loader's own checks,
-    and what it says when the loader refuses it. ``definition`` is asked of a
-    YAML driver's parsed definition, ``driver_class`` of either kind's class;
-    each raises the door's refusal."""
+    and the sentence it says when the loader refuses a YAML driver file
+    (``not_a_definition``) or a Python one (``no_driver_class``), the loader's
+    reasons beneath it. ``definition`` is asked of a YAML driver's parsed
+    definition, ``driver_class`` of either kind's class; each raises the door's
+    refusal."""
 
     definition: Callable[[dict[str, Any]], None] | None = None
     driver_class: Callable[[type], None] | None = None
@@ -266,7 +276,8 @@ def _staged_class(staged: Path, gates: Gates) -> type:
     the door's gates."""
     if staged.suffix == DRIVER_EXTENSION:
         return _gated(_staged_definition_class(staged, gates), gates)
-    return _python_class(trial_driver_class(staged), gates)
+    read = trial_driver_import(staged)
+    return _python_class(read.driver_class, gates, read.reason)
 
 
 def _staged_definition_class(staged: Path, gates: Gates) -> type:
@@ -274,19 +285,21 @@ def _staged_definition_class(staged: Path, gates: Gates) -> type:
     definition gate."""
     from openavc.drivers.configurable import create_configurable_driver_class
 
-    definition = load_driver_file(staged)
+    read = read_driver_file(staged)
+    definition = read.definition
     if definition is None:
-        raise DriverRefused(422, gates.not_a_definition)
+        raise DriverRefused(422, gates.not_a_definition, read.reasons)
     if gates.definition is not None:
         gates.definition(definition)
     return create_configurable_driver_class(definition)
 
 
-def _python_class(driver_class: type | None, gates: Gates) -> type:
+def _python_class(driver_class: type | None, gates: Gates, reason: str | None = None) -> type:
     """The class a Python driver file imported as, held to the door's class
-    gate; the door's refusal when it defined none."""
+    gate; the door's refusal, with ``reason`` beneath it, when it did not
+    import or defined none."""
     if driver_class is None:
-        raise DriverRefused(422, gates.no_driver_class)
+        raise DriverRefused(422, gates.no_driver_class, (reason,) if reason else ())
     return _gated(driver_class, gates)
 
 
@@ -374,6 +387,7 @@ class _Swap:
         except BaseException:
             self._put_back()
             raise
+        refused_files.clear(self.main)
         return Admitted(driver_class, [path.name for path in self.removals])
 
     def _place(self) -> None:

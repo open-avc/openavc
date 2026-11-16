@@ -2,7 +2,9 @@
  * The banner on the page of a device whose driver is not installed: it looks
  * the driver up in the community catalog so it can be installed from here, says
  * so when the catalog does not have it, and offers Reassign Driver. Product
- * hardware that is unavailable on this server gets its own wording instead.
+ * hardware that is unavailable on this server gets its own wording instead, and
+ * a driver whose file is installed but did not load says so in the server's
+ * words (`orphan_reason`), with why.
  *
  * A device that is installed this way comes back without a reconnect: the
  * server retries devices waiting for their driver, and `onActivated` reads the
@@ -87,11 +89,17 @@ const buttonStyle = {
 
 export function OrphanBanner({
   driverId,
+  reason,
+  loadError,
   onReassign,
   onBrowseDrivers,
   onActivated,
 }: {
   driverId: string;
+  /** The server's sentence for why the device waits (`orphan_reason`). */
+  reason?: string;
+  /** Set when the driver's file is installed but did not load. */
+  loadError?: string | null;
   onReassign: () => void;
   onBrowseDrivers?: () => void;
   onActivated: () => void;
@@ -99,6 +107,7 @@ export function OrphanBanner({
   const { match, lookupDone, builtIn } = useMissingDriverLookup(driverId);
   const { installing, error, install } = useCatalogInstall(driverId, match, onActivated);
   const notInCatalog = lookupDone && !match && !builtIn;
+  const notLoaded = !builtIn && Boolean(loadError) && Boolean(reason);
 
   return (
     <div
@@ -111,11 +120,17 @@ export function OrphanBanner({
       }}
     >
       <div style={{ fontWeight: 600, marginBottom: "var(--space-sm)", color: ERROR_RED, fontSize: "var(--font-size-md)" }}>
-        {builtIn ? "Product hardware unavailable" : "Driver Not Installed"}
+        {builtIn ? "Product hardware unavailable" : notLoaded ? "Driver Did Not Load" : "Driver Not Installed"}
       </div>
-      <OrphanMessage driverId={driverId} builtIn={builtIn} notInCatalog={notInCatalog} error={error} />
+      <OrphanMessage
+        driverId={driverId}
+        builtIn={builtIn}
+        notLoadedReason={notLoaded ? reason ?? null : null}
+        notInCatalog={notInCatalog}
+        error={error}
+      />
       <div style={{ display: "flex", gap: "var(--space-sm)" }}>
-        {match && <InstallButton installing={installing} onClick={install} />}
+        {match && <InstallButton installing={installing} again={notLoaded} onClick={install} />}
         {notInCatalog && onBrowseDrivers && (
           <button onClick={onBrowseDrivers} style={buttonStyle}>
             Browse Drivers
@@ -129,21 +144,30 @@ export function OrphanBanner({
   );
 }
 
-/** What is missing, whether the catalog has it, and why an install failed. */
+/** What is missing (or installed but not loaded, in the server's sentence),
+ *  whether the catalog has it, and why an install failed. */
 function OrphanMessage({
   driverId,
   builtIn,
+  notLoadedReason,
   notInCatalog,
   error,
 }: {
   driverId: string;
   builtIn: boolean;
+  notLoadedReason: string | null;
   notInCatalog: boolean;
   error: string | null;
 }) {
   return (
     <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)" }}>
-      {builtIn ? <BuiltInEquipmentNotice /> : <>This device needs the driver "{driverId}" which is not installed.</>}
+      {builtIn ? (
+        <BuiltInEquipmentNotice />
+      ) : notLoadedReason ? (
+        <span style={{ whiteSpace: "pre-wrap" }}>{notLoadedReason}</span>
+      ) : (
+        <>This device needs the driver "{driverId}" which is not installed.</>
+      )}
       {notInCatalog && (
         <div style={{ marginTop: "var(--space-xs)", color: "var(--text-muted)", fontSize: "var(--font-size-sm)" }}>
           This driver isn't in the community catalog. Reassign the device to a different
@@ -152,14 +176,23 @@ function OrphanMessage({
       )}
       {error && (
         <div style={{ marginTop: "var(--space-xs)", color: ERROR_RED, fontSize: "var(--font-size-sm)" }}>
-          Install failed: {error}
+          <span style={{ whiteSpace: "pre-wrap" }}>Install failed: {error}</span>
         </div>
       )}
     </div>
   );
 }
 
-function InstallButton({ installing, onClick }: { installing: boolean; onClick: () => void }) {
+function InstallButton({
+  installing,
+  again,
+  onClick,
+}: {
+  installing: boolean;
+  /** The driver's file is installed but did not load: this installs it again. */
+  again: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       onClick={onClick}
@@ -175,7 +208,7 @@ function InstallButton({ installing, onClick }: { installing: boolean; onClick: 
         opacity: installing ? 0.7 : 1,
       }}
     >
-      {installing ? "Installing..." : "Install from Community"}
+      {installing ? "Installing..." : again ? "Install Again from Community" : "Install from Community"}
     </button>
   );
 }

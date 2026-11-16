@@ -38,6 +38,11 @@ export function listedDrivers(
   };
 }
 
-export const NOT_LOADED_TEXT =
+/** What a driver page says when its file never registered and the server
+ *  gave its reason, which is shown beneath it. */
+export const NOT_LOADED_WITH_REASON_TEXT =
   "This driver did not load, so devices can't use it. Update it, or uninstall it and " +
-  "install it again from Browse Community. The Log has the reason.";
+  "install it again from Browse Community.";
+
+/** The same, when the server has no reason for it (the file has changed since it was read). */
+export const NOT_LOADED_TEXT = `${NOT_LOADED_WITH_REASON_TEXT} The Log has the reason.`;

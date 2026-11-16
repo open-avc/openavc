@@ -1251,6 +1251,18 @@ def _check_missing_drivers(data: dict) -> list[dict[str, Any]]:
     return missing
 
 
+def _missing_driver_warnings(missing: list[dict[str, Any]]) -> list[str]:
+    """An import's warning for each driver its devices need that did not
+    register: why (``missing_driver_reason``: not installed, or installed but
+    did not load), and the devices that use it."""
+    from openavc.core.installed_equipment import missing_driver_reason
+
+    return [
+        f"{missing_driver_reason(m['driver_id'])} (used by: {', '.join(m['affected_devices'])})"
+        for m in missing
+    ]
+
+
 def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
     from openavc.core.project_migration import migrate_project
 
@@ -1279,10 +1291,7 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
     _move_copy_logins(pid)
 
     missing = _check_missing_drivers(data)
-    warnings = []
-    for m in missing:
-        names = ", ".join(m["affected_devices"])
-        warnings.append(f"Driver '{m['driver_id']}' is not installed (used by: {names})")
+    warnings = _missing_driver_warnings(missing)
 
     # Parity with the .zip import path: a plain .avc bundles no plugins, so
     # surface any plugins the project references but that aren't installed.
@@ -1327,8 +1336,8 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
     # log a warning.
     from openavc.drivers.driver_loader import (
         COMPANION_SUFFIXES,
-        load_driver_file,
-        load_python_driver_file,
+        read_library_definition,
+        read_library_python_driver,
     )
 
     _check_bundled_driver_identity(zf)
@@ -1367,13 +1376,13 @@ def _install_bundled_drivers(zf: zipfile.ZipFile) -> list[str]:
             driver_class = None
             driver_id = None
             if fname.endswith(".avcdriver"):
-                driver_def = load_driver_file(dest)
+                driver_def = read_library_definition(dest).definition
                 if driver_def:
                     from openavc.drivers.configurable import create_configurable_driver_class
                     driver_class = create_configurable_driver_class(driver_def)
                     driver_id = driver_def.get("id", fname)
             elif fname.endswith(".py"):
-                driver_class = load_python_driver_file(dest)
+                driver_class = read_library_python_driver(dest).driver_class
                 if driver_class:
                     driver_id = driver_class.DRIVER_INFO.get("id", fname)
 
@@ -1573,10 +1582,7 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
 
     # Check for still-missing drivers after installing bundled ones
     missing = _check_missing_drivers(data)
-    warnings = []
-    for m in missing:
-        names = ", ".join(m["affected_devices"])
-        warnings.append(f"Driver '{m['driver_id']}' is not installed (used by: {names})")
+    warnings = _missing_driver_warnings(missing)
 
     # Check for missing plugins — the ones the bundle did not carry.
     missing_plugins = _check_missing_plugins(data, installed_plugins)

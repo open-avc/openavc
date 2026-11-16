@@ -115,7 +115,11 @@ def _fake_driver_class(driver_id: str):
 def _load_python_as(monkeypatch, load) -> None:
     """Every Python driver file these doors load is ``load(path)``: the
     staged copy's trial import and the import from its final place alike."""
-    monkeypatch.setattr("openavc.drivers.driver_change.trial_driver_class", load)
+    from openavc.drivers.python_modules import PythonRead
+
+    monkeypatch.setattr(
+        "openavc.drivers.driver_change.trial_driver_import", lambda path: PythonRead(load(path))
+    )
     monkeypatch.setattr("openavc.drivers.driver_change.load_python_driver_file", load)
 
 

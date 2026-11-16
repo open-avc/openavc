@@ -9,6 +9,14 @@ driver class leaves one (the Code view then lists the file as imported but not
 registered), and a reload whose final import fails puts the previous module
 back. Removing a driver's file removes its entry (``forget_module``).
 
+``read_python_driver_file`` is the one verdict on whether a Python driver file
+loads and, when it does not, why (``PythonRead``: the class, or a sentence that
+names no folder): a failed import (its exception and line, a syntax error as the
+Code view words one, or the retired-name sentence) or no driver class.
+``trial_driver_import`` gives the same verdict for a staged copy, imported under
+a throwaway name. The start-up pass keeps a library file's verdict in
+``refused_files``; an import door answers the staged copy's.
+
 ``driver_class_in`` is the one rule for which class is the driver: the first,
 by name, defined in that module, whose ``DRIVER_INFO`` is a mapping with an id
 (any other ``DRIVER_INFO`` makes it no driver, so the scan never raises). The reload's
@@ -22,8 +30,9 @@ change to the name changes those two places in ``web/programmer`` too.
 
 Logs as ``openavc.drivers.driver_loader``, where these lines have always
 appeared. ``driver_loader`` re-exports ``load_python_driver_file``,
-``reload_python_driver`` and ``python_source_syntax_error``, the import path
-the routes, the project library and the tests use.
+``read_python_driver_file``, ``reload_python_driver`` and
+``python_source_syntax_error``, the import path the routes, the project
+library and the tests use.
 """
 
 from __future__ import annotations
@@ -35,10 +44,12 @@ import re
 import sys
 import traceback
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from openavc.drivers import refused_files
 from openavc.drivers.python_info import (
     python_driver_info_issues as _python_driver_info_issues,
 )
@@ -116,6 +127,14 @@ def _imports_a_retired_name(exc: Exception) -> bool:
     return (exc.name or "").split(".")[0] in _RETIRED_ROOTS
 
 
+def _retired_name_sentence(exc: ModuleNotFoundError) -> str:
+    return (
+        f"It was written for an older OpenAVC and imports '{exc.name}', which "
+        "no longer exists. Update it from Browse Drivers (or install it again) "
+        "to get the current version."
+    )
+
+
 def _log_import_failure(filepath: Path, exc: Exception) -> None:
     """Say why a driver did not import. Called inside the ``except`` block,
     so ``log.exception`` carries the traceback, which names a missing
@@ -131,37 +150,76 @@ def _log_import_failure(filepath: Path, exc: Exception) -> None:
         log.exception(f"Failed to load Python driver from {filepath}")
 
 
+# Why a file that imported is not a driver.
+NO_DRIVER_CLASS = (
+    "It defines no driver class: no BaseDriver subclass with a DRIVER_INFO "
+    "that has an id."
+)
+
+
+@dataclass(frozen=True)
+class PythonRead:
+    """What importing a Python driver file came to: its driver class, or
+    None with why, in a sentence that names no folder (at an import the file
+    is in a staging folder)."""
+
+    driver_class: type | None
+    reason: str | None = None
+
+
+def _import_failure_reason(filepath: Path, exc: Exception) -> str:
+    """Why a driver file did not import: the retired-name sentence, a syntax
+    error as the Code view words one, else the exception and the file's line
+    nearest it."""
+    if _imports_a_retired_name(exc):
+        return _retired_name_sentence(exc)  # type: ignore[arg-type]
+    if isinstance(exc, SyntaxError):
+        name = Path(exc.filename).name if exc.filename else filepath.name
+        return syntax_error_report(exc, name)["error"]
+    line = _error_line(exc, filepath)
+    where = f" (line {line})" if line is not None else ""
+    return f"{type(exc).__name__}: {exc}{where}"
+
+
 def load_python_driver_file(filepath: Path) -> type | None:
-    """Import a ``.py`` driver file and return its driver class, or None.
+    """Import a ``.py`` driver file and return its driver class, or None
+    (``read_python_driver_file`` has the reason).
 
     A module that fails to import is removed from ``sys.modules``: left
     behind, it would read as loaded in the Code view and confuse a later
     reload. One that imports but defines no driver class stays.
     """
-    driver_class = _imported_driver_class(filepath, module_name(filepath))
-    if driver_class is not None:
-        _warn_python_driver_info_issues(driver_class)
-    return driver_class
+    return read_python_driver_file(filepath).driver_class
 
 
-def _imported_driver_class(filepath: Path, name: str) -> type | None:
+def read_python_driver_file(filepath: Path) -> PythonRead:
+    """Import a ``.py`` driver file under its module name: THE verdict on
+    whether a Python driver file loads and, when it does not, why."""
+    read = _import_driver(filepath, module_name(filepath))
+    if read.driver_class is not None:
+        _warn_python_driver_info_issues(read.driver_class)
+    return read
+
+
+def _import_driver(filepath: Path, name: str) -> PythonRead:
     """Import a driver file as module ``name`` and return its driver class,
-    or None with the reason logged: a failed import with its traceback (or
-    the retired-name sentence), and its module removed."""
+    or None with the reason (also logged: a failed import with its traceback,
+    or the retired-name sentence), its module removed when the import failed."""
     try:
         module = _import(filepath, name)
     except Exception as exc:  # Catch-all: exec_module runs arbitrary driver code
         _log_import_failure(filepath, exc)
         sys.modules.pop(name, None)
-        return None
+        return PythonRead(None, _import_failure_reason(filepath, exc))
     if module is None:
         log.warning(f"Could not create module spec for {filepath}")
-        return None
+        return PythonRead(None, "Python could not import the file as a module.")
 
     driver_class = driver_class_in(module, name)
     if driver_class is None:
         log.warning(f"No BaseDriver subclass with DRIVER_INFO found in {filepath}")
-    return driver_class
+        return PythonRead(None, NO_DRIVER_CLASS)
+    return PythonRead(driver_class)
 
 
 def _warn_python_driver_info_issues(driver_class: type) -> None:
@@ -263,14 +321,15 @@ def _trial_import(filepath: Path) -> type | dict[str, Any]:
     return driver_class
 
 
-def trial_driver_class(filepath: Path) -> type | None:
+def trial_driver_import(filepath: Path) -> PythonRead:
     """The driver class a file defines, imported under a throwaway name that
     is removed afterwards, so nothing it imports stays loaded and the module
-    a running driver came from is left as it was; None when it defines none
-    or does not import, logged as ``load_python_driver_file`` logs it."""
+    a running driver came from is left as it was; None with the reason when
+    it defines none or does not import, logged as ``read_python_driver_file``
+    logs it."""
     name = f"{_TRIAL_PREFIX}{filepath.stem}"
     try:
-        return _imported_driver_class(filepath, name)
+        return _import_driver(filepath, name)
     finally:
         sys.modules.pop(name, None)
 
@@ -316,6 +375,7 @@ def reload_python_driver(filepath: Path) -> dict[str, Any]:
     if old_driver_id and old_driver_id != new_driver_id:
         unregister_driver(old_driver_id)
     register_driver(final_class)
+    refused_files.clear(filepath)
     log.info(f"Hot-reloaded Python driver: {new_driver_id} from {filepath.name}")
     return {
         "status": "reloaded",
