@@ -80,11 +80,10 @@ def test_every_published_ui_url_is_a_path():
     caught on real hardware after the first fix looked complete. Assert the
     published value, not the file it came from.
     """
-    from openavc.core.simulation import SimulationManager
+    from openavc.core.simulation import SimulationManager, _Run
 
     mgr = object.__new__(SimulationManager)
-    mgr._active = True
-    mgr._starting = False
+    mgr._run = _Run(redirected=True)
     mgr._sim_ui_url = "http://127.0.0.1:19500"  # correct for internal polling
     mgr._sim_ports = {}
     mgr._process = None

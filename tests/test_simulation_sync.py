@@ -99,7 +99,7 @@ def _install_fake_aiohttp(monkeypatch, handler):
 
 def _active_manager(dm) -> SimulationManager:
     mgr = SimulationManager(engine=_FakeEngine(dm))
-    mgr._active = True
+    mgr._run.redirected = True
     mgr._process = _FakeProcess()
     mgr._sim_ui_url = "http://localhost:19500"
     return mgr

@@ -219,7 +219,7 @@ async def test_a_simulated_device_writes_nothing(tmp_path, acme_widget):
 def _simulating(eng) -> Any:
     """The device is redirected to a simulator, as Start Simulation leaves it."""
     sim = eng.simulation
-    sim._active = True
+    sim._run.redirected = True
     sim._original_configs["w1"] = {"host": "10.0.0.5", "port": 5000}
     return sim
 

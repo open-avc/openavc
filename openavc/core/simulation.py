@@ -25,6 +25,17 @@ say so in ``system.simulation_error``; the record stays, so the next start
 tries again. While simulation runs the IDE, the panel and the cloud portal all
 mark it (``system.simulation_active``).
 
+**THE rule for how a simulation ends is** :meth:`SimulationManager.end`. Every
+way a run ends goes through it with its reason: Stop Simulation, the server
+stopping, the simulator exiting while the server runs, and a start or a resume
+that does not finish. The reason alone decides what the end does (``_ENDINGS``):
+whether the devices go back to their real equipment, whether the record goes,
+and what ``system.simulation_error`` says. One run record (``_Run``: idle,
+starting, active, ending) orders a start against an end. A start claims it
+before its first wait; an end asked while a start runs has the start give up at
+its next step, waits for it, and then ends what it left. A Stop pressed just
+after Start always ends stopped.
+
 **The simulator's settings never touch the disk.** They carry each simulated
 device's config with its saved logins filled in, so they go to the simulator
 on its standard input (``--config -``), which it reads to the end before it
@@ -43,6 +54,8 @@ import os
 import socket
 import sys
 import tempfile
+from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -416,6 +429,81 @@ def _startup_failure_message(returncode: int | None, stderr: str) -> str:
     )
 
 
+class RunPhase(Enum):
+    """Where the simulation run is. Moved only by a start and by
+    :meth:`SimulationManager.end`."""
+
+    IDLE = "idle"
+    STARTING = "starting"
+    ACTIVE = "active"
+    ENDING = "ending"
+
+
+class EndReason(Enum):
+    """Why a simulation ends. It alone decides what the end does (``_ENDINGS``)."""
+
+    STOP = "stop"  # somebody pressed Stop Simulation
+    SHUTDOWN = "shutdown"  # the server is stopping or restarting
+    EXITED = "exited"  # the simulator exited on its own while the server runs
+    LAUNCH_FAILED = "launch_failed"  # a start or a resume that did not finish
+
+
+@dataclass(frozen=True)
+class _Ending:
+    hands_back: bool  # the devices go back to their real equipment
+    forgets: bool  # the record goes, so simulation does not come back at the next start
+    error: str | None  # system.simulation_error afterwards: "" clears it, None leaves it
+
+
+_ENDINGS: dict[EndReason, _Ending] = {
+    # Somebody turned it off: the devices go back, and it stays off.
+    EndReason.STOP: _Ending(hands_back=True, forgets=True, error=""),
+    # Nothing goes back on the way down (that would dial the real equipment on
+    # every restart of a box left simulating), and it comes back with the
+    # server.
+    EndReason.SHUTDOWN: _Ending(hands_back=False, forgets=False, error=None),
+    # Nobody turned it off, so the next start brings it back. Until then the
+    # devices are on the real equipment, and the IDE says why.
+    EndReason.EXITED: _Ending(
+        hands_back=True, forgets=False,
+        error="The simulator stopped, so the devices are connecting to the real equipment.",
+    ),
+    # What the start had moved goes back. The record is as it was (a resume
+    # that fails keeps it, so the next start tries again), and the caller
+    # says what went wrong.
+    EndReason.LAUNCH_FAILED: _Ending(hands_back=True, forgets=False, error=None),
+}
+
+
+class SimulationStopped(RuntimeError):
+    """A start given up because an end was asked while it ran."""
+
+
+@dataclass
+class _Run:
+    """The one record of the simulation run. See :meth:`SimulationManager.end`."""
+
+    phase: RunPhase = RunPhase.IDLE
+    # The devices point at the simulator: from just before a start moves them
+    # until the run ends. ``active``, the guard on a device the run has no
+    # simulator for, and sync() read this.
+    redirected: bool = False
+    # An end was asked while a start ran: the start gives up at its next step
+    # and the end that asked does the ending.
+    give_up: bool = False
+    # The task running the start, so the start's own failure is never ordered
+    # against itself.
+    starter: asyncio.Task | None = None
+    # Set whenever no start is running. An end asked during one waits on it.
+    settled: asyncio.Event = field(default_factory=asyncio.Event)
+    # Ends asked and not yet done. A start is refused while one waits, so no
+    # start slips in between an end and the start it waited out.
+    ends_waiting: int = 0
+
+    def __post_init__(self) -> None:
+        self.settled.set()
+
+
 class SimulationManager:
     """Manages the simulator subprocess and device connection redirection."""
 
@@ -437,9 +525,10 @@ class SimulationManager:
         # credential) gets its simulator restarted with the new one, so the
         # simulated device is the one the project now describes.
         self._sim_payloads: dict[str, dict] = {}
-        self._active = False
+        self._run = _Run()
+        # One end at a time: a second waits for the first, then does its own.
+        self._ending = asyncio.Lock()
         self._sim_ui_url: str | None = None
-        self._starting = False  # prevents concurrent start attempts
         self._monitor_task: asyncio.Task | None = None
         # Background tasks that drain the subprocess's stdout/stderr so its
         # OS pipe buffers don't fill up and block uvicorn writes inside the
@@ -456,7 +545,9 @@ class SimulationManager:
 
     @property
     def active(self) -> bool:
-        return self._active
+        """True while the devices point at the simulator: from the redirect
+        of a start until the run ends."""
+        return self._run.redirected
 
     @property
     def resume_pending(self) -> bool:
@@ -487,8 +578,11 @@ class SimulationManager:
             return
         self._resume_pending = False
         try:
+            self._claim_start()
             await self._launch(self._resume_ids, allow_empty=True)
             log.info("Simulation resumed after the restart")
+        except SimulationStopped:
+            log.info("Simulation was stopped before it resumed")
         except Exception as e:
             log.warning("Simulation did not resume after the restart: %s", e)
             self._set_error(
@@ -550,52 +644,90 @@ class SimulationManager:
         """Start simulation for the specified devices (or all devices).
 
         Returns dict with device_id → sim_port mappings and the UI URL.
+        Raises :class:`SimulationStopped` when an end was asked before it
+        finished.
         """
-        # Prevent concurrent starts and double-starts
-        if self._starting:
-            raise RuntimeError("Simulation is already starting")
-        if self._active:
-            raise RuntimeError("Simulation is already active")
-
+        self._claim_start()
         # A project save answers before its devices are on the wire. Let that
         # bring-up finish before redirecting anything: the two would otherwise
         # be opening and closing the same transports at the same time.
-        await self.engine.wait_for_device_bringup()
-        return await self._launch(device_ids)
+        return await self._launch(device_ids, after_bringup=True)
+
+    def _claim_start(self) -> None:
+        """Claim the run for a start, before the start's first wait: that is
+        what orders a second start, and an end, against this one."""
+        run = self._run
+        if run.phase is RunPhase.STARTING:
+            raise RuntimeError("Simulation is already starting")
+        if run.phase is RunPhase.ACTIVE:
+            raise RuntimeError("Simulation is already active")
+        if run.phase is RunPhase.ENDING or run.ends_waiting:
+            raise RuntimeError("Simulation is still stopping. Start it again in a moment.")
+        run.phase = RunPhase.STARTING
+        run.give_up = False
+        run.starter = asyncio.current_task()
+        run.settled.clear()
+
+    def _carry_on(self) -> None:
+        """Between a start's steps: give up when an end was asked meanwhile.
+        The end that asked ends what the start left."""
+        if self._run.give_up:
+            raise SimulationStopped("Simulation was stopped before it finished starting.")
 
     async def _launch(
-        self, device_ids: list[str] | None, *, allow_empty: bool = False
+        self,
+        device_ids: list[str] | None,
+        *,
+        allow_empty: bool = False,
+        after_bringup: bool = False,
     ) -> dict:
-        """Start the simulator and point the devices at it; record that
-        simulation is on. Shared by :meth:`start` and :meth:`resume`."""
-        # Clean up any zombie process from a previous failed start
-        await self._cleanup_process()
-
-        self._starting = True
+        """Run a claimed start to the end: the simulator up, the devices on
+        it, the record written. A start that does not get there is ended
+        (see :meth:`end`). Shared by :meth:`start` and :meth:`resume`."""
+        run = self._run
         try:
-            result = await self._do_start(device_ids, allow_empty=allow_empty)
-        except Exception:
-            # If start fails, clean up
-            self._starting = False
-            if self._active:
-                # It failed after the redirect (the simulator exited while the
-                # devices were being moved to it): put them back on their own
-                # addresses rather than leave them dialing a dead simulator.
-                await self._restore_connections()
+            if after_bringup:
+                await self.engine.wait_for_device_bringup()
+            # Clean up any zombie process from a previous failed start
             await self._cleanup_process()
-            self._active = False
-            self._sim_ports.clear()
-            self._sim_payloads.clear()
-            self._sim_tls.clear()
-            self._sim_ui_url = None
-            set_running_ui_port(None)
+            self._carry_on()
+            result = await self._do_start(device_ids, allow_empty=allow_empty)
+        except BaseException as exc:
+            try:
+                if not run.give_up:
+                    await self.end(self._failed_start_reason(exc))
+            finally:
+                run.starter = None
+                run.settled.set()
             raise
-        finally:
-            self._starting = False
+        # Nothing awaited since the start's last step, so no end can have
+        # been asked in between: the run is on.
+        run.phase = RunPhase.ACTIVE
+        run.starter = None
+        run.settled.set()
         self._selection = device_ids
         _write_record(device_ids)
         self._set_error("")
+        log.info(
+            "Simulation started: %d devices, UI at %s",
+            len(self._sim_ports), self._sim_ui_url,
+        )
+        # Update system state. The published URL is the browser-facing one: a
+        # path on this server, not the loopback address we poll ourselves on.
+        self.engine.state.set("system.simulation_active", True, source="simulation")
+        self.engine.state.set("system.simulation_ui_url", _browser_ui_path(), source="simulation")
+        # Start monitoring the subprocess: if it dies externally, the run ends.
+        self._monitor_task = asyncio.ensure_future(self._monitor_process())
         return result
+
+    def _failed_start_reason(self, exc: BaseException) -> EndReason:
+        """How a start that failed by itself ends. Cancelled while the engine
+        stops (the device bring-up a resume runs in is cancelled by
+        Engine.stop), it is the server stopping: nothing goes back. Any other
+        failure, a cancel included, puts back what the start had moved."""
+        if isinstance(exc, asyncio.CancelledError) and not getattr(self.engine, "_running", True):
+            return EndReason.SHUTDOWN
+        return EndReason.LAUNCH_FAILED
 
     def _device_sim_payload(self, device_id: str, cfg: dict) -> dict:
         """Build the launch/sync payload for one device.
@@ -746,6 +878,7 @@ class SimulationManager:
             ),
         ]
         await _hand_over_settings(self._process, sim_config)
+        self._carry_on()
 
         # Wait for the simulator to start up
         try:
@@ -754,6 +887,7 @@ class SimulationManager:
             raise
         except Exception as e:
             raise RuntimeError(f"Error waiting for simulator startup: {e}")
+        self._carry_on()
 
         # Now drain stderr too. Once the readiness loop exits, nothing else
         # reads stderr, so uvicorn would eventually block when its pipe buffer
@@ -820,14 +954,16 @@ class SimulationManager:
                         port += 1
                 self._sim_ports[device_id] = port
                 port += 1
+        self._carry_on()
 
-        self._active = True
+        self._run.redirected = True
         # Let the device manager explain a device this run could not simulate,
         # instead of it reporting a refused socket at the device's real address.
         self.engine.devices.unsimulated_driver = self._unsimulated_driver
 
         # Redirect device connections
         await self._redirect_connections()
+        self._carry_on()
 
         # Say it started only if it is still running. The redirect loop above
         # takes a couple of seconds per device, which is ample time for a child
@@ -837,19 +973,6 @@ class SimulationManager:
             raise RuntimeError(
                 _startup_failure_message(self._process.returncode, "")
             )
-
-        log.info(
-            "Simulation started: %d devices, UI at %s",
-            len(self._sim_ports), self._sim_ui_url,
-        )
-
-        # Update system state. The published URL is the browser-facing one: a
-        # path on this server, not the loopback address we poll ourselves on.
-        self.engine.state.set("system.simulation_active", True, source="simulation")
-        self.engine.state.set("system.simulation_ui_url", _browser_ui_path(), source="simulation")
-
-        # Start monitoring the subprocess — if it dies externally, clean up
-        self._monitor_task = asyncio.ensure_future(self._monitor_process())
 
         return {
             "devices": dict(self._sim_ports),
@@ -974,7 +1097,7 @@ class SimulationManager:
         every later sync from one place, so a refusal cannot be missed by a
         call site that forgot to note it.
         """
-        if not self._active or device_id in self._sim_ports or device_id not in self._sim_payloads:
+        if not self._run.redirected or device_id in self._sim_ports or device_id not in self._sim_payloads:
             return None
         config = self.engine.devices.get_device_config(device_id)
         if config is None:
@@ -982,79 +1105,74 @@ class SimulationManager:
         return config.get("driver") or ""
 
     async def stop(self) -> None:
-        """Stop simulation and restore original device connections.
+        """Stop Simulation: the devices go back to their real equipment.
 
         Also the way to turn simulation off when it is not running: the record
         goes, so it does not come back at the next start, and so does the
-        sentence saying it could not run."""
-        _remove_record()
-        self._selection = None
-        self._set_error("")
-        if not self._active:
-            # Even if the in-memory flag is False, keep state keys honest in
-            # case a previous run left them set (e.g. crash during _do_start
-            # before the monitor task could clean up).
-            self.engine.state.set("system.simulation_active", False, source="simulation")
-            self.engine.state.set("system.simulation_ui_url", None, source="simulation")
-            return
+        sentence saying it could not run. Asked during a start, it answers
+        once the start has given up and everything is off."""
+        await self.end(EndReason.STOP)
 
-        # Same reason as start(): don't restore addresses out from under a
-        # bring-up that is still opening transports on the simulator's.
-        await self.engine.wait_for_device_bringup()
+    async def shutdown(self) -> None:
+        """End the simulator as the server shuts down, after the devices are
+        disconnected. Nothing is handed back, and the record stays, so
+        simulation comes back with the server."""
+        await self.end(EndReason.SHUTDOWN)
 
-        log.info("Stopping simulation...")
+    async def end(self, reason: EndReason) -> None:
+        """End the simulation run for ``reason``; ``_ENDINGS`` says what each
+        reason does. Every door ends a run here: :meth:`stop`,
+        :meth:`shutdown`, the monitor seeing the simulator exit, and a start
+        or a resume that does not finish.
+
+        An end asked while a start runs does not race it: the start gives up
+        at its next step, and this waits for it before ending what it left.
+        Ends run one at a time, each doing its own, so a Stop that waits
+        behind another end still forgets the record. The one end that is cut
+        short is the monitor's: a service stop signals the simulator and the
+        server together, so its hand-back may be under way when the engine's
+        stop gets here, and the engine does not wait for every device to reach
+        its real address."""
+        run = self._run
+        run.ends_waiting += 1
+        try:
+            if reason is EndReason.STOP and run.phase is not RunPhase.IDLE:
+                # Same reason as start(): don't restore addresses out from
+                # under a bring-up that is still opening transports.
+                await self.engine.wait_for_device_bringup()
+            if run.phase is RunPhase.STARTING and run.starter is not asyncio.current_task():
+                run.give_up = True
+                await run.settled.wait()
+            await self._stop_monitor()
+            async with self._ending:
+                await self._finish(reason)
+        finally:
+            run.ends_waiting -= 1
+
+    async def _finish(self, reason: EndReason) -> None:
+        """Do what ``reason`` says to whatever the run holds, in any phase.
+        The caller holds the ending lock, and no start is running."""
+        ending = _ENDINGS[reason]
+        run = self._run
+        was_running = run.phase is not RunPhase.IDLE
+        run.phase = RunPhase.ENDING
+        if ending.forgets:
+            _remove_record()
+            self._selection = None
+        if ending.error is not None:
+            self._set_error(ending.error)
+        if was_running:
+            log.info("Ending simulation (%s)", reason.value)
 
         # Devices point back at their real addresses from here on, so a refused
         # socket means what it usually means again.
         self.engine.devices.unsimulated_driver = None
-
-        # Cancel process monitor
-        if self._monitor_task and not self._monitor_task.done():
-            self._monitor_task.cancel()
-            try:
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
-        self._monitor_task = None
-
-        # Cancel stream drainers
-        for t in self._drain_tasks:
-            if not t.done():
-                t.cancel()
-        self._drain_tasks = []
-
-        # Restore original connections
-        await self._restore_connections()
-
-        # Kill the simulator process
+        await self._stop_monitor()
+        if ending.hands_back and run.redirected:
+            await self._restore_connections()
+        # Kill the simulator process (or forget it, when it already exited).
         await self._cleanup_process()
 
-        self._sim_ports.clear()
-        self._sim_payloads.clear()
-        self._sim_tls.clear()
-        self._original_configs.clear()
-        self._sim_ui_url = None
-        set_running_ui_port(None)
-        self._active = False
-
-        # Update system state
-        self.engine.state.set("system.simulation_active", False, source="simulation")
-        self.engine.state.set("system.simulation_ui_url", None, source="simulation")
-
-    async def shutdown(self) -> None:
-        """End the simulator as the server shuts down, after the devices are
-        disconnected. Nothing is handed back to the real equipment (that would
-        dial it on every restart of a box left simulating), and the record
-        stays, so simulation comes back with the server."""
-        if self._monitor_task and not self._monitor_task.done():
-            self._monitor_task.cancel()
-            try:
-                await self._monitor_task
-            except asyncio.CancelledError:
-                pass
-        self._monitor_task = None
-        await self._cleanup_process()
-        self.engine.devices.unsimulated_driver = None
         self._sim_ports.clear()
         self._sim_payloads.clear()
         self._sim_tls.clear()
@@ -1062,41 +1180,37 @@ class SimulationManager:
         self._handing_back.clear()
         self._sim_ui_url = None
         set_running_ui_port(None)
-        if self._active:
-            self._active = False
+        run.redirected = False
+        run.phase = RunPhase.IDLE
+        # A Stop always says it is off, in case an earlier run left it set.
+        if was_running or reason is EndReason.STOP:
             self.engine.state.set("system.simulation_active", False, source="simulation")
             self.engine.state.set("system.simulation_ui_url", None, source="simulation")
 
-    async def _monitor_process(self) -> None:
-        """Watch the simulator subprocess. If it exits, clean up."""
+    async def _stop_monitor(self) -> None:
+        """Stop watching the simulator, ending its own end if one is under
+        way. The watcher calling this keeps its place, so an end asked from
+        outside can still cut its end short."""
+        task = self._monitor_task
+        if task is None or task is asyncio.current_task():
+            return
+        self._monitor_task = None
+        if task.done():
+            return
+        task.cancel()
         try:
-            while self._active and self._process:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    async def _monitor_process(self) -> None:
+        """Watch the simulator subprocess. If it exits, end the run."""
+        try:
+            while self._run.phase is RunPhase.ACTIVE and self._process:
                 if self._process.returncode is not None:
                     exit_code = self._process.returncode
                     log.info("Simulator process exited (code %s)", exit_code)
-                    await self._restore_connections()
-                    # Stop draining the now-closed pipes
-                    for t in self._drain_tasks:
-                        if not t.done():
-                            t.cancel()
-                    self._drain_tasks = []
-                    self._process = None
-                    self._sim_ports.clear()
-                    self._sim_payloads.clear()
-                    self._sim_tls.clear()
-                    self._original_configs.clear()
-                    self._sim_ui_url = None
-                    set_running_ui_port(None)
-                    self._active = False
-                    self.engine.state.set("system.simulation_active", False, source="simulation")
-                    self.engine.state.set("system.simulation_ui_url", None, source="simulation")
-                    # Nobody pressed Stop, so the record stays and the next
-                    # start brings simulation back. Until then, say why the
-                    # devices are on the real equipment.
-                    self._set_error(
-                        "The simulator stopped, so the devices are connecting "
-                        "to the real equipment."
-                    )
+                    await self.end(EndReason.EXITED)
                     event = "simulation.stopped" if exit_code == 0 else "simulation.crashed"
                     await self.engine.events.emit(event, {
                         "exit_code": exit_code,
@@ -1355,7 +1469,7 @@ class SimulationManager:
         they cost about a second each, which is what made adding 102 devices
         to a simulated project a 113-second save.
         """
-        if not self._active or not self._process or self._process.returncode is not None:
+        if not self.active or not self._process or self._process.returncode is not None:
             return
 
         dm = self.engine.devices
@@ -1624,9 +1738,9 @@ class SimulationManager:
         we poll ourselves on would send a remote browser to its own machine.
         """
         return {
-            "active": self._active,
-            "starting": self._starting,
-            "ui_url": _browser_ui_path() if self._active else None,
+            "active": self.active,
+            "starting": self._run.phase is RunPhase.STARTING,
+            "ui_url": _browser_ui_path() if self.active else None,
             "devices": dict(self._sim_ports),
             "process_alive": (
                 self._process is not None

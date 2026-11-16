@@ -55,7 +55,7 @@ def rig():
         manager._devices[ident] = Hardware(state, ident)
         manager._device_configs[ident] = {"id": ident, "driver": "acme_widget", "config": {}}
     simulator = SimulationManager(SimpleNamespace(devices=manager, state=state))
-    simulator._active = True
+    simulator._run.redirected = True
     simulator._sim_payloads = {"missing": {}, "ordinary": {}}
     simulator._sim_ports = {"ordinary": 19000}
     manager.unsimulated_driver = simulator._unsimulated_driver
@@ -227,7 +227,6 @@ def start_run(rig, monkeypatch):
     stdin = SimpleNamespace(write=lambda data: None, drain=AsyncMock(), close=lambda: None)
     process = SimpleNamespace(stdin=stdin, stdout=_Pipe(), stderr=_Pipe(), returncode=None)
     monkeypatch.setattr(simulation.asyncio, "create_subprocess_exec", AsyncMock(return_value=process))
-    started = []
 
     async def start(device_ids, status, devices=()):
         engine = SimpleNamespace(devices=manager, state=manager.state, project=object())
@@ -235,13 +234,10 @@ def start_run(rig, monkeypatch):
         simulator._await_simulator_ready = AsyncMock()
         calls = _install_fake_aiohttp(
             monkeypatch, lambda m, u, j: _FakeResp(status, json_data={"devices": list(devices)}))
-        started.append(simulator)
         await simulator._do_start(device_ids)
         return simulator, calls
 
     yield start
-    for simulator in started:
-        simulator._monitor_task.cancel()
     simulation.set_running_ui_port(None)
 
 

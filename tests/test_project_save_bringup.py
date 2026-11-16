@@ -346,7 +346,7 @@ async def test_an_added_device_dials_the_simulator_on_its_first_attempt(
         await eng.wait_for_device_bringup()
 
         sim = eng.simulation
-        sim._active = True
+        sim._run.redirected = True
         sim._sim_ui_url = "http://localhost:19500"
         sim._sim_ports = {"d1": 19001}
         sim._process = type("P", (), {"returncode": None})()
@@ -388,7 +388,7 @@ async def test_the_simulator_starts_run_concurrently(tmp_path, slow_driver,
     eng = _engine(tmp_path)
     try:
         sim = eng.simulation
-        sim._active = True
+        sim._run.redirected = True
         sim._sim_ui_url = "http://localhost:19500"
         sim._process = type("P", (), {"returncode": None})()
 
