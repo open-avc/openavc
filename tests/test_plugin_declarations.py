@@ -239,6 +239,8 @@ def test_a_key_that_cannot_be_hashed_is_unread_rather_than_raising():
     ('"guest_alias": "api", "capabilities": ["guest_endpoints"]', ""),
     ('"network_ports": [{"port": 22, "reason": "ssh"}], "capabilities": ["network_listen"]', ""),
     ("", "CONFIG_SCHEMA = []"),
+    ("", 'CONFIG_SCHEMA = {"host": "10.0.0.5"}'),
+    ("", 'CONFIG_SCHEMA = {"advanced": {"type": "group", "fields": {"retries": 3}}}'),
     ("", 'CONFIG_SECRETS = {"[b]": {"id": "x", "fields": ["y"]}}'),
     ("", 'MACRO_ACTIONS = {"other.ping": {"handler": "ping"}}'),
     ("", 'SCRIPT_API = {"register": {"handler": "ping"}}'),

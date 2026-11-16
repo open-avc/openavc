@@ -467,9 +467,39 @@ def _host(j: _Judging) -> str | None:
 
 
 def config_schema_problem(schema: Any) -> str | None:
-    if _declares(schema) and not isinstance(schema, dict):
+    """What is wrong with a ``CONFIG_SCHEMA`` declaration, or None: a dict
+    whose every field is a dict, and a ``group`` field's ``fields``, when
+    given, a schema of the same kind. Each field is named by its place, as
+    ``CONFIG_SCHEMA['connection']['fields']['port']``."""
+    if not _declares(schema):
+        return None
+    if not isinstance(schema, dict):
         return "CONFIG_SCHEMA must be a dict"
+    return _schema_fields_problem(schema, "CONFIG_SCHEMA")
+
+
+def _schema_fields_problem(fields: dict, where: str) -> str | None:
+    """The first field of ``fields`` that is not a dict, or whose group's
+    ``fields`` is not, as its place under ``where``."""
+    for key, field in fields.items():
+        place = f"{where}[{key!r}]"
+        problem = _not_a_dict(field, place) or _group_fields_problem(field, place)
+        if problem is not None:
+            return problem
     return None
+
+
+def _group_fields_problem(field: dict, place: str) -> str | None:
+    if field.get("type") != "group" or "fields" not in field:
+        return None
+    inner = f"{place}['fields']"
+    return _not_a_dict(field["fields"], inner) or _schema_fields_problem(field["fields"], inner)
+
+
+def _not_a_dict(value: Any, place: str) -> str | None:
+    if isinstance(value, dict):
+        return None
+    return f"{place} must be a dict, got {type(value).__name__}"
 
 
 def _config_schema(j: _Judging) -> str | None:

@@ -1093,9 +1093,14 @@ def _get_plugin_source(plugin_id: str) -> str:
 
 
 def build_default_plugin_config(schema: dict) -> dict:
-    """Build default configuration from a plugin's CONFIG_SCHEMA."""
+    """Build default configuration from a plugin's CONFIG_SCHEMA.
+
+    A field that is not a dict, or a group's ``fields`` that is not, is passed
+    over: the plugin is refused when it starts, with a sentence naming it
+    (``plugin_declarations.config_schema_problem``), and an enable builds
+    this config before the start."""
     config: dict = {}
-    for key, field in schema.items():
+    for key, field in _schema_fields(schema):
         if field.get("type") == "group":
             config[key] = build_default_plugin_config(field.get("fields", {}))
         elif field.get("type") == "mapping_list":
@@ -1106,11 +1111,19 @@ def build_default_plugin_config(schema: dict) -> dict:
 
 
 def get_plugin_setup_fields(schema: dict) -> dict:
-    """Return fields that need user input before the plugin can start."""
+    """Return fields that need user input before the plugin can start.
+    A field that is not a dict is passed over, as the default config does."""
     return {
-        key: field for key, field in schema.items()
+        key: field for key, field in _schema_fields(schema)
         if field.get("required", False) and "default" not in field
     }
+
+
+def _schema_fields(schema: Any) -> list[tuple[str, dict]]:
+    """The fields of a plugin schema that are dicts; none when it is not one."""
+    if not isinstance(schema, dict):
+        return []
+    return [(key, field) for key, field in schema.items() if isinstance(field, dict)]
 
 
 import threading
