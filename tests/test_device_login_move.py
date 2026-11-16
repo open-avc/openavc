@@ -317,6 +317,44 @@ async def test_the_first_start_moves_every_login_after_a_backup(engine, data, mo
         assert json.loads(zf.read("project.avc"))["connections"]["proj1"]["password"] == "Hunter2-Acme"
 
 
+async def test_once_the_move_is_done_the_start_backup_keeps_the_file_as_it_was_with_no_login_in_it(
+    engine, data, monkeypatch, tmp_path,
+):
+    from openavc.core.backup_manager import list_backups
+
+    old = {"openavc_version": "0.12.0", "project": {"id": "p1", "name": "Hall"},
+           "devices": [{"id": "proj1", "driver": DRIVER, "name": "P", "config": {"api_key": "k-c"}}],
+           "connections": {"proj1": {"host": "192.0.2.30", "password": "Room-C-Pass"}}}
+    _write(engine.project_path, old)
+    await _start_until_loaded(engine, monkeypatch)
+    await engine._move_logins_at_start()
+    [info] = list_backups(engine.project_path)
+    assert info.reason == "Before moving device logins out of the project"
+    backup = engine.project_path.parent / info.filename
+    with zipfile.ZipFile(backup) as zf:
+        as_it_was = json.loads(zf.read("project.avc"))
+        names = zf.namelist()
+    taken = backup.stat().st_mtime_ns
+
+    await engine._seal_the_start_backup()
+
+    with zipfile.ZipFile(backup) as zf:
+        assert zf.namelist() == names + ([] if "device_logins.json" in names else ["device_logins.json"])
+        kept = json.loads(zf.read("project.avc"))
+        sealed = zf.read("device_logins.json").decode()
+    as_it_was["devices"][0]["config"]["api_key"] = SAVED_LOGIN
+    as_it_was["connections"]["proj1"]["password"] = SAVED_LOGIN
+    assert kept == as_it_was
+    assert backup.stat().st_mtime_ns == taken
+    same_key = tmp_path / "same_key"
+    same_key.mkdir()
+    (same_key / KEY_FILENAME).write_bytes((data / KEY_FILENAME).read_bytes())
+    restored = DeviceLogins(same_key)
+    restored.restore_copy(sealed, lambda owner: True, where="the test")
+    assert restored.login("proj1", DRIVER, "password") == "Room-C-Pass"
+    assert restored.login("proj1", DRIVER, "api_key") == "k-c"
+
+
 async def test_a_start_with_nothing_to_move_rewrites_nothing(engine, data, monkeypatch):
     _write(engine.project_path, _document(SAVED_LOGIN))
     before = engine.project_path.read_bytes()

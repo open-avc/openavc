@@ -11,7 +11,10 @@ loaded and can say which settings hold one (``_move_logins_at_start``). The
 project file is backed up before the first move rewrites it, once per start
 (``_adopt_moved_logins``), and a save that moved logins refreshes the crash
 copy (``_save_project_at_start``); a move or a backup that cannot finish
-changes nothing.
+changes nothing. That backup holds the file as it was, logins in the clear,
+only until the move is done: once every save that moved logins has
+succeeded, it keeps the file with the marker in each one's place and the
+logins sealed beside it (``_seal_the_start_backup``).
 
 Mixed into Engine (core/engine.py). From the engine it reads the project and
 its path, ``resolved_device_config``, the product hardware
@@ -25,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import functools
+from pathlib import Path
 
 from openavc.core import saved_params
 from openavc.core.device_logins import (
@@ -67,8 +71,12 @@ class ProjectLoginsMixin:
         from openavc.system_config import get_data_dir
 
         self.device_logins = device_logins(get_data_dir())
-        # Whether this start backed up the project before moving its logins.
+        # Whether this start backed up the project before moving its logins,
+        # the backup it took (the file as it was, logins in the clear), and
+        # whether a move it adopted is not yet saved.
         self._logins_backed_up_at_start = False
+        self._logins_backup_at_start: Path | None = None
+        self._logins_unsaved_at_start = False
 
     def _register_project_secrets(self) -> None:
         """Hand the log redaction the project's own secrets
@@ -174,6 +182,7 @@ class ProjectLoginsMixin:
         if not (self._logins_backed_up_at_start or await self._back_up_before_moving_logins()):
             return False
         self._logins_backed_up_at_start = True
+        self._logins_unsaved_at_start = True
         self.project = moved
         return True
 
@@ -188,6 +197,8 @@ class ProjectLoginsMixin:
         (``_save_project_at_start``). A plugin's logins move later, once the
         plugins are loaded and can say which settings hold one."""
         self._logins_backed_up_at_start = False
+        self._logins_backup_at_start = None
+        self._logins_unsaved_at_start = False
         return await self._adopt_moved_logins(self._move_logins(self.project, typed=False))
 
     async def _move_logins_at_start(self) -> None:
@@ -212,7 +223,29 @@ class ProjectLoginsMixin:
         until the next save."""
         await save_project_async(self.project_path, self.project)
         if logins_moved:
+            self._logins_unsaved_at_start = False
             await asyncio.to_thread(refresh_crash_copy, self.project_path)
+
+    async def _seal_the_start_backup(self) -> None:
+        """The backup this start took before moving logins, once every move
+        it adopted is saved: written again with the marker in place of each
+        login it holds in the clear and the logins sealed beside it, the file
+        as it was otherwise (``backup_manager.seal_logins_in_backup``). A save
+        that failed leaves it as it is. Run once the plugins' half of the
+        move has run, or failed; never fatal."""
+        backup, self._logins_backup_at_start = self._logins_backup_at_start, None
+        if backup is None or self._logins_unsaved_at_start:
+            return
+        from openavc.core.backup_manager import seal_logins_in_backup
+
+        try:
+            built_in = {d.id for d in self.project.devices if self.installed_equipment.matches(d)}
+            move = functools.partial(
+                move_logins, logins=self.device_logins, typed=False, skip=built_in.__contains__,
+            )
+            await asyncio.to_thread(seal_logins_in_backup, backup, move)
+        except Exception:
+            log.exception("Could not take the logins out of the backup taken before they moved")
 
     async def _back_up_before_moving_logins(self) -> bool:
         """Back up the project file before the move rewrites it. False when
@@ -231,6 +264,7 @@ class ProjectLoginsMixin:
         if backup is None and self.project_path.exists():
             log.error("Could not back up the project, so its device logins stay in it for now")
             return False
+        self._logins_backup_at_start = backup
         return True
 
     def _sweep_device_logins(self) -> None:

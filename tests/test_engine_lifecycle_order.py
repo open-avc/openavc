@@ -641,6 +641,30 @@ async def test_a_start_that_moved_device_logins_remembers_it_backed_up(tmp_path,
 
 
 @pytest.mark.asyncio
+async def test_a_start_seals_its_login_backup_after_the_plugins_even_when_their_scan_fails(
+    tmp_path, no_update_checks,
+):
+    eng = Engine(_project(tmp_path))
+    _quiet_services(eng, [])
+    order = []
+
+    def scan():
+        order.append("scan")
+        raise RuntimeError("plugin folder unreadable")
+
+    async def seal():
+        order.append("seal")
+
+    eng.plugin_loader.scan_plugins = scan
+    eng._seal_the_start_backup = seal
+    try:
+        await eng.start()
+        assert order == ["scan", "seal"]
+    finally:
+        await eng.stop()
+
+
+@pytest.mark.asyncio
 async def test_start_publishes_the_asset_catalog(tmp_path, no_update_checks):
     eng = Engine(_project(tmp_path))
     _quiet_services(eng, [])

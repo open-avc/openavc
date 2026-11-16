@@ -22,6 +22,8 @@ An invented plugin and an invented device throughout.
 from __future__ import annotations
 
 import json
+import shutil
+import zipfile
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -42,6 +44,7 @@ from openavc.core.device_logins import (
     PROJECT,
     REMOVED_KEEP,
     SAVED_LOGIN,
+    KEY_FILENAME,
     DeviceLogins,
     FoundLogin,
     FoundView,
@@ -514,6 +517,79 @@ async def test_a_start_that_already_backed_up_takes_no_second_backup(engine, dat
 
     assert _plugin_on_disk(engine)["password"] == SAVED_LOGIN
     assert list_backups(engine.project_path) == []
+
+
+def _start_backup(engine):
+    from openavc.core.backup_manager import list_backups
+
+    [backup] = list_backups(engine.project_path)
+    assert backup.reason == "Before moving device logins out of the project"
+    return engine.project_path.parent / backup.filename
+
+
+def _members(path) -> dict[str, bytes]:
+    with zipfile.ZipFile(path) as zf:
+        return {name: zf.read(name) for name in zf.namelist()}
+
+
+MOVED = ("Bridge-Pass-1", "key-ABCDEF", "Feed-Pass-L", "wall-key-123", "Mesh-Key-123")
+
+
+async def test_once_the_start_has_moved_every_login_its_backup_holds_none_in_the_clear(
+    engine, data, tmp_path,
+):
+    _write(engine.project_path, _project())
+    engine.project = engine._load_project_safe()
+    await engine._move_logins_at_start()
+    backup = _start_backup(engine)
+    taken = backup.stat().st_mtime_ns
+    assert b"Bridge-Pass-1" in _members(backup)["project.avc"]  # until the move is done
+
+    await engine._seal_the_start_backup()
+
+    members = _members(backup)
+    for value in MOVED:
+        assert all(value.encode() not in content for content in members.values())
+    kept = json.loads(members["project.avc"])
+    assert kept["plugins"][PLUGIN_ID]["config"]["password"] == SAVED_LOGIN
+    assert kept["plugins"][PLUGIN_ID]["config"]["feeds"][0]["password"] == SAVED_LOGIN
+    assert kept["isc"]["auth_key"] == SAVED_LOGIN
+    assert "backup_meta.json" in members
+    # It lists and rotates where it did, and restored on this system it fills
+    # in every login it held.
+    assert backup.stat().st_mtime_ns == taken
+    _start_backup(engine)
+    elsewhere = tmp_path / "same_system_new_login_file"
+    elsewhere.mkdir()
+    shutil.copy(data / KEY_FILENAME, elsewhere / KEY_FILENAME)
+    restored = DeviceLogins(elsewhere)
+    restored.restore_copy(members["device_logins.json"].decode(), in_project(kept), where="the test")
+    assert restored.secret(plugin_owner(PLUGIN_ID), "password") == "Bridge-Pass-1"
+    assert restored.secret(plugin_owner(PLUGIN_ID, LOBBY), "password") == "Feed-Pass-L"
+    assert restored.secret(ISC_OWNER, ISC_FIELD) == "Mesh-Key-123"
+
+
+async def test_a_start_whose_save_after_the_move_failed_keeps_its_backup_as_it_was(
+    engine, data, monkeypatch,
+):
+    from openavc.core import project_logins
+
+    _write(engine.project_path, _project())
+    engine.project = engine._load_project_safe()
+
+    async def no_room(path, project):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(project_logins, "save_project_async", no_room)
+    with pytest.raises(OSError):
+        await engine._move_logins_at_start()
+    backup = _start_backup(engine)
+    before = backup.read_bytes()
+
+    await engine._seal_the_start_backup()
+
+    assert backup.read_bytes() == before
+    assert b"Bridge-Pass-1" in _members(backup)["project.avc"]
 
 
 async def test_a_plugin_that_is_not_installed_keeps_its_logins_where_they_are(engine, data):

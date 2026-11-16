@@ -16,6 +16,11 @@ Backups are ZIP files stored in {project_dir}/backups/ containing:
 Backups are created at meaningful boundaries (project replacement, AI changes,
 cloud pushes, manual request, periodic timer) — NOT on every save.
 
+The one backup taken with logins in the clear is the first start's, before the
+logins move out of the project into the login file; once they all have, it
+is written again with the marker in each one's place and the sealed copy
+beside it (``seal_logins_in_backup``), keeping the file as it was otherwise.
+
 Every door takes the project FILE, not its directory, because the file can be
 called anything (``OPENAVC_PROJECT`` is a path). The archive member keeps its
 one name, ``project.avc``, whatever the file is called: it is the archive's
@@ -31,9 +36,11 @@ import re
 import shutil
 import tempfile
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from openavc.core import asset_tree, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
@@ -345,6 +352,72 @@ def create_backup(
                 tmp_path.unlink()
             except OSError:
                 pass
+
+
+def seal_logins_in_backup(backup_path: Path, move: Callable[[dict[str, Any]], Any]) -> bool:
+    """The backup at ``backup_path`` written again without the logins its
+    project file holds in the clear, once they are saved on this system.
+
+    ``move`` is ``device_logins.move_logins`` bound to this system's login
+    file: the file read as JSON with the marker in place of each login, or the
+    same object when it holds none or the move could not finish. The backup
+    then carries the project's logins sealed (``ARCHIVE_LOGINS``), as every
+    backup does, so restored on this system it fills in the same logins. The
+    rest is kept: the file's format version, every other member, the name,
+    and the time it was taken, which the list shows and the rotation sorts by.
+    False, the backup untouched, when the file holds no login in the clear,
+    the move could not finish or the logins cannot be sealed.
+    """
+    with zipfile.ZipFile(backup_path) as zf:
+        members = [(info, zf.read(info)) for info in zf.infolist()]
+    raw = _archived_project(members)
+    if raw is None:
+        return False
+    moved = move(raw)
+    logins = _logins_copy(moved) if moved is not raw else None
+    if logins is None:
+        return False
+    replaced = {
+        ARCHIVE_PROJECT: json.dumps(moved, indent=4, ensure_ascii=False).encode("utf-8"),
+        ARCHIVE_LOGINS: logins.encode("utf-8"),
+    }
+    taken = backup_path.stat()
+    from openavc.core.project_loader import _project_save_lock
+
+    tmp_fd, tmp_name = tempfile.mkstemp(dir=str(backup_path.parent), suffix=".zip.tmp", prefix=".backup_")
+    os.close(tmp_fd)
+    tmp_path: Path | None = Path(tmp_name)
+    try:
+        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for info, content in members:
+                zf.writestr(info, replaced.pop(info.filename, content))
+            for name, content in replaced.items():
+                zf.writestr(name, content)
+        os.utime(tmp_path, ns=(taken.st_atime_ns, taken.st_mtime_ns))
+        with _project_save_lock:
+            if not backup_path.exists():  # rotated away meanwhile
+                return False
+            os.replace(tmp_path, backup_path)
+            tmp_path = None
+    finally:
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
+    log.info(f"Backup {backup_path.name} now holds its logins sealed, not in the clear")
+    return True
+
+
+def _archived_project(members: list[tuple[zipfile.ZipInfo, bytes]]) -> dict[str, Any] | None:
+    """The project file in a backup's members, read as JSON; None when there
+    is none or it does not read as a project."""
+    for info, content in members:
+        if info.filename != ARCHIVE_PROJECT:
+            continue
+        try:
+            raw = json.loads(content.decode("utf-8"))
+        except ValueError:
+            return None
+        return raw if isinstance(raw, dict) else None
+    return None
 
 
 def list_backups(project_file: Path) -> list[BackupInfo]:

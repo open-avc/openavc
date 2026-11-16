@@ -259,6 +259,7 @@ class EngineLifecycleMixin:
         startup_errors: list[str] = []
         await self._add_devices_at_start(startup_errors)
         await self._start_plugins_at_start(startup_errors)
+        await self._seal_the_start_backup()
         self._start_scripts(startup_errors)
         self._load_triggers()
         self._bridge_events_to_ws()
