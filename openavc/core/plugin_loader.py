@@ -647,11 +647,15 @@ class PluginLoader:
         if not self.is_platform_compatible(plugin_class):
             self._mark_incompatible(plugin_id, plugin_class)
             return None
-        valid, error = self.validate_manifest(plugin_class)
+        unmarked = False
+        try:
+            valid, error = self.validate_manifest(plugin_class)
+        except Exception as e:  # Catch-all: reading a declaration can run the plugin's own code
+            valid, error, unmarked = False, f"could not be read ({type(e).__name__}: {e})", True
         if not valid:
             log.error(f"Plugin '{plugin_id}' manifest invalid: {error}")
             self._status[plugin_id] = "error"
-            self._set_error(plugin_id, f"Invalid manifest: {error}")
+            self._set_error(plugin_id, f"Invalid manifest: {error}", unmarked=unmarked)
             return None
         return plugin_class
 

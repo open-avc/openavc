@@ -60,11 +60,11 @@ def validate_manifest(plugin_class: type, platform_id: str) -> tuple[bool, str]:
 
 
 def _min_openavc_version(info: dict) -> str | None:
-    """Passes when the version cannot be compared: a version string that does
-    not parse, or a deployment missing ``packaging`` (a missing dependency must
-    never turn enabling a plugin into a server error)."""
+    """Passes when the version cannot be compared: a version that is not text
+    or does not parse, or a deployment missing ``packaging`` (a missing
+    dependency must never turn enabling a plugin into a server error)."""
     min_version = info.get("min_openavc_version")
-    if not min_version:
+    if not min_version or not isinstance(min_version, str):
         return None
     from openavc.version import __version__
     try:

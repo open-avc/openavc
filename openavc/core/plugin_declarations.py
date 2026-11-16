@@ -225,16 +225,20 @@ def _license(j: _Judging) -> str | None:
     license_name = _get(j.info, "license", "")
     if not _known(license_name):
         return None
-    if license_name.lower().strip() not in MIT_COMPATIBLE_LICENSES:
+    if not _is_mit_compatible(license_name):
         return f"License '{j.info.get('license')}' is not MIT-compatible"
     return None
+
+
+def _is_mit_compatible(license_name: Any) -> bool:
+    return isinstance(license_name, str) and license_name.lower().strip() in MIT_COMPATIBLE_LICENSES
 
 
 def _category(j: _Judging) -> str | None:
     category = _get(j.info, "category", "")
     if not _known(category):
         return None
-    if category not in VALID_CATEGORIES:
+    if not (isinstance(category, str) and category in VALID_CATEGORIES):
         return f"Invalid category '{category}', must be one of {sorted(VALID_CATEGORIES)}"
     return None
 
@@ -243,10 +247,20 @@ def _capabilities(j: _Judging) -> str | None:
     capabilities = _get(j.info, "capabilities", [])
     if not _known(capabilities):
         return None
-    invalid = set(capabilities) - VALID_CAPABILITIES
+    if not isinstance(capabilities, (list, tuple)):
+        return "capabilities must be a list"
+    invalid = {_as_text(c) for c in capabilities if not _is_capability(c)}
     if invalid:
         return f"Unknown capabilities: {sorted(invalid)}"
     return None
+
+
+def _is_capability(value: Any) -> bool:
+    return isinstance(value, str) and value in VALID_CAPABILITIES
+
+
+def _as_text(value: Any) -> str:
+    return value if isinstance(value, str) else repr(value)
 
 
 def _lacks_capability(info: dict, capability: str) -> bool:
@@ -367,10 +381,13 @@ _PORT_ENTRY_CHECKS = (_port_number, _port_protocol, _port_reason)
 
 def platform_supported(info: dict, platform_id: str) -> bool:
     """Whether a manifest's ``platforms`` (default ``["all"]``) includes
-    ``platform_id``; True when they could not be read."""
+    ``platform_id``: True when they could not be read, False when they are not
+    a list (a string is not read as one)."""
     platforms = _get(info, "platforms", ["all"])
     if not _known(platforms):
         return True
+    if not isinstance(platforms, (list, tuple)):
+        return False
     return "all" in platforms or platform_id in platforms
 
 

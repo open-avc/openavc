@@ -324,3 +324,111 @@ def test_a_merge_or_a_key_that_cannot_be_read_leaves_the_required_fields_unjudge
     assert first_problem(read) is None
     complete = read_source('class A:\n    PLUGIN_INFO = {"id": "acme_widget"}\n')
     assert first_problem(complete).startswith("Missing required fields: ")
+
+
+# --- a value of the wrong type ------------------------------------------------------
+
+_BASE_INFO = {
+    "id": "acme_widget", "name": "Acme Widget", "version": "1.0.0", "author": "Acme",
+    "description": "A widget.", "category": "utility", "license": "MIT",
+}
+
+
+@pytest.mark.parametrize("over, message", [
+    ({"license": 5}, "License '5' is not MIT-compatible"),
+    ({"license": None}, "License 'None' is not MIT-compatible"),
+    ({"category": ["utility"]},
+     "Invalid category '['utility']', must be one of "
+     "['control_surface', 'integration', 'sensor', 'utility']"),
+    ({"capabilities": 5}, "capabilities must be a list"),
+    ({"capabilities": "state_read"}, "capabilities must be a list"),
+    ({"capabilities": ["state_read", {"a": 1}]}, "Unknown capabilities: [\"{'a': 1}\"]"),
+    ({"guest_alias": "acme", "capabilities": 7}, "capabilities must be a list"),
+    ({"platforms": 5}, "Plugin not compatible with current platform 'linux_x64'. Supported: 5"),
+    ({"platforms": "linux_x64"},
+     "Plugin not compatible with current platform 'linux_x64'. Supported: linux_x64"),
+])
+def test_a_value_of_the_wrong_type_is_refused_rather_than_raising(over, message):
+    cls = type("AcmeWidgetPlugin", (), {"PLUGIN_INFO": {**_BASE_INFO, **over}})
+    assert validate_manifest(cls, "linux_x64") == (False, message)
+
+
+def test_platforms_that_are_not_a_list_name_no_platform():
+    from openavc.core.plugin_declarations import platform_supported
+
+    assert platform_supported({"platforms": 5}, "linux_x64") is False
+    assert platform_supported({"platforms": "all"}, "linux_x64") is False
+    assert platform_supported({"platforms": ("all",)}, "linux_x64") is True
+
+
+async def _handler(self):
+    return None
+
+
+@pytest.mark.parametrize("over, attrs, answer", [
+    ({"min_openavc_version": 1.0}, {}, (True, "")),
+    ({"min_openavc_version": ["99.0.0"]}, {}, (True, "")),
+    ({}, {"MACRO_ACTIONS": {"acme_widget.go": {"handler": "go", "params": [{"key": "k", "type": ["text"]}]}}},
+     (False, "MACRO_ACTIONS invalid: action 'acme_widget.go' param 'k' has invalid type "
+             "'['text']' (allowed: ['boolean', 'device_ref', 'float', 'integer', 'macro_ref', "
+             "'select', 'state_key', 'text'])")),
+    ({"id": 5}, {"SCRIPT_API": {"go": {"handler": "go"}}},
+     (False, "SCRIPT_API invalid: plugin id '5' is not a valid Python identifier — "
+             "SCRIPT_API can't be exposed under openavc.plugins")),
+])
+def test_a_declaration_of_the_wrong_type_is_answered_rather_than_raising(over, attrs, answer):
+    """A minimum version that is not text cannot be compared, which passes, as
+    one that does not parse does."""
+    cls = type("AcmeWidgetPlugin", (), {"PLUGIN_INFO": {**_BASE_INFO, **over}, "go": _handler, **attrs})
+    assert validate_manifest(cls, "linux_x64") == answer
+
+
+class _RaisingMeta(type):
+    @property
+    def CONFIG_SCHEMA(cls):
+        raise RuntimeError("acme schema broke")
+
+
+async def test_a_check_that_raises_refuses_that_plugin_and_the_next_still_starts():
+    """Reading a declaration can run the plugin's own code (a property on its
+    metaclass): a raise there refuses that plugin, with the reason on its card,
+    and the plugins after it in the project still start."""
+    from unittest.mock import MagicMock
+
+    from openavc.core.event_bus import EventBus
+    from openavc.core.plugin_loader import _PLUGIN_CLASS_REGISTRY, PluginLoader, register_plugin_class
+    from openavc.core.state_store import StateStore
+
+    async def start(self, api):
+        return None
+
+    async def stop(self):
+        return None
+
+    broken = _RaisingMeta("AcmeBroken", (), {
+        "PLUGIN_INFO": {**_BASE_INFO, "id": "acme_broken"}, "start": start, "stop": stop,
+    })
+    fine = type("AcmeFine", (), {
+        "PLUGIN_INFO": {**_BASE_INFO, "id": "acme_fine"}, "start": start, "stop": stop,
+    })
+    saved = dict(_PLUGIN_CLASS_REGISTRY)
+    try:
+        register_plugin_class(broken)
+        register_plugin_class(fine)
+        state = StateStore()
+        events = EventBus()
+        state.set_event_bus(events)
+        loader = PluginLoader(state, events, MagicMock(), MagicMock())
+        await loader.start_plugins({
+            "acme_broken": {"enabled": True, "config": {}},
+            "acme_fine": {"enabled": True, "config": {}},
+        })
+        assert loader.is_running("acme_fine")
+        assert not loader.is_running("acme_broken")
+        assert loader._status["acme_broken"] == "error"
+        assert loader._errors["acme_broken"] == (
+            "Invalid manifest: could not be read (RuntimeError: acme schema broke)")
+        await loader.stop_all()
+    finally:
+        _PLUGIN_CLASS_REGISTRY.clear()
+        _PLUGIN_CLASS_REGISTRY.update(saved)

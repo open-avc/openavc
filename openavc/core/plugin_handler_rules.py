@@ -101,7 +101,7 @@ def _macro_param_problem(action_type: str, i: int, param: Any, seen_keys: set[st
         return f"action '{action_type}' has duplicate param key '{key}'"
     seen_keys.add(key)
     ptype = param.get("type")
-    if ptype not in VALID_MACRO_ACTION_PARAM_TYPES:
+    if not _is_param_type(ptype):
         return (
             f"action '{action_type}' param '{key}' has invalid type "
             f"'{ptype}' (allowed: {sorted(VALID_MACRO_ACTION_PARAM_TYPES)})"
@@ -114,6 +114,10 @@ def _macro_param_problem(action_type: str, i: int, param: Any, seen_keys: set[st
     return None
 
 
+def _is_param_type(ptype: Any) -> bool:
+    return isinstance(ptype, str) and ptype in VALID_MACRO_ACTION_PARAM_TYPES
+
+
 def _has_options(param: dict) -> bool:
     return isinstance(param.get("options"), list) or bool(param.get("options_source"))
 
@@ -122,7 +126,7 @@ def script_api_problem(value: Any, plugin_id: str, handlers: HandlerProbe | None
     """What is wrong with a ``SCRIPT_API`` declaration, or None."""
     if not isinstance(value, dict):
         return "SCRIPT_API must be a dict"
-    if not SCRIPT_API_METHOD_RE.match(plugin_id):
+    if not _is_identifier(plugin_id):
         return (
             f"plugin id '{plugin_id}' is not a valid Python identifier — "
             f"SCRIPT_API can't be exposed under openavc.plugins"
@@ -146,6 +150,10 @@ def _script_method_problem(method_name: Any, spec: Any, handlers: HandlerProbe |
     if is_async is None:
         return None
     return _sync_problem(method_name, spec, is_async)
+
+
+def _is_identifier(name: Any) -> bool:
+    return isinstance(name, str) and SCRIPT_API_METHOD_RE.match(name) is not None
 
 
 def _script_method_name_problem(method_name: Any) -> str | None:
