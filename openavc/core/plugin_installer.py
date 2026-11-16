@@ -363,19 +363,7 @@ async def _do_install(plugin_id: str, file_url: str) -> dict[str, Any]:
                 catalog.require_complete()
                 log.info(f"Installed plugin '{plugin_id}' from directory")
 
-        # What the plugin declares, read once from the file the loader will
-        # import, before anything is installed for it.
-        declared = _read_declarations(plugin_dir)
-
-        # Reject the install up front if the plugin needs a newer OpenAVC.
-        # Without this, the plugin's pip deps would be installed first and
-        # the incompatibility wouldn't surface until enable.
-        _check_min_openavc_version(plugin_id, declared)
-
-        await _install_pip_deps(plugin_id, declared)
-
-        # Native dependencies (e.g. hidapi.dll for Stream Deck)
-        await _install_native_deps(plugin_id, declared)
+        await _install_declared(plugin_id, plugin_dir)
 
         # Try to register the plugin class immediately. On failure, write
         # an .install-error sidecar so list_installed_plugins() can surface
@@ -536,6 +524,18 @@ def _declared_entries(
 
 
 _ENTRY_WORDS = {str: "text", dict: "a dict"}
+
+
+async def _install_declared(plugin_id: str, plugin_dir: Path) -> None:
+    """What the plugin declares, read once from the file the loader will
+    import, before anything is installed for it: a plugin that needs a newer
+    OpenAVC is refused first (otherwise its dependencies would install and
+    the mismatch would only surface at enable), then its pip and native
+    dependencies (e.g. hidapi.dll for Stream Deck) are installed."""
+    declared = _read_declarations(plugin_dir)
+    _check_min_openavc_version(plugin_id, declared)
+    await _install_pip_deps(plugin_id, declared)
+    await _install_native_deps(plugin_id, declared)
 
 
 async def _install_pip_deps(plugin_id: str, declared: Declared | None) -> None:
