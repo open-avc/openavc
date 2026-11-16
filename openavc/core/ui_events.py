@@ -181,6 +181,23 @@ def _destination_route(element: Any, output: Any) -> list[Any] | None:
     return route if isinstance(route, list) else None
 
 
+#: The display range a slider or fader covers when its Min or Max is blank,
+#: the panel's own (``web/panel/modules/level.js``) and the Builder's placeholders.
+_LEVEL_DEFAULT_MIN = 0.0
+_LEVEL_DEFAULT_MAX = 100.0
+
+
+def _display_range(element: Any) -> tuple[float, float]:
+    """The display range a slider's or fader's travel covers, read the way the
+    panel's control reads it: a blank end is the default."""
+    low = getattr(element, "min", None)
+    high = getattr(element, "max", None)
+    return (
+        _LEVEL_DEFAULT_MIN if low is None else low,
+        _LEVEL_DEFAULT_MAX if high is None else high,
+    )
+
+
 class UIEventRuntime:
     """Executes the bindings behind panel interactions."""
 
@@ -672,10 +689,7 @@ class UIEventRuntime:
         if getattr(element, "scale_to_full", None) is False or output_min == output_max:
             result = max(output_min, min(output_max, val))
         else:
-            display_min = getattr(element, "min", None)
-            display_max = getattr(element, "max", None)
-            if display_min is None or display_max is None:
-                return raw_value
+            display_min, display_max = _display_range(element)
             display_range = display_max - display_min
             frac = (val - display_min) / display_range if display_range else 0.0
             result = output_min + frac * (output_max - output_min)
