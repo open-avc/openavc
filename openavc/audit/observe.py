@@ -12,8 +12,8 @@ Two sources, both the platform's own, never a second parser:
   (``drivers/base.py``): replies no response rule matched, writes to state the
   driver does not declare, values not of their declared type, values that did
   not convert, commands the driver does not have, state for children it never
-  registered. Each one is counted; the first ``EVENT_DETAIL_KEPT`` of each kind
-  keep their detail.
+  registered, response rules that failed while reading a reply. Each one is
+  counted; the first ``EVENT_DETAIL_KEPT`` of each kind keep their detail.
 
 Two faults are read from the traffic rather than reported by the driver:
 
@@ -68,7 +68,21 @@ CONTRACT_TEXT = {
     "coercion_failure": "A reply's value could not be converted to the type the driver says it is",
     "unknown_command": "The driver was asked for a command it does not have",
     "child_unregistered": "The driver wrote status for a channel or zone it does not have",
+    "rule_failed": "A response rule failed while reading a reply",
 }
+
+
+def contract_example(detail: Any) -> str:
+    """What one contract event is about, in a line: the rule that failed and
+    its error, else the reply, the state, the command or the address."""
+    if not isinstance(detail, dict):
+        return ""
+    if detail.get("rule"):
+        return f'"{detail["rule"]}" ({detail.get("error", "")})'
+    return str(
+        detail.get("text") or detail.get("state")
+        or detail.get("command") or detail.get("address") or ""
+    )
 
 # Channels a reply-to-nobody check reads: request/response byte streams.
 # HTTP pairs every response with its request by construction, MQTT is

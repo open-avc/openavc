@@ -3,7 +3,8 @@
 A command's window runs from the moment it is sent until it closes
 (``audit/commands.py`` decides when). While it is open the audit keeps, on the
 command's own record: every status value that changed, each error the driver
-published for the device (``device.error``), each time the connection
+published for the device (``device.error``; a response rule that failed on a
+reply is the run's contract event instead), each time the connection
 dropped and came back, and every ``last_error`` the driver wrote, a rewrite of
 the same text included. Each error and error write also keeps its
 ``position``, how long the device's traffic list was when it came, which
@@ -25,6 +26,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from openavc.audit.observe import recorded
+from openavc.drivers.reply_guard import RESPONSE_RULE_SOURCE
 
 if TYPE_CHECKING:
     from openavc.audit.commands import CommandTrial
@@ -82,6 +84,10 @@ class WindowListener:
 
     def _on_error(self, _event: str, payload: Any = None) -> None:
         if self.trial.status == DONE:
+            return
+        if isinstance(payload, dict) and payload.get("source") == RESPONSE_RULE_SOURCE:
+            # The driver's own rule failing on a reply, not the device
+            # refusing the command: the run counts it as a contract event.
             return
         error = payload.get("error") if isinstance(payload, dict) else payload
         self.trial.device_errors.append({

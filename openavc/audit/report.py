@@ -1442,7 +1442,7 @@ def _device_settings_read(table: dict[str, Any]) -> list[str]:
 
 def _contract_problems(contract: dict[str, Any]) -> list[str]:
     """Each kind of thing the driver could not handle, how often, and the first."""
-    from openavc.audit.observe import CONTRACT_TEXT
+    from openavc.audit.observe import CONTRACT_TEXT, contract_example
 
     counts = contract.get("counts") or {}
     if not counts:
@@ -1450,22 +1450,13 @@ def _contract_problems(contract: dict[str, Any]) -> list[str]:
     events = contract.get("events") or []
     items = []
     for kind, count in counts.items():
-        shown = _first_example(kind, events)
+        first = next((e.get("detail") for e in events if e.get("kind") == kind), None)
+        shown = contract_example(first)
         items.append(
             f"<li>{_e(CONTRACT_TEXT.get(kind, kind))}: {count}"
-            f"{' (first: <code>' + _e(str(shown)[:200]) + '</code>)' if shown else ''}</li>"
+            f"{' (first: <code>' + _e(shown[:200]) + '</code>)' if shown else ''}</li>"
         )
     return ["<h3>What the driver could not handle</h3><ul>" + "".join(items) + "</ul>"]
-
-
-def _first_example(kind: str, events: list[dict[str, Any]]) -> Any:
-    example = next((e.get("detail") for e in events if e.get("kind") == kind), None)
-    if not isinstance(example, dict):
-        return ""
-    return (
-        example.get("text") or example.get("state")
-        or example.get("command") or example.get("address") or ""
-    )
 
 
 _MAC_SOURCE_TEXT = {

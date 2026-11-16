@@ -19,14 +19,17 @@ anything here:
 * A ``child_set:`` entry names its child by an address segment or a literal,
   and a rule routing to children throttles per concrete address, since the
   wildcard pattern serves every child.
+* A message is read once a rule matches it, counted before the rule reads
+  anything; the rule runs under its own guard (``reply_guard``), so one
+  that fails on a message leaves the rest of its bundle to be read.
 
 ``OscWire`` is a mixin ``ConfigurableDriver`` inherits, so every name stays
 on the driver object. From its host it needs ``device_id``, ``config``,
 ``transport``, the compiled ``_osc_responses`` table, the message counters
 (``_framed_messages``, ``_parsed_messages``, ``_last_unread``),
 ``_rule_applies``, ``_throttle_hold``, ``_apply_writes``,
-``_substitute_for_wire``, ``_push_params``, ``_observe`` and what
-``ReplyValues`` provides.
+``_substitute_for_wire``, ``_push_params``, ``_observe``, ``_rule_guard``
+and what ``ReplyValues`` provides.
 """
 
 from __future__ import annotations
@@ -40,6 +43,7 @@ from openavc.drivers import compiled_protocol
 from openavc.drivers.command_outcome import not_sent
 from openavc.drivers.contract_events import UNMATCHED_RESPONSE
 from openavc.drivers.json_replies import JSON_PATH_MISSING, extract_json_path
+from openavc.drivers.reply_guard import OSC
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -154,6 +158,7 @@ class OscWire:
     _substitute_for_wire: Callable[[str, str, dict[str, Any]], str]
     _push_params: Callable[[], dict[str, Any]]
     _observe: Callable[..., None]
+    _rule_guard: Callable[..., Any]
     _place_child: Callable[..., Any]
     _convert_declared: Callable[[Any, str], Any]
     _mapped_reading: Callable[..., Any]
@@ -224,7 +229,10 @@ class OscWire:
             addr_pattern, condition = rule[0], rule[4]
             if fnmatch.fnmatch(address, addr_pattern) and self._rule_applies(condition):
                 self._parsed_messages += 1
-                self._apply_osc_rule(rule, address, args)
+                # Under its own guard (reply_guard): a rule that fails on one
+                # message leaves the rest of the bundle to be read.
+                with self._rule_guard(OSC, rule, address=address, args=_unread_args(args)):
+                    self._apply_osc_rule(rule, address, args)
                 return True
         return False
 

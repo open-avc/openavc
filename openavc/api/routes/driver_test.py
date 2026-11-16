@@ -23,7 +23,7 @@ Split out of `routes/drivers.py`: this is a third of that file behind two
 routes, and it shares nothing with driver installation or definition CRUD.
 """
 
-from typing import Any, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException
@@ -217,6 +217,47 @@ def _build_test_driver(
     return _TestDriver(driver, config, state, definition, transport_type)
 
 
+def _note_once(found: list[str], message: str) -> None:
+    """Add a message once; the same rule fires on every poll."""
+    if message not in found:
+        found.append(message)
+
+
+def _unmatched_text(detail: dict[str, Any]) -> str:
+    """A reply no rule matched, as the panel lists it: its text, or an OSC
+    message's address and arguments."""
+    text = detail.get("text")
+    if text is not None:
+        return str(text)
+    args = detail.get("args") or []
+    address = detail.get("address", "")
+    return f"{address} {args}" if args else str(address)
+
+
+def _test_observer(
+    contract_errors: list[str], unmatched: list[str],
+) -> Callable[[str, dict[str, Any]], None]:
+    """The test driver's contract observer.
+
+    A response rule that failed while reading the reply is a contract error:
+    the runtime skips it, so the reply looks read and nothing else says so.
+    A reply no rule matched is listed apart: the runtime drops it with a
+    debug line, so without this the author sees the bytes arrive and nothing
+    happen, and cannot tell a missing rule from a rule that did not fit.
+    """
+    from openavc.drivers.base import RULE_FAILED, UNMATCHED_RESPONSE
+    from openavc.drivers.reply_guard import rule_failure_sentence
+
+    def observe(kind: str, detail: dict[str, Any]) -> None:
+        if kind == RULE_FAILED:
+            sentence = rule_failure_sentence(str(detail.get("rule")), str(detail.get("error")))
+            _note_once(contract_errors, sentence)
+        elif kind == UNMATCHED_RESPONSE:
+            unmatched.append(_unmatched_text(detail))
+
+    return observe
+
+
 async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
     """Run a command through the live ConfigurableDriver code path.
 
@@ -238,7 +279,7 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
             "error": str(e),
         }
 
-    from openavc.drivers.base import UNMATCHED_RESPONSE, UndeclaredStateError
+    from openavc.drivers.base import UndeclaredStateError
 
     driver = built.driver
     config = built.config
@@ -255,24 +296,10 @@ async def _test_via_configurable_driver(body: TestCommandRequest) -> dict:
 
     def note_contract_error(e: UndeclaredStateError) -> None:
         """Record a violation once; the same rule fires on every poll."""
-        if str(e) not in contract_errors:
-            contract_errors.append(str(e))
+        _note_once(contract_errors, str(e))
 
-    # Replies no response rule matched: the runtime drops them with a debug
-    # line, so without this the author sees the bytes arrive and nothing
-    # happen, and cannot tell a missing rule from a rule that did not fit.
     unmatched: list[str] = []
-
-    def observe(kind: str, detail: dict[str, Any]) -> None:
-        if kind != UNMATCHED_RESPONSE:
-            return
-        text = detail.get("text")
-        if text is None:  # an OSC message: its address and arguments
-            args = detail.get("args") or []
-            text = f"{detail.get('address', '')} {args}" if args else detail.get("address", "")
-        unmatched.append(str(text))
-
-    driver.contract_observer = observe
+    driver.contract_observer = _test_observer(contract_errors, unmatched)
 
     # Capture state changes so the panel can show what the command moved.
     initial_state: dict[str, Any] = (

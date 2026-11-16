@@ -658,3 +658,19 @@ async def test_one_status_query_and_none():
     none.driver = driver({"power_on": {"label": "Power On"}})
     with pytest.raises(AuditError, match="^Acme has no status queries that can run without a value.$"):
         await _pass(none).run_queries()
+
+
+async def test_a_response_rule_failing_on_the_reply_is_not_the_device_refusing():
+    """The driver's own rule failing on the reply is the run's contract event,
+    never a refusal on the command's record."""
+    conn = _Connection()
+    commands = _pass(conn, window_seconds=0.5)
+    trial = await commands.send("power_on")
+    await conn.emit("device.error", {
+        "error": 'Response rule "match: PWR(\\w+)" failed on a reply and was skipped: '
+                 "KeyError. Check this rule in the driver.",
+        "source": "response_rule",
+    })
+    await conn.emit("device.error", {"error": "lamp out", "source": "pending_settings"})
+    await _done(trial)
+    assert [e["error"] for e in trial.device_errors] == ["lamp out"]

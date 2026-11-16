@@ -63,6 +63,7 @@ from openavc.drivers.contract_events import (  # noqa: F401
     CHILD_UNREGISTERED,
     COERCION_FAILURE,
     CONTRACT_EVENTS,
+    RULE_FAILED,
     TYPE_MISMATCH,
     UNDECLARED_STATE,
     UNKNOWN_COMMAND,

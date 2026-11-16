@@ -8,7 +8,8 @@ replies it deliberately leaves unread (an arming send, an acknowledgement no
 rule needs) would be reported on every healthy unit, so every polling YAML
 driver on a transport the check watches runs here against the simulator
 built from its own definition, for several judged poll cycles, and must stay
-quiet.
+quiet. No response rule may fail on those replies either: one that does is
+skipped and its reply still counts as read, so the check above cannot see it.
 
 The same carve-out as tests/test_driver_round_trip_parity.py: a corpus-wide
 sweep of a platform property that names no product. It cannot live in
@@ -27,6 +28,7 @@ import yaml
 
 from openavc.core.event_bus import EventBus
 from openavc.core.state_store import StateStore
+from openavc.drivers.base import RULE_FAILED
 from openavc.drivers.configurable import create_configurable_driver_class
 from openavc.simulator.yaml_auto import YAMLAutoSimulator
 from tests import gates
@@ -100,6 +102,10 @@ async def test_a_healthy_simulated_device_is_never_reported(path: Path) -> None:
         return result
 
     drv._judge_reading = counting
+    # A reply a rule matched counts as read even when the rule then fails on
+    # it, so a rule failing on its own simulator's reply is caught here.
+    failed: list[dict[str, Any]] = []
+    drv.contract_observer = lambda kind, detail: failed.append(detail) if kind == RULE_FAILED else None
     try:
         await drv.connect()
         loop = asyncio.get_running_loop()
@@ -112,6 +118,9 @@ async def test_a_healthy_simulated_device_is_never_reported(path: Path) -> None:
         assert not any(judged), (
             f"{path.name}: its own simulator's replies matched no response rule "
             f"in a poll cycle (last: {drv._unread_sample()!r})"
+        )
+        assert not failed, (
+            f"{path.name}: a response rule failed on its own simulator's reply: {failed[0]}"
         )
     finally:
         await drv.disconnect()

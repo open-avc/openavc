@@ -169,3 +169,21 @@ async def test_the_live_test_does_not_make_the_rest_of_the_server_strict(
     # Still warn-only, still writing: the test tab did not reach it.
     production.set_state("undeclared_but_fine", 1)
     assert production.state.get("device.prod_1.undeclared_but_fine") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_response_rule_that_fails_on_the_reply_is_reported_by_name():
+    """A rule that raises while reading the reply is skipped by the runtime,
+    which keeps the rest of the reply readable. The Test tab still has to say
+    so, or the device answered, nothing changed, and the test passed."""
+    definition = _definition("power")
+    definition["responses"][0]["throttle"] = float("nan")
+    result = await _run(definition, b"PWR=on\r")
+
+    assert result["success"] is False
+    assert result["received"]
+    assert result["contract_errors"] == [
+        r'Response rule "match: PWR=(\w+)" failed on a reply and was skipped: '
+        "KeyError: ''. Check this rule in the driver."
+    ]
+    assert result["error"] is None

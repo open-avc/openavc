@@ -21,6 +21,7 @@ const CONTRACT_LABELS: Record<string, string> = {
   coercion_failure: "Values that could not be converted",
   unknown_command: "Commands the driver does not have",
   child_unregistered: "Status for channels or zones the driver does not have",
+  rule_failed: "Replies a response rule failed to read",
 };
 
 /** Step 5: connect as adding the device to a space would, and listen. */

@@ -45,6 +45,7 @@ from openavc.audit.observe import (
     CONTRACT_TEXT,
     REPLY_WINDOW_SECONDS,
     ContractEvent,
+    contract_example,
     is_platform_key,
     recorded,
     replies_to_nobody,
@@ -453,13 +454,11 @@ class ListenPass:
     def _on_event(self, event: ContractEvent) -> None:
         if event.kind not in self._events_seen:
             self._events_seen.add(event.kind)
-            detail = event.detail.get("text") or event.detail.get("state") or event.detail.get(
-                "command"
-            ) or event.detail.get("address") or ""
+            detail = contract_example(event.detail)
             self._timeline(
                 f"contract.{event.kind}",
                 f"{CONTRACT_TEXT.get(event.kind, event.kind)}"
-                f"{': ' + str(detail)[:120] if detail else ''}.",
+                f"{': ' + detail[:120] if detail else ''}.",
             )
         self._dirty = True
 

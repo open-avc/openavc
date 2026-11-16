@@ -7,7 +7,9 @@ before changing anything here:
 * Rules are additive: every rule whose keys the body carries applies, and a
   rule whose keys are absent sets nothing and does not stamp its throttle
   window. A body a json rule read is finished with, unless a rule declares
-  ``after_json`` (``TextReplies`` decides that).
+  ``after_json`` (``TextReplies`` decides that). Each rule runs under its own
+  guard (``reply_guard``): one that raises is skipped, the next still runs,
+  and the body counts as read.
 * ``require:`` scopes a rule to bodies carrying all of the named keys, so
   endpoints that reuse a field name (a paired peripheral's ``status`` beside
   the main unit's) do not cross-write each other's state.
@@ -24,8 +26,8 @@ before changing anything here:
 ``JsonReplies`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. From its host it needs ``device_id``, the
 compiled ``_json_responses`` table, ``_rule_applies``, ``_throttle_hold``,
-``_apply_writes``, ``is_child_registered``, ``_observe`` and what
-``ReplyValues`` provides.
+``_apply_writes``, ``is_child_registered``, ``_observe``, ``_rule_guard``
+and what ``ReplyValues`` provides.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from typing import Any, Callable
 
 from openavc.drivers import compiled_protocol
 from openavc.drivers.contract_events import CHILD_UNREGISTERED
+from openavc.drivers.reply_guard import JSON
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -48,6 +51,7 @@ JSON_PATH_MISSING = object()
 # What one json rule did with a body.
 _APPLIED = "applied"
 _HELD = "held"
+_FAILED = "failed"
 
 
 def _parsed(raw_value: Any) -> Any:
@@ -187,6 +191,7 @@ class JsonReplies:
     _apply_writes: Callable[..., None]
     is_child_registered: Callable[[str, Any], bool]
     _observe: Callable[..., None]
+    _rule_guard: Callable[..., Any]
     _coerce_child_local_id: Callable[[str, Any], Any]
     _mapped_reading: Callable[..., Any]
     _convert_json_value: Callable[[Any, str], Any]
@@ -207,14 +212,23 @@ class JsonReplies:
         obj = _reply_object(text)
         if obj is None:
             return False
-        outcomes = [self._apply_json_rule(obj, rule) for rule in self._json_responses]
+        outcomes = [self._guarded_json_rule(obj, rule, text) for rule in self._json_responses]
         applied = _APPLIED in outcomes
         if applied:
             log.debug(
                 f"[{self.device_id}] JSON response applied "
                 f"({len(self._json_responses)} rule(s))"
             )
-        return applied or _HELD in outcomes
+        return applied or _HELD in outcomes or _FAILED in outcomes
+
+    def _guarded_json_rule(self, obj: dict[str, Any], rule: Any, text: str) -> str | None:
+        """One rule under its own guard (``reply_guard``): failed when it
+        raised, which reads the body (it got past its gates and was reading
+        it), so the next rule still runs."""
+        outcome: str | None = _FAILED
+        with self._rule_guard(JSON, rule, text=text):
+            outcome = self._apply_json_rule(obj, rule)
+        return outcome
 
     def _apply_json_rule(self, obj: dict[str, Any], rule: Any) -> str | None:
         """One rule against one body: applied, held for its throttle window,

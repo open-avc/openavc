@@ -18,8 +18,9 @@ the merge both call), and the commands, replies and state variables a
 device authors itself, merged over the file (``inline_merge``). Reading the
 device's replies: the regex rules over a line of text (``text_replies``),
 the JSON-body rules and the ``json_path`` walk (``json_replies``), OSC
-commands and reply rules (``osc_wire``), what a reply's value becomes and
-which child it belongs to (``reply_values``), whether a rule's
+commands and reply rules (``osc_wire``), the guard each rule runs under
+and the report of one that fails (``reply_guard``), what a reply's value
+becomes and which child it belongs to (``reply_values``), whether a rule's
 ``only_when:`` gate is open (``reply_gate``), and a rule's throttle
 (``reply_throttle``). Around the connection: the ``auth:`` sign-in
 (``sign_in``), the children an ``instances:`` block declares
@@ -63,6 +64,7 @@ from openavc.drivers.liveness_block import LivenessBlock
 from openavc.drivers.osc_wire import OscWire
 from openavc.drivers.query_entries import QueryEntries
 from openavc.drivers.reply_gate import ReplyGate
+from openavc.drivers.reply_guard import ReplyGuard
 from openavc.drivers.reply_throttle import ReplyThrottle
 from openavc.drivers.reply_values import ReplyValues
 from openavc.drivers.rereads import Rereads
@@ -111,6 +113,7 @@ class ConfigurableDriver(
     TextReplies,
     JsonReplies,
     OscWire,
+    ReplyGuard,
     ReplyGate,
     ReplyValues,
     BaseDriver,
@@ -188,6 +191,8 @@ class ConfigurableDriver(
         self._parsed_messages = 0
         self._framed_messages = 0
         self._last_unread = ""
+        # Each reply rule runs under its own guard (reply_guard).
+        self._init_reply_guard()
 
         # Pre-compile the receive side (regex / OSC-address / JSON-body rule
         # tables, incl. throttle state and compiled child_set routing): the

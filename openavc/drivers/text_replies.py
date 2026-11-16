@@ -17,15 +17,18 @@ The rules worth knowing before changing anything here:
   by its own id capture or by its place counted from ``start``. Either way
   the id goes through the id map, the id coercion and the registered check
   (``ReplyValues._place_child``) before anything is written.
-* A line no rule read is counted as unread for the poll loop's
+* A line is read once a rule matches it and applies, counted before the
+  rule reads anything. The rule runs under its own guard
+  (``reply_guard``), so one that fails reading the line has still read
+  it. A line no rule read is counted as unread for the poll loop's
   unread-replies check and told to a contract observer.
 
 ``TextReplies`` is a mixin ``ConfigurableDriver`` inherits, so every name
 stays on the driver object. From its host it needs ``device_id``, the
 compiled ``_compiled_responses``, ``_json_responses`` and
 ``_after_json_responses`` tables, the message counters, ``_rule_applies``,
-``_throttle_hold``, ``_apply_writes``, ``_follow_up``, ``_observe``, what
-``JsonReplies`` and what ``ReplyValues`` provide.
+``_throttle_hold``, ``_apply_writes``, ``_follow_up``, ``_observe``,
+``_rule_guard``, what ``JsonReplies`` and what ``ReplyValues`` provide.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from typing import Any, Callable
 
 from openavc.drivers.contract_events import UNMATCHED_RESPONSE
 from openavc.drivers.json_replies import JSON_PATH_MISSING, extract_json_path
+from openavc.drivers.reply_guard import TEXT
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -139,6 +143,7 @@ class TextReplies:
     _follow_up: Callable[..., None]
     _observe: Callable[..., None]
     _apply_json_responses: Callable[[str], bool]
+    _rule_guard: Callable[..., Any]
     _place_child: Callable[..., Any]
     _convert_declared: Callable[[Any, str], Any]
     _mapped_reading: Callable[..., Any]
@@ -171,21 +176,22 @@ class TextReplies:
             # Before anything is written, and before the throttle: a rule
             # that does not apply right now has not consumed this frame.
             if match and self._rule_applies(rule[4]):
-                self._apply_text_rule(rule, match, read_by_json)
+                # Read at the match, before the rule reads anything: one that
+                # fails reading it has still read it (reply_guard).
+                if not read_by_json:
+                    self._parsed_messages += 1
+                with self._rule_guard(TEXT, rule, text=text):
+                    self._apply_text_rule(rule, match)
                 return True
         return False
 
-    def _apply_text_rule(
-        self, rule: Any, match: re.Match[str], read_by_json: bool
-    ) -> None:
+    def _apply_text_rule(self, rule: Any, match: re.Match[str]) -> None:
         pattern, mappings, child_mappings, tstate, _condition, follow_ups = rule
         flat = self._text_flat_reads(match, mappings)
         children = (
             self._resolve_child_mappings(match, child_mappings)
             if child_mappings else []
         )
-        if not read_by_json:
-            self._parsed_messages += 1
         scope = throttle_scope(child_mappings, match)
         if self._throttle_hold(tstate, scope, flat, children):
             log.debug(f"[{self.device_id}] Response throttled: {pattern.pattern}")
