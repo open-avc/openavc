@@ -205,7 +205,7 @@ Click the **+** dropdown to create an **Overlay** or **Sidebar** page:
 
 Navigate to an overlay the same way as any page (page_nav target or button navigate action). The current page stays visible underneath. To dismiss an overlay, use `$back` (phone-style: closes the overlay if one is open, otherwise returns to the previous page) or `$dismiss` (overlay-close only, no page-history fallback). Both are available in the Navigate Page dropdown.
 
-Opening an overlay that is already open does nothing: a second tap, or a macro that opens it again, leaves the one copy on screen, and one close takes it down. Closing an overlay drops whatever its controls had not sent yet, such as a keypad entry still waiting for its auto send or a dropdown choice from a moment before.
+Opening an overlay that is already open does nothing, so one close always takes it down. Closing an overlay drops anything its keypads, dropdowns and text fields had not sent yet, such as digits still waiting out a keypad's **Send Delay**.
 
 Overlay/sidebar properties (width, height, position, backdrop, animation) are editable in the properties panel when the overlay page is selected and no element is selected.
 

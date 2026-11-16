@@ -125,7 +125,7 @@ Other common uses: wait for a display to confirm an input change before routing 
 A **Navigate Panel** step tells every connected panel to switch to a specific page. The target can be:
 
 - A regular page ID, like `home` or `meeting_controls`
-- An overlay or sidebar page ID — the panel pushes it onto the overlay stack
+- An overlay or sidebar page ID — the panel pushes it onto the overlay stack, unless it is already open
 - `$back` — phone-style back: closes the topmost overlay if one is open, otherwise returns to the previously-visited page. No-op if there's nothing to go back to. Page history resets on idle timeout.
 - `$dismiss` — closes the topmost overlay only. No fallback to page history.
 
