@@ -678,22 +678,16 @@
    },
    {
     "op": "nav",
-    "o": [
-     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>",
-     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>"
-    ],
-    "f": "1,2,3",
-    "n": "home|dlg,dlg|",
-    "b": "d1:text d1:text"
+    "f": "1,2",
+    "n": "home|dlg|"
    },
    {
     "op": "state",
     "o": [
-     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>",
      "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>"
     ],
-    "f": "1,2,3",
-    "n": "home|dlg,dlg|",
+    "f": "1,2",
+    "n": "home|dlg|",
     "x": {
      "edit": false,
      "embedded": false,
@@ -713,21 +707,17 @@
    {
     "op": "dismiss",
     "o": [
-     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>",
      "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>"
     ],
-    "f": "1,2,3",
-    "n": "home|dlg|",
-    "b": "d1:text"
+    "f": "1,2",
+    "n": "home||",
+    "b": "",
+    "em": "h1"
    },
    {
     "op": "state",
-    "o": [
-     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">2</div></div></div></div>",
-     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>"
-    ],
-    "f": "1,2,3",
-    "n": "home|dlg|",
+    "f": "1,2",
+    "n": "home||",
     "x": {
      "edit": false,
      "embedded": false,
@@ -746,18 +736,12 @@
    },
    {
     "op": "dismiss",
-    "o": [
-     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">2</div></div></div></div>",
-     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>"
-    ],
-    "f": "1,2,3",
-    "n": "home||",
-    "b": "",
-    "em": "h1"
+    "f": "1,2",
+    "n": "home||"
    },
    {
     "op": "state",
-    "f": "1,2,3",
+    "f": "1,2",
     "n": "home||",
     "x": {
      "edit": false,

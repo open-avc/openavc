@@ -395,9 +395,11 @@ SCENARIOS = [
     # closes, however it closes; the same keypad on a page still sends.
     "a_dialog_sends_nothing_once_it_closes",
     "the_same_keypad_on_a_page_still_sends",
-    # A close takes down the dialog it opened: two quick closes of a dialog
-    # reopened while it was leaving leave nothing drawn, and a quote in its id
-    # closes.
+    # A dialog already open, on top or under another overlay, is not opened
+    # again; one close takes it down, two quick closes of a dialog reopened
+    # while it was leaving leave nothing drawn, and a quote in its id closes.
+    "a_dialog_opened_while_it_is_open_is_drawn_once_and_one_close_takes_it_down",
+    "a_dialog_under_another_overlay_is_not_opened_again",
     "two_quick_closes_of_a_dialog_reopened_while_leaving_leave_nothing_drawn",
     "a_dialog_with_a_quote_in_its_id_closes",
     # The surface record (modules/surface.js): its timers cleared and its

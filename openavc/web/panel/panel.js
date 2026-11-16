@@ -934,8 +934,11 @@ class PanelApp {
     /**
      * Open an overlay or a sidebar over the page: a surface of its own on top
      * of the overlay stack, which its controls register on while it draws.
+     * One already open, on top or under another, is not opened again: no
+     * second copy, and the stack stays as it is.
      */
     renderOverlay(page) {
+        if (this.overlayStack.includes(page.id)) return;
         const overlay = new Surface(page.id);
         const { container, content } = drawOverlayFrame(page, () => this.dismissOverlay());
         overlay.show(container);

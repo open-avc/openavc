@@ -11548,6 +11548,30 @@ Object.assign(tests, {
             `sent ${JSON.stringify(sent)}`);
     },
 
+    async a_dialog_opened_while_it_is_open_is_drawn_once_and_one_close_takes_it_down() {
+        const steps = await driveCase(dialogCase(SURFACE_LABEL, [
+            ['nav', 'dlg'], ['check', 'overlays', 1], ['check', 'stack', ['dlg']],
+            // Its readings keep coming.
+            ['state', { 'var.x': 1 }], ['check', 'overlayShows', 'd1', '1'],
+            ['dismiss'], ['check', 'stack', []], ['wait', 500], ['check', 'overlays', 0],
+        ]));
+        const failures = [...failedChecks(steps), ...steps.filter((s) => s.op !== 'check' && s.threw).map((s) => `${s.op} threw ${s.threw}`)];
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_dialog_under_another_overlay_is_not_opened_again() {
+        const steps = await driveCase({
+            ui: pinUi('surface', [
+                pinPage('home', { elements: [pinLabel('h1')] }),
+                pinPage('dlg', { page_type: 'overlay', elements: [pinLabel('d1')] }),
+                pinPage('side', { page_type: 'sidebar', elements: [pinLabel('s1')] }),
+            ]),
+            steps: [['nav', 'dlg'], ['nav', 'side'], ['nav', 'dlg'], ['check', 'overlays', 2], ['check', 'stack', ['dlg', 'side']]],
+        });
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
     async two_quick_closes_of_a_dialog_reopened_while_leaving_leave_nothing_drawn() {
         const steps = await driveCase(dialogCase(SURFACE_LABEL, [
             ['nav', '$back'], ['nav', 'dlg'], ['state', { 'var.x': 1 }], ['check', 'overlayShows', 'd1', '1'],
