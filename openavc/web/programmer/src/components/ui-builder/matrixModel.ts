@@ -124,8 +124,9 @@ function generatedEntry(
 }
 
 /** Whether a name is one: anything but nothing and empty text, a 0 among
- *  them. `_named` in matrix_model.py, `isNamed` in the panel's matrix.js. */
-function isNamed(value: unknown): boolean {
+ *  them. `_named` in matrix_model.py, `isNamed` in the panel's matrix.js. The
+ *  page review asks it too, for what a finding calls a row (`matrixEntryName`). */
+export function isNamed(value: unknown): boolean {
   return value !== undefined && value !== null && String(value) !== "";
 }
 

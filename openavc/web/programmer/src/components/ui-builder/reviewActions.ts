@@ -10,6 +10,7 @@ import { isPlainObject } from "./authoredValues";
 import { NESTED_ACTION_FIELDS } from "./bindingActions";
 import { resolveMatrixAxis } from "./matrixModel";
 import type { ReviewFinding } from "./reviewFinding";
+import { matrixEntryName } from "./reviewMatrix";
 
 // Mirrors do_action_findings in openavc/ui/page_review.py. The other half of the
 // same silence: `bindingFindings` (reviewBindings.ts) answers whether this type's renderer
@@ -58,7 +59,7 @@ function destinationRouteEntries(el: UIElement): ActionEntry[] {
   const found: ActionEntry[] = [];
   for (const entry of resolveMatrixAxis(config, "destinations")) {
     if (!Array.isArray(entry.route)) continue;
-    const named = entry.label !== undefined ? entry.label : entry.value;
+    const named = matrixEntryName(entry);
     for (const action of entry.route) {
       found.push(...walkAction(`do.route for '${named}'`, action));
     }

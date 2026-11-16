@@ -66,6 +66,7 @@ from openavc.ui.control_minimums import (
     reference_box,
 )
 from openavc.ui.matrix_model import (
+    _named,
     MATRIX_CONFIG_KEYS,
     PANEL_WRITABLE_PREFIXES,
     resolve_axis,
@@ -1949,11 +1950,16 @@ def _matrix_named(labels: list[str]) -> str:
 def _entry_name(entry: Mapping[str, Any]) -> str:
     """What a review sentence calls one matrix row: the name it was given, else its value.
 
-    Not the panel's caption (``entryLabel`` in its ``modules/matrix.js``), which can read a live name off
-    the device: a review has no state to read, so a row the device names is
-    called by its value here. The Builder's twin is ``matrixEntryName``.
+    A label of None or empty text is no name (``_named``, the matrix model's own
+    test), so a row left blank for its device to name is called by its value, as
+    one with no label at all is. Not the panel's caption (``entryLabel`` in its
+    ``modules/matrix.js``), which can read a live name off the device: a review
+    has no state to read. Every place this side names a row asks this: the
+    matrix findings, a row's own route and the reference check's path
+    (``page_references``). The Builder's twin is ``matrixEntryName``.
     """
-    return str(entry.get("label", entry.get("value")))
+    label = entry.get("label")
+    return str(label if _named(label) else entry.get("value"))
 
 
 def _destinations(count: int) -> str:

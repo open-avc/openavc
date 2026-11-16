@@ -846,6 +846,25 @@ CASES["vocabulary"] = _project([
                  ],
                  "show_lock": True, "show_mute": False,
              }},
+            # Rows left without a name, null and empty, for the device to name
+            # under label_key. Every finding that names one calls it by its
+            # value on both sides: a lock, the blind rows, a colliding source
+            # and a row's own route.
+            {"id": "mtx_unnamed", "type": "matrix", "matrix_config": {
+                "sources": [
+                    {"value": 1, "label": "Cam"},
+                    {"value": "IN1", "label": None,
+                     "label_key": "device.acme.input.1.name"},
+                ],
+                "destinations": [
+                    {"value": 1, "label": None,
+                     "label_key": "device.acme.output.1.name",
+                     "route": [{"action": "delay"}]},
+                    {"value": 2, "label": "",
+                     "label_key": "device.acme.output.2.name"},
+                ],
+                "show_lock": True, "show_mute": False,
+            }},
         ],
         [_landscape({
             "mtx_collide": _pct_box(0, 0, 30, 40),
@@ -853,6 +872,7 @@ CASES["vocabulary"] = _project([
             "mtx_written_ok": _pct_box(0, 45, 30, 45),
             "mtx_lock_local": _pct_box(70, 0, 28, 40),
             "mtx_tiles_ok": _pct_box(35, 45, 30, 45),
+            "mtx_unnamed": _pct_box(70, 45, 28, 45),
         })],
     ),
 ])

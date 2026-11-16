@@ -120,6 +120,64 @@
       ]
     },
     {
+      "name": "a row whose name is null or empty is called by its value, and a name of 0 is a name",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "sources": [
+            {
+              "value": 1,
+              "label": "PC"
+            },
+            {
+              "value": "IN1",
+              "label": null,
+              "label_key": "device.sw.input.1.name"
+            }
+          ],
+          "destinations": [
+            {
+              "value": 1,
+              "label": null,
+              "label_key": "device.sw.output.1.name"
+            },
+            {
+              "value": 2,
+              "label": "",
+              "label_key": "device.sw.output.2.name"
+            },
+            {
+              "value": 3,
+              "label": 0,
+              "label_key": "device.sw.output.3.name"
+            }
+          ],
+          "show_lock": true
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "matrix_duplicate_values",
+          "message": "mx (matrix) has 1 of its sources claiming a value another one already has (IN1), and a routed source is matched by value -- so they cannot be told apart. Give each one the value its device actually reports.",
+          "key": "matrix_duplicate_values|mx|sources|IN1"
+        },
+        {
+          "element_id": "mx",
+          "kind": "matrix_lock_unbacked",
+          "message": "mx (matrix) draws lock buttons, but 3 destinations (1, 2, 0) have no lock_key under 'var.' or 'plugin.', so locking them is this panel's own memory -- forgotten when the page redraws, and invisible to every other panel in the space. Give each one a variable, e.g. 'var.mx_lock_1'.",
+          "key": "matrix_lock_unbacked|mx"
+        },
+        {
+          "element_id": "mx",
+          "kind": "matrix_no_route_feedback",
+          "message": "mx (matrix) has 3 destinations with no route_key (1, 2, 0), so those never show what is routed -- the matrix routes, and the panel cannot say which source is selected. Give each one the state key holding its routed source, e.g. 'device.<id>.output.1.input'.",
+          "key": "matrix_no_route_feedback|mx"
+        }
+      ]
+    },
+    {
       "name": "one lock unbacked and one destination blind, named by its value",
       "element": {
         "id": "mx",
@@ -6722,6 +6780,67 @@
           "kind": "binding_not_dispatched",
           "message": "mx (matrix) has do.route for 'hdmi2' action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
           "key": "binding_not_dispatched|mx|do.route for 'hdmi2'|delay"
+        }
+      ]
+    },
+    {
+      "name": "a row whose name is null or empty is called by its value, and a name of 0 is a name",
+      "element": {
+        "id": "mx",
+        "type": "matrix",
+        "matrix_config": {
+          "destinations": [
+            {
+              "value": "hdmi1",
+              "label": null,
+              "label_key": "device.sw.output.1.name",
+              "route": [
+                {
+                  "action": "delay"
+                }
+              ]
+            },
+            {
+              "value": "hdmi2",
+              "label": "",
+              "label_key": "device.sw.output.2.name",
+              "route": [
+                {
+                  "action": "delay"
+                }
+              ]
+            },
+            {
+              "value": "hdmi3",
+              "label": 0,
+              "label_key": "device.sw.output.3.name",
+              "route": [
+                {
+                  "action": "delay"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": [
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for 'hdmi1' action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for 'hdmi1'|delay"
+        },
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for 'hdmi2' action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for 'hdmi2'|delay"
+        },
+        {
+          "element_id": "mx",
+          "kind": "binding_not_dispatched",
+          "message": "mx (matrix) has do.route for '0' action 'delay', which is a macro step and not a binding action, so nothing runs when it fires. Put it in a macro and call that one with action 'macro'. A binding action is one of: device.command, event.emit, macro, script.call, state.set, ui.navigate, value_map.",
+          "key": "binding_not_dispatched|mx|do.route for '0'|delay"
         }
       ]
     },

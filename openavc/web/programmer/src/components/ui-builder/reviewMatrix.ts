@@ -10,6 +10,7 @@
 import type { UIElement } from "../../api/types";
 import { MATRIX_CONFIG_KEYS, MATRIX_PANEL_WRITABLE_PREFIXES } from "../../api/uiBindingReach.gen";
 import {
+  isNamed,
   matrixRouteMatches,
   matrixSourceReports,
   resolveMatrixAxis,
@@ -35,12 +36,16 @@ function matrixNamed(labels: string[]): string {
 
 /**
  * What a review sentence calls one matrix row: the name it was given, else its
- * value. Not the panel's caption (`entryLabel` in its modules/matrix.js), which can read a live name off
- * the device: a review has no state to read. The AI side's twin is
- * `_entry_name` in page_review.py.
+ * value. A label of null or empty text is no name (`isNamed`, the matrix
+ * model's own test), so a row left blank for its device to name is called by
+ * its value, as one with no label at all is. Not the panel's caption
+ * (`entryLabel` in its modules/matrix.js), which can read a live name off the
+ * device: a review has no state to read. Every place the Builder names a row
+ * asks this: the matrix findings, a row's own route (reviewActions.ts) and
+ * Validate's location. The AI side's twin is `_entry_name` in page_review.py.
  */
 export function matrixEntryName(entry: MatrixEntry): string {
-  return String(entry.label ?? entry.value);
+  return String(isNamed(entry.label) ? entry.label : entry.value);
 }
 
 /** `1 destination` or `3 destinations`. */
