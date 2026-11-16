@@ -68,7 +68,7 @@ def copies() -> dict:
         gates.skip_or_fail(gates.NODE, "esbuild not installed (run `npm ci` in openavc/web/programmer)")
     proc = subprocess.run(
         ["node", str(HARNESS), str(PANEL_MATRIX), str(BUILDER_MODEL)],
-        input=json.dumps({"route": CORPUS}), capture_output=True, text=True, timeout=120,
+        input=json.dumps({"route": CORPUS}), capture_output=True, text=True, encoding="utf-8", timeout=120,
         env={**os.environ, "NODE_PATH": str(NODE_MODULES)},
     )
     assert proc.returncode == 0, proc.stderr

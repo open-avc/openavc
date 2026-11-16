@@ -55,7 +55,7 @@ def answers() -> dict:
     naming = [{**case, "entries": _resolved(case)} for case in CASES]
     proc = subprocess.run(
         ["node", str(HARNESS), str(PANEL_MATRIX), str(BUILDER_MODEL)],
-        input=json.dumps({"naming": naming}), capture_output=True, text=True, timeout=120,
+        input=json.dumps({"naming": naming}), capture_output=True, text=True, encoding="utf-8", timeout=120,
         env={**os.environ, "NODE_PATH": str(NODE_MODULES)},
     )
     assert proc.returncode == 0, proc.stderr
