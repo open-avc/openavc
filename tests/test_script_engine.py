@@ -611,6 +611,8 @@ async def test_a_timer_started_at_the_top_of_a_script_survives_its_reload(
 
     (script_dir / "scripts" / "ticker.py").write_text(_ticker_source("v2"), encoding="utf-8")
     assert engine.reload_script(cfg)["status"] == "reloaded"
+    # A v1 tick already on the script's thread at the reload may still land.
+    await asyncio.sleep(0.03)
     v1_at_reload = state.get("var.ticks_v1")
     await asyncio.sleep(0.15)
 
