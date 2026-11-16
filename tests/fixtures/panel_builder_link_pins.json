@@ -311,10 +311,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">m1</div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "main||",
     "b": "",
@@ -350,11 +346,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "3",
     "n": "main||",
     "x": {
@@ -390,12 +381,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "4",
     "n": "dlg||",
     "x": {
@@ -470,13 +455,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "5",
     "n": "dlg||",
     "x": {
@@ -539,14 +517,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "6",
     "n": "home||",
     "b": "h1:text",
@@ -648,10 +618,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "home||",
     "p": [
@@ -675,11 +641,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "3",
     "n": "home||",
     "p": [
@@ -704,12 +665,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "4",
     "n": "home||",
     "x": {
@@ -744,13 +699,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "5",
     "n": "home||",
     "p": [
@@ -775,14 +723,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "6",
     "n": "home||",
     "x": {
@@ -817,15 +757,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "7",
     "n": "home||",
     "p": [
@@ -913,10 +844,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html?v=3\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "p||",
     "x": {
@@ -949,11 +876,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "3",
     "n": "p||",
     "p": [
@@ -976,12 +898,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html?v=a%2Fb%20c\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "4",
     "n": "p||",
     "x": {
@@ -1015,13 +931,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "5",
     "n": "p||",
     "x": {
@@ -1055,14 +964,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html?v=4\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "6",
     "n": "p||",
     "x": {
@@ -1096,15 +997,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "7",
     "n": "p||",
     "x": {
@@ -1137,16 +1029,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "8",
     "n": "p||",
     "x": {
@@ -1180,17 +1062,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-custom\" data-element-id=\"cc\" style=\"overflow: hidden; position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\" data-element-type=\"custom\"><iframe src=\"/api/projects/default/ui/card.html?v=x\" sandbox=\"allow-scripts\" style=\"width: 100%; height: 100%; border-radius: inherit;\"></iframe><div style=\"display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--panel-text); opacity: 0.5; font-size: 0.8571rem; position: absolute; inset: 0; z-index: 1;\">Loading...</div></div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "9",
     "n": "p||",
     "x": {
@@ -1290,10 +1161,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "home||",
     "p": [
@@ -1317,11 +1184,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "3",
     "n": "home||",
     "p": [
@@ -1345,12 +1207,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "4",
     "n": "home||",
     "v": "font-size: 14px;",
@@ -1375,13 +1231,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "5",
     "n": "home||",
     "v": "font-size: 14px; --panel-vmin: 4.5px;",
@@ -1406,14 +1255,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "6",
     "n": "home||",
     "v": "font-size: 14px;",
@@ -1438,15 +1279,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "7",
     "n": "home||",
     "v": "font-size: 14px; --panel-vmin: 3px;",
@@ -1557,8 +1389,6 @@
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" style=\"color: rgb(0, 255, 0); position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-element-type=\"label\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
     "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
      "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
     ],
     "f": "3",
@@ -1585,12 +1415,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "4",
     "n": "home||",
     "p": [
@@ -1614,13 +1438,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "5",
     "n": "home||",
     "p": [
@@ -1644,14 +1461,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "6",
     "n": "home||",
     "p": [
@@ -1763,10 +1572,6 @@
    {
     "op": "again",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Hello</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "home||",
     "x": {
@@ -1804,11 +1609,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "3",
     "n": "home||",
     "x": {
@@ -1844,12 +1644,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Again</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "4",
     "n": "home||",
     "x": {
@@ -1887,13 +1681,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "5",
     "n": "home||",
     "x": {
@@ -1928,14 +1715,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "6",
     "n": "home||",
     "p": [
@@ -1959,15 +1738,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "7",
     "n": "home||",
     "x": {
@@ -2630,10 +2400,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">--</div><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"btn\" data-avc-text-src=\"[&quot;label&quot;]\" aria-label=\"Press\" data-element-type=\"button\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Press</button></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "home||",
     "b": "h1:text",
@@ -2655,11 +2421,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "3",
     "n": "home||",
     "v": "font-size: 14px; --panel-vmin: 3px;",
@@ -2681,12 +2442,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "4",
     "n": "home||",
     "v": "font-size: 14px; --panel-vmin: 2px;",
@@ -2729,13 +2484,6 @@
    {
     "op": "builder",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-avc-text-src=\"[&quot;text&quot;]\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">d1</div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "5",
     "n": "dlg||",
     "b": "",
@@ -2951,10 +2699,6 @@
    },
    {
     "op": "viewport",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "home||",
     "p": [
@@ -3714,10 +3458,6 @@
    },
    {
     "op": "render",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "home||",
     "p": [
@@ -4340,10 +4080,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "home||",
     "v": "font-size: 14px; --panel-vmin: 8px;",
@@ -4365,11 +4101,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "3",
     "n": "home||",
     "v": "font-size: 14px;",
@@ -4391,12 +4122,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "4",
     "n": "home||",
     "v": "font-size: 14px; --panel-vmin: 8px;",
@@ -4418,13 +4143,6 @@
    },
    {
     "op": "builder",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "5",
     "n": "home||",
     "v": "font-size: 14px;",

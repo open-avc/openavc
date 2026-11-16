@@ -1704,10 +1704,6 @@
    {
     "op": "nav",
     "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-page-snap-overlay\" style=\"position: absolute; inset: 0; pointer-events: none; z-index: 0; background-image: linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px); background-size: 8.333333333333334% 12.5%;\"></div><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">--</div></div></div>",
-    "o": [
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>",
-     "<div style=\"position: fixed; padding: 2px 6px; font-size: 10px; font-weight: 600; background: rgba(0, 0, 0, 0.8); color: rgb(255, 255, 255); border-radius: 3px; pointer-events: none; z-index: 9999; display: none; white-space: nowrap;\"></div>"
-    ],
     "f": "2",
     "n": "main||home",
     "b": "m1:text"

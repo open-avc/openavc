@@ -3106,8 +3106,6 @@
         "n": 3,
         "t": 2,
         "tips": [
-          "|none||",
-          "Status LED|none|0px|-22px",
           "|none||"
         ],
         "o": {},
@@ -3133,8 +3131,6 @@
         "n": 3,
         "t": 2,
         "tips": [
-          "|none||",
-          "Status LED|none|0px|-22px",
           "Button|block|0px|-22px"
         ],
         "o": {
@@ -3159,11 +3155,7 @@
         "nb": 0,
         "n": 4,
         "t": 2,
-        "tips": [
-          "|none||",
-          "Status LED|none|0px|-22px",
-          "Button|block|0px|-22px"
-        ],
+        "tips": [],
         "o": {},
         "m": []
       },
@@ -3184,11 +3176,7 @@
         "nb": 0,
         "n": 4,
         "t": 2,
-        "tips": [
-          "|none||",
-          "Status LED|none|0px|-22px",
-          "Button|block|0px|-22px"
-        ],
+        "tips": [],
         "o": {},
         "m": []
       }

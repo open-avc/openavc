@@ -389,6 +389,8 @@ SCENARIOS = [
     # page it asks for. Each leaving page goes when its own transition ends.
     "page_changes_inside_one_transition_leave_the_page_asked_for",
     "a_page_change_inside_a_transition_lets_each_leaving_page_go_on_its_own_time",
+    # The Theme Studio's name tag goes with the canvas draw that made it.
+    "the_design_canvas_keeps_one_name_tag_however_often_it_is_drawn",
     # Where an element goes: the arrangement for the way the glass is
     # turned, master boxes, aspect locks, containers, entry animations, the
     # coordinate space, a drag on the canvas, the vmin, the snap ruler and a

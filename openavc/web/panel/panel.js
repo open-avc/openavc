@@ -1130,7 +1130,8 @@ class PanelApp {
         // Theme Studio direct manipulation — click any element in the preview
         // to jump to its section in the editor. Hover shows an outline + type label.
         if (this.editMode) {
-            new ThemeStudioPicker(surface, (msg) => this._postToParent(msg));
+            const picker = new ThemeStudioPicker(surface, (msg) => this._postToParent(msg));
+            this._page.onEnd(() => picker.remove());
             this._reportTextDefaults();
         }
     }

@@ -9230,7 +9230,7 @@ Object.assign(tests, {
             const press = m.point('click', m.node('s1')); m.lookPicker({ dp: press.defaultPrevented, heard });
             const miss = m.point('click', m.surface()); m.lookPicker({ dp: miss.defaultPrevented, heard });
             const inside = m.point('click', inner); m.lookPicker({ dp: inside.defaultPrevented });
-            // Each draw of the canvas adds its own name tag.
+            // Each draw of the canvas takes the last draw's name tag away and adds its own.
             m.app.renderCurrentPage(); m.lookPicker();
             m.point('mousemove', m.node('b1')); m.lookPicker();
             m.app.editMode = false; m.app.renderCurrentPage(); m.lookPicker();
@@ -11362,6 +11362,11 @@ const PANEL_CHECKS = {
         const node = m.app.root.querySelector(`[data-element-id="${id}"]`);
         assert(node && node.textContent === text, `${id} shows ${node && JSON.stringify(node.textContent)}, not ${JSON.stringify(text)}`);
     },
+    // How many Theme Studio name tags the document holds.
+    nameTags: (m, want) => {
+        const n = [...document.body.children].filter((t) => t.style && t.style.zIndex === '9999' && t.style.position === 'fixed').length;
+        assert(n === want, `${n} name tags on the document, not ${want}`);
+    },
 };
 
 /** A failed check's message, else nothing: each step's `threw`. */
@@ -11410,6 +11415,16 @@ Object.assign(tests, {
                 ['wait', 100], ['check', 'rootHolds', ['p2l', 'p3l']],
                 ['wait', 200], ['check', 'rootHolds', ['p3l']],
             ],
+        });
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async the_design_canvas_keeps_one_name_tag_however_often_it_is_drawn() {
+        const steps = await driveCase({
+            ui: pinUi('canvas', NAV_PAGES()),
+            edit: true,
+            steps: [['check', 'nameTags', 1], ['render'], ['render'], ['nav', 'p2'], ['check', 'nameTags', 1]],
         });
         const failures = failedChecks(steps);
         assert(failures.length === 0, failures.join('\n'));

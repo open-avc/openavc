@@ -402,7 +402,8 @@ const PICKED_OUTLINE = '2px solid rgba(33,150,243,0.7)';
  * Theme Studio direct manipulation on the design canvas: the control under the
  * pointer is outlined and named, and a click on one tells the Builder which
  * (`openavc:theme-element-click`, through `post`) instead of reaching it. One
- * per drawn page surface, each with its own name tag in the document.
+ * per drawn page surface, each with its own name tag in the document, which
+ * `remove` takes away when that surface ends.
  */
 export class ThemeStudioPicker {
     constructor(surface, post) {
@@ -487,5 +488,10 @@ export class ThemeStudioPicker {
         if (!this._hovered) return;
         this._hovered.style.outline = '';
         this._hovered.style.outlineOffset = '';
+    }
+
+    /** The name tag goes with the canvas draw that made it (the panel calls this when its surface ends). */
+    remove() {
+        this._tag.remove();
     }
 }
