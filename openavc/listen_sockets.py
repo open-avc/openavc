@@ -39,11 +39,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import errno
+import functools
 import os
 import socket
 import time
 from typing import Any
 
+from openavc import runtime_flags
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -221,6 +223,24 @@ def quiet_server(server: Any) -> Any:
     stop through ``_serve_until_first_exit`` when the main one does."""
     server.capture_signals = _no_signals
     return server
+
+
+def hears_the_stop(server: Any) -> Any:
+    """The main server notes a stop the moment it hears the signal.
+
+    It is the one server that installs the signal handlers (the others are
+    ``quiet_server``), so it hears a stop first. uvicorn then drains the open
+    connections before the lifespan reaches ``Engine.stop()``;
+    ``runtime_flags.stopping`` is set before any of that, so whatever decides
+    something on the way down knows the server is going (``Engine.stopping``).
+    """
+    server.handle_exit = functools.partial(_note_the_stop, server.handle_exit)
+    return server
+
+
+def _note_the_stop(uvicorn_handles: Any, sig: int, frame: Any) -> None:
+    runtime_flags.stopping = True
+    uvicorn_handles(sig, frame)
 
 
 class PushListeners:

@@ -191,7 +191,6 @@ class Engine(
         # time after boot, sometimes days away, and uptime would jump with it.
         self._start_time: float = 0
         self._running = False
-        self._stopping = False  # stop() begun; read through Engine.stopping
 
         # Periodic backup
         self._periodic_backup_task: asyncio.Task | None = None

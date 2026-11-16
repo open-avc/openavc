@@ -223,6 +223,8 @@ class EngineLifecycleMixin:
     and the background loops.
     """
 
+    _stopping = False  # stop() has begun; read through ``stopping``
+
     @property
     def stopping(self) -> bool:
         """True once the server is on its way down: a stop signal heard
