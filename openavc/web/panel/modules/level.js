@@ -28,6 +28,7 @@
  * panel.js.
  */
 
+import { boundedNumber } from './project_values.js';
 import { numberToShow } from './readings.js';
 
 const DEFAULT_DB_RANGE = 60;
@@ -123,6 +124,8 @@ function unknownText(unit) {
 /**
  * What a slider and a fader both read off their definition. `defaults` are
  * the two each assumes for itself: readout `decimals` and the send `rateMs`.
+ * Asked-for decimals are held to the project schema's bound
+ * (modules/project_values.js), which a gauge and a label read too.
  */
 function levelSettings(element, defaults) {
     return {
@@ -130,7 +133,7 @@ function levelSettings(element, defaults) {
         unit: element.unit || '',
         response: element.response || 'linear',
         dbRange: element.response_db_range != null ? Number(element.response_db_range) : DEFAULT_DB_RANGE,
-        decimals: element.display_decimals != null ? Number(element.display_decimals) : defaults.decimals,
+        decimals: boundedNumber('UIElement', 'display_decimals', element.display_decimals) ?? defaults.decimals,
         sendOnRelease: element.send_on_release === true,
         rateMs: element.send_throttle_ms != null ? Number(element.send_throttle_ms) : defaults.rateMs,
         outputMin: element.output_min,

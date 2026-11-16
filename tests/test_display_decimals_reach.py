@@ -29,6 +29,7 @@ OPENAVC_ROOT = Path(__file__).resolve().parents[1]
 PANEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "panel.js"
 GAUGE_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "modules" / "gauge.js"
 LABEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "modules" / "label.js"
+LEVEL_JS = OPENAVC_ROOT / "openavc" / "web" / "panel" / "modules" / "level.js"
 PROJECT_LOADER = OPENAVC_ROOT / "openavc" / "core" / "project_loader.py"
 TYPES_TS = OPENAVC_ROOT / "openavc" / "web" / "programmer" / "src" / "api" / "types.ts"
 PROPERTY_SECTIONS = (
@@ -105,11 +106,21 @@ def test_panel_gauge_readout_is_not_hardcoded_to_one_decimal() -> None:
 
 
 def test_decimals_are_clamped_before_tofixed() -> None:
-    """`toFixed` throws a RangeError outside 0..100, mid-render, on a live panel."""
-    src = _read(PANEL_JS)
-    assert "_displayDecimals(elementDef)" in src
-    assert "Math.max(0, Math.min(20, Math.round(n)))" in src, (
-        "a stray project value must be clamped, not passed to toFixed raw"
+    """`toFixed` throws a RangeError outside 0..100, mid-render, on a live panel.
+
+    Every renderer that draws a number reads the field through the schema's
+    bound (modules/project_values.js), never raw: the gauge and the label
+    through `_displayDecimals`, the slider and the fader in level.js. What the
+    bound draws is proved by execution in tests/fixtures/panel_harness.cjs.
+    """
+    through_the_bound = "boundedNumber('UIElement', 'display_decimals', "
+    panel = _read(PANEL_JS)
+    assert "_displayDecimals(elementDef)" in panel
+    assert through_the_bound + "elementDef?.display_decimals)" in panel, (
+        "the gauge's and label's decimals must be held to the schema's bound, not passed to toFixed raw"
+    )
+    assert through_the_bound + "element.display_decimals)" in _read(LEVEL_JS), (
+        "the slider's and fader's decimals must be held to the schema's bound, not passed to toFixed raw"
     )
 
 

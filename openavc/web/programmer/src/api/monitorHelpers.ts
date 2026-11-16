@@ -16,6 +16,7 @@
  *   - A boolean never renders as `true` / `false`.
  */
 
+import { PROJECT_VALUES } from "./projectValues.gen";
 import type { MonitorConfig, MonitorStateEntry } from "./types";
 import { NO, YES } from "../components/shared/booleanWords";
 
@@ -145,10 +146,10 @@ export function monitorLabel(monitor: MonitorConfig): string {
 }
 
 /** The clamp on a declared decimal place count: the project schema's bound on
- *  a monitor's `display_decimals` (core/project_loader.py). `toFixed` throws a
- *  RangeError outside 0..100, and a stray value must not take a tile down
- *  mid-render. */
-const MAX_DECIMALS = 20;
+ *  a monitor's `display_decimals`, from its generated table
+ *  (core/project_loader.py). `toFixed` throws a RangeError outside 0..100,
+ *  and a stray value must not take a tile down mid-render. */
+const DECIMALS = PROJECT_VALUES.MonitorConfig.display_decimals;
 
 /** Above this `toFixed` returns exponential notation; past it both sides print
  *  the number as it reads, so they cannot disagree. */
@@ -161,7 +162,7 @@ export function displayDecimals(monitor: MonitorConfig): number | null {
   if (raw === undefined || raw === null || typeof raw === "boolean") return null;
   const n = Number(raw);
   if (!Number.isFinite(n)) return null;
-  return Math.max(0, Math.min(MAX_DECIMALS, Math.trunc(n)));
+  return Math.max(DECIMALS.min, Math.min(DECIMALS.max, Math.trunc(n)));
 }
 
 /** Value plus unit, as a tile shows it. "—" when nothing has reported —

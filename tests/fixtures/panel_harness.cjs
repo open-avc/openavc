@@ -1806,6 +1806,23 @@ const tests = {
         assert(app._displayDecimals({}) === null, 'absent reads as unset');
     },
 
+    // A slider's or fader's readout decimals are held to the project schema's
+    // bound, as a gauge's and a label's are: past 100, toFixed throws, and a
+    // throw while the page draws leaves the page half drawn.
+    level_decimals_are_held_to_the_schema_bound() {
+        for (const [type, readout] of [['slider', '.slider-value'], ['fader', '.fader-value']]) {
+            for (const [asked, places] of [[101, 20], [25, 20], [-3, 0], [3, 3]]) {
+                const app = mkApp();
+                app.state = { 'device.d.connected': true, [LEVEL_KEY]: 40 };
+                const def = levelDef(type)(`${type}_${asked}`, { display_decimals: asked, style: { show_value: true } });
+                const { node } = drawnLevel(app, def);
+                const shown = node.querySelector(readout).textContent;
+                const want = places > 0 ? (40).toFixed(places) : '40';
+                assert(shown === want, `${type} at ${asked} decimals shows ${JSON.stringify(shown)}, want ${want}`);
+            }
+        }
+    },
+
     // the reconnect backoff cap field is wired up.
     l004_max_reconnect_delay() {
         assert(mkApp().maxReconnectDelay === 30000, 'maxReconnectDelay is 30000');

@@ -15,6 +15,7 @@ import {
     clearMatrixOverlays, createMatrix, endMatrixGestures,
 } from './modules/matrix.js';
 import { FaderControl, SliderControl, endFaderDrags } from './modules/level.js';
+import { boundedNumber } from './modules/project_values.js';
 import {
     FrameStatusWatch, drawFrame, fetchExtToken, framePlaceholder, loadPanelElementExtensions,
     pushToFrames, releaseFrames, releaseFramesIn,
@@ -1966,16 +1967,12 @@ class PanelApp {
 
     // The fixed decimal count an element asked for in its readout, or null when
     // the author said nothing (each element type decides its own default from
-    // that). Clamped to the project schema's bound on display_decimals
-    // (core/project_loader.py): a Builder draft reaches the panel without the
-    // loader, and toFixed throws past 100, so a stray value can't throw
-    // part-way through a render pass and leave the page half drawn.
+    // that). Held to the project schema's bound on display_decimals through
+    // its table (modules/project_values.js): a Builder draft reaches the panel
+    // without the loader, and toFixed throws past 100, so a stray value can't
+    // throw part-way through a render pass and leave the page half drawn.
     _displayDecimals(elementDef) {
-        const raw = elementDef?.display_decimals;
-        if (raw == null) return null;
-        const n = Number(raw);
-        if (!Number.isFinite(n)) return null;
-        return Math.max(0, Math.min(20, Math.round(n)));
+        return boundedNumber('UIElement', 'display_decimals', elementDef?.display_decimals);
     }
 
     evaluateFaderValue(b) {
