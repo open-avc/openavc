@@ -68,7 +68,7 @@ def test_localhost_passes_both_families_and_retains_both_parent_sockets(monkeypa
 
         monkeypatch.setattr(main, "_run_tls", asynchronous)
         monkeypatch.setattr(main, "_run_http", asynchronous)
-        monkeypatch.setattr(main.uvicorn, "Server", lambda config: SimpleNamespace(run=plain))
+        monkeypatch.setattr(main.uvicorn.Server, "run", lambda server, *, sockets: plain(sockets=sockets))
         main.main()
         assert actual == [parent.getsockname() for parent in parents]
         for parent in parents:
@@ -91,7 +91,7 @@ def test_equivalent_ipv6_spelling_matches_bound_socket(monkeypatch):
         monkeypatch.setattr(main.status_folder, "write_server_address", lambda: None)
         monkeypatch.setattr(main.status_folder, "clear_startup_error", lambda: None)
         actual = []
-        monkeypatch.setattr(main.uvicorn, "Server", lambda config: SimpleNamespace(run=lambda **kwargs: actual.extend(kwargs["sockets"])))
+        monkeypatch.setattr(main.uvicorn.Server, "run", lambda server, *, sockets: actual.extend(sockets))
         main.main()
         assert len(actual) == 1 and actual[0].fileno() == -1
 

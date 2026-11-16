@@ -50,7 +50,7 @@ def test_valid_listener_uses_normal_startup_and_preserves_parent_copy(monkeypatc
 
         monkeypatch.setattr(main, "_run_tls", tls)
         monkeypatch.setattr(main, "_run_http", http)
-        monkeypatch.setattr(main.uvicorn, "Server", lambda config: SimpleNamespace(run=plain))
+        monkeypatch.setattr(main.uvicorn.Server, "run", lambda server, *, sockets: plain(sockets=sockets))
         main.main()
         assert routes == [(mode, parent.getsockname())]
         addresses.assert_called_once_with()
