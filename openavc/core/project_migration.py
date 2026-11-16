@@ -15,13 +15,13 @@ numbers and type lists rather than reading today's renderer or page review
 written with: two walks, one per rule, so editing either changes old steps.
 The 0.8.0 grid-to-percent layout conversion is ``core/layout_migration.py``,
 the 0.17.0 step's repair of saved boxes ``core/box_migration.py``, and its
-repair of a trigger's saved times in seconds ``core/seconds_migration.py``.
+repair of the other numbers it bounds ``core/bound_migration.py``.
 """
 
 from typing import NamedTuple
 
+from openavc.core.bound_migration import repair_bounds_0_17
 from openavc.core.box_migration import repair_boxes_0_17
-from openavc.core.seconds_migration import repair_seconds_0_17
 from openavc.core.layout_migration import convert_grid_layout
 
 # Connection-related config fields that belong in the connections table. The
@@ -749,35 +749,6 @@ def migrate_0_15_to_0_16(data: dict) -> dict:
     return data
 
 
-# The bounds the schema took at 0.17.0, as they stood then. Written out rather
-# than read from the project models, for the reason the 0.15.0 table gives.
-_DECIMALS_0_17 = (0, 20)
-_PANEL_SETTINGS_0_17 = {
-    "page_transition_duration": (50, 1000),
-    "element_stagger_ms": (10, 200),
-    "idle_timeout_seconds": (0, 86400),
-}
-# The panel drew a 0 in these as its default (200 and 30 ms).
-_ZERO_IS_DEFAULT_0_17 = ("page_transition_duration", "element_stagger_ms")
-
-
-def _whole_number_0_17(value) -> int | None:
-    """A count as a release could have saved it: a whole number, which the
-    schema has always taken (a float with no fraction included). Anything else
-    the schema refused before this step and still does, so it is left alone."""
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    return value if isinstance(value, int) and not isinstance(value, bool) else None
-
-
-def _clamp_0_17(holder: dict, field: str, bounds: tuple[int, int]) -> None:
-    value = _whole_number_0_17(holder.get(field))
-    if value == 0 and field in _ZERO_IS_DEFAULT_0_17:
-        holder.pop(field)
-    elif value is not None:
-        holder[field] = max(bounds[0], min(bounds[1], value))
-
-
 def migrate_0_16_to_0_17(data: dict) -> dict:
     """
     Migrate from 0.16.0 to 0.17.0 -- a saved value the schema now bounds is
@@ -822,19 +793,15 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
     engines waited no time for a negative one, as for 0. One that is no
     finite number is removed, so it loads as 0, which is how the engines read
     a NaN; an infinite one held its trigger back for good, so that trigger is
-    also turned off (`core/seconds_migration.py`).
+    also turned off.
+
+    The bounds are the step's own, as they stood at 0.17.0: the numbers in
+    `core/bound_migration.py` and the boxes in `core/box_migration.py`.
     """
-    monitors = data.get("monitors") if isinstance(data.get("monitors"), list) else []
-    for holder in _elements(data) + [m for m in monitors if isinstance(m, dict)]:
-        _clamp_0_17(holder, "display_decimals", _DECIMALS_0_17)
+    repair_bounds_0_17(data, _elements(data))
     ui = data.get("ui")
-    settings = ui.get("settings") if isinstance(ui, dict) else None
-    if isinstance(settings, dict):
-        for field, bounds in _PANEL_SETTINGS_0_17.items():
-            _clamp_0_17(settings, field, bounds)
     if isinstance(ui, dict):
         repair_boxes_0_17(ui)
-    repair_seconds_0_17(data)
 
     data["openavc_version"] = "0.17.0"
     return data

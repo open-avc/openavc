@@ -34,7 +34,7 @@ def number_0_17(value) -> float | None:
     """A measurement as the schema read it before this step: a number, true
     or false, or text that reads as one ("NaN" and "1e999" included). None for
     anything it refused, which it still does. The step's repair of a
-    trigger's times reads them the same way (``core/seconds_migration.py``)."""
+    trigger's times reads them the same way (``core/bound_migration.py``)."""
     if isinstance(value, bool | int | float):
         return float(value)
     if isinstance(value, str):
