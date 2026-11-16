@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, screen, fireEvent, within } from "@testing-library/react";
+import { act, screen, fireEvent, waitFor, within } from "@testing-library/react";
 
 // The UI Builder page around the canvas: the save banner, the buttons at the
 // end of the toolbar, Panel Settings, Validate's report, what preview hides,
@@ -22,6 +22,7 @@ vi.mock("../components/ui-builder/StylesheetEditor", async () => (await import("
 
 import { UIBuilderView } from "./UIBuilderView";
 import { useProjectStore } from "../store/projectStore";
+import { useUIBuilderStore } from "../store/uiBuilderStore";
 import {
   builder,
   commands,
@@ -239,6 +240,22 @@ describe("Validate", () => {
     expect(builder().selectedPageId).toBe("other");
     expect(builder().selectedElementId).toBe("btn_9");
     expect(screen.queryByText(/Project Validation/)).toBeNull();
+  });
+
+  it("hands its button the number of issues the report lists, once edits rest", async () => {
+    await renderPage(UIBuilderView);
+    expect(seen.CanvasToolbar.issueCount).toBeNull();
+    await waitFor(() => expect(seen.CanvasToolbar.issueCount).toBeGreaterThan(3), { timeout: 3000 });
+    const counted = seen.CanvasToolbar.issueCount;
+    await act(async () => { await seen.CanvasToolbar.onValidate(); });
+    expect(screen.getByText(`Project Validation (${counted} issues)`)).toBeInTheDocument();
+  });
+
+  it("opens its report when another screen asked for it, once", async () => {
+    seed(makeProject(), { validateRequested: true });
+    await renderPage(UIBuilderView);
+    await waitFor(() => expect(screen.getByText(/^Project Validation \(\d+ issues\)$/)).toBeInTheDocument());
+    expect(useUIBuilderStore.getState().validateRequested).toBe(false);
   });
 
   it("asks the platform about each chosen command's parameters", async () => {

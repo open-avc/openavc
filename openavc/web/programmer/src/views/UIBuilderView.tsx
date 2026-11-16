@@ -10,7 +10,7 @@ import { useBuilderShortcuts } from "./ui-builder/builderShortcuts";
 import { useElementEdits } from "./ui-builder/useElementEdits";
 import { usePaletteDrop } from "./ui-builder/usePaletteDrop";
 import { PaletteDragOverlay } from "./ui-builder/PaletteDragGhost";
-import { useValidation } from "./ui-builder/ValidationReport";
+import { useRequestedValidate, useValidation } from "./ui-builder/ValidationReport";
 import { BuilderDialogs, themeListChange, useBuilderDialogs } from "./ui-builder/BuilderDialogs";
 import { BuilderContextMenu } from "./ui-builder/BuilderContextMenu";
 import { ToolbarActions } from "./ui-builder/ToolbarActions";
@@ -44,6 +44,7 @@ export function UIBuilderView() {
   const [leftTab, setLeftTab] = useState<SidebarTab>("elements");
   const dialogs = useBuilderDialogs();
   const validation = useValidation(project);
+  useRequestedValidate(project, validation.run);
   const theme = useBuilderTheme(projectThemeId(project?.ui?.settings));
 
   useFlushBeforeUnload();
@@ -92,6 +93,7 @@ export function UIBuilderView() {
             pages={pages}
             selectedPageId={currentPage?.id || null}
             onValidate={validation.run}
+            issueCount={validation.count}
             trailing={
               parts.dialogButtons ? (
                 <ToolbarActions

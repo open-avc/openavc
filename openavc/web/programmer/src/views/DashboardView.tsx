@@ -22,6 +22,7 @@ import * as api from "../api/restClient";
 import type { CloudStatus, PanelDevice, TlsStatus } from "../api/restClient";
 import { panelAccess } from "./panelAccessUrls";
 import { recoveryNotice, type RecoveryNotice as RecoveryNoticeCopy } from "./recoveryNotice";
+import { UpdateNotice } from "./UpdateNotice";
 import type { MonitorConfig } from "../api/types";
 import {
   ABNORMAL, NORMAL, monitorLabel, monitorReading, monitorStatus,
@@ -1062,6 +1063,8 @@ export function DashboardView() {
               underneath may be describing older settings than the ones whoever
               is reading this last saved. */}
           {recovery.show && <RecoveryNotice notice={recovery} />}
+          {/* What loading this project changed in it, after an update. */}
+          <UpdateNotice />
 
           {/* Summary row */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "var(--space-md)", marginBottom: "var(--space-xl)" }}>

@@ -72,11 +72,14 @@ import {
   type Orientation,
   type PageSelection,
 } from "./uiBuilderHelpers";
+import { ValidateButton } from "./ValidateButton";
 
 interface CanvasToolbarProps {
   pages: UIPage[];
   selectedPageId: string | null;
   onValidate?: () => void;
+  /** Issues Validate would list now, for its button; null until known. */
+  issueCount?: number | null;
   /** View-owned buttons (Theme, Settings, shortcuts) docked at the right end
    *  of the pages row, so the whole strip is two fixed rows and nothing else. */
   trailing?: React.ReactNode;
@@ -151,7 +154,7 @@ function settingsWithoutPage(ui: UIConfig, pageId: string, pagesLeft: UIPage[]):
   return { ...ui.settings, idle_page: pagesLeft[0]?.id || "" };
 }
 
-export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: CanvasToolbarProps) {
+export function CanvasToolbar({ pages, selectedPageId, onValidate, issueCount = null, trailing }: CanvasToolbarProps) {
   const selectPage = useUIBuilderStore((s) => s.selectPage);
   const previewMode = useUIBuilderStore((s) => s.previewMode);
   const setPreviewMode = useUIBuilderStore((s) => s.setPreviewMode);
@@ -1171,23 +1174,7 @@ export function CanvasToolbar({ pages, selectedPageId, onValidate, trailing }: C
         </div>
 
         {/* Validate project */}
-        {!previewMode && onValidate && (
-          <button
-            onClick={onValidate}
-            style={{
-              display: "flex", alignItems: "center", gap: 4,
-              padding: "3px 10px", borderRadius: "var(--border-radius)",
-              background: "transparent", border: "1px solid var(--border-color)",
-              color: "var(--text-secondary)", fontSize: "var(--font-size-sm)",
-              cursor: "pointer", flexShrink: 0,
-            }}
-            title="Validate project for broken references"
-            onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-          >
-            <Check size={12} /> Validate
-          </button>
-        )}
+        {!previewMode && onValidate && <ValidateButton onValidate={onValidate} issueCount={issueCount} />}
 
         {/* Zoom */}
         <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>

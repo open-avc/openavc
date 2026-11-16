@@ -62,6 +62,7 @@ The Dashboard is the landing page of the Programmer IDE, giving you a system sta
 - **ISC status**: if Inter-System Communication is enabled, shows connected peer instances
 - **Recent activity**: a feed of recent system log entries so you can spot errors or confirm actions without switching to the Log view
 - **Update notification**: when a new version of OpenAVC is available, a card appears with a link to the Updates view
+- **Project updated**: when loading a project saved by an earlier release changed a setting to one this release takes, a notice lists each change and where it is. Click a change to go to its control, or **Open Validate** to see every issue left in the project. The notice stays through restarts until you dismiss it. See [System Updates](updates.md#what-gets-updated)
 - **Getting Started guide**: when the project is empty, the Dashboard shows a quick-start guide to help you begin
 
 ## Program

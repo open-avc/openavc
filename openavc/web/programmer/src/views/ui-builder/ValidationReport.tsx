@@ -8,32 +8,40 @@
  * is derived from the project in hand, so a request that fails still leaves a
  * full report; it just cannot speak to that one thing.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ProjectConfig } from "../../api/types";
-import { commandIssues } from "../../api/commandIssues";
-import {
-  projectCommandActions,
-  validateProject,
-  type ValidationIssue,
-} from "../../components/ui-builder/uiBuilderHelpers";
+import type { ValidationIssue } from "../../components/ui-builder/uiBuilderHelpers";
 import { Modal } from "../../components/shared/Modal";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
+import { projectIssues, useProjectIssues } from "./projectIssues";
 
 /** How a row is marked: its tag, the tag's colour, the row's fill and edge. */
 const ERROR_LOOK = { tag: "ERR", colour: "var(--color-error)", fill: "rgba(244,67,54,0.08)", edge: "rgba(244,67,54,0.2)" };
 const WARNING_LOOK = { tag: "WARN", colour: "#ff9800", fill: "rgba(255,152,0,0.08)", edge: "rgba(255,152,0,0.2)" };
 
 /** The report Validate last made (null while none is open), the run that
- *  makes one, and closing it. */
+ *  makes one, closing it, and how many issues the project holds as it stands
+ *  (null until first worked out), which the toolbar's button shows. */
 export function useValidation(project: ProjectConfig | null) {
   const [issues, setIssues] = useState<ValidationIssue[] | null>(null);
+  const live = useProjectIssues(project);
   const run = useCallback(async () => {
     if (!project) return;
-    const found = await commandIssues(projectCommandActions(project));
-    setIssues(validateProject(project, found));
+    setIssues(await projectIssues(project, true));
   }, [project]);
   const close = useCallback(() => setIssues(null), []);
-  return { issues, run, close };
+  return { issues, run, close, count: live?.length ?? null };
+}
+
+/** Open the report when another screen asked for it (the Dashboard's update
+ *  notice), once the project is here to validate. */
+export function useRequestedValidate(project: ProjectConfig | null, run: () => Promise<void>) {
+  const requested = useUIBuilderStore((s) => s.validateRequested);
+  useEffect(() => {
+    if (!requested || !project) return;
+    useUIBuilderStore.getState().requestValidate(false);
+    void run();
+  }, [requested, project, run]);
 }
 
 /** The count in the heading, after "Project Validation". */

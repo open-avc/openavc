@@ -77,8 +77,12 @@ interface UIBuilderStore {
   /** Elements drawing words an author cannot edit in place, and the sentence
    *  saying why. Only the cases worth explaining are listed. */
   textRefusals: Record<string, string>;
+  /** Another screen asked for Validate's report (the update notice's
+   *  button); the Builder opens it on arriving and clears this. */
+  validateRequested: boolean;
 
   selectPage: (id: string | null) => void;
+  requestValidate: (requested: boolean) => void;
   selectLayout: (layoutId: string | null) => void;
   selectElement: (id: string | null) => void;
   selectElements: (ids: string[]) => void;
@@ -153,6 +157,9 @@ export const useUIBuilderStore = create<UIBuilderStore>((set, get) => ({
   textDefaultsRem: {},
   editableTextIds: new Set<string>(),
   textRefusals: {},
+  validateRequested: false,
+
+  requestValidate: (validateRequested) => set({ validateRequested }),
 
   // Switching pages drops back to the primary layout: a layout id belongs to
   // one page, so carrying it across would point at nothing.

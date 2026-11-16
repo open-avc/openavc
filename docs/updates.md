@@ -49,12 +49,14 @@ After the third attempt nothing tries again on its own. The Updates view keeps s
 
 ## What Gets Updated
 
-Only the application code is updated. Your data is never touched:
+Only the application code is updated. Your data is kept:
 
 - Projects and scripts are preserved
 - Installed drivers are preserved, at the versions you installed. They do not update with OpenAVC: after an update, open **Devices > Drivers > Installed** and click **Update to v&lt;version&gt;** on each driver that shows it. A device's page shows the same update under its driver name ([Updating Drivers](devices-and-drivers.md#updating-drivers)).
 - System configuration (system.json) is preserved
 - Cloud pairing credentials are preserved
+
+A project saved by an earlier release is brought up to date the first time it loads. A setting that holds a value this release does not take, such as Shown Decimals above 20 or a trigger Delay that never ends, is changed to the nearest value that works. The Dashboard then lists each change and where it is, with **Open Validate** to review anything left for you to fix, until you dismiss it. Importing or opening a project saved by an earlier release does the same.
 
 A backup zip is created before every update, stored in your data directory under `backups/`. It includes the active project and its scripts, assets, custom controls and saved variable state, including on appliance hardware. The five most recent backups are kept automatically. On Linux and macOS the folder and each backup in it are readable only by the account the service runs as, so open one with `sudo` there.
 

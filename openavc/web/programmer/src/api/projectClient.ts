@@ -177,6 +177,28 @@ export async function dismissRecoveryNotice(): Promise<{ status: string; cleared
   return request("/project/recovery/dismiss", { method: "POST" });
 }
 
+/** One thing loading the running project changed in it, or found and left
+ *  for Validate, when an earlier release saved it. `location` is in the words
+ *  Validate's report uses. */
+export interface UpdateNote {
+  kind: "changed" | "found";
+  message: string;
+  location: string;
+  page_id: string;
+  element_id: string;
+}
+
+/** What loading the running project changed in it; `notes` is empty when
+ *  there is nothing to say. */
+export async function getUpdateNotice(): Promise<{ at: string; notes: UpdateNote[] }> {
+  return request("/project/update-notice");
+}
+
+/** Clear that notice. It stays through restarts until this is called. */
+export async function dismissUpdateNotice(): Promise<{ status: string; cleared: boolean }> {
+  return request("/project/update-notice/dismiss", { method: "POST" });
+}
+
 // --- Backups ---
 
 export interface BackupInfo {
