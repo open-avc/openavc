@@ -61,3 +61,18 @@ describe("reloadedMessage", () => {
     });
   });
 });
+
+describe("the toasts", () => {
+  it("warns, and keeps the warning, when a save or reload has problems to fix", async () => {
+    const { useToastStore } = await import("../../store/toastStore");
+    const { announceKept, announceReloaded } = await import("./driverProblems");
+    useToastStore.setState({ toasts: [] });
+    announceKept({ status: "saved", issues: [RELAY] });
+    announceReloaded(0, [RELAY]);
+    announceKept({ status: "saved", syntax_error: "SyntaxError: x", line: 4 });
+    announceReloaded(0, []);
+    expect(useToastStore.getState().toasts.map((t) => t.severity)).toEqual([
+      "warning", "warning", "error", "success",
+    ]);
+  });
+});

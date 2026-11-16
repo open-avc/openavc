@@ -12,7 +12,8 @@ describe("a driver that loaded with mistakes in its file", () => {
       ]),
     ).toBe(
       'Imported driver "acme_widget", connected 1 waiting device(s). Its file has mistakes the ' +
-        "Driver Builder would not save; fix them in the file: on_connect: must be a list; write a " +
+        "Driver Builder and Code view would not save; fix them in the file: on_connect: must be a " +
+        "list; write a " +
         "single entry as a one-item list; version: must be a string; put it in quotes",
     );
   });

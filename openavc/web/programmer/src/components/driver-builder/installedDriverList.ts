@@ -42,14 +42,14 @@ export function listedDrivers(
 /** What a driver page says above the mistakes in a file that loaded anyway. */
 export const LOADED_WITH_NOTICES_TEXT =
   "This driver loaded and devices can use it, but its file has mistakes the Driver Builder " +
-  "would not save. Fix them in the file, or send them to whoever wrote the driver:";
+  "and Code view would not save. Fix them in the file, or send them to whoever wrote the driver:";
 
 /** What an import says when the driver went in with mistakes in its file
  *  (``extra`` is what else it did, such as connecting waiting devices). */
 export function importedWithNotices(driverId: string, extra: string, notices: string[]): string {
   return (
     `Imported driver "${driverId}"${extra}. Its file has mistakes the Driver Builder ` +
-    `would not save; fix them in the file: ${notices.join("; ")}`
+    `and Code view would not save; fix them in the file: ${notices.join("; ")}`
   );
 }
 

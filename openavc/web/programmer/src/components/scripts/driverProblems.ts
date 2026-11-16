@@ -4,6 +4,7 @@
  * (the rules `python -m openavc.drivers.check` holds it to).
  */
 import type { SaveDriverSourceResult } from "../../api/driverClient";
+import { showError, showLastingWarning, showSuccess } from "../../store/toastStore";
 
 /** The driver check's problems: how many, then each on its own line. */
 export function problemsToFix(issues: string[]): string {
@@ -37,4 +38,18 @@ export function reloadedMessage(
     : "Driver reloaded";
   if (!notices?.length) return { text: reloaded, problems: false };
   return { text: `${reloaded}.\n${problemsToFix(notices)}`, problems: true };
+}
+
+/** Say what a plain Save kept: an error for a file that will not load, a
+ *  lasting warning listing what the driver check found, else nothing. */
+export function announceKept(res: SaveDriverSourceResult): void {
+  const kept = keptMessage(res);
+  if (kept) (res.syntax_error ? showError : showLastingWarning)(kept);
+}
+
+/** Say a reload loaded the driver: a passing success, or a lasting warning
+ *  listing what the driver check found in it. */
+export function announceReloaded(devicesReconnected: number, notices: string[] | undefined): void {
+  const reloaded = reloadedMessage(devicesReconnected, notices);
+  (reloaded.problems ? showLastingWarning : showSuccess)(reloaded.text);
 }

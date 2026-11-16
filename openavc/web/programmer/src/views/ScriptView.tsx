@@ -10,7 +10,7 @@ import { CreateDriverDialog } from "../components/scripts/CreateDriverDialog";
 import { SCRIPT_TEMPLATES } from "../components/scripts/scriptTemplates";
 import { DRIVER_TEMPLATES } from "../components/scripts/driverTemplates";
 import { CustomUiEditor } from "../components/scripts/CustomUiEditor";
-import { keptMessage, refusedMessage, reloadedMessage } from "../components/scripts/driverProblems";
+import { announceKept, announceReloaded, refusedMessage } from "../components/scripts/driverProblems";
 import { isEditableUiPath, starterUiContent } from "../components/scripts/customUiFiles";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
@@ -344,8 +344,7 @@ export function ScriptView() {
         // working, so nothing else would tell you until a restart dropped it
         // and took its devices offline.
         const res = await api.savePythonDriverSource(selectedId, source);
-        const kept = keptMessage(res);
-        if (kept) showError(kept);
+        announceKept(res);
         setDriverReloadErrors(
           res.syntax_error && res.line ? [{ line: res.line, message: res.syntax_error }] : []
         );
@@ -486,8 +485,7 @@ export function ScriptView() {
       } else {
         setDriverReloadErrors([]);
         const devCount = result.devices_reconnected?.length ?? 0;
-        const reloaded = reloadedMessage(devCount, result.notices);
-        (reloaded.problems ? showError : showSuccess)(reloaded.text);
+        announceReloaded(devCount, result.notices);
         useLogStore.getState().addLogEntry({
           timestamp: Date.now() / 1000,
           level: "INFO",

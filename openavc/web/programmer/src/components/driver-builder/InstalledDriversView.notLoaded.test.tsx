@@ -158,7 +158,8 @@ describe("Installed Drivers: a driver that loaded with mistakes in its file", ()
     expect(
       screen.getByText(
         "This driver loaded and devices can use it, but its file has mistakes the Driver Builder " +
-          "would not save. Fix them in the file, or send them to whoever wrote the driver:",
+          "and Code view would not save. Fix them in the file, or send them to whoever wrote " +
+          "the driver:",
       ),
     ).toBeTruthy();
     expect(screen.getByText("version: must be a string; put it in quotes")).toBeTruthy();
