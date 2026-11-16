@@ -499,6 +499,21 @@ def test_a_row_secret_is_warned_about_and_still_loads(loader, caplog):
     ]
 
 
+def test_a_refused_plugin_is_not_also_warned_about_its_row_secrets(loader, caplog):
+    """The warning is for a plugin that will run: one refused is told its
+    refusal first."""
+    schema = {
+        "rows": {
+            "type": "mapping_list",
+            "item_schema": {"token": {"type": "string", "secret": True}},
+        },
+    }
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        valid, _ = loader.validate_manifest(_cls(CONFIG_SCHEMA=schema, EXTENSIONS=[]))
+    assert not valid
+    assert _msgs(caplog, logging.WARNING) == []
+
+
 def test_the_checks_run_in_their_order(loader):
     """Fix one problem at a time; each answer is the next check's."""
     loader._platform_id = "linux_x64"

@@ -3,10 +3,13 @@
 A plugin adds views, device panels, status cards, context actions and panel
 elements through ``EXTENSIONS``: a dict of those types (``EXTENSION_ID_FIELD``,
 which also gives each type's identifying field and the order they are served
-in), each a list of entries. Both halves of the rule are here:
+in), each a list of entries.
 
-- ``validate_extensions`` refuses a malformed declaration when the plugin
+- What a declaration must be is ``core/plugin_declarations.py``'s
+  (``extensions_problem``), which refuses a malformed one when the plugin
   starts, so a bad plugin fails to enable rather than blanking the plugin UI.
+  ``validate_extensions`` here is that rule under the loader's
+  ``(valid, error)`` signature.
 - ``collect_extensions`` builds the ``/api/plugins/extensions`` answer from the
   running plugins and checks every entry's shape again, skipping a bad one with
   a warning: one plugin's entry must never take the endpoint down for every
@@ -20,7 +23,7 @@ in), each a list of entries. Both halves of the rule are here:
 
 ``sandbox_permissions`` is that same cut-down sandbox grant, summed over a
 plugin's panel elements: what the plugin list shows as part of the trust given
-at install. openavc-plugins' ``validate.py`` repeats the type table by hand.
+at install.
 
 Logs as ``openavc.core.plugin_loader``: the Programmer's plugin page shows
 that logger's lines beside the plugin's own.
@@ -29,20 +32,14 @@ that logger's lines beside the plugin's own.
 from dataclasses import dataclass
 from typing import Any
 
+from openavc.core.plugin_declarations import (
+    EXTENSION_ID_FIELD as EXTENSION_ID_FIELD,
+    VALID_EXTENSION_TYPES as VALID_EXTENSION_TYPES,
+    extensions_problem,
+)
 from openavc.utils.logger import get_logger
 
 log = get_logger("openavc.core.plugin_loader")
-
-# Each extension type, the field that identifies an entry within it, and the
-# order the types are served in. Panel elements are keyed by their element type.
-EXTENSION_ID_FIELD = {
-    "views": "id",
-    "device_panels": "id",
-    "status_cards": "id",
-    "context_actions": "id",
-    "panel_elements": "type",
-}
-VALID_EXTENSION_TYPES = set(EXTENSION_ID_FIELD)
 
 # The iframe sandbox tokens a panel element may opt into. ``allow-scripts`` is
 # always set and not listed. Tokens that would escape the sandbox
@@ -70,33 +67,10 @@ ALLOWED_ALLOW_FEATURES = frozenset({
 def validate_extensions(
     extensions: Any, plugin_id: str, plugin_class: type
 ) -> tuple[bool, str]:
-    """Validate a plugin's EXTENSIONS declaration. Returns (valid, error_message)."""
-    if not isinstance(extensions, dict):
-        return False, "EXTENSIONS must be a dict"
-    for ext_type, ext_list in extensions.items():
-        problem = _declared_type_problem(ext_type, ext_list)
-        if problem:
-            return False, problem
-    return True, ""
-
-
-def _declared_type_problem(ext_type: Any, ext_list: Any) -> str | None:
-    if ext_type not in VALID_EXTENSION_TYPES:
-        return f"unknown extension type '{ext_type}' (allowed: {sorted(VALID_EXTENSION_TYPES)})"
-    if not isinstance(ext_list, list):
-        return f"extension type '{ext_type}' must be a list"
-    id_field = EXTENSION_ID_FIELD[ext_type]
-    seen_ids: set[str] = set()
-    for i, ext in enumerate(ext_list):
-        if not isinstance(ext, dict):
-            return f"{ext_type}[{i}] must be a dict"
-        ext_id = ext.get(id_field)
-        if not ext_id or not isinstance(ext_id, str):
-            return f"{ext_type}[{i}] missing '{id_field}' (string)"
-        if ext_id in seen_ids:
-            return f"{ext_type} has duplicate {id_field} '{ext_id}'"
-        seen_ids.add(ext_id)
-    return None
+    """Validate a plugin's EXTENSIONS declaration (the rule is
+    ``plugin_declarations.extensions_problem``). Returns (valid, error_message)."""
+    problem = extensions_problem(extensions)
+    return (False, problem) if problem else (True, "")
 
 
 @dataclass(frozen=True)

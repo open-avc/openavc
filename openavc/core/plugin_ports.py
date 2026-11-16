@@ -26,7 +26,9 @@ in ``plugin_ports.json`` or a firewall rule comment when they find a port open
 and want to know who asked for it. A port with no stated reason is one nobody
 can safely close later.
 
-This module decides WHAT is declared and writes it down. Opening the port is the
+What a valid declaration is, and the host ports none may name, is
+``core/plugin_declarations.py``'s. This module collects what the running
+plugins declare and writes it down. Opening the port is the
 platform's job and differs per OS: Linux's ``installer/firewall-sync.sh`` reads
 the file this writes, and Windows is handled by :mod:`openavc.system.firewall`.
 """
@@ -36,6 +38,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from openavc.core.plugin_declarations import network_ports_problem
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -45,54 +48,13 @@ log = get_logger(__name__)
 #: listens on" and the helper already reads the other one.
 PORTS_FILENAME = "plugin_ports.json"
 
-#: Only these. A plugin does not get to ask for a raw socket family.
-VALID_PROTOCOLS = ("tcp", "udp")
-
-#: Ports the platform itself owns or that no plugin has any business asking the
-#: firewall to open. Refused at validation so a typo cannot open SSH, and never
-#: recorded for a device's pushes either (core/push_ports.py).
-HOST_PORTS = frozenset({22, 23, 25, 135, 137, 138, 139, 445, 3389, 5900})
-
 
 def validate_declaration(entries) -> tuple[bool, str]:
-    """Check a ``network_ports`` declaration, returning (valid, error).
-
-    Strict, and refuses rather than dropping a bad entry: a plugin that asked
-    for a port and silently did not get one would fail in the field, on a
-    network we cannot see, with the symptom appearing somewhere else entirely.
-    """
-    if not isinstance(entries, (list, tuple)):
-        return False, "network_ports must be a list"
-    seen = set()
-    for entry in entries:
-        if not isinstance(entry, dict):
-            return False, f"network_ports entry must be a dict, got {type(entry).__name__}"
-        port = entry.get("port")
-        if not isinstance(port, int) or isinstance(port, bool) or not (1 <= port <= 65535):
-            return False, f"network_ports entry has an invalid port: {port!r}"
-        if port in HOST_PORTS:
-            return False, (
-                f"network_ports may not request port {port} -- it belongs to the "
-                "host, not to a plugin"
-            )
-        proto = entry.get("protocol", "tcp")
-        if proto not in VALID_PROTOCOLS:
-            return False, (
-                f"network_ports entry for port {port} has protocol {proto!r}; "
-                f"must be one of {', '.join(VALID_PROTOCOLS)}"
-            )
-        reason = entry.get("reason")
-        if not isinstance(reason, str) or not reason.strip():
-            return False, (
-                f"network_ports entry for port {port}/{proto} needs a `reason` -- "
-                "it is what an administrator reads when deciding whether the rule "
-                "may be removed"
-            )
-        key = (port, proto)
-        if key in seen:
-            return False, f"network_ports declares {port}/{proto} twice"
-        seen.add(key)
-    return True, ""
+    """Check a ``network_ports`` declaration, returning (valid, error). The rule,
+    and the ports no plugin may ask for, are
+    ``plugin_declarations.network_ports_problem``'s."""
+    problem = network_ports_problem(entries)
+    return (False, problem) if problem else (True, "")
 
 
 def declared_ports(plugin_class) -> list[dict]:

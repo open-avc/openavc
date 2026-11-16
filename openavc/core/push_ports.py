@@ -24,7 +24,7 @@ from the device's resolved config by ``drivers.base.push_port``, the same
 function the listener uses. A ``tcp_listener`` on port 0 (the operating system
 picks one each time) cannot be opened ahead of time and is left out, and so is
 a multicast block whose group does not resolve to a multicast address (no
-listener opens for it) and a port the host owns (``plugin_ports.HOST_PORTS``:
+listener opens for it) and a port the host owns (``plugin_declarations.HOST_PORTS``:
 SSH, Telnet, SMB, RDP and the like, which a mistyped field must not open). HTTP push (``http_listener``, ``sse``) reaches the main
 HTTP port, which the helper already opens.
 
@@ -40,7 +40,7 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
-from openavc.core.plugin_ports import HOST_PORTS
+from openavc.core.plugin_declarations import HOST_PORTS
 from openavc.drivers.registry import get_driver_class
 from openavc.utils.logger import get_logger
 

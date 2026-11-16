@@ -8,9 +8,10 @@ running, stopped, missing, incompatible or in error, and why.
 
 Its neighbours hold the rules it applies: core/plugin_import.py finds and
 imports a plugin's code (the startup scan and an install both use it),
-core/plugin_manifest.py says what a plugin class must declare to start, and
-core/plugin_extensions.py what its EXTENSIONS may say and what the panel and
-the IDE are served from them. This module stays the import path for the class
+core/plugin_declarations.py what makes each declaration valid,
+core/plugin_manifest.py whether an imported class may start on this machine,
+and core/plugin_extensions.py what the panel and the IDE are served from a
+plugin's EXTENSIONS. This module stays the import path for the class
 registry, ``get_platform_id`` and the declaration validators, which
 openavc-plugins and other modules import from here.
 
@@ -36,8 +37,8 @@ from openavc.core.plugin_extensions import (
     validate_extensions as validate_extensions,
 )
 from openavc.core.plugin_import import find_plugin_class, make_deps_loadable, plugin_folders
+from openavc.core.plugin_declarations import platform_supported
 from openavc.core.plugin_manifest import (
-    platform_supported,
     validate_macro_actions as validate_macro_actions,
     validate_script_api as validate_script_api,
 )

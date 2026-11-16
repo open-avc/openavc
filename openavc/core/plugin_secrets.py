@@ -24,7 +24,9 @@ Two declarations
   Each item's logins are filed under its id. ``"generated": True`` says the
   plugin makes those values itself (a key it hands out): nobody is asked for
   one, and when none is saved on this system the plugin is handed an empty
-  value and makes a new one.
+  value and makes a new one. What a valid declaration is, is
+  ``core/plugin_declarations.py``'s ``config_secrets_problem``; the loader
+  refuses to start a plugin whose declaration is malformed.
 
 Where a login sits
 ------------------
@@ -51,6 +53,8 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable
 
+from openavc.core.plugin_declarations import CONFIG_SECRETS_KEYS
+from openavc.core.plugin_declarations import config_secrets_problem as config_secrets_problem
 from openavc.drivers.spec import is_secret_setting
 from openavc.utils.logger import get_logger
 
@@ -61,7 +65,9 @@ log = get_logger(__name__)
 _MARKER = "<saved on this system>"
 
 _ITEM = re.compile(r"^(?P<list>[^\[\]]+)\[(?P<id_key>[^=\[\]]+)=(?P<id>.*)\]$")
-_LIST_DECLARATION_KEYS = frozenset({"id", "fields", "generated"})
+#: The keys a CONFIG_SECRETS entry may have, under the name openavc-plugins'
+#: tests compare its validate.py with.
+_LIST_DECLARATION_KEYS = CONFIG_SECRETS_KEYS
 
 
 @dataclass(frozen=True)
@@ -126,39 +132,6 @@ def unsupported_row_secrets(schema: Any, prefix: str = "") -> list[str]:
                     if isinstance(d, dict) and is_secret_setting(str(field), d)
                 )
     return found
-
-
-def config_secrets_problem(value: Any, schema: Any = None) -> str | None:
-    """What is wrong with a ``CONFIG_SECRETS`` declaration, or None."""
-    if value is None:
-        return None
-    if not isinstance(value, dict):
-        return "CONFIG_SECRETS must be a dict"
-    for key, entry in value.items():
-        if not isinstance(key, str) or not key or "[" in key or "]" in key:
-            return f"CONFIG_SECRETS key {key!r} must be a config key"
-        if isinstance(schema, dict) and key in schema:
-            return f"CONFIG_SECRETS['{key}'] is also a CONFIG_SCHEMA field; declare its logins in one place"
-        if not isinstance(entry, dict):
-            return f"CONFIG_SECRETS['{key}'] must be a dict"
-        unknown = set(entry) - _LIST_DECLARATION_KEYS
-        if unknown:
-            return f"CONFIG_SECRETS['{key}'] has unknown keys: {sorted(unknown)}"
-        id_key = entry.get("id")
-        if not isinstance(id_key, str) or not id_key or "=" in id_key or "[" in id_key or "]" in id_key:
-            return f"CONFIG_SECRETS['{key}']['id'] must name the key holding each item's id"
-        fields = entry.get("fields")
-        if (
-            not isinstance(fields, list) or not fields
-            or not all(isinstance(f, str) and f for f in fields)
-            or len(set(fields)) != len(fields)
-        ):
-            return f"CONFIG_SECRETS['{key}']['fields'] must be a list of distinct field names"
-        if id_key in fields:
-            return f"CONFIG_SECRETS['{key}']: the id key '{id_key}' cannot also be a login"
-        if "generated" in entry and not isinstance(entry["generated"], bool):
-            return f"CONFIG_SECRETS['{key}']['generated'] must be true or false"
-    return None
 
 
 def declared(plugin_class: Any) -> PluginSecrets:
