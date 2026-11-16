@@ -167,8 +167,13 @@ class LevelScale {
      * server sends from anywhere along the travel.
      */
     get limited() {
-        if (this.outputMin == null || this.outputMax == null) return false;
+        if (!this.ranged) return false;
         return !this.scaleToFull || this.outputMin === this.outputMax;
+    }
+
+    /** Whether the control has a device output range at all. */
+    get ranged() {
+        return this.outputMin != null && this.outputMax != null;
     }
 
     /** The display value at `travel` (0..1) along the control. */
@@ -210,7 +215,7 @@ class LevelScale {
      * are held to one corpus, tests/fixtures/level_scale_cases.json.
      */
     fromDevice(deviceValue) {
-        if (this.outputMin == null || this.outputMax == null || this.limited) return deviceValue;
+        if (!this.ranged || this.limited) return deviceValue;
         const frac = (deviceValue - this.outputMin) / (this.outputMax - this.outputMin);
         return this.min + frac * this.span;
     }
