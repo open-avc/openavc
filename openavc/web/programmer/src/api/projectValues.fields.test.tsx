@@ -25,14 +25,20 @@ vi.mock("./projectValues.gen", () => ({
       width: { default: null, min: 10, max: 90, integer: false },
       height: { default: null, min: 15, max: 80, integer: false },
     },
+    TriggerConfig: {
+      delay_seconds: { default: 3, min: 1, finite: true, integer: false },
+      debounce_seconds: { default: 4, min: 2, finite: true, integer: false },
+      cooldown_seconds: { default: 6, min: 0.5, finite: true, integer: false },
+    },
   },
 }));
 
-import type { ProjectConfig, UIElement, UIPage, UISettings } from "./types";
+import type { ProjectConfig, TriggerConfig, UIElement, UIPage, UISettings } from "./types";
 import { ShownDecimalsRow } from "../components/ui-builder/PropertySections/ValueFields";
 import { MonitorControl } from "../components/shared/MonitorControl";
 import { PanelSettingsDialog } from "../views/ui-builder/PanelSettingsDialog";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
+import { TriggerEditor } from "../components/macros/TriggerEditor";
 
 function typeAndLeave(box: HTMLInputElement, text: string) {
   fireEvent.focus(box);
@@ -132,5 +138,48 @@ describe("The Builder's fields read the project schema's table", () => {
     expect(onPageChange).toHaveBeenLastCalledWith({ overlay: { position: "center", width: 90 } });
     typeAndLeave(screen.getByPlaceholderText("37.5") as HTMLInputElement, "2");
     expect(onPageChange).toHaveBeenLastCalledWith({ overlay: { position: "center", height: 15 } });
+  });
+});
+
+describe("The trigger editor's times read the project schema's table", () => {
+  function renderTrigger(trigger: Partial<TriggerConfig>) {
+    const onChange = vi.fn();
+    render(
+      <TriggerEditor
+        trigger={{ id: "t1", type: "startup", enabled: true, ...trigger } as TriggerConfig}
+        onChange={onChange}
+      />,
+    );
+    return onChange;
+  }
+
+  it("a startup trigger saved with no delay shows the table's blank", () => {
+    renderTrigger({});
+    expect(screen.getByDisplayValue("3")).toBeTruthy();
+  });
+
+  it("a startup trigger's Delay takes the floor", () => {
+    const onChange = renderTrigger({ delay_seconds: 5 });
+    typeAndLeave(screen.getByDisplayValue("5") as HTMLInputElement, "-5");
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ delay_seconds: 1 }));
+  });
+
+  it("a state change trigger's Delay and Debounce take their floors", () => {
+    const onChange = renderTrigger({
+      type: "state_change", state_key: "var.room", state_operator: "any",
+      delay_seconds: 7, debounce_seconds: 8,
+    });
+    typeAndLeave(screen.getByDisplayValue("7") as HTMLInputElement, "-1");
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ delay_seconds: 1 }));
+    typeAndLeave(screen.getByDisplayValue("8") as HTMLInputElement, "0");
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ debounce_seconds: 2 }));
+  });
+
+  it("Cooldown takes its floor and shows its blank", () => {
+    const onChange = renderTrigger({});
+    fireEvent.click(screen.getByText("Advanced"));
+    const cooldown = screen.getByDisplayValue("6") as HTMLInputElement;
+    typeAndLeave(cooldown, "-2");
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ cooldown_seconds: 0.5 }));
   });
 });

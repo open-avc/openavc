@@ -1048,6 +1048,106 @@ class TestMigrate016To017Boxes:
             assert primary["a"]["x"] == side
 
 
+TRIGGER_SECONDS = ("delay_seconds", "debounce_seconds", "cooldown_seconds")
+
+
+def make_v016_project_with_trigger_times(value) -> dict:
+    """A macro with one trigger per time in seconds holding ``value``, beside
+    a trigger holding times inside the bound."""
+    return {
+        "openavc_version": "0.16.0",
+        "project": {"id": "p", "name": "P"},
+        "macros": [{
+            "id": "m", "name": "M",
+            "triggers": [
+                {"id": f"t_{field}", "type": "startup", field: value}
+                for field in TRIGGER_SECONDS
+            ] + [
+                {"id": "t_kept", "type": "startup", "delay_seconds": 2.5,
+                 "debounce_seconds": 0, "cooldown_seconds": 60},
+            ],
+        }],
+    }
+
+
+class TestMigrate016To017TriggerSeconds:
+    @staticmethod
+    def _triggers(result: dict) -> dict:
+        return {t["id"]: t for t in result["macros"][0]["triggers"]}
+
+    def test_a_negative_time_is_brought_to_zero(self):
+        """The trigger engine waited no time for one, as for 0."""
+        for value in (-5, -0.5, "-5", " -3 ", False - 1):
+            result, migrated = migrate_project(make_v016_project_with_trigger_times(value))
+            assert migrated is True
+            triggers = self._triggers(result)
+            for field in TRIGGER_SECONDS:
+                assert triggers[f"t_{field}"][field] == 0, (field, value)
+                assert triggers[f"t_{field}"].get("enabled", True) is True
+            loaded = ProjectConfig(**result).macros[0].triggers
+            assert [getattr(t, f) for t, f in zip(loaded, TRIGGER_SECONDS)] == [0, 0, 0]
+
+    def test_a_time_inside_the_bound_is_left_as_written(self):
+        for value in (0, 3, 2.5, "4", True):
+            result = migrate_0_16_to_0_17(make_v016_project_with_trigger_times(value))
+            triggers = self._triggers(result)
+            for field in TRIGGER_SECONDS:
+                assert triggers[f"t_{field}"][field] == value
+        assert triggers["t_kept"] == {
+            "id": "t_kept", "type": "startup", "delay_seconds": 2.5,
+            "debounce_seconds": 0, "cooldown_seconds": 60,
+        }
+
+    def test_a_nan_or_negative_infinity_is_removed_and_loads_as_zero(self):
+        """The engine read either as 0: neither is more than 0."""
+        for value in (float("nan"), float("-inf"), "NaN", "-Infinity", "-1e999"):
+            result, _ = migrate_project(make_v016_project_with_trigger_times(value))
+            triggers = self._triggers(result)
+            for field in TRIGGER_SECONDS:
+                assert field not in triggers[f"t_{field}"], (field, value)
+                assert triggers[f"t_{field}"].get("enabled", True) is True
+            loaded = ProjectConfig(**result).macros[0].triggers
+            assert [getattr(t, f) for t, f in zip(loaded, TRIGGER_SECONDS)] == [0, 0, 0]
+
+    def test_an_infinite_time_turns_its_trigger_off(self):
+        """An infinite delay or debounce never ended and an infinite cooldown
+        never lapsed after the first run: the trigger was held back for good,
+        and turned off it still is."""
+        for value in (float("inf"), "Infinity", "1e999", " inf "):
+            result, _ = migrate_project(make_v016_project_with_trigger_times(value))
+            triggers = self._triggers(result)
+            for field in TRIGGER_SECONDS:
+                assert field not in triggers[f"t_{field}"], (field, value)
+                assert triggers[f"t_{field}"]["enabled"] is False, (field, value)
+            assert "enabled" not in triggers["t_kept"]
+            loaded = ProjectConfig(**result).macros[0].triggers
+            assert [t.enabled for t in loaded] == [False, False, False, True]
+
+    def test_the_repaired_project_is_one_a_browser_can_read(self):
+        result, _ = migrate_project(make_v016_project_with_trigger_times(float("inf")))
+        json.dumps(ProjectConfig(**result).model_dump(mode="json"), allow_nan=False)
+
+    def test_a_time_the_schema_refused_before_is_left_for_the_load_to_refuse(self):
+        for value in ("soon", None, [1]):
+            result = migrate_0_16_to_0_17(make_v016_project_with_trigger_times(value))
+            triggers = self._triggers(result)
+            for field in TRIGGER_SECONDS:
+                assert triggers[f"t_{field}"][field] == value
+
+    def test_a_malformed_macro_list_does_not_stop_the_migration(self):
+        for macros in (
+            None, "not a list", 5, {"id": "m"},
+            ["not a macro", {"id": "m", "triggers": None}],
+            [{"id": "m", "triggers": "not a list"}],
+            [{"id": "m", "triggers": 7}],
+            [{"id": "m", "triggers": ["not a trigger", None, {"delay_seconds": -1}]}],
+        ):
+            data = {"openavc_version": "0.16.0", "macros": copy.deepcopy(macros)}
+            result = migrate_0_16_to_0_17(data)
+            assert result["openavc_version"] == "0.17.0"
+        assert result["macros"][0]["triggers"][2] == {"delay_seconds": 0}
+
+
 # ---------------------------------------------------------------------------
 # Edge cases and malformed input
 # ---------------------------------------------------------------------------

@@ -60,6 +60,26 @@ export const PROJECT_VALUES = {
       "integer": false
     }
   },
+  "TriggerConfig": {
+    "delay_seconds": {
+      "default": 0,
+      "min": 0,
+      "finite": true,
+      "integer": false
+    },
+    "debounce_seconds": {
+      "default": 0,
+      "min": 0,
+      "finite": true,
+      "integer": false
+    },
+    "cooldown_seconds": {
+      "default": 0,
+      "min": 0,
+      "finite": true,
+      "integer": false
+    }
+  },
   "UIElement": {
     "display_decimals": {
       "default": null,

@@ -14,7 +14,10 @@ saved without complaint through the REST project-save door.
 Enforcement is deliberately not symmetric, and that is a policy choice, not
 drift: a generator (the AI tools) is told immediately when it emits something
 the runtime can't run, while the IDE's project save stays shape-only because a
-half-built macro is a normal intermediate state for someone editing one.
+half-built macro is a normal intermediate state for someone editing one. A
+trigger's delay, debounce and cooldown are bounded on the model itself
+(``project_loader.SECONDS_MIN``), so the save refuses one outside it; the
+finding here is that bound, read from the model, not a second rule.
 
 What the IDE gets instead is ``macro_issues`` -- the same rules, the same
 traversal, returned as placed records rather than one refusal string, so the
@@ -26,11 +29,13 @@ and it is invisible precisely because nobody reopens a macro that saved.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
 from openavc.core.condition_eval import _OPERATOR_ALIASES as _COND_ALIASES
+from openavc.core.project_loader import SECONDS_MIN, TriggerConfig
 from openavc.drivers.param_labels import param_label as _readable_param
 from openavc.drivers.param_validation import required_param_sentence
 from openavc.utils.logger import get_logger
@@ -354,6 +359,7 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
             path, f"overlap '{overlap}' is not valid. Use: skip, queue, allow",
             action=ttype,
         ))
+    found.extend(_seconds_findings(trigger, path, ttype))
 
     # Validate guard conditions
     conditions = trigger.get("conditions")
@@ -373,6 +379,31 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
                     ))
 
     return found
+
+
+# A trigger's times in seconds: each field its model bounds at SECONDS_MIN.
+_TRIGGER_SECONDS = tuple(
+    name for name, info in TriggerConfig.model_fields.items()
+    if any(getattr(rule, "ge", None) == SECONDS_MIN for rule in info.metadata)
+)
+
+
+def _seconds_findings(trigger: dict, path: str, ttype: str) -> list[dict[str, Any]]:
+    """A delay, debounce or cooldown outside the bound the trigger model
+    declares: a number of seconds, finite, ``SECONDS_MIN`` or more. The save
+    refuses one; this says so on the trigger's row and to the AI assistant."""
+    return [
+        _finding(path, f"'{field}' must be a number of seconds, {SECONDS_MIN} or more", action=ttype)
+        for field in _TRIGGER_SECONDS
+        if field in trigger and not _is_seconds(trigger[field])
+    ]
+
+
+def _is_seconds(value: Any) -> bool:
+    return (
+        isinstance(value, int | float) and not isinstance(value, bool)
+        and math.isfinite(value) and value >= SECONDS_MIN
+    )
 
 
 def validate_trigger(trigger: dict, path: str) -> list[str]:

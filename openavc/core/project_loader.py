@@ -6,11 +6,11 @@ All downstream code works with typed ProjectConfig objects, never raw dicts.
 
 The models are the one place a project value's bound and default are written:
 each range on its field (``Field(ge=, le=)``), a measurement that takes finite
-numbers only as ``FiniteFloat`` (a box's side), each blank as the field's
-default, or, for a blank another setting decides (the theme a project with no
-theme id draws, the format a clock with none draws), in the model's
-``BLANK_FROM``, read by ``blank_drawn``; a style value whose 0 is blank (a
-crosspoint cell size) in ``UIElement.ZERO_IS_BLANK``, read by
+numbers only as ``FiniteFloat`` (a box's side, a trigger's delay), each blank
+as the field's default, or, for a blank another setting decides (the theme a
+project with no theme id draws, the format a clock with none draws), in the
+model's ``BLANK_FROM``, read by ``blank_drawn``; a style value whose 0 is blank
+(a crosspoint cell size) in ``UIElement.ZERO_IS_BLANK``, read by
 ``style_is_blank``.
 ``python -m openavc.core.project_values_gen`` renders them into one
 table for the Builder (``web/programmer/src/api/projectValues.gen.ts``) and the
@@ -107,6 +107,11 @@ DISPLAY_DECIMALS_MAX = 20
 # dialog as nothing over a dimmed screen.
 OVERLAY_BOX_MIN = 5
 OVERLAY_BOX_MAX = 100
+
+# The least a trigger's delay, debounce or cooldown may hold, in seconds; each
+# is a finite number too. The trigger engine waited no time for a negative one,
+# as for 0. The macro lint reads it (``core/macro_validation.py``).
+SECONDS_MIN = 0
 
 # A blank another setting decides is declared in its model's ``BLANK_FROM``:
 # field -> (that setting, its value -> what this field draws), with a third
@@ -340,10 +345,10 @@ class TriggerConfig(_ForwardCompatModel):
     # Event
     event_pattern: str | None = None
 
-    # Execution control
-    delay_seconds: float = 0
-    debounce_seconds: float = 0
-    cooldown_seconds: float = 0
+    # Execution control, each a number of seconds, 0 or more
+    delay_seconds: FiniteFloat = Field(default=0, ge=SECONDS_MIN)
+    debounce_seconds: FiniteFloat = Field(default=0, ge=SECONDS_MIN)
+    cooldown_seconds: FiniteFloat = Field(default=0, ge=SECONDS_MIN)
     overlap: Literal["skip", "queue", "allow"] = "skip"
 
     # Guard conditions

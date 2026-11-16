@@ -1,8 +1,13 @@
 /**
  * Per-trigger-type editors + conditions + advanced settings.
+ *
+ * A delay, debounce or cooldown takes the floor and the blank the project
+ * schema declares for it (projectValues.gen.ts), so a box never offers a
+ * value the save refuses, and shows what a trigger saved without one waits.
  */
 import { useState } from "react";
 import { Trash2, ChevronDown, ChevronRight, Plus, HelpCircle } from "lucide-react";
+import { PROJECT_VALUES } from "../../api/projectValues.gen";
 import type { TriggerConfig, TriggerCondition } from "../../api/types";
 import { useProjectStore } from "../../store/projectStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -22,6 +27,7 @@ import {
 } from "./triggerHelpers";
 import { BooleanOptions } from "../shared/BooleanOptions";
 import { quotedValueText } from "../shared/booleanWords";
+import { NumericInput } from "../shared/NumericInput";
 
 interface TriggerEditorProps {
   trigger: TriggerConfig;
@@ -92,13 +98,7 @@ export function TriggerEditor({ trigger, onChange }: TriggerEditorProps) {
             </div>
             <div style={rowStyle}>
               <label style={labelStyle}>Cooldown</label>
-              <input
-                type="number"
-                min={0}
-                value={trigger.cooldown_seconds ?? 0}
-                onChange={(e) => update({ cooldown_seconds: parseFloat(e.target.value) || 0 })}
-                style={{ ...inputStyle, maxWidth: 100 }}
-              />
+              <SecondsBox trigger={trigger} field="cooldown_seconds" onChange={update} />
               <span style={unitStyle}>seconds</span>
             </div>
             <div style={hintStyle}>
@@ -472,13 +472,7 @@ function StateChangeEditor({
       {/* Delay */}
       <div style={rowStyle}>
         <label style={labelStyle}>Delay</label>
-        <input
-          type="number"
-          min={0}
-          value={trigger.delay_seconds ?? 0}
-          onChange={(e) => onChange({ delay_seconds: parseFloat(e.target.value) || 0 })}
-          style={{ ...inputStyle, maxWidth: 100 }}
-        />
+        <SecondsBox trigger={trigger} field="delay_seconds" onChange={onChange} />
         <span style={unitStyle}>seconds</span>
       </div>
       <div style={hintStyle}>
@@ -489,13 +483,7 @@ function StateChangeEditor({
       {/* Debounce */}
       <div style={rowStyle}>
         <label style={labelStyle}>Debounce</label>
-        <input
-          type="number"
-          min={0}
-          value={trigger.debounce_seconds ?? 0}
-          onChange={(e) => onChange({ debounce_seconds: parseFloat(e.target.value) || 0 })}
-          style={{ ...inputStyle, maxWidth: 100 }}
-        />
+        <SecondsBox trigger={trigger} field="debounce_seconds" onChange={onChange} />
         <span style={unitStyle}>seconds</span>
       </div>
       <div style={hintStyle}>
@@ -655,19 +643,43 @@ function StartupEditor({
       </div>
       <div style={rowStyle}>
         <label style={labelStyle}>Delay</label>
-        <input
-          type="number"
-          min={0}
-          value={trigger.delay_seconds ?? 5}
-          onChange={(e) => onChange({ delay_seconds: parseFloat(e.target.value) || 0 })}
-          style={{ ...inputStyle, maxWidth: 100 }}
-        />
+        <SecondsBox trigger={trigger} field="delay_seconds" onChange={onChange} />
         <span style={unitStyle}>seconds</span>
       </div>
       <div style={hintStyle}>
         Wait for devices to connect before executing.
       </div>
     </div>
+  );
+}
+
+// --- Delay, debounce and cooldown ---
+
+/** Each time's floor and blank, as the project schema declares them. */
+const SECONDS = PROJECT_VALUES.TriggerConfig;
+
+/** A time in seconds: a typed value below the floor comes back to it when
+ *  the box is left, and a trigger saved without one shows the schema's. */
+function SecondsBox({
+  trigger,
+  field,
+  onChange,
+}: {
+  trigger: TriggerConfig;
+  field: keyof typeof SECONDS;
+  onChange: (patch: Partial<TriggerConfig>) => void;
+}) {
+  const rule = SECONDS[field];
+  return (
+    <NumericInput
+      owner={`trigger ${trigger.id} ${field}`}
+      min={rule.min}
+      value={trigger[field] ?? rule.default}
+      onCommit={(v) => {
+        if (v !== undefined) onChange({ [field]: v });
+      }}
+      style={{ ...inputStyle, maxWidth: 100 }}
+    />
   );
 }
 

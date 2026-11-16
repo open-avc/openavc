@@ -131,6 +131,11 @@ def test_the_table_carries_each_bound_and_default_as_the_model_declares_it() -> 
         "w": {"default": 100.0, "finite": True, "integer": False},
         "h": {"default": 100.0, "finite": True, "integer": False},
     }
+    # A trigger's times are seconds, 0 or more, finite, with no ceiling.
+    for field in ("delay_seconds", "debounce_seconds", "cooldown_seconds"):
+        assert table["TriggerConfig"][field] == {
+            "default": 0, "min": project_loader.SECONDS_MIN, "finite": True, "integer": False,
+        }
 
 
 def test_every_panel_setting_has_its_blank_in_the_table() -> None:

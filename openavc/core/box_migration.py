@@ -30,10 +30,11 @@ def repair_boxes_0_17(ui: dict) -> None:
         _clamp_overlay_box_0_17(overlay)
 
 
-def _number_0_17(value) -> float | None:
+def number_0_17(value) -> float | None:
     """A measurement as the schema read it before this step: a number, true
     or false, or text that reads as one ("NaN" and "1e999" included). None for
-    anything it refused, which it still does."""
+    anything it refused, which it still does. The step's repair of a
+    trigger's times reads them the same way (``core/seconds_migration.py``)."""
     if isinstance(value, bool | int | float):
         return float(value)
     if isinstance(value, str):
@@ -68,7 +69,7 @@ def _drop_non_finite_sides_0_17(box: dict) -> None:
     """A side that is no finite number goes, so the box loads with the
     default the panel drew for it (x and y 0, w and h 100)."""
     for side in ("x", "y", "w", "h"):
-        number = _number_0_17(box.get(side))
+        number = number_0_17(box.get(side))
         if number is not None and not math.isfinite(number):
             box.pop(side)
 
@@ -83,7 +84,7 @@ def _clamp_overlay_box_0_17(overlay: dict) -> None:
     """A width or height outside 5..100 to the nearer end; one that is no
     finite number goes, so it loads as the default box the panel drew."""
     for side in ("width", "height"):
-        number = _number_0_17(overlay.get(side))
+        number = number_0_17(overlay.get(side))
         if number is not None:
             _overlay_side_inside_0_17(overlay, side, number)
 

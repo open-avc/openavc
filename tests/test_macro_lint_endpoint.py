@@ -301,6 +301,7 @@ _CORPUS: list[tuple[list, list]] = [
     ([], [{"id": "t", "type": "startup", "conditions": [{"key": "", "operator": "nope"}]}]),
     ([], ["not a trigger"]),
     ([{"action": "delay"}], [{"id": "t", "type": "schedule", "cron": "bad"}]),
+    ([], [{"id": "t", "type": "startup", "delay_seconds": -1, "cooldown_seconds": "soon"}]),
 ]
 
 

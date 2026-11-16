@@ -14,12 +14,14 @@ numbers and type lists rather than reading today's renderer or page review
 (each says so where it does), and reach elements through the walk they were
 written with: two walks, one per rule, so editing either changes old steps.
 The 0.8.0 grid-to-percent layout conversion is ``core/layout_migration.py``,
-and the 0.17.0 step's repair of saved boxes ``core/box_migration.py``.
+the 0.17.0 step's repair of saved boxes ``core/box_migration.py``, and its
+repair of a trigger's saved times in seconds ``core/seconds_migration.py``.
 """
 
 from typing import NamedTuple
 
 from openavc.core.box_migration import repair_boxes_0_17
+from openavc.core.seconds_migration import repair_seconds_0_17
 from openavc.core.layout_migration import convert_grid_layout
 
 # Connection-related config fields that belong in the connections table. The
@@ -814,6 +816,13 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
     range the UI Builder's fields offer: at 0 or less the panel drew the
     dialog as nothing over a dimmed screen. One that is no finite number is
     removed, so it loads as the default box the panel drew for it.
+
+    A trigger's `delay_seconds`, `debounce_seconds` and `cooldown_seconds`
+    are brought to 0 or more: the trigger engine waited no time for a
+    negative one, as for 0. One that is no finite number is removed, so it
+    loads as 0, which is how the engine read a NaN; an infinite one held its
+    trigger back for good, so that trigger is also turned off
+    (`core/seconds_migration.py`).
     """
     monitors = data.get("monitors") if isinstance(data.get("monitors"), list) else []
     for holder in _elements(data) + [m for m in monitors if isinstance(m, dict)]:
@@ -825,6 +834,7 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
             _clamp_0_17(settings, field, bounds)
     if isinstance(ui, dict):
         repair_boxes_0_17(ui)
+    repair_seconds_0_17(data)
 
     data["openavc_version"] = "0.17.0"
     return data

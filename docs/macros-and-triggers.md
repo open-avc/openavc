@@ -384,7 +384,7 @@ Trigger safety features prevent runaway automation:
 
 - **Debounce.** Prevent rapid re-firing (configurable seconds).
 - **Delay + re-check.** Wait, then verify the condition is still true before executing.
-- **Cooldown.** Minimum interval between executions.
+- **Cooldown.** Minimum interval between executions. Debounce, Delay and Cooldown each take 0 or more seconds; 0 turns that one off.
 - **Guard conditions.** Additional state conditions that must all be true. Supports the same operators as conditional steps (`eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `truthy`, `falsy`) and their aliases.
 - **Overlap policy.** Choose what happens when a trigger fires while its macro is still running: `skip` (ignore the new fire, the default), `queue` (run it once the current one finishes, or drop the fire if that takes more than five minutes), or `allow` (run them concurrently).
 - **Stop on error.** Set `stop_on_error: true` on a macro to halt execution if a step fails (default is to continue). If a sub-macro stops on an error, its **Run Macro** step fails in the caller. The caller then follows its own Stop on Error setting. Enable it on both macros when later steps depend on the sub-macro succeeding. A sub-macro set to Continue on Error completes its remaining steps and returns normally, and the caller carries on — but the caller's own run still reports as failed, because a step it asked for did not do what it asked.
