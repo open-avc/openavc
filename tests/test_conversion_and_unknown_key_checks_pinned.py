@@ -18,7 +18,7 @@ is every issue ``validate_driver_issues`` reports for the whole definition, in
 order, each with its severity and the section tag the Driver Builder anchors
 it to. Each rule's own entry point is pinned too, the unknown-key check with
 the tag it records for each message, and the conversion rule on both
-surfaces. A few shapes raise, and are pinned by the exception they raise.
+surfaces.
 
 These record what the checks say today, so a restructuring that keeps the
 contract keeps every message, its position and its tag.
@@ -224,11 +224,8 @@ STRICT_CASES: dict[str, dict[str, Any]] = {
     "keys_typo_and_unknown_together_ordered": {
         "state_variables": {**POWER, "x": {"type": "integer", "lable": "X", "zz": 1, "aa": 2}},
     },
-}
-
-# Shapes that make the unknown-key check raise (a fixed block holding a key
-# that is not text beside an unknown key: the sort compares them).
-RAISING_CASES: dict[str, dict[str, Any]] = {
+    # A fixed block holding a key that is not text beside an unknown key: the
+    # keys are sorted as text.
     "keys_text_and_number_unknown_together": {"zzz": 1, 7: 2},
     "keys_nested_text_and_bool_unknown": variables(x={"type": "integer", "lable": "X", True: 1}),
 }
@@ -394,7 +391,13 @@ EXPECTED: dict[str, list[tuple[str, str, str]]] = {'conv_action_not_a_mapping': 
                                    'state_variables: must be a mapping')],
  'names_not_text_lenient': []}
 
-STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'conv_actions_a_mapping': [('error', 'actions', 'actions: must be a list')],
+STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'keys_nested_text_and_bool_unknown': [('error', 'state_variables.x', "State variable 'x': missing 'label'"),
+                                       ('error', 'state_variables.x', "state_variables.x: unknown key 'True'"),
+                                       ('error',
+                                        'state_variables.x',
+                                        "state_variables.x: unknown key 'lable' (did you mean 'label'?)")],
+ 'keys_text_and_number_unknown_together': [('error', '', "unknown key '7'"), ('error', '', "unknown key 'zzz'")],
+ 'conv_actions_a_mapping': [('error', 'actions', 'actions: must be a list')],
  'conv_child_types_a_list': [('error',
                               'child_entity_types',
                               'child_entity_types: must be a mapping')],
@@ -615,7 +618,11 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'conv_actions_a_mappin
                              'on/off/yes/no/true/false as booleans and bare digits as numbers. Put '
                              'it in quotes.')]}
 
-UNKNOWN_EXPECTED: dict[str, list[tuple[str, str]]] = {'keys_action_param_typo': [('actions[0].params.level',
+UNKNOWN_EXPECTED: dict[str, list[tuple[str, str]]] = {'keys_nested_text_and_bool_unknown': [('state_variables.x', "state_variables.x: unknown key 'True'"),
+                                       ('state_variables.x',
+                                        "state_variables.x: unknown key 'lable' (did you mean 'label'?)")],
+ 'keys_text_and_number_unknown_together': [('', "unknown key '7'"), ('', "unknown key 'zzz'")],
+ 'keys_action_param_typo': [('actions[0].params.level',
                              "actions[0].params.level: unknown key 'lable' (did you mean "
                              "'label'?)")],
  'keys_action_typo': [('actions[0]', "actions[0]: unknown key 'lable' (did you mean 'label'?)")],
@@ -983,12 +990,6 @@ PY_EXPECTED: dict[str, dict[str, list[str]]] = {'py_action_param': {'conversion'
                             'yaml': ["State variable 'gain': the type must be integer, number or "
                                      'float to use offset']}}
 
-RAISES: dict[str, type[BaseException]] = {
-    'keys_nested_text_and_bool_unknown': TypeError,
-    'keys_text_and_number_unknown_together': TypeError,
-}
-
-
 @pytest.mark.parametrize("case", sorted(EXPECTED))
 def test_issues_their_order_and_their_tags(case: str) -> None:
     definition = _definition(case)
@@ -1035,16 +1036,6 @@ def test_the_python_surface(case: str) -> None:
     assert issues == PY_EXPECTED[case]["issues"]
 
 
-@pytest.mark.parametrize("case", sorted(RAISES))
-def test_shapes_that_raise(case: str) -> None:
-    definition = {**BASE, **RAISING_CASES[case]}
-    with pytest.raises(RAISES[case]):
-        unknown_key_errors(definition)
-    with pytest.raises(RAISES[case]):
-        validate_driver_definition(definition, strict=True)
-    validate_driver_definition(definition)
-
-
 @pytest.mark.parametrize("value", [None, [], "driver", 5])
 def test_a_definition_that_is_not_a_mapping(value: Any) -> None:
     assert unknown_key_errors(value) == []
@@ -1076,5 +1067,4 @@ def test_every_case_has_an_expectation() -> None:
     assert set(STRICT_CASES) == set(UNKNOWN_EXPECTED)
     assert STRICT | set(STRICT_CASES) == set(STRICT_EXPECTED)
     assert set(PY_CASES) == set(PY_EXPECTED)
-    assert set(RAISING_CASES) == set(RAISES)
     assert not set(STRICT_CASES) & set(CASES)

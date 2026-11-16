@@ -187,6 +187,11 @@ CASES = {
     "register_on_http_listener": ({"type": "http_listener", "register": "nope"}, {}),
     "no_config_fields": ({"type": "multicast", "group": "{group_field}", "port": 5000}, {
         "config_schema": None, "default_config": "x", "config_derived": None}),
+    # --- a key YAML read as a number, beside an unknown key: named as text ------
+    "keys_not_text_beside_unknown": ({"type": "multicast", "group": "239.1.1.1", "port": 5000, 1: "x", "zz": "y"}, {}),
+    "key_not_text_alone": ({"type": "multicast", 1: "x"}, {}),
+    "session_keys_not_text": ({"type": "sse", "path": "/e", "session": {"key": "k", 1: "x", "zz": "y"}}, {"transport": "http"}),
+    "register_entry_keys_not_text": ({"type": "tcp_listener", "port": 0, "register": [{"command": "noop", 1: "x", "zz": "y"}]}, {}),
 }
 
 
@@ -206,7 +211,25 @@ def _definition(case: str) -> dict[str, Any]:
     return definition
 
 
-EXPECTED: dict[str, list[tuple[str, str]]] = {'not_a_mapping': [('push', 'push: must be a mapping')],
+EXPECTED: dict[str, list[tuple[str, str]]] = {'keys_not_text_beside_unknown': [('push',
+                                   "push: unknown key(s): 1, zz (known keys for type 'multicast': group, "
+                                   'port, type)')],
+ 'key_not_text_alone': [('push', "push: unknown key(s): 1 (known keys for type 'multicast': group, port, type)"),
+                        ('push', "push: missing 'group'"),
+                        ('push', "push: missing 'port'")],
+ 'session_keys_not_text': [('push',
+                            'push: session has unknown key(s): 1, zz (known: header, event, key, pattern, '
+                            'close_event)'),
+                           ('push',
+                            "push: session key names a JSON key in the opening event's data, so it needs "
+                            "'event' (the event type that carries it)"),
+                           ('push',
+                            "push: session needs a source for the session id: 'header' (a response "
+                            "header), or 'event' + 'key' (a JSON key in the opening event's data), or both")],
+ 'register_entry_keys_not_text': [('push',
+                                   'push: register[0] has unknown key(s): 1, zz (known: command, when, '
+                                   'each_child)')],
+ 'not_a_mapping': [('push', 'push: must be a mapping')],
  'a_list': [('push', 'push: must be a mapping')],
  'absent': [],
  'type_missing': [('push',

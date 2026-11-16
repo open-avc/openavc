@@ -266,6 +266,10 @@ CASES = {
             {"type": "zone", "id": 1, "state": {"nope": {"wrong": 1}}},
         ),
     ],
+    # A key YAML read as a number, beside an unknown key: named as text.
+    "json_child_set_state_keys_not_text": [
+        js({"type": "zone", "id": 1, "state": {"level": {"key": "a", 1: "x", "zz": "y"}}}),
+    ],
     "json_with_common_checks": [
         {"json": True, "throttle": -1, "only_when": "x", "require": [], "after_json": True,
          "child_list": {}, "set": {"a": {"contains": {}}}, "child_set": "x"},
@@ -499,7 +503,11 @@ def _definition(case: str) -> dict[str, Any]:
     }
 
 
-EXPECTED: dict[str, list[tuple[str, str]]] = {'not_a_mapping': [('responses[0]', 'Response 0: must be a mapping'),
+EXPECTED: dict[str, list[tuple[str, str]]] = {'json_child_set_state_keys_not_text': [('responses[0]',
+  "Response 0: child_set[0]: state 'level' has ['1', 'zz'], which a json rule does not read; the "
+  'spec is {key, type, map, contains}'),
+ ('child_entity_types.bare', 'child_entity_types.bare: must be a mapping')],
+ 'not_a_mapping': [('responses[0]', 'Response 0: must be a mapping'),
                    ('responses[1]', 'Response 1: must be a mapping'),
                    ('responses[2]', 'Response 2: must be a mapping'),
                    ('child_entity_types.bare', 'child_entity_types.bare: must be a mapping')],

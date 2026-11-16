@@ -514,20 +514,12 @@ CASES: dict[str, dict[str, Any]] = {
         "device_settings": {"volume": {"type": "integer", "write": WRITE, "colour": 1}},
         "routing": {"planes": [plane(destination_child_type="output", command="route", hue=1)]},
     },
+    # A fixed extra whose name is not text, and not a parameter, is named as text.
+    "routing_params_numeric_keys": routed(plane(params={1: "a", 2.5: "b"})),
 }
 
 # Strict cases also reject keys the contract does not declare.
 STRICT = {"order_strict"}
-
-# Definitions that raise, by the exception they raise.
-# A fixed extra whose name is not text, and not a parameter, reaches the
-# did-you-mean, which cannot compare it.
-RAISES: dict[str, type[BaseException]] = {
-    "routing_params_numeric_keys": TypeError,
-}
-RAISING_CASES: dict[str, dict[str, Any]] = {
-    "routing_params_numeric_keys": routed(plane(params={1: "a", 2.5: "b"})),
-}
 
 # A device setting whose type is not hashable reaches the lookup of the known
 # types, which cannot take it; the walk raises.
@@ -640,7 +632,11 @@ DIRECT: dict[str, Any] = {
 }
 
 
-EXPECTED: dict[str, list[tuple[str, str]]] = {'learned_blank': [('config_schema.zone',
+EXPECTED: dict[str, list[tuple[str, str]]] = {'routing_params_numeric_keys': [('routing',
+                                  "routing.planes[0]: params.1 is not a parameter of command 'route'"),
+                                 ('routing',
+                                  "routing.planes[0]: params.2.5 is not a parameter of command 'route'")],
+ 'learned_blank': [('config_schema.zone',
                     "Config field 'zone': learned_from must name a state variable")],
  'learned_connection_host': [('config_schema.host',
                               "Config field 'host': a connection field cannot be learned_from a "
@@ -1468,15 +1464,6 @@ def test_errors_their_order_and_their_tags(case: str) -> None:
     assert list(validate_driver_definition(definition, strict=strict)) == [m for _, m in got]
 
 
-@pytest.mark.parametrize("case", sorted(RAISES))
-def test_shapes_that_raise(case: str) -> None:
-    definition = {**BASE, **RAISING_CASES[case]}
-    with pytest.raises(RAISES[case]):
-        validate_driver_definition(definition)
-    with pytest.raises(RAISES[case]):
-        routing_block_errors(definition)
-
-
 @pytest.mark.parametrize("case", sorted(WALK_RAISES))
 def test_settings_that_raise(case: str) -> None:
     with pytest.raises(WALK_RAISES[case]):
@@ -1497,5 +1484,4 @@ def test_every_case_has_an_expectation() -> None:
     assert set(CASES) == set(EXPECTED)
     assert set(PY_CASES) == set(PY_EXPECTED)
     assert set(DIRECT) == set(DIRECT_EXPECTED)
-    assert set(RAISES) == set(RAISING_CASES)
     assert set(WALK_RAISES) == set(WALK_RAISING_CASES)

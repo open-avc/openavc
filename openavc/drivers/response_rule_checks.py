@@ -562,7 +562,7 @@ def _json_spec_errors(where: str, prop: Any, spec: dict[str, Any]) -> list[str]:
     unknown = set(spec) - _JSON_SPEC_KEYS
     if unknown:
         errors.append(
-            f"{where}: state '{prop}' has {sorted(unknown)}, which a json rule does "
+            f"{where}: state '{prop}' has {sorted(map(str, unknown))}, which a json rule does "
             f"not read; the spec is {{key, type, map, contains}}"
         )
     return errors + _json_contains_errors(f"{where}: state '{prop}'", spec)

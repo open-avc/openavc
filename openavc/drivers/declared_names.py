@@ -105,7 +105,7 @@ def substitution_names(driver_def: dict[str, Any]) -> set[str]:
 
 def closest_name(name: str, candidates: set[str]) -> str | None:
     """The nearest declared name, for a did-you-mean suggestion."""
-    close = difflib.get_close_matches(name, sorted(candidates), n=1, cutoff=0.7)
+    close = difflib.get_close_matches(str(name), sorted(map(str, candidates)), n=1, cutoff=0.7)
     return close[0] if close else None
 
 

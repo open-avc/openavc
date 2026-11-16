@@ -246,7 +246,7 @@ class _KeyWalk:
         # rather than inheriting the caller's section.
         errors = self.errors
         errors.ctx = loc
-        for key in sorted(set(value) - known):
+        for key in sorted(set(value) - known, key=str):
             close = _difflib.get_close_matches(
                 str(key), sorted(known), n=1, cutoff=0.7
             )
