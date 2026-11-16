@@ -276,3 +276,24 @@ async def test_a_copy_of_the_id_under_another_filename_is_still_removed(driver_d
 
     assert not (repo_dir / "imported widget.avcdriver").exists()
     assert yaml.safe_load((repo_dir / "acme_widget.avcdriver").read_text())["name"] == "Acme IV"
+
+
+# --- the save takes a null section and leaves a wrong kind to the checker -----
+
+
+async def test_create_reads_a_null_section_as_absent(driver_dirs):
+    _, repo_dir = driver_dirs
+    body = DriverDefinitionRequest.model_validate({**DEFINITION, "polling": None, "responses": None})
+    assert (await create_driver_definition(body))["status"] == "created"
+    saved = yaml.safe_load((repo_dir / "acme_widget.avcdriver").read_text())
+    assert "polling" not in saved and "responses" not in saved
+
+
+async def test_create_refuses_a_wrong_kind_in_the_checker_s_own_words(driver_dirs):
+    _, repo_dir = driver_dirs
+    body = DriverDefinitionRequest.model_validate({**DEFINITION, "version": 1.0})
+    with pytest.raises(HTTPException) as refused:
+        await create_driver_definition(body)
+    assert refused.value.status_code == 422
+    assert refused.value.fields["errors"] == ["version: must be a string; put it in quotes"]
+    assert not (repo_dir / "acme_widget.avcdriver").exists()

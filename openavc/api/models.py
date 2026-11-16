@@ -174,33 +174,38 @@ class DriverDefinitionRequest(BaseModel):
     # here to a registry entry.
     model_config = ConfigDict(extra="allow")
 
-    id: str
-    name: str
-    manufacturer: str = "Generic"
-    category: str = "utility"
-    version: str = "1.0.0"
-    author: str = "Community"
-    description: str = ""
-    transport: str = "tcp"
-    delimiter: str = "\\r"
-    default_config: dict[str, Any] = {}
-    config_schema: dict[str, Any] = {}
-    state_variables: dict[str, Any] = {}
-    commands: dict[str, Any] = {}
-    responses: list[dict[str, Any]] = []
-    polling: dict[str, Any] = {}
-    frame_parser: dict[str, Any] | None = None
+    # Every field carries whatever the request holds, typed Any on purpose:
+    # whether a value is the kind the driver format declares is the driver
+    # checker's to say, in the sentence that names the field and the fix
+    # (``check_driver_definition``, which the save runs strict), and a null
+    # section is read as absent there, as everywhere.
+    id: Any
+    name: Any
+    manufacturer: Any = "Generic"
+    category: Any = "utility"
+    version: Any = "1.0.0"
+    author: Any = "Community"
+    description: Any = ""
+    transport: Any = "tcp"
+    delimiter: Any = "\\r"
+    default_config: Any = {}
+    config_schema: Any = {}
+    state_variables: Any = {}
+    commands: Any = {}
+    responses: Any = []
+    polling: Any = {}
+    frame_parser: Any = None
     # Send-side packet framing — the send twin of frame_parser. Wraps every
     # byte-stream command in a computed-length binary header (e.g. eISCP).
     # Declared explicitly (like frame_parser) so the Driver Builder round-trips
     # it; the model is also extra='allow'.
-    send_frame: dict[str, Any] | None = None
+    send_frame: Any = None
     # Quick Action strip declarations. Declared explicitly (the model is also
     # extra='allow') so the Driver Builder round-trips them to disk: actions is
     # the full form (kind:"command" promotes a command, kind:"setup" is a
     # provisioning wizard), quick_actions is the flat promote-these-commands sugar.
-    actions: list[dict[str, Any]] = []
-    quick_actions: list[str] = []
+    actions: Any = []
+    quick_actions: Any = []
     # Param-picker option providers — `options_state` /
     # `options_from` — and the free-text validators
     # — `min` / `max` / `pattern` — on a command or action param are
