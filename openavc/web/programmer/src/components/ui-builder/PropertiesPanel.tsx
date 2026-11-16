@@ -47,6 +47,8 @@ interface PropertiesPanelProps {
   project: ProjectConfig;
   themeDefaults?: Record<string, Record<string, unknown>>;
   themes?: ThemeSummary[];
+  /** The theme the project draws, which the theme list marks (builderTheme.ts projectThemeId). */
+  currentThemeId?: string;
   onThemeChange?: (themeId: string) => void;
   onChange: (elementId: string, patch: Partial<UIElement>) => void;
   onRenameElement?: (oldId: string, newId: string) => void;
@@ -88,6 +90,7 @@ export function PropertiesPanel({
   project,
   themeDefaults,
   themes,
+  currentThemeId,
   onThemeChange,
   onChange,
   onRenameElement,
@@ -252,8 +255,6 @@ export function PropertiesPanel({
   }
 
   if (!element || !page) {
-    const currentThemeId = project?.ui?.settings?.theme_id || "dark-default";
-
     return (
       <div
         style={{
@@ -1234,7 +1235,7 @@ function ThemeSection({
   onThemeChange,
 }: {
   themes: ThemeSummary[];
-  currentThemeId: string;
+  currentThemeId: string | undefined;
   onThemeChange: (themeId: string) => void;
 }) {
   return (

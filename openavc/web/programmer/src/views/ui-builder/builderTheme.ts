@@ -3,6 +3,12 @@
  * default of every themed property for each control type. The canvas is the
  * panel itself, which reads the theme on its own.
  *
+ * `projectThemeId` is the theme a project draws: its theme id, else the one the
+ * project schema gives its light or dark setting (`blank_from` in
+ * projectValues.gen.ts), as the panel reads it (modules/project_values.js). The
+ * page reads the theme under it, and the theme list, the Theme Studio and the
+ * Studio's Delete all take it from here.
+ *
  * `effectiveThemeDefaults` is the Builder's copy of where the panel's
  * stylesheet gets each control's look: the theme's own `element_defaults`,
  * then the button colours for the button-like types, the accent and surface
@@ -16,7 +22,9 @@
  * its font blank, which Panel Settings shows in those two fields.
  */
 import { useCallback, useEffect, useState } from "react";
+import { PROJECT_VALUES } from "../../api/projectValues.gen";
 import { getTunnelPrefix, listThemes } from "../../api/restClient";
+import type { UISettings } from "../../api/types";
 import { CSS_VAR_FALLBACKS } from "../../components/ui-builder/colorUtils";
 import { showError } from "../../store/toastStore";
 
@@ -139,14 +147,35 @@ export function blankLook(
   };
 }
 
+/** A project's light or dark setting and its theme id, as written: either may be absent. */
+export type ThemeChoice = Partial<Pick<UISettings, "theme" | "theme_id">> | undefined;
+
+const SETTINGS = PROJECT_VALUES.UISettings;
+
+/** THE theme a project draws: its theme id, else `blankThemeId`'s. */
+export function projectThemeId(settings: ThemeChoice): string {
+  return settings?.theme_id || blankThemeId(settings);
+}
+
 /**
- * The theme list, and the chosen theme read from the server: again when the
- * choice changes and on `refetch` (the Theme Studio saved the same theme id
- * with changed contents): each control type's defaults, and the theme's own
- * variables. A theme that cannot be read shows no defaults, and its variables
- * are null, as they are until the first read answers.
+ * The theme a project with no theme id draws: the one the schema names for its
+ * light or dark setting, a word it does not name reading as the default
+ * setting's.
  */
-export function useBuilderTheme(themeId: string | undefined) {
+export function blankThemeId(settings: ThemeChoice): string {
+  const byTheme: Readonly<Record<string, string>> = SETTINGS.theme_id.blank_from.theme;
+  const word = settings?.theme || SETTINGS.theme.default;
+  return byTheme[Object.prototype.hasOwnProperty.call(byTheme, word) ? word : SETTINGS.theme.default];
+}
+
+/**
+ * The theme list, and the theme `themeId` read from the server: again when it
+ * changes and on `refetch` (the Theme Studio saved the same theme id with
+ * changed contents): each control type's defaults, and the theme's own
+ * variables. A theme that cannot be read shows no defaults, and its variables
+ * are null, as they are until the first read answers. `id` is the theme read.
+ */
+export function useBuilderTheme(themeId: string) {
   const [themes, setThemes] = useState<ThemeSummary[]>([]);
   const [defaults, setDefaults] = useState<ThemeDefaults>({});
   const [variables, setVariables] = useState<Record<string, unknown> | null>(null);
@@ -158,8 +187,7 @@ export function useBuilderTheme(themeId: string | undefined) {
   useEffect(() => { loadThemes(); }, [loadThemes]);
 
   useEffect(() => {
-    const id = themeId || "dark-default";
-    fetch(`${getTunnelPrefix()}/api/themes/${id}`)
+    fetch(`${getTunnelPrefix()}/api/themes/${themeId}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((theme: ThemeFile | null) => {
         setDefaults(effectiveThemeDefaults(theme));
@@ -172,5 +200,5 @@ export function useBuilderTheme(themeId: string | undefined) {
   }, [themeId, fetchKey]);
 
   const refetch = useCallback(() => setFetchKey((k) => k + 1), []);
-  return { themes, loadThemes, defaults, variables, refetch };
+  return { id: themeId, themes, loadThemes, defaults, variables, refetch };
 }

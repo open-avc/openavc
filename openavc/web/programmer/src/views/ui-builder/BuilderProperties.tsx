@@ -18,7 +18,8 @@ export interface BuilderPropertiesProps {
   page: UIPage | null;
   masters: MasterElement[];
   project: ProjectConfig;
-  theme: { defaults: ThemeDefaults; themes: ThemeSummary[] };
+  /** The theme the project draws (`id`), its defaults and the theme list. */
+  theme: { id: string; defaults: ThemeDefaults; themes: ThemeSummary[] };
   /** What the theme list chooses with; none while the Theme Studio is open. */
   onThemeChange: ((id: string) => void) | undefined;
   onOpenStylesheet: () => void;
@@ -55,6 +56,7 @@ export function BuilderProperties({ page, masters, project, theme, onThemeChange
         project={project}
         themeDefaults={theme.defaults}
         themes={theme.themes}
+        currentThemeId={theme.id}
         onThemeChange={onThemeChange}
         onOpenStylesheet={onOpenStylesheet}
         onChange={edits.editControl}

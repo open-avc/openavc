@@ -64,6 +64,8 @@ export interface BuilderDialogsProps {
   /** The page on screen, which the stylesheet's preview shows. */
   page: UIPage | null;
   theme: {
+    /** The theme the project draws (builderTheme.ts projectThemeId), which the Studio opens on. */
+    id: string;
     themes: ThemeSummary[];
     loadThemes: () => void;
     refetch: () => void;
@@ -80,12 +82,6 @@ function previewSize(preset: ScreenSize | undefined) {
   return { panelWidth: preset?.width ?? 1024, panelHeight: preset?.height ?? 600 };
 }
 
-/** The theme the Studio opens on: the project's, else the default, with the
- *  overrides set on it, else none. */
-function studioTheme(project: ProjectConfig) {
-  const settings = project.ui.settings;
-  return { currentThemeId: settings.theme_id || "dark-default", themeOverrides: settings.theme_overrides || {} };
-}
 
 const RESET_MESSAGE =
   "This removes per-element style overrides for every property the current theme defines defaults for. " +
@@ -101,7 +97,8 @@ export function BuilderDialogs({ dialogs, project, page, theme, edits, validatio
         onClose={() => hide("studio")}
         themes={theme.themes}
         project={project}
-        {...studioTheme(project)}
+        currentThemeId={theme.id}
+        themeOverrides={project.ui.settings.theme_overrides || {}}
         onChangeTheme={edits.chooseTheme}
         onClearOverrides={edits.clearOverrides}
         onRefreshThemes={theme.loadThemes}

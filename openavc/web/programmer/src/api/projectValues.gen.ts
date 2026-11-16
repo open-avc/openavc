@@ -7,7 +7,9 @@
 // field the project schema declares it on: `default` is what the schema stores
 // for a blank one, `min` and `max` the range it takes (both ends included),
 // `integer` that it refuses a fraction. A value outside its range fails the
-// whole project save.
+// whole project save. `blank_from` says what a blank one draws when another
+// setting decides it: that setting's value names it, and a value not named
+// reads as that setting's default.
 
 /** One project value: what a blank one is, and the range it may hold. */
 export interface ProjectValue {
@@ -15,6 +17,7 @@ export interface ProjectValue {
   readonly min?: number;
   readonly max?: number;
   readonly integer?: boolean;
+  readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
 export const PROJECT_VALUES = {
@@ -39,7 +42,13 @@ export const PROJECT_VALUES = {
       "default": "dark"
     },
     "theme_id": {
-      "default": ""
+      "default": "",
+      "blank_from": {
+        "theme": {
+          "light": "light-modern",
+          "dark": "dark-default"
+        }
+      }
     },
     "accent_color": {
       "default": ""

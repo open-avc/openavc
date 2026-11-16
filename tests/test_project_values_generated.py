@@ -18,6 +18,7 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 from pydantic import BaseModel, Field
@@ -136,6 +137,24 @@ def test_a_bound_the_table_cannot_say_stops_the_generator() -> None:
         level: int = Field(default=1, gt=0)
 
     with pytest.raises(UnreadableBoundError, match="Odd.level"):
+        project_values(roots=(Odd,))
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [("mode", {"light": "light-modern", "dark": "dark-default"}), ("theme", {"light": "light-modern"})],
+    ids=["a setting the model does not have", "a default it does not name"],
+)
+def test_a_blank_that_cannot_always_be_read_stops_the_generator(rule) -> None:
+    """A blank another setting decides reads a value that setting does not
+    name as that setting's default, so the default has to be named."""
+
+    class Odd(BaseModel):
+        theme: str = "dark"
+        theme_id: str = ""
+        BLANK_FROM: ClassVar[dict] = {"theme_id": rule}
+
+    with pytest.raises(UnreadableBoundError, match="Odd.theme_id"):
         project_values(roots=(Odd,))
 
 

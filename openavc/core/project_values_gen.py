@@ -10,7 +10,9 @@ the Builder's unsaved draft, a project that never passed the loader).
 
 The table carries every field that declares a bound, under the model that
 declares it, and every panel setting with a plain default, since the panel
-fills a blank setting itself. A bound the table has no word for stops the
+fills a blank setting itself; a blank another setting decides (a settings
+model's ``BLANK_FROM``: the theme a project with no theme id draws) carries
+that setting's values too. A bound the table has no word for stops the
 generator rather than being left out: left out, the Builder would offer a value
 the save refuses.
 
@@ -119,13 +121,32 @@ def _plain_default(info: FieldInfo) -> dict[str, Any]:
     return {"default": info.default} if isinstance(info.default, _PLAIN) else {}
 
 
+def _blank_from(model: type[BaseModel], field: str) -> dict[str, Any]:
+    """``{"blank_from": {setting: {its value: this field's}}}`` when another
+    setting decides this field's blank (``BLANK_FROM``), else ``{}``. The other
+    setting's own default must be one of its values, so a value it does not
+    name always reads as something."""
+    rule = getattr(model, "BLANK_FROM", {}).get(field)
+    if rule is None:
+        return {}
+    setting, by_value = rule
+    other = model.model_fields.get(setting)
+    if other is None or other.default not in by_value:
+        raise UnreadableBoundError(
+            f"{model.__name__}.{field}'s blank follows {setting!r}, which is not a setting "
+            f"of {model.__name__} whose default is among {sorted(by_value)}"
+        )
+    return {"blank_from": {setting: dict(by_value)}}
+
+
 def _entry(model: type[BaseModel], field: str, info: FieldInfo, settings: bool) -> dict[str, Any] | None:
     bounds = _bounds(model, field, info)
     blank = _plain_default(info)
     if bounds:
         return {**blank, **bounds, "integer": _is_integer(info.annotation)}
-    if settings and blank:
-        return blank
+    follows = _blank_from(model, field)
+    if (settings and blank) or follows:
+        return {**blank, **follows}
     return None
 
 
@@ -156,7 +177,9 @@ BANNER = """\
 // field the project schema declares it on: `default` is what the schema stores
 // for a blank one, `min` and `max` the range it takes (both ends included),
 // `integer` that it refuses a fraction. A value outside its range fails the
-// whole project save.
+// whole project save. `blank_from` says what a blank one draws when another
+// setting decides it: that setting's value names it, and a value not named
+// reads as that setting's default.
 """
 
 TS_BODY = """
@@ -166,6 +189,7 @@ export interface ProjectValue {
   readonly min?: number;
   readonly max?: number;
   readonly integer?: boolean;
+  readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string>>>>;
 }
 
 export const PROJECT_VALUES = %(table)s as const satisfies Record<string, Record<string, ProjectValue>>;

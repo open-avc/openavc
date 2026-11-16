@@ -3,7 +3,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import type { ThemeDefinition, ThemeSummary } from "../../api/restClient";
 import { ThemeExistsError } from "../../api/restClient";
 import {
-  customTheme, builtinTheme, themeById, renderStudio, sectionBody, tokenRow, textIn, SUMMARIES,
+  customTheme, builtinTheme, themeById, renderStudio, sectionBody, tokenRow, textIn, SUMMARIES, studioProject,
 } from "../../test/themeStudioFixtures";
 
 const { getTheme, updateTheme, createTheme, deleteTheme, importTheme, preview, calls } = vi.hoisted(() => ({
@@ -206,6 +206,19 @@ describe("Delete", () => {
     expect(calls).toEqual(["deleteTheme", "changeTheme", "refreshThemes"]);
     expect(cb.onChangeTheme).toHaveBeenCalledWith("dark-default");
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("goes back to the theme a light project draws with none chosen, and names it", async () => {
+    const project = studioProject();
+    project.ui.settings.theme = "light";
+    const themes = [...SUMMARIES, { ...SUMMARIES[0], id: "light-modern", name: "Light Modern" }];
+    const { cb } = await loaded({ project, themes });
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const question = screen.getByRole("alertdialog");
+    expect(question).toHaveTextContent("Pages still set to this theme will fall back to Light Modern.");
+    fireEvent.click(within(question).getByRole("button", { name: "Delete" }));
+    await screen.findByText('Deleted "Sample"');
+    expect(cb.onChangeTheme).toHaveBeenCalledExactlyOnceWith("light-modern");
   });
 
   it("does nothing when the question is cancelled", async () => {

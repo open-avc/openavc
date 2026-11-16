@@ -1,7 +1,8 @@
 /**
  * The theme a panel draws with, and the Theme Studio's control picker.
  *
- * A definition names a theme (`theme_id`, or the old light / dark setting);
+ * A definition names a theme (`theme_id`, or with none the theme the project
+ * schema gives its light / dark setting: `themeIdOf`, modules/project_values.js);
  * `PanelTheme` fetches it -- or takes the working copy the Theme Studio hands
  * over, which applies within a frame -- and puts its variables on the
  * document as `--panel-*` custom properties, overlaid by the project's
@@ -27,6 +28,7 @@
 
 import { assetUrl, basePath } from './base_path.js';
 import { drawFadedPicture, gradientCss } from './paint.js';
+import { themeIdOf } from './project_values.js';
 
 // How long the first draw waits for the theme before going ahead without it.
 // The fetch is same-origin and answers in milliseconds; this only exists so a
@@ -55,11 +57,6 @@ const CSS_VARIABLES = {
     surface_border: '--panel-surface-border',
     border_radius: '--panel-border-radius',
 };
-
-/** The theme a definition's settings name: its id, else light or dark by the old setting. */
-function themeIdOf(settings) {
-    return settings.theme_id || (settings.theme === 'light' ? 'light-modern' : 'dark-default');
-}
 
 /** A theme from the server, or null when there is none to be had. */
 function fetchTheme(themeId) {

@@ -1,0 +1,28 @@
+{
+  "_comment": [
+    "The theme a project draws: its theme_id, else the one its light or dark",
+    "`theme` names, a word not named reading as the default `theme`. The project",
+    "schema decides it (UISettings in openavc/core/project_loader.py); the panel",
+    "(web/panel/modules/project_values.js) and the Builder",
+    "(web/programmer/src/views/ui-builder/builderTheme.ts) read it from the",
+    "generated table. tests/test_blank_theme_parity.py runs every case through the",
+    "schema and the panel, builderTheme.test.ts through the Builder. 'settings'",
+    "is ui.settings as written; a 'draft_only' case is one the loader refuses",
+    "(a null), which only a Builder draft can hand the panel."
+  ],
+  "cases": [
+    {"name": "nothing set", "settings": {}, "expected": "dark-default"},
+    {"name": "a dark project with no id", "settings": {"theme": "dark", "theme_id": ""}, "expected": "dark-default"},
+    {"name": "a light project with no id", "settings": {"theme": "light", "theme_id": ""}, "expected": "light-modern"},
+    {"name": "a light project with the id left out", "settings": {"theme": "light"}, "expected": "light-modern"},
+    {"name": "an id over a light project", "settings": {"theme": "light", "theme_id": "luxury"}, "expected": "luxury"},
+    {"name": "an id over a dark project", "settings": {"theme": "dark", "theme_id": "paper"}, "expected": "paper"},
+    {"name": "an id with the light or dark left out", "settings": {"theme_id": "slate"}, "expected": "slate"},
+    {"name": "a light or dark left blank", "settings": {"theme": "", "theme_id": ""}, "expected": "dark-default"},
+    {"name": "a word the schema does not name", "settings": {"theme": "auto", "theme_id": ""}, "expected": "dark-default"},
+    {"name": "light in capitals is not light", "settings": {"theme": "Light", "theme_id": ""}, "expected": "dark-default"},
+    {"name": "a word that is an object's own property name", "settings": {"theme": "constructor"}, "expected": "dark-default"},
+    {"name": "a null id in a draft", "settings": {"theme": "light", "theme_id": null}, "expected": "light-modern", "draft_only": true},
+    {"name": "a null light or dark in a draft", "settings": {"theme": null, "theme_id": ""}, "expected": "dark-default", "draft_only": true}
+  ]
+}

@@ -617,6 +617,22 @@ describe("the theme the Properties panel shows", () => {
     expect(themeFetch.calls).toEqual(["/t/abc/api/themes/dark-default"]);
   });
 
+  it("reads a light project with no theme chosen in the theme the panel draws for it, everywhere", async () => {
+    seed(makeProject({ settings: { theme: "light", theme_id: "" } }));
+    themeFetch.byId["light-modern"] = { variables: { accent: "#l" } };
+    await renderPage(UIBuilderView);
+    expect(themeFetch.calls).toEqual(["/api/themes/light-modern"]);
+    expect(props().themeDefaults.slider).toEqual({ accent_color: "#l" });
+    expect(props().currentThemeId).toBe("light-modern");
+    expect(seen.ThemeStudio).toMatchObject({ currentThemeId: "light-modern" });
+  });
+
+  it("marks the theme a project chose in the theme list", async () => {
+    seed(makeProject({ settings: { theme: "light", theme_id: "paper" } }));
+    await renderPage(UIBuilderView);
+    expect(props().currentThemeId).toBe("paper");
+  });
+
   it("shows no defaults when the theme cannot be read", async () => {
     themeFetch.byId["dark-default"] = { variables: { accent: "#1" } };
     const r = await renderPage(UIBuilderView);

@@ -5,8 +5,8 @@
  * which passed the loader, and the Builder's unsaved draft
  * (modules/builder_link.js), which never did. Both are read here, so a draft
  * draws what saving it would: a control's shown decimals, the page transition
- * and entry stagger, the idle page and the failure message switch are read
- * only here.
+ * and entry stagger, the idle page, the failure message switch and the theme a
+ * project with no theme id draws are read only here.
  *
  * A number the table bounds is held to its range (the nearer end for one
  * outside it) and rounded where the schema takes whole numbers only. A blank
@@ -47,4 +47,22 @@ export function panelSetting(settings, field) {
     const n = boundedNumber('UISettings', field, raw);
     if (n === null || (Number(raw) === 0 && spec.min > 0)) return spec.default;
     return n;
+}
+
+/**
+ * THE theme a panel's settings draw: its `theme_id`, else the theme the
+ * table's `blank_from` names for its light or dark `theme`, a word it does not
+ * name reading as the default `theme`'s. The project keeps a blank id blank;
+ * this is only what it draws.
+ */
+export function themeIdOf(settings) {
+    return panelSetting(settings, 'theme_id') || blankFrom(settings, 'theme_id');
+}
+
+/** A blank setting's value as the setting the table says decides it reads. */
+function blankFrom(settings, field) {
+    const [[setting, byValue]] = Object.entries(PROJECT_VALUES.UISettings[field].blank_from);
+    const word = panelSetting(settings, setting);
+    const named = Object.prototype.hasOwnProperty.call(byValue, word);
+    return byValue[named ? word : PROJECT_VALUES.UISettings[setting].default];
 }

@@ -16,7 +16,7 @@ import { BuilderContextMenu } from "./ui-builder/BuilderContextMenu";
 import { ToolbarActions } from "./ui-builder/ToolbarActions";
 import { BuilderSidebar, type SidebarTab } from "./ui-builder/BuilderSidebar";
 import { BuilderProperties } from "./ui-builder/BuilderProperties";
-import { useBuilderTheme } from "./ui-builder/builderTheme";
+import { projectThemeId, useBuilderTheme } from "./ui-builder/builderTheme";
 import { usePanelEdits } from "./ui-builder/panelEdits";
 import { useShownPage } from "./ui-builder/useShownPage";
 import { BuilderCanvas } from "./ui-builder/BuilderCanvas";
@@ -44,7 +44,7 @@ export function UIBuilderView() {
   const [leftTab, setLeftTab] = useState<SidebarTab>("elements");
   const dialogs = useBuilderDialogs();
   const validation = useValidation(project);
-  const theme = useBuilderTheme(project?.ui?.settings?.theme_id);
+  const theme = useBuilderTheme(projectThemeId(project?.ui?.settings));
 
   useFlushBeforeUnload();
 

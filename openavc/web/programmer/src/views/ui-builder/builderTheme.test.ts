@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 // The UI Builder reads the chosen theme once, and Panel Settings shows a blank
 // accent and font from what that read returned: the theme's own variables, or
@@ -10,7 +12,15 @@ vi.mock("../../api/restClient", () => ({
   listThemes: vi.fn(() => Promise.resolve([])),
 }));
 
-import { useBuilderTheme } from "./builderTheme";
+import { blankThemeId, projectThemeId, useBuilderTheme } from "./builderTheme";
+
+type Case = { name: string; settings: Record<string, unknown>; expected: string };
+
+// The same table tests/test_blank_theme_parity.py runs through the project
+// schema and the panel. Read off disk: it lives outside this Vite project, and
+// vitest runs with openavc/web/programmer as the cwd.
+const casesPath = resolve(process.cwd(), "../../../tests/fixtures/blank_theme_cases.json");
+const cases: Case[] = JSON.parse(readFileSync(casesPath, "utf-8")).cases;
 
 function answer(body: unknown, ok = true) {
   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok, json: () => Promise.resolve(body) })));
@@ -35,5 +45,26 @@ describe("useBuilderTheme", () => {
     answer(null, false);
     rerender({ id: "gone" });
     await waitFor(() => expect(result.current.variables).toBeNull());
+  });
+});
+
+describe("the theme a project draws", () => {
+  it("has cases", () => {
+    expect(cases.length).toBeGreaterThan(10);
+  });
+
+  for (const c of cases) {
+    it(c.name, () => {
+      expect(projectThemeId(c.settings as never)).toBe(c.expected);
+    });
+  }
+
+  it("reads no settings at all as a project with nothing set", () => {
+    expect(projectThemeId(undefined)).toBe(projectThemeId({}));
+  });
+
+  it("is the light or dark setting's own theme once the id is taken away", () => {
+    expect(blankThemeId({ theme: "light", theme_id: "paper" } as never)).toBe("light-modern");
+    expect(blankThemeId({ theme: "dark", theme_id: "paper" } as never)).toBe("dark-default");
   });
 });

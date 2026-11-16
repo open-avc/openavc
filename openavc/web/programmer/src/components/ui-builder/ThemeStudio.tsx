@@ -34,6 +34,7 @@ import { useStatusLine, orStepFailed, importFailed, type StatusLine } from "./st
 import { FileActionBar, FileActionLine, type FileActions } from "./FileActionBar";
 import { OverridesBanner } from "./OverridesBanner";
 import { galleryPage, GALLERY_PAGE_ID, GALLERY_DEMO_STATE } from "./themeGallery";
+import { blankThemeId } from "../../views/ui-builder/builderTheme";
 
 // --- Main component ---
 
@@ -131,6 +132,9 @@ export function ThemeStudio({
 
   const isCustom = working?._source === "custom";
   const isDirty = working ? JSON.stringify(working) !== savedJson : false;
+  // Where a delete leaves the project: the theme it draws with none chosen.
+  const afterDelete = blankThemeId(project.ui.settings);
+  const afterDeleteName = themes.find((t) => t.id === afterDelete)?.name ?? afterDelete;
 
   // Every edit is a rule of themeEdits.ts (or Quick Adjust's surface style)
   // applied to the working copy; each section applies its own through the draft.
@@ -234,7 +238,7 @@ export function ThemeStudio({
       failure: orStepFailed("Delete"),
       work: () => deleteTheme(working.id),
       done: () => {
-        chooseForAction("dark-default");
+        chooseForAction(afterDelete);
         onRefreshThemes();
         return `Deleted "${working.name}"`;
       },
@@ -636,7 +640,7 @@ export function ThemeStudio({
                   from this project's <code>themes/</code> directory.
                 </p>
                 <p style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                  Pages still set to this theme will fall back to <strong>dark-default</strong>.
+                  Pages still set to this theme will fall back to <strong>{afterDeleteName}</strong>.
                 </p>
               </>
             }

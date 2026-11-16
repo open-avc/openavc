@@ -6,7 +6,9 @@ All downstream code works with typed ProjectConfig objects, never raw dicts.
 
 The models are the one place a project value's bound and default are written:
 each range on its field (``Field(ge=, le=)``), each blank as the field's
-default. ``python -m openavc.core.project_values_gen`` renders them into one
+default, or, for a blank another setting decides (the theme a project with no
+theme id draws), in the model's ``BLANK_FROM``.
+``python -m openavc.core.project_values_gen`` renders them into one
 table for the Builder (``web/programmer/src/api/projectValues.gen.ts``) and the
 panel (``web/panel/modules/project_values.gen.js``), which draws the Builder's
 unsaved draft without it ever passing this loader; a test holds both files to
@@ -21,7 +23,7 @@ import shutil
 import tempfile
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -620,6 +622,7 @@ class UIPage(_ForwardCompatModel):
 
 class UISettings(_ForwardCompatModel):
     theme: str = "dark"
+    # Empty is kept as written; what it draws is drawn_theme_id's answer.
     theme_id: str = ""
     theme_overrides: dict[str, Any] = Field(default_factory=dict)
     accent_color: str = ""
@@ -644,6 +647,24 @@ class UISettings(_ForwardCompatModel):
     # alternative is a panel that does nothing and explains nothing. Off is for
     # a room that draws its own status and would rather ours kept quiet.
     show_error_messages: bool = True
+
+    #: A blank setting another setting decides, as (that setting, its value ->
+    #: this one's). A blank theme_id is the theme the light or dark `theme`
+    #: names (the setting a project carried before themes had ids); a `theme`
+    #: not named here reads as the default `theme`.
+    BLANK_FROM: ClassVar[dict[str, tuple[str, dict[str, str]]]] = {
+        "theme_id": ("theme", {"light": "light-modern", "dark": "dark-default"}),
+    }
+
+    def drawn_theme_id(self) -> str:
+        """THE theme this project draws: its ``theme_id``, else the one
+        ``BLANK_FROM`` gives for its ``theme``. The panel and the Builder read
+        the same rule from the generated table."""
+        if self.theme_id:
+            return self.theme_id
+        setting, by_value = self.BLANK_FROM["theme_id"]
+        default = type(self).model_fields[setting].default
+        return by_value.get(getattr(self, setting), by_value[default])
 
 
 class MasterElement(UIElement):
