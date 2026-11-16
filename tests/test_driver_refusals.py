@@ -355,3 +355,94 @@ async def test_a_file_refused_at_start_then_installed_over_has_no_load_error_any
     assert refused_files.refusal_for(DRIVER_ID) is None
     [entry] = (await routes.list_installed_community_drivers())["drivers"]
     assert entry["load_error"] is None
+
+
+# --- the doors answer with the reasons ---------------------------------------------
+
+
+class _Upload:
+    def __init__(self, filename: str, data: bytes):
+        self.filename = filename
+        self._data = data
+
+    async def read(self) -> bytes:
+        return self._data
+
+
+def _form(filename: str, data: bytes):
+    class _Request:
+        async def form(self):
+            return {"file": _Upload(filename, data)}
+
+    return _Request()
+
+
+@pytest.fixture
+def doors(repo, monkeypatch):
+    monkeypatch.setattr(routes, "_get_driver_repo_dir", lambda: repo)
+
+    async def _nothing(*_args, **_kwargs):
+        return []
+
+    monkeypatch.setattr(routes, "_activate_waiting_devices", _nothing)
+    monkeypatch.setattr(routes, "announce_drivers_changed", _nothing)
+    monkeypatch.setattr("openavc.api.discovery.refresh_all_device_matches", _nothing)
+    return repo
+
+
+async def test_an_import_of_the_finding_s_file_answers_with_the_checker_s_reasons(doors):
+    with pytest.raises(StructuredApiError) as caught:
+        await routes.upload_driver(_form("acme_widget.avcdriver", _yaml(**BOGUS)))
+    refusal = caught.value
+    assert refusal.status_code == 422
+    assert refusal.detail == "The driver was not imported. Fix the driver file first:\n" + "\n".join(_bogus_reasons())
+    assert tuple(refusal.fields["errors"]) == _bogus_reasons()
+    assert list(doors.iterdir()) == []
+    assert refused_files.refusal_for(DRIVER_ID) is None
+
+
+async def test_an_import_of_a_python_file_that_does_not_import_answers_with_its_error(doors):
+    with pytest.raises(StructuredApiError) as caught:
+        await routes.upload_driver(_form("acme_widget.py", _python("import acme_nonexistent_lib\n")))
+    assert caught.value.detail == (
+        "The driver was not imported. Fix the driver file first:\n"
+        "ModuleNotFoundError: No module named 'acme_nonexistent_lib' (line 1)"
+    )
+
+
+async def test_a_file_the_loader_takes_is_still_imported(doors):
+    answer = await routes.upload_driver(_form("acme_widget.avcdriver", _yaml()))
+    assert answer["status"] == "uploaded"
+    assert registry.is_driver_registered(DRIVER_ID)
+
+
+async def test_the_missing_drivers_answer_says_which_did_not_load(repo, monkeypatch):
+    from types import SimpleNamespace
+
+    from openavc.api.routes import devices as device_routes
+    from openavc.discovery.community_index import CommunityIndexCache
+
+    (repo / "acme_widget.avcdriver").write_bytes(_yaml(**BOGUS))
+    _loaded_at_start(repo)
+    engine = SimpleNamespace(
+        project=None,
+        devices=SimpleNamespace(
+            get_missing_drivers=lambda: [DRIVER_ID, "acme_absent"],
+            list_devices=lambda: [
+                {"id": "d1", "driver": DRIVER_ID, "orphaned": True},
+                {"id": "d2", "driver": "acme_absent", "orphaned": True},
+            ],
+        ),
+        installed_equipment=SimpleNamespace(describe_missing_reference=lambda driver_id, project: None),
+    )
+    monkeypatch.setattr(device_routes, "_get_engine", lambda: engine)
+
+    async def _no_catalog(self, *args, **kwargs):
+        return []
+
+    monkeypatch.setattr(CommunityIndexCache, "get_drivers", _no_catalog)
+    monkeypatch.delattr(device_routes.list_missing_drivers, "_cache", raising=False)
+
+    missing = {m["driver_id"]: m for m in (await device_routes.list_missing_drivers())["missing"]}
+    assert missing[DRIVER_ID]["load_error"] == "; ".join(_bogus_reasons())
+    assert "load_error" not in missing["acme_absent"]

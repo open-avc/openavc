@@ -12,6 +12,16 @@ interface MissingDriversModalProps {
   onInstalled: () => void;
 }
 
+/** Why a driver whose file is installed did not load, under its line. */
+function LoadError({ error }: { error?: string }) {
+  if (!error) return null;
+  return (
+    <div style={{ fontSize: 11, color: "var(--color-warning)", whiteSpace: "pre-wrap", marginTop: 2 }}>
+      Installed but did not load: {error}
+    </div>
+  );
+}
+
 export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDriversModalProps) {
   const installable = missing.filter((m) => m.community_match !== null);
   const unavailableBuiltIn = missing.filter((m) => m.built_in_equipment);
@@ -128,12 +138,13 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
 
   // Selection view
   const totalDevices = missing.reduce((sum, m) => sum + m.device_ids.length, 0);
+  const anyNotLoaded = missing.some((m) => m.load_error);
 
   return (
     <Dialog title="Missing drivers" onClose={onClose}>
       <div style={{ fontSize: "var(--font-size-sm)", marginBottom: "var(--space-md)", color: "var(--text-secondary)" }}>
         This project uses {missing.length} driver{missing.length === 1 ? "" : "s"} that{" "}
-        {missing.length === 1 ? "isn't" : "aren't"} installed
+        {missing.length === 1 ? "isn't" : "aren't"} installed{anyNotLoaded ? " or did not load" : ""}
         {totalDevices > 0 && (
           <>
             , affecting {totalDevices} device{totalDevices === 1 ? "" : "s"}
@@ -188,6 +199,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
                     <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
                       {m.driver_id} · used by {m.device_ids.length} device{m.device_ids.length === 1 ? "" : "s"}
                     </div>
+                    <LoadError error={m.load_error} />
                   </div>
                 </label>
               );
@@ -227,6 +239,7 @@ export function MissingDriversModal({ missing, onClose, onInstalled }: MissingDr
                 <span style={{ color: "var(--text-muted)" }}>
                   · used by {m.device_ids.length} device{m.device_ids.length === 1 ? "" : "s"}
                 </span>
+                <LoadError error={m.load_error} />
               </div>
             ))}
             <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: "var(--space-xs)" }}>

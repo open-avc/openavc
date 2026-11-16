@@ -314,6 +314,8 @@ export interface MissingDriver {
   driver_id: string;
   device_ids: string[];
   community_match: CommunityMatch | null;
+  /** Present only when the driver's file is installed but did not load: why. */
+  load_error?: string;
 }
 
 /** OpenAVC's own SSH public key. Key sign-in uses it when a device's key

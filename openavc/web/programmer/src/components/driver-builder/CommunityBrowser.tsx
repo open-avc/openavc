@@ -1200,6 +1200,7 @@ function CommunityDriverDetail({
               background: "rgba(239,68,68,0.1)",
               padding: "var(--space-xs) var(--space-sm)",
               borderRadius: "3px",
+              whiteSpace: "pre-line",
             }}
           >
             Install failed: {installError.replace(/^Error:\s*/i, "").slice(0, 200)}

@@ -46,6 +46,7 @@ from openavc.drivers.child_ids import (
     child_id_kind,
     coerce_child_local_id,
 )
+from openavc.drivers.refused_files import refusal_for
 from openavc.drivers.registry import is_driver_registered
 from openavc.utils.logger import get_logger
 
@@ -110,6 +111,8 @@ async def list_missing_drivers() -> dict[str, Any]:
     ``community_match`` is populated when the driver exists in the public
     catalog (``raw.githubusercontent.com/open-avc/openavc-drivers``); when
     null, the user must reassign the device or upload a driver manually.
+    ``load_error`` is present only when the driver's file is installed but
+    did not load, and says why (``drivers/refused_files``).
 
     Declared before /devices/{device_id} so the literal path wins routing.
     """
@@ -153,6 +156,10 @@ async def list_missing_drivers() -> dict[str, Any]:
         }
         if equipment:
             entry["built_in_equipment"] = equipment
+        else:
+            refusal = refusal_for(driver_id)
+            if refusal is not None:
+                entry["load_error"] = refusal.detail
         result.append(entry)
     return {"missing": result}
 

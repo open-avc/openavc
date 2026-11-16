@@ -42,6 +42,32 @@ from openavc.utils.community_integrity import ArtifactHashes
 CATALOG = "https://raw.githubusercontent.com/open-avc/openavc-drivers/main/utility/"
 DRIVER_ID = "acme_widget"
 
+# What each door says above the loader's reasons when the loader refuses the file.
+INSTALLED = "The driver was not installed. Its file did not load"
+UPDATED = "The driver was not updated. Its new file did not load, and the version you had is unchanged"
+IMPORTED = "The driver was not imported. Fix the driver file first"
+BUNDLED = "The driver in the bundle was not imported. Fix its driver file first"
+
+
+def _loader_refused(heading: str, filename: str, data: bytes) -> str:
+    """A door's answer when the loader refuses ``data`` as ``filename``: its
+    own sentence, then the loader's reasons one per line, asked of the loader
+    rather than copied."""
+    import tempfile
+
+    from openavc.drivers.driver_loader import read_driver_file
+    from openavc.drivers.python_modules import trial_driver_import
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / filename
+        path.write_bytes(data)
+        if filename.endswith(".py"):
+            reasons = [trial_driver_import(path).reason]
+        else:
+            reasons = list(read_driver_file(path).reasons)
+    assert all(reasons)
+    return f"{heading}:\n" + "\n".join(reasons)
+
 
 # --- the world around a door ----------------------------------------------
 
@@ -373,7 +399,9 @@ async def test_install_of_a_yaml_the_loader_refuses_removes_it_and_its_companion
     )
     world.catalog.pages[CATALOG + "acme_widget_discovery.py"] = COMPANION
     refusal = await _refused(_install("acme_widget.avcdriver"))
-    assert (refusal.status_code, refusal.detail) == (422, "Invalid driver definition file")
+    assert (refusal.status_code, refusal.detail) == (422, _loader_refused(
+        INSTALLED, "acme_widget.avcdriver", world.catalog.pages[CATALOG + "acme_widget.avcdriver"],
+    ))
     assert _tree(world.repo) == {}
     assert ("register", DRIVER_ID) not in world.events
 
@@ -393,7 +421,9 @@ async def test_install_of_a_yaml_whose_companion_fails_removes_the_yaml(world):
 async def test_install_of_a_yaml_the_loader_refuses_without_a_companion(world):
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(transport="carrier_pigeon")
     refusal = await _refused(_install("acme_widget.avcdriver"))
-    assert (refusal.status_code, refusal.detail) == (422, "Invalid driver definition file")
+    assert (refusal.status_code, refusal.detail) == (422, _loader_refused(
+        INSTALLED, "acme_widget.avcdriver", _yaml(transport="carrier_pigeon"),
+    ))
     assert _tree(world.repo) == {}
 
 
@@ -435,7 +465,7 @@ async def test_install_of_a_python_file_without_a_driver_class(world):
     world.catalog.pages[CATALOG + "acme_widget.py"] = b"VALUE = 1\n"
     refusal = await _refused(_install("acme_widget.py"))
     assert (refusal.status_code, refusal.detail) == (
-        422, "No valid driver class found in Python file",
+        422, _loader_refused(INSTALLED, "acme_widget.py", b"VALUE = 1\n"),
     )
     assert _tree(world.repo) == {}
     assert world.events == [
@@ -723,7 +753,9 @@ async def test_update_to_a_yaml_the_loader_refuses_keeps_the_old_one_registered(
     (world.repo / "acme_widget.avcdriver").write_bytes(_yaml())
     world.catalog.pages[CATALOG + "acme_widget.avcdriver"] = _yaml(transport="carrier_pigeon")
     refusal = await _refused(_update("acme_widget.avcdriver"))
-    assert (refusal.status_code, refusal.detail) == (422, "Invalid driver definition file")
+    assert (refusal.status_code, refusal.detail) == (422, _loader_refused(
+        UPDATED, "acme_widget.avcdriver", _yaml(transport="carrier_pigeon"),
+    ))
     assert _tree(world.repo) == {"acme_widget.avcdriver": _yaml()}
     assert world.events == [("get", "acme_widget.avcdriver")]
 
@@ -750,7 +782,7 @@ async def test_update_to_a_python_file_without_a_class_keeps_the_old_one(world):
     world.catalog.pages[CATALOG + "acme_widget.py"] = b"VALUE = 2\n"
     refusal = await _refused(_update("acme_widget.py"))
     assert (refusal.status_code, refusal.detail) == (
-        422, "No valid driver class found in Python file",
+        422, _loader_refused(UPDATED, "acme_widget.py", b"VALUE = 2\n"),
     )
     assert _tree(world.repo) == {"acme_widget.py": _python(mark="old")}
     assert world.events == [
@@ -838,14 +870,18 @@ async def test_upload_of_another_kind_of_file(world):
 @pytest.mark.asyncio
 async def test_upload_of_a_yaml_with_no_id_keeps_its_safe_name_then_is_refused(world):
     refusal = await _refused(upload_driver(_form("my_driver.avcdriver", b"name: Nameless\n")))
-    assert (refusal.status_code, refusal.detail) == (422, "Invalid driver definition file")
+    assert (refusal.status_code, refusal.detail) == (
+        422, _loader_refused(IMPORTED, "my_driver.avcdriver", b"name: Nameless\n"),
+    )
     assert _tree(world.repo) == {}
 
 
 @pytest.mark.asyncio
 async def test_upload_of_text_that_is_not_yaml(world):
     refusal = await _refused(upload_driver(_form("my_driver.avcdriver", b"key: [unclosed")))
-    assert (refusal.status_code, refusal.detail) == (422, "Invalid driver definition file")
+    assert (refusal.status_code, refusal.detail) == (
+        422, _loader_refused(IMPORTED, "my_driver.avcdriver", b"key: [unclosed"),
+    )
     assert _tree(world.repo) == {}
 
 
@@ -855,10 +891,9 @@ async def test_upload_of_a_yaml_whose_companion_is_not_here_yet(world):
     refusal = await _refused(upload_driver(_form("acme_widget.avcdriver", data)))
     assert refusal.status_code == 422
     assert refusal.detail == (
-        "Driver acme_widget.avcdriver declares a Python companion "
-        "('./sub/acme_widget_discovery.py') but 'acme_widget_discovery.py' is not "
-        "in the driver library yet. Upload the _discovery.py file first, then "
-        "re-upload this driver."
+        f"{IMPORTED}:\n"
+        "It names the discovery file './sub/acme_widget_discovery.py' "
+        "(discovery.python.file), which is not in the driver folder. Add that file first."
     )
     assert _tree(world.repo) == {}
 
@@ -893,7 +928,7 @@ async def test_upload_of_a_yaml_with_a_misspelled_key_is_removed(world):
 async def test_upload_of_a_python_file_without_a_class(world):
     refusal = await _refused(upload_driver(_form("helper_tool.py", b"VALUE = 1\n")))
     assert (refusal.status_code, refusal.detail) == (
-        422, "No valid driver class found in Python file",
+        422, _loader_refused(IMPORTED, "helper_tool.py", b"VALUE = 1\n"),
     )
     assert _tree(world.repo) == {}
 
@@ -981,9 +1016,9 @@ async def test_bundle_of_a_yaml_driver_renames_the_main_and_keeps_the_companion_
 async def test_bundle_whose_yaml_the_loader_refuses_removes_what_it_created(world):
     data = _zip({"acme_widget.avcdriver": _yaml(transport="carrier_pigeon")})
     refusal = await _refused(upload_driver_bundle(_form("b.zip", data)))
-    assert (refusal.status_code, refusal.detail) == (
-        422, "Invalid driver definition file in bundle.",
-    )
+    assert (refusal.status_code, refusal.detail) == (422, _loader_refused(
+        BUNDLED, "acme_widget.avcdriver", _yaml(transport="carrier_pigeon"),
+    ))
     assert _tree(world.repo) == {}
 
 
@@ -1002,7 +1037,7 @@ async def test_bundle_without_a_class_keeps_the_file_it_would_replace(world):
     data = _zip({"acme_widget.py": b"VALUE = 1\n", "acme_widget_sim.py": b"SIM = 1\n"})
     refusal = await _refused(upload_driver_bundle(_form("b.zip", data)))
     assert (refusal.status_code, refusal.detail) == (
-        422, "No valid driver class found in the bundle's Python file.",
+        422, _loader_refused(BUNDLED, "acme_widget.py", b"VALUE = 1\n"),
     )
     assert _tree(world.repo) == {"acme_widget.py": b"PREVIOUS = 1\n"}
 

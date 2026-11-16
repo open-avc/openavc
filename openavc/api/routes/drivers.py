@@ -124,11 +124,15 @@ def _check_driver_file(filename: str, content: bytes) -> None:
 
 def _admitted(change: DriverChange, gates: Gates, failed: str) -> Admitted:
     """``driver_change.admit`` as this API answers it: its own refusal as its
-    status and sentence, a protected identity and a gate's refusal as they
-    were raised, and anything else the door's 500 sentence ``failed``."""
+    status and sentence, with the loader's reasons beneath it when the loader
+    refused the file (``definition_invalid``: one per line in ``detail``, and
+    as ``errors``); a protected identity and a gate's refusal as they were
+    raised; and anything else the door's 500 sentence ``failed``."""
     try:
         return admit(change, gates)
     except DriverRefused as e:
+        if e.errors:
+            raise definition_invalid(list(e.errors), preamble=e.detail, status_code=e.status_code)
         raise HTTPException(status_code=e.status_code, detail=e.detail)
     except (HTTPException, InstalledEquipmentError):
         raise
@@ -349,6 +353,14 @@ async def install_community_driver(body: CommunityDriverInstallRequest) -> dict[
     }
 
 
+# What each door says above the loader's reasons when it refuses the driver
+# file (the community install says ``Gates``' own).
+_IMPORT_REFUSED = "The driver was not imported. Fix the driver file first"
+_BUNDLE_REFUSED = "The driver in the bundle was not imported. Fix its driver file first"
+_UPDATE_REFUSED = (
+    "The driver was not updated. Its new file did not load, and the version you had is unchanged"
+)
+
 # A driver id that can also be its file name.
 _FILE_NAME_ID = re.compile(rf"^{DRIVER_FILE_STEM}$")
 
@@ -452,12 +464,13 @@ async def upload_driver(request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Invalid filename — use only letters, numbers, hyphens, and underscores")
 
     _check_driver_file(filename, content)
-    if filename.endswith(".avcdriver"):
-        _require_companion_here(filename, content, driver_repo)
-
     admitted = _admitted(
         DriverChange(driver_repo, filename, {filename: content}),
-        Gates(definition=_reject_unknown_keys),
+        Gates(
+            definition=_reject_unknown_keys,
+            not_a_definition=_IMPORT_REFUSED,
+            no_driver_class=_IMPORT_REFUSED,
+        ),
         failed=f"Failed to load uploaded driver '{filename}'",
     )
     driver_id = admitted.driver_class.DRIVER_INFO.get("id", filename)
@@ -474,30 +487,6 @@ async def upload_driver(request: Request) -> dict[str, Any]:
         "file": filename,
         "activated_devices": activated,
     }
-
-
-def _require_companion_here(filename: str, content: bytes, driver_repo: Path) -> None:
-    """Refuse an uploaded YAML whose declared discovery companion is not in the
-    driver folder yet, before anything is written. The loader would refuse it
-    too, but with the generic 'Invalid driver definition file'; this says what
-    to upload."""
-    companion_relpath = companion_relpath_from_yaml(content)
-    if not companion_relpath:
-        return
-    companion_filename = PurePosixPath(companion_relpath).name
-    if (driver_repo / companion_filename).is_file():
-        return
-    raise HTTPException(
-        status_code=422,
-        detail=(
-            f"Driver {filename} declares a Python "
-            f"companion ({companion_relpath!r}) but "
-            f"{companion_filename!r} is not in the "
-            "driver library yet. Upload the "
-            "_discovery.py file first, then re-upload "
-            "this driver."
-        ),
-    )
 
 
 @router.post("/drivers/upload-bundle")
@@ -535,8 +524,8 @@ async def upload_driver_bundle(request: Request) -> dict[str, Any]:
         DriverChange(driver_repo, main_name, entries),
         Gates(
             definition=_reject_unknown_keys,
-            not_a_definition="Invalid driver definition file in bundle.",
-            no_driver_class="No valid driver class found in the bundle's Python file.",
+            not_a_definition=_BUNDLE_REFUSED,
+            no_driver_class=_BUNDLE_REFUSED,
         ),
         failed=f"Failed to load uploaded driver bundle '{raw_name}'",
     )
@@ -907,7 +896,11 @@ async def update_driver(driver_id: str, request: Request) -> dict[str, Any]:
             optional=download.optional,
             removes=_what_an_update_removes(old_file, old_companion, files, download),
         ),
-        Gates(driver_class=lambda cls: _enforce_driver_id_match(cls, driver_id)),
+        Gates(
+            driver_class=lambda cls: _enforce_driver_id_match(cls, driver_id),
+            not_a_definition=_UPDATE_REFUSED,
+            no_driver_class=_UPDATE_REFUSED,
+        ),
         failed=f"Failed to load updated driver '{driver_id}'",
     )
     for name in admitted.removed:

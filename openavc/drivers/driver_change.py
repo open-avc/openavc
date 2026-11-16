@@ -120,8 +120,8 @@ class Gates:
 
     definition: Callable[[dict[str, Any]], None] | None = None
     driver_class: Callable[[type], None] | None = None
-    not_a_definition: str = "Invalid driver definition file"
-    no_driver_class: str = "No valid driver class found in Python file"
+    not_a_definition: str = "The driver was not installed. Its file did not load"
+    no_driver_class: str = "The driver was not installed. Its file did not load"
 
 
 @dataclass(frozen=True)

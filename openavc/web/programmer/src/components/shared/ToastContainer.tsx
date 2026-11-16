@@ -48,7 +48,7 @@ export default function ToastContainer() {
             animation: "toast-in 0.2s ease-out",
           }}
         >
-          <span style={{ flex: 1, wordBreak: "break-word" }}>{t.message}</span>
+          <span style={{ flex: 1, wordBreak: "break-word", whiteSpace: "pre-line" }}>{t.message}</span>
           <button
             onClick={() => removeToast(t.id)}
             style={{
