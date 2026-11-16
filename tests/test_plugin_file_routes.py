@@ -26,7 +26,8 @@ def test_plain_ids_are_safe(plugin_id):
 
 
 @pytest.mark.parametrize(
-    "plugin_id", ["", ".", "..", "acme.widget", "Acme_Widget", "acme-widget", "a b", "a/b"]
+    "plugin_id",
+    ["", ".", "..", "acme.widget", "Acme_Widget", "acme-widget", "a b", "a/b", "acme_widget\n"],
 )
 def test_anything_else_is_not(plugin_id):
     assert not is_safe_plugin_id(plugin_id)

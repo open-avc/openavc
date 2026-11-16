@@ -27,11 +27,11 @@ VALID_MACRO_ACTION_PARAM_TYPES = {
 }
 
 # The action name after "<plugin_id>.": lowercase letters, digits, underscores.
-MACRO_ACTION_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
+MACRO_ACTION_NAME_RE = re.compile(r"[a-z][a-z0-9_]*")
 
 # A SCRIPT_API method name, and the plugin id it is exposed under
 # (openavc.plugins.<id>.<method>): an identifier with no leading underscore.
-SCRIPT_API_METHOD_RE = re.compile(r"^[a-z][a-zA-Z0-9_]*$")
+SCRIPT_API_METHOD_RE = re.compile(r"[a-z][a-zA-Z0-9_]*")
 
 # Names the openavc.plugins proxy uses itself.
 SCRIPT_API_RESERVED_NAMES = frozenset({"register", "unregister", "clear"})
@@ -72,7 +72,7 @@ def _action_name_problem(action_type: Any, plugin_id: str) -> str | None:
     if not action_type.startswith(prefix):
         return f"action '{action_type}' must be prefixed with the plugin id ('{prefix}')"
     suffix = action_type[len(prefix):]
-    if not MACRO_ACTION_NAME_RE.match(suffix):
+    if not MACRO_ACTION_NAME_RE.fullmatch(suffix):
         return (
             f"action '{action_type}' suffix must be lowercase letters, digits, "
             f"or underscores (got '{suffix}')"
@@ -153,13 +153,13 @@ def _script_method_problem(method_name: Any, spec: Any, handlers: HandlerProbe |
 
 
 def _is_identifier(name: Any) -> bool:
-    return isinstance(name, str) and SCRIPT_API_METHOD_RE.match(name) is not None
+    return isinstance(name, str) and SCRIPT_API_METHOD_RE.fullmatch(name) is not None
 
 
 def _script_method_name_problem(method_name: Any) -> str | None:
     if not isinstance(method_name, str):
         return f"method key {method_name!r} must be a string"
-    if not SCRIPT_API_METHOD_RE.match(method_name):
+    if not SCRIPT_API_METHOD_RE.fullmatch(method_name):
         return (
             f"method '{method_name}' is not a valid identifier "
             f"(lowercase start, letters/digits/underscores only)"

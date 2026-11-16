@@ -240,7 +240,7 @@ async def _plugin_catalog_check(plugin_id: str) -> CatalogCheck:
     )
 
 
-_SAFE_ID_RE = re.compile(r"^[a-z0-9_]+$")
+_SAFE_ID_RE = re.compile(r"[a-z0-9_]+")
 
 
 def is_safe_plugin_id(plugin_id: str) -> bool:
@@ -251,7 +251,7 @@ def is_safe_plugin_id(plugin_id: str) -> bool:
     routes before they read -- so an id is never a path segment that can
     name anything but a plugin's own folder.
     """
-    return bool(plugin_id) and _SAFE_ID_RE.match(plugin_id) is not None
+    return bool(plugin_id) and _SAFE_ID_RE.fullmatch(plugin_id) is not None
 
 
 def _validate_plugin_id(plugin_id: str) -> None:

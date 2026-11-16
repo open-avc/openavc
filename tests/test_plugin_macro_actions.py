@@ -324,6 +324,12 @@ class TestMacroActionsValidation:
         valid, error = validate_macro_actions(actions, "audio_player", AudioPluginGood)
         assert valid is False
 
+    def test_an_action_name_ending_in_a_newline_fails(self):
+        actions = {"audio_player.play_sound\n": {"handler": "action_play", "params": []}}
+        valid, error = validate_macro_actions(actions, "audio_player", AudioPluginGood)
+        assert valid is False
+        assert "suffix must be lowercase letters" in error
+
 
 # ═══════════════════════════════════════════════════════════
 #  2. Engine dispatch

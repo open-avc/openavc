@@ -259,6 +259,19 @@ class TestScriptApiValidation:
         assert valid is False
         assert "identifier" in error
 
+    def test_a_method_name_ending_in_a_newline_rejected(self):
+        actions = {"play\n": {"handler": "script_play"}}
+        valid, error = validate_script_api(actions, "audio_player", AudioPluginGood)
+        assert valid is False
+        assert "identifier" in error
+
+    def test_a_plugin_id_ending_in_a_newline_fails(self):
+        valid, error = validate_script_api(
+            AudioPluginGood.SCRIPT_API, "audio_player\n", AudioPluginGood
+        )
+        assert valid is False
+        assert "identifier" in error
+
     def test_uppercase_method_rejected(self):
         actions = {"PlaySound": {"handler": "script_play"}}
         valid, error = validate_script_api(actions, "audio_player", AudioPluginGood)
