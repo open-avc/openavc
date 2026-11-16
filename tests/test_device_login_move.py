@@ -516,10 +516,74 @@ def test_the_first_start_moves_every_library_copys_logins_under_its_own_id(data)
     assert room_c["connections"]["proj1"] == {"host": "192.0.2.30", "password": SAVED_LOGIN}
     assert (data / "saved_projects" / "quiet" / "project.avc").read_bytes() == quiet_before
 
+    # The copies as they were were backed up first; once every one is
+    # rewritten, that zip of clear logins is deleted.
+    assert list((data / "backups").glob("library-before-moving-device-logins-*.zip")) == []
+
+
+def test_a_library_copy_that_cannot_be_rewritten_keeps_the_backup_of_every_copy(data, monkeypatch):
+    _library_copy(data, "room_b", _document("Room-B-Pass"))
+    old = _document("Room-C-Pass")
+    _library_copy(data, "room_c", old)
+    real_write = library._atomic_write_text
+
+    def read_only_room_c(path, text):
+        if path.parent.name == "room_c":
+            raise OSError("read-only")
+        real_write(path, text)
+
+    monkeypatch.setattr(library, "_atomic_write_text", read_only_room_c)
+    library.move_library_logins(DeviceLogins(data))
+
     [backup] = (data / "backups").glob("library-before-moving-device-logins-*.zip")
     with zipfile.ZipFile(backup) as zf:
         assert sorted(zf.namelist()) == ["room_b/project.avc", "room_c/project.avc"]
         assert json.loads(zf.read("room_c/project.avc")) == old
+    assert _on_disk(data / "saved_projects" / "room_b" / "project.avc")["connections"]["proj1"][
+        "password"] == SAVED_LOGIN
+
+    # The next start rewrites it, and every zip of clear logins goes.
+    monkeypatch.setattr(library, "_atomic_write_text", real_write)
+    library.move_library_logins(DeviceLogins(data))
+    assert list((data / "backups").glob("library-before-moving-device-logins-*.zip")) == []
+    assert _on_disk(data / "saved_projects" / "room_c" / "project.avc")["connections"]["proj1"][
+        "password"] == SAVED_LOGIN
+
+
+def _leftover_library_backup(data) -> Any:
+    backups = data / "backups"
+    backups.mkdir(exist_ok=True)
+    leftover = backups / "library-before-moving-device-logins-20261101_000000.zip"
+    with zipfile.ZipFile(leftover, "w") as zf:
+        zf.writestr("room_b/project.avc", json.dumps(_document("Room-B-Pass")))
+    return leftover
+
+
+def test_a_start_with_nothing_left_to_move_deletes_the_backups_earlier_moves_left(data):
+    logins = DeviceLogins(data)
+    logins.save("proj1", DRIVER, {"password": "Room-B-Pass"}, library="room_b")
+    _library_copy(data, "room_b", _document(SAVED_LOGIN))
+    leftover = _leftover_library_backup(data)
+    other = data / "backups" / "pre-update-v0.39.0-20261101T000000Z.zip"
+    other.write_bytes(b"zip")
+
+    library.move_library_logins(DeviceLogins(data))
+
+    assert not leftover.exists()
+    assert other.exists()
+
+
+@pytest.mark.parametrize("login_file", ["missing", "will not open"])
+def test_a_backup_an_earlier_move_left_is_kept_while_the_login_file_cannot_be_read(data, login_file):
+    _library_copy(data, "room_b", _document(SAVED_LOGIN))
+    if login_file == "will not open":
+        DeviceLogins(data).save("proj1", DRIVER, {"password": "Room-B-Pass"}, library="room_b")
+        (data / KEY_FILENAME).unlink()
+    leftover = _leftover_library_backup(data)
+
+    library.move_library_logins(DeviceLogins(data))
+
+    assert leftover.exists()
 
 
 def test_a_library_whose_backup_fails_is_left_as_it_was(data, monkeypatch):

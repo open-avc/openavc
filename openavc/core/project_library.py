@@ -310,8 +310,11 @@ def move_library_logins(logins=None) -> None:
     Every copy this rewrites is backed up first, together, in one zip in the
     data folder's ``backups/``, readable by the server's account only (the
     folder too: ``updater/backup.py``); if that backup cannot be written, no
-    copy is rewritten. Copies are left in whatever format version they were
-    saved in. The logins of a copy no longer in the library are deleted.
+    copy is rewritten. The zip holds those logins in the clear, so it lasts
+    only as long as the move: once every copy is rewritten it is deleted, and
+    so is any an earlier move left (``_end_library_backups``). Copies are left
+    in whatever format version they were saved in. The logins of a copy no
+    longer in the library are deleted.
     """
     logins = logins if logins is not None else device_logins()
     lib = _lib_dir()
@@ -327,26 +330,55 @@ def move_library_logins(logins=None) -> None:
             pending.append((sid, avc, *result))
     for gone in sorted(logins.libraries() - present):
         logins.drop_library(gone)
+    backups = lib.parent / "backups"
     if not pending:
+        _end_library_backups(backups, logins)
         return
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     try:
         backup = _write_private_zip(
-            private_dir(lib.parent / "backups"),
-            f"library-before-moving-device-logins-{stamp}.zip",
+            private_dir(backups),
+            f"{_LIBRARY_BACKUP_PREFIX}{stamp}.zip",
             {f"{sid}/project.avc": original for sid, _, original, _ in pending},
         )
     except OSError:
         log.exception("Could not back up the library, so its device logins stay in its copies for now")
         return
+    rewritten = 0
     for sid, avc, _, moved in pending:
         try:
             _atomic_write_text(avc, json.dumps(moved, indent=4, ensure_ascii=False))
+            rewritten += 1
         except OSError:
             log.exception("Could not rewrite library project '%s' without its device logins", sid)
-    log.info("Moved the device logins out of %d library project(s); the copies as they were: %s",
-             len(pending), backup)
+    if rewritten < len(pending):
+        log.info("Moved the device logins out of %d of %d library project(s); the copies as they were "
+                 "stay in %s until every one is rewritten", rewritten, len(pending), backup)
+        return
+    log.info("Moved the device logins out of %d library project(s)", len(pending))
+    _end_library_backups(backups, logins)
+
+
+#: The name of the zip a move of the library's logins backs the copies up in.
+_LIBRARY_BACKUP_PREFIX = "library-before-moving-device-logins-"
+
+
+def _end_library_backups(backups: Path, logins) -> None:
+    """Delete every zip a move of the library's logins left in ``backups``.
+    Each holds copies as they were, logins in the clear; once no copy is left
+    to rewrite, each of those logins is in the login file or still in its
+    copy. Kept while the login file is missing or will not open, when a zip
+    may be the one place a moved login can still be read."""
+    if not logins.path.exists() or logins.unreadable is not None:
+        return
+    for leftover in sorted(backups.glob(f"{_LIBRARY_BACKUP_PREFIX}*.zip")):
+        try:
+            leftover.unlink()
+        except OSError:
+            log.warning("Could not delete %s, which holds library logins in the clear", leftover)
+            continue
+        log.info("Deleted %s: the library logins it held are saved on this system", leftover.name)
 
 
 def _write_private_zip(folder: Path, name: str, members: dict[str, bytes]) -> Path:
