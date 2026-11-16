@@ -11,9 +11,13 @@
  * Properties panel instead of the value the control is drawn with, so a new
  * themed property is added here as well as in the panel's CSS. Text size is
  * not here: the canvas reports what it drew (uiBuilderStore.textDefaultsRem).
+ *
+ * `blankLook` is what the panel draws for a project that leaves its accent or
+ * its font blank, which Panel Settings shows in those two fields.
  */
 import { useCallback, useEffect, useState } from "react";
 import { getTunnelPrefix, listThemes } from "../../api/restClient";
+import { CSS_VAR_FALLBACKS } from "../../components/ui-builder/colorUtils";
 import { showError } from "../../store/toastStore";
 
 export type ThemeDefaults = Record<string, Record<string, unknown>>;
@@ -108,14 +112,44 @@ function fillBaseline(out: ThemeDefaults, vars: Record<string, unknown>) {
   }
 }
 
+/** The font the panel's stylesheet draws (panel.css, its body) when neither the
+ *  theme nor the project names one. */
+export const PANEL_FONT = "'Inter', system-ui, -apple-system, sans-serif";
+
+/** What the panel draws for a blank Accent Color and a blank Font Family. */
+export interface BlankLook {
+  accent: string;
+  font: string;
+}
+
+/**
+ * What the panel draws for a blank accent and font (web/panel/modules/theme.js):
+ * the project's theme overrides over the theme's own variables, else the
+ * panel stylesheet's. A theme that could not be read (`null`) draws the
+ * stylesheet's, overrides and all, as the panel's fallback applies none.
+ */
+export function blankLook(
+  variables: Record<string, unknown> | null,
+  overrides: Record<string, unknown> | undefined,
+): BlankLook {
+  const vars: Record<string, unknown> = variables ? { ...variables, ...overrides } : {};
+  return {
+    accent: String(vars.accent ?? "") || CSS_VAR_FALLBACKS.accent,
+    font: String(vars.font_family ?? "") || PANEL_FONT,
+  };
+}
+
 /**
  * The theme list, and the chosen theme read from the server: again when the
  * choice changes and on `refetch` (the Theme Studio saved the same theme id
- * with changed contents). A theme that cannot be read shows no defaults.
+ * with changed contents): each control type's defaults, and the theme's own
+ * variables. A theme that cannot be read shows no defaults, and its variables
+ * are null, as they are until the first read answers.
  */
 export function useBuilderTheme(themeId: string | undefined) {
   const [themes, setThemes] = useState<ThemeSummary[]>([]);
   const [defaults, setDefaults] = useState<ThemeDefaults>({});
+  const [variables, setVariables] = useState<Record<string, unknown> | null>(null);
   const [fetchKey, setFetchKey] = useState(0);
 
   const loadThemes = useCallback(() => {
@@ -129,10 +163,14 @@ export function useBuilderTheme(themeId: string | undefined) {
       .then((res) => (res.ok ? res.json() : null))
       .then((theme: ThemeFile | null) => {
         setDefaults(effectiveThemeDefaults(theme));
+        setVariables(theme ? theme.variables ?? {} : null);
       })
-      .catch(() => setDefaults({}));
+      .catch(() => {
+        setDefaults({});
+        setVariables(null);
+      });
   }, [themeId, fetchKey]);
 
   const refetch = useCallback(() => setFetchKey((k) => k + 1), []);
-  return { themes, loadThemes, defaults, refetch };
+  return { themes, loadThemes, defaults, variables, refetch };
 }

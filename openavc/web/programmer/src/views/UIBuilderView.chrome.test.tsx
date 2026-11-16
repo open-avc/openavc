@@ -35,6 +35,7 @@ import {
   seed,
   seen,
   settle,
+  themeFetch,
   ui,
   undoLog,
 } from "../test/uiBuilderHarness";
@@ -382,8 +383,8 @@ describe("Panel Settings, field by field", () => {
     open();
     expect(dialog().textContent).toBe(
       "Panel Settings" +
-      "Accent Color" +
-      "Font FamilyInter (Default)System UIRobotoSegoe UIMonospace" +
+      "Accent ColorLeave blank to use the theme's accent." +
+      "Font FamilyTheme font (Inter)InterSystem UIRobotoSegoe UIMonospace" +
       "Lock Code (PIN)4-6 digit PIN to lock the touch panel. Leave empty to disable." +
       "Idle Timeout (seconds)Return to idle page after this many seconds of inactivity, up to 86400 (one day). 0 = disabled." +
       "Idle PageMain (main)Other (other)" +
@@ -402,7 +403,8 @@ describe("Panel Settings, field by field", () => {
     await renderPage(UIBuilderView);
     open();
     expect(optionsOf("Font Family")).toEqual([
-      ["Inter, system-ui, sans-serif", "Inter (Default)"],
+      ["", "Theme font (Inter)"],
+      ["Inter, system-ui, sans-serif", "Inter"],
       ["system-ui, sans-serif", "System UI"],
       ["'Roboto', sans-serif", "Roboto"],
       ["'Segoe UI', sans-serif", "Segoe UI"],
@@ -420,7 +422,7 @@ describe("Panel Settings, field by field", () => {
     expect(optionsOf("Stagger Style")).toEqual([["fade", "Fade"], ["fade-up", "Fade Up"], ["scale", "Scale"]]);
   });
 
-  it("shows a value of its own where the project leaves a setting blank", async () => {
+  it("shows what the panel draws where the project leaves a setting blank", async () => {
     seed(makeProject({ settings: { accent_color: "", page_transition: undefined, page_transition_duration: undefined, element_entry: undefined } }));
     await renderPage(UIBuilderView);
     open();
@@ -437,6 +439,17 @@ describe("Panel Settings, field by field", () => {
     expect(boxIn("Transition Duration").value).toBe("200");
     expect(selectIn("Stagger Style").value).toBe("fade-up");
     expect(boxIn("Stagger Delay").value).toBe("30");
+  });
+
+  it("shows the chosen theme's accent and font where the project leaves them blank", async () => {
+    themeFetch.byId.luxury = { variables: { accent: "#D4AF37", font_family: "Georgia, 'Times New Roman', serif" } };
+    seed(makeProject({ settings: { theme_id: "luxury", theme_overrides: {}, accent_color: "", font_family: "" } }));
+    await renderPage(UIBuilderView);
+    open();
+    const accent = field("Accent Color").querySelectorAll("input");
+    expect((accent[0] as HTMLInputElement).value).toBe("#d4af37");
+    expect((accent[1] as HTMLInputElement).placeholder).toBe("#D4AF37");
+    expect(selectIn("Font Family").selectedOptions[0].text).toBe("Theme font (Georgia)");
   });
 
   it("gives each number box its step, and the boxes with a unit their narrow width", async () => {

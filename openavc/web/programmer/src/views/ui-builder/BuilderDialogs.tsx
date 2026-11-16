@@ -63,7 +63,13 @@ export interface BuilderDialogsProps {
   project: ProjectConfig;
   /** The page on screen, which the stylesheet's preview shows. */
   page: UIPage | null;
-  theme: { themes: ThemeSummary[]; loadThemes: () => void; refetch: () => void };
+  theme: {
+    themes: ThemeSummary[];
+    loadThemes: () => void;
+    refetch: () => void;
+    /** The chosen theme's variables, which Panel Settings shows a blank accent and font from. */
+    variables: Record<string, unknown> | null;
+  };
   edits: PanelEdits;
   /** Validate's last report, null while none is open. */
   validation: { issues: ValidationIssue[] | null; close: () => void };
@@ -130,6 +136,7 @@ export function BuilderDialogs({ dialogs, project, page, theme, edits, validatio
         <PanelSettingsDialog
           settings={project.ui.settings}
           pages={project.ui.pages}
+          themeVariables={theme.variables}
           onUpdate={edits.saveSettings}
           onClose={() => hide("settings")}
         />

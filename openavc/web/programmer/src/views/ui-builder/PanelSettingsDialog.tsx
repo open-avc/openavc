@@ -6,18 +6,21 @@
  * Escape or the backdrop ask before throwing a changed draft away.
  *
  * Each choice is listed under the value the panel reads (panel.js). The range
- * each number takes, and what a blank transition, entry animation or stagger
- * shows, are the project schema's, from its generated table
- * (projectValues.gen.ts), so a box never offers a value the save refuses. A
- * blank accent shows #2196F3, which the panel draws only when the theme has no
- * accent of its own.
+ * each number takes, and what a blank idle page, failure message, transition,
+ * entry animation or stagger shows, are the project schema's, from its
+ * generated table (projectValues.gen.ts), so a box never offers a value the
+ * save refuses. A blank accent or font shows what the panel draws for it, the
+ * chosen theme's (`blankLook`), and saves as blank: the choice follows the
+ * theme.
  */
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { PROJECT_VALUES } from "../../api/projectValues.gen";
 import type { UIPage, UISettings } from "../../api/types";
+import { parseColor, rgbToHex6 } from "../../components/ui-builder/colorUtils";
 import { ConfirmDialog } from "../../components/shared/ConfirmDialog";
 import { Modal } from "../../components/shared/Modal";
 import { NumericInput } from "../../components/shared/NumericInput";
+import { blankLook, type BlankLook } from "./builderTheme";
 
 type Choice = readonly [value: string, label: string];
 
@@ -28,7 +31,7 @@ const DURATION = SETTINGS.page_transition_duration;
 const STAGGER = SETTINGS.element_stagger_ms;
 
 const FONTS: readonly Choice[] = [
-  ["Inter, system-ui, sans-serif", "Inter (Default)"],
+  ["Inter, system-ui, sans-serif", "Inter"],
   ["system-ui, sans-serif", "System UI"],
   ["'Roboto', sans-serif", "Roboto"],
   ["'Segoe UI', sans-serif", "Segoe UI"],
@@ -76,6 +79,27 @@ const PICKER: CSSProperties = {
   borderRadius: "var(--border-radius)",
   cursor: "pointer",
 };
+
+/** The name a font stack is shown by: its listed name, else its first family. */
+function fontName(stack: string): string {
+  const listed = FONTS.find(([value]) => value === stack);
+  if (listed) return listed[1];
+  return stack.split(",")[0].trim().replace(/^['"]|['"]$/g, "");
+}
+
+/** The font choices: the theme's font (a blank setting) first, then the list,
+ *  then a font the project sets that the list does not offer. */
+function fontChoices(font: string, themeFont: string): Choice[] {
+  const choices: Choice[] = [["", `Theme font (${fontName(themeFont)})`], ...FONTS];
+  if (font && !FONTS.some(([value]) => value === font)) choices.push([font, fontName(font)]);
+  return choices;
+}
+
+/** A colour as the colour picker takes it (#rrggbb); black for one it cannot read. */
+function pickerColor(color: string): string {
+  const parsed = parseColor(color);
+  return parsed ? rgbToHex6(parsed) : "#000000";
+}
 
 /** What every group of fields is handed: the draft, and a change to it. */
 interface DraftProps {
@@ -133,28 +157,33 @@ function NumberBox({ owner, value, range, unit, onChange }: {
   );
 }
 
-/** How the panel looks: its accent colour and its font. */
-function LookFields({ draft, patch }: DraftProps) {
+/** How the panel looks: its accent colour and its font, each showing the
+ *  theme's (`blank`) while the project leaves it blank. */
+function LookFields({ draft, patch, blank }: DraftProps & { blank: BlankLook }) {
   return (
     <>
-      <Field label="Accent Color">
+      <Field label="Accent Color" hint="Leave blank to use the theme's accent.">
         <div style={{ display: "flex", gap: "var(--space-sm)", alignItems: "center" }}>
           <input
             type="color"
-            value={draft.accent_color || "#2196F3"}
+            value={pickerColor(draft.accent_color || blank.accent)}
             onChange={(e) => patch({ accent_color: e.target.value })}
             style={PICKER}
           />
           <input
             value={draft.accent_color}
             onChange={(e) => patch({ accent_color: e.target.value })}
-            placeholder="#2196F3"
+            placeholder={blank.accent}
             style={{ flex: 1 }}
           />
         </div>
       </Field>
       <Field label="Font Family">
-        <Choices value={draft.font_family} choices={FONTS} onChange={(font_family) => patch({ font_family })} />
+        <Choices
+          value={draft.font_family}
+          choices={fontChoices(draft.font_family, blank.font)}
+          onChange={(font_family) => patch({ font_family })}
+        />
       </Field>
     </>
   );
@@ -182,13 +211,17 @@ function LockIdleAndErrorFields({ draft, patch, pages }: DraftProps & { pages: U
         />
       </Field>
       <Field label="Idle Page">
-        <Choices value={draft.idle_page} choices={pageChoices} onChange={(idle_page) => patch({ idle_page })} />
+        <Choices
+          value={draft.idle_page || SETTINGS.idle_page.default}
+          choices={pageChoices}
+          onChange={(idle_page) => patch({ idle_page })}
+        />
       </Field>
       <div style={FIELD}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
           <input
             type="checkbox"
-            checked={draft.show_error_messages !== false}
+            checked={draft.show_error_messages ?? SETTINGS.show_error_messages.default}
             onChange={(e) => patch({ show_error_messages: e.target.checked })}
           />
           Show a message when a control fails
@@ -290,11 +323,14 @@ function DialogButtons({ dirty, onCancel, onSave }: { dirty: boolean; onCancel: 
 export function PanelSettingsDialog({
   settings,
   pages,
+  themeVariables,
   onUpdate,
   onClose,
 }: {
   settings: UISettings;
   pages: UIPage[];
+  /** The chosen theme's variables, null while it is being read or when it cannot be. */
+  themeVariables: Record<string, unknown> | null;
   onUpdate: (s: UISettings) => void;
   onClose: () => void;
 }) {
@@ -326,7 +362,7 @@ export function PanelSettingsDialog({
       }}
     >
       <h3 style={{ fontSize: "var(--font-size-lg)", marginBottom: "var(--space-lg)" }}>Panel Settings</h3>
-      <LookFields draft={draft} patch={patch} />
+      <LookFields draft={draft} patch={patch} blank={blankLook(themeVariables, draft.theme_overrides)} />
       <LockIdleAndErrorFields draft={draft} patch={patch} pages={pages} />
       <MotionFields draft={draft} patch={patch} />
       <DialogButtons dirty={dirty} onCancel={handleCancel} onSave={handleSave} />

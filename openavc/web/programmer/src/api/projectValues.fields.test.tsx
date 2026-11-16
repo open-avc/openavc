@@ -13,6 +13,8 @@ vi.mock("./projectValues.gen", () => ({
     MonitorConfig: { display_decimals: { default: null, min: 0, max: 5, integer: true } },
     UISettings: {
       idle_timeout_seconds: { default: 0, min: 0, max: 600, integer: true },
+      idle_page: { default: "lobby" },
+      show_error_messages: { default: false },
       page_transition: { default: "fade" },
       page_transition_duration: { default: 300, min: 100, max: 900, integer: true },
       element_entry: { default: "stagger" },
@@ -22,7 +24,7 @@ vi.mock("./projectValues.gen", () => ({
   },
 }));
 
-import type { UIElement, UISettings } from "./types";
+import type { UIElement, UIPage, UISettings } from "./types";
 import { ShownDecimalsRow } from "../components/ui-builder/PropertySections/ValueFields";
 import { MonitorControl } from "../components/shared/MonitorControl";
 import { PanelSettingsDialog } from "../views/ui-builder/PanelSettingsDialog";
@@ -33,7 +35,7 @@ function typeAndLeave(box: HTMLInputElement, text: string) {
   fireEvent.blur(box);
 }
 
-function renderPanelSettings(overrides: Partial<UISettings> = {}) {
+function renderPanelSettings(overrides: Partial<UISettings> = {}, pages: UIPage[] = []) {
   const settings = {
     theme: "dark", theme_id: "", theme_overrides: {}, accent_color: "", font_family: "",
     lock_code: "", idle_timeout_seconds: 0, idle_page: "main", page_transition: "slide-left",
@@ -41,7 +43,7 @@ function renderPanelSettings(overrides: Partial<UISettings> = {}) {
     element_stagger_style: "fade-up", ...overrides,
   } as UISettings;
   const onUpdate = vi.fn();
-  render(<PanelSettingsDialog settings={settings} pages={[]} onUpdate={onUpdate} onClose={() => {}} />);
+  render(<PanelSettingsDialog settings={settings} pages={pages} themeVariables={null} onUpdate={onUpdate} onClose={() => {}} />);
   const save = () => fireEvent.click(screen.getByRole("button", { name: "Save" }));
   return { onUpdate, save };
 }
@@ -104,5 +106,12 @@ describe("The Builder's fields read the project schema's table", () => {
     expect(screen.getByDisplayValue("Stagger")).toBeTruthy();
     expect(screen.getByDisplayValue("40")).toBeTruthy();
     expect(screen.getByDisplayValue("Scale")).toBeTruthy();
+  });
+
+  it("a blank idle page and an unset failure message show the table's blanks", () => {
+    const pages = ["main", "lobby"].map((id) => ({ id, name: id, elements: [] }) as unknown as UIPage);
+    renderPanelSettings({ idle_page: "", show_error_messages: undefined }, pages);
+    expect(screen.getByDisplayValue("lobby (lobby)")).toBeTruthy();
+    expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
   });
 });

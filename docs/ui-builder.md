@@ -585,9 +585,8 @@ you approve it from the notice or the Dashboard's **Panels** card (see
 ## Panel Settings
 
 Click the gear icon in the UI Builder toolbar to open Panel Settings:
-- **Theme**: select a theme from the Theme Picker (see below)
-- **Accent Color**: primary color used for buttons and highlights
-- **Font**: panel font family
+- **Accent Color**: primary color used for buttons and highlights. Leave it blank to use the theme's accent, which the field then shows.
+- **Font Family**: the panel's font. **Theme font** uses the theme's, named beside it.
 - **Lock Code**: optional PIN required when the panel opens and after its idle timeout
 - **Idle Timeout**: seconds of inactivity before the panel returns to the idle page
 - **Idle Page**: which page to display when the idle timeout triggers
@@ -738,7 +737,7 @@ see what the room sees, including missing readings and unreachable devices.
 
 ## Themes
 
-The Theme Picker in Panel Settings shows visual cards with color swatches for each available theme. OpenAVC ships with 8 built-in themes:
+The Theme section of the Properties panel, shown while no control is selected, has a card with color swatches for each available theme. OpenAVC ships with 8 built-in themes:
 
 | Theme | Style |
 |-------|-------|

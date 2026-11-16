@@ -19,7 +19,7 @@ describe("Panel Settings: Idle Timeout", () => {
   it("brings a timeout longer than a day down to a day", () => {
     const onUpdate = vi.fn();
     render(
-      <PanelSettingsDialog settings={settings} pages={[]} onUpdate={onUpdate} onClose={() => {}} />,
+      <PanelSettingsDialog settings={settings} pages={[]} themeVariables={null} onUpdate={onUpdate} onClose={() => {}} />,
     );
     const box = screen.getByDisplayValue("0") as HTMLInputElement;
     fireEvent.focus(box);
