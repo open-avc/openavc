@@ -21,6 +21,10 @@ What it leaves to the definition walk's own checks and to the catalog's
 schema run: text patterns, number ranges, lengths and counts, the names of a
 mapping's keys (``prop_names``), the negative and raw rules (``not_``,
 ``raw``), and a key the contract does not declare (``unknown_key_errors``).
+The ``discovery:`` block is not walked at all (``LEFT_FIELDS``): the
+discovery parser judges it, at the platform's doors through the hook the
+loader hands the definition walk and in the catalog through its own copy, so
+its sentences are that parser's.
 ``tests/test_shape_walk.py`` holds it to the published schema: it never
 refuses a value the schema takes, and every refusal of the schema it does
 not make is of one of those kinds.
@@ -55,6 +59,10 @@ _KIND_WORDS: dict[str, str] = {
 }
 
 _NODE_KINDS = ("one_of", "any_of")
+
+# Top-level fields the walk leaves whole to another owner (the module
+# docstring says which).
+LEFT_FIELDS: tuple[str, ...] = ("discovery",)
 
 # The registry keys the walk reads, and those it leaves to the definition
 # walk's own checks, the catalog's schema run, the docs or the floors. Every
@@ -145,7 +153,7 @@ class ShapeWalk:
     def walk_definition(self, definition: dict[str, Any]) -> list[tuple[str, str]]:
         """Each top-level field the definition carries, against its node."""
         for name, node in FIELDS.items():
-            if name in definition:
+            if name in definition and name not in LEFT_FIELDS:
                 self.walk(node, definition[name], name)
         return self.refusals
 

@@ -29,7 +29,7 @@ from jsonschema import Draft202012Validator
 
 from openavc.drivers import spec
 from openavc.drivers.avcdriver_semantic import check_driver_definition
-from openavc.drivers.shape_checks import LEFT_KEYS, READ_KEYS, shape_refusals
+from openavc.drivers.shape_checks import LEFT_FIELDS, LEFT_KEYS, READ_KEYS, shape_refusals
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SCHEMA = json.loads((_ROOT / "openavc/drivers/avcdriver.schema.json").read_text(encoding="utf-8"))
@@ -148,6 +148,8 @@ def test_what_the_schema_refuses_and_the_walk_does_not_is_left_on_purpose(case: 
         place = _place(error.absolute_path)
         if error.validator == "required" and not error.absolute_path:
             continue  # the definition walk's "Missing required field"
+        if error.absolute_path and error.absolute_path[0] in LEFT_FIELDS:
+            continue  # the discovery parser's
         if _left_only(error):
             continue
         assert any(_related(place, loc) for loc in walk_places), (place, error.validator, error.message)
@@ -301,3 +303,11 @@ def test_the_published_schemas_are_valid_json_schema(name: str) -> None:
     the catalog can load (a kind named twice is not one)."""
     schema = json.loads((_ROOT / "openavc/drivers" / name).read_text(encoding="utf-8"))
     Draft202012Validator.check_schema(schema)
+
+
+def test_the_discovery_block_is_left_to_the_discovery_parser() -> None:
+    """The same verdict with the parser handed in or not: a catalog copy of
+    the checker, which has no parser, says what the platform does."""
+    definition = {**BASE, "discovery": {"tcp_probe": {"port": "x"}}}
+    assert shape_refusals(definition) == []
+    assert list(check_driver_definition(definition, strict=True).errors) == []
