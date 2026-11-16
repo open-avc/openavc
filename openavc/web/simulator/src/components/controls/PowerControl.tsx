@@ -1,4 +1,4 @@
-import type { PowerControlDef } from "../../store/api";
+import type { PowerControlDef } from "../../store/controls.gen";
 import { Power } from "lucide-react";
 
 interface Props {

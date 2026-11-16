@@ -1,4 +1,4 @@
-import type { GroupControlDef } from "../../store/api";
+import type { GroupControlDef } from "../../store/controls.gen";
 import { DynamicControls } from "./DynamicControls";
 
 interface Props {

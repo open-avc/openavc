@@ -1,4 +1,4 @@
-import type { ToggleControlDef } from "../../store/api";
+import type { ToggleControlDef } from "../../store/controls.gen";
 
 interface Props {
   control: ToggleControlDef;

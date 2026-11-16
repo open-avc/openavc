@@ -148,6 +148,18 @@ RUNTIME_OPT_OUT = {
     # didn't -- so a device-enumerated roster showed real names in one dropdown
     # and "Encoder 1" in the next. The runtime reads it now
     # (drivers/child_ids.child_display_name) and serves the answer to both.
+    "simulatorControl.color_map":
+        "Simulator presentation: an indicator's color per value. Read by "
+        "the Simulator UI (IndicatorControl); the simulator passes the "
+        "controls list through.",
+    "simulatorControl.input_labels":
+        "Simulator presentation: a matrix's input names. Read by the "
+        "Simulator UI (MatrixControl); the simulator passes the controls "
+        "list through.",
+    "simulatorControl.output_labels":
+        "Simulator presentation: a matrix's output names. Read by the "
+        "Simulator UI (MatrixControl); the simulator passes the controls "
+        "list through.",
     "childEntityType.summary_fields":
         "Child presentation: which fields show on a child's summary row. "
         "Read by the Builder (ChildEntityTypesEditor).",
@@ -246,6 +258,22 @@ FRONTEND_OPT_OUT = {
     "configSchemaEntry.regex":
         "Not built yet: no control writes a config field's regex. Authors "
         "add it by hand in YAML. Tracked in the backlog.",
+    # The fields of a declared simulator control. SimulatorEditor renders the
+    # controls list read-only (AdvancedSimBlockSummary), the deliberate choice
+    # for the advanced simulator blocks; the fields not listed here pass on
+    # common words elsewhere in the IDE.
+    "simulatorControl.color_map":
+        "Deliberate: simulator controls have no form UI. The editor "
+        "shows them read-only; they are authored in YAML.",
+    "simulatorControl.input_labels":
+        "Deliberate: simulator controls have no form UI. The editor "
+        "shows them read-only; they are authored in YAML.",
+    "simulatorControl.mute_pattern":
+        "Deliberate: simulator controls have no form UI. The editor "
+        "shows them read-only; they are authored in YAML.",
+    "simulatorControl.output_labels":
+        "Deliberate: simulator controls have no form UI. The editor "
+        "shows them read-only; they are authored in YAML.",
     "simulatorSection.receive":
         "Deliberate: simulator command handlers have no form UI. The "
         "editor shows a count and says to edit the file directly.",
@@ -292,13 +320,15 @@ def _walk(
     Following a ``$ref`` switches the current block, so a field is attributed
     to the block that declares it however many places reference that block.
     ``seen`` guards the self-referential shapes (a child set inside a response
-    inside a child set) that would otherwise recurse forever.
+    inside a child set, a simulator control inside a group's controls) that
+    would otherwise recurse forever: a block already being walked further up
+    is not walked again, however far down its own fields it is met.
     """
     if not isinstance(node, dict):
         return
     ref = node.get("ref")
     if isinstance(ref, str):
-        if (ref, path) not in seen:
+        if ref not in {walked for walked, _ in seen}:
             _walk(spec.DEFS.get(ref), ref, path, fields, seen | {(ref, path)})
         return
     declared = node.get("fields")

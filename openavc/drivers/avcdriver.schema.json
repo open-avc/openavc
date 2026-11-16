@@ -2657,6 +2657,300 @@
       },
       "additionalProperties": false
     },
+    "simulatorControl": {
+      "type": "object",
+      "description": "One control the Simulator UI draws; its type says which.",
+      "oneOf": [
+        {
+          "type": "object",
+          "description": "A power button with a light, for an on/off state key.",
+          "required": [
+            "type",
+            "key"
+          ],
+          "properties": {
+            "type": {
+              "const": "power"
+            },
+            "key": {
+              "type": "string",
+              "description": "The state key the control shows and sets."
+            },
+            "label": {
+              "type": "string",
+              "description": "The name shown on the control."
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "A row of buttons, one per option; the one lit is the key's value.",
+          "required": [
+            "type",
+            "key",
+            "options"
+          ],
+          "properties": {
+            "type": {
+              "const": "select"
+            },
+            "key": {
+              "type": "string",
+              "description": "The state key the control shows and sets."
+            },
+            "options": {
+              "type": "array",
+              "description": "The values the buttons set, each as the state key holds it.",
+              "items": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ]
+              }
+            },
+            "labels": {
+              "type": "object",
+              "description": "The text on an option's button, keyed by the option; the option itself when left out.",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "label": {
+              "type": "string",
+              "description": "The name shown on the control."
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "A slider with its value beside it.",
+          "required": [
+            "type",
+            "key",
+            "min",
+            "max"
+          ],
+          "properties": {
+            "type": {
+              "const": "slider"
+            },
+            "key": {
+              "type": "string",
+              "description": "The state key the control shows and sets."
+            },
+            "min": {
+              "type": "number",
+              "description": "The value at the left end."
+            },
+            "max": {
+              "type": "number",
+              "description": "The value at the right end."
+            },
+            "step": {
+              "type": "number",
+              "description": "How far one notch moves it."
+            },
+            "unit": {
+              "type": "string",
+              "description": "Shown after the value."
+            },
+            "label": {
+              "type": "string",
+              "description": "The name shown on the control."
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "An on/off button that shows its label with ON or OFF.",
+          "required": [
+            "type",
+            "key"
+          ],
+          "properties": {
+            "type": {
+              "const": "toggle"
+            },
+            "key": {
+              "type": "string",
+              "description": "The state key the control shows and sets."
+            },
+            "label": {
+              "type": "string",
+              "description": "The name shown on the control."
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "An input by output routing grid.",
+          "required": [
+            "type",
+            "inputs",
+            "outputs",
+            "state_pattern"
+          ],
+          "properties": {
+            "type": {
+              "const": "matrix"
+            },
+            "inputs": {
+              "type": "integer",
+              "description": "How many inputs, numbered from 1."
+            },
+            "outputs": {
+              "type": "integer",
+              "description": "How many outputs, numbered from 1."
+            },
+            "state_pattern": {
+              "type": "string",
+              "description": "The state key holding an output's input, with {output} for its number."
+            },
+            "label": {
+              "type": "string",
+              "description": "The name shown on the control."
+            },
+            "input_labels": {
+              "type": "array",
+              "description": "The name of each input, in order.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "output_labels": {
+              "type": "array",
+              "description": "The name of each output, in order.",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Level meter bars, one per channel.",
+          "required": [
+            "type",
+            "channels",
+            "key_pattern"
+          ],
+          "properties": {
+            "type": {
+              "const": "meters"
+            },
+            "channels": {
+              "type": "integer",
+              "description": "How many channels, numbered from 1."
+            },
+            "key_pattern": {
+              "type": "string",
+              "description": "The state key holding a channel's level, with {ch} for its number."
+            },
+            "mute_pattern": {
+              "type": "string",
+              "description": "The state key holding a channel's mute, with {ch} for its number."
+            },
+            "label": {
+              "type": "string",
+              "description": "The name shown on the control."
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Preset buttons, numbered (count) or named (names).",
+          "required": [
+            "type",
+            "key"
+          ],
+          "properties": {
+            "type": {
+              "const": "presets"
+            },
+            "key": {
+              "type": "string",
+              "description": "The state key the control shows and sets."
+            },
+            "count": {
+              "type": "integer",
+              "description": "How many numbered presets."
+            },
+            "names": {
+              "type": "array",
+              "description": "The name of each preset, in order.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "label": {
+              "type": "string",
+              "description": "The name shown on the control."
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "Other controls under one label.",
+          "required": [
+            "type",
+            "controls"
+          ],
+          "properties": {
+            "type": {
+              "const": "group"
+            },
+            "label": {
+              "type": "string",
+              "description": "The name shown on the control."
+            },
+            "controls": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/simulatorControl"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "description": "A read-only display of the key's value.",
+          "required": [
+            "type",
+            "key"
+          ],
+          "properties": {
+            "type": {
+              "const": "indicator"
+            },
+            "key": {
+              "type": "string",
+              "description": "The state key the control shows."
+            },
+            "label": {
+              "type": "string",
+              "description": "The name shown on the control."
+            },
+            "color_map": {
+              "type": "object",
+              "description": "The color shown for a value, keyed by the value.",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
     "simulatorSection": {
       "type": "object",
       "properties": {
@@ -2693,7 +2987,10 @@
             "array",
             "null"
           ],
-          "description": "Declarative control widgets for the simulator UI."
+          "description": "The controls the Simulator UI draws on this device's page, in place of the ones it builds from the state variables.",
+          "items": {
+            "$ref": "#/$defs/simulatorControl"
+          }
         },
         "state_machines": {
           "type": [

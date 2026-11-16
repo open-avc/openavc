@@ -13,6 +13,9 @@ artifacts every other surface consumes:
   dicts against it.
 * ``openavc/web/programmer/src/api/types.gen.ts`` — the Programmer IDE's driver
   definition types and validator constant tables.
+* ``openavc/web/simulator/src/store/controls.gen.ts`` — the Simulator UI's
+  ``ControlDef`` union, one interface per control type it draws
+  (``contract_gen_sim_ts``).
 
 Regenerate after any spec change:
 
@@ -266,6 +269,7 @@ def render_schema(tier: str) -> str:
 
 def artifacts(repo_root: Path) -> dict[Path, str]:
     """Map of output path -> rendered content for every generated artifact."""
+    from openavc.drivers.contract_gen_sim_ts import render_controls_ts
     from openavc.drivers.contract_gen_ts import render_types_ts
 
     return {
@@ -275,6 +279,8 @@ def artifacts(repo_root: Path) -> dict[Path, str]:
             render_schema("python"),
         repo_root / "openavc" / "web" / "programmer" / "src" / "api" / "types.gen.ts":
             render_types_ts(),
+        repo_root / "openavc" / "web" / "simulator" / "src" / "store" / "controls.gen.ts":
+            render_controls_ts(),
     }
 
 

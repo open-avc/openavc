@@ -631,6 +631,151 @@ _YAML_ACTION_KINDS: tuple[str, ...] = tuple(
     k for k in ACTION_KINDS if k not in PYTHON_ONLY_ACTION_KINDS
 )
 
+# --- simulator controls ------------------------------------------------------
+
+# THE controls the Simulator UI draws from a simulated device's ``controls``
+# list (a simulator: section's, or a Python simulator's SIMULATOR_INFO's), one
+# row per type, in the order a sentence names them: what it draws (``doc``),
+# the fields it reads, each declared by its node, the ones it cannot be drawn
+# without (``required``), and ``label_shown`` where it shows its label with
+# nothing in its place (one left out reads "undefined": a warning, never a
+# refusal). Every other reader is built from this table: the DEFS node
+# ``simulatorControl`` (each control's value judged by the form its type
+# names), the simulator validator's table (openavc/simulator/control_checks.py)
+# and the Simulator UI's ControlDef union (web/simulator/src/store/
+# controls.gen.ts, from ``python -m openavc.drivers.contract_gen``). A new type
+# is a row here and a card in the Simulator UI, whose build fails until its
+# renderer has a case for it. A key a control does not declare is left alone:
+# the Simulator UI does not read it.
+_CONTROL_KEY: dict = {'type': 'string', 'doc': 'The state key the control shows and sets.'}
+_CONTROL_LABEL: dict = {'type': 'string', 'doc': 'The name shown on the control.'}
+
+
+def _control_names(what: str) -> dict:
+    return {'type': 'array', 'items': {'type': 'string'}, 'doc': f'The name of each {what}, in order.'}
+
+
+SIMULATOR_CONTROLS: dict[str, dict] = {
+    'power': {
+        'doc': 'A power button with a light, for an on/off state key.',
+        'fields': {'key': _CONTROL_KEY, 'label': _CONTROL_LABEL},
+        'required': ('key',),
+    },
+    'select': {
+        'doc': "A row of buttons, one per option; the one lit is the key's value.",
+        'fields': {
+            'key': _CONTROL_KEY,
+            'options': {
+                'type': 'array',
+                'items': {'type': ('string', 'number', 'boolean')},
+                'doc': 'The values the buttons set, each as the state key holds it.',
+            },
+            'labels': {
+                'type': 'object',
+                'extra': {'type': 'string'},
+                'doc': "The text on an option's button, keyed by the option; the option itself when left out.",
+            },
+            'label': _CONTROL_LABEL,
+        },
+        'required': ('key', 'options'),
+    },
+    'slider': {
+        'doc': 'A slider with its value beside it.',
+        'fields': {
+            'key': _CONTROL_KEY,
+            'min': {'type': 'number', 'doc': 'The value at the left end.'},
+            'max': {'type': 'number', 'doc': 'The value at the right end.'},
+            'step': {'type': 'number', 'doc': 'How far one notch moves it.'},
+            'unit': {'type': 'string', 'doc': 'Shown after the value.'},
+            'label': _CONTROL_LABEL,
+        },
+        'required': ('key', 'min', 'max'),
+    },
+    'toggle': {
+        'doc': 'An on/off button that shows its label with ON or OFF.',
+        'fields': {'key': _CONTROL_KEY, 'label': _CONTROL_LABEL},
+        'required': ('key',),
+        'label_shown': True,
+    },
+    'matrix': {
+        'doc': 'An input by output routing grid.',
+        'fields': {
+            'inputs': {'type': 'integer', 'doc': 'How many inputs, numbered from 1.'},
+            'outputs': {'type': 'integer', 'doc': 'How many outputs, numbered from 1.'},
+            'state_pattern': {
+                'type': 'string',
+                'doc': "The state key holding an output's input, with {output} for its number.",
+            },
+            'label': _CONTROL_LABEL,
+            'input_labels': _control_names('input'),
+            'output_labels': _control_names('output'),
+        },
+        'required': ('inputs', 'outputs', 'state_pattern'),
+    },
+    'meters': {
+        'doc': 'Level meter bars, one per channel.',
+        'fields': {
+            'channels': {'type': 'integer', 'doc': 'How many channels, numbered from 1.'},
+            'key_pattern': {
+                'type': 'string',
+                'doc': "The state key holding a channel's level, with {ch} for its number.",
+            },
+            'mute_pattern': {
+                'type': 'string',
+                'doc': "The state key holding a channel's mute, with {ch} for its number.",
+            },
+            'label': _CONTROL_LABEL,
+        },
+        'required': ('channels', 'key_pattern'),
+    },
+    'presets': {
+        'doc': 'Preset buttons, numbered (count) or named (names).',
+        'fields': {
+            'key': _CONTROL_KEY,
+            'count': {'type': 'integer', 'doc': 'How many numbered presets.'},
+            'names': _control_names('preset'),
+            'label': _CONTROL_LABEL,
+        },
+        'required': ('key',),
+    },
+    'group': {
+        'doc': 'Other controls under one label.',
+        'fields': {
+            'label': _CONTROL_LABEL,
+            'controls': {'type': 'array', 'items': {'ref': 'simulatorControl'}},
+        },
+        'required': ('controls',),
+        'label_shown': True,
+    },
+    'indicator': {
+        'doc': "A read-only display of the key's value.",
+        'fields': {
+            'key': {'type': 'string', 'doc': 'The state key the control shows.'},
+            'label': _CONTROL_LABEL,
+            'color_map': {
+                'type': 'object',
+                'extra': {'type': 'string'},
+                'doc': 'The color shown for a value, keyed by the value.',
+            },
+        },
+        'required': ('key',),
+        'label_shown': True,
+    },
+}
+
+
+def _control_form(name: str, declared: dict) -> dict:
+    """One control type's form in ``simulatorControl``: a mapping whose
+    ``type`` is ``name``, holding the fields the type declares."""
+    return {
+        'type': 'object',
+        'doc': declared['doc'],
+        'fields': {'type': {'const': name}, **declared['fields']},
+        'required': ('type', *declared['required']),
+        'extra': True,
+    }
+
+
 FIELDS = {
     'id': {
         'req': 'platform',
@@ -2710,6 +2855,11 @@ DEFS = {
         },
         'extra': False,
     },
+    'simulatorControl': {
+        'type': 'object',
+        'doc': 'One control the Simulator UI draws; its type says which.',
+        'one_of': tuple(_control_form(name, declared) for name, declared in SIMULATOR_CONTROLS.items()),
+    },
     'simulatorSection': {
         'type': 'object',
         'fields': {
@@ -2731,7 +2881,8 @@ DEFS = {
             },
             'controls': {
                 'type': 'array',
-                'doc': 'Declarative control widgets for the simulator UI.',
+                'items': {'ref': 'simulatorControl'},
+                'doc': "The controls the Simulator UI draws on this device's page, in place of the ones it builds from the state variables.",
             },
             'state_machines': {
                 'type': 'object',

@@ -1008,6 +1008,18 @@
  "send_frame_unknown_type": [
   "send_frame: unknown type 'delimiter' (expected 'length_prefix')"
  ],
+ "simulator_control_in_a_group": [
+  "simulator.controls[0].controls[0].type: must be 'power', 'select', 'slider', 'toggle', 'matrix', 'meters', 'presets', 'group' or 'indicator', not 'dial'"
+ ],
+ "simulator_control_missing_a_field": [
+  "simulator.controls[0]: missing required 'min'"
+ ],
+ "simulator_control_option_a_mapping": [
+  "simulator.controls[0].options[0]: must be a string, a number or a boolean (true or false)"
+ ],
+ "simulator_control_unknown_type": [
+  "simulator.controls[0].type: must be 'power', 'select', 'slider', 'toggle', 'matrix', 'meters', 'presets', 'group' or 'indicator', not 'meter'"
+ ],
  "state_variable_bad_cloud_priority": [
   "State variable 'power': cloud_priority must be 'low' or 'high' (got 'urgent'); omit it for the default cadence"
  ],

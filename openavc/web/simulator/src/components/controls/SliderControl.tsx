@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { SliderControlDef } from "../../store/api";
+import type { SliderControlDef } from "../../store/controls.gen";
 import { useEditable } from "./useEditable";
 
 interface Props {

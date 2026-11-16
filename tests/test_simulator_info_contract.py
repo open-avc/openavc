@@ -247,8 +247,9 @@ def test_the_simulator_validator_holds_a_python_simulators_controls(tmp_path, co
     driver = _pair(tmp_path, f'"controls": [{control}],')
     errors = [i.message for i in validate_python_driver(driver).errors if i.check == "controls"]
     assert errors == [
-        "controls[0]: unknown control type 'number' — the panel renders nothing for it "
-        "(valid types: group, indicator, matrix, meters, power, presets, select, slider, toggle)",
+        "controls[0]: unknown control type 'number'; the Simulator UI shows 'Unknown control "
+        "type' in its place (the types it draws: power, select, slider, toggle, matrix, meters, "
+        "presets, group, indicator)",
     ]
 
 

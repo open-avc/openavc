@@ -2,6 +2,7 @@
  * REST API client for the simulator backend.
  */
 
+import type { ControlDef } from "./controls.gen";
 import { BASE } from "./paths";
 import { authHeaders, rejectCurrentToken } from "./session";
 
@@ -27,86 +28,9 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
 }
 
 // ── Declarative Controls Schema ──
+// The ControlDef union is generated from the driver contract (controls.gen.ts).
 
-export interface PowerControlDef {
-  type: "power";
-  key: string;
-  label?: string;
-}
-
-export interface SelectControlDef {
-  type: "select";
-  key: string;
-  options: string[];
-  labels?: Record<string, string>;
-  label?: string;
-}
-
-export interface SliderControlDef {
-  type: "slider";
-  key: string;
-  min: number;
-  max: number;
-  step?: number;
-  label?: string;
-  unit?: string;
-}
-
-export interface ToggleControlDef {
-  type: "toggle";
-  key: string;
-  label: string;
-}
-
-export interface MatrixControlDef {
-  type: "matrix";
-  inputs: number;
-  outputs: number;
-  state_pattern: string;
-  label?: string;
-  input_labels?: string[];
-  output_labels?: string[];
-}
-
-export interface MeterControlDef {
-  type: "meters";
-  channels: number;
-  key_pattern: string;
-  mute_pattern?: string;
-  label?: string;
-}
-
-export interface PresetControlDef {
-  type: "presets";
-  key: string;
-  count?: number;
-  names?: string[];
-  label?: string;
-}
-
-export interface GroupControlDef {
-  type: "group";
-  label: string;
-  controls: ControlDef[];
-}
-
-export interface IndicatorControlDef {
-  type: "indicator";
-  key: string;
-  label: string;
-  color_map?: Record<string, string>;
-}
-
-export type ControlDef =
-  | PowerControlDef
-  | SelectControlDef
-  | SliderControlDef
-  | ToggleControlDef
-  | MatrixControlDef
-  | MeterControlDef
-  | PresetControlDef
-  | GroupControlDef
-  | IndicatorControlDef;
+export type { ControlDef } from "./controls.gen";
 
 // ── Device Info ──
 

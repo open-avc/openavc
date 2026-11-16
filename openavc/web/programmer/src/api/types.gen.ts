@@ -1147,7 +1147,10 @@ export interface DriverSimulatorDef {
   delays?: Record<string, number>;
   /** Named error behaviors selectable in the simulator UI. */
   error_modes?: Record<string, { behavior?: string; description?: string; set_state?: Record<string, unknown> }>;
-  /** Declarative control widgets for the simulator UI. */
+  /**
+   * The controls the Simulator UI draws on this device's page, in place of the
+   * ones it builds from the state variables.
+   */
   controls?: Array<Record<string, unknown>>;
   state_machines?: Record<string, Record<string, unknown>>;
   command_handlers?: Array<Record<string, unknown>>;

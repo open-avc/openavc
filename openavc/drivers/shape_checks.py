@@ -15,7 +15,10 @@ schema is generated from, and at each value it reaches it judges:
   takes passes, a value of a kind no form takes is told the kinds, and a
   value of a kind several forms take that none passes is told so in one
   sentence. A choice of keys alone (one of ``when``, ``query_for``,
-  ``when_state``) is named as that choice.
+  ``when_state``) is named as that choice. Forms told apart by one key each
+  pins to a value of its own (a simulator control's ``type``) judge a
+  mapping by the form that key names, and a name no form has is refused
+  naming the ones there are.
 
 What it leaves to the definition walk's own checks and to the catalog's
 schema run: text patterns, number ranges, lengths and counts, the names of a
@@ -269,6 +272,9 @@ class ShapeWalk:
         resolved = [_resolved(form) for form in forms]
         if all(_keys_only(form) for form in resolved):
             return self._carries_one_of(resolved, value, loc)
+        tag = _tag_of(resolved)
+        if tag is not None and isinstance(value, dict):
+            return self._fits_tagged_form(resolved, tag, value, loc)
         if any(not ShapeWalk(self.tier).refuses(form, value) for form in resolved):
             return True
         self._no_form_takes(resolved, value, loc)
@@ -281,6 +287,22 @@ class ShapeWalk:
             self.walk(by_kind[0], value, loc)
             return
         self._refuse(loc, _no_form_sentence(forms, by_kind, value))
+
+    def _fits_tagged_form(
+        self, forms: list[dict[str, Any]], tag: str, value: dict[Any, Any], loc: str,
+    ) -> bool:
+        """A mapping whose ``tag`` names its form: judged by that form, or
+        refused naming the forms there are."""
+        before = len(self.refusals)
+        names = [form["fields"][tag]["const"] for form in forms]
+        if tag not in value:
+            self._refuse(loc, f"missing required '{tag}'")
+        elif not _in_set(value[tag], names):
+            named = _join([_shown(name) for name in names])
+            self._refuse(_inside(loc, tag), f"must be {named}, not {_shown(value[tag])}")
+        else:
+            self.walk(forms[names.index(value[tag])], value, loc)
+        return len(self.refusals) == before
 
     def _carries_one_of(self, forms: list[dict[str, Any]], value: Any, loc: str) -> bool:
         if not isinstance(value, dict):
@@ -342,6 +364,22 @@ def _in_set(value: Any, allowed: Any) -> bool:
 def _keys_only(node: dict[str, Any]) -> bool:
     """A form that only says which keys must be there."""
     return set(node) == {"required"}
+
+
+def _tag_of(forms: list[dict[str, Any]]) -> str | None:
+    """The key every form pins to a value of its own (``const``), which names
+    the form a mapping takes (a simulator control's ``type``); None when the
+    forms are not told apart that way."""
+    pinned = [
+        {key for key, sub in (form.get("fields") or {}).items() if isinstance(sub, dict) and "const" in sub}
+        for form in forms
+    ]
+    shared = set.intersection(*pinned) if pinned else set()
+    for tag in sorted(shared):
+        names = [form["fields"][tag]["const"] for form in forms]
+        if len(set(map(repr, names))) == len(names):
+            return tag
+    return None
 
 
 def _alternatives(form: dict[str, Any]) -> list[dict[str, Any]]:

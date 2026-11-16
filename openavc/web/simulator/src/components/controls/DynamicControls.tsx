@@ -1,4 +1,4 @@
-import type { ControlDef } from "../../store/api";
+import type { ControlDef } from "../../store/controls.gen";
 import { PowerControl } from "./PowerControl";
 import { SelectControl } from "./SelectControl";
 import { SliderControl } from "./SliderControl";
@@ -40,15 +40,17 @@ export function DynamicControls({ controls, state, onStateChange }: Props) {
           case "indicator":
             return <IndicatorControl key={key} control={ctrl} state={state} />;
           default: {
-            // The ControlDef union is compile-time only — the actual list comes
-            // from the API, so a driver's simulator.controls can carry a type
-            // this build doesn't render (a typo like "meter" for "meters", or a
-            // newer type). Don't drop it silently: warn and show a marker so the
-            // author sees the failure instead of a blank card.
-            const badType = (ctrl as ControlDef).type;
+            // Every type the contract declares has its case above: a type added
+            // to the generated union with no case here stops the build at this
+            // line. The list itself comes from the API, so a driver loaded with
+            // a type this build does not draw (a typo like "meter" for "meters",
+            // or a newer type) still lands here: warn and show a marker in its
+            // place so the author sees it instead of a blank card.
+            const unhandled: never = ctrl;
+            const badType = (unhandled as ControlDef).type;
             console.warn(
-              `[simulator] Unknown control type "${badType}". Nothing to render. ` +
-                "Check the driver's simulator.controls (run `python -m openavc.simulator.validate` to catch this).",
+              `[simulator] Unknown control type "${badType}", shown as a marker. ` +
+                "Check the driver's simulator.controls (`python -m openavc.drivers.check` names the types it can be).",
             );
             return (
               <div

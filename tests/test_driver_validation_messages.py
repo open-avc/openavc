@@ -250,6 +250,18 @@ CASES: dict[str, Any] = {
     # A serial line setting the driver's default_config holds is one the
     # contract's table reads; one with no reading is refused where a driver is
     # written (the port refuses it at every connect).
+    # A simulator control is one of the types the Simulator UI draws, with
+    # the fields it cannot be drawn without, each of the kind it reads.
+    "simulator_control_unknown_type": _d(simulator={"controls": [{"type": "meter", "key": "power"}]}),
+    "simulator_control_missing_a_field": _d(
+        simulator={"controls": [{"type": "slider", "key": "power", "max": 10}]}
+    ),
+    "simulator_control_option_a_mapping": _d(
+        simulator={"controls": [{"type": "select", "key": "power", "options": [{"value": 1, "label": "On"}]}]}
+    ),
+    "simulator_control_in_a_group": _d(
+        simulator={"controls": [{"type": "group", "label": "G", "controls": [{"type": "dial"}]}]}
+    ),
     "default_config_parity_no_reading": _d(
         transport="serial", default_config={"port": "", "parity": "X"}
     ),

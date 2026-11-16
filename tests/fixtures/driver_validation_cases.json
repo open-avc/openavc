@@ -9670,6 +9670,114 @@
   },
   "transport": "tcp"
  },
+ "simulator_control_in_a_group": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "simulator": {
+   "controls": [
+    {
+     "controls": [
+      {
+       "type": "dial"
+      }
+     ],
+     "label": "G",
+     "type": "group"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "simulator_control_missing_a_field": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "simulator": {
+   "controls": [
+    {
+     "key": "power",
+     "max": 10,
+     "type": "slider"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "simulator_control_option_a_mapping": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "simulator": {
+   "controls": [
+    {
+     "key": "power",
+     "options": [
+      {
+       "label": "On",
+       "value": 1
+      }
+     ],
+     "type": "select"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
+ "simulator_control_unknown_type": {
+  "commands": {
+   "noop": {
+    "send": "NOOP\r"
+   }
+  },
+  "id": "acme_widget",
+  "name": "Acme Widget",
+  "simulator": {
+   "controls": [
+    {
+     "key": "power",
+     "type": "meter"
+    }
+   ]
+  },
+  "state_variables": {
+   "power": {
+    "label": "Power",
+    "type": "string"
+   }
+  },
+  "transport": "tcp"
+ },
  "state_variable_bad_cloud_priority": {
   "commands": {
    "noop": {

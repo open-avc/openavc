@@ -58,6 +58,29 @@ SHAPES: dict[str, dict[str, Any]] = {
     "on_connect_send_only": {"on_connect": [{"send": "\r"}]},
     "config_schema_text": {"config_schema": "port"},
     "simulator_initial_state_a_list": {"simulator": {"initial_state": [["power", True]]}},
+    "simulator_control_unknown_type": {"simulator": {"controls": [{"type": "meter", "key": "power"}]}},
+    "simulator_control_without_type": {"simulator": {"controls": [{"key": "power"}]}},
+    "simulator_control_missing_a_field": {"simulator": {"controls": [{"type": "slider", "key": "power"}]}},
+    "simulator_control_option_a_mapping": {
+        "simulator": {"controls": [{"type": "select", "key": "power", "options": [{"value": 1}]}]},
+    },
+    "simulator_control_label_a_boolean": {
+        "simulator": {"controls": [{"type": "select", "key": "power", "options": [0, 1], "labels": {"0": False}}]},
+    },
+    "simulator_control_in_a_group": {
+        "simulator": {"controls": [{"type": "group", "controls": [{"type": "power", "key": "power"}, {"type": 5}]}]},
+    },
+    "simulator_controls_every_type": {"simulator": {"controls": [
+        {"type": "power", "key": "power", "extra": 1},
+        {"type": "select", "key": "power", "options": [True, False, "on", 2], "labels": {"True": "On"}},
+        {"type": "slider", "key": "power", "min": 0, "max": 9.5, "step": 0.5, "unit": "dB"},
+        {"type": "toggle", "key": "power", "label": "Power"},
+        {"type": "matrix", "inputs": 4.0, "outputs": 2, "state_pattern": "r{output}", "input_labels": ["A"]},
+        {"type": "meters", "channels": 2, "key_pattern": "c{ch}", "mute_pattern": "m{ch}"},
+        {"type": "presets", "key": "power", "names": ["A", "B"]},
+        {"type": "group", "label": "G", "controls": []},
+        {"type": "indicator", "key": "power", "color_map": {"on": "#0f0"}},
+    ]}},
     "default_config_text": {"default_config": "port=23"},
     "bridge_ports_a_mapping": {"bridge": {"ports": {"a": 1}}},
     "mapping_state_a_list": {"responses": [{"match": "P(\\d)", "mappings": [{"group": 1, "state": ["power"]}]}]},
@@ -195,6 +218,11 @@ def test_the_built_in_drivers_are_the_shape_they_declare() -> None:
         ({"polling": {"queries": "PWR?\r"}}, "polling.queries: must be a list; write a single entry as a one-item list"),
         ({"config_schema": "port"}, "config_schema: must be a mapping"),
         ({"simulator": {"initial_state": [["power", True]]}}, "simulator.initial_state: must be a mapping"),
+        (
+            {"simulator": {"controls": [{"type": "meter", "key": "power"}]}},
+            "simulator.controls[0].type: must be 'power', 'select', 'slider', 'toggle', 'matrix', "
+            "'meters', 'presets', 'group' or 'indicator', not 'meter'",
+        ),
         ({"on_connect": [{"send": "\r"}]}, "on_connect[0]: is not in any of the forms it can take"),
     ],
 )

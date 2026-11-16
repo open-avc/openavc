@@ -1,4 +1,4 @@
-import type { IndicatorControlDef } from "../../store/api";
+import type { IndicatorControlDef } from "../../store/controls.gen";
 
 interface Props {
   control: IndicatorControlDef;

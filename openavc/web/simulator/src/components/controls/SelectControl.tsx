@@ -1,4 +1,4 @@
-import type { SelectControlDef } from "../../store/api";
+import type { SelectControlDef } from "../../store/controls.gen";
 
 interface Props {
   control: SelectControlDef;
@@ -14,7 +14,7 @@ export function SelectControl({ control, state, onStateChange }: Props) {
       {control.label && <span className="ctrl-label">{control.label}</span>}
       <div className="ctrl-select-options">
         {control.options.map((opt) => {
-          const label = control.labels?.[opt] ?? String(opt);
+          const label = control.labels?.[String(opt)] ?? String(opt);
           return (
             <button
               key={String(opt)}

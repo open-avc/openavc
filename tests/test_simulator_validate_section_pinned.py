@@ -597,22 +597,26 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'control_not_a_mapping': [('error', 'controls', "controls[0]: must be a mapping, got: 'power'"),
                            ('error', 'controls', 'controls[1]: must be a mapping, got: 5'),
                            ('error', 'controls', 'controls[2]: must be a mapping, got: None')],
- 'control_type_a_list': ('raises', 'TypeError', "unhashable type: 'list'"),
+ 'control_type_a_list': [('error',
+                          'controls',
+                          "controls[0]: unknown control type ['power']; the Simulator UI shows "
+                          "'Unknown control type' in its place (the types it draws: power, select, "
+                          'slider, toggle, matrix, meters, presets, group, indicator)')],
  'control_type_a_number': [('error',
                             'controls',
-                            'controls[0]: unknown control type 3 — the panel renders nothing for '
-                            'it (valid types: group, indicator, matrix, meters, power, presets, '
-                            'select, slider, toggle)')],
+                            "controls[0]: unknown control type 3; the Simulator UI shows 'Unknown "
+                            "control type' in its place (the types it draws: power, select, "
+                            'slider, toggle, matrix, meters, presets, group, indicator)')],
  'control_unknown_type': [('error',
                            'controls',
-                           "controls[0]: unknown control type 'meter' — the panel renders nothing "
-                           'for it (valid types: group, indicator, matrix, meters, power, presets, '
-                           'select, slider, toggle)')],
+                           "controls[0]: unknown control type 'meter'; the Simulator UI shows "
+                           "'Unknown control type' in its place (the types it draws: power, "
+                           'select, slider, toggle, matrix, meters, presets, group, indicator)')],
  'control_without_type': [('error',
                            'controls',
-                           'controls[0]: unknown control type None — the panel renders nothing for '
-                           'it (valid types: group, indicator, matrix, meters, power, presets, '
-                           'select, slider, toggle)')],
+                           'controls[0]: unknown control type None; the Simulator UI shows '
+                           "'Unknown control type' in its place (the types it draws: power, "
+                           'select, slider, toggle, matrix, meters, presets, group, indicator)')],
  'controls_absent': [],
  'controls_empty_list': [],
  'controls_empty_mapping': [('error', 'controls', 'simulator.controls must be a list')],
@@ -682,7 +686,12 @@ EXPECTED: dict = {'control_key_not_a_string': [],
  'controls_false': [('error', 'controls', 'simulator.controls must be a list')],
  'controls_not_a_list': [('error', 'controls', 'simulator.controls must be a list')],
  'controls_null': [],
- 'group_child_type_a_list': ('raises', 'TypeError', "unhashable type: 'list'"),
+ 'group_child_type_a_list': [('error',
+                              'controls',
+                              "controls[0].controls[0]: unknown control type ['x']; the Simulator "
+                              "UI shows 'Unknown control type' in its place (the types it draws: "
+                              'power, select, slider, toggle, matrix, meters, presets, group, '
+                              'indicator)')],
  'group_children_checked': [('warning',
                              'controls',
                              "controls[0].controls[0] (power): key 'nope' is not a state variable "
@@ -701,9 +710,10 @@ EXPECTED: dict = {'control_key_not_a_string': [],
                              "panel shows 'undefined'"),
                             ('error',
                              'controls',
-                             "controls[0].controls[3]: unknown control type 'dial' — the panel "
-                             'renders nothing for it (valid types: group, indicator, matrix, '
-                             'meters, power, presets, select, slider, toggle)'),
+                             "controls[0].controls[3]: unknown control type 'dial'; the Simulator "
+                             "UI shows 'Unknown control type' in its place (the types it draws: "
+                             'power, select, slider, toggle, matrix, meters, presets, group, '
+                             'indicator)'),
                             ('warning',
                              'controls',
                              "controls[1] (power): key 'after' is not a state variable or "

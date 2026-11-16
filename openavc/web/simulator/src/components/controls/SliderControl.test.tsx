@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { SliderControl } from "./SliderControl";
-import type { SliderControlDef } from "../../store/api";
+import type { SliderControlDef } from "../../store/controls.gen";
 
 // The reported symptom: drag a slider and it does not move, then a couple of
 // seconds later it jumps in steps. The cause was that the thumb's position

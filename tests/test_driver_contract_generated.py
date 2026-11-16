@@ -2,8 +2,9 @@
 
 The field registry in ``openavc/drivers/spec.py`` is the single source of
 the .avcdriver contract. ``python -m openavc.drivers.contract_gen`` renders
-it into three committed artifacts: the published JSON Schema, its
-Python-driver variant, and the Programmer IDE's generated types. These
+it into four committed artifacts: the published JSON Schema, its
+Python-driver variant, the Programmer IDE's generated types and the
+Simulator UI's control types. These
 tests re-render each artifact and compare byte-for-byte, so editing the
 registry without regenerating (or hand-editing a generated file) fails CI
 instead of drifting the surfaces apart.
@@ -29,6 +30,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
         "openavc/drivers/avcdriver.schema.json",
         "openavc/drivers/pythondriver.schema.json",
         "openavc/web/programmer/src/api/types.gen.ts",
+        "openavc/web/simulator/src/store/controls.gen.ts",
     ],
 )
 def test_committed_artifact_matches_registry(rel_path: str) -> None:

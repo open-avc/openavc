@@ -1,7 +1,7 @@
-import type { PresetControlDef } from "../../store/api";
+import type { PresetsControlDef } from "../../store/controls.gen";
 
 interface Props {
-  control: PresetControlDef;
+  control: PresetsControlDef;
   state: Record<string, unknown>;
   onStateChange: (key: string, value: unknown) => void;
 }

@@ -1,7 +1,7 @@
-import type { MeterControlDef } from "../../store/api";
+import type { MetersControlDef } from "../../store/controls.gen";
 
 interface Props {
-  control: MeterControlDef;
+  control: MetersControlDef;
   state: Record<string, unknown>;
   onStateChange: (key: string, value: unknown) => void;
 }

@@ -1,4 +1,4 @@
-import type { MatrixControlDef } from "../../store/api";
+import type { MatrixControlDef } from "../../store/controls.gen";
 
 interface Props {
   control: MatrixControlDef;

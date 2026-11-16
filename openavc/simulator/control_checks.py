@@ -2,14 +2,15 @@
 (``simulator.controls``).
 
 A declared list replaces the controls the simulator builds from the state
-variables, so a misspelt type or a missing field leaves a blank or broken card
-on the device's page, with no other message. What each type needs is the
-Simulator UI's: the ``ControlDef`` types in ``web/simulator/src/store/api.ts``,
-which ``DynamicControls`` switches on. ``_TYPES`` is this validator's copy of
-them, one row per type: the fields the card cannot be drawn without (an error),
+variables, so a misspelt type shows an "Unknown control type" marker in the
+control's place and a missing field a broken card. The types and what each
+needs are the driver contract's (``spec.SIMULATOR_CONTROLS``), from which the
+Simulator UI's ``ControlDef`` union is generated too. ``_TYPES`` is built from
+it, one row per type: the fields the card cannot be drawn without (an error),
 whether a missing ``label`` shows as "undefined" (a warning), whether ``key``
-names a state key, and the type's own rules. A new control type is a row here
-and, when it has rules of its own, one function.
+names a state key, and whether it holds controls of its own. A type's own rules
+(``_OWN_RULES``) are the one thing written here: a new control type is a row in
+the contract and, when it has rules of its own, one function.
 
 A key is reported as unknown only when the device has state keys to compare it
 with: with none (``known_keys`` empty), nothing is said about it. A Python
@@ -26,6 +27,7 @@ from collections.abc import Callable
 from typing import Any
 
 from openavc.drivers.python_info import holds_unread
+from openavc.drivers.spec import SIMULATOR_CONTROLS
 from openavc.simulator.validation_result import ValidationResult
 
 
@@ -151,18 +153,31 @@ def _group_controls(control: _Control) -> None:
         control.error("'controls' must be a list")
 
 
+#: The rules of a type's own, after its required fields, label and key.
+_OWN_RULES: dict[str, Callable[[_Control], None]] = {
+    "select": _select_options,
+    "slider": _slider_bounds,
+    "matrix": _matrix,
+    "meters": _meters,
+    "presets": _presets,
+    "group": _group_controls,
+}
+
+
+def _row(name: str, declared: dict) -> _ControlType:
+    """One type's row, read off its declaration in the contract."""
+    fields = declared["fields"]
+    return _ControlType(
+        required=tuple(declared["required"]),
+        label_required=declared.get("label_shown", False),
+        has_key="key" in fields,
+        own_rules=_OWN_RULES.get(name),
+        holds_controls="controls" in fields,
+    )
+
+
 _TYPES: dict[str, _ControlType] = {
-    "power": _ControlType(("key",)),
-    "select": _ControlType(("key", "options"), own_rules=_select_options),
-    "slider": _ControlType(("key", "min", "max"), own_rules=_slider_bounds),
-    "toggle": _ControlType(("key",), label_required=True),
-    "matrix": _ControlType(("inputs", "outputs", "state_pattern"), has_key=False, own_rules=_matrix),
-    "meters": _ControlType(("channels", "key_pattern"), has_key=False, own_rules=_meters),
-    "presets": _ControlType(("key",), own_rules=_presets),
-    "group": _ControlType(
-        ("controls",), label_required=True, has_key=False, own_rules=_group_controls, holds_controls=True,
-    ),
-    "indicator": _ControlType(("key",), label_required=True),
+    name: _row(name, declared) for name, declared in SIMULATOR_CONTROLS.items()
 }
 
 
@@ -219,12 +234,12 @@ def _control_type(result: ValidationResult, fields: Any, where: str) -> _Control
         result.error("controls", f"{where}: must be a mapping, got: {fields!r}")
         return None
     ctype = fields.get("type")
-    if ctype not in _TYPES:
-        valid = ", ".join(sorted(_TYPES))
+    if not isinstance(ctype, str) or ctype not in _TYPES:
+        drawn = ", ".join(_TYPES)
         result.error(
             "controls",
-            f"{where}: unknown control type {ctype!r} — the panel renders "
-            f"nothing for it (valid types: {valid})"
+            f"{where}: unknown control type {ctype!r}; the Simulator UI shows "
+            f"'Unknown control type' in its place (the types it draws: {drawn})"
         )
         return None
     return _TYPES[ctype]
