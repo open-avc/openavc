@@ -27,9 +27,9 @@ the save doors, the loader and the catalog already call:
                  plus avcdriver_semantic.validate_driver_warnings, the
                  warnings the Builder shows beside the errors
     .py          python_info.extract_python_driver_info_full  ->
-                 avcdriver_semantic.unknown_key_errors, plus
-                 python_info.python_driver_info_issues (the loader's
-                 structural rules)
+                 python_info.python_driver_refusals (a key the contract
+                 does not declare, then python_driver_info_issues' strict
+                 verdict, as the Code view's save asks it)
 
 Posture is the authoring one: unknown keys are errors here, as they are at
 save and at catalog publish, not the warnings the runtime loader settles for.
@@ -38,8 +38,10 @@ not vanish at load and take its devices offline — but a checker has no device
 to protect.
 
 Coverage is reported, never implied. A file it cannot read is an error, not a
-skip; a Python value it cannot evaluate is named; and the two structural
-checks that need the loaded class are listed rather than silently passed. A
+skip; a Python value it cannot evaluate is named, and so is every check the
+one skip left out because of it (``python_driver_reference_skips``); and the
+two structural checks that need the loaded class are listed rather than
+silently passed. A
 check that raises on one file is that file's error, so a folder's other files
 are still reported.
 """
@@ -58,7 +60,7 @@ from openavc.drivers.python_info import (
     ExtractError,
     declares_driver_info,
     extract_python_driver_info_full,
-    python_driver_info_issues,
+    python_driver_refusals,
     python_driver_reference_skips,
 )
 
@@ -141,9 +143,6 @@ def _check_yaml_driver(path: Path) -> FileCheckResult:
 
 
 def _check_python_driver(path: Path) -> FileCheckResult:
-    # Imported here so the module-level import stays stdlib + yaml.
-    from openavc.drivers.avcdriver_semantic import unknown_key_errors
-
     result = FileCheckResult(path, "python")
     try:
         info, unevaluated = extract_python_driver_info_full(path)
@@ -158,11 +157,10 @@ def _check_python_driver(path: Path) -> FileCheckResult:
         result.readable = False
         return result
 
-    result.errors.extend(unknown_key_errors(info))
-    result.errors.extend(python_driver_info_issues(info))
+    result.errors.extend(python_driver_refusals(info))
 
     for skip in python_driver_reference_skips(info):
-        result.notes.append(f"cross-reference not checked: {skip}")
+        result.notes.append(f"not checked: {skip}")
 
     if unevaluated:
         result.notes.append(

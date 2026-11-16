@@ -40,12 +40,27 @@ def param_aid_errors(where: str, params: Any) -> list[str]:
         return []
     errors: list[str] = []
     for pname, pdef in params.items():
-        if not isinstance(pdef, dict):
-            continue
-        at = f"{where} param '{pname}'"
-        for check in _AID_CHECKS:
-            errors.extend(check(at, pdef, params))
+        errors.extend(one_param_aid_errors(where, pname, pdef, params))
     return errors
+
+
+def one_param_aid_errors(where: str, pname: Any, pdef: Any, params: dict[str, Any]) -> list[str]:
+    """Every aid of the one parameter ``pname``, with ``params`` the siblings
+    its pickers may follow. ``python_info`` asks it a parameter at a time, to
+    leave out one whose definition the source reader could not see."""
+    if not isinstance(pdef, dict):
+        return []
+    at = f"{where} param '{pname}'"
+    return [message for check in _AID_CHECKS for message in check(at, pdef, params)]
+
+
+def sibling_refs(pdef: Any) -> list[str]:
+    """The siblings a parameter's pickers follow by name (``options_from`` and
+    ``type_from``), as written."""
+    if not isinstance(pdef, dict):
+        return []
+    picks = (pdef.get(key) for key in ("options_from", "type_from"))
+    return [pick["param"] for pick in picks if isinstance(pick, dict) and isinstance(pick.get("param"), str)]
 
 
 def _pattern_errors(at: str, pdef: dict[str, Any], params: dict[str, Any]) -> list[str]:

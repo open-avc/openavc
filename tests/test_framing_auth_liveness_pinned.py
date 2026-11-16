@@ -577,7 +577,7 @@ EXPECTED: dict[str, list[tuple[str, str]]] = {'affix_both_wrong': [('command_pre
                         'string, or an OSC address on osc)'),
                        ('liveness', "liveness: 'max_failures' must be an integer >= 1"),
                        ('actions', "actions[0]: missing required 'id' (non-empty string)"),
-                       ('state_variables.power', "State variable 'power': unknown type 'nope'"),
+                       ('state_variables.power', "State variable 'power': unknown type 'nope'; use one of 'string', 'integer', 'number', 'boolean', 'enum', 'float'"),
                        ('frame_parser', 'frame_parser: header_size must be 1, 2, or 4 (got 3)'),
                        ('send_frame', 'send_frame: length_size must be a positive integer (got 0)'),
                        ('send_frame', 'send_frame: header must be a string (got 1)'),

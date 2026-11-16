@@ -20,6 +20,7 @@ driver contract (openavc-drivers' catalog CI, openavc-sdk).
 
 from __future__ import annotations
 
+import difflib
 from typing import Any, Callable
 
 from openavc.drivers.spec import CLOUD_PRIORITIES, VALUE_TYPES
@@ -34,8 +35,17 @@ def _type_error(var_def: dict[str, Any]) -> str | None:
     if not isinstance(var_type, str):
         return f"unknown type {var_type!r}" if var_type else None
     if var_type and var_type not in _VALUE_TYPES:
-        return f"unknown type '{var_type}'"
+        return f"unknown type '{var_type}'; {_type_fix(var_type)}"
     return None
+
+
+def _type_fix(var_type: str) -> str:
+    """What to write instead of a type the contract does not have: the one
+    it is nearest (``bool`` is ``boolean``), else every type there is."""
+    near = difflib.get_close_matches(var_type.lower(), VALUE_TYPES, n=1, cutoff=0.6)
+    if near:
+        return f"use '{near[0]}'"
+    return "use one of " + ", ".join(f"'{name}'" for name in VALUE_TYPES)
 
 
 def _label_error(var_def: dict[str, Any]) -> str | None:

@@ -30,6 +30,7 @@ from openavc.drivers.avcdriver_semantic import (
     validate_actions,
 )
 from openavc.drivers.python_info import (
+    UNEVALUATED,
     python_driver_info_issues,
     python_driver_reference_skips,
 )
@@ -41,7 +42,7 @@ def _definition() -> dict:
         "id": "acme_widget",
         "name": "Acme Widget",
         "transport": "tcp",
-        "state_variables": {"power": {"type": "boolean"}},
+        "state_variables": {"power": {"type": "boolean", "label": "Power"}},
         "child_entity_types": {
             "zone": {
                 "id_format": {"type": "integer", "min": 1, "max": 8},
@@ -197,7 +198,7 @@ def test_computed_commands_skips_the_param_checks_and_says_so():
     runtime, and a check whose target set is unknown must report the gap
     rather than a dangling reference it cannot see the target of."""
     definition = _definition()
-    definition["commands"] = UNEVALUATED_KEY  # the reader's marker for a computed block
+    definition["commands"] = UNEVALUATED  # the reader's placeholder for a computed block
 
     assert _errors(definition) == []
     skips = _skips(definition)
@@ -207,7 +208,7 @@ def test_computed_commands_skips_the_param_checks_and_says_so():
 
 def test_computed_child_entity_types_skips_only_that_reference():
     definition = _definition()
-    definition["child_entity_types"] = UNEVALUATED_KEY
+    definition["child_entity_types"] = UNEVALUATED
 
     assert _errors(definition) == []
     assert any("child_entity_types is computed" in s for s in _skips(definition))
@@ -319,13 +320,13 @@ def test_a_dangling_state_key_reads_the_same_on_both_surfaces():
 def test_a_state_key_defaults_to_the_setting_name():
     assert [e for e in python_driver_info_issues(_with_setting()) if "standby" in e]
     ok = _with_setting()
-    ok["state_variables"]["standby"] = {"type": "boolean"}
+    ok["state_variables"]["standby"] = {"type": "boolean", "label": "Standby"}
     assert python_driver_info_issues(ok) == []
 
 
 def test_computed_state_variables_skip_the_state_key_check():
     definition = _with_setting(state_key="powr")
-    definition["state_variables"] = UNEVALUATED_KEY
+    definition["state_variables"] = UNEVALUATED
 
     assert [e for e in python_driver_info_issues(definition) if "powr" in e] == []
     assert any(
@@ -410,12 +411,12 @@ def test_a_block_whose_targets_are_computed_is_skipped_and_named():
     definition["commands"] = {}          # built at connect, invisible here
     assert python_driver_info_issues(definition) == []
     (skip,) = [s for s in python_driver_reference_skips(definition) if "routing" in s]
-    assert "1 routing plane(s)" in skip
+    assert skip.startswith("routing (names into commands")
 
 
 def test_a_computed_child_property_set_also_skips():
     definition = _routed()
-    definition["child_entity_types"]["zone"]["state_variables"] = UNEVALUATED_KEY
+    definition["child_entity_types"]["zone"]["state_variables"] = UNEVALUATED
     assert python_driver_info_issues(definition) == []
     assert any("routing" in s for s in python_driver_reference_skips(definition))
 

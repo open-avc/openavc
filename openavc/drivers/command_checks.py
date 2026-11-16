@@ -3,14 +3,15 @@
 A YAML command is checked in this order: how it sends (exactly one of
 ``send``, ``path``/``method``, ``address``, ``udp``, ``ir``), an OSC command's
 ``args``, a ``udp:`` block, its parameters' form aids (``param_aid_checks``),
-what ``sets:`` and ``query_for:`` name, then the four checks a Python
-driver's command gets too: ``confirm``, ``sleeps_device``, ``read_back`` and
-the file rules. ``validate_driver_definition`` asks ``CommandSection`` about
-each command and tags what comes back with the command's place;
-``python_info`` asks ``SharedCommandChecks`` about each command of a
-``DRIVER_INFO``. Those four checks are listed once, in
-``SharedCommandChecks.errors``, so a field both kinds of driver may declare is
-one function and one line there.
+what ``sets:`` and ``query_for:`` name, then then the four checks every command
+gets: ``confirm``, ``sleeps_device``, ``read_back`` and the file rules.
+``validate_driver_definition`` asks ``CommandSection`` about each command and
+tags what comes back with the command's place. A Python driver's command
+gets what both kinds of driver declare alike: ``python_info`` asks the form
+aids (``param_aid_checks``), ``state_name_errors`` and ``SharedCommandChecks``
+about each command of a ``DRIVER_INFO``, never how a YAML command sends. The
+four are listed once, in ``SharedCommandChecks.errors``, so a field both
+kinds of driver may declare is one function and one line there.
 
 The runtime's twins: ``configurable.py`` sends each form, ``side_sends.py``
 the ``udp:`` and ``ir:`` ones; ``rereads.py`` sends a ``read_back``;
@@ -91,8 +92,7 @@ class CommandSection:
     transport and the names a template may substitute."""
 
     def __init__(self, driver_def: dict[str, Any], declared: DeclaredSections) -> None:
-        self.declared_vars = declared.state_variables
-        self.child_types = declared.child_types
+        self.declared = declared
         self.config_names = substitution_names(driver_def)
         self.shared = SharedCommandChecks(
             declared.commands, driver_def.get("transport"), python=False
@@ -110,39 +110,45 @@ class CommandSection:
         if "udp" in forms:
             errors.extend(udp_block_errors(where, cmd_def.get("udp"), self.config_names))
         errors.extend(param_aid_errors(where, cmd_def.get("params")))
-        errors.extend(self._state_name_errors(where, cmd_def))
+        errors.extend(state_name_errors(where, cmd_def, self.declared))
         errors.extend(self.shared.errors(cmd_name, cmd_def))
         return errors
 
-    def _state_name_errors(self, where: str, cmd_def: dict[str, Any]) -> list[str]:
-        """What ``sets:`` and ``query_for:`` name.
 
-        Both drive the generated simulator, so a name that resolves to nothing
-        would silently declare nothing. A command addressed to exactly one
-        child (a single ``child_id`` parameter) may name that child type's
-        variables too: the simulator routes the effect to the addressed
-        child's own state.
-        """
-        params = cmd_def.get("params")
-        params = params if isinstance(params, dict) else {}
-        names = _StateNames(self.declared_vars, self._addressed_child_vars(params))
-        return names.sets_errors(where, cmd_def.get("sets"), params) + (
-            names.query_for_errors(where, cmd_def.get("query_for"))
-        )
+def state_name_errors(where: str, cmd_def: dict[str, Any], declared: DeclaredSections) -> list[str]:
+    """What a command's ``sets:`` and ``query_for:`` name, read against the
+    state variables and child types ``declared`` read. Both kinds of driver
+    ask it: the YAML walk through ``CommandSection``, a Python driver's
+    ``DRIVER_INFO`` through ``python_info``.
 
-    def _addressed_child_vars(self, params: dict[str, Any]) -> set[str]:
-        """The writable properties of the one child type this command is
-        addressed to, or none when it is not addressed to exactly one."""
-        child_param_types = [
-            p.get("child_type")
-            for p in params.values()
-            if isinstance(p, dict) and p.get("type") == "child_id"
-        ]
-        if len(child_param_types) != 1:
-            return set()
-        if child_param_types[0] not in self.child_types:
-            return set()
-        return child_writable_props(self.child_types.get(child_param_types[0]))
+    Both drive the generated simulator, so a name that resolves to nothing
+    would silently declare nothing. A command addressed to exactly one child
+    (a single ``child_id`` parameter) may name that child type's variables
+    too: the simulator routes the effect to the addressed child's own state.
+    """
+    params = cmd_def.get("params")
+    params = params if isinstance(params, dict) else {}
+    names = _StateNames(
+        declared.state_variables, _addressed_child_vars(params, declared.child_types)
+    )
+    return names.sets_errors(where, cmd_def.get("sets"), params) + (
+        names.query_for_errors(where, cmd_def.get("query_for"))
+    )
+
+
+def _addressed_child_vars(params: dict[str, Any], child_types: dict[Any, Any]) -> set[str]:
+    """The writable properties of the one child type a command is addressed
+    to, or none when it is not addressed to exactly one."""
+    child_param_types = [
+        p.get("child_type")
+        for p in params.values()
+        if isinstance(p, dict) and p.get("type") == "child_id"
+    ]
+    if len(child_param_types) != 1:
+        return set()
+    if child_param_types[0] not in child_types:
+        return set()
+    return child_writable_props(child_types.get(child_param_types[0]))
 
 
 class _StateNames:

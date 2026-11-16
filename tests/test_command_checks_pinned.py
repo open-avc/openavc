@@ -1090,7 +1090,8 @@ PYTHON_EXPECTED: dict[str, list[str]] = {'confirm': ["Command 'b': 'confirm' mus
                 "Command 'a' param 'j': max_bytes must be a whole number of bytes from 1 to 1073741824 (1 "
                 'GiB)',
                 "Command 'a' param 'l': max_bytes applies only to a file param (type: file)",
-                "Command 'c': 'returns_file' must be true or false"]}
+                "Command 'c': 'returns_file' must be true or false",
+                "Command 'a' param 'g': map must be a non-empty mapping of value -> wire value"]}
 
 
 PYTHON_EXPECTED.update({'file_accept_endings': ['Command \'a\' param \'f\': accept must list file-name endings, e.g. [".bin"]',

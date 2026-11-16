@@ -1249,7 +1249,7 @@ PYTHON_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_field_computed': (
                       []),
  'a_quick_item_computed': (['quick_actions[0]: must be a non-empty command id string'], []),
  'a_setup_with_bad_params': ([], []),
- 'actions_computed': (['actions: must be a list'], []),
+ 'actions_computed': ([], ['actions (could not be read from the source)']),
  'an_entry_computed': (['actions[0]: must be a mapping'], []),
  'both_blocks_wrong': (["quick_actions[0]: 'upload' takes or hands back a file, so it cannot be a "
                         'Quick Action; it runs from Send Command on the device page',
@@ -1259,7 +1259,8 @@ PYTHON_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_field_computed': (
  'commands_computed': ([],
                        ['commands is computed, so no command params were checked',
                         '2 action/quick_action reference(s) into commands, because commands is '
-                        'computed']),
+                        'computed',
+                        'commands (could not be read from the source)']),
  'commands_partial': (["quick_actions[1]: 'fetch' takes or hands back a file, so it cannot be a "
                        'Quick Action; it runs from Send Command on the device page',
                        "actions[1]: command 'upload' takes or hands back a file, so it cannot be a "
@@ -1272,7 +1273,7 @@ PYTHON_EXPECTED: dict[str, tuple[list[str], list[str]]] = {'a_field_computed': (
             'Action; it runs from Send Command on the device page',
             "actions[1]: command 'missing' is not a declared command"],
            []),
- 'quick_actions_computed': (['quick_actions: must be a list of command ids'], []),
+ 'quick_actions_computed': ([], ['quick_actions (could not be read from the source)']),
  'the_id_computed': (["actions[0]: missing required 'id' (non-empty string)",
                       "actions[1]: missing required 'id' (non-empty string)"],
                      []),

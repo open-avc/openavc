@@ -40,7 +40,7 @@ from openavc.drivers.avcdriver_semantic import (
     validate_driver_definition,
     validate_driver_issues,
 )
-from openavc.drivers.python_info import python_driver_info_issues
+from openavc.drivers.python_info import UNEVALUATED, python_driver_info_issues
 
 # A case key set to this is left out of the definition altogether.
 DROP = "<left out>"
@@ -550,7 +550,7 @@ PY_CASES: dict[str, dict[str, Any]] = {
     },
     "py_routing_commands_empty": {"commands": {}, **routed(plane(route_property="sorce"))},
     "py_routing_dest_vars_unevaluated": {
-        "child_entity_types": {"output": {"state_variables": UNEVALUATED_KEY}, "input": INPUT},
+        "child_entity_types": {"output": {"state_variables": UNEVALUATED}, "input": INPUT},
         **routed(plane(route_property="anything", command="nope")),
     },
     "py_routing_device_itself": routing(command="select", planes=[plane(route_property="sorce_video")]),

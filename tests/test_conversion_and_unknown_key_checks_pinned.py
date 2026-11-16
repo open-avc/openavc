@@ -35,7 +35,7 @@ from openavc.drivers.avcdriver_semantic import (
     validate_driver_issues,
     value_conversion_errors,
 )
-from openavc.drivers.python_info import python_driver_info_issues
+from openavc.drivers.python_info import check_python_driver_info, python_driver_info_issues
 
 # A case key set to this is left out of the definition altogether.
 DROP = "<left out>"
@@ -942,7 +942,8 @@ PY_EXPECTED: dict[str, dict[str, list[str]]] = {'py_action_param': {'conversion'
                                         'driver writes its settings in its own code',
                                         "Device setting 'other': remove map; the platform maps a "
                                         "setting's value only for YAML drivers, and a Python "
-                                        'driver writes its settings in its own code'],
+                                        'driver writes its settings in its own code',
+                                        "State variable 'v': missing 'label'"],
                              'yaml': ["State variable 'v': the type must be integer, number or "
                                       'float to use scale',
                                       'child_entity_types.zone.state_variables.c: the type must be '
@@ -980,13 +981,16 @@ PY_EXPECTED: dict[str, dict[str, list[str]]] = {'py_action_param': {'conversion'
                             'values only for YAML drivers, and a Python driver converts in its own '
                             'code'],
                  'yaml': []},
- 'py_variable_not_a_mapping': {'conversion': [], 'issues': [], 'yaml': []},
+ 'py_variable_not_a_mapping': {'conversion': [],
+                               'issues': ["State variable 'gain': must be a dict"],
+                               'yaml': []},
  'py_variable_wrong_type': {'conversion': ["State variable 'gain': remove offset; the platform "
                                            'converts values only for YAML drivers, and a Python '
                                            'driver converts in its own code'],
                             'issues': ["State variable 'gain': remove offset; the platform "
                                        'converts values only for YAML drivers, and a Python driver '
-                                       'converts in its own code'],
+                                       'converts in its own code',
+                                       "State variable 'gain': missing 'label'"],
                             'yaml': ["State variable 'gain': the type must be integer, number or "
                                      'float to use offset']}}
 
@@ -1032,7 +1036,10 @@ def test_the_python_surface(case: str) -> None:
     assert {"conversion": conversion, "yaml": value_conversion_errors(info)} == {
         k: PY_EXPECTED[case][k] for k in ("conversion", "yaml")
     }
-    assert issues[len(issues) - len(conversion):] == conversion
+    # The conversions end the rules a Python driver has always been held to;
+    # the sections both kinds of driver share are judged after them.
+    always = check_python_driver_info(info).errors
+    assert always[len(always) - len(conversion):] == conversion
     assert issues == PY_EXPECTED[case]["issues"]
 
 

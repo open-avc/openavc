@@ -231,7 +231,7 @@
   "child_entity_types.zone.state_variables.level: unit must be a string (got 5)"
  ],
  "child_state_variable_unknown_type": [
-  "child_entity_types.zone.state_variables.level: unknown type 'voltage'"
+  "child_entity_types.zone.state_variables.level: unknown type 'voltage'; use one of 'string', 'integer', 'number', 'boolean', 'enum', 'float'"
  ],
  "child_state_variables_not_mapping": [
   "child_entity_types.zone.state_variables: must be a mapping"
@@ -997,7 +997,7 @@
   "State variable 'power': unit must be a string (got 5)"
  ],
  "state_variable_unknown_type": [
-  "State variable 'power': unknown type 'voltage'"
+  "State variable 'power': unknown type 'voltage'; use one of 'string', 'integer', 'number', 'boolean', 'enum', 'float'"
  ],
  "state_variables_not_mapping": [
   "state_variables: must be a mapping"

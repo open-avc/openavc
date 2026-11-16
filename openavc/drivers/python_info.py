@@ -6,10 +6,17 @@ checker, ``openavc.simulator.validate``, the community catalog's CI — has to r
 from the source text, because importing a driver executes arbitrary code and
 needs its dependencies present.
 
-This module is that reader, plus the structural rules that can be decided from
-the dict alone. It exists so there is exactly one of each: the catalog's
-``build_index.py`` used to carry its own copy of the AST walk, and the runtime
-loader its own copy of the structural rules.
+This module is that reader, plus THE verdict on a ``DRIVER_INFO``
+(``check_python_driver_info``): the rules a Python driver has always been held
+to here, and the section checks both kinds of driver share, asked of the same
+check modules the YAML walk asks. It refuses at the author's doors (the
+checker, catalog CI, the Code view's save; ``python_driver_info_issues``) and
+is a notice where a driver loads or a product connects. It is also THE skip
+for what the reader could not see (``_Coverage``): a value built in code is
+never judged, nor anything judged against a section not read whole, and
+``python_driver_reference_skips`` names each. It exists so there is exactly
+one of each: the catalog's ``build_index.py`` used to carry its own copy of
+the AST walk, and the runtime loader its own copy of the structural rules.
 
 Purity contract, same as ``spec`` and ``avcdriver_semantic``: standard library
 only. The community catalog vendors this file and runs it in a CI job that
@@ -19,20 +26,34 @@ installs no ``openavc`` package. An import-guard test enforces it.
 from __future__ import annotations
 
 import ast
+from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
+# The definition walk's guard and tagged list: every part of this walk is
+# asked the way each part of that one is, so a check that raises on a value
+# of a kind it does not read is a message in both.
 from openavc.drivers.avcdriver_semantic import (
     UNEVALUATED_KEY,
+    DefinitionVerdict,
+    _guarded,
+    _TaggedErrors,
     child_param_reference_errors,
     config_learned_from_errors,
     device_setting_state_key_errors,
     platform_version_errors,
     routing_block_errors,
+    unknown_key_errors,
     validate_actions,
     value_conversion_errors,
 )
-from openavc.drivers.command_checks import SharedCommandChecks
+from openavc.drivers.child_type_checks import RosterNames, child_type_errors
+from openavc.drivers.command_checks import SharedCommandChecks, state_name_errors
+from openavc.drivers.declared_names import DeclaredSections
+from openavc.drivers.param_aid_checks import one_param_aid_errors, sibling_refs
+from openavc.drivers.push_block_checks import push_block_errors
+from openavc.drivers.spec import CONFIG_FIELD_SOURCES
+from openavc.drivers.state_variable_checks import DEVICE_VARIABLE, state_variable_errors
 
 
 class ExtractError(Exception):
@@ -132,11 +153,15 @@ def driver_info_ast(filepath: Path) -> ast.Dict:
     rejecting it here meant a file was recognised as a driver and then
     reported as having no ``DRIVER_INFO`` at all.
     """
-    source = filepath.read_text(encoding="utf-8")
+    return _driver_info_node(filepath.read_text(encoding="utf-8"), filepath.name)
+
+
+def _driver_info_node(source: str, filename: str) -> ast.Dict:
+    """``driver_info_ast`` on source text, named ``filename`` in messages."""
     try:
         tree = ast.parse(source)
     except SyntaxError as e:
-        raise ExtractError(f"{filepath.name} has a syntax error: {e}")
+        raise ExtractError(f"{filename} has a syntax error: {e}")
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             for item in node.body:
@@ -153,7 +178,7 @@ def driver_info_ast(filepath: Path) -> ast.Dict:
                 ):
                     return item.value
     raise ExtractError(
-        f"{filepath.name}: no DRIVER_INFO class attribute found. "
+        f"{filename}: no DRIVER_INFO class attribute found. "
         "Python drivers must define `DRIVER_INFO = {...}` inside a class body."
     )
 
@@ -202,10 +227,22 @@ def extract_python_driver_info_full(
     child_entity_types, ...) never met the contract. This reads all of it so
     unknown-key checking can.
     """
+    return _read_driver_info(driver_info_ast(filepath))
+
+
+def extract_python_driver_info_from_source(
+    source: str, filename: str,
+) -> tuple[dict[str, Any], list[str]]:
+    """``extract_python_driver_info_full`` on source text not yet on disk
+    (the Code view's save), named ``filename`` in messages."""
+    return _read_driver_info(_driver_info_node(source, filename))
+
+
+def _read_driver_info(node: ast.Dict) -> tuple[dict[str, Any], list[str]]:
     opaque: list[str] = []
-    value = lenient_ast_value(driver_info_ast(filepath), "", opaque)
+    value = lenient_ast_value(node, "", opaque)
     if not isinstance(value, dict):  # pragma: no cover - node is an ast.Dict
-        raise ExtractError(f"{filepath.name}: DRIVER_INFO is not a mapping")
+        raise ExtractError("DRIVER_INFO is not a mapping")
     return value, sorted(set(opaque))
 
 
@@ -218,194 +255,519 @@ CLASS_DEPENDENT_CHECKS: tuple[str, ...] = (
 )
 
 
+def check_python_driver_info(
+    info: dict[str, Any],
+    *,
+    strict: bool = False,
+    overrides_run_setup_action: bool | None = None,
+    overrides_set_device_setting: bool | None = None,
+) -> DefinitionVerdict:
+    """THE verdict on a Python driver's ``DRIVER_INFO``, at either kind of door.
+
+    Two kinds of rule come out. The ``errors`` are the rules a Python driver
+    has always been held to here (``_PythonWalk``). The checks of the sections
+    both kinds of driver declare alike (``_SHARED_SECTIONS``: the state
+    variables, the child types, each command's parameter aids and its
+    ``sets:`` and ``query_for:``, the push block; the routing block is one of
+    the first kind) refuse only in ``strict`` mode, where a driver is written
+    (``drivers.check``, catalog CI, the Code view's save). Where a driver is
+    loaded or a device connects they are the ``notices``, so a driver that
+    worked before still does and the door can say what is wrong with it. A
+    YAML command's wire rules are never asked: how a command sends, a
+    setting's write block, ``kind: setup``, the transport list.
+
+    A value the source reader could not see is never judged, nor anything
+    judged against a section it could not read whole (``_Coverage``, the one
+    skip); ``python_driver_reference_skips`` names what each skip left
+    unchecked. Each part is asked through the definition walk's guard, so a
+    value of a kind a check does not read is a message, never an exception.
+
+    The two ``overrides_*`` arguments carry facts only the loaded class knows.
+    Pass ``None`` (the default) from a caller reading the source text, and
+    those checks are skipped — see ``CLASS_DEPENDENT_CHECKS``.
+    """
+    walk = _PythonWalk(info, overrides_run_setup_action, overrides_set_device_setting)
+    if strict:
+        return DefinitionVerdict(walk.errors + walk.shared, [])
+    return DefinitionVerdict(walk.errors, walk.shared)
+
+
+def python_driver_refusals(info: dict[str, Any]) -> list[str]:
+    """What the author's doors refuse in a ``DRIVER_INFO`` read from source:
+    a key the contract does not declare, then ``python_driver_info_issues``.
+    ``drivers.check`` and the Code view's save ask this; catalog CI asks the
+    two itself, around its own platform-floor rule."""
+    return unknown_key_errors(info) + python_driver_info_issues(info)
+
+
 def python_driver_info_issues(
     info: dict[str, Any],
     *,
     overrides_run_setup_action: bool | None = None,
     overrides_set_device_setting: bool | None = None,
 ) -> list[str]:
-    """Structural rules for a Python driver's ``DRIVER_INFO``.
+    """Every rule a Python driver's ``DRIVER_INFO`` is held to where a driver is
+    written: ``check_python_driver_info``'s strict verdict, as the plain list
+    ``drivers.check``, catalog CI and the Code view's save refuse on."""
+    return check_python_driver_info(
+        info,
+        strict=True,
+        overrides_run_setup_action=overrides_run_setup_action,
+        overrides_set_device_setting=overrides_set_device_setting,
+    ).errors
 
-    STRUCTURE is static even when content is not: a Python driver may populate
-    ``commands`` or state at runtime (the Q-SYS pattern), so cross-references
-    against the class-level dict can false-positive — but a malformed entry is
-    decidable, and used to be silently skipped by the action resolver (the
-    button just never appears) or fail at first write. YAML drivers get the
-    equivalent from ``validate_driver_definition``.
 
-    The two ``overrides_*`` arguments carry facts only the loaded class knows.
-    Pass ``None`` (the default) from a caller reading the source text, and
-    those checks are skipped — see ``CLASS_DEPENDENT_CHECKS``.
-    """
-    issues: list[str] = []
+class _PythonWalk:
+    """``check_python_driver_info``'s walk over one ``DRIVER_INFO``: a method
+    per rule a Python driver has always been held to, in the order they
+    report (``errors``), then each shared section (``shared``). Every part is
+    asked through the definition walk's guard, tagged with its section."""
 
-    # The actions / quick_actions block is validated by the SHARED rule
-    # function, not a second copy of it. This module used to carry its own —
-    # narrower (it checked shape but never that a kind:"command" action names
-    # a command that exists) and worded differently, so the same broken
-    # driver was described one way by the catalog and another by the Builder.
-    # ``validate_actions`` is surface-neutral: what a YAML definition's
-    # actions are held to on top of it (kind:"setup" needs a Python driver,
-    # an entry's param aids) is ``action_checks.yaml_action_errors``.
-    issues.extend(validate_actions(info))
+    def __init__(
+        self,
+        info: dict[str, Any],
+        overrides_run_setup_action: bool | None,
+        overrides_set_device_setting: bool | None,
+    ) -> None:
+        self.info = info
+        self.coverage = _Coverage(info)
+        self.overrides_run_setup_action = overrides_run_setup_action
+        self.overrides_set_device_setting = overrides_set_device_setting
+        self.errors = _TaggedErrors()
+        self.shared = _TaggedErrors()
+        for part, section in self.parts():
+            _guarded(self.errors, part, section)
+        for section, check in _SHARED_SECTIONS:
+            _guarded(self.shared, partial(self._shared, check), section)
 
-    # The same rule the YAML half gets from validate_driver_definition's
-    # strict pass: a min_platform_version that undershoots what DRIVER_INFO
-    # actually uses. Decidable from the dict alone — a block this driver
-    # builds at runtime is simply invisible here, which understates the floor
-    # and never invents one.
-    issues.extend(platform_version_errors(info, tier="python"))
+    def parts(self) -> list[tuple[Callable[[], None], str]]:
+        return [
+            (self.actions, "actions"),
+            (self.platform_floor, "min_platform_version"),
+            (self.routing, "routing"),
+            (self.setup_override, "actions"),
+            (self.learned_config, "config_schema"),
+            (self.device_settings, "device_settings"),
+            (self.commands, "commands"),
+            (self.child_references, "commands"),
+            (self.conversions, "state_variables"),
+        ]
 
-    # And the routing declaration, from the same shared rule the YAML half
-    # runs. It names child types, properties and commands this driver
-    # declares, and it was never called here, so a Python driver could name a
-    # child type it does not have and be told by nobody: not the CLI check,
-    # not catalog CI, not the IDE, not the server log. That failure surfaces
-    # as a matrix whose crosspoints never light, in a room, weeks later.
-    #
-    # Only when the sets it resolves against were actually readable. Three
-    # shipped drivers build their commands and child properties at
-    # construction time, so a source reader sees an empty command map and a
-    # marker where the properties go -- and every name in a perfectly correct
-    # block then reads as dangling. Same rule as every other cross-reference
-    # here: "not in a set we could not read" is not a finding. The gap is
-    # named by python_driver_reference_skips rather than passed over.
-    if _routing_targets_are_readable(info):
-        issues.extend(routing_block_errors(info))
+    def _shared(self, check: Callable[[dict[str, Any], _Coverage], list[str]]) -> None:
+        self.shared.extend(check(self.info, self.coverage))
 
-    actions = info.get("actions")
-    declares_setup = isinstance(actions, list) and any(
-        isinstance(entry, dict) and entry.get("kind") == "setup"
-        for entry in actions
-    )
-    if declares_setup and overrides_run_setup_action is False:
-        issues.append(
-            "declares a kind:'setup' action but does not override "
-            "run_setup_action, so the wizard will 501 on launch"
+    def actions(self) -> None:
+        """The actions / quick_actions blocks, by the SHARED rule function, not
+        a second copy of it: this module used to carry its own, narrower and
+        worded differently, so the same broken driver was described one way
+        by the catalog and another by the Builder. ``validate_actions`` is
+        surface-neutral: what a YAML definition's actions are held to on top
+        of it (kind:"setup" needs a Python driver, an entry's param aids) is
+        ``action_checks.yaml_action_errors``. A block the reader could not
+        see at all is not judged."""
+        visible = {
+            key: value for key, value in self.info.items()
+            if key not in _ACTION_BLOCKS or self.coverage.section_seen(key)
+        }
+        self.errors.extend(validate_actions(visible))
+
+    def platform_floor(self) -> None:
+        """The same rule the YAML half gets from the strict pass: a
+        min_platform_version that undershoots what DRIVER_INFO uses. A block
+        built at runtime is invisible here, which understates the floor and
+        never invents one."""
+        self.errors.extend(platform_version_errors(self.info, tier="python"))
+
+    def routing(self) -> None:
+        """The routing declaration, from the same shared rule the YAML half
+        runs: it names child types, properties and commands this driver
+        declares, and a wrong name surfaces as a matrix whose crosspoints
+        never light, in a room, weeks later. Several shipped drivers build
+        their commands and child properties at construction time, so it is
+        asked only when the sections it names into were read whole."""
+        block = self.info.get("routing")
+        if block is not None and self.coverage.judged("routing", block, _routing_reads(block)):
+            self.errors.extend(routing_block_errors(self.info))
+
+    def setup_override(self) -> None:
+        actions = self.info.get("actions")
+        declares_setup = isinstance(actions, list) and any(
+            isinstance(entry, dict) and entry.get("kind") == "setup"
+            for entry in actions
         )
+        if declares_setup and self.overrides_run_setup_action is False:
+            self.errors.append(
+                "declares a kind:'setup' action but does not override "
+                "run_setup_action, so the wizard will 501 on launch"
+            )
 
-    # A config field's learned_from, from the same shared rule the YAML walk
-    # runs: the state variable it names must be declared.
-    config_schema = info.get("config_schema")
-    if isinstance(config_schema, dict):
+    def learned_config(self) -> None:
+        """A config field's learned_from, from the same shared rule the YAML
+        walk runs: the state variable it names must be declared."""
+        config_schema = self.info.get("config_schema")
+        if not isinstance(config_schema, dict):
+            return
         for field_name, field_def in config_schema.items():
             if (
                 field_name != UNEVALUATED_KEY
                 and isinstance(field_def, dict)
                 and "learned_from" in field_def
             ):
-                issues.extend(
+                self.errors.extend(
                     config_learned_from_errors(
-                        field_name, field_def, info.get("state_variables"),
+                        field_name, field_def, self.info.get("state_variables"),
                     )
                 )
 
-    settings = info.get("device_settings")
-    if settings is not None and not isinstance(settings, dict):
-        issues.append("device_settings must be a mapping")
-    elif isinstance(settings, dict):
-        for key, sdef in settings.items():
+    def device_settings(self) -> None:
+        """A setting's state_key is a reference into state_variables, by the
+        SAME rule the YAML surface runs."""
+        settings = self.info.get("device_settings")
+        if settings is not None and not isinstance(settings, dict):
+            self.errors.append("device_settings must be a mapping")
+            return
+        for key, sdef in (settings or {}).items():
             if not isinstance(sdef, dict):
-                issues.append(f"device_settings['{key}'] must be a mapping")
+                self.errors.append(f"device_settings['{key}'] must be a mapping")
                 continue
-            # A setting's state_key is a reference into state_variables, and
-            # this is the SAME rule the YAML surface runs — the function was
-            # lifted out of that walk rather than reimplemented here.
-            issues.extend(
+            self.errors.extend(
                 device_setting_state_key_errors(
-                    f"Device setting '{key}'",
-                    key,
-                    sdef,
-                    info.get("state_variables"),
+                    f"Device setting '{key}'", key, sdef, self.info.get("state_variables"),
                 )
             )
-        if settings and overrides_set_device_setting is False:
-            issues.append(
+        if settings and self.overrides_set_device_setting is False:
+            self.errors.append(
                 "declares device_settings but does not override "
                 "set_device_setting, so every write will 501"
             )
 
-    # A command's confirm, sleeps_device, read_back and file rules, from the
-    # same shared checks the YAML command walk runs. A command map built at
-    # runtime, or a value read from a constant, cannot be judged from the
-    # source and is not. A Python driver is the one surface that may declare
-    # a file param or returns_file, so it gets the shape checks without the
-    # refusal, and is refused read_back, which only the YAML runtime sends.
-    commands = info.get("commands")
-    if isinstance(commands, dict):
-        shared = SharedCommandChecks(commands, info.get("transport"), python=True)
+    def commands(self) -> None:
+        """A command's confirm, sleeps_device, read_back and file rules, from
+        the same shared checks the YAML command walk runs. A Python driver is
+        the one surface that may declare a file param or returns_file, so it
+        gets the shape checks without the refusal, and is refused read_back,
+        which only the YAML runtime sends."""
+        commands = self.info.get("commands")
+        if not isinstance(commands, dict):
+            return
+        shared = SharedCommandChecks(commands, self.info.get("transport"), python=True)
         for cmd_name, cmd_def in commands.items():
-            if cmd_name == UNEVALUATED_KEY or not isinstance(cmd_def, dict):
-                continue
-            issues.extend(shared.errors(cmd_name, cmd_def))
+            if cmd_name != UNEVALUATED_KEY and isinstance(cmd_def, dict):
+                self.errors.extend(shared.errors(cmd_name, cmd_def))
 
-    # References out of a command's params into child_entity_types, from the
-    # same shared function the YAML path calls. Its skip list is dropped here
-    # (the return type is a plain error list every door already consumes) and
-    # reported separately by ``python_driver_reference_skips`` — a skip is
-    # coverage, not a verdict, so it must never reach a caller as an issue.
-    reference_errors, _ = child_param_reference_errors(info)
-    issues.extend(reference_errors)
+    def child_references(self) -> None:
+        """References out of a command's params into child_entity_types, from
+        the same shared function the YAML path calls. Its skip list is named
+        by ``python_driver_reference_skips``: a skip is coverage, not a
+        verdict, so it never reaches a caller as an issue."""
+        reference_errors, _ = child_param_reference_errors(self.info)
+        self.errors.extend(reference_errors)
 
-    # scale / offset / unknown, and a device setting's map, are applied by
-    # the YAML runtime only; on a Python driver they would silently do
-    # nothing, so they are refused.
-    issues.extend(value_conversion_errors(info, python=True))
-
-    return issues
+    def conversions(self) -> None:
+        """scale / offset / unknown, and a device setting's map, are applied
+        by the YAML runtime only; on a Python driver they would silently do
+        nothing, so they are refused."""
+        self.errors.extend(value_conversion_errors(self.info, python=True))
 
 
-def _routing_targets_are_readable(info: dict[str, Any]) -> bool:
-    """Can the routing block's references be resolved from what was read?
+_ACTION_BLOCKS = ("actions", "quick_actions")
 
-    Two ways a source reader comes up short, and both produce a clean block
-    that looks entirely wrong: the command map is empty or computed, and the
-    destination child type's ``state_variables`` is a marker rather than a
-    mapping. Either one, and this declines to judge.
-    """
-    block = info.get("routing")
-    if not isinstance(block, dict):
-        return True
 
-    commands = info.get("commands")
-    if not isinstance(commands, dict) or not commands or UNEVALUATED_KEY in commands:
-        return False
+# --- the sections both kinds of driver declare --------------------------------
+# Each is one function of the DRIVER_INFO and the one skip, asking the check
+# module the YAML walk asks about the same section, so a section both forms
+# declare is judged in the same words whichever declared it.
 
-    planes = block.get("planes")
-    named = {block.get("destination_child_type"), block.get("source_child_type")}
-    if isinstance(planes, list):
-        for plane in planes:
-            if isinstance(plane, dict):
-                named.add(plane.get("destination_child_type"))
-                named.add(plane.get("source_child_type"))
-    named = {name for name in named if isinstance(name, str)}
-    if not named:
-        # A device that routes ITSELF names no child type, so there is
-        # nothing here that a computed roster could hide. Readable.
-        return True
 
-    child_types = info.get("child_entity_types")
-    if not isinstance(child_types, dict) or UNEVALUATED_KEY in child_types:
-        return False
-    for child_type in named:
-        schema = child_types.get(child_type)
-        if not isinstance(schema, dict):
+def _state_variable_section(info: dict[str, Any], coverage: _Coverage) -> list[str]:
+    """Each of the driver's own state variables, by ``state_variable_checks``."""
+    if not coverage.section_seen("state_variables"):
+        return []
+    section = info["state_variables"]
+    if not isinstance(section, dict):
+        return ["state_variables: must be a mapping"]
+    errors: list[str] = []
+    for name, var_def in coverage.named(section):
+        if not coverage.judged(f"state_variables.{name}", var_def):
             continue
-        declared = schema.get("state_variables")
-        if declared is not None and not isinstance(declared, dict):
+        where = f"State variable '{name}'"
+        if isinstance(var_def, dict):
+            errors.extend(state_variable_errors(where, var_def, DEVICE_VARIABLE))
+        else:
+            errors.append(f"{where}: must be a dict")
+    return errors
+
+
+def _child_type_section(info: dict[str, Any], coverage: _Coverage) -> list[str]:
+    """Each child type, by ``child_type_checks``: its name, id_format, state
+    variables and instances: roster."""
+    if not coverage.section_seen("child_entity_types"):
+        return []
+    section = info["child_entity_types"]
+    if not isinstance(section, dict):
+        return ["child_entity_types: must be a mapping"] if section else []
+    roster = RosterNames(info)
+    errors: list[str] = []
+    for name, type_def in coverage.named(section):
+        # A type's name is a key, which the reader always reads, so it is
+        # judged even where the rest of the type is left out.
+        judged = coverage.judged(f"child_entity_types.{name}", type_def, _roster_reads(type_def))
+        errors.extend(child_type_errors(name, type_def if judged else {}, roster))
+    return errors
+
+
+def _command_section(info: dict[str, Any], coverage: _Coverage) -> list[str]:
+    """Each command's parameter aids (``param_aid_checks``), then what its
+    ``sets:`` and ``query_for:`` name (``command_checks.state_name_errors``)."""
+    if not coverage.section_seen("commands"):
+        return []
+    section = info["commands"]
+    if not isinstance(section, dict):
+        return []
+    declared = DeclaredSections(info)
+    errors: list[str] = []
+    for name, cmd_def in coverage.named(section):
+        if isinstance(cmd_def, dict):
+            errors.extend(_command_errors(name, cmd_def, declared, coverage))
+    return errors
+
+
+def _command_errors(
+    name: Any, cmd_def: dict[str, Any], declared: DeclaredSections, coverage: _Coverage,
+) -> list[str]:
+    where = f"Command '{name}'"
+    params = cmd_def.get("params")
+    errors = _param_errors(name, params, coverage)
+    if (
+        ("sets" in cmd_def or "query_for" in cmd_def)
+        and coverage.judged(f"commands.{name}", _state_naming(cmd_def), _state_naming_reads(params))
+    ):
+        errors.extend(state_name_errors(where, cmd_def, declared))
+    return errors
+
+
+def _param_errors(name: Any, params: Any, coverage: _Coverage) -> list[str]:
+    """Each parameter's form aids, a parameter at a time: one the reader
+    could not see is left out, and so is one whose picker follows a sibling
+    it could not see (or one that may be among the parameters merged in)."""
+    if _unread_value(params):
+        coverage.judged(f"commands.{name}.params", params)
+    if not isinstance(params, dict):
+        return []
+    errors: list[str] = []
+    for pname, pdef in coverage.named(params):
+        siblings = [params.get(ref, UNEVALUATED if _merged(params) else None) for ref in sibling_refs(pdef)]
+        if coverage.judged(f"commands.{name}.params.{pname}", [pdef, *siblings]):
+            errors.extend(one_param_aid_errors(f"Command '{name}'", pname, pdef, params))
+    return errors
+
+
+def _state_naming(cmd_def: dict[str, Any]) -> dict[str, Any]:
+    """What a command's sets: and query_for: are judged from: the two, and
+    of its params only what the check reads, each one's type and child type
+    (a sets: value may name a param; a child_id param addresses a child).
+    A merged-in param could be the one a sets: value names."""
+    params = cmd_def.get("params")
+    if isinstance(params, dict):
+        params = {
+            pname: _typed(pdef) for pname, pdef in params.items()
+        } if not _merged(params) else UNEVALUATED
+    return {"sets": cmd_def.get("sets"), "query_for": cmd_def.get("query_for"), "params": params}
+
+
+def _typed(pdef: Any) -> Any:
+    if not isinstance(pdef, dict):
+        return pdef
+    return {key: pdef.get(key) for key in ("type", "child_type")}
+
+
+def _push_section(info: dict[str, Any], coverage: _Coverage) -> list[str]:
+    """The push block, by ``push_block_checks``."""
+    block = info.get("push")
+    if block is None or not coverage.judged("push", block, _push_reads(block)):
+        return []
+    return push_block_errors(info)
+
+
+_SHARED_SECTIONS: tuple[tuple[str, Callable[[dict[str, Any], _Coverage], list[str]]], ...] = (
+    ("state_variables", _state_variable_section),
+    ("child_entity_types", _child_type_section),
+    ("commands", _command_section),
+    ("push", _push_section),
+)
+
+
+# --- the sections a block names into -----------------------------------------
+
+
+def _roster_reads(type_def: Any) -> tuple[str, ...]:
+    """A child type's roster names config fields (count_from, ids_from) and
+    a state variable (count_from_state)."""
+    instances = type_def.get("instances") if isinstance(type_def, dict) else None
+    if not isinstance(instances, dict):
+        return ()
+    return ("config", "state_variables") if "count_from_state" in instances else ("config",)
+
+
+def _state_naming_reads(params: Any) -> tuple[str, ...]:
+    """sets: and query_for: name the driver's state variables, and a child
+    type's too when a child_id parameter addresses one."""
+    addressed = isinstance(params, dict) and any(
+        isinstance(p, dict) and p.get("type") == "child_id" for p in params.values()
+    )
+    return ("state_variables", "child_entity_types") if addressed else ("state_variables",)
+
+
+def _push_reads(block: Any) -> tuple[str, ...]:
+    """A push block's templates and when: name config fields, register: and
+    unregister: commands, and each_child: a child type."""
+    if not isinstance(block, dict):
+        return ()
+    reads = ["config"]
+    if "register" in block or "unregister" in block:
+        reads.append("commands")
+    register = block.get("register")
+    entries = register if isinstance(register, list) else [register]
+    if any(isinstance(entry, dict) and "each_child" in entry for entry in entries):
+        reads.append("child_entity_types")
+    return tuple(reads)
+
+
+def _routing_reads(block: Any) -> tuple[str, ...]:
+    """The routing block names commands, and the child types and properties
+    its planes route between; a device that routes itself names none."""
+    if not isinstance(block, dict):
+        return ()
+    planes = block.get("planes")
+    named = [block] + (planes if isinstance(planes, list) else [])
+    names_a_child = any(
+        isinstance(plane, dict)
+        and any(isinstance(plane.get(key), str) for key in _ROUTED_CHILD_TYPES)
+        for plane in named
+    )
+    return ("commands", "child_entity_types") if names_a_child else ("commands",)
+
+
+_ROUTED_CHILD_TYPES = ("destination_child_type", "source_child_type")
+
+
+# --- the one skip --------------------------------------------------------------
+
+
+class _Coverage:
+    """THE skip: what the source reader could not see is never judged.
+
+    A Python driver may build a value from a module constant, a call or a
+    comprehension, and the reader puts its placeholder there (``UNEVALUATED``,
+    or the key ``UNEVALUATED_KEY`` for keys merged in or built in code).
+    Judging the placeholder as the value refuses a working driver ("must be
+    a mapping", "must be an integer (got <unevaluated>)"), and so does reading
+    it as absent ("missing 'label'"). So a check is not asked about:
+
+    * a section the reader could not see at all (``section_seen``);
+    * an entry or block holding anything it could not see (``judged``);
+    * an entry or block naming into a section the reader could not read whole
+      (``judged``'s ``reads``): one absent, empty, built in code or holding a
+      name built in code, where a missing name proves nothing, since a Python
+      driver may fill it at runtime. The config fields are read whole unless
+      one of their sources was built in code: none declared is a fact there.
+
+    Each skip is kept with why (``lines``), for
+    ``python_driver_reference_skips`` to name. A YAML definition never holds
+    the placeholder, so the YAML walk never needs this.
+    """
+
+    def __init__(self, info: dict[str, Any]) -> None:
+        self.info = info
+        self._skipped: dict[str, list[str]] = {}
+
+    def section_seen(self, name: str) -> bool:
+        """Whether the section is there to judge: neither absent nor built in
+        code (the skip is kept for the second)."""
+        value = self.info.get(name)
+        if _unread_value(value):
+            self._skip(name, "could not be read from the source")
             return False
-    return True
+        return value is not None
+
+    def named(self, section: dict[Any, Any]) -> list[tuple[Any, Any]]:
+        """A section's entries the reader saw, the merged-key marker left out."""
+        return [(name, entry) for name, entry in section.items() if name != UNEVALUATED_KEY]
+
+    def judged(self, place: str, unit: Any, reads: tuple[str, ...] = ()) -> bool:
+        """Whether a check may judge ``unit`` (kept as a skip when not)."""
+        if _holds_unread(unit):
+            self._skip(place, "holds a value that could not be read from the source")
+            return False
+        for section in reads:
+            if not self._read_whole(section):
+                self._skip(place, f"names into {section}, which could not be read whole from the source")
+                return False
+        return True
+
+    def lines(self) -> list[str]:
+        """Each skip as the places it left unchecked and why, in the order met."""
+        return [f"{', '.join(places)} ({why})" for why, places in self._skipped.items()]
+
+    def _skip(self, place: str, why: str) -> None:
+        places = self._skipped.setdefault(why, [])
+        if place not in places:
+            places.append(place)
+
+    def _read_whole(self, section: str) -> bool:
+        if section == "config":
+            return not any(
+                _unread_value(source) or _merged(source)
+                for source in (self.info.get(name) for name in CONFIG_FIELD_SOURCES)
+            )
+        value = self.info.get(section)
+        if not isinstance(value, dict) or not value or _merged(value):
+            return False
+        if section == "child_entity_types":
+            return all(_child_type_read_whole(type_def) for type_def in value.values())
+        return True
+
+
+def _child_type_read_whole(type_def: Any) -> bool:
+    """A child type whose properties the reader saw: none, or a mapping of
+    them with no name built in code."""
+    if not isinstance(type_def, dict):
+        return False
+    props = type_def.get("state_variables")
+    return props is None or (isinstance(props, dict) and not _merged(props))
+
+
+def _unread_value(value: Any) -> bool:
+    return isinstance(value, _Unevaluated)
+
+
+def _merged(value: Any) -> bool:
+    """A mapping holding keys merged in or built in code."""
+    return isinstance(value, dict) and UNEVALUATED_KEY in value
+
+
+def _holds_unread(value: Any) -> bool:
+    """Anything inside ``value`` the reader could not see."""
+    if _unread_value(value) or _merged(value):
+        return True
+    if isinstance(value, dict):
+        return any(_holds_unread(entry) for entry in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_holds_unread(entry) for entry in value)
+    return False
 
 
 def python_driver_reference_skips(info: dict[str, Any]) -> list[str]:
-    """Cross-references that could not be decided, and why.
+    """What could not be checked, and why.
 
-    A Python driver may build ``commands`` or ``child_entity_types`` at
-    runtime — the Q-SYS pattern — and a check whose target set is computed
-    cannot tell a dangling reference from one that resolves at connect. Those
-    references are skipped and named here, so a caller prints the gap instead
-    of implying it checked. The skip is always per reference: nothing here
-    ever silences a whole driver.
+    A Python driver may build ``commands``, ``state_variables`` or
+    ``child_entity_types`` at runtime, or a single value from a constant, and
+    a check cannot judge what the reader could not see: a reference into a
+    computed set cannot tell a dangling name from one that resolves at
+    connect. Each such reference, entry or section is skipped and named here,
+    so a caller prints the gap instead of implying it checked. The skip is
+    always per reference, entry or section: nothing here ever silences a
+    whole driver.
     """
     _, skips = child_param_reference_errors(info)
 
@@ -423,22 +785,17 @@ def python_driver_reference_skips(info: dict[str, Any]) -> list[str]:
             f"because state_variables is computed"
         )
 
-    # The routing block, skipped whole when the sets it resolves against
-    # were computed. Unlike the two above it is one declaration rather than a
-    # list of references, so the count is of planes.
-    block = info.get("routing")
-    if isinstance(block, dict) and not _routing_targets_are_readable(info):
-        planes = block.get("planes")
-        count = len(planes) if isinstance(planes, list) else 1
-        skips.append(
-            f"{count} routing plane(s) -- the commands or child properties "
-            f"they name are computed"
-        )
+    skips.extend(_action_reference_skips(info))
+    skips.extend(_PythonWalk(info, None, None).coverage.lines())
+    return skips
 
-    # The actions / quick_actions -> commands reference, skipped by
-    # ``validate_actions`` whenever the command set is only partly visible.
-    # It skips silently (its YAML callers can never hit the case); naming the
-    # gap is this function's job.
+
+def _action_reference_skips(info: dict[str, Any]) -> list[str]:
+    """The actions / quick_actions -> commands reference, skipped by
+    ``validate_actions`` whenever the command set is only partly visible. It
+    skips silently (its YAML callers can never hit the case); naming the gap
+    is this function's job. A block the reader could not see names nothing
+    it could count."""
     commands = info.get("commands")
     if commands is not None and not isinstance(commands, dict):
         target = "commands is computed"
@@ -448,16 +805,13 @@ def python_driver_reference_skips(info: dict[str, Any]) -> list[str]:
             f"read, the rest merged or built at runtime)"
         )
     else:
-        target = ""
-    if target:
-        named = sum(
-            1 for entry in (info.get("actions") or [])
-            if isinstance(entry, dict) and entry.get("kind", "command") == "command"
-        ) + len(info.get("quick_actions") or [])
-        if named:
-            skips.append(
-                f"{named} action/quick_action reference(s) into commands, "
-                f"because {target}"
-            )
-
-    return skips
+        return []
+    actions = info.get("actions")
+    quick = info.get("quick_actions")
+    named = sum(
+        1 for entry in (actions if isinstance(actions, list) else ())
+        if isinstance(entry, dict) and entry.get("kind", "command") == "command"
+    ) + (len(quick) if isinstance(quick, list) else 0)
+    if not named:
+        return []
+    return [f"{named} action/quick_action reference(s) into commands, because {target}"]

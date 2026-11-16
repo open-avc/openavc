@@ -227,6 +227,34 @@ def test_simulator_validate_shows_contract_warnings_and_stays_green(tmp_path, ca
 # ── A file it cannot read is an error, not a skip ──
 
 
+def test_python_shared_section_checks_are_errors_with_the_fix(tmp_path, capsys):
+    """The sections both kinds of driver declare are held to the same rules:
+    a state variable's type, a push block's type."""
+    driver = _write(
+        tmp_path / "acme_widget.py",
+        CLEAN_PYTHON.replace('"type": "boolean"', '"type": "bool"').replace(
+            '"commands": {', '"push": {"type": "tcp_listner", "port": 0},\n            "commands": {'
+        ),
+    )
+    assert main([str(driver)]) == 1
+    err = capsys.readouterr().err
+    assert f"{driver}: error: State variable 'power': unknown type 'bool'; use 'boolean'" in err
+    assert f"{driver}: error: push: missing or unknown 'type'" in err
+
+
+def test_a_value_built_in_code_names_what_it_left_unchecked(tmp_path, capsys):
+    driver = _write(
+        tmp_path / "acme_widget.py",
+        CLEAN_PYTHON.replace('"label": "Power"}', '"label": POWER_LABEL}'),
+    )
+    assert main([str(driver)]) == 0
+    out = capsys.readouterr().out
+    assert (
+        f"{driver}: note: not checked: state_variables.power (holds a value that could not "
+        "be read from the source)"
+    ) in out
+
+
 def test_python_without_driver_info_is_an_error(tmp_path, capsys):
     driver = _write(tmp_path / "acme_widget.py", "POWER = 1\n")
     assert main([str(driver)]) == 1
