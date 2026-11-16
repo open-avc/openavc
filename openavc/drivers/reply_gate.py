@@ -11,7 +11,8 @@ The rules worth knowing before changing anything here:
   is what an author writing ``key: examx_mode`` means. One that already
   carries a namespace (``var.``, ``device.<other>.`` and the rest of
   ``VALID_KEY_PREFIXES``) is read as written, after ``$id`` becomes this
-  device's id, as in ``visible_when``.
+  device's id, as in ``visible_when``. Where a driver is written, a bare
+  key naming no declared variable is refused (``reply_name_checks``).
 * **A malformed gate opens rather than closes**: a condition with no key, a
   group whose items are none of them objects. A driver whose condition is
   nonsense reports what it always reported, rather than going silent on the

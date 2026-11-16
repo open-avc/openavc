@@ -1,6 +1,7 @@
 """The device keys the platform writes for every device have one home
-(core/device_info.py PLATFORM_DEVICE_KEYS), and both lists that skip them read
-it: the AI's property check and the device audit."""
+(drivers/spec.py PLATFORM_DEVICE_KEYS, which core/device_info.py re-exports),
+and both lists that skip them read it: the AI's property check and the device
+audit."""
 
 from __future__ import annotations
 

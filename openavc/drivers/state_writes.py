@@ -291,6 +291,11 @@ class StateWrites:
           That is where the author is iterating and where this is actionable.
           See :attr:`strict_state` for why that is per-driver and not only the
           process-wide env var.
+
+        A YAML reply rule's target is checked before it ever runs: the
+        author's doors refuse one the driver does not declare
+        (``reply_name_checks``). This warning is for what no check can
+        see before it runs: a Python driver's write, a name built at runtime.
         """
         if property_name in self._PLATFORM_STATE_PROPS:
             return

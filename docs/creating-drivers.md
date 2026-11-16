@@ -65,6 +65,7 @@ What's flagged:
 - **Publish quality** (warnings): missing `description`, `version`, `author`, or `help.overview`.
 - **Commands**: any `{placeholder}` in the wire string (send/path/body/headers/query_params/address/args) that doesn't resolve to a declared parameter or config field. Catches typos that would otherwise leave a literal `{level}` on the wire.
 - **Parameter names**: illegal characters surface as an inline error instead of being silently stripped.
+- **Responses**: a state variable a rule writes, or a bare `only_when:` key, that the driver does not declare under State Variables.
 - **Polling** (warnings): a poll that takes longer than its interval, and a device that could stop answering with nothing to notice (see [Checking the file against the driver contract](#checking-the-file-against-the-driver-contract)).
 - **Parameter labels** (warnings): a command parameter with no label.
 

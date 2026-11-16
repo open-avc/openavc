@@ -127,6 +127,34 @@ async def test_the_upload_loads_it_and_answers_with_the_notices(repo) -> None:
     assert (await _installed(repo))["acme_widget.avcdriver"]["load_notices"] == [ON_CONNECT]
 
 
+REPLY_TARGET = (
+    "Response 0: set 'powr' writes a state variable this driver does not "
+    "declare (did you mean 'power'?); declare it under state_variables"
+)
+
+
+def _undeclared_target() -> bytes:
+    return _yaml(
+        state_variables={"power": {"type": "string", "label": "Power"}},
+        responses=[{"match": r"PWR=(\w+)", "set": {"powr": "$1"}}],
+    )
+
+
+def test_the_loader_loads_a_reply_rule_writing_an_undeclared_name_and_names_it(repo) -> None:
+    path = repo / "acme_widget.avcdriver"
+    path.write_bytes(_undeclared_target())
+    read = driver_loader.read_driver_file(path)
+    assert read.definition is not None and read.reasons == ()
+    assert read.notices == (REPLY_TARGET,)
+
+
+async def test_the_upload_answers_with_a_reply_rule_s_undeclared_name(repo) -> None:
+    answer = await routes.upload_driver(_form("acme_widget.avcdriver", _undeclared_target()))
+    assert answer["status"] == "uploaded" and registry.is_driver_registered(DRIVER_ID)
+    assert answer["notices"] == [REPLY_TARGET]
+    assert (await _installed(repo))["acme_widget.avcdriver"]["load_notices"] == [REPLY_TARGET]
+
+
 async def test_a_clean_upload_answers_with_no_notices(repo) -> None:
     answer = await routes.upload_driver(_form("acme_widget.avcdriver", _yaml()))
     assert answer["notices"] == []
