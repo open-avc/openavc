@@ -353,13 +353,7 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
                 action=ttype, missing="event_pattern",
             ))
 
-    overlap = trigger.get("overlap")
-    if overlap and overlap not in VALID_OVERLAP_MODES:
-        found.append(_finding(
-            path, f"overlap '{overlap}' is not valid. Use: skip, queue, allow",
-            action=ttype,
-        ))
-    found.extend(_seconds_findings(trigger, path, ttype))
+    found.extend(_execution_findings(trigger, path, ttype))
 
     # Validate guard conditions
     conditions = trigger.get("conditions")
@@ -379,6 +373,18 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
                     ))
 
     return found
+
+
+def _execution_findings(trigger: dict, path: str, ttype: str) -> list[dict[str, Any]]:
+    """What a trigger's overlap, delay, debounce and cooldown say wrong."""
+    found: list[dict[str, Any]] = []
+    overlap = trigger.get("overlap")
+    if overlap and overlap not in VALID_OVERLAP_MODES:
+        found.append(_finding(
+            path, f"overlap '{overlap}' is not valid. Use: skip, queue, allow",
+            action=ttype,
+        ))
+    return found + _seconds_findings(trigger, path, ttype)
 
 
 # A trigger's times in seconds: each field its model bounds at SECONDS_MIN.

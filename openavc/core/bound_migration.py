@@ -50,18 +50,12 @@ _SECONDS_MIN_0_17 = 0
 def repair_bounds_0_17(data: dict, elements: list[dict]) -> None:
     """The project's bounded numbers, repaired in place; ``elements`` are its
     page and master elements, as the step reads them."""
-    monitors = _dicts_0_17(data.get("monitors"))
-    for holder in elements + monitors:
+    for holder in elements + _dicts_0_17(data.get("monitors")):
         _clamp_0_17(holder, "display_decimals", _DECIMALS_0_17)
     ui = data.get("ui")
-    settings = ui.get("settings") if isinstance(ui, dict) else None
-    if isinstance(settings, dict):
-        for field, bounds in _PANEL_SETTINGS_0_17.items():
-            _clamp_0_17(settings, field, bounds)
+    _clamp_settings_0_17(ui.get("settings") if isinstance(ui, dict) else None)
     for macro in _dicts_0_17(data.get("macros")):
-        _time_inside_0_17(macro, "cooldown_seconds")
-        for trigger in _dicts_0_17(macro.get("triggers")):
-            _repair_trigger_0_17(trigger)
+        _repair_macro_0_17(macro)
 
 
 def _dicts_0_17(items) -> list[dict]:
@@ -84,6 +78,18 @@ def _clamp_0_17(holder: dict, field: str, bounds: tuple[int, int]) -> None:
         holder.pop(field)
     elif value is not None:
         holder[field] = max(bounds[0], min(bounds[1], value))
+
+
+def _clamp_settings_0_17(settings) -> None:
+    if isinstance(settings, dict):
+        for field, bounds in _PANEL_SETTINGS_0_17.items():
+            _clamp_0_17(settings, field, bounds)
+
+
+def _repair_macro_0_17(macro: dict) -> None:
+    _time_inside_0_17(macro, "cooldown_seconds")
+    for trigger in _dicts_0_17(macro.get("triggers")):
+        _repair_trigger_0_17(trigger)
 
 
 def _repair_trigger_0_17(trigger: dict) -> None:
