@@ -191,6 +191,9 @@ class Engine(
         # time after boot, sometimes days away, and uptime would jump with it.
         self._start_time: float = 0
         self._running = False
+        # Set when stop() begins; read through the `stopping` property
+        # (core/engine_lifecycle.py), which also counts a stop signal.
+        self._stopping = False
 
         # Periodic backup
         self._periodic_backup_task: asyncio.Task | None = None

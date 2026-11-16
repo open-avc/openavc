@@ -20,6 +20,12 @@ ExecStartPre=-+/opt/openavc/firewall-sync.sh /var/lib/openavc
 ExecStart=/opt/openavc/venv/bin/python -m openavc.main
 Restart=always
 RestartSec=5
+# A stop signals the server alone, and whatever is left of the service is
+# killed once the server has exited. The server's own stop ends the device
+# simulator after it disconnects the devices. With the default
+# (control-group) the signal reached the simulator too, which exited first,
+# and a simulated room was pointed at its real equipment on the way down.
+KillMode=mixed
 Environment=OPENAVC_DATA_DIR=/var/lib/openavc
 Environment=OPENAVC_LOG_DIR=/var/log/openavc
 Environment=OPENAVC_PROJECT=/var/lib/openavc/projects/default/project.avc

@@ -23,7 +23,7 @@ from openavc import config, main, runtime_flags
 @pytest.fixture
 def uvicorn_fakes(monkeypatch):
     """uvicorn's Config and Server recorded; each serve() returns at once."""
-    seen = SimpleNamespace(configs=[], served=[], ssl=True)
+    seen = SimpleNamespace(configs=[], served=[], servers=[], ssl=True)
 
     class Config:
         def __init__(self, app, **kwargs):
@@ -37,6 +37,11 @@ def uvicorn_fakes(monkeypatch):
     class Server:
         def __init__(self, config):
             self.config = config
+            self.exits_handled = []
+            seen.servers.append(self)
+
+        def handle_exit(self, sig, frame):
+            self.exits_handled.append(sig)
 
         async def serve(self, sockets=None):
             seen.served.append((self.config.kwargs["port"], sockets))
@@ -506,6 +511,55 @@ def test_a_supervisor_listener_is_adopted_for_the_same_plan(started, monkeypatch
 
 
 # ===========================================================================
+# The main server hears the stop
+# ===========================================================================
+
+# The main listener's server is the one that installs the signal handlers (the
+# others are listen_sockets.quiet_server), so it is the first to hear a stop.
+# It notes it before uvicorn starts draining connections, which comes long
+# before the lifespan reaches Engine.stop(); anything deciding something on the
+# way down reads runtime_flags.stopping (Engine.stopping).
+
+
+async def test_the_https_listener_notes_the_stop_signal(runs, monkeypatch):
+    monkeypatch.setattr(runtime_flags, "stopping", False)
+    await main._run_tls(["s1"])
+    _hears_the_stop(runs.servers[0])
+
+
+async def test_the_http_listener_beside_the_redirect_notes_the_stop_signal(runs, monkeypatch):
+    monkeypatch.setattr(runtime_flags, "stopping", False)
+    await main._run_http(["s1"])
+    _hears_the_stop(runs.servers[0])
+
+
+def test_plain_http_alone_notes_the_stop_signal(started, monkeypatch):
+    monkeypatch.setattr(runtime_flags, "stopping", False)
+    main.main()
+    _hears_the_stop(started.servers[0])
+
+
+def _hears_the_stop(server) -> None:
+    assert server.config.app == "openavc.main:app"
+    server.handle_exit(15, None)
+    assert runtime_flags.stopping is True
+    # uvicorn still does what it does with the signal.
+    assert server.exits_handled == [15]
+
+
+def test_a_real_server_still_shuts_down_on_the_signal(monkeypatch):
+    import signal
+
+    import uvicorn
+
+    monkeypatch.setattr(runtime_flags, "stopping", False)
+    server = main._main_server(uvicorn.Config("openavc.main:app"))
+    server.handle_exit(signal.SIGTERM, None)
+    assert runtime_flags.stopping is True
+    assert server.should_exit is True
+
+
+# ===========================================================================
 # Run as `python -m openavc.main`
 # ===========================================================================
 
@@ -516,7 +570,7 @@ def test_a_supervisor_listener_is_adopted_for_the_same_plan(started, monkeypatch
 # process, with nothing bound or served, and checks the HTTP port's listener
 # is handed the app the HTTPS listener loaded.
 _RUN_AS_MODULE = r"""
-import json, runpy, sys
+import json, runpy, signal, sys
 import uvicorn
 from openavc import config, listen_sockets, redirects
 
@@ -534,6 +588,7 @@ async def serve(self, sockets=None):
         while not hasattr(app, "router") and hasattr(app, "app"):  # uvicorn's own wrappers
             app = app.app
         loaded.append(app)
+        self.handle_exit(signal.SIGTERM, None)  # the stop signal, as uvicorn hands it on
 uvicorn.Server.serve = serve
 # Who can connect is resolved for real; only binding is stood in for.
 listen_sockets.bind_for_plan = lambda plan, port, retries=1, fallback=True: ([], plan)
@@ -546,6 +601,7 @@ runpy.run_module("openavc.main", run_name="__main__", alter_sys=True)
 print(json.dumps({
     "https_app_started": https_app is sys.modules["openavc.main"].app,
     "http_port_serves_it": [app is https_app for app in handed],
+    "the_served_engine_heard_the_stop": sys.modules["openavc.main"].engine.stopping,
 }))
 """
 
@@ -563,4 +619,7 @@ def test_under_python_m_the_http_port_serves_the_app_that_started(tmp_path):
     )
     assert done.returncode == 0, done.stderr[-3000:]
     report = json.loads(done.stdout.strip().splitlines()[-1])
-    assert report == {"https_app_started": True, "http_port_serves_it": [True]}
+    assert report == {
+        "https_app_started": True, "http_port_serves_it": [True],
+        "the_served_engine_heard_the_stop": True,
+    }

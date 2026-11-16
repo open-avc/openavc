@@ -28,6 +28,7 @@ import asyncio
 import time
 from pathlib import Path
 
+from openavc import runtime_flags
 from openavc.core.device_sync import add_devices
 from openavc.core.script_engine import ScriptEngine
 from openavc.utils.logger import get_logger
@@ -222,6 +223,16 @@ class EngineLifecycleMixin:
     and the background loops.
     """
 
+    @property
+    def stopping(self) -> bool:
+        """True once the server is on its way down: a stop signal heard
+        (``runtime_flags.stopping``, set the moment it arrives, while uvicorn
+        still drains connections) or this engine's stop begun. Something that
+        would reach real equipment, or decide what happens to it, on the way
+        down asks this; ``_running`` is no help, as it also reads False until
+        a start has finished."""
+        return runtime_flags.stopping or self._stopping
+
     async def start(self) -> None:
         """
         Start the engine:
@@ -243,6 +254,7 @@ class EngineLifecycleMixin:
         this sequence too, and vice versa.
         """
         log.info("Engine starting...")
+        self._stopping = False
         self._start_time = time.monotonic()
         self._push_state_to_clients()
         startup_errors: list[str] = []
@@ -435,6 +447,7 @@ class EngineLifecycleMixin:
     async def stop(self) -> None:
         """Stop the engine gracefully."""
         log.info("Engine stopping...")
+        self._stopping = True
         self._running = False
         await self._stop_bringup()
         # Drain any queued bookkeeping persist before teardown so a
@@ -482,9 +495,9 @@ class EngineLifecycleMixin:
         await self.command_runs.stop()
         await self.file_staging.stop()
         await self.devices.disconnect_all()
-        # Then end the simulator, without handing the devices back to the real
-        # equipment and without forgetting that simulation is on: it comes
-        # back when the server starts again.
+        # Then end the simulator: SimulationManager.end(EndReason.SHUTDOWN),
+        # which hands nothing back to the real equipment and keeps the record,
+        # so simulation comes back when the server starts again.
         await self.simulation.shutdown()
         # Drain any in-flight state.changed EventBus emissions so they aren't
         # silently dropped mid-shutdown.

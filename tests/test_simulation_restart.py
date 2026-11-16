@@ -27,10 +27,12 @@ from __future__ import annotations
 import asyncio
 import json
 import json as _json
+import sys
 
 import pytest
 
 import openavc.core.simulation as simulation
+from openavc import runtime_flags
 from openavc.core.engine import Engine
 from openavc.drivers.base import BaseDriver
 from openavc.drivers.registry import register_driver, unregister_driver
@@ -353,8 +355,9 @@ async def test_a_comeback_that_fails_says_so_and_the_devices_dial_their_own(rig)
 
 @pytest.mark.asyncio
 async def test_a_simulator_that_stops_mid_run_says_so_and_stays_on(rig):
-    """A service stop signals the simulator and the server together, so the
-    simulator exiting is not somebody turning simulation off."""
+    """The simulator exiting while the server runs is not somebody turning
+    simulation off: the devices go back to the real equipment until the next
+    start, which brings simulation back."""
     rig.leave_simulation_on()
     eng = await _boot(rig)
     try:
@@ -369,6 +372,84 @@ async def test_a_simulator_that_stops_mid_run_says_so_and_stays_on(rig):
         assert eng.state.get("system.simulation_error") == ""
     finally:
         await eng.stop()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["the stop signal", "the engine's stop"])
+async def test_a_simulator_that_exits_on_the_way_down_is_left_to_the_stop(rig, monkeypatch, how):
+    """A stop that reaches the simulator as well as the server (a service
+    manager signalling the whole group, a terminal's Ctrl+C) ends the
+    simulator first, while the server is still on its way down. That exit is
+    the stop's: no device is pointed back at its real address on the way
+    down, nothing says the simulator stopped, and simulation comes back with
+    the server."""
+    rig.leave_simulation_on()
+    eng = await _boot(rig)
+    if how == "the stop signal":
+        # Heard before the server drains its connections, long before the
+        # engine's own stop.
+        monkeypatch.setattr(runtime_flags, "stopping", True)
+        await _the_simulator_exits(eng, rig)
+        await eng.stop()
+    else:
+        disconnect_all = eng.devices.disconnect_all
+
+        async def the_simulator_exits_first():
+            await _the_simulator_exits(eng, rig)
+            await disconnect_all()
+
+        monkeypatch.setattr(eng.devices, "disconnect_all", the_simulator_exits_first)
+        await eng.stop()
+    assert all(host == "127.0.0.1" for _, host, _ in _DialRecorder.attempts)
+    assert not eng.state.get("system.simulation_error")
+    assert rig.record.exists()
+
+
+@pytest.mark.asyncio
+async def test_a_simulator_that_exits_while_the_server_starts_is_not_taken_for_a_stop(rig):
+    """The engine is not running yet while a resumed simulation is already
+    being watched; a simulator that dies then is a crash like any other."""
+    rig.leave_simulation_on()
+    eng = await _boot(rig)
+    try:
+        eng._running = False  # as it reads until the start's last stages
+        await _the_simulator_exits(eng, rig)
+        assert not eng.simulation.active
+        assert eng.state.get("system.simulation_error").startswith("The simulator stopped")
+    finally:
+        eng._running = True
+        await eng.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_simulator_runs_in_a_session_of_its_own_on_posix(rig, monkeypatch):
+    """So a terminal's Ctrl+C, which goes to the whole foreground group,
+    reaches the server alone, and the server's stop ends the simulator."""
+    spawned = []
+    spawn = rig.spawn
+
+    async def recording(*args, **kwargs):
+        spawned.append(kwargs)
+        return await spawn(*args, **kwargs)
+
+    monkeypatch.setattr(simulation.asyncio, "create_subprocess_exec", recording)
+    eng = await _boot(rig)
+    try:
+        await eng.simulation.start()
+        (kwargs,) = spawned
+        if sys.platform == "win32":
+            assert "start_new_session" not in kwargs
+        else:
+            assert kwargs["start_new_session"] is True
+    finally:
+        await eng.stop()
+
+
+async def _the_simulator_exits(eng, rig) -> None:
+    """The simulator ends on a signal and the watcher takes its next look."""
+    eng.simulation._monitor_task.cancel()
+    rig.processes[0].returncode = -15
+    await eng.simulation._monitor_process()
 
 
 # ── What a start leaves on disk ─────────────────────────────────────────────

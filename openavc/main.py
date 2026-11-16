@@ -817,6 +817,26 @@ def _served_app():
     return importlib.import_module("openavc.main").app
 
 
+def _main_server(cfg: "uvicorn.Config") -> "uvicorn.Server":
+    """The main listener's server, which notes a stop the moment it hears one.
+
+    It is the server that installs the signal handlers (the others are
+    ``listen_sockets.quiet_server``), so it hears a stop first. uvicorn then
+    drains the open connections before the lifespan reaches ``Engine.stop()``;
+    ``runtime_flags.stopping`` is set before any of that, so whatever decides
+    something on the way down knows the server is going (``Engine.stopping``).
+    """
+    server = uvicorn.Server(cfg)
+    uvicorn_handles = server.handle_exit
+
+    def handle_exit(sig, frame) -> None:
+        runtime_flags.stopping = True
+        uvicorn_handles(sig, frame)
+
+    server.handle_exit = handle_exit
+    return server
+
+
 async def _run_tls(sockets: list) -> None:
     """Run the HTTPS listener and the listeners beside it concurrently: the
     HTTP port's (this machine served the same app as HTTPS, the rest
@@ -831,7 +851,7 @@ async def _run_tls(sockets: list) -> None:
     cert_path, key_path = _certificate_files()
     listen_sockets.push_listeners.use_tls(str(cert_path), str(key_path))
 
-    main_server = uvicorn.Server(_main_https_config(cert_path, key_path))
+    main_server = _main_server(_main_https_config(cert_path, key_path))
     tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve(sockets=sockets))]
     _mark_if_port_80(config.TLS_PORT)
 
@@ -866,7 +886,7 @@ async def _run_http(sockets: list) -> None:
     Only used when the port-80 redirect is enabled with HTTPS off; the
     single-listener path in ``main()`` serves alone otherwise.
     """
-    main_server = uvicorn.Server(_main_http_config())
+    main_server = _main_server(_main_http_config())
     tasks: list[asyncio.Task] = [asyncio.create_task(main_server.serve(sockets=sockets))]
     _mark_if_port_80(config.HTTP_PORT)
     if config.HTTP_PORT != 80:
@@ -933,7 +953,7 @@ def _serve(sockets: list) -> None:
         _mark_if_port_80(config.HTTP_PORT)
         # Server.run picks uvicorn's event loop (uvloop where installed), as
         # uvicorn.run did before the sockets were bound here.
-        uvicorn.Server(_main_http_config()).run(sockets=sockets)
+        _main_server(_main_http_config()).run(sockets=sockets)
 
 
 def main():

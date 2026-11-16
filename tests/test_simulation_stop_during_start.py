@@ -267,7 +267,7 @@ async def test_a_start_cancelled_while_the_server_stops_dials_nothing_real(rig, 
     """What Engine.stop does to a resume: it marks itself stopping, then
     cancels the device bring-up the resume runs in."""
     eng = await _boot(rig, devices=_DEVICES)
-    eng._running = False
+    eng._stopping = True
     after = await _cancel_during_the_redirect(eng, monkeypatch)
     assert after == []
     assert not eng.simulation.active

@@ -15,15 +15,22 @@ servers. This module handles:
 A run that starts writes ``simulation.json`` in the data directory (per box,
 not per project: a project switch keeps simulating), and only Stop Simulation
 removes it. A shutdown leaves it, and so does the simulator exiting on its
-own: a service stop signals the simulator and this process at the same moment,
-so that exit says nothing about whether anybody turned simulation off. At the
-next start ``Engine.start`` registers the devices undialed and the bring-up
+own, since nobody turned simulation off. At the next start ``Engine.start`` registers the devices undialed and the bring-up
 round calls :meth:`SimulationManager.resume` before the first connect, so no
 device reaches its real address on the way back. A comeback that fails, and a
 simulator that stops mid-run, leave the devices on their real addresses and
 say so in ``system.simulation_error``; the record stays, so the next start
 tries again. While simulation runs the IDE, the panel and the cloud portal all
 mark it (``system.simulation_active``).
+
+**On the way down nothing goes back to the real equipment.** The server's own
+stop ends the simulator (``EndReason.SHUTDOWN``), after the devices are
+disconnected. A stop meant for the server reaches it alone: a service manager
+signals only the server (the systemd unit's ``KillMode=mixed``), and the
+simulator runs in a session of its own on POSIX, so a terminal's Ctrl+C misses
+it too. If it is signalled anyway, its exit once the server is stopping
+(``Engine.stopping``, true from the moment the signal arrives) is left to that
+stop rather than taken for a crash.
 
 **THE rule for how a simulation ends is** :meth:`SimulationManager.end`. Every
 way a run ends goes through it with its reason: Stop Simulation, the server
@@ -745,13 +752,19 @@ class SimulationManager:
         return result
 
     def _failed_start_reason(self, exc: BaseException) -> EndReason:
-        """How a start that failed by itself ends. Cancelled while the engine
+        """How a start that failed by itself ends. Cancelled while the server
         stops (the device bring-up a resume runs in is cancelled by
         Engine.stop), it is the server stopping: nothing goes back. Any other
         failure, a cancel included, puts back what the start had moved."""
-        if isinstance(exc, asyncio.CancelledError) and not getattr(self.engine, "_running", True):
+        if isinstance(exc, asyncio.CancelledError) and self._server_stopping():
             return EndReason.SHUTDOWN
         return EndReason.LAUNCH_FAILED
+
+    def _server_stopping(self) -> bool:
+        """Whether the server is on its way down (``Engine.stopping``): then
+        an end is the server's to do, and nothing goes back to the real
+        equipment."""
+        return bool(getattr(self.engine, "stopping", False))
 
     def _device_sim_payload(self, device_id: str, cfg: dict) -> dict:
         """Build the launch/sync payload for one device.
@@ -880,6 +893,12 @@ class SimulationManager:
         else:
             cmd = [sys.executable, "-m", "openavc.simulator", "--config", "-", "--no-auto-shutdown"]
 
+        # A session of its own on POSIX, so a stop meant for the server (a
+        # terminal's Ctrl+C goes to the whole foreground group) does not end
+        # the simulator first: see the module docstring. Windows already gives
+        # it a console of its own (CREATE_NO_WINDOW), which a console Ctrl+C
+        # does not reach.
+        own_session = {} if sys.platform == "win32" else {"start_new_session": True}
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -887,6 +906,7 @@ class SimulationManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 creationflags=CREATE_NO_WINDOW,
+                **own_session,
             )
         except Exception as e:
             raise RuntimeError(f"Failed to start simulator process: {e}")
@@ -1172,10 +1192,11 @@ class SimulationManager:
         at its next step, and this waits for it before ending what it left.
         Ends run one at a time, each doing its own, so a Stop that waits
         behind another end still forgets the record. The one end that is cut
-        short is the monitor's: a service stop signals the simulator and the
-        server together, so its hand-back may be under way when the engine's
+        short is the monitor's: a simulator that crashed just before the
+        server was told to stop has its hand-back under way when the engine's
         stop gets here, and the engine does not wait for every device to reach
-        its real address."""
+        its real address. A simulator that exits once the server is stopping
+        is not the monitor's to end (:meth:`_monitor_process`)."""
         run = self._run
         run.ends_waiting += 1
         try:
@@ -1248,21 +1269,38 @@ class SimulationManager:
             pass
 
     async def _monitor_process(self) -> None:
-        """Watch the simulator subprocess. If it exits, end the run."""
+        """Watch the simulator subprocess. If it exits while the run is on and
+        the server running, end the run (``EndReason.EXITED``: the devices go
+        back to their real equipment).
+
+        An exit once the server is stopping is that stop's to end: a signal
+        that reached the simulator as well as the server ends it first, while
+        the server is still draining its connections, and handing the devices
+        back then would dial every real address on the way down. The engine's
+        stop ends the run with ``EndReason.SHUTDOWN`` after the devices are
+        disconnected."""
         try:
             while self._run.phase is RunPhase.ACTIVE and self._process:
                 if self._process.returncode is not None:
-                    exit_code = self._process.returncode
-                    log.info("Simulator process exited (code %s)", exit_code)
-                    await self.end(EndReason.EXITED)
-                    event = "simulation.stopped" if exit_code == 0 else "simulation.crashed"
-                    await self.engine.events.emit(event, {
-                        "exit_code": exit_code,
-                    })
+                    await self._simulator_exited(self._process.returncode)
                     return
                 await asyncio.sleep(1.0)
         except asyncio.CancelledError:
             pass
+
+    async def _simulator_exited(self, exit_code: int) -> None:
+        if self._server_stopping():
+            log.info(
+                "Simulator process exited (code %s) as the server stops; "
+                "the stop ends the simulation", exit_code,
+            )
+            return
+        log.info("Simulator process exited (code %s)", exit_code)
+        await self.end(EndReason.EXITED)
+        event = "simulation.stopped" if exit_code == 0 else "simulation.crashed"
+        await self.engine.events.emit(event, {
+            "exit_code": exit_code,
+        })
 
     async def _cleanup_process(self) -> None:
         """Terminate the simulator process if running."""
