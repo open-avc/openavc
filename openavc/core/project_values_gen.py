@@ -145,8 +145,10 @@ def _entry(model: type[BaseModel], field: str, info: FieldInfo, settings: bool) 
     if bounds:
         return {**blank, **bounds, "integer": _is_integer(info.annotation)}
     follows = _blank_from(model, field)
-    if (settings and blank) or follows:
+    if follows:
         return {**blank, **follows}
+    if settings and blank:
+        return blank
     return None
 
 
