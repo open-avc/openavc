@@ -319,8 +319,24 @@ def move_library_logins(logins=None) -> None:
     """
     logins = logins if logins is not None else device_logins()
     lib = _lib_dir()
+    present, pending = _library_copies_to_move(lib, logins)
+    for gone in sorted(logins.libraries() - present):
+        logins.drop_library(gone)
+    backups = lib.parent / "backups"
+    if not pending or _rewrite_library_copies(backups, pending):
+        _end_library_backups(backups, logins, present)
+
+
+#: A library copy whose logins move: its id, its file, the file as it is on
+#: disk, and the copy with its logins moved.
+_PendingCopy = tuple[str, Path, bytes, dict[str, Any]]
+
+
+def _library_copies_to_move(lib: Path, logins) -> tuple[set[str], list[_PendingCopy]]:
+    """The id of every library copy, and each copy that holds a login in the
+    clear with its logins filed under its id (``_copy_logins_moved``)."""
     present: set[str] = set()
-    pending: list[tuple[str, Path, bytes, dict[str, Any]]] = []
+    pending: list[_PendingCopy] = []
     for avc in sorted(lib.glob("*/project.avc")):
         sid = avc.parent.name
         if sid.startswith("."):
@@ -329,13 +345,13 @@ def move_library_logins(logins=None) -> None:
         result = _copy_logins_moved(avc, sid, logins)
         if result is not None:
             pending.append((sid, avc, *result))
-    for gone in sorted(logins.libraries() - present):
-        logins.drop_library(gone)
-    backups = lib.parent / "backups"
-    if not pending:
-        _end_library_backups(backups, logins, present)
-        return
+    return present, pending
 
+
+def _rewrite_library_copies(backups: Path, pending: list[_PendingCopy]) -> bool:
+    """Back ``pending`` up together in one owner-only zip in ``backups``,
+    then rewrite each with its logins moved. True when every copy was
+    rewritten; a backup that cannot be written rewrites none."""
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     try:
         backup = _write_private_zip(
@@ -345,7 +361,7 @@ def move_library_logins(logins=None) -> None:
         )
     except OSError:
         log.exception("Could not back up the library, so its device logins stay in its copies for now")
-        return
+        return False
     rewritten = 0
     for sid, avc, _, moved in pending:
         try:
@@ -356,9 +372,9 @@ def move_library_logins(logins=None) -> None:
     if rewritten < len(pending):
         log.info("Moved the device logins out of %d of %d library project(s); the copies as they were "
                  "stay in %s until every one is rewritten", rewritten, len(pending), backup)
-        return
+        return False
     log.info("Moved the device logins out of %d library project(s)", len(pending))
-    _end_library_backups(backups, logins, present)
+    return True
 
 
 #: The name of the zip a move of the library's logins backs the copies up in.
