@@ -47,7 +47,8 @@ const MATRIX_NUMERIC = /^[+-]?\d+(?:\.\d+)?$/;
  *
  *  Mirrors `route_value` in matrix_model.py, which mirrors `routeValue` in
  *  the panel's modules/matrix.js -- the copy that decides what a panel
- *  actually lights. */
+ *  actually lights. tests/test_matrix_route_parity.py runs all three over one
+ *  corpus. */
 export function matrixRouteValue(value: unknown): number | string | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return routedNumber(value);

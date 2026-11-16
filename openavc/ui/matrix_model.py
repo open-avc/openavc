@@ -88,8 +88,18 @@ PANEL_WRITABLE_PREFIXES = ("var.", "plugin.")
 #: draws the same words it drew before.
 _DEFAULT_LABEL_PREFIX = {"sources": "In", "destinations": "Out"}
 
-_NUMERIC = re.compile(r"^[+-]?\d+(?:\.\d+)?$")
-_DIGIT_RUN = re.compile(r"\d+")
+# ASCII digits only, as JavaScript's \d: Python's would also read the digits of
+# other scripts, which the panel reads as a word.
+_NUMERIC = re.compile(r"^[+-]?\d+(?:\.\d+)?$", re.ASCII)
+_DIGIT_RUN = re.compile(r"\d+", re.ASCII)
+
+# What JavaScript's String.prototype.trim() takes off either end: its white
+# space (a byte-order mark among it) and its line ends. Python's own strip()
+# would also take the ASCII separator controls and leave the byte-order mark.
+_JS_SPACE = (
+    "\t\n\v\f\r          "
+    "        　﻿"
+)
 
 
 # --- The comparison every match goes through -------------------------------
@@ -99,7 +109,9 @@ def route_value(value: Any) -> float | int | str | None:
     """A routed-source value in comparable form, or None when nothing is routed.
 
     Mirrors ``routeValue`` in the panel's modules/matrix.js, which is the copy that decides what a
-    panel actually lights. Everything about which crosspoint is lit used to go
+    panel actually lights, and ``matrixRouteValue`` in the Builder's matrixModel.ts:
+    tests/test_matrix_route_parity.py runs all three over one corpus of reports
+    and the answer each must get. Everything about which crosspoint is lit used to go
     through ``parseInt``, and ``parseInt('IN1')`` is NaN -- so a switcher that
     labels its ports lit no crosspoint at all and flagged every output as an
     audio mismatch while audio and video were byte-for-byte identical.
@@ -114,14 +126,27 @@ def route_value(value: Any) -> float | int | str | None:
     # takes it down the string branch. Python would call it an int and compare
     # True equal to 1.
     if isinstance(value, int | float) and not isinstance(value, bool):
-        return value if math.isfinite(value) and value != 0 else None
-    text = str(value).strip()
+        number = _as_double(value)
+        return _whole(number) if math.isfinite(number) and number != 0 else None
+    text = str(value).strip(_JS_SPACE)
     if text in ("", "0"):
         return None
     if _NUMERIC.match(text):
-        number = float(text)
-        return int(number) if number.is_integer() else number
+        return _whole(float(text))
     return text.lower()
+
+
+def _as_double(value: int | float) -> float:
+    """A number as JavaScript holds it: a double, so a whole number past 2**53
+    is the nearest one the panel can hold, as its text form already is."""
+    try:
+        return float(value)
+    except OverflowError:
+        return math.inf
+
+
+def _whole(number: float) -> int | float:
+    return int(number) if number.is_integer() else number
 
 
 def _route_digits(text: str) -> int | None:

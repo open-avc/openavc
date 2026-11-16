@@ -12,7 +12,8 @@
  * Which source a device's report names is `routeMatches`. It is mirrored by
  * `route_matches` in openavc/ui/matrix_model.py and by matrixModel.ts in the
  * Builder, and the three must agree or the page review judges a matrix the
- * panel does not draw. The sources and destinations arrive already expanded
+ * panel does not draw: tests/test_matrix_route_parity.py runs all three over
+ * one corpus with the answer each case must get. The sources and destinations arrive already expanded
  * by the server (matrix_model.py), so nothing here expands a pattern.
  *
  * The panel lends a matrix what it needs as a host. Its functions read the
