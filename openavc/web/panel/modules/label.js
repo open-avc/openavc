@@ -53,8 +53,7 @@ function withoutReading(binding) {
  * included.
  */
 function conditionWords(binding, value) {
-    const isMatch = value !== undefined && value !== null &&
-        sameWords(value, binding.condition.equals);
+    const isMatch = !nothingToShow(value) && sameWords(value, binding.condition.equals);
     return [
         isMatch ? (binding.text_true || '') : (binding.text_false || ''),
         [...VALUE, isMatch ? 'text_true' : 'text_false'],
