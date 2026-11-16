@@ -233,6 +233,7 @@ def test_a_key_that_cannot_be_hashed_is_unread_rather_than_raising():
 
 
 @pytest.mark.parametrize("extra, attrs", [
+    ('"id": "acme.widget"', ""),
     ('"license": "GPL-3.0"', ""),
     ('"category": "bogus"', ""),
     ('"capabilities": ["fly"]', ""),
@@ -374,8 +375,13 @@ async def _handler(self):
      (False, "MACRO_ACTIONS invalid: action 'acme_widget.go' param 'k' has invalid type "
              "'['text']' (allowed: ['boolean', 'device_ref', 'float', 'integer', 'macro_ref', "
              "'select', 'state_key', 'text'])")),
-    ({"id": 5}, {"SCRIPT_API": {"go": {"handler": "go"}}},
-     (False, "SCRIPT_API invalid: plugin id '5' is not a valid Python identifier — "
+    ({"id": 5}, {}, (False, "Invalid plugin ID '5': must be lowercase letters, numbers, and underscores only")),
+    ({"id": None}, {},
+     (False, "Invalid plugin ID 'None': must be lowercase letters, numbers, and underscores only")),
+    ({"id": ["acme_widget"]}, {},
+     (False, "Invalid plugin ID '['acme_widget']': must be lowercase letters, numbers, and underscores only")),
+    ({"id": "1st"}, {"SCRIPT_API": {"go": {"handler": "go"}}},
+     (False, "SCRIPT_API invalid: plugin id '1st' is not a valid Python identifier — "
              "SCRIPT_API can't be exposed under openavc.plugins")),
 ])
 def test_a_declaration_of_the_wrong_type_is_answered_rather_than_raising(over, attrs, answer):
@@ -434,6 +440,59 @@ async def test_a_check_that_raises_refuses_that_plugin_and_the_next_still_starts
     finally:
         _PLUGIN_CLASS_REGISTRY.clear()
         _PLUGIN_CLASS_REGISTRY.update(saved)
+
+
+# --- the plugin id ------------------------------------------------------------------
+
+#: Each id with whether it is a plugin id: lowercase letters, digits and
+#: underscores, nothing else, a digit first included.
+_IDS = [
+    ("acme_widget", True), ("widget2", True), ("a", True), ("1st", True), ("_", True),
+    ("acme.widget", False), ("Acme_Widget", False), ("acme-widget", False), ("a b", False),
+    ("a/b", False), ("..", False), ("", False), ("acme_widget\n", False), ("acmé", False),
+    ("acme٣", False),
+]
+
+
+@pytest.mark.parametrize("plugin_id, ok", _IDS)
+def test_every_door_takes_the_same_ids(plugin_id, ok, monkeypatch):
+    """The rule, the installer and the manifest check answer one corpus alike
+    (the startup scan asks the same rule: test_plugin_loader_pins)."""
+    from openavc.core import plugin_installer
+    from openavc.core.plugin_declarations import is_plugin_id, plugin_id_problem
+
+    assert is_plugin_id(plugin_id) is ok
+    assert (plugin_id_problem(plugin_id) is None) is ok
+    try:
+        plugin_installer._validate_plugin_id(plugin_id)
+        installer_ok = True
+    except ValueError as exc:
+        installer_ok = False
+        assert str(exc) == plugin_id_problem(plugin_id)
+    assert installer_ok is ok
+    cls = type("AcmeWidgetPlugin", (), {"PLUGIN_INFO": {**_BASE_INFO, "id": plugin_id}})
+    valid, message = validate_manifest(cls, "linux_x64")
+    if plugin_id == "":
+        assert message == plugin_id_problem("")
+    assert valid is ok
+
+
+@pytest.mark.parametrize("value", [5, None, 1.5, ["acme"], {"id": "acme"}, b"acme"])
+def test_an_id_that_is_not_text_is_not_a_plugin_id(value):
+    from openavc.core.plugin_declarations import is_plugin_id, plugin_id_problem
+
+    assert is_plugin_id(value) is False
+    assert plugin_id_problem(value) == (
+        f"Invalid plugin ID '{value}': must be lowercase letters, numbers, and underscores only")
+
+
+def test_an_unread_id_is_not_judged_and_a_missing_one_is_the_required_rows():
+    from openavc.core.plugin_declarations import problems
+
+    assert list(problems(Declared({**_BASE_INFO, "id": UNREAD}))) == []
+    info = dict(_BASE_INFO)
+    info.pop("id")
+    assert list(problems(Declared(info))) == ["Missing required fields: ['id']"]
 
 
 # --- every refusal at once ------------------------------------------------------------

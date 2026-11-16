@@ -36,6 +36,12 @@ whether it is valid is not known from the text.
 ``problems`` gives every row's refusal, in the same order, for a check that
 reports them all at once; the first is ``first_problem``'s.
 
+THE plugin-id rule is here too (``is_plugin_id``, ``plugin_id_problem``):
+lowercase letters, digits and underscores, nothing else. An id names the
+plugin's folder in ``plugin_repo/`` and its state (``plugin.<id>.``), so the
+installer asks it before it writes, the open file routes before they read, and
+the startup scan before it registers a class; the judge's id row asks it too.
+
 ``platforms_problem`` is the one declaration rule that is not a row: whether
 the platform ids a plugin lists are ones OpenAVC knows (``PLATFORM_IDS``). A
 release that does not know an id yet must still start a plugin that also lists
@@ -71,6 +77,9 @@ DECLARATION_NAMES = (
 )
 
 REQUIRED_MANIFEST_FIELDS = {"id", "name", "version", "author", "description", "category", "license"}
+
+#: A plugin id, read with ``fullmatch``: lowercase letters, digits, underscores.
+PLUGIN_ID_RE = re.compile(r"[a-z0-9_]+")
 
 VALID_CAPABILITIES = {
     "state_read", "state_write", "variable_write",
@@ -248,6 +257,30 @@ def _required_fields(j: _Judging) -> str | None:
     if missing:
         return f"Missing required fields: {sorted(missing)}"
     return None
+
+
+def is_plugin_id(value: Any) -> bool:
+    """THE plugin-id rule: text of lowercase letters, digits and underscores
+    only, so an id is one folder name under ``plugin_repo/`` and one segment
+    of a ``plugin.<id>.`` state key."""
+    return isinstance(value, str) and PLUGIN_ID_RE.fullmatch(value) is not None
+
+
+def plugin_id_problem(value: Any) -> str | None:
+    """Why ``value`` is not a plugin id, in the sentence every door refuses
+    one with, or None."""
+    if is_plugin_id(value):
+        return None
+    return f"Invalid plugin ID '{value}': must be lowercase letters, numbers, and underscores only"
+
+
+def _plugin_id(j: _Judging) -> str | None:
+    if "id" not in j.info:  # the required-fields row names it, or it may be computed
+        return None
+    plugin_id = j.info["id"]
+    if not _known(plugin_id):
+        return None
+    return plugin_id_problem(plugin_id)
 
 
 def _license(j: _Judging) -> str | None:
@@ -648,6 +681,7 @@ def _extensions(j: _Judging) -> str | None:
 #: The judge's rows, in the order a plugin is refused.
 _RULES: tuple[Callable[[_Judging], "str | None"], ...] = (
     _required_fields,
+    _plugin_id,
     _license,
     _category,
     _capabilities,

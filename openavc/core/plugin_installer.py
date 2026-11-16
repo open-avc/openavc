@@ -34,7 +34,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from openavc.core.plugin_declarations import UNREAD, Declared, info_value
+from openavc.core.plugin_declarations import UNREAD, Declared, info_value, plugin_id_problem
 from openavc.core.plugin_import import (
     add_deps_to_import_path,
     exec_plugin_in_package,
@@ -240,26 +240,12 @@ async def _plugin_catalog_check(plugin_id: str) -> CatalogCheck:
     )
 
 
-_SAFE_ID_RE = re.compile(r"[a-z0-9_]+")
-
-
-def is_safe_plugin_id(plugin_id: str) -> bool:
-    """THE plugin-id rule: lowercase letters, digits and underscores only.
-
-    Asked by every door that turns an id into a directory under
-    ``plugin_repo/`` -- the installer before it writes, the file-serving
-    routes before they read -- so an id is never a path segment that can
-    name anything but a plugin's own folder.
-    """
-    return bool(plugin_id) and _SAFE_ID_RE.fullmatch(plugin_id) is not None
-
-
 def _validate_plugin_id(plugin_id: str) -> None:
-    if not is_safe_plugin_id(plugin_id):
-        raise ValueError(
-            f"Invalid plugin ID '{plugin_id}': must be lowercase letters, "
-            "numbers, and underscores only"
-        )
+    """Refuse an id that is not a plugin id (plugin_declarations' rule) before
+    it becomes a folder under ``plugin_repo/``."""
+    problem = plugin_id_problem(plugin_id)
+    if problem is not None:
+        raise ValueError(problem)
 
 
 # ──── Install ────

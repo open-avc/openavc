@@ -16,13 +16,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 import openavc.system_config as system_config
-from openavc.core.plugin_installer import is_safe_plugin_id
+from openavc.core.plugin_declarations import is_plugin_id
 from openavc.main import app
 
 
 @pytest.mark.parametrize("plugin_id", ["acme_widget", "widget2", "a", "x_1_y"])
 def test_plain_ids_are_safe(plugin_id):
-    assert is_safe_plugin_id(plugin_id)
+    assert is_plugin_id(plugin_id)
 
 
 @pytest.mark.parametrize(
@@ -30,7 +30,7 @@ def test_plain_ids_are_safe(plugin_id):
     ["", ".", "..", "acme.widget", "Acme_Widget", "acme-widget", "a b", "a/b", "acme_widget\n"],
 )
 def test_anything_else_is_not(plugin_id):
-    assert not is_safe_plugin_id(plugin_id)
+    assert not is_plugin_id(plugin_id)
 
 
 @pytest.fixture

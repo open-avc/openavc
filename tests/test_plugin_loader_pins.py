@@ -228,6 +228,28 @@ def test_a_raising_file_is_logged_and_the_next_candidate_loads(loader, repo, cap
     assert records[0].exc_info[0] is RuntimeError
 
 
+def test_an_id_the_installer_refuses_is_not_registered_and_the_scan_goes_on(loader, repo, caplog):
+    """The id names the plugin's state (plugin.<id>.) and its folder, so one
+    that is not a plain plugin id is never registered: its card would read
+    another plugin's keys. Its modules are purged like a file with no plugin
+    class."""
+    _write(repo / "acme_dotted" / "__init__.py", _plugin_src("acme.widget"))
+    _write(repo / "acme_upper" / "__init__.py", _plugin_src("Acme_Widget"))
+    _write(repo / "acme_ok" / "__init__.py", _plugin_src("acme_ok"))
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        found = loader.scan_plugins(repo)
+    assert list(found) == ["acme_ok"]
+    assert "acme.widget" not in _PLUGIN_CLASS_REGISTRY
+    assert "Acme_Widget" not in _PLUGIN_CLASS_REGISTRY
+    assert _msgs(caplog, logging.WARNING) == [
+        "Plugin folder 'acme_dotted' was not loaded: Invalid plugin ID 'acme.widget': "
+        "must be lowercase letters, numbers, and underscores only",
+        "Plugin folder 'acme_upper' was not loaded: Invalid plugin ID 'Acme_Widget': "
+        "must be lowercase letters, numbers, and underscores only",
+    ]
+    assert not [m for m in sys.modules if m.startswith(("plugin_acme_dotted", "plugin_acme_upper"))]
+
+
 def test_a_folder_whose_load_raises_is_logged_and_the_scan_goes_on(loader, repo, monkeypatch, caplog):
     _write(repo / "acme_bad" / "__init__.py", _plugin_src("acme_bad"))
     _write(repo / "acme_good" / "__init__.py", _plugin_src("acme_good"))
@@ -396,6 +418,8 @@ def _without(*keys):
 
 @pytest.mark.parametrize("info, message", [
     (_without("author", "license"), "Missing required fields: ['author', 'license']"),
+    (_info(id="acme.widget"),
+     "Invalid plugin ID 'acme.widget': must be lowercase letters, numbers, and underscores only"),
     (_info(license="GPL-3.0"), "License 'GPL-3.0' is not MIT-compatible"),
     (_info(category="bogus"),
      "Invalid category 'bogus', must be one of "
@@ -518,14 +542,14 @@ def test_the_checks_run_in_their_order(loader):
     """Fix one problem at a time; each answer is the next check's."""
     loader._platform_id = "linux_x64"
     info = _info(
-        license="GPL", category="bogus", capabilities=["fly"], guest_alias="api",
+        id="acme.widget", license="GPL", category="bogus", capabilities=["fly"], guest_alias="api",
         network_ports=[{"port": 9000, "protocol": "tcp", "reason": "x"}],
         platforms=["win_x64"], min_openavc_version="999.0.0",
     )
     attrs = {"CONFIG_SCHEMA": [], "CONFIG_SECRETS": "nope", "MACRO_ACTIONS": [],
              "SCRIPT_API": [], "EXTENSIONS": []}
     fixes = [
-        ("license", "MIT"), ("category", "utility"), ("capabilities", ["guest_endpoints"]),
+        ("id", "acme_widget"), ("license", "MIT"), ("category", "utility"), ("capabilities", ["guest_endpoints"]),
         ("guest_alias", "acme"), ("network_ports", []), ("platforms", ["all"]),
         ("min_openavc_version", None),
     ]
@@ -541,6 +565,7 @@ def test_the_checks_run_in_their_order(loader):
         attrs.pop(attr)
     answers.append(loader.validate_manifest(_cls(dict(info), **attrs))[1])
     assert answers == [
+        "Invalid plugin ID 'acme.widget': must be lowercase letters, numbers, and underscores only",
         "License 'GPL' is not MIT-compatible",
         "Invalid category 'bogus', must be one of ['control_surface', 'integration', 'sensor', 'utility']",
         "Unknown capabilities: ['fly']",

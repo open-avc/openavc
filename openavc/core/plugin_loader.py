@@ -36,8 +36,13 @@ from openavc.core.plugin_extensions import (
     sandbox_permissions,
     validate_extensions as validate_extensions,
 )
-from openavc.core.plugin_import import find_plugin_class, make_deps_loadable, plugin_folders
-from openavc.core.plugin_declarations import platform_supported
+from openavc.core.plugin_import import (
+    find_plugin_class,
+    make_deps_loadable,
+    plugin_folders,
+    purge_plugin_modules,
+)
+from openavc.core.plugin_declarations import platform_supported, plugin_id_problem
 from openavc.core.plugin_manifest import (
     validate_macro_actions as validate_macro_actions,
     validate_script_api as validate_script_api,
@@ -448,6 +453,13 @@ class PluginLoader:
         Scan plugin_repo/ for plugin packages and register their classes
         (core/plugin_import.py finds and imports them).
 
+        A class whose id is not a plugin id (plugin_declarations' rule, the
+        one the installer refuses an id by) is not registered: the id names
+        the plugin's state (``plugin.<id>.``), so a dotted one would read and
+        write another plugin's keys. It is logged with its folder and its
+        modules purged. Every other declaration is judged when the plugin
+        starts, where the refusal shows on its card.
+
         Returns dict of plugin_id -> plugin_class for all discovered plugins.
         """
         if plugin_repo_dir is None:
@@ -465,6 +477,11 @@ class PluginLoader:
                 plugin_class = find_plugin_class(entry)
                 if plugin_class:
                     plugin_id = plugin_class.PLUGIN_INFO["id"]
+                    problem = plugin_id_problem(plugin_id)
+                    if problem is not None:
+                        log.warning(f"Plugin folder '{entry.name}' was not loaded: {problem}")
+                        purge_plugin_modules(f"plugin_{entry.name}")
+                        continue
                     register_plugin_class(plugin_class)
                     discovered[plugin_id] = plugin_class
             except Exception:  # Catch-all: loading arbitrary plugin code can raise anything
