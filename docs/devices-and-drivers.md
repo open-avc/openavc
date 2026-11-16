@@ -284,6 +284,8 @@ A driver with a newer version in the community library shows **Update to v&lt;ve
 
 An installed driver that did not load (one written for an older OpenAVC, or a file with a mistake in it) is listed too, marked **Did not load**, and its page says why: the problems the driver check found, the Python error, or the file it names that is missing. Devices can't use it until it loads: update it, or uninstall it and install it again from Browse Community. A file changed on disk since OpenAVC last read it has no reason on the page; the Log has it.
 
+A driver that loaded but has a value of the wrong kind in its file (a number where text goes, one entry written where a list belongs) works, and its page lists each mistake to fix. The Driver Builder and the community library would not accept the file as it is, so fix it there, or send the list to whoever wrote the driver.
+
 The body of the detail panel shows:
 
 - **Overview.** What the driver controls and which devices it supports.

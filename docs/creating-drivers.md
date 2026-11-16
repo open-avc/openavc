@@ -4025,12 +4025,16 @@ my_driver.avcdriver: error: on_connect: must be a list; write a single entry as 
 my_driver.avcdriver: error: version: must be a string; put it in quotes
 ```
 
-The second is the YAML trap: `version: 1.0` is a number until it is quoted. A
-section left empty (`polling:` with nothing under it) is fine; it reads as if
-it were not there. The same checks run in the Driver Builder's Validate and
-save and in the community catalog. A driver already installed that has one of
-these mistakes keeps loading: its entry on the Installed list, and the answer
-to an upload, say what to fix.
+The second is the YAML trap: `version: 1.0` is a number until it is quoted.
+The same checks run in the Driver Builder's Validate and save and in the
+community catalog. A driver already installed that has one of these mistakes
+keeps loading: its entry on the Installed list, and the answer to an upload,
+say what to fix.
+
+A section left empty (`polling:` with nothing under it) loads as if it were not
+there. Leave it out of a driver you publish all the same: older OpenAVC
+releases refuse a driver with an empty section, so the community catalog asks
+you to remove it.
 
 The command exits non-zero when anything is wrong and prints nothing when a
 single file is clean. It needs no project, no server and no particular folder
