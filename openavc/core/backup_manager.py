@@ -252,6 +252,62 @@ def _reason_slug(reason: str) -> str:
     return slug[:40] or "backup"
 
 
+def _read_project(project_file: Path) -> tuple[object, str]:
+    """The project file read as JSON and the project's name, for a backup's
+    logins and its meta; (None, "") or a blank name when it cannot be read,
+    and the backup is taken all the same."""
+    try:
+        data = json.loads(project_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None, ""
+    try:
+        return data, data.get("project", {}).get("name", "")
+    except AttributeError:
+        return data, ""
+
+
+def _write_archive(archive: Path, project_file: Path, meta: dict, logins: str | None) -> None:
+    """Every member of a project backup, written into ``archive``: the
+    project file, the meta, the scripts, each tree with its folders intact,
+    state.json and the sealed logins."""
+    project_dir = project_file.parent
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(project_file, ARCHIVE_PROJECT)
+        zf.writestr("backup_meta.json", json.dumps(meta, indent=2))
+        scripts_dir = project_dir / "scripts"
+        if scripts_dir.is_dir():
+            for f in scripts_dir.glob("*.py"):
+                zf.write(f, f"scripts/{f.name}")
+        # Uploaded images, custom controls and themes, folders intact. Assets
+        # used to be a non-recursive iterdir(), so a nested one was not
+        # flattened but absent from the backup, the one failure a backup must
+        # not have; one custom control is a folder, so ui/ cannot be flattened
+        # on the way in or out.
+        for entries in (
+            asset_tree.zip_entries(project_dir / "assets"),
+            zip_entries(project_dir / "ui"),
+            theme_tree.zip_entries(project_dir / "themes"),
+        ):
+            for archive_path, f in entries:
+                zf.write(f, archive_path)
+        state_file = project_dir / "state.json"
+        if state_file.is_file():
+            zf.write(state_file, "state.json")
+        if logins is not None:
+            zf.writestr(ARCHIVE_LOGINS, logins)
+
+
+def _free_name(backup_d: Path, base: str) -> Path:
+    """``base``.zip in ``backup_d``, or the first ``base``_N.zip not taken.
+    The caller holds the project-save lock until it has renamed into it."""
+    backup_path = backup_d / f"{base}.zip"
+    counter = 1
+    while backup_path.exists():
+        backup_path = backup_d / f"{base}_{counter}.zip"
+        counter += 1
+    return backup_path
+
+
 def create_backup(
     project_file: Path,
     reason: str,
@@ -280,14 +336,7 @@ def create_backup(
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     slug = _reason_slug(reason)
 
-    # Read project name from the file
-    project_name = ""
-    data: object = None
-    try:
-        data = json.loads(project_file.read_text(encoding="utf-8"))
-        project_name = data.get("project", {}).get("name", "")
-    except (json.JSONDecodeError, OSError, AttributeError):
-        pass
+    data, project_name = _read_project(project_file)
     logins = _logins_copy(data) if data is not None else None
 
     meta = {
@@ -304,30 +353,7 @@ def create_backup(
     os.close(tmp_fd)
     tmp_path: Path | None = Path(tmp_name)
     try:
-        with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.write(project_file, ARCHIVE_PROJECT)
-            zf.writestr("backup_meta.json", json.dumps(meta, indent=2))
-            scripts_dir = project_dir / "scripts"
-            if scripts_dir.is_dir():
-                for f in scripts_dir.glob("*.py"):
-                    zf.write(f, f"scripts/{f.name}")
-            # Uploaded images, folders intact. This used to be a
-            # non-recursive iterdir(), so a nested asset was not flattened —
-            # it was absent from the backup, which is the one failure a backup
-            # must not have.
-            for archive_path, f in asset_tree.zip_entries(project_dir / "assets"):
-                zf.write(f, archive_path)
-            # Custom controls, folders intact — one control is a folder, so this
-            # tree is the one that cannot be flattened on the way in or out.
-            for archive_path, f in zip_entries(project_dir / "ui"):
-                zf.write(f, archive_path)
-            for archive_path, f in theme_tree.zip_entries(project_dir / "themes"):
-                zf.write(f, archive_path)
-            state_file = project_dir / "state.json"
-            if state_file.is_file():
-                zf.write(state_file, "state.json")
-            if logins is not None:
-                zf.writestr(ARCHIVE_LOGINS, logins)
+        _write_archive(tmp_path, project_file, meta, logins)
 
         # Reserve a unique name and place the finished ZIP atomically. The lock
         # makes the existence-check + rename a single critical section, so two
@@ -335,12 +361,7 @@ def create_backup(
         # name and corrupt each other — and an interrupted compression never
         # surfaces as a real backup because only the completed temp is renamed in.
         with _project_save_lock:
-            base = f"backup_{stamp}_{slug}"
-            backup_path = backup_d / f"{base}.zip"
-            counter = 1
-            while backup_path.exists():
-                backup_path = backup_d / f"{base}_{counter}.zip"
-                counter += 1
+            backup_path = _free_name(backup_d, f"backup_{stamp}_{slug}")
             os.replace(tmp_path, backup_path)
             tmp_path = None
             cleanup_backups(backup_d, keep=max_backups, spare=spare)
@@ -573,6 +594,15 @@ def restore_from_backup(backup_path: Path, project_file: Path) -> None:
             raise ValueError(f"Unrecognized backup format: {backup_path.name}")
 
 
+def _rotation(backup_dir: Path, spare: Path | None) -> list[Path]:
+    """The ZIP backups the rotation may remove: every one but ``spare``."""
+    backups = list(backup_dir.glob("backup_*.zip"))
+    if spare is None:
+        return backups
+    spared = spare.resolve()
+    return [p for p in backups if p.resolve() != spared]
+
+
 def cleanup_backups(backup_dir: Path, *, keep: int = MAX_BACKUPS, spare: Path | None = None) -> int:
     """Remove oldest backups beyond the retention limit. Returns count removed.
 
@@ -582,11 +612,7 @@ def cleanup_backups(backup_dir: Path, *, keep: int = MAX_BACKUPS, spare: Path | 
     are compared resolved, since a data directory reached through a link
     names the same file two ways.
     """
-    spared = spare.resolve() if spare is not None else None
-    backups = sorted(
-        (p for p in backup_dir.glob("backup_*.zip") if spared is None or p.resolve() != spared),
-        key=lambda p: p.stat().st_mtime,
-    )
+    backups = sorted(_rotation(backup_dir, spare), key=lambda p: p.stat().st_mtime)
     removed = 0
     while len(backups) > keep:
         oldest = backups.pop(0)
