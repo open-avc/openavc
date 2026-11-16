@@ -718,6 +718,28 @@ def _is_client_missing(hay: str, chain: list[BaseException]) -> bool:
     return _has_any(hay, _CLIENT_MISSING_SIGS)
 
 
+# The scheme typed in front of an address (``http://``), when there is one.
+_SCHEME = re.compile(r"\s*[a-z][a-z0-9+.\-]*://", re.IGNORECASE)
+
+
+def _login_masked(host: str) -> str:
+    """``host`` with the password of a login typed into it shown as ``***``.
+
+    ``admin:secret@10.0.0.5`` and ``http://admin:secret@cam.local`` keep the
+    username and the address; an HTTP device dials such a host with that
+    login. Everything between the first colon after the scheme and the last
+    ``@`` is the password, so one holding an ``@`` or a ``/`` is masked whole.
+    A host with no ``@`` after its first colon (a port, an IPv6 address,
+    ``user@host``) is returned as it is.
+    """
+    scheme = _SCHEME.match(host)
+    colon = host.find(":", scheme.end() if scheme else 0)
+    at = host.rfind("@")
+    if colon < 0 or at <= colon + 1:
+        return host
+    return f"{host[:colon + 1]}***{host[at:]}"
+
+
 def _endpoint(host: str, port: object) -> str:
     """Render ``host:port`` for a message, degrading gracefully.
 
@@ -725,13 +747,17 @@ def _endpoint(host: str, port: object) -> str:
     it is quoted so the space shows, since that space is then the fault. A
     space typed into a device's settings is trimmed before it is dialed
     (``core.typed_fields``); an address that still carries one came from
-    somewhere that rule does not reach.
+    somewhere that rule does not reach. The one change is a login typed into
+    the host, whose password is masked (:func:`_login_masked`): the sentence
+    is published to everything that reads the device's state.
     """
     host = host or ""
     if not host.strip():
         host = ""
     elif host != host.strip():
-        host = f'"{host}"'
+        host = f'"{_login_masked(host)}"'
+    else:
+        host = _login_masked(host)
     has_port = port not in (None, "", 0)
     if host and has_port:
         return f"{host}:{port}"

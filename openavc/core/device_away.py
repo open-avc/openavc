@@ -18,6 +18,10 @@ simulate, then a fault already typed (the exception chain, then the driver's
 stash), then a down bridge under a bridged device, then the shared classifier in
 core/connection_fault.py.
 
+The sentence is an exit: state reaches the Programmer, the panels, scripts and
+the cloud relay, and a sentence can quote the device. So it is masked with this
+device's secrets (the redaction registry) as it is written, whoever composed it.
+
 Mixed into DeviceManager (core/device_manager.py). Logs under the device
 manager's name, which is how the log view files a line as the device's.
 """
@@ -26,7 +30,7 @@ from __future__ import annotations
 
 import functools
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, TYPE_CHECKING
 
 from openavc.core.command_gates import command_definition
@@ -42,6 +46,7 @@ from openavc.core.connection_fault import (
     typed_fault_from_exc,
 )
 from openavc.core.device_sleep import SleepBook, asleep_message, command_label, wake_command_of
+from openavc.utils.log_redaction import get_secret_registry
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -472,7 +477,12 @@ class DeviceAwayMixin:
         self._publish_status(device_id, _AwayStatus())
 
     def _publish_status(self, device_id: str, status: _AwayStatus) -> None:
-        """Write why a device is away, all five keys in one batch."""
+        """Write why a device is away, all five keys in one batch, the
+        sentence masked with this device's secrets first."""
+        if status.offline_detail:
+            status = replace(status, offline_detail=get_secret_registry().redact_for(
+                device_id, status.offline_detail,
+            ))
         self.state.set_batch(status.state_keys(device_id), source="device_manager")
 
     def _set_bridge_offline_reason(self, device_id: str, bridge_id: str) -> None:

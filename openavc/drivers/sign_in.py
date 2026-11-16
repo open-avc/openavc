@@ -27,6 +27,10 @@ The rules worth knowing before changing anything here:
   prompts, so on TCP the first moments after connect are held raw: a prompt
   among them fails the connect as ``auth_failed`` naming the blank setting;
   otherwise they replay through the frame parser into the reply rules.
+* **What a fault quotes is masked.** A sign-in fault quotes what the device
+  sent, and a device that echoes puts the password there. The quote is
+  masked with this device's secrets (``redact_for``) before it is quoted, so
+  the offline reason, the log line and any copy of the fault never carry it.
 * **The flood cap.** Once the raw buffer passes ``_AUTH_MAX_BUFFER`` the
   stage waiting aborts as ``no_response`` (the blank-credential listen ends
   and replays what came): this is an unauthenticated path, and a device (or
@@ -56,6 +60,7 @@ from openavc.drivers.base import ConnectionFaultError
 from openavc.drivers.param_labels import param_label
 from openavc.transport.binary_helpers import encode_escape_sequences as _safe_encode_escapes
 from openavc.transport.frame_parsers import DEFAULT_MAX_BUFFER
+from openavc.utils.log_redaction import get_secret_registry
 from openavc.utils.logger import get_logger
 
 # These lines have always logged under the YAML driver runtime's name, which
@@ -438,7 +443,12 @@ class SignIn:
                 await asyncio.wait_for(self._auth_event.wait(), timeout=remaining)
             except asyncio.TimeoutError:
                 break
-        raise _stage_timed_out(target, text, creds_sent)
+        raise _stage_timed_out(target, self._quotable(text), creds_sent)
+
+    def _quotable(self, text: str) -> str:
+        """What the device sent, as a fault may quote it: this device's
+        secrets masked in the raw text, before quoting escapes it."""
+        return get_secret_registry().redact_for(self.device_id, text)
 
     def _refuse_auth_flood(self, target: re.Pattern[str]) -> None:
         if self._auth_overflow:
@@ -461,7 +471,7 @@ class SignIn:
         if failure is not None and failure.search(text):
             raise ConnectionFaultError(
                 f"login rejected by the device "
-                f"(matched failure pattern in {text!r})",
+                f"(matched failure pattern in {self._quotable(text)!r})",
                 code="auth_failed",
             )
         m = target.search(text)
