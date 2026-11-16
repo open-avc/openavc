@@ -216,3 +216,45 @@ describe("the matrix picker's break-away audio tick", () => {
     ]);
   });
 });
+
+// A row nobody named is called by its place, "Out 2", which the server works
+// out from where the row is written. The picker showed that caption as the
+// row's name and wrote it into the project, so the row kept "Out 1" after it
+// was moved and a bare port number was stored as its name.
+describe("the matrix picker's names", () => {
+  /** A matrix whose two rows are not on the device and have no name. */
+  const UNNAMED = {
+    id: "matrix_1",
+    type: "matrix",
+    matrix_config: {
+      sources: [{ value: 1, label: "Input 1" }],
+      destinations: [{ value: 9, route_key: "var.nine" }, 7],
+    },
+  } as unknown as UIElement;
+
+  it("stores no name for a row nobody named", async () => {
+    const onApply = vi.fn();
+    await open(UNNAMED, onApply);
+
+    await userEvent.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => expect(onApply).toHaveBeenCalled());
+    expect(destinationsOf(onApply.mock.calls[0][0])).toEqual([
+      { value: 9, route_key: "var.nine" },
+      { value: 7 },
+    ]);
+  });
+
+  it("shows such a row's caption greyed, numbered where the panel will number it", async () => {
+    await open(UNNAMED, vi.fn());
+
+    const first = screen.getByPlaceholderText("Out 1");
+    const second = screen.getByPlaceholderText("Out 2");
+    expect([first, second].map((input) => (input as HTMLInputElement).value)).toEqual(["", ""]);
+
+    // Unticked, the first row is not written, so the second is the panel's first.
+    const firstTick = first.parentElement?.querySelector('input[type="checkbox"]');
+    await userEvent.click(firstTick as HTMLInputElement);
+    expect(second).toHaveAttribute("placeholder", "Out 1");
+  });
+});

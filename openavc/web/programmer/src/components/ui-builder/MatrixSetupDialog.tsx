@@ -42,6 +42,9 @@ interface Row {
   /** The opaque value the device reports and accepts. Never edited here: it is
    *  the device's word, and editing it is what the raw fields are for. */
   value: string | number;
+  /** The row's name: typed here, stored in the project or the device's own.
+   *  Empty when nobody has named it, and then the panel calls it by its place,
+   *  shown here greyed (rowCaption) and never written as a name. */
   label: string;
   label_key?: string;
   route_key?: string;
@@ -73,7 +76,8 @@ interface MatrixSetupDialogProps {
   onClose: () => void;
 }
 
-/** The entries an axis of the current config already holds, written out. */
+/** The entries an axis of the current config already holds, written out. A
+ *  bare value has no name: its value is what the device calls the port. */
 function existingRows(config: unknown, axis: Axis): ProposedDestination[] {
   const spec = (config as Record<string, unknown> | undefined)?.[axis];
   if (!Array.isArray(spec)) return [];
@@ -81,9 +85,27 @@ function existingRows(config: unknown, axis: Axis): ProposedDestination[] {
     .map((entry) =>
       typeof entry === "object" && entry !== null
         ? (entry as ProposedDestination)
-        : { value: entry as string | number, label: String(entry) },
+        : { value: entry as string | number, label: "" },
     )
     .filter((entry) => entry.value !== undefined);
+}
+
+/** Whether a stored name is one: anything but nothing and empty text, a 0
+ *  among them -- the rule the panel and the server name a row by. */
+function isNamed(value: unknown): boolean {
+  return value !== undefined && value !== null && String(value) !== "";
+}
+
+/**
+ * What the panel will call a row nobody has named: "In 2" / "Out 3", by its
+ * place among the rows that are written (the ticked ones), which is where the
+ * server numbers it (`_with_default_label` in openavc/ui/matrix_model.py).
+ * Shown greyed in the row's empty name and never stored, so the row keeps
+ * following its place when the list is reordered.
+ */
+function rowCaption(rows: Row[], index: number, axis: Axis): string {
+  const place = rows.slice(0, index).filter((row) => row.include).length + 1;
+  return `${axis === "sources" ? "In" : "Out"} ${place}`;
 }
 
 /**
@@ -101,21 +123,16 @@ function existingRows(config: unknown, axis: Axis): ProposedDestination[] {
 function mergeRows(
   fromDevice: ProposedDestination[],
   fromProject: ProposedDestination[],
-  axis: Axis,
 ): Row[] {
-  // The caption the PANEL will draw for a row nobody has named -- same words as
-  // panel.js and the resolver, so the list here says what the wall will say
-  // rather than the port's raw id (a MAC address, on an AVoIP endpoint).
-  const caption = (i: number) =>
-    `${axis === "sources" ? "In" : "Out"} ${i + 1}`;
   const key = (v: string | number) => String(v);
   const deviceByValue = new Map(fromDevice.map((entry) => [key(entry.value), entry]));
   const firstTime = fromProject.length === 0;
 
-  const rows: Row[] = fromProject.map((entry, index) => {
+  const rows: Row[] = fromProject.map((entry) => {
     const device = deviceByValue.get(key(entry.value));
     deviceByValue.delete(key(entry.value));
-    const label = entry.label || device?.label || caption(index);
+    const named = isNamed(entry.label);
+    const label = named ? String(entry.label) : device?.label || "";
     return {
       ...entry,
       // A key the device now declares fills one the project never had; a key
@@ -129,17 +146,17 @@ function mergeRows(
       // is a copy, not a decision -- every matrix set up before this picker
       // stopped writing them looks like that. Treating it as authored would
       // freeze the rack's own name onto the panel for good.
-      labelFromDevice: !entry.label || entry.label === device?.label,
+      labelFromDevice: !named || entry.label === device?.label,
       include: true,
       isNew: false,
     };
   });
 
-  for (const [index, entry] of fromDevice.entries()) {
+  for (const entry of fromDevice) {
     if (!deviceByValue.has(key(entry.value))) continue;
     rows.push({
       ...entry,
-      label: entry.label || caption(index),
+      label: entry.label || "",
       include: firstTime,
       isNew: !firstTime,
       labelFromDevice: true,
@@ -243,15 +260,12 @@ export function MatrixSetupDialog({
         return;
       }
       setSources(
-        mergeRows(
-          proposal.sources, existingRows(element.matrix_config, "sources"), "sources",
-        ),
+        mergeRows(proposal.sources, existingRows(element.matrix_config, "sources")),
       );
       setDestinations(
         mergeRows(
           proposal.destinations,
           existingRows(element.matrix_config, "destinations"),
-          "destinations",
         ),
       );
     },
@@ -575,6 +589,7 @@ function RowEditor({
             />
             <input
               value={row.label}
+              placeholder={rowCaption(rows, index, axis)}
               onChange={(e) =>
                 patch(index, { label: e.target.value, labelFromDevice: false })
               }
