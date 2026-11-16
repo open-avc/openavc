@@ -21,6 +21,12 @@ A project is migrated once and saved in the new format, so a notice lost to a
 restart would never come back. A library entry keeps its own record from its
 import until it is opened, when it becomes the running project's.
 
+**A note somebody dismissed is not raised again by a later load.** Some are
+found at every load (a word a later release saved, kept as written:
+``core/saved_values.py``), so a dismiss keeps the notes it cleared, and a load
+that finds only those raises nothing. A project that replaces the running one
+starts with no such list.
+
 **A note never holds a secret.** The record is published as ``system.*``
 state, which the cloud receives, so a note about the panel lock PIN says what
 happened to it, never the digits.
@@ -78,10 +84,16 @@ class MigrationNotes:
     notes: list[UpdateNote] = field(default_factory=list)
 
     def changed(self, message: str, location: str, *, page_id: str = "", element_id: str = "") -> None:
-        self.notes.append(UpdateNote(CHANGED, message, location, page_id, element_id))
+        self._add(UpdateNote(CHANGED, message, location, page_id, element_id))
 
     def found(self, message: str, location: str, *, page_id: str = "", element_id: str = "") -> None:
-        self.notes.append(UpdateNote(FOUND, message, location, page_id, element_id))
+        self._add(UpdateNote(FOUND, message, location, page_id, element_id))
+
+    def _add(self, note: UpdateNote) -> None:
+        """A note said once: a format step and the repair every load makes can
+        find the same thing in one load."""
+        if note not in self.notes:
+            self.notes.append(note)
 
     def __bool__(self) -> bool:
         return bool(self.notes)
@@ -94,23 +106,39 @@ def _marker_path(folder: Path) -> Path:
 def record(folder: Path, notes: MigrationNotes) -> None:
     """Keep ``notes`` in ``folder``'s record. Notes from an earlier load that
     nobody dismissed stay ahead of them: both describe the project there. A
-    note the record already holds is not added again (the same repair made
-    twice: an update rolled back and installed again). Nothing new to note
-    writes nothing. Never raises: a load that worked must still come up, and
-    losing the notice is not worth losing the project."""
+    note the record already holds, or one somebody dismissed, is not added
+    again (the same repair made twice: an update rolled back and installed
+    again; a word found at every load). Nothing new to note writes nothing.
+    Never raises: a load that worked must still come up, and losing the notice
+    is not worth losing the project."""
     earlier = list((read(folder) or {}).get("notes", []))
-    added = [asdict(n) for n in notes.notes if asdict(n) not in earlier]
+    dismissed = _dismissed(folder)
+    added = [asdict(n) for n in notes.notes if asdict(n) not in earlier and asdict(n) not in dismissed]
     if not added:
         return
-    data = {
+    _write(folder, {
         "at": datetime.now(timezone.utc).isoformat(),
         "notes": earlier + added,
-    }
+        "dismissed": dismissed,
+    })
+
+
+def _write(folder: Path, data: dict[str, Any]) -> None:
     try:
         folder.mkdir(parents=True, exist_ok=True)
         atomic_write_text(_marker_path(folder), json.dumps(data, indent=2))
     except OSError as e:
         log.warning(f"Could not write the project update record: {e}")
+
+
+def _dismissed(folder: Path) -> list[dict[str, Any]]:
+    """The notes a dismiss cleared from ``folder``'s record, as written."""
+    try:
+        data = json.loads(_marker_path(folder).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return []
+    kept = data.get("dismissed") if isinstance(data, dict) else None
+    return [asdict(n) for n in map(_note, kept) if n is not None] if isinstance(kept, list) else []
 
 
 def replace(folder: Path, notes: MigrationNotes) -> None:
@@ -143,9 +171,8 @@ def read(folder: Path) -> dict[str, Any] | None:
         return None
     if not isinstance(data, dict) or not isinstance(data.get("notes"), list):
         return None
-    notes = [_note(n) for n in data["notes"]]
-    data["notes"] = [asdict(n) for n in notes if n is not None]
-    return data if data["notes"] else None
+    notes = [asdict(n) for n in map(_note, data["notes"]) if n is not None]
+    return {"at": str(data.get("at", "")), "notes": notes} if notes else None
 
 
 def _note(raw: Any) -> UpdateNote | None:
@@ -178,7 +205,10 @@ def publish(state: StateStore, project_dir: Path) -> None:
 
 
 def dismiss(state: StateStore, project_dir: Path) -> bool:
-    """Clear the running project's record. Returns True if there was one."""
-    existed = clear(project_dir)
+    """Clear the running project's notice, keeping its notes as dismissed so
+    a later load does not raise them again. Returns True if there was one."""
+    standing = (read(project_dir) or {}).get("notes", [])
+    if standing:
+        _write(project_dir, {"at": "", "notes": [], "dismissed": _dismissed(project_dir) + standing})
     publish(state, project_dir)
-    return existed
+    return bool(standing)

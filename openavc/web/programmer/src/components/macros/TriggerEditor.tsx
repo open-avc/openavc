@@ -657,6 +657,7 @@ function StartupEditor({
 
 /** Each time's floor and blank, as the project schema declares them. */
 const SECONDS = PROJECT_VALUES.TriggerConfig;
+type SecondsField = "delay_seconds" | "debounce_seconds" | "cooldown_seconds";
 
 /** A time in seconds: a typed value below the floor comes back to it when
  *  the box is left, and a trigger saved without one shows the schema's. */
@@ -666,7 +667,7 @@ function SecondsBox({
   onChange,
 }: {
   trigger: TriggerConfig;
-  field: keyof typeof SECONDS;
+  field: SecondsField;
   onChange: (patch: Partial<TriggerConfig>) => void;
 }) {
   const rule = SECONDS[field];

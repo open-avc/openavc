@@ -26,7 +26,8 @@ async def apply_tool_edit(engine, mutate) -> dict | None:
         return e.result
     except ValueError as e:
         from openavc.core.installed_equipment import InstalledEquipmentError
-        if isinstance(e, InstalledEquipmentError):
+        from openavc.core.saved_values import UnknownWordError
+        if isinstance(e, InstalledEquipmentError | UnknownWordError):
             return {"error": str(e)}
         raise
     return None

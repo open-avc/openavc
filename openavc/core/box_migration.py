@@ -26,19 +26,23 @@ from dataclasses import dataclass
 from openavc.core.project_update import MigrationNotes
 
 # An overlay's or sidebar's width and height, a percentage of the screen.
-_OVERLAY_BOX_0_17 = (5, 100)
+OVERLAY_BOX_0_17 = (5, 100)
 
 # Each side of a box as the UI Builder names it, and what the panel drew for
 # one that is missing.
 _SIDES_0_17 = {"x": ("X", 0), "y": ("Y", 0), "w": ("Width", 100), "h": ("Height", 100)}
 
 
-def repair_boxes_0_17(ui: dict, notes: MigrationNotes) -> None:
-    """Every box and overlay of the project's ``ui``, repaired in place."""
+def repair_boxes_0_17(
+    ui: dict, notes: MigrationNotes, overlay_box: tuple[float, float] = OVERLAY_BOX_0_17,
+) -> None:
+    """Every box and overlay of the project's ``ui``, repaired in place;
+    ``overlay_box`` is the range an overlay's sides are brought to (the
+    repair every load makes passes today's, ``core/saved_values.py``)."""
     for place in _boxes_0_17(ui):
         _drop_non_finite_sides_0_17(place, notes)
     for page in _overlay_pages_0_17(ui):
-        _clamp_overlay_box_0_17(page, notes)
+        _clamp_overlay_box_0_17(page, notes, overlay_box)
 
 
 def element_places_0_17(ui) -> dict[int, tuple[str, str]]:
@@ -156,22 +160,25 @@ def _overlay_pages_0_17(ui: dict) -> list[dict]:
     return [page for page in _dicts_0_17(ui.get("pages")) if isinstance(page.get("overlay"), dict)]
 
 
-def _clamp_overlay_box_0_17(page: dict, notes: MigrationNotes) -> None:
-    """A width or height outside 5..100 to the nearer end; one that is no
-    finite number goes, so it loads as the default box the panel drew."""
+def _clamp_overlay_box_0_17(page: dict, notes: MigrationNotes, box: tuple[float, float]) -> None:
+    """A width or height outside ``box`` (5..100 at 0.17.0) to the nearer end;
+    one that is no finite number goes, so it loads as the default box the
+    panel drew."""
     name, page_id = _page_place_0_17(page)
     for side, label in (("width", "Width"), ("height", "Height")):
         number = number_0_17(page["overlay"].get(side))
         if number is None:
             continue
-        said = _overlay_side_inside_0_17(page["overlay"], side, number, label)
+        said = _overlay_side_inside_0_17(page["overlay"], side, number, label, box)
         if said:
             notes.changed(said, f"{name} > page", page_id=page_id)
 
 
-def _overlay_side_inside_0_17(overlay: dict, side: str, number: float, label: str) -> str:
+def _overlay_side_inside_0_17(
+    overlay: dict, side: str, number: float, label: str, box: tuple[float, float],
+) -> str:
     """The side brought inside the box; what changed, or "" for nothing."""
-    low, high = _OVERLAY_BOX_0_17
+    low, high = box
     if not math.isfinite(number):
         overlay.pop(side)
         return f"{label} was not a number, so the page opens at its default size."

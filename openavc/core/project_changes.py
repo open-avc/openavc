@@ -34,6 +34,7 @@ from openavc.core.project_loader import (
     save_project_async,
 )
 from openavc.core.project_update import MigrationNotes
+from openavc.core.saved_values import refuse_new_words
 from openavc.core.typed_fields import trim_device_settings
 from openavc.utils.logger import get_logger
 
@@ -260,6 +261,8 @@ class ProjectChangesMixin:
             trim_device_settings(new_project)
         if origin is ProjectOrigin.EDIT:
             self.installed_equipment.validate_edit(self.project, new_project, reassigned=reassigned_equipment)
+            # A word a later release saved stays; one this edit adds is refused.
+            refuse_new_words(self.project, new_project)
         loaded_project = new_project
         as_given = self.installed_equipment.compose(new_project, for_load=origin is ProjectOrigin.LOAD)
         # Every project that comes in ends here, so this is where a login it

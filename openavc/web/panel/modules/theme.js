@@ -28,7 +28,7 @@
 
 import { assetUrl, basePath } from './base_path.js';
 import { drawFadedPicture, gradientCss } from './paint.js';
-import { themeIdOf } from './project_values.js';
+import { chosenWord, themeIdOf } from './project_values.js';
 
 // How long the first draw waits for the theme before going ahead without it.
 // The fetch is same-origin and answers in milliseconds; this only exists so a
@@ -156,11 +156,13 @@ function backgroundLayer(className) {
 }
 
 /**
- * A page picture's size as CSS. Stretch fills the page, as a button's picture
- * does (paint.js): the word itself is no size a browser draws.
+ * A page picture's size as CSS: the schema's word for it (one this version
+ * does not know draws as the one the table names). Stretch fills the page, as
+ * a button's picture does (paint.js): the word itself is no size a browser
+ * draws.
  */
 export function pagePictureSize(bg) {
-    const size = bg.image_size || 'cover';
+    const size = chosenWord('PageBackground', 'image_size', bg.image_size);
     return size === 'stretch' ? '100% 100%' : size;
 }
 

@@ -4,7 +4,9 @@ The UI Builder offers Cover, Contain and Stretch for a page's picture
 (``PropertiesPanel.tsx``), and the panel hands the size to the browser as CSS
 (``web/panel/modules/theme.js`` ``pagePictureSize``). Stretch is no CSS size,
 so it is drawn as ``100% 100%``, as a button's picture already is; a browser
-given the word drops it and draws the picture at its own size.
+given the word drops it and draws the picture at its own size. A size this
+version does not know (a later version's, kept in the project as written) is
+drawn as the schema's table says: Cover.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ CASES = [
     ({"image_size": "cover"}, "cover"),
     ({"image_size": "contain"}, "contain"),
     ({}, "cover"),
+    ({"image_size": "tile"}, "cover"),
 ]
 
 

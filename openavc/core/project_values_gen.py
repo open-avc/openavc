@@ -12,7 +12,8 @@ The table carries every field that declares a bound (a range, that it takes
 finite numbers only, or a text value's longest and the characters it takes:
 the panel lock PIN's ``PanelPin``), under the model that declares it, and
 every panel setting with a plain default, since the panel
-fills a blank setting itself; a blank another setting decides (a model's
+fills a blank setting itself, and every fixed-choice field (``OneOf``): its
+words and what a word it does not know reads as; a blank another setting decides (a model's
 ``BLANK_FROM``: the theme a project with no theme id draws, the format a clock
 with none draws) carries that setting's values too, and a style value whose 0
 is blank (a model's ``ZERO_IS_BLANK``: a crosspoint cell size) is listed by its
@@ -37,7 +38,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic.types import AllowInfNan
 
-from openavc.core.project_loader import ProjectConfig, UISettings, blank_rule
+from openavc.core.project_loader import OneOf, ProjectConfig, UISettings, blank_rule
 
 TS_ARTIFACT = "openavc/web/programmer/src/api/projectValues.gen.ts"
 PANEL_ARTIFACT = "openavc/web/panel/modules/project_values.gen.js"
@@ -122,6 +123,8 @@ def _bound(rule: Any) -> dict[str, Any] | None:
         return {keys[0]: getattr(rule, keys[1])}
     if isinstance(rule, AllowInfNan) and not rule.allow_inf_nan:
         return {"finite": True}
+    if isinstance(rule, OneOf):
+        return {"words": list(rule.words), "otherwise": rule.otherwise}
     pattern = getattr(rule, "pattern", None)
     if isinstance(pattern, str) and pattern in _PATTERN_WORDS:
         return dict(_PATTERN_WORDS[pattern])
@@ -183,7 +186,7 @@ def _is_text(annotation: Any) -> bool:
 def _entry(model: type[BaseModel], field: str, info: FieldInfo, settings: bool) -> dict[str, Any] | None:
     bounds = _bounds(model, field, info)
     blank = _plain_default(info)
-    if bounds and _is_text(info.annotation):
+    if bounds and (_is_text(info.annotation) or "words" in bounds):
         return {**blank, **bounds}
     if bounds:
         return {**blank, **bounds, "integer": _is_integer(info.annotation)}
@@ -214,7 +217,8 @@ def _zero_blanks(model: type[BaseModel]) -> dict[str, dict[str, Any]]:
 
 def project_values(roots: tuple[type[BaseModel], ...] = (ProjectConfig,)) -> dict[str, dict[str, Any]]:
     """The table: model name -> field -> its default, min, max, integer and
-    finite, or for text its max_length and digits."""
+    finite, or for text its max_length and digits, or a fixed choice's words
+    and otherwise."""
     table: dict[str, dict[str, Any]] = {}
     for model in _walk(roots):
         settings = model in SETTINGS_MODELS
@@ -248,7 +252,9 @@ BANNER = """\
 // that setting's value names it (null: that value draws none), and a value not
 // named, a blank one included, reads as the one `otherwise` names. A key inside a field (`style.cell_size`) with
 // `zero_is_blank` reads a 0 as a blank one, the control drawing its own size,
-// never as a size of 0.
+// never as a size of 0. A fixed-choice field lists its `words`, and any other
+// word, a blank one included, reads as the one `otherwise` names (null: as
+// nothing). Such a word is kept as written, never refused.
 """
 
 TS_BODY = """
@@ -262,7 +268,8 @@ export interface ProjectValue {
   readonly max_length?: number;
   readonly digits?: boolean;
   readonly blank_from?: Readonly<Record<string, Readonly<Record<string, string | null>>>>;
-  readonly otherwise?: string;
+  readonly otherwise?: string | null;
+  readonly words?: readonly string[];
   readonly zero_is_blank?: boolean;
 }
 

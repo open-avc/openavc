@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from openavc.core.condition_eval import _OPERATOR_ALIASES as _COND_ALIASES
-from openavc.core.project_loader import SECONDS_MIN, TriggerConfig
+from openavc.core.project_loader import SECONDS_MIN, MacroStep, TriggerConfig, choice_rule
 from openavc.drivers.param_labels import param_label as _readable_param
 from openavc.drivers.param_validation import required_param_sentence
 from openavc.utils.logger import get_logger
@@ -87,7 +87,9 @@ STEP_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
     # fussiest one.
     # help.clear: no fields. It puts the help state back to idle.
 }
-VALID_TRIGGER_TYPES = frozenset(("schedule", "state_change", "event", "startup"))
+# The words the schema declares (project_loader.OneOf); it takes any other and
+# keeps it as written, so these say which ones run.
+VALID_TRIGGER_TYPES = frozenset(choice_rule(TriggerConfig, "type").words)
 # Accept both canonical operator names and the user-facing aliases that
 # condition_eval normalizes at runtime (==, !=, >=, equals, greater_than, …).
 # Otherwise the AI tools reject macros loaded from human-edited project files
@@ -97,7 +99,8 @@ CANONICAL_CONDITION_OPS = frozenset((
 ))
 VALID_CONDITION_OPS = frozenset(CANONICAL_CONDITION_OPS | _COND_ALIASES.keys())
 VALID_STATE_TRIGGER_OPS = frozenset({"any"} | VALID_CONDITION_OPS)
-VALID_OVERLAP_MODES = frozenset(("skip", "queue", "allow"))
+VALID_OVERLAP_MODES = frozenset(choice_rule(TriggerConfig, "overlap").words)
+_ON_TIMEOUT_WORDS = choice_rule(MacroStep, "on_timeout").words
 
 
 #: What the lint's caller hands in to name a parameter the way the step's form
@@ -232,7 +235,7 @@ def _step_findings(step: dict, path: str, lookups: _Lookups) -> list[dict[str, A
                     action=action,
                 ))
         on_timeout = step.get("on_timeout")
-        if on_timeout is not None and on_timeout not in ("fail", "continue"):
+        if on_timeout is not None and on_timeout not in _ON_TIMEOUT_WORDS:
             found.append(_finding(
                 path, "wait_until 'on_timeout' must be 'fail' or 'continue'",
                 action=action,
@@ -315,8 +318,8 @@ def _trigger_findings(trigger: dict, path: str) -> list[dict[str, Any]]:
     if ttype not in VALID_TRIGGER_TYPES:
         found.append(_finding(
             path,
-            f"trigger type '{ttype}' is not valid. "
-            f"Use: schedule, state_change, event, startup",
+            f"trigger type '{ttype}' is not one this version of OpenAVC knows, so the "
+            f"trigger never fires. Use: {', '.join(choice_rule(TriggerConfig, 'type').words)}",
             action=ttype,
         ))
         return found
@@ -383,7 +386,7 @@ def _execution_findings(trigger: dict, path: str, ttype: str) -> list[dict[str, 
     overlap = trigger.get("overlap")
     if overlap and overlap not in VALID_OVERLAP_MODES:
         found.append(_finding(
-            path, f"overlap '{overlap}' is not valid. Use: skip, queue, allow",
+            path, f"overlap '{overlap}' is not valid. Use: {', '.join(choice_rule(TriggerConfig, 'overlap').words)}",
             action=ttype,
         ))
     return found + _seconds_findings(trigger, path, ttype)

@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
+from openavc.core.project_loader import TriggerConfig, reads_as
 from openavc.core.macro_engine import (
     _QUEUE_MAX_WAIT_SECONDS,
     _QUEUE_POLL_SECONDS as _QUEUE_POLL_INTERVAL,
@@ -216,7 +217,8 @@ class TriggerEngine:
             t = ts.trigger
             if not t.get("enabled", True):
                 continue
-            ttype = t.get("type", "")
+            # A type this release does not know reads as none, so it never fires.
+            ttype = reads_as(TriggerConfig, "type", t.get("type"))
 
             if ttype == "state_change":
                 state_key = t.get("state_key", "")
@@ -630,7 +632,7 @@ class TriggerEngine:
             return
 
         # 6. Overlap policy
-        overlap = t.get("overlap", "skip")
+        overlap = reads_as(TriggerConfig, "overlap", t.get("overlap"))
         if self.macros.is_macro_running(macro_id):
             if overlap == "skip":
                 log.debug(f"Trigger {trigger_id} skipped — macro already running")

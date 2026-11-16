@@ -14,15 +14,58 @@
 // that setting's value names it (null: that value draws none), and a value not
 // named, a blank one included, reads as the one `otherwise` names. A key inside a field (`style.cell_size`) with
 // `zero_is_blank` reads a 0 as a blank one, the control drawing its own size,
-// never as a size of 0.
+// never as a size of 0. A fixed-choice field lists its `words`, and any other
+// word, a blank one included, reads as the one `otherwise` names (null: as
+// nothing). Such a word is kept as written, never refused.
 
 export const PROJECT_VALUES = {
+  "DriverDependency": {
+    "source": {
+      "default": "",
+      "words": [
+        "builtin",
+        "community",
+        "unknown",
+        ""
+      ],
+      "otherwise": "unknown"
+    }
+  },
+  "Layout": {
+    "orientation": {
+      "default": "landscape",
+      "words": [
+        "landscape",
+        "portrait"
+      ],
+      "otherwise": null
+    }
+  },
   "MacroConfig": {
+    "overlap": {
+      "default": "allow",
+      "words": [
+        "skip",
+        "queue",
+        "allow"
+      ],
+      "otherwise": "allow"
+    },
     "cooldown_seconds": {
       "default": 0,
       "min": 0,
       "finite": true,
       "integer": false
+    }
+  },
+  "MacroStep": {
+    "on_timeout": {
+      "default": null,
+      "words": [
+        "fail",
+        "continue"
+      ],
+      "otherwise": "fail"
     }
   },
   "MonitorConfig": {
@@ -47,6 +90,17 @@ export const PROJECT_VALUES = {
       "integer": false
     }
   },
+  "PageBackground": {
+    "image_size": {
+      "default": "cover",
+      "words": [
+        "cover",
+        "contain",
+        "stretch"
+      ],
+      "otherwise": "cover"
+    }
+  },
   "Placement": {
     "x": {
       "default": 0.0,
@@ -69,7 +123,27 @@ export const PROJECT_VALUES = {
       "integer": false
     }
   },
+  "PluginDependency": {
+    "source": {
+      "default": "",
+      "words": [
+        "community",
+        "unknown",
+        ""
+      ],
+      "otherwise": "unknown"
+    }
+  },
   "TriggerConfig": {
+    "type": {
+      "words": [
+        "schedule",
+        "state_change",
+        "event",
+        "startup"
+      ],
+      "otherwise": null
+    },
     "delay_seconds": {
       "default": 0,
       "min": 0,
@@ -87,6 +161,15 @@ export const PROJECT_VALUES = {
       "min": 0,
       "finite": true,
       "integer": false
+    },
+    "overlap": {
+      "default": "skip",
+      "words": [
+        "skip",
+        "queue",
+        "allow"
+      ],
+      "otherwise": "skip"
     }
   },
   "UIElement": {
@@ -112,6 +195,16 @@ export const PROJECT_VALUES = {
     },
     "style.cell_size": {
       "zero_is_blank": true
+    }
+  },
+  "UIPage": {
+    "render_mode": {
+      "default": "elements",
+      "words": [
+        "elements",
+        "custom"
+      ],
+      "otherwise": "elements"
     }
   },
   "UISettings": {

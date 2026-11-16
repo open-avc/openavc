@@ -58,6 +58,8 @@ Only the application code is updated. Your data is kept:
 
 A project saved by an earlier release is brought up to date the first time it loads. A setting that holds a value this release does not take, such as Shown Decimals above 20 or a trigger Delay that never ends, is changed to the nearest value that works. The Dashboard then lists each change and where it is, with **Open Validate** to review anything left for you to fix, until you dismiss it. Importing or opening a project saved by an earlier release does the same.
 
+A project saved by a later version loads too, after a rollback or when a project is sent to a system running an older version. A setting that holds a choice this version does not know, such as a trigger type added later, is kept as it is: that trigger does not fire here, and an Overlap, a page's Contents, a background picture's Size or a layout's orientation works as its default. The Dashboard lists each one where it is, once; a save here keeps them, and the later version reads them again. A value an earlier version saved past a range this one keeps is changed to the nearest value that works, whichever version saved the project. This needs the version you go back to to be later than v0.40.0.
+
 A backup zip is created before every update, stored in your data directory under `backups/`. It includes the active project and its scripts, assets, custom controls and saved variable state, including on appliance hardware. The five most recent backups are kept automatically. On Linux and macOS the folder and each backup in it are readable only by the account the service runs as, so open one with `sudo` there.
 
 ## Deployment Types

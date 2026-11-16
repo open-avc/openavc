@@ -51,6 +51,16 @@ export function panelSetting(settings, field) {
     return n;
 }
 
+/**
+ * The word a fixed-choice `field` of `model` reads as: `raw` where the table
+ * lists it, else the one its `otherwise` names (null: as nothing). A word a
+ * later version saved stays in the project as written.
+ */
+export function chosenWord(model, field, raw) {
+    const { words, otherwise } = PROJECT_VALUES[model][field];
+    return words.includes(raw) ? raw : otherwise;
+}
+
 /** The most characters text in `field` of `model` takes; undefined for no limit. */
 export function longestText(model, field) {
     return PROJECT_VALUES[model][field].max_length;

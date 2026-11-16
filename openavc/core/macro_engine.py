@@ -29,6 +29,7 @@ from openavc.core.event_bus import EventBus
 from openavc.core.group_command import DeviceGroups, GroupCommand
 from openavc.core.macro_steps import MacroSteps
 from openavc.core.macro_text import StepWording
+from openavc.core.project_loader import MacroConfig, reads_as
 from openavc.core.state_store import StateStore
 from openavc.utils.logger import get_logger
 
@@ -115,7 +116,7 @@ class _StartGuards(NamedTuple):
     @classmethod
     def of(cls, macro: dict[str, Any]) -> _StartGuards:
         return cls(
-            overlap=macro.get("overlap") or "allow",
+            overlap=reads_as(MacroConfig, "overlap", macro.get("overlap")),
             cooldown=float(macro.get("cooldown_seconds") or 0),
             cancel_group=macro.get("cancel_group"),
         )

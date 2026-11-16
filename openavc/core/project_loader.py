@@ -12,7 +12,9 @@ or, for a blank another setting decides (the theme a
 project with no theme id draws, the format a clock with none draws), in the
 model's ``BLANK_FROM``, read by ``blank_drawn``; a style value whose 0 is blank
 (a crosspoint cell size) in ``UIElement.ZERO_IS_BLANK``, read by
-``style_is_blank``.
+``style_is_blank``; a fixed choice's words, and what a word this release does
+not know reads as, as ``OneOf``, read by ``reads_as`` (the word is kept as
+written: a later release's project loads here).
 ``python -m openavc.core.project_values_gen`` renders them into one
 table for the Builder (``web/programmer/src/api/projectValues.gen.ts``) and the
 panel (``web/panel/modules/project_values.gen.js``), which draws the Builder's
@@ -26,9 +28,10 @@ import os
 import re
 import shutil
 import tempfile
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Annotated, Any, ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator, model_validator
 
@@ -124,6 +127,38 @@ SECONDS_MIN = 0
 # a browser as these ten.
 PANEL_PIN_MAX_DIGITS = 6
 PanelPin = Annotated[str, Field(max_length=PANEL_PIN_MAX_DIGITS, pattern=r"^[0-9]*$")]
+
+
+@dataclass(frozen=True)
+class OneOf:
+    """THE fixed-choice rule, declared on a text field (``Annotated[str,
+    OneOf(...)]``): the words this release knows, and what a word it does not
+    know reads as (``otherwise``; None reads as nothing at all: a trigger of a
+    type this release does not know never fires). Any text is taken and kept as
+    written, so a project a later release saved loads here and goes back to it
+    unchanged; the load says what each such word does here
+    (``core/saved_values.py``), and an edit that adds one is refused.
+    ``reads_as`` is the one reading of the field, in the engines and here; the
+    panel and the Builder read the same table (``project_values_gen.py``)."""
+
+    words: tuple[str, ...]
+    otherwise: str | None
+
+
+def choice_rule(model: type[BaseModel], field: str) -> OneOf:
+    """``field``'s ``OneOf`` on ``model``."""
+    return next(r for r in model.model_fields[field].metadata if isinstance(r, OneOf))
+
+
+def reads_as(model: type[BaseModel], field: str, word: Any) -> str | None:
+    """THE word a fixed-choice ``field`` of ``model`` holding ``word`` reads as:
+    the word itself when this release knows it, else the field's ``otherwise``
+    (a blank one included)."""
+    rule = choice_rule(model, field)
+    return word if isinstance(word, str) and word in rule.words else rule.otherwise
+
+
+_OVERLAP_WORDS = ("skip", "queue", "allow")
 
 # A blank another setting decides is declared in its model's ``BLANK_FROM``:
 # field -> (that setting, its value -> what this field draws), with a third
@@ -324,9 +359,10 @@ class MacroStep(_ForwardCompatModel):
 
     # wait_until step fields (action == "wait_until")
     # timeout: seconds to wait before giving up; None means never time out
-    # on_timeout: "fail" (default) raises and triggers stop_on_error handling; "continue" proceeds silently
+    # on_timeout: "fail" (blank, and a word this release does not know) raises and triggers
+    # stop_on_error handling; "continue" proceeds silently
     timeout: float | None = None
-    on_timeout: Literal["fail", "continue"] | None = None
+    on_timeout: Annotated[str | None, OneOf(("fail", "continue"), otherwise="fail")] = None
 
     # Step-level guard: skip this step if condition is true
     skip_if: StepCondition | None = None
@@ -338,7 +374,7 @@ class MacroStep(_ForwardCompatModel):
 class TriggerConfig(_ForwardCompatModel):
     """Trigger definition — when should a macro fire automatically."""
     id: str
-    type: Literal["schedule", "state_change", "event", "startup"]
+    type: Annotated[str, OneOf(("schedule", "state_change", "event", "startup"), otherwise=None)]
 
     @field_validator("id")
     @classmethod
@@ -361,7 +397,7 @@ class TriggerConfig(_ForwardCompatModel):
     delay_seconds: FiniteFloat = Field(default=0, ge=SECONDS_MIN)
     debounce_seconds: FiniteFloat = Field(default=0, ge=SECONDS_MIN)
     cooldown_seconds: FiniteFloat = Field(default=0, ge=SECONDS_MIN)
-    overlap: Literal["skip", "queue", "allow"] = "skip"
+    overlap: Annotated[str, OneOf(_OVERLAP_WORDS, otherwise="skip")] = "skip"
 
     # Guard conditions
     conditions: list[StepCondition] = Field(default_factory=list)
@@ -384,7 +420,7 @@ class MacroConfig(_ForwardCompatModel):
     # another macro). Defaults leave the historic concurrent behaviour: allow.
     # A trigger may still carry its own overlap/cooldown; the two stack and the
     # stricter wins.
-    overlap: Literal["skip", "queue", "allow"] = "allow"
+    overlap: Annotated[str, OneOf(_OVERLAP_WORDS, otherwise="allow")] = "allow"
     cooldown_seconds: FiniteFloat = Field(default=0, ge=SECONDS_MIN)
 
 
@@ -418,7 +454,9 @@ class Layout(_ForwardCompatModel):
     """
 
     id: str
-    orientation: Literal["landscape", "portrait"] = "landscape"
+    # A word this release does not know matches no screen: the layout is drawn
+    # only as the primary, when it is the page's primary.
+    orientation: Annotated[str, OneOf(("landscape", "portrait"), otherwise=None)] = "landscape"
     primary: bool = False
     inherits: str | None = None
     placements: dict[str, Placement] = Field(default_factory=dict)
@@ -648,7 +686,7 @@ class PageBackground(_ForwardCompatModel):
     color: str | None = None
     image: str | None = None  # asset reference e.g. "assets://bg.jpg"
     image_opacity: float = 1.0
-    image_size: Literal["cover", "contain", "stretch"] = "cover"
+    image_size: Annotated[str, OneOf(("cover", "contain", "stretch"), otherwise="cover")] = "cover"
     image_position: str = "center"
     gradient: dict[str, Any] | None = None  # {type, angle, from, to}
 
@@ -677,7 +715,7 @@ class UIPage(_ForwardCompatModel):
     # frame -- the same machinery a `custom` ELEMENT runs in, sized to the page
     # instead of to a box. The elements below are kept and are not drawn, so
     # switching back restores the page exactly.
-    render_mode: Literal["elements", "custom"] = "elements"
+    render_mode: Annotated[str, OneOf(("elements", "custom"), otherwise="elements")] = "elements"
     # Only read when render_mode is "custom", and the same two fields a custom
     # element carries: a relative path inside ui/, and settings handed over in
     # the opening message.
@@ -822,7 +860,7 @@ class DriverDependency(_ForwardCompatModel):
     driver_id: str
     driver_name: str = ""
     version: str = ""
-    source: Literal["builtin", "community", "unknown", ""] = ""
+    source: Annotated[str, OneOf(("builtin", "community", "unknown", ""), otherwise="unknown")] = ""
 
 
 class PluginDependency(_ForwardCompatModel):
@@ -830,7 +868,7 @@ class PluginDependency(_ForwardCompatModel):
     plugin_id: str
     plugin_name: str = ""
     version: str = ""
-    source: Literal["community", "unknown", ""] = ""
+    source: Annotated[str, OneOf(("community", "unknown", ""), otherwise="unknown")] = ""
     platforms: list[str] = Field(default_factory=lambda: ["all"])
 
 

@@ -753,10 +753,12 @@ def _set_background(page: Any, value: Any, what: str) -> None:
 
 
 def _set_render_mode(page: Any, value: Any, what: str) -> None:
-    """Checked rather than assigned: the model declares a Literal and does not
-    validate on assignment, so "Custom" or a typo would land and the page would
+    """Checked rather than assigned: the model keeps any word as written (a
+    later release's), so "Custom" or a typo would land and the page would
     quietly go back to drawing its elements."""
-    if value not in ("elements", "custom"):
+    from openavc.core.project_loader import UIPage, choice_rule
+
+    if value not in choice_rule(UIPage, "render_mode").words:
         raise ToolEditError({
             "error": f"{what}: render_mode is 'elements' (draw the page's own "
                      f"controls) or 'custom' (give the screen to a page in the "

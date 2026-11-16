@@ -30,11 +30,15 @@ holding one. A time is read as the schema read it before this step
 (``number_0_17``: a number, true or false, or text that reads as one).
 
 Anything the schema refused before this step, it still does, so it is left
-alone. The numbers are the step's own, as they stood at 0.17.0, not read from
-the project models, for the reason the 0.15.0 table gives: a step says what it
-did to the projects of its day (``core/project_migration.py``, whose
-``migrate_0_16_to_0_17`` calls this and says what the whole step does). A list
-that is missing, null or not the shape it should be reads as nothing.
+alone. The numbers are the step's own, as they stood at 0.17.0
+(``BOUNDS_0_17``), not read from the project models, for the reason the 0.15.0
+table gives: a step says what it did to the projects of its day
+(``core/project_migration.py``, whose ``migrate_0_16_to_0_17`` calls this and
+says what the whole step does). The repair every load makes, whatever the
+project's version, runs the same code with today's numbers, read from the
+models (``core/saved_values.py``): a project an earlier release saved into
+this format can hold what this step would have repaired. A list that is
+missing, null or not the shape it should be reads as nothing.
 
 Each value rewritten is a note for the Programmer's notice, worded with the
 field's name where the Programmer shows it. The PIN's note says what happened
@@ -42,16 +46,42 @@ to it and never holds a digit of it.
 """
 
 import math
+from collections.abc import Mapping
+from dataclasses import dataclass
 
-from openavc.core.box_migration import element_places_0_17, number_0_17, say_number_0_17
+from openavc.core.box_migration import (
+    OVERLAY_BOX_0_17,
+    element_places_0_17,
+    number_0_17,
+    say_number_0_17,
+)
 from openavc.core.project_update import MigrationNotes
 
-_DECIMALS_0_17 = (0, 20)
-_PANEL_SETTINGS_0_17 = {
-    "page_transition_duration": (50, 1000),
-    "element_stagger_ms": (10, 200),
-    "idle_timeout_seconds": (0, 86400),
-}
+
+@dataclass(frozen=True)
+class RepairBounds:
+    """The numbers the repair brings saved values inside: a readout's
+    decimals, each panel setting's range, the PIN's most digits, the least a
+    time in seconds holds, and an overlay box's range."""
+
+    decimals: tuple[int, int]
+    pin_length: int
+    seconds_min: float
+    overlay_box: tuple[float, float]
+    panel_settings: Mapping[str, tuple[int, int]]
+
+
+BOUNDS_0_17 = RepairBounds(
+    decimals=(0, 20),
+    pin_length=6,
+    seconds_min=0,
+    overlay_box=OVERLAY_BOX_0_17,
+    panel_settings={
+        "page_transition_duration": (50, 1000),
+        "element_stagger_ms": (10, 200),
+        "idle_timeout_seconds": (0, 86400),
+    },
+)
 # What Panel Settings calls each, and its unit, for a note.
 _SETTING_NAMES_0_17 = {
     "page_transition_duration": ("Transition Duration", "ms"),
@@ -61,36 +91,42 @@ _SETTING_NAMES_0_17 = {
 # The panel drew a 0 in these as its default (200 and 30 ms).
 _ZERO_IS_DEFAULT_0_17 = ("page_transition_duration", "element_stagger_ms")
 
-# What the lock screen's box takes: these digits, and this many.
+# What the lock screen's box takes: these digits.
 _PIN_DIGITS_0_17 = "0123456789"
-_PIN_LENGTH_0_17 = 6
+# A count in a note about the PIN, which never holds a digit.
+_COUNT_WORDS_0_17 = ("no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten")
 
-# A trigger's times in seconds; each, and a macro's cooldown, is this or more.
+# A trigger's times in seconds; each, and a macro's cooldown, is the least a
+# time holds, or more.
 _TRIGGER_SECONDS_0_17 = ("delay_seconds", "debounce_seconds", "cooldown_seconds")
-_SECONDS_MIN_0_17 = 0
 
 
-def repair_bounds_0_17(data: dict, elements: list[dict], notes: MigrationNotes) -> None:
+def repair_bounds_0_17(
+    data: dict, elements: list[dict], notes: MigrationNotes, bounds: RepairBounds = BOUNDS_0_17,
+) -> None:
     """The project's bounded numbers, repaired in place; ``elements`` are its
     page and master elements, as the step reads them."""
     places = element_places_0_17(data.get("ui"))
     for el in elements:
         prefix, page_id = places.get(id(el), ("", ""))
         element_id = str(el.get("id", ""))
-        _Noted(notes, f"{prefix} > {element_id}", page_id, element_id).decimals(el)
+        _Noted(notes, bounds, f"{prefix} > {element_id}", page_id, element_id).decimals(el)
     for monitor in _dicts_0_17(data.get("monitors")):
-        _Noted(notes, f"Monitored Readings > {monitor.get('key', '')}").decimals(monitor)
+        _Noted(notes, bounds, f"Monitored Readings > {monitor.get('key', '')}").decimals(monitor)
     ui = data.get("ui")
-    _clamp_settings_0_17(ui.get("settings") if isinstance(ui, dict) else None, notes)
+    _clamp_settings_0_17(ui.get("settings") if isinstance(ui, dict) else None, _Noted(notes, bounds, "Panel Settings"))
     for macro in _dicts_0_17(data.get("macros")):
-        _repair_macro_0_17(macro, notes)
+        _repair_macro_0_17(macro, notes, bounds)
 
 
 class _Noted:
     """One holder's repairs, each said at its place."""
 
-    def __init__(self, notes: MigrationNotes, location: str, page_id: str = "", element_id: str = ""):
+    def __init__(
+        self, notes: MigrationNotes, bounds: RepairBounds, location: str, page_id: str = "", element_id: str = "",
+    ):
         self.notes = notes
+        self.bounds = bounds
         self.at = {"page_id": page_id, "element_id": element_id}
         self.location = location
 
@@ -98,9 +134,10 @@ class _Noted:
         self.notes.changed(message, self.location, **self.at)
 
     def decimals(self, holder: dict) -> None:
-        old, new = _clamp_0_17(holder, "display_decimals", _DECIMALS_0_17)
+        low, high = self.bounds.decimals
+        old, new = _clamp_0_17(holder, "display_decimals", self.bounds.decimals)
         if old != new:
-            self.changed(f"Shown decimals changed from {old} to {new}. A readout shows 0 to 20.")
+            self.changed(f"Shown decimals changed from {old} to {new}. A readout shows {low} to {high}.")
 
 
 def _dicts_0_17(items) -> list[dict]:
@@ -129,11 +166,10 @@ def _clamp_0_17(holder: dict, field: str, bounds: tuple[int, int]) -> tuple[int 
     return value, holder[field]
 
 
-def _clamp_settings_0_17(settings, notes: MigrationNotes) -> None:
+def _clamp_settings_0_17(settings, noted: _Noted) -> None:
     if not isinstance(settings, dict):
         return
-    noted = _Noted(notes, "Panel Settings")
-    for field, bounds in _PANEL_SETTINGS_0_17.items():
+    for field, bounds in noted.bounds.panel_settings.items():
         old, new = _clamp_0_17(settings, field, bounds)
         if old == new:
             continue
@@ -151,13 +187,15 @@ def _repair_pin_0_17(settings: dict, noted: _Noted) -> None:
     pin = settings.get("lock_code")
     if not isinstance(pin, str):
         return
-    typed = "".join(c for c in pin if c in _PIN_DIGITS_0_17)[:_PIN_LENGTH_0_17]
+    longest = noted.bounds.pin_length
+    typed = "".join(c for c in pin if c in _PIN_DIGITS_0_17)[:longest]
     settings["lock_code"] = typed
     if typed == pin:
         return
     if typed:
+        most = _COUNT_WORDS_0_17[longest] if longest < len(_COUNT_WORDS_0_17) else "the lock screen's"
         noted.changed(
-            "Lock Code (PIN) changed to the PIN the panel's lock screen takes: its digits only, at most six."
+            f"Lock Code (PIN) changed to the PIN the panel's lock screen takes: its digits only, at most {most}."
         )
     else:
         noted.changed(
@@ -166,13 +204,14 @@ def _repair_pin_0_17(settings: dict, noted: _Noted) -> None:
         )
 
 
-def _repair_macro_0_17(macro: dict, notes: MigrationNotes) -> None:
+def _repair_macro_0_17(macro: dict, notes: MigrationNotes, bounds: RepairBounds) -> None:
     name = macro.get("name") or macro.get("id", "")
-    old = _time_inside_0_17(macro, "cooldown_seconds")
+    noted = _Noted(notes, bounds, f"Macros > {name}")
+    old = _time_inside_0_17(macro, "cooldown_seconds", bounds.seconds_min)
     if old is not None:
-        _say_time_0_17(_Noted(notes, f"Macros > {name}"), "Cooldown", old)
+        _say_time_0_17(noted, "Cooldown", old)
     for trigger in _dicts_0_17(macro.get("triggers")):
-        _repair_trigger_0_17(trigger, _Noted(notes, f"Macros > {name} > {trigger.get('id', '')}"))
+        _repair_trigger_0_17(trigger, _Noted(notes, bounds, f"Macros > {name} > {trigger.get('id', '')}"))
 
 
 # A trigger's times as the trigger editor names them.
@@ -186,7 +225,7 @@ _TRIGGER_FIELD_NAMES_0_17 = {
 def _repair_trigger_0_17(trigger: dict, noted: _Noted) -> None:
     for field in _TRIGGER_SECONDS_0_17:
         was_on = trigger.get("enabled", True) is not False
-        old = _time_inside_0_17(trigger, field)
+        old = _time_inside_0_17(trigger, field, noted.bounds.seconds_min)
         if old == math.inf:
             trigger["enabled"] = False
             name = _TRIGGER_FIELD_NAMES_0_17[field]
@@ -211,18 +250,19 @@ def _say_time_0_17(noted: _Noted, name: str, old: float) -> None:
         noted.changed(f"{name} removed: it never ended, so the macro ran once after each restart.")
     elif not math.isfinite(old):
         noted.changed(f"{name} was not a number, so it is now 0 seconds, which is how it ran.")
-    elif old < _SECONDS_MIN_0_17:
-        noted.changed(f"{name} changed from {say_number_0_17(old)} to 0 seconds, which is how it ran.")
+    elif old < noted.bounds.seconds_min:
+        least = say_number_0_17(float(noted.bounds.seconds_min))
+        noted.changed(f"{name} changed from {say_number_0_17(old)} to {least} seconds, which is how it ran.")
 
 
-def _time_inside_0_17(holder: dict, field: str) -> float | None:
-    """``holder[field]`` brought to 0 or more, or removed when it is no finite
-    number; the number it held, or None when it held none."""
+def _time_inside_0_17(holder: dict, field: str, minimum: float) -> float | None:
+    """``holder[field]`` brought to ``minimum`` or more, or removed when it is
+    no finite number; the number it held, or None when it held none."""
     number = number_0_17(holder.get(field))
     if number is None:
         return None
     if not math.isfinite(number):
         holder.pop(field)
-    elif number < _SECONDS_MIN_0_17:
-        holder[field] = _SECONDS_MIN_0_17
+    elif number < minimum:
+        holder[field] = minimum
     return number

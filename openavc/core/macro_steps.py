@@ -29,6 +29,7 @@ from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from openavc.core.condition_eval import eval_operator
 from openavc.core.group_command import reached_nobody
+from openavc.core.project_loader import MacroStep, reads_as
 from openavc.core.saved_params import saved_kwargs
 from openavc.core.value_resolver import resolve_in_text, resolve_ref
 from openavc.utils.logger import get_logger
@@ -107,12 +108,9 @@ def _wait_timeout(step: dict[str, Any]) -> Any:
 
 
 def _wait_on_timeout(step: dict[str, Any]) -> str:
-    on_timeout = step.get("on_timeout") or "fail"
-    if on_timeout not in ("fail", "continue"):
-        raise ValueError(
-            f"wait_until 'on_timeout' must be 'fail' or 'continue', got {on_timeout!r}"
-        )
-    return on_timeout
+    """What the step does at its timeout; a word this release does not know
+    fails the macro, as a blank one does."""
+    return reads_as(MacroStep, "on_timeout", step.get("on_timeout"))
 
 
 class MacroSteps:
