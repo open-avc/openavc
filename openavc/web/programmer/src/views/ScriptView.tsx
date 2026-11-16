@@ -10,7 +10,7 @@ import { CreateDriverDialog } from "../components/scripts/CreateDriverDialog";
 import { SCRIPT_TEMPLATES } from "../components/scripts/scriptTemplates";
 import { DRIVER_TEMPLATES } from "../components/scripts/driverTemplates";
 import { CustomUiEditor } from "../components/scripts/CustomUiEditor";
-import { problemsToFix } from "../components/scripts/driverProblems";
+import { keptMessage, refusedMessage, reloadedMessage } from "../components/scripts/driverProblems";
 import { isEditableUiPath, starterUiContent } from "../components/scripts/customUiFiles";
 import { useProjectStore } from "../store/projectStore";
 import { useNavigationStore } from "../store/navigationStore";
@@ -344,17 +344,11 @@ export function ScriptView() {
         // working, so nothing else would tell you until a restart dropped it
         // and took its devices offline.
         const res = await api.savePythonDriverSource(selectedId, source);
-        if (res.syntax_error) {
-          showError(`Saved, but this driver will not load: ${res.syntax_error}`);
-          setDriverReloadErrors(
-            res.line ? [{ line: res.line, message: res.syntax_error }] : []
-          );
-        } else {
-          setDriverReloadErrors([]);
-          if (res.issues?.length) {
-            showError(`Saved.\n${problemsToFix(res.issues)}`);
-          }
-        }
+        const kept = keptMessage(res);
+        if (kept) showError(kept);
+        setDriverReloadErrors(
+          res.syntax_error && res.line ? [{ line: res.line, message: res.syntax_error }] : []
+        );
       }
       setOriginalSource(source);
     } catch (e) {
@@ -447,9 +441,7 @@ export function ScriptView() {
       try {
         const res = await api.savePythonDriverSource(selectedId, source, true);
         if (res.status === "error") {
-          showError(res.issues?.length
-            ? `Not saved. The file on disk is unchanged and still loads.\n${problemsToFix(res.issues)}`
-            : `Not saved. ${res.error}. The file on disk is unchanged and still loads.`);
+          showError(refusedMessage(res));
           if (res.line) {
             setDriverReloadErrors([
               { line: res.line, message: res.error ?? "Syntax error" },
@@ -494,14 +486,8 @@ export function ScriptView() {
       } else {
         setDriverReloadErrors([]);
         const devCount = result.devices_reconnected?.length ?? 0;
-        const reloaded = devCount > 0
-          ? `Driver reloaded, ${devCount} device(s) reconnected.`
-          : "Driver reloaded.";
-        if (result.notices?.length) {
-          showError(`${reloaded}\n${problemsToFix(result.notices)}`);
-        } else {
-          showSuccess(reloaded.slice(0, -1));
-        }
+        const reloaded = reloadedMessage(devCount, result.notices);
+        (reloaded.problems ? showError : showSuccess)(reloaded.text);
         useLogStore.getState().addLogEntry({
           timestamp: Date.now() / 1000,
           level: "INFO",

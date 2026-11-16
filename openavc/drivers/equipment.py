@@ -216,11 +216,26 @@ class EquipmentDriver(BaseDriver):
             raise ValueError("More than one equipment control port was discovered. Add the product manually using its configured port.")
         raise ValueError("The equipment control port was not discovered. Scan again or add the product manually using its configured port.")
 
+    def _check_model(self, info):
+        """Refuse a model the connect has always refused. What a driver's
+        author would be refused at the checker, a connect never refuses: the
+        fix is in the product's firmware, never in the integrator's hands, so
+        the device connects and the sentence is logged once while the model
+        says it."""
+        verdict = check_python_driver_info(info, overrides_set_device_setting=True)
+        # The equipment protocol carries a command's params as JSON values,
+        # so a model cannot declare a command that takes or hands back a
+        # file (a Python driver's CommandFile / DeviceFile).
+        issues = verdict.errors + [
+            f"Command '{name}' takes or hands back a file, which equipment cannot declare"
+            for name, cmd in (info.get("commands") or {}).items()
+            if is_file_command(cmd)
+        ]
+        if issues:
+            raise ValueError("Invalid endpoint model: " + "; ".join(issues))
+        self._note_model_notices(verdict.notices)
+
     def _note_model_notices(self, notices):
-        """What the product's model says wrong that a driver's author would be
-        refused at the checker but a connect never is: the fix is in the
-        product's firmware, never in the integrator's hands, so the device
-        connects and the sentence is logged once while the model says it."""
         notices = tuple(notices)
         if notices and notices != getattr(self, "_sdk_model_notices", ()):
             log.warning(
@@ -304,18 +319,7 @@ class EquipmentDriver(BaseDriver):
                     "The product hardware model does not match the product firmware configuration.",
                     code="invalid_config",
                 )
-            verdict = check_python_driver_info(info, overrides_set_device_setting=True)
-            # The equipment protocol carries a command's params as JSON values,
-            # so a model cannot declare a command that takes or hands back a
-            # file (a Python driver's CommandFile / DeviceFile).
-            issues = verdict.errors + [
-                f"Command '{name}' takes or hands back a file, which equipment cannot declare"
-                for name, cmd in (info.get("commands") or {}).items()
-                if is_file_command(cmd)
-            ]
-            if issues:
-                raise ValueError("Invalid endpoint model: " + "; ".join(issues))
-            self._note_model_notices(verdict.notices)
+            self._check_model(info)
             if {"_sdk_identity", "_sdk_model"} & set(info.get("state_variables", {})):
                 raise ValueError("Endpoint model uses reserved SDK state names.")
             self._sdk_model = info["id"]

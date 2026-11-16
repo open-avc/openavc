@@ -189,8 +189,6 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
     next door (documented behaviour), because the editor needs the structured
     ``line`` to mark the offending row and an HTTPException detail is prose.
     """
-    from openavc.drivers.driver_loader import python_source_syntax_error
-
     require_mutable_driver(driver_id)
     filepath = _safe_driver_path(driver_id)
     source = body.get("source")
@@ -201,28 +199,39 @@ async def save_python_driver_source(driver_id: str, body: dict) -> dict:
         raise HTTPException(status_code=404, detail=f"Python driver '{driver_id}' not found")
 
     require_mutable_driver_file(filepath.name, source.encode("utf-8"))
-    syntax = python_source_syntax_error(source, filepath.name)
-    if syntax and body.get("require_valid_syntax"):
-        return {"status": "error", "driver_id": driver_id, "saved": False, **syntax}
-    issues = [] if syntax else _source_refusals(source, filepath.name)
-    if issues and body.get("require_valid_syntax"):
-        return {
-            "status": "error", "driver_id": driver_id, "saved": False,
-            "error": _issues_sentence(issues), "issues": issues,
-        }
+    problems = _source_problems(source, filepath.name)
+    if problems and body.get("require_valid_syntax"):
+        return {"status": "error", "driver_id": driver_id, "saved": False, **problems}
 
     try:
         filepath.write_text(source, encoding="utf-8")
     except OSError as e:
         raise _api_error(500, f"Could not save driver '{driver_id}'.", e)
 
-    result: dict[str, Any] = {"status": "saved", "driver_id": driver_id}
+    return {"status": "saved", "driver_id": driver_id, **_kept(problems)}
+
+
+def _source_problems(source: str, filename: str) -> dict[str, Any]:
+    """What is wrong with the source, as the save answers it: why it will not
+    parse (``error`` and ``line``), else what the driver check refuses
+    (``error`` and ``issues``), else nothing."""
+    from openavc.drivers.driver_loader import python_source_syntax_error
+
+    syntax = python_source_syntax_error(source, filename)
     if syntax:
-        result["syntax_error"] = syntax["error"]
-        result["line"] = syntax["line"]
-    if issues:
-        result["issues"] = issues
-    return result
+        return syntax
+    issues = _source_refusals(source, filename)
+    return {"error": _issues_sentence(issues), "issues": issues} if issues else {}
+
+
+def _kept(problems: dict[str, Any]) -> dict[str, Any]:
+    """How a plain Save, which writes the source anyway, says what is wrong
+    with it: the check's issues, or the syntax error and its line."""
+    if "issues" in problems:
+        return {"issues": problems["issues"]}
+    if problems:
+        return {"syntax_error": problems["error"], "line": problems["line"]}
+    return {}
 
 
 def _source_refusals(source: str, filename: str) -> list[str]:

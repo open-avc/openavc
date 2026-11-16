@@ -163,24 +163,31 @@ def _driver_info_node(source: str, filename: str) -> ast.Dict:
     except SyntaxError as e:
         raise ExtractError(f"{filename} has a syntax error: {e}")
     for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            for item in node.body:
-                targets = (
-                    item.targets if isinstance(item, ast.Assign)
-                    else [item.target] if isinstance(item, ast.AnnAssign)
-                    else []
-                )
-                if (
-                    len(targets) == 1
-                    and isinstance(targets[0], ast.Name)
-                    and targets[0].id == "DRIVER_INFO"
-                    and isinstance(item.value, ast.Dict)
-                ):
-                    return item.value
+        found = _class_driver_info(node) if isinstance(node, ast.ClassDef) else None
+        if found is not None:
+            return found
     raise ExtractError(
         f"{filename}: no DRIVER_INFO class attribute found. "
         "Python drivers must define `DRIVER_INFO = {...}` inside a class body."
     )
+
+
+def _class_driver_info(node: ast.ClassDef) -> ast.Dict | None:
+    """The dict a class body assigns ``DRIVER_INFO``, plainly or annotated."""
+    for item in node.body:
+        if _assigns_driver_info(item) and isinstance(item.value, ast.Dict):
+            return item.value
+    return None
+
+
+def _assigns_driver_info(item: ast.stmt) -> bool:
+    if isinstance(item, ast.Assign):
+        targets = item.targets
+    elif isinstance(item, ast.AnnAssign):
+        targets = [item.target]
+    else:
+        return False
+    return len(targets) == 1 and isinstance(targets[0], ast.Name) and targets[0].id == "DRIVER_INFO"
 
 
 def declares_driver_info(filepath: Path) -> bool:
@@ -408,11 +415,7 @@ class _PythonWalk:
         if not isinstance(config_schema, dict):
             return
         for field_name, field_def in config_schema.items():
-            if (
-                field_name != UNEVALUATED_KEY
-                and isinstance(field_def, dict)
-                and "learned_from" in field_def
-            ):
+            if field_name != UNEVALUATED_KEY and _learns(field_def):
                 self.errors.extend(
                     config_learned_from_errors(
                         field_name, field_def, self.info.get("state_variables"),
@@ -471,6 +474,10 @@ class _PythonWalk:
 
 
 _ACTION_BLOCKS = ("actions", "quick_actions")
+
+
+def _learns(field_def: Any) -> bool:
+    return isinstance(field_def, dict) and "learned_from" in field_def
 
 
 # --- the sections both kinds of driver declare --------------------------------
@@ -538,12 +545,15 @@ def _command_errors(
     where = f"Command '{name}'"
     params = cmd_def.get("params")
     errors = _param_errors(name, params, coverage)
-    if (
-        ("sets" in cmd_def or "query_for" in cmd_def)
-        and coverage.judged(f"commands.{name}", _state_naming(cmd_def), _state_naming_reads(params))
+    if _names_state(cmd_def) and coverage.judged(
+        f"commands.{name}", _state_naming(cmd_def), _state_naming_reads(params)
     ):
         errors.extend(state_name_errors(where, cmd_def, declared))
     return errors
+
+
+def _names_state(cmd_def: dict[str, Any]) -> bool:
+    return "sets" in cmd_def or "query_for" in cmd_def
 
 
 def _param_errors(name: Any, params: Any, coverage: _Coverage) -> list[str]:
@@ -716,16 +726,25 @@ class _Coverage:
 
     def _read_whole(self, section: str) -> bool:
         if section == "config":
-            return not any(
-                _unread_value(source) or _merged(source)
-                for source in (self.info.get(name) for name in CONFIG_FIELD_SOURCES)
-            )
+            return self._config_read_whole()
         value = self.info.get(section)
-        if not isinstance(value, dict) or not value or _merged(value):
+        if not _names_seen(value):
             return False
         if section == "child_entity_types":
             return all(_child_type_read_whole(type_def) for type_def in value.values())
         return True
+
+    def _config_read_whole(self) -> bool:
+        """The config field names, in three sources: none of them built in
+        code (one left out is a fact there, not a gap)."""
+        sources = (self.info.get(name) for name in CONFIG_FIELD_SOURCES)
+        return not any(_unread_value(source) or _merged(source) for source in sources)
+
+
+def _names_seen(value: Any) -> bool:
+    """A mapping of names the reader saw whole: at least one, none built in
+    code (an empty one may be filled when the driver runs)."""
+    return isinstance(value, dict) and bool(value) and not _merged(value)
 
 
 def _child_type_read_whole(type_def: Any) -> bool:
@@ -796,22 +815,32 @@ def _action_reference_skips(info: dict[str, Any]) -> list[str]:
     skips silently (its YAML callers can never hit the case); naming the gap
     is this function's job. A block the reader could not see names nothing
     it could count."""
-    commands = info.get("commands")
+    target = _commands_unseen(info.get("commands"))
+    named = _named_commands(info)
+    if not target or not named:
+        return []
+    return [f"{named} action/quick_action reference(s) into commands, because {target}"]
+
+
+def _commands_unseen(commands: Any) -> str:
+    """Why the command set an action names into is not whole, or ""."""
     if commands is not None and not isinstance(commands, dict):
-        target = "commands is computed"
-    elif isinstance(commands, dict) and UNEVALUATED_KEY in commands:
-        target = (
+        return "commands is computed"
+    if isinstance(commands, dict) and UNEVALUATED_KEY in commands:
+        return (
             f"commands is only partly visible ({len(commands) - 1} key(s) "
             f"read, the rest merged or built at runtime)"
         )
-    else:
-        return []
+    return ""
+
+
+def _named_commands(info: dict[str, Any]) -> int:
+    """How many commands the actions and quick_actions blocks name, of the
+    blocks the reader saw."""
     actions = info.get("actions")
     quick = info.get("quick_actions")
-    named = sum(
-        1 for entry in (actions if isinstance(actions, list) else ())
+    promoting = [
+        entry for entry in (actions if isinstance(actions, list) else ())
         if isinstance(entry, dict) and entry.get("kind", "command") == "command"
-    ) + (len(quick) if isinstance(quick, list) else 0)
-    if not named:
-        return []
-    return [f"{named} action/quick_action reference(s) into commands, because {target}"]
+    ]
+    return len(promoting) + (len(quick) if isinstance(quick, list) else 0)
