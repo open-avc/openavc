@@ -34,7 +34,8 @@ class SourceDecodeError(ValueError):
 
     def __init__(self, filename: str, reason: str) -> None:
         self.without_name = (
-            f"cannot be read as Python source ({reason}). Save it as UTF-8 text."
+            f"cannot be read as Python source ({reason}). Save it as UTF-8, and "
+            "delete any coding line that names another encoding."
         )
         super().__init__(f"{filename} {self.without_name}")
 
@@ -55,8 +56,11 @@ def decode_python_source(data: bytes, filename: str) -> str:
     """``python_source`` on bytes in hand, named ``filename`` in messages."""
     try:
         return importlib.util.decode_source(data)
-    except (SyntaxError, UnicodeDecodeError) as e:
+    except SyntaxError as e:
         raise SourceDecodeError(filename, str(e)) from e
+    except UnicodeDecodeError as e:
+        line = data.count(b"\n", 0, e.start) + 1
+        raise SourceDecodeError(filename, f"line {line} is not {e.encoding} text") from e
 
 
 class SourceEncodeError(ValueError):

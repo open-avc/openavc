@@ -100,7 +100,16 @@ def test_a_file_the_import_cannot_decode_is_a_reader_error_naming_the_file(tmp_p
     with pytest.raises(ExtractError) as caught:
         extract_python_driver_info_full(path)
     assert str(caught.value).startswith("acme_widget.py cannot be read as Python source")
-    assert "Save it as UTF-8" in str(caught.value)
+    assert str(caught.value).endswith(
+        "Save it as UTF-8, and delete any coding line that names another encoding."
+    )
+
+
+def test_a_byte_the_encoding_cannot_read_is_named_by_its_line(tmp_path):
+    path = tmp_path / "acme_widget.py"
+    path.write_bytes(UNDECODABLE["not_utf_8"])
+    with pytest.raises(ExtractError, match=r"\(line 7 is not utf-8 text\)"):
+        extract_python_driver_info_full(path)
 
 
 def test_the_reader_agrees_with_the_import_on_every_file_it_reads(tmp_path):

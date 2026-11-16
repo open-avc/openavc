@@ -269,7 +269,8 @@ def scan_for_drivers(path: Path) -> DirectoryScan:
     path and being told nothing about it is the failure mode this command
     exists to remove. A directory walk skips companions (``*_sim.py``,
     ``*_discovery.py``), underscore-prefixed helpers, test modules, and any
-    ``.py`` that does not declare a ``DRIVER_INFO`` at all.
+    ``.py`` that does not declare a ``DRIVER_INFO`` at all. A ``.py`` Python
+    cannot decode is kept, so its error is reported (``declares_driver_info``).
     """
     if path.is_file():
         return DirectoryScan(files=[path])
