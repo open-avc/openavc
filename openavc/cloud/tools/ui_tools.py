@@ -670,7 +670,8 @@ def _new_page(project: Any, page_id: str, input: dict) -> Any:
     Refused in this order: an id already taken, page geometry the format
     retired, then every inline control (what ``add_ui_elements`` puts each
     through -- otherwise a page created with its elements in one call keeps
-    bindings nothing validated, and buttons silently do nothing), then the
+    bindings nothing validated, and buttons silently do nothing), then an
+    overlay box outside its range, in the words the update door uses, then the
     page itself as the model sees it.
     """
     if any(p.id == page_id for p in project.ui.pages):
@@ -678,6 +679,8 @@ def _new_page(project: Any, page_id: str, input: dict) -> Any:
     _reject_retired_geometry(input, f"Page '{page_id}'")
     elements = input.get("elements", [])
     boxes = _NewElements(project).checked_boxes(elements)
+    if isinstance(input.get("overlay"), dict):
+        _overlay_model(input["overlay"], f"Page '{page_id}'")
     page = _page_model(page_id, elements, {
         name: input[name] for name in _PAGE_FIELDS if name in input
     })
@@ -721,8 +724,27 @@ def _set_snap(page: Any, value: Any, what: str) -> None:
 
 
 def _set_overlay(page: Any, value: Any, what: str) -> None:
-    from openavc.core.project_loader import OverlayConfig
-    page.overlay = OverlayConfig(**value) if value else None
+    page.overlay = _overlay_model(value, what) if value else None
+
+
+def _overlay_model(value: dict, what: str) -> Any:
+    """The overlay settings built through the model, a width or height
+    outside the range it takes refused in the door's words: at 0 or less the
+    panel draws the dialog as nothing over a dimmed screen. Any other shape
+    the model refuses is its to say."""
+    from openavc.core.project_loader import OVERLAY_BOX_MAX, OVERLAY_BOX_MIN, OverlayConfig
+
+    try:
+        return OverlayConfig(**value)
+    except ValidationError as exc:
+        sides = [e["loc"][0] for e in exc.errors() if e["loc"] and e["loc"][0] in ("width", "height")]
+        if not sides:
+            raise
+        raise ToolEditError({
+            "error": f"{what}: overlay {sides[0]} is a percentage of the screen, from "
+                     f"{OVERLAY_BOX_MIN} to {OVERLAY_BOX_MAX}, not {value[sides[0]]!r}. "
+                     f"Leave it out for the default size."
+        }) from exc
 
 
 def _set_background(page: Any, value: Any, what: str) -> None:

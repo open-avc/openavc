@@ -100,6 +100,12 @@ def _validate_id(value: str, label: str) -> str:
 DISPLAY_DECIMALS_MIN = 0
 DISPLAY_DECIMALS_MAX = 20
 
+# An overlay's or sidebar's width and height, as a percentage of the screen:
+# the range the UI Builder's fields offer. At 0 or less the panel drew the
+# dialog as nothing over a dimmed screen.
+OVERLAY_BOX_MIN = 5
+OVERLAY_BOX_MAX = 100
+
 # A blank another setting decides is declared in its model's ``BLANK_FROM``:
 # field -> (that setting, its value -> what this field draws), with a third
 # entry, the value a word not named reads as, where that setting's own default
@@ -631,9 +637,10 @@ class PageBackground(_ForwardCompatModel):
 class OverlayConfig(_ForwardCompatModel):
     # Percentages of the viewport, not pixels. An overlay used to be the one
     # part of a panel still measured in hard px, which is why it was the first
-    # thing to look wrong on a different screen.
-    width: float | None = None
-    height: float | None = None
+    # thing to look wrong on a different screen. Blank is the panel's default
+    # box for the page type.
+    width: float | None = Field(default=None, ge=OVERLAY_BOX_MIN, le=OVERLAY_BOX_MAX)
+    height: float | None = Field(default=None, ge=OVERLAY_BOX_MIN, le=OVERLAY_BOX_MAX)
     position: str = "center"
     backdrop: str = "dim"
     dismiss_on_backdrop: bool = True

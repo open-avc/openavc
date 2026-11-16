@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight, Trash2, Undo2, Link } from "lucide-react";
 import { ConfirmDialog } from "../shared/ConfirmDialog";
 import { NumericInput } from "../shared/NumericInput";
+import { PROJECT_VALUES } from "../../api/projectValues.gen";
 import type { UIElement, UIPage, ProjectConfig, OverlayConfig, PageBackground, MasterElement } from "../../api/types";
 import { BasicProperties } from "./PropertySections/BasicProperties";
 import { CustomControlConfig } from "./PropertySections/CustomControlConfig";
@@ -724,6 +725,9 @@ function MasterElementProperties({
   );
 }
 
+/** An overlay's or sidebar's width and height: the project schema's range. */
+const OVERLAY_BOX = PROJECT_VALUES.OverlayConfig;
+
 function PageProperties({
   page,
   onChange,
@@ -874,15 +878,16 @@ function PageProperties({
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
             {/* Stored as percentages of the viewport (the runtime's pct
                 fallbacks are the placeholders) — the px labels this carried
-                before 0.8.0 wrote pixel-scale numbers into a percent field. */}
+                before 0.8.0 wrote pixel-scale numbers into a percent field.
+                The range is the project schema's. */}
             <FieldRow label="Width">
               <NumericInput
                 owner={`${page.id}/overlay.width`}
                 value={overlay.width}
                 onCommit={(v) => updateOverlay({ width: v })}
                 allowEmpty
-                min={5}
-                max={100}
+                min={OVERLAY_BOX.width.min}
+                max={OVERLAY_BOX.width.max}
                 placeholder={isSidebar ? "25" : "31.25"}
                 style={{ flex: 1 }}
               />
@@ -896,8 +901,8 @@ function PageProperties({
                   value={overlay.height}
                   onCommit={(v) => updateOverlay({ height: v })}
                   allowEmpty
-                  min={5}
-                  max={100}
+                  min={OVERLAY_BOX.height.min}
+                  max={OVERLAY_BOX.height.max}
                   placeholder="37.5"
                   style={{ flex: 1 }}
                 />

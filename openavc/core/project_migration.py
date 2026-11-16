@@ -756,6 +756,8 @@ _PANEL_SETTINGS_0_17 = {
 }
 # The panel drew a 0 in these as its default (200 and 30 ms).
 _ZERO_IS_DEFAULT_0_17 = ("page_transition_duration", "element_stagger_ms")
+# An overlay's or sidebar's width and height, a percentage of the screen.
+_OVERLAY_BOX_0_17 = (5, 100)
 
 
 def _whole_number_0_17(value) -> int | None:
@@ -823,6 +825,29 @@ def _drop_non_finite_sides_0_17(box: dict) -> None:
             box.pop(side)
 
 
+def _overlays_0_17(ui: dict) -> list[dict]:
+    """Every page's overlay settings, read as the boxes are."""
+    return [
+        page["overlay"]
+        for page in ui.get("pages", []) or []
+        if isinstance(page, dict) and isinstance(page.get("overlay"), dict)
+    ]
+
+
+def _clamp_overlay_box_0_17(overlay: dict) -> None:
+    """A width or height outside 5..100 to the nearer end; one that is no
+    finite number goes, so it loads as the default box the panel drew."""
+    low, high = _OVERLAY_BOX_0_17
+    for side in ("width", "height"):
+        number = _number_0_17(overlay.get(side))
+        if number is None:
+            continue
+        if not math.isfinite(number):
+            overlay.pop(side)
+        elif not low <= number <= high:
+            overlay[side] = low if number < low else high
+
+
 def migrate_0_16_to_0_17(data: dict) -> dict:
     """
     Migrate from 0.16.0 to 0.17.0 -- a saved value the schema now bounds is
@@ -856,6 +881,11 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
     the panel showed none of the project and the Programmer could not open
     it. A negative side is left as written: a container's child may sit past
     its edge on purpose, and a negative size is reported by Validate.
+
+    An overlay's or sidebar's `width` and `height` are brought to 5..100, the
+    range the UI Builder's fields offer: at 0 or less the panel drew the
+    dialog as nothing over a dimmed screen. One that is no finite number is
+    removed, so it loads as the default box the panel drew for it.
     """
     monitors = data.get("monitors") if isinstance(data.get("monitors"), list) else []
     for holder in _elements(data) + [m for m in monitors if isinstance(m, dict)]:
@@ -867,6 +897,8 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
             _clamp_0_17(settings, field, bounds)
     for box in _boxes_0_17(ui) if isinstance(ui, dict) else []:
         _drop_non_finite_sides_0_17(box)
+    for overlay in _overlays_0_17(ui) if isinstance(ui, dict) else []:
+        _clamp_overlay_box_0_17(overlay)
 
     data["openavc_version"] = "0.17.0"
     return data

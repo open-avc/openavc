@@ -24,6 +24,20 @@ export const PROJECT_VALUES = {
       "integer": true
     }
   },
+  "OverlayConfig": {
+    "width": {
+      "default": null,
+      "min": 5,
+      "max": 100,
+      "integer": false
+    },
+    "height": {
+      "default": null,
+      "min": 5,
+      "max": 100,
+      "integer": false
+    }
+  },
   "Placement": {
     "x": {
       "default": 0.0,

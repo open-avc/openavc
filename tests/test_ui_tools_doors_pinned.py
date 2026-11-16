@@ -282,9 +282,11 @@ async def test_update_page_refuses_a_grant_that_is_not_shaped_right():
 
 @pytest.mark.asyncio
 async def test_update_page_lets_a_malformed_overlay_raise():
+    # A width or height outside its range is the door's own sentence
+    # (tests/test_project_value_bounds.py); any other field the model refuses.
     engine = _engine()
     with pytest.raises(ValidationError):
-        await _call(engine, "update_ui_page", {"page_id": "other", "overlay": {"width": "wide"}})
+        await _call(engine, "update_ui_page", {"page_id": "other", "overlay": {"dismiss_on_backdrop": [1]}})
     with pytest.raises(TypeError):
         await _call(engine, "update_ui_page", {"page_id": "other", "background": ["x"]})
 

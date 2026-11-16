@@ -994,6 +994,53 @@ class TestMigrate016To017Boxes:
             primary, _, _ = self._boxes(result)
             assert primary["a"]["x"] == side
 
+    def test_an_overlay_box_is_brought_inside_five_to_a_hundred(self):
+        boxes = {
+            "zero": {"width": 0, "height": 0},
+            "negative": {"width": -10, "height": -1},
+            "huge": {"width": 200, "height": 100.5},
+            "kept": {"width": 31.25, "height": 37.5},
+            "text": {"width": "200", "height": "3"},
+            "unset": {"position": "center"},
+            "nulled": {"width": None, "height": None},
+            "words": {"width": "wide"},
+            "non_finite": {"width": float("nan"), "height": float("inf")},
+        }
+        data = make_v016_project_with_boxes(10)
+        data["ui"]["pages"] += [
+            {"id": name, "name": name, "page_type": "overlay", "overlay": overlay}
+            for name, overlay in boxes.items()
+        ] + [
+            {"id": "side", "name": "Side", "page_type": "sidebar", "overlay": {"width": 3, "height": 0}},
+            {"id": "plain", "name": "Plain", "overlay": None},
+            {"id": "odd", "name": "Odd", "overlay": "not an overlay"},
+        ]
+        result = migrate_0_16_to_0_17(data)
+        got = {page["id"]: page.get("overlay") for page in result["ui"]["pages"]}
+        assert got["zero"] == {"width": 5, "height": 5}
+        assert got["negative"] == {"width": 5, "height": 5}
+        assert got["huge"] == {"width": 100, "height": 100}
+        assert got["kept"] == {"width": 31.25, "height": 37.5}
+        assert got["text"] == {"width": 100, "height": 5}
+        assert got["unset"] == {"position": "center"}
+        assert got["nulled"] == {"width": None, "height": None}
+        # The panel drew a size that is no finite number as its default.
+        assert got["non_finite"] == {}
+        assert got["side"] == {"width": 5, "height": 5}
+        assert got["plain"] is None and got["odd"] == "not an overlay"
+        # Words: the schema refused them before and still does.
+        assert got["words"] == {"width": "wide"}
+
+    def test_a_project_with_an_overlay_box_out_of_range_loads(self):
+        data = make_v016_project_with_boxes(10)
+        data["ui"]["pages"].append({
+            "id": "dialog", "name": "Dialog", "page_type": "overlay",
+            "overlay": {"width": 0, "height": float("nan")},
+        })
+        result, _ = migrate_project(data)
+        overlay = ProjectConfig(**result).ui.pages[1].overlay
+        assert (overlay.width, overlay.height) == (5, None)
+
     def test_a_side_the_schema_refused_before_is_left_for_the_load_to_refuse(self):
         for side in ("wide", None, [1]):
             result = migrate_0_16_to_0_17(make_v016_project_with_boxes(side))

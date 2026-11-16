@@ -21,13 +21,18 @@ vi.mock("./projectValues.gen", () => ({
       element_stagger_ms: { default: 40, min: 20, max: 150, integer: true },
       element_stagger_style: { default: "scale" },
     },
+    OverlayConfig: {
+      width: { default: null, min: 10, max: 90, integer: false },
+      height: { default: null, min: 15, max: 80, integer: false },
+    },
   },
 }));
 
-import type { UIElement, UIPage, UISettings } from "./types";
+import type { ProjectConfig, UIElement, UIPage, UISettings } from "./types";
 import { ShownDecimalsRow } from "../components/ui-builder/PropertySections/ValueFields";
 import { MonitorControl } from "../components/shared/MonitorControl";
 import { PanelSettingsDialog } from "../views/ui-builder/PanelSettingsDialog";
+import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 
 function typeAndLeave(box: HTMLInputElement, text: string) {
   fireEvent.focus(box);
@@ -113,5 +118,19 @@ describe("The Builder's fields read the project schema's table", () => {
     renderPanelSettings({ idle_page: "", show_error_messages: undefined }, pages);
     expect(screen.getByDisplayValue("lobby (lobby)")).toBeTruthy();
     expect((screen.getByRole("checkbox") as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("an overlay's Width and Height take the overlay box's range", () => {
+    const onPageChange = vi.fn();
+    const page = {
+      id: "dialog", name: "Dialog", page_type: "overlay", elements: [], layouts: [],
+      overlay: { position: "center" },
+    } as unknown as UIPage;
+    const project = { ui: { settings: {}, pages: [page], master_elements: [] } } as unknown as ProjectConfig;
+    render(<PropertiesPanel element={null} page={page} project={project} onChange={vi.fn()} onPageChange={onPageChange} />);
+    typeAndLeave(screen.getByPlaceholderText("31.25") as HTMLInputElement, "200");
+    expect(onPageChange).toHaveBeenLastCalledWith({ overlay: { position: "center", width: 90 } });
+    typeAndLeave(screen.getByPlaceholderText("37.5") as HTMLInputElement, "2");
+    expect(onPageChange).toHaveBeenLastCalledWith({ overlay: { position: "center", height: 15 } });
   });
 });

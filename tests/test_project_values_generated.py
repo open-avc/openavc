@@ -118,6 +118,12 @@ def test_the_table_carries_each_bound_and_default_as_the_model_declares_it() -> 
             "max": project_loader.DISPLAY_DECIMALS_MAX, "integer": True,
         }
     assert "MasterElement" not in table
+    # An overlay's box is a percentage of the screen, blank for the panel's default.
+    for field in ("width", "height"):
+        assert table["OverlayConfig"][field] == {
+            "default": None, "min": project_loader.OVERLAY_BOX_MIN,
+            "max": project_loader.OVERLAY_BOX_MAX, "integer": False,
+        }
     # A box's sides take finite numbers only, and a missing one is the whole box.
     assert table["Placement"] == {
         "x": {"default": 0.0, "finite": True, "integer": False},

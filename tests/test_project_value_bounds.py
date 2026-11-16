@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from openavc.api.rest import router, set_engine
 from openavc.core.project_loader import (
     MonitorConfig,
+    OverlayConfig,
     Placement,
     ProjectConfig,
     UIElement,
@@ -45,12 +46,18 @@ def _monitor(field: str, value):
     return MonitorConfig(key="var.level", **{field: value})
 
 
+def _overlay(field: str, value):
+    return OverlayConfig(**{field: value})
+
+
 #: (what builds it, the field, the lowest it takes, the highest it takes)
 BOUNDS = [
     (_settings, "page_transition_duration", 50, 1000),
     (_settings, "element_stagger_ms", 10, 200),
     (_element, "display_decimals", 0, 20),
     (_monitor, "display_decimals", 0, 20),
+    (_overlay, "width", 5, 100),
+    (_overlay, "height", 5, 100),
 ]
 
 
@@ -305,3 +312,59 @@ async def test_an_ai_box_that_is_no_finite_number_is_refused_by_the_schema(value
             "element_id": "lbl", "placement": {"w": value},
         })
     assert _dump(engine) == before
+
+
+# --- an overlay's or sidebar's box ----------------------------------------------
+
+
+@pytest.mark.parametrize("field", ["width", "height"])
+def test_an_overlay_box_that_is_no_finite_number_is_refused_and_a_blank_one_taken(field):
+    for value in (float("nan"), float("inf"), "NaN"):
+        with pytest.raises(ValidationError):
+            OverlayConfig(**{field: value})
+    assert getattr(OverlayConfig(), field) is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field, value", [
+    ("width", 0), ("width", -10), ("height", 150), ("width", float("nan")), ("height", "tall"),
+])
+async def test_an_ai_page_update_with_an_overlay_box_outside_its_range_is_refused_in_words(field, value):
+    engine = _engine()
+    before = _dump(engine)
+    result = await _call(engine, "update_ui_page", {
+        "page_id": "other", "name": "Renamed", "overlay": {field: value, "position": "top"},
+    })
+    assert result == {"error": (
+        f"Page 'other': overlay {field} is a percentage of the screen, from 5 to 100, "
+        f"not {value!r}. Leave it out for the default size."
+    )}
+    assert _dump(engine) == before
+
+
+@pytest.mark.asyncio
+async def test_an_ai_page_created_with_an_overlay_box_outside_its_range_is_refused_in_words():
+    engine = _engine()
+    result = await _call(engine, "add_ui_page", {
+        "id": "dialog", "page_type": "overlay", "overlay": {"width": 40, "height": 0},
+    })
+    assert result == {"error": (
+        "Page 'dialog': overlay height is a percentage of the screen, from 5 to 100, "
+        "not 0. Leave it out for the default size."
+    )}
+    assert all(p.id != "dialog" for p in engine.project.ui.pages)
+
+
+@pytest.mark.asyncio
+async def test_an_ai_overlay_box_at_either_end_of_its_range_is_taken():
+    engine = _engine()
+    result = await _call(engine, "add_ui_page", {
+        "id": "dialog", "page_type": "overlay", "overlay": {"width": 5, "height": 100},
+    })
+    assert result.get("status") == "created", result
+    page = next(p for p in engine.project.ui.pages if p.id == "dialog")
+    assert (page.overlay.width, page.overlay.height) == (5, 100)
+    result = await _call(engine, "update_ui_page", {
+        "page_id": "dialog", "overlay": {"width": 100, "height": 5},
+    })
+    assert result.get("changed") == ["overlay"], result
