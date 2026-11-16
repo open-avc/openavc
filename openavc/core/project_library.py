@@ -23,7 +23,7 @@ from typing import Any
 from openavc import config
 from openavc.core import asset_tree, theme_tree
 from openavc.core.custom_ui import extract_from_zip, zip_entries
-from openavc.core import login_bundle
+from openavc.core import login_bundle, project_update
 from openavc.core.device_logins import (
     FoundView,
     StoreView,
@@ -33,6 +33,7 @@ from openavc.core.device_logins import (
     move_logins,
     saved_logins_of,
 )
+from openavc.core.project_update import MigrationNotes
 from openavc.core.project_loader import (
     ISCConfig,
     ProjectConfig,
@@ -979,12 +980,16 @@ def open_from_library(
     scripts_dir: Path,
     new_project_id: str,
     new_project_name: str,
+    *,
+    update_notes: MigrationNotes | None = None,
 ) -> ProjectConfig:
     """Load a saved project as the active project.
 
     Backs up the existing project, clears scripts, copies library scripts.
     If the project has a bundle.zip with drivers/plugins, installs them.
     Returns the new ProjectConfig (caller should reload the engine).
+    ``update_notes`` gets what its import into the library and this open's
+    migration changed in it, for the running project's notice.
     """
     data, scripts = get_project(project_id)
 
@@ -993,11 +998,15 @@ def open_from_library(
     # opens cleanly instead of leaning on the current validators happening to
     # accept old shapes (parity with the _import_avc door).
     from openavc.core.project_migration import migrate_project
-    data, _ = migrate_project(data)
+    opened = MigrationNotes()
+    data, _ = migrate_project(data, opened)
 
     from openavc.core.installed_equipment import InstalledEquipment
     policy = InstalledEquipment.from_environment()
     policy.compose(ProjectConfig(**data), for_load=True)
+    if update_notes is not None:
+        update_notes.notes += project_update.take(_lib_dir() / sanitize_id(project_id)).notes
+        update_notes.notes += opened.notes
 
     # Install bundled drivers/plugins from the original zip if present
     _install_bundled_from_library(project_id)
@@ -1267,7 +1276,8 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
     from openavc.core.project_migration import migrate_project
 
     data = json.loads(content.decode("utf-8"))
-    data, _ = migrate_project(data)
+    notes = MigrationNotes()
+    data, _ = migrate_project(data, notes)
     ProjectConfig(**data)  # validate
 
     project = data.get("project", {})
@@ -1287,6 +1297,8 @@ def _import_avc(content: bytes, override_id: str | None) -> dict[str, Any]:
     except BaseException:
         shutil.rmtree(project_dir, ignore_errors=True)
         raise
+    # What the migration changed waits beside the copy until it is opened.
+    project_update.record(project_dir, notes)
 
     _move_copy_logins(pid)
 
@@ -1525,7 +1537,8 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
             raise ValueError("No .avc file found in zip")
 
         data = json.loads(zf.read(avc_names[0]).decode("utf-8"))
-        data, _ = migrate_project(data)
+        notes = MigrationNotes()
+        data, _ = migrate_project(data, notes)
         ProjectConfig(**data)  # validate
 
         project = data.get("project", {})
@@ -1568,6 +1581,8 @@ def _import_zip(content: bytes, override_id: str | None) -> dict[str, Any]:
         except BaseException:
             shutil.rmtree(project_dir, ignore_errors=True)
             raise
+        # What the migration changed waits beside the copy until it is opened.
+        project_update.record(project_dir, notes)
 
         # Project committed — now install bundled drivers/plugins (shared,
         # idempotent). A failure here leaves the project intact with the

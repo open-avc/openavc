@@ -326,6 +326,28 @@ async def dismiss_recovery_notice() -> dict[str, Any]:
     return {"status": "dismissed", "cleared": cleared}
 
 
+@router.get("/project/update-notice")
+async def get_update_notice() -> dict[str, Any]:
+    """What loading the running project changed in it, and found, when it
+    came from an earlier release; ``notes`` is empty when there is nothing to
+    say. Stays until dismissed."""
+    from openavc.core import project_update
+
+    engine = _get_engine()
+    record = project_update.read(engine.project_path.parent) or {}
+    return {"at": record.get("at", ""), "notes": record.get("notes", [])}
+
+
+@router.post("/project/update-notice/dismiss")
+async def dismiss_update_notice() -> dict[str, Any]:
+    """Clear the notice of what loading the running project changed."""
+    from openavc.core import project_update
+
+    engine = _get_engine()
+    cleared = project_update.dismiss(engine.state, engine.project_path.parent)
+    return {"status": "dismissed", "cleared": cleared}
+
+
 @router.put("/project")
 async def save_project_config(request: Request, mode: Literal["edit", "import"] = "edit") -> dict[str, Any]:
     """Save a full project configuration, then reload.
@@ -396,7 +418,9 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
         # older export must migrate exactly like a disk load would. Current-
         # format bodies pass through untouched.
         from openavc.core.project_migration import migrate_project
-        body, _ = migrate_project(body)
+        from openavc.core.project_update import MigrationNotes
+        update_notes = MigrationNotes()
+        body, _ = migrate_project(body, update_notes)
         project = ProjectConfig(**body)
     except ValidationError as e:
         # The field list is the whole repair story for whoever sent this --
@@ -425,7 +449,8 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
                     create_backup, engine.project_path, f"Before importing '{project.project.name}'"
                 )
                 new_revision = await engine.apply_project(
-                    project, expected_revision=expected_rev, origin=ProjectOrigin.LOAD
+                    project, expected_revision=expected_rev, origin=ProjectOrigin.LOAD,
+                    update_notes=update_notes,
                 )
             except InstalledEquipmentError as error:
                 raise HTTPException(status_code=422, detail=str(error)) from error
@@ -433,6 +458,10 @@ async def save_project_config(request: Request, mode: Literal["edit", "import"] 
             new_revision = await engine.apply_project(
                 project, expected_revision=expected_rev
             )
+            # An earlier release's document saved over this one: what its
+            # migration changed joins the notice for the running project.
+            if update_notes:
+                engine.keep_update_notes(update_notes, replace=False)
     except ProjectRevisionConflictError as e:
         # The engine's own sentence: it is the half that knows whether another
         # writer landed a save or the caller's token is simply from an earlier
@@ -787,9 +816,11 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
     import asyncio
     await asyncio.to_thread(create_backup, engine.project_path, f"Before opening '{data.project_name}'")
 
+    from openavc.core.project_update import MigrationNotes
+    update_notes = MigrationNotes()
     try:
         _open(data.library_id, engine.project_path, scripts_dir,
-              project_id, data.project_name)
+              project_id, data.project_name, update_notes=update_notes)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail=f"Project '{data.library_id}' not found in library")
     except ValidationError as e:
@@ -802,6 +833,7 @@ async def open_from_library(data: LibraryOpenRequest) -> dict[str, Any]:
             e,
         )
 
+    engine.keep_update_notes(update_notes, replace=True)
     await engine.broadcast_ws({
         "type": "project.replaced",
         "project_name": data.project_name,
@@ -952,6 +984,11 @@ async def restore_backup(filename: str) -> dict[str, Any]:
 
     try:
         restore_from_backup(backup_path, engine.project_path)
+        # The backup replaces the running project: a notice about the one
+        # before goes, and the reload keeps what the backup's own migration
+        # changes.
+        from openavc.core.project_update import MigrationNotes
+        engine.keep_update_notes(MigrationNotes(), replace=True)
         await engine.reload_project()
     finally:
         # Re-apply state.json to the store and start the persister again,

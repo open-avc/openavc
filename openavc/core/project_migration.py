@@ -8,6 +8,17 @@ for the next version, stamps that version and returns the same dict.
 the file's own version on. A new format version is one `migrate_X_to_Y` and one
 row: `CURRENT_VERSION` is where the chain ends, so the two cannot disagree.
 
+THE policy for a saved project that already holds what a new rule refuses: a
+load never refuses a project an earlier release saved. A step makes the repair
+when there is one plain repair that keeps what the panel draws, and leaves the
+rest as written for Validate and the AI's page review to report in place. Each
+step also takes the notes the load keeps (``core/project_update.py``) and says
+there what it changed and what it found and left, in the words a person reads
+in the Programmer's notice; a step that only reshapes the file, so nobody sees
+a difference, says nothing. An import runs this chain and the load like a boot
+and never refuses; only the AI's tools, and a project PUT for what it newly
+adds, refuse a value a rule does not take.
+
 The rule worth knowing before changing a step: a step says what it did to the
 projects of its day, so the steps that rewrite UI elements keep their own
 numbers and type lists rather than reading today's renderer or page review
@@ -23,6 +34,7 @@ from typing import NamedTuple
 from openavc.core.bound_migration import repair_bounds_0_17
 from openavc.core.box_migration import repair_boxes_0_17
 from openavc.core.layout_migration import convert_grid_layout
+from openavc.core.project_update import MigrationNotes
 
 # Connection-related config fields that belong in the connections table. The
 # list is part of the driver contract (a connection field cannot be
@@ -41,7 +53,7 @@ from openavc.utils.logger import get_logger
 log = get_logger(__name__)
 
 
-def migrate_0_1_to_0_2(data: dict) -> dict:
+def migrate_0_1_to_0_2(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.1.0 to 0.2.0:
     - Rename serial fields com_port -> port, baud_rate -> baudrate so they
@@ -82,7 +94,7 @@ def _rename_serial_fields_0_2(config: dict) -> None:
             config.pop(old_name)
 
 
-def migrate_0_2_to_0_3(data: dict) -> dict:
+def migrate_0_2_to_0_3(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.2.0 to 0.3.0:
     - Add empty plugins dict
@@ -95,7 +107,7 @@ def migrate_0_2_to_0_3(data: dict) -> dict:
     return data
 
 
-def migrate_0_3_to_0_4(data: dict) -> dict:
+def migrate_0_3_to_0_4(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.3.0 to 0.4.0:
     - Convert per-device group field into device_groups entries
@@ -148,7 +160,7 @@ def _add_group_members_0_4(group: dict, ids: list) -> None:
             device_ids.append(device_id)
 
 
-def migrate_0_4_to_0_5(data: dict) -> dict:
+def migrate_0_4_to_0_5(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.4.0 to 0.5.0:
     - Inject empty child_entities dict on every device so the new
@@ -165,7 +177,7 @@ def migrate_0_4_to_0_5(data: dict) -> dict:
     return data
 
 
-def migrate_0_5_to_0_6(data: dict) -> dict:
+def migrate_0_5_to_0_6(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.5.0 to 0.6.0:
     - Introduces the device-bridge connection model: a downstream device can
@@ -347,7 +359,7 @@ def _migrate_element_bindings_0_6_to_0_7(el: dict) -> None:
         cfg["presets"] = presets
 
 
-def migrate_0_6_to_0_7(data: dict) -> dict:
+def migrate_0_6_to_0_7(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.6.0 to 0.7.0:
     - Rewrite UI element bindings from the ad-hoc per-control slot set into the
@@ -396,7 +408,7 @@ def _migrate_element_navigate_0_7_to_0_8(el: dict) -> None:
             _rename_navigate_action(action)
 
 
-def migrate_0_7_to_0_8(data: dict) -> dict:
+def migrate_0_7_to_0_8(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.7.0 to 0.8.0 -- the layout engine.
 
@@ -423,7 +435,7 @@ def migrate_0_7_to_0_8(data: dict) -> dict:
     return data
 
 
-def migrate_0_8_to_0_9(data: dict) -> dict:
+def migrate_0_8_to_0_9(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.8.0 to 0.9.0 -- custom controls.
 
@@ -534,7 +546,7 @@ def _legacy_count_0_10(value) -> int:
     return max(count, 0)
 
 
-def migrate_0_9_to_0_10(data: dict) -> dict:
+def migrate_0_9_to_0_10(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.9.0 to 0.10.0 -- the matrix becomes two lists.
 
@@ -563,7 +575,7 @@ def migrate_0_9_to_0_10(data: dict) -> dict:
     return data
 
 
-def migrate_0_10_to_0_11(data: dict) -> dict:
+def migrate_0_10_to_0_11(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.10.0 to 0.11.0 -- the project says which readings matter.
 
@@ -629,7 +641,7 @@ def _dashboard_key_0_11(var) -> str | None:
     return f"var.{var_id}" if isinstance(var_id, str) and var_id else None
 
 
-def migrate_0_11_to_0_12(data: dict) -> dict:
+def migrate_0_11_to_0_12(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.11.0 to 0.12.0 -- a control can call a function and emit an
     event.
@@ -648,7 +660,7 @@ def migrate_0_11_to_0_12(data: dict) -> dict:
     return data
 
 
-def migrate_0_12_to_0_13(data: dict) -> dict:
+def migrate_0_12_to_0_13(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.12.0 to 0.13.0 -- the project carries the settings a whole
     site shares.
@@ -671,7 +683,7 @@ def migrate_0_12_to_0_13(data: dict) -> dict:
     return data
 
 
-def migrate_0_13_to_0_14(data: dict) -> dict:
+def migrate_0_13_to_0_14(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.13.0 to 0.14.0 -- a control can name itself to the macro it
     runs.
@@ -700,7 +712,7 @@ def migrate_0_13_to_0_14(data: dict) -> dict:
 _UNDRAWN_LABEL_TYPES_0_15 = frozenset({"clock", "custom", "label", "plugin"})
 
 
-def migrate_0_14_to_0_15(data: dict) -> dict:
+def migrate_0_14_to_0_15(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.14.0 to 0.15.0 -- a label on a control that draws none is
     dropped.
@@ -726,7 +738,7 @@ def migrate_0_14_to_0_15(data: dict) -> dict:
     return data
 
 
-def migrate_0_15_to_0_16(data: dict) -> dict:
+def migrate_0_15_to_0_16(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.15.0 to 0.16.0 -- a fader with no unit is given the `%` it
     has always drawn.
@@ -749,7 +761,7 @@ def migrate_0_15_to_0_16(data: dict) -> dict:
     return data
 
 
-def migrate_0_16_to_0_17(data: dict) -> dict:
+def migrate_0_16_to_0_17(data: dict, notes: MigrationNotes | None = None) -> dict:
     """
     Migrate from 0.16.0 to 0.17.0 -- a saved value the schema now bounds is
     brought inside its bound.
@@ -804,12 +816,14 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
 
     The bounds are the step's own, as they stood at 0.17.0: the numbers and
     the PIN in `core/bound_migration.py` and the boxes in
-    `core/box_migration.py`.
+    `core/box_migration.py`. Each value the step rewrites is a note, and so is
+    each box with a negative width or height, which it leaves for Validate.
     """
-    repair_bounds_0_17(data, _elements(data))
+    notes = MigrationNotes() if notes is None else notes
+    repair_bounds_0_17(data, _elements(data), notes)
     ui = data.get("ui")
     if isinstance(ui, dict):
-        repair_boxes_0_17(ui)
+        repair_boxes_0_17(ui, notes)
 
     data["openavc_version"] = "0.17.0"
     return data
@@ -839,9 +853,13 @@ MIGRATIONS = [
 CURRENT_VERSION = MIGRATIONS[-1][1]
 
 
-def migrate_project(data: dict) -> tuple[dict, bool]:
+def migrate_project(data: dict, notes: MigrationNotes | None = None) -> tuple[dict, bool]:
     """
     Apply all needed migrations to bring a project to the current version.
+
+    ``notes``, when given, gets what each step changed and found: a door that
+    keeps them for the Programmer's notice passes one
+    (``core/project_update.py``).
 
     Returns:
         (migrated_data, was_migrated) — the transformed dict and whether
@@ -849,11 +867,12 @@ def migrate_project(data: dict) -> tuple[dict, bool]:
     """
     current = data.get("openavc_version", "0.1.0")
     migrated = False
+    notes = MigrationNotes() if notes is None else notes
 
     for source_ver, target_ver, migrator in MIGRATIONS:
         if current == source_ver:
             log.info(f"Migrating project from {source_ver} to {target_ver}")
-            data = migrator(data)
+            data = migrator(data, notes)
             current = target_ver
             migrated = True
 

@@ -14,20 +14,55 @@ project models: a step says what it did to the projects of its day
 (``core/project_migration.py``, whose ``migrate_0_16_to_0_17`` calls this and
 says what the whole step does). A list that is missing, null or not the shape
 it should be reads as nothing.
+
+Each side removed and each overlay side moved is a note for the Programmer's
+notice, and so is a negative width or height, which the step leaves for
+Validate to report.
 """
 
 import math
 
+from openavc.core.project_update import MigrationNotes
+
 # An overlay's or sidebar's width and height, a percentage of the screen.
 _OVERLAY_BOX_0_17 = (5, 100)
 
+# Each side of a box as the UI Builder names it, and what the panel drew for
+# one that is missing.
+_SIDES_0_17 = {"x": ("X", 0), "y": ("Y", 0), "w": ("Width", 100), "h": ("Height", 100)}
 
-def repair_boxes_0_17(ui: dict) -> None:
+
+def repair_boxes_0_17(ui: dict, notes: MigrationNotes) -> None:
     """Every box and overlay of the project's ``ui``, repaired in place."""
-    for box in _boxes_0_17(ui):
-        _drop_non_finite_sides_0_17(box)
-    for overlay in _overlays_0_17(ui):
-        _clamp_overlay_box_0_17(overlay)
+    for place in _boxes_0_17(ui):
+        _drop_non_finite_sides_0_17(place, notes)
+    for page in _overlay_pages_0_17(ui):
+        _clamp_overlay_box_0_17(page, notes)
+
+
+def element_places_0_17(ui) -> dict[int, tuple[str, str]]:
+    """Where each page and master element is, for a note: ``id(element)`` to
+    the start of its location (the page's name, or "Master Elements") and the
+    page's id ("" for a master)."""
+    if not isinstance(ui, dict):
+        return {}
+    places: dict[int, tuple[str, str]] = {}
+    for page in _dicts_0_17(ui.get("pages")):
+        for el in _dicts_0_17(page.get("elements")):
+            places[id(el)] = _page_place_0_17(page)
+    for mel in _dicts_0_17(ui.get("master_elements")):
+        places[id(mel)] = ("Master Elements", "")
+    return places
+
+
+def _page_place_0_17(page: dict) -> tuple[str, str]:
+    page_id = str(page.get("id", ""))
+    return str(page.get("name") or page_id), page_id
+
+
+def say_number_0_17(number: float) -> str:
+    """A number in a note as a person typed it: 5, not 5.0."""
+    return str(int(number)) if number.is_integer() else str(number)
 
 
 def number_0_17(value) -> float | None:
@@ -50,48 +85,88 @@ def _dicts_0_17(items) -> list[dict]:
     return [item for item in items or [] if isinstance(item, dict)]
 
 
-def _placements_0_17(holder: dict) -> list[dict]:
-    placements = holder.get("placements")
-    return _dicts_0_17(placements.values()) if isinstance(placements, dict) else []
+class _Box:
+    """One stored box and where it is: the layout it belongs to and the
+    control it places."""
+
+    def __init__(self, box: dict, layout_id: str, location: str, page_id: str, element_id: str):
+        self.box = box
+        self.layout_id = layout_id
+        self.location = location
+        self.at = {"page_id": page_id, "element_id": element_id}
 
 
-def _boxes_0_17(ui: dict) -> list[dict]:
+def _boxes_0_17(ui: dict) -> list[_Box]:
     """Every stored box: each placement of every page arrangement, then each
     of every master element's. A list that is missing, null or not the shape
     it should be reads as nothing."""
-    pages = _dicts_0_17(ui.get("pages"))
-    holders = [layout for page in pages for layout in _dicts_0_17(page.get("layouts"))]
-    holders += _dicts_0_17(ui.get("master_elements"))
-    return [box for holder in holders for box in _placements_0_17(holder)]
+    boxes: list[_Box] = []
+    for page in _dicts_0_17(ui.get("pages")):
+        name, page_id = _page_place_0_17(page)
+        for layout in _dicts_0_17(page.get("layouts")):
+            layout_id = str(layout.get("id", ""))
+            for element_id, box in _placements_0_17(layout):
+                boxes.append(_Box(box, layout_id, f"{name} > {element_id}", page_id, element_id))
+    for mel in _dicts_0_17(ui.get("master_elements")):
+        element_id = str(mel.get("id", ""))
+        for layout_id, box in _placements_0_17(mel):
+            boxes.append(_Box(box, layout_id, f"Master Elements > {element_id}", "", element_id))
+    return boxes
 
 
-def _drop_non_finite_sides_0_17(box: dict) -> None:
+def _placements_0_17(holder: dict) -> list[tuple[str, dict]]:
+    placements = holder.get("placements")
+    if not isinstance(placements, dict):
+        return []
+    return [(str(key), box) for key, box in placements.items() if isinstance(box, dict)]
+
+
+def _drop_non_finite_sides_0_17(place: _Box, notes: MigrationNotes) -> None:
     """A side that is no finite number goes, so the box loads with the
-    default the panel drew for it (x and y 0, w and h 100)."""
-    for side in ("x", "y", "w", "h"):
-        number = number_0_17(box.get(side))
-        if number is not None and not math.isfinite(number):
-            box.pop(side)
+    default the panel drew for it (x and y 0, w and h 100). A negative width
+    or height stays, and is noted for Validate."""
+    for side, (name, default) in _SIDES_0_17.items():
+        number = number_0_17(place.box.get(side))
+        if number is None:
+            continue
+        if not math.isfinite(number):
+            place.box.pop(side)
+            notes.changed(
+                f'{name} in layout "{place.layout_id}" was not a number, so it is now {default}%.',
+                place.location, **place.at,
+            )
+        elif side in ("w", "h") and number < 0:
+            notes.found(
+                f'{name} in layout "{place.layout_id}" is {say_number_0_17(number)}%, so the control does not draw.',
+                place.location, **place.at,
+            )
 
 
-def _overlays_0_17(ui: dict) -> list[dict]:
-    """Every page's overlay settings, read as the boxes are."""
-    pages = _dicts_0_17(ui.get("pages"))
-    return [page["overlay"] for page in pages if isinstance(page.get("overlay"), dict)]
+def _overlay_pages_0_17(ui: dict) -> list[dict]:
+    """Every page with overlay settings, read as the boxes are."""
+    return [page for page in _dicts_0_17(ui.get("pages")) if isinstance(page.get("overlay"), dict)]
 
 
-def _clamp_overlay_box_0_17(overlay: dict) -> None:
+def _clamp_overlay_box_0_17(page: dict, notes: MigrationNotes) -> None:
     """A width or height outside 5..100 to the nearer end; one that is no
     finite number goes, so it loads as the default box the panel drew."""
-    for side in ("width", "height"):
-        number = number_0_17(overlay.get(side))
-        if number is not None:
-            _overlay_side_inside_0_17(overlay, side, number)
+    name, page_id = _page_place_0_17(page)
+    for side, label in (("width", "Width"), ("height", "Height")):
+        number = number_0_17(page["overlay"].get(side))
+        if number is None:
+            continue
+        said = _overlay_side_inside_0_17(page["overlay"], side, number, label)
+        if said:
+            notes.changed(said, f"{name} > page", page_id=page_id)
 
 
-def _overlay_side_inside_0_17(overlay: dict, side: str, number: float) -> None:
+def _overlay_side_inside_0_17(overlay: dict, side: str, number: float, label: str) -> str:
+    """The side brought inside the box; what changed, or "" for nothing."""
     low, high = _OVERLAY_BOX_0_17
     if not math.isfinite(number):
         overlay.pop(side)
-    elif not low <= number <= high:
-        overlay[side] = low if number < low else high
+        return f"{label} was not a number, so the page opens at its default size."
+    if low <= number <= high:
+        return ""
+    overlay[side] = low if number < low else high
+    return f"{label} changed from {say_number_0_17(number)}% to {overlay[side]}%, the range the UI Builder offers."

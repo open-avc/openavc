@@ -24,6 +24,7 @@ import asyncio
 import secrets
 from typing import Any
 
+from openavc.core import project_update
 from openavc.core.client_origin import reload_origin
 from openavc.core.project_diff import ProjectDiff, ProjectOrigin
 from openavc.core.project_loader import (
@@ -32,6 +33,7 @@ from openavc.core.project_loader import (
     refresh_crash_copy,
     save_project_async,
 )
+from openavc.core.project_update import MigrationNotes
 from openavc.core.typed_fields import trim_device_settings
 from openavc.utils.logger import get_logger
 
@@ -95,8 +97,18 @@ class ProjectChangesMixin:
         save finished.
         """
         async with self._reload_lock:
-            new_project = load_project(self.project_path)
+            new_project = load_project(self.project_path, keep_notes=True)
             await self._apply_project_locked(new_project, ProjectOrigin.LOAD, persist=False)
+            project_update.publish(self.state, self.project_path.parent)
+
+    def keep_update_notes(self, notes: MigrationNotes, *, replace: bool) -> None:
+        """Keep what a migration changed in a project that came in, for the
+        Programmer's notice (``core/project_update.py``), and publish it.
+        ``replace`` is for a project that replaced the running one: the
+        record then describes it alone, or is cleared when it needs none."""
+        keep = project_update.replace if replace else project_update.record
+        keep(self.project_path.parent, notes)
+        project_update.publish(self.state, self.project_path.parent)
 
     async def apply_project(
         self,
@@ -105,13 +117,16 @@ class ProjectChangesMixin:
         expected_revision: str | None = None,
         origin: ProjectOrigin = ProjectOrigin.EDIT,
         persist: bool = True,
+        update_notes: MigrationNotes | None = None,
     ) -> str:
         """The one way a project change enters the engine.
 
         Checks optimistic concurrency (``expected_revision=None`` skips the
         check), persists the bytes, swaps the in-memory project, bumps the
         revision, and reconciles only the subsystems the change actually
-        touches. Returns the new revision.
+        touches. Returns the new revision. ``update_notes`` is for a project
+        that replaces the running one: what its migration changed, kept once
+        the apply has worked (``keep_update_notes``).
 
         The revision compare must happen under the same lock that increments
         ``_project_revision``. Checked outside it, two concurrent saves can
@@ -121,7 +136,10 @@ class ProjectChangesMixin:
         """
         async with self._reload_lock:
             self._check_revision(expected_revision)
-            return await self._apply_project_locked(new_project, origin, persist)
+            revision = await self._apply_project_locked(new_project, origin, persist)
+            if update_notes is not None:
+                self.keep_update_notes(update_notes, replace=True)
+            return revision
 
     def _check_revision(self, expected_revision: str | None) -> None:
         """Refuse a save made against a revision this run has moved past;

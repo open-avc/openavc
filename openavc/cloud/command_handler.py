@@ -215,8 +215,10 @@ class CommandHandler:
                     # validating/saving, matching load_project — otherwise a
                     # pre-current-schema cloud project is persisted with stale
                     # field placement and misread until the next disk reload.
+                    from openavc.core.project_update import MigrationNotes
+                    update_notes = MigrationNotes()
                     try:
-                        migrated_json, _ = migrate_project(project_json)
+                        migrated_json, _ = migrate_project(project_json, update_notes)
                         project = ProjectConfig.model_validate(migrated_json)
                     except (ValueError, TypeError) as ve:
                         await self._send_result(request_id, False, error=f"Invalid project schema: {ve}")
@@ -233,7 +235,8 @@ class CommandHandler:
                     # its next save instead of silently reverting the push.
                     from openavc.core.project_diff import ProjectOrigin
                     await self._apply_fn(
-                        project, origin=ProjectOrigin.LOAD, persist=True
+                        project, origin=ProjectOrigin.LOAD, persist=True,
+                        update_notes=update_notes,
                     )
                 else:
                     if self._reload_fn is None:

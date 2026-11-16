@@ -1305,7 +1305,10 @@ class TestCommandHandler:
         # push wins by design, but the apply bumps + broadcasts so an open IDE
         # 409s instead of silently reverting it). No double reload-from-disk.
         from openavc.core.project_diff import ProjectOrigin
-        assert applied == [{"origin": ProjectOrigin.LOAD, "persist": True}]
+        from openavc.core.project_update import MigrationNotes
+        # The push replaces the running project: what its migration changed
+        # (nothing, here) becomes the notice for it.
+        assert applied == [{"origin": ProjectOrigin.LOAD, "persist": True, "update_notes": MigrationNotes()}]
         assert reloaded == []
         assert sent and sent[-1][1]["success"] is True
 

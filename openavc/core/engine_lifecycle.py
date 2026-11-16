@@ -359,8 +359,9 @@ class EngineLifecycleMixin:
         # Whatever that had to do to get a project, say so. Published from the
         # record on disk rather than from this boot, so a notice nobody has
         # dismissed survives the restart that would otherwise bury it.
-        from openavc.core import project_recovery
+        from openavc.core import project_recovery, project_update
         project_recovery.publish(self.state, self.project_path.parent)
+        project_update.publish(self.state, self.project_path.parent)
         self._apply_project_settings()
         self.state.set("system.project_name", self.project.project.name, source="system")
         # Publish project asset catalog so plugins (e.g. audio_player) can

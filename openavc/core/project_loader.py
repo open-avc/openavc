@@ -976,14 +976,19 @@ class ProjectConfig(_ForwardCompatModel):
 # --- Loader Functions ---
 
 
-def load_project(path: str | Path) -> ProjectConfig:
+def load_project(path: str | Path, *, keep_notes: bool = False) -> ProjectConfig:
     """
     Load and validate a project.avc file.
 
     Automatically migrates older project formats to the current version.
+    With ``keep_notes``, what the migration changed and found is kept beside
+    the file for the Programmer's notice (``core/project_update.py``), before
+    the migrated file is saved: the next load has nothing left to migrate.
 
     Args:
         path: Path to the project.avc file.
+        keep_notes: Keep the migration's notes. The boot's load and a reload
+            do; the first boot's seed does not.
 
     Returns:
         Validated ProjectConfig object.
@@ -993,6 +998,7 @@ def load_project(path: str | Path) -> ProjectConfig:
         json.JSONDecodeError: If the file isn't valid JSON.
         pydantic.ValidationError: If the JSON doesn't match the schema.
     """
+    from openavc.core import project_update
     from openavc.core.project_migration import migrate_project
 
     path = Path(path)
@@ -1000,9 +1006,12 @@ def load_project(path: str | Path) -> ProjectConfig:
     raw = json.loads(path.read_text(encoding="utf-8"))
 
     # Apply migrations if needed
-    raw, was_migrated = migrate_project(raw)
+    notes = project_update.MigrationNotes()
+    raw, was_migrated = migrate_project(raw, notes)
 
     project = ProjectConfig(**raw)
+    if keep_notes:
+        project_update.record(path.parent, notes)
     log.info(
         f'Loaded project "{project.project.name}" '
         f"({len(project.devices)} devices, {len(project.macros)} macros, "

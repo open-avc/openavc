@@ -184,7 +184,7 @@ def load_or_recover(project_path: Path) -> ProjectConfig:
     a first boot and leaves none.
     """
     try:
-        return load_project(project_path)
+        return load_project(project_path, keep_notes=True)
     except FileNotFoundError:
         _load_log.warning(f"Project file not found: {project_path}")
         seeded = _seed_missing(project_path)
@@ -242,7 +242,7 @@ def _restore_newest_backup(project_path: Path, failure: str) -> ProjectConfig | 
         _load_log.info(f"Attempting restore from backup: {backup.filename}")
         try:
             restore_from_backup(backup_path, project_path)
-            project = load_project(project_path)
+            project = load_project(project_path, keep_notes=True)
             _load_log.info(f"Successfully restored project from backup: {backup.filename}")
             record(
                 project_dir,
