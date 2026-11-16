@@ -130,6 +130,19 @@ def _disk_config(eng, device_id="w1") -> dict:
     return next(d for d in data["devices"] if d["id"] == device_id)["config"]
 
 
+def _settled_config(eng, device_id="w1") -> dict:
+    """The device's config in memory once no save is queued or running, else {}.
+
+    A wait polls this, never the file: on Windows, opening the file while a
+    save replaces it is refused, and a save cannot replace a file a reader
+    holds open. The file is read once the wait is over.
+    """
+    task = eng._bookkeeping_task
+    if eng._bookkeeping_queue or (task is not None and not task.done()):
+        return {}
+    return next(d for d in eng.project.devices if d.id == device_id).config
+
+
 async def _add(eng, config=None) -> int:
     project = eng.project.model_copy(deep=True)
     project.devices.append(DeviceConfig(
@@ -235,10 +248,11 @@ async def test_stopping_simulation_saves_what_the_equipment_reports(tmp_path, ac
     acme_widget.REPORT = {"model": "W200", "channel_count": 4}
     await sim.stop()
     await wait_for_condition(
-        lambda: _disk_config(eng).get("model") == "W200",
+        lambda: _settled_config(eng).get("model") == "W200",
         timeout=2.0,
         message="the equipment's report was not saved after simulation stopped",
     )
+    assert _disk_config(eng)["model"] == "W200"
     assert _disk_config(eng)["channels"] == "4"
 
 
@@ -259,7 +273,8 @@ async def test_what_the_simulator_reported_is_not_saved_after_it_stops(tmp_path,
     # The equipment then reports a channel count of its own: that is saved.
     eng.devices.get_driver("w1").set_state("channel_count", 2)
     eng.devices.get_driver("w1").set_state("channel_count", 4)
-    await wait_for_condition(lambda: _disk_config(eng).get("channels") == "4")
+    await wait_for_condition(lambda: _settled_config(eng).get("channels") == "4")
+    assert _disk_config(eng)["channels"] == "4"
 
 
 @pytest.mark.asyncio
