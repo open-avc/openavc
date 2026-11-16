@@ -32,7 +32,7 @@ either side shows up here and updates these sets rather than passing by:
   text are ordered as text;
 - a list row whose value is 0: once a reading arrives the row is matched as a
   blank (`item.value || ''`), so a blank reading lights it;
-- the operator spellings: `visible_when` knows ten of the rule's fourteen
+- the operator spellings: `visible_when` knows eight of the rule's fourteen
   aliases, and an operator it does not know never holds where the rule
   refuses it.
 
