@@ -38,6 +38,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { DeviceGroup, MacroConfig, MacroStep, TriggerConfig } from "../../api/types";
+import { MacroCooldown } from "./MacroCooldown";
 import { useLogStore } from "../../store/logStore";
 import { useProjectStore } from "../../store/projectStore";
 import { showError } from "../../store/toastStore";
@@ -668,34 +669,7 @@ export function MacroEditor({
               </select>
             </label>
             <span style={{ color: "var(--border-color)", margin: "0 4px" }}>|</span>
-            <label style={{ fontSize: 11, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
-              Cooldown:
-              <span title="Minimum seconds between starts of this macro, enforced no matter what fires it. 0 = no cooldown.">
-                <HelpCircle size={11} style={{ opacity: 0.5 }} />
-              </span>
-              <input
-                type="number"
-                min={0}
-                step={0.5}
-                value={macro.cooldown_seconds ?? 0}
-                onChange={(e) => {
-                  const n = parseFloat(e.target.value);
-                  onUpdate({ ...macro, cooldown_seconds: Number.isFinite(n) && n > 0 ? n : undefined });
-                }}
-                title="Minimum seconds between starts of this macro (0 = off)."
-                style={{
-                  width: 48,
-                  padding: "1px 4px",
-                  fontSize: 11,
-                  fontFamily: "var(--font-mono)",
-                  background: "var(--bg-primary)",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 3,
-                  color: "var(--text-primary)",
-                }}
-              />
-              s
-            </label>
+            <MacroCooldown macro={macro} onUpdate={onUpdate} />
           </div>
         </div>
         <button

@@ -28,6 +28,14 @@ export interface ProjectValue {
 }
 
 export const PROJECT_VALUES = {
+  "MacroConfig": {
+    "cooldown_seconds": {
+      "default": 0,
+      "min": 0,
+      "finite": true,
+      "integer": false
+    }
+  },
   "MonitorConfig": {
     "display_decimals": {
       "default": null,

@@ -817,12 +817,12 @@ def migrate_0_16_to_0_17(data: dict) -> dict:
     dialog as nothing over a dimmed screen. One that is no finite number is
     removed, so it loads as the default box the panel drew for it.
 
-    A trigger's `delay_seconds`, `debounce_seconds` and `cooldown_seconds`
-    are brought to 0 or more: the trigger engine waited no time for a
-    negative one, as for 0. One that is no finite number is removed, so it
-    loads as 0, which is how the engine read a NaN; an infinite one held its
-    trigger back for good, so that trigger is also turned off
-    (`core/seconds_migration.py`).
+    A trigger's `delay_seconds`, `debounce_seconds` and `cooldown_seconds`,
+    and a macro's own `cooldown_seconds`, are brought to 0 or more: the
+    engines waited no time for a negative one, as for 0. One that is no
+    finite number is removed, so it loads as 0, which is how the engines read
+    a NaN; an infinite one held its trigger back for good, so that trigger is
+    also turned off (`core/seconds_migration.py`).
     """
     monitors = data.get("monitors") if isinstance(data.get("monitors"), list) else []
     for holder in _elements(data) + [m for m in monitors if isinstance(m, dict)]:

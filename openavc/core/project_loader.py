@@ -108,9 +108,10 @@ DISPLAY_DECIMALS_MAX = 20
 OVERLAY_BOX_MIN = 5
 OVERLAY_BOX_MAX = 100
 
-# The least a trigger's delay, debounce or cooldown may hold, in seconds; each
-# is a finite number too. The trigger engine waited no time for a negative one,
-# as for 0. The macro lint reads it (``core/macro_validation.py``).
+# The least a trigger's delay, debounce or cooldown, or a macro's own cooldown,
+# may hold, in seconds; each is a finite number too. The engines waited no time
+# for a negative one, as for 0. The macro lint reads it for a trigger's
+# (``core/macro_validation.py``).
 SECONDS_MIN = 0
 
 # A blank another setting decides is declared in its model's ``BLANK_FROM``:
@@ -373,7 +374,7 @@ class MacroConfig(_ForwardCompatModel):
     # A trigger may still carry its own overlap/cooldown; the two stack and the
     # stricter wins.
     overlap: Literal["skip", "queue", "allow"] = "allow"
-    cooldown_seconds: float = 0
+    cooldown_seconds: FiniteFloat = Field(default=0, ge=SECONDS_MIN)
 
 
 class Placement(_ForwardCompatModel):

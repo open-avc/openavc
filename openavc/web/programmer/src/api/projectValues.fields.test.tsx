@@ -30,15 +30,19 @@ vi.mock("./projectValues.gen", () => ({
       debounce_seconds: { default: 4, min: 2, finite: true, integer: false },
       cooldown_seconds: { default: 6, min: 0.5, finite: true, integer: false },
     },
+    MacroConfig: {
+      cooldown_seconds: { default: 2, min: 1, finite: true, integer: false },
+    },
   },
 }));
 
-import type { ProjectConfig, TriggerConfig, UIElement, UIPage, UISettings } from "./types";
+import type { MacroConfig, ProjectConfig, TriggerConfig, UIElement, UIPage, UISettings } from "./types";
 import { ShownDecimalsRow } from "../components/ui-builder/PropertySections/ValueFields";
 import { MonitorControl } from "../components/shared/MonitorControl";
 import { PanelSettingsDialog } from "../views/ui-builder/PanelSettingsDialog";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 import { TriggerEditor } from "../components/macros/TriggerEditor";
+import { MacroCooldown } from "../components/macros/MacroCooldown";
 
 function typeAndLeave(box: HTMLInputElement, text: string) {
   fireEvent.focus(box);
@@ -181,5 +185,30 @@ describe("The trigger editor's times read the project schema's table", () => {
     const cooldown = screen.getByDisplayValue("6") as HTMLInputElement;
     typeAndLeave(cooldown, "-2");
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ cooldown_seconds: 0.5 }));
+  });
+});
+
+describe("A macro's Cooldown reads the project schema's table", () => {
+  function renderCooldown(macro: Partial<MacroConfig>) {
+    const onUpdate = vi.fn();
+    render(<MacroCooldown macro={{ id: "m1", name: "M", steps: [], ...macro } as MacroConfig} onUpdate={onUpdate} />);
+    return onUpdate;
+  }
+
+  it("a macro saved with no cooldown shows the table's blank", () => {
+    renderCooldown({});
+    expect(screen.getByDisplayValue("2")).toBeTruthy();
+  });
+
+  it("a typed value below the floor comes back to it", () => {
+    const onUpdate = renderCooldown({ cooldown_seconds: 9 });
+    typeAndLeave(screen.getByDisplayValue("9") as HTMLInputElement, "-3");
+    expect(onUpdate).toHaveBeenLastCalledWith(expect.objectContaining({ cooldown_seconds: 1 }));
+  });
+
+  it("the blank is stored as no value", () => {
+    const onUpdate = renderCooldown({ cooldown_seconds: 9 });
+    typeAndLeave(screen.getByDisplayValue("9") as HTMLInputElement, "2");
+    expect(onUpdate.mock.calls.at(-1)![0].cooldown_seconds).toBeUndefined();
   });
 });
