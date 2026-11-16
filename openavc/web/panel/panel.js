@@ -2369,10 +2369,10 @@ class PanelApp {
         clearStateColours(element, this.theme.styleFor(elementDef.type, baseStyle));
         applyStyle(element, this.theme.styleFor(elementDef.type, { ...baseStyle, ...appearance }));
 
-        if (appearance.label !== undefined) {
+        if (appearance.label != null) {
             this._setLabelText(element, String(appearance.label), wordsPath);
         }
-        // No `else`: when a state names no label the text is left exactly as it
+        // No `else`: when a state names no label (none, or null) the text is left exactly as it
         // was, and so is the record of where it came from. That is precisely
         // why the source is recorded on write rather than re-derived -- nothing
         // here could work out what is on screen.

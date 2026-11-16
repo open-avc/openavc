@@ -116,9 +116,9 @@ export function lookWords(elementDef, binding, look, style) {
     return named || (elementDef.label ? [elementDef.label, ['label']] : null);
 }
 
-/** A state's own words, when it names any. */
+/** A state's own words, when it names any: a null label names none. */
 function stateWords({ appearance, wordsPath }) {
-    return appearance.label !== undefined ? [String(appearance.label), wordsPath] : null;
+    return appearance.label != null ? [String(appearance.label), wordsPath] : null;
 }
 
 /**

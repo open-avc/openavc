@@ -68,9 +68,12 @@ export function navLook(binding, reading, offline) {
     return withTwoStateWords(binding, pickLook(binding, reading));
 }
 
-/** The words a look draws on a nav and where an edit of them goes: the entry's, else the nav's own name. */
+/**
+ * The words a look draws on a nav and where an edit of them goes: the
+ * entry's, else (none, or a null label) the nav's own name.
+ */
 export function navWords(elementDef, look) {
-    if (look.appearance.label !== undefined) return [String(look.appearance.label), look.wordsPath];
+    if (look.appearance.label != null) return [String(look.appearance.label), look.wordsPath];
     return [navName(elementDef) || '', ['label']];
 }
 

@@ -13343,6 +13343,41 @@ Object.assign(tests, {
     },
 });
 
+// --- A state label of null ---------------------------------------------------
+//
+// A look state whose label is null names no words: the button and the nav
+// draw their own, and a label keeps the text it shows. Never the word "null".
+
+Object.assign(tests, {
+    a_null_state_label_draws_no_words() {
+        const KEY = 'device.d.mode';
+        const live = { 'device.d.connected': true, [KEY]: 'a' };
+        const look = { key: KEY, states: { a: { label: 'A' }, nul: { label: null, bg_color: '#010101' } } };
+        const wrong = [];
+        const words = (node) => node.querySelector('.panel-label-span')?.textContent ?? node.textContent;
+        const cases = [
+            [{ id: 'b', type: 'button', label: 'Own', bindings: { show: { look } } }, 'Own'],
+            [{ id: 'n', type: 'page_nav', label: 'Go', target_page: 'elsewhere', bindings: { show: { look } } }, 'Go'],
+            [{ id: 'l', type: 'label', text: 'Hello', bindings: { show: { look } } }, 'A'],
+        ];
+        for (const [def, want] of cases) {
+            const m = levelMount(def, { state: live });
+            m.set(KEY, 'nul');
+            const got = words(m.node());
+            if (got !== want) wrong.push(`${def.type}: drew "${got}", wanted "${want}"`);
+        }
+        // A label never showed a state's words: its own text stays.
+        const fresh = levelMount({ id: 'l2', type: 'label', text: 'Hello', bindings: { show: { look } } },
+            { state: { ...live, [KEY]: 'nul' } });
+        if (words(fresh.node()) !== 'Hello') wrong.push(`label first drawn at null: drew "${words(fresh.node())}"`);
+        // The two-state form with a null label in its style.
+        const two = levelMount({ id: 't', type: 'button', label: 'Own', bindings: { show: { look: {
+            key: KEY, condition: { equals: 'a' }, style_active: { label: null }, style_inactive: {} } } } }, { state: live });
+        if (/null/.test(two.node().textContent)) wrong.push(`two-state: drew "${two.node().textContent}"`);
+        assert(wrong.length === 0, wrong.join(' ;; '));
+    },
+});
+
 const results = {};
 // Awaited, so a scenario that returns a promise reports its failure instead of
 // passing vacuously the moment it is called.

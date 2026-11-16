@@ -211,7 +211,7 @@
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; color: rgb(0, 0, 255); background-image: url(\"/b.png\"); background-size: cover; background-position: center; background-repeat: no-repeat; | text=\"\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null"
     ],
     "state_label_null": [
-      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(0, 255, 0); | text=\"null\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null",
+      "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(0, 255, 0); | text=\"Own\" | svg.[/panel/icons.svg#play|#00ff00] | src=null | class=\"panel-element panel-button\" aria-current=null",
       "position: absolute; left: 5%; top: 5%; width: 20%; height: 10%; gap: 0.4286rem; background-color: rgb(255, 0, 0); | text=\"A\" | svg.[/panel/icons.svg#play|#00ff00],span.panel-label-span\"A\" | src=null | class=\"panel-element panel-button\" aria-current=null"
     ],
     "offline_retints_a_state_layer": [

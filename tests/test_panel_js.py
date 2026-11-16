@@ -439,6 +439,8 @@ SCENARIOS = [
     # A picture that is not text draws no picture, on every control and page.
     "a_picture_that_is_not_text_draws_no_picture",
     "a_page_picture_that_is_not_text_draws_the_page_without_it",
+    # A look state whose label is null draws no words.
+    "a_null_state_label_draws_no_words",
 ]
 
 
