@@ -97,6 +97,20 @@ export class Surface {
 /** Page nodes on their way out, each removed when its own transition ends. */
 const LEAVING = new WeakSet();
 
+/** Is `node` a page drawn in `root`? */
+function isPageIn(root, node) {
+    return node.parentNode === root && node.classList.contains('panel-page');
+}
+
+/** Animate a page out, and remove it when its own transition ends. */
+function leave(node, { transition, duration }) {
+    LEAVING.add(node);
+    node.classList.add(`page-exit-${transition}`);
+    node.style.position = 'absolute';
+    node.style.inset = '0';
+    setTimeout(() => node.remove(), duration);
+}
+
 /**
  * Take what `surface` put in `root` off the screen. With no transition the
  * root is emptied at once, a page still leaving included. With one, each of
@@ -104,20 +118,12 @@ const LEAVING = new WeakSet();
  * ends, a page already leaving keeps its own time, and anything else in the
  * root (the notice a project with no pages shows) goes at once.
  */
-export function takeAway(root, surface, { transition, duration }) {
-    if (transition === 'none') {
+export function takeAway(root, surface, motion) {
+    if (motion.transition === 'none') {
         root.textContent = '';
         return;
     }
-    for (const node of surface.nodes) {
-        if (node.parentNode !== root || !node.classList.contains('panel-page') || LEAVING.has(node)) continue;
-        LEAVING.add(node);
-        node.classList.add(`page-exit-${transition}`);
-        node.style.position = 'absolute';
-        node.style.inset = '0';
-        setTimeout(() => node.remove(), duration);
-    }
-    for (const node of [...root.children]) {
-        if (!LEAVING.has(node)) node.remove();
-    }
+    const going = surface.nodes.filter((node) => isPageIn(root, node)).filter((node) => !LEAVING.has(node));
+    for (const node of going) leave(node, motion);
+    for (const node of [...root.children].filter((n) => !LEAVING.has(n))) node.remove();
 }
