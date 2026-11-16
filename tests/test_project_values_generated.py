@@ -68,12 +68,33 @@ def test_every_bound_on_a_project_model_reaches_the_table() -> None:
     """
     table = project_values()
     for model, field in _bounded_fields():
-        owner = next(
-            base.__name__ for base in reversed(getattr(project_loader, model).__mro__)
-            if isinstance(base, type) and issubclass(base, BaseModel)
-            and field in getattr(base, "model_fields", {})
+        chain = [base.__name__ for base in getattr(project_loader, model).__mro__]
+        assert any(field in table.get(name, {}) for name in chain), (
+            f"{model}.{field} declares a bound the table does not carry"
         )
-        assert field in table.get(owner, {}), f"{owner}.{field} declares a bound the table does not carry"
+
+
+def test_a_field_is_listed_under_the_model_that_gives_it_its_rule() -> None:
+    """Inherited unchanged, a field is its base model's, listed once, even when
+    only the subclass is in a project; given another rule, it is the subclass's."""
+
+    class Base(BaseModel):
+        n: int = Field(default=1, ge=0, le=5)
+
+    class Same(Base):
+        pass
+
+    class Wider(Base):
+        n: int = Field(default=1, ge=0, le=9)
+
+    class Root(BaseModel):
+        a: Same
+        b: Wider
+
+    table = project_values(roots=(Root,))
+    assert table["Base"]["n"]["max"] == 5
+    assert "Same" not in table
+    assert table["Wider"]["n"]["max"] == 9
 
 
 def test_the_table_carries_each_bound_and_default_as_the_model_declares_it() -> None:

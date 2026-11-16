@@ -55,8 +55,16 @@ def _models_in(annotation: Any) -> list[type[BaseModel]]:
     return [m for arg in typing.get_args(annotation) for m in _models_in(arg)]
 
 
+def _base_models(model: type[BaseModel]) -> list[type[BaseModel]]:
+    return [
+        base for base in model.__mro__[1:]
+        if isinstance(base, type) and issubclass(base, BaseModel) and base is not BaseModel
+    ]
+
+
 def _walk(roots: tuple[type[BaseModel], ...]) -> list[type[BaseModel]]:
-    """Every model reachable from ``roots``, each once, in a fixed order."""
+    """Every model reachable from ``roots``, and each one's base models (where
+    an inherited field is listed), each once, in a fixed order."""
     seen: dict[str, type[BaseModel]] = {}
     pending = list(roots)
     while pending:
@@ -64,18 +72,24 @@ def _walk(roots: tuple[type[BaseModel], ...]) -> list[type[BaseModel]]:
         if model.__name__ in seen:
             continue
         seen[model.__name__] = model
+        pending.extend(_base_models(model))
         for info in model.model_fields.values():
             pending.extend(_models_in(info.annotation))
     return [seen[name] for name in sorted(seen)]
 
 
+def _rule(info: FieldInfo) -> tuple[Any, ...]:
+    return (info.annotation, info.metadata, info.default)
+
+
 def _declares(model: type[BaseModel], field: str) -> bool:
-    """True when ``field`` is the model's own, not one a base model gives it."""
-    return not any(
-        field in getattr(base, "model_fields", {})
-        for base in model.__mro__[1:]
-        if isinstance(base, type) and issubclass(base, BaseModel)
-    )
+    """True when the model gives ``field`` its own rule: a field a base model
+    gives it unchanged is listed under that base model, once."""
+    for base in _base_models(model):
+        inherited = base.model_fields.get(field)
+        if inherited is not None:
+            return _rule(inherited) != _rule(model.model_fields[field])
+    return True
 
 
 def _is_integer(annotation: Any) -> bool:

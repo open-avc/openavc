@@ -6,10 +6,11 @@
  * Escape or the backdrop ask before throwing a changed draft away.
  *
  * Each choice is listed under the value the panel reads (panel.js). The range
- * each number takes and what a blank setting shows are the project schema's,
- * from its generated table (projectValues.gen.ts), so a box never offers a
- * value the save refuses. The accent is the one exception: a blank one shows
- * #2196F3, which the panel draws only when the theme has no accent of its own.
+ * each number takes, and what a blank transition, entry animation or stagger
+ * shows, are the project schema's, from its generated table
+ * (projectValues.gen.ts), so a box never offers a value the save refuses. A
+ * blank accent shows #2196F3, which the panel draws only when the theme has no
+ * accent of its own.
  */
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { PROJECT_VALUES } from "../../api/projectValues.gen";
