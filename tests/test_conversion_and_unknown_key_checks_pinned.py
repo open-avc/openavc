@@ -466,12 +466,12 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'keys_nested_text_and_
                                 'in every state.')],
  'keys_list_where_a_block_goes': [('error', 'polling', 'polling: must be a mapping')],
  'keys_name_not_text_after_a_judged_sibling': [('error',
-                                                'state_variables.volume',
+                                                'state_variables',
                                                 "state_variables: name '1' is not text. YAML reads "
                                                 'bare on/off/yes/no/true/false as booleans and '
                                                 'bare digits as numbers. Put it in quotes.')],
  'keys_name_not_text_after_a_nested_map': [('error',
-                                            'commands.set.params.level',
+                                            'commands',
                                             "commands: name '0' is not text. YAML reads bare "
                                             'on/off/yes/no/true/false as booleans and bare digits '
                                             'as numbers. Put it in quotes.'),
@@ -491,13 +491,13 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'keys_nested_text_and_
                                                      "state_variables.volume: unknown key 'lable' "
                                                      "(did you mean 'label'?)"),
                                                     ('error',
-                                                     'state_variables.volume',
+                                                     'state_variables',
                                                      "state_variables: name '1' is not text. YAML "
                                                      'reads bare on/off/yes/no/true/false as '
                                                      'booleans and bare digits as numbers. Put it '
                                                      'in quotes.')],
  'keys_name_not_text_command': [('error',
-                                 'commands.noop',
+                                 'commands',
                                  "commands: name '5' is not text. YAML reads bare "
                                  'on/off/yes/no/true/false as booleans and bare digits as numbers. '
                                  'Put it in quotes.')],
@@ -530,7 +530,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'keys_nested_text_and_
                                          'on/off/yes/no/true/false as booleans and bare digits as '
                                          'numbers. Put it in quotes.'),
                                         ('error',
-                                         'config_schema.1.5',
+                                         'config_schema',
                                          "config_schema: name 'None' is not text. YAML reads bare "
                                          'on/off/yes/no/true/false as booleans and bare digits as '
                                          'numbers. Put it in quotes.')],
@@ -544,7 +544,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'keys_nested_text_and_
                                "Command 'set' parameter 'True' has no label, so forms show its key "
                                'made readable. Give it a label that says what to enter.')],
  'keys_name_not_text_variable': [('error',
-                                  'state_variables.power',
+                                  'state_variables',
                                   "state_variables: name 'True' is not text. YAML reads bare "
                                   'on/off/yes/no/true/false as booleans and bare digits as '
                                   'numbers. Put it in quotes.')],
@@ -613,7 +613,7 @@ STRICT_EXPECTED: dict[str, list[tuple[str, str, str]]] = {'keys_nested_text_and_
                          'state_variables.gain',
                          "state_variables.gain: unknown key 'lable' (did you mean 'label'?)")],
  'names_not_text_lenient': [('error',
-                             'state_variables.power',
+                             'state_variables',
                              "state_variables: name 'True' is not text. YAML reads bare "
                              'on/off/yes/no/true/false as booleans and bare digits as numbers. Put '
                              'it in quotes.')]}
@@ -646,23 +646,23 @@ UNKNOWN_EXPECTED: dict[str, list[tuple[str, str]]] = {'keys_nested_text_and_bool
                               'Put it in quotes.')],
  'keys_list_of_non_mappings': [],
  'keys_list_where_a_block_goes': [],
- 'keys_name_not_text_after_a_judged_sibling': [('state_variables.volume',
+ 'keys_name_not_text_after_a_judged_sibling': [('state_variables',
                                                 "state_variables: name '1' is not text. YAML reads "
                                                 'bare on/off/yes/no/true/false as booleans and '
                                                 'bare digits as numbers. Put it in quotes.')],
- 'keys_name_not_text_after_a_nested_map': [('commands.set.params.level',
+ 'keys_name_not_text_after_a_nested_map': [('commands',
                                             "commands: name '0' is not text. YAML reads bare "
                                             'on/off/yes/no/true/false as booleans and bare digits '
                                             'as numbers. Put it in quotes.')],
  'keys_name_not_text_after_a_sibling_with_a_typo': [('state_variables.volume',
                                                      "state_variables.volume: unknown key 'lable' "
                                                      "(did you mean 'label'?)"),
-                                                    ('state_variables.volume',
+                                                    ('state_variables',
                                                      "state_variables: name '1' is not text. YAML "
                                                      'reads bare on/off/yes/no/true/false as '
                                                      'booleans and bare digits as numbers. Put it '
                                                      'in quotes.')],
- 'keys_name_not_text_command': [('commands.noop',
+ 'keys_name_not_text_command': [('commands',
                                  "commands: name '5' is not text. YAML reads bare "
                                  'on/off/yes/no/true/false as booleans and bare digits as numbers. '
                                  'Put it in quotes.')],
@@ -682,7 +682,7 @@ UNKNOWN_EXPECTED: dict[str, list[tuple[str, str]]] = {'keys_nested_text_and_bool
                                          "config_schema: name '1.5' is not text. YAML reads bare "
                                          'on/off/yes/no/true/false as booleans and bare digits as '
                                          'numbers. Put it in quotes.'),
-                                        ('config_schema.1.5',
+                                        ('config_schema',
                                          "config_schema: name 'None' is not text. YAML reads bare "
                                          'on/off/yes/no/true/false as booleans and bare digits as '
                                          'numbers. Put it in quotes.')],
@@ -690,7 +690,7 @@ UNKNOWN_EXPECTED: dict[str, list[tuple[str, str]]] = {'keys_nested_text_and_bool
                                "commands.set.params: name 'True' is not text. YAML reads bare "
                                'on/off/yes/no/true/false as booleans and bare digits as numbers. '
                                'Put it in quotes.')],
- 'keys_name_not_text_variable': [('state_variables.power',
+ 'keys_name_not_text_variable': [('state_variables',
                                   "state_variables: name 'True' is not text. YAML reads bare "
                                   'on/off/yes/no/true/false as booleans and bare digits as '
                                   'numbers. Put it in quotes.')],

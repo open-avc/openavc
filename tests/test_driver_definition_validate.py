@@ -272,6 +272,12 @@ SECTION_CASES: list[tuple[str, dict[str, Any], str]] = [
         _d(config_schema={"host": {"type": "string", "typo_type": "string"}}),
         "config_schema.host",
     ),
+    (
+        "a name that is not text, after a sibling the walk descended into",
+        _d(state_variables={"power": {"type": "string", "label": "Power"},
+                            1: {"type": "string", "label": "One"}}),
+        "state_variables",
+    ),
 ]
 
 
@@ -335,8 +341,9 @@ def test_each_section_tags_its_issues_with_its_own_path(
 def test_every_context_tag_has_a_section_case():
     """A new section without a case here would tag its issues untested.
 
-    The walk sets ``errors.ctx`` on entering each part of a definition. This
-    reads those assignments straight out of the source and requires the table
+    The walk sets ``errors.ctx`` on entering each part of a definition, and a
+    check that names its own place adds a message with ``errors.at(place,
+    ...)``. This reads both straight out of the source and requires the table
     above to exercise every one — so adding a section to the validator is a
     change that has to say where its issues land.
     """
@@ -345,6 +352,11 @@ def test_every_context_tag_has_a_section_case():
         r"^\s*(?:errors|warnings)\.ctx = (.+)$", source, re.MULTILINE
     )
     assert assignments, "no ctx assignments found — did the tagging move?"
+    placed = re.findall(
+        r"^\s*(?:errors|warnings)\.at\(\s*([^,\n]+),", source, re.MULTILINE
+    )
+    assert placed, "no errors.at(place, ...) calls found — did the tagging move?"
+    assignments += placed
 
     # A tag is either a literal ("commands") or an f-string whose placeholders
     # are author-chosen names ("commands.{cmd_name}"). Reduce both to the shape
@@ -354,7 +366,8 @@ def test_every_context_tag_has_a_section_case():
         if not expr.startswith(('"', 'f"')):
             # Bound to a value the enclosing walk computes. Each is covered
             # through the section that supplies it: `loc` by the unknown-key
-            # cases, `name` by polling.queries / on_connect, `frame_key` by
+            # cases and the name that is not text (each lands on the block it
+            # was found in), `name` by polling.queries / on_connect, `frame_key` by
             # command_prefix / command_suffix, `substitution_loc` by the two
             # unresolved-placeholder cases (a command and a polling query),
             # which is why both are in the table rather than one. `section`

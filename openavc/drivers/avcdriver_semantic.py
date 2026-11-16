@@ -42,7 +42,7 @@ from __future__ import annotations
 import difflib as _difflib
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 
 from openavc.drivers.action_checks import (
     action_entry_errors,
@@ -121,12 +121,16 @@ class _TaggedErrors(list):
     """A real ``list[str]`` that also records *where in the definition* each
     entry came from.
 
-    The validation walk below enters one section of a definition at a time and
-    every one of its ~200 rules appends to the same ``errors`` list. So the
-    walk stamps its current location on the list itself — ``errors.ctx =
-    "commands.power_on"`` — instead of every rule site growing a path
-    argument. A rule that fires deep inside a helper inherits the enclosing
-    section's tag for free, because the helper appends to this same object.
+    A message reaches the list one of two ways. A check the walk asks about
+    the one place it is standing on (a command, a response rule, a block) is
+    tagged with that place: the walk stamps it on the list first, ``errors.ctx
+    = "commands.power_on"``, and everything the check appends there, however
+    deep inside a helper, carries it. A check that speaks about places of its
+    own (a name inside a map, a conversion on whichever variable or parameter
+    declares one, a placeholder in whichever template holds it) hands each
+    place back with its message, ``errors.at(place, message)`` or
+    ``errors.at_each(pairs)``, so the message never borrows the place where
+    the walk last stood.
 
     Two properties make this safe to drop into the existing walk:
 
@@ -138,8 +142,10 @@ class _TaggedErrors(list):
       are overridden. A sub-list that carries its own (finer) tags keeps them;
       anything else inherits the current section.
 
-    ``validate_driver_issues`` is the only reader — it pairs ``tags`` with the
-    messages to give the Driver Builder something to anchor each issue to.
+    ``validate_driver_issues`` reads the tags to give the Driver Builder
+    something to anchor each issue to, and ``check_driver_definition`` reads
+    them to leave out a shape sentence about a place another message already
+    speaks for.
     """
 
     def __init__(self, *args: Any) -> None:
@@ -159,6 +165,17 @@ class _TaggedErrors(list):
             self.tags.extend(sub_tags)
         else:
             self.tags.extend([self.ctx] * len(items))
+
+    def at(self, place: str, message: str) -> None:
+        """Add ``message`` tagged with ``place``, the place the check that
+        wrote it says it is about."""
+        super().append(message)
+        self.tags.append(place)
+
+    def at_each(self, placed: Iterable[tuple[str, str]]) -> None:
+        """Add each ``(place, message)`` a check hands back, in its order."""
+        for place, message in placed:
+            self.at(place, message)
 
 
 def unknown_key_errors(driver_def: dict[str, Any]) -> list[str]:
@@ -188,10 +205,11 @@ class _KeyWalk:
     is followed, a list's entries are read against its ``items``, a block of
     author-chosen names against its ``extra`` and a block of declared
     ``fields`` against those fields; anything else is not descended. Each
-    message is tagged with the place the walk last set, which is why a name
-    that is not text is tagged with the place its map's previous entry left.
-    Both places are set through the local name ``errors``, the form the
-    section-tag scan in ``tests/test_driver_definition_validate.py`` reads.
+    message names its own place, the block it was found in (a name that is
+    not text, a key the block does not declare), never the place an earlier
+    entry's descent left. Both are added through the local name ``errors``,
+    the form the section-tag scan in ``tests/test_driver_definition_validate.py``
+    reads.
     """
 
     def __init__(self) -> None:
@@ -232,13 +250,13 @@ class _KeyWalk:
         ``True``. Nothing downstream can substitute it, and the failure
         surfaces far from the cause."""
         errors = self.errors
-        errors.ctx = loc
         for key, sub in value.items():
             if not isinstance(key, str):
-                errors.append(
+                errors.at(
+                    loc,
                     f"{_at(loc)}name '{key}' is not text. YAML reads bare "
                     f"on/off/yes/no/true/false as booleans and bare "
-                    f"digits as numbers. Put it in quotes."
+                    f"digits as numbers. Put it in quotes.",
                 )
             self.walk(extra, sub, _inside(loc, key))
 
@@ -256,16 +274,13 @@ class _KeyWalk:
                 self.walk(sub_node, value[key], _inside(loc, key))
 
     def _undeclared(self, known: set[str], value: dict[Any, Any], loc: str) -> None:
-        # This walk knows exactly where it is, so it tags its own entries
-        # rather than inheriting the caller's section.
         errors = self.errors
-        errors.ctx = loc
         for key in sorted(set(value) - known, key=str):
             close = _difflib.get_close_matches(
                 str(key), sorted(known), n=1, cutoff=0.7
             )
             hint = f" (did you mean '{close[0]}'?)" if close else ""
-            errors.append(f"{_at(loc)}unknown key '{key}'{hint}")
+            errors.at(loc, f"{_at(loc)}unknown key '{key}'{hint}")
 
 
 def _at(loc: str) -> str:
@@ -374,9 +389,7 @@ def _shape_gaps(errors: _TaggedErrors, driver_def: dict[str, Any], said: _Tagged
     tagged with its own place. A part that could not be checked said nothing
     about the value, so its message names no place here."""
     places = [tag for message, tag in zip(said, said.tags) if _UNCHECKED not in message]
-    for loc, message in unsaid(shape_refusals(driver_def), [p for p in places if p]):
-        errors.ctx = loc
-        errors.append(message)
+    errors.at_each(unsaid(shape_refusals(driver_def), [p for p in places if p]))
 
 
 def _undeclared(errors: _TaggedErrors, driver_def: dict[str, Any]) -> None:
