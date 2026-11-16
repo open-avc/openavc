@@ -375,6 +375,13 @@ SCENARIOS = [
     # elements, a ui/ file changing, the idle page and the Preview naming a
     # page, pinned whole (tests/fixtures/panel_page_pins.json).
     "pages_navigate_and_overlay_as_today",
+    # What a dialog or a page leaves running when it goes: a keypad's entry, a
+    # dropdown's choice and a fader's drag on a dialog closed, every dialog
+    # closed or the page drawn over it; a dialog opened twice, reopened inside
+    # the half second its close is given, or with a quote in its id; three page
+    # changes inside one transition; a page drawn while a macro runs, pinned
+    # whole (tests/fixtures/panel_surface_pins.json).
+    "surfaces_tear_down_as_today",
     # Where an element goes: the arrangement for the way the glass is
     # turned, master boxes, aspect locks, containers, entry animations, the
     # coordinate space, a drag on the canvas, the vmin, the snap ruler and a

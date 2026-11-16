@@ -1,0 +1,1225 @@
+{
+ "surfaces": {
+  "keypad_entry_when_the_dialog_is_closed": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-keypad\" data-element-id=\"kp\" data-element-type=\"keypad\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"keypad-label\">PIN</div><div class=\"keypad-display\"></div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "em": "h1 kp"
+   },
+   {
+    "op": "click",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-keypad\" data-element-id=\"kp\" data-element-type=\"keypad\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"keypad-label\">PIN</div><div class=\"keypad-display\">1</div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "dismiss",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-keypad\" data-element-id=\"kp\" data-element-type=\"keypad\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"keypad-label\">PIN</div><div class=\"keypad-display\">1</div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "o": [],
+    "f": "1",
+    "n": "home||",
+    "em": "h1 kp (detached)",
+    "s": [
+     {
+      "type": "ui.submit",
+      "element_id": "kp",
+      "value": "1"
+     }
+    ]
+   }
+  ],
+  "keypad_entry_when_the_dialog_is_all_closed": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-keypad\" data-element-id=\"kp\" data-element-type=\"keypad\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"keypad-label\">PIN</div><div class=\"keypad-display\"></div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "em": "h1 kp"
+   },
+   {
+    "op": "click",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-keypad\" data-element-id=\"kp\" data-element-type=\"keypad\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"keypad-label\">PIN</div><div class=\"keypad-display\">1</div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "dismissAll",
+    "o": [],
+    "f": "1",
+    "n": "home||",
+    "em": "h1 kp (detached)"
+   },
+   {
+    "op": "wait",
+    "f": "1",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.submit",
+      "element_id": "kp",
+      "value": "1"
+     }
+    ]
+   }
+  ],
+  "keypad_entry_when_the_dialog_is_page_drawn": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-keypad\" data-element-id=\"kp\" data-element-type=\"keypad\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"keypad-label\">PIN</div><div class=\"keypad-display\"></div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "em": "h1 kp"
+   },
+   {
+    "op": "click",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-keypad\" data-element-id=\"kp\" data-element-type=\"keypad\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"keypad-label\">PIN</div><div class=\"keypad-display\">1</div><div class=\"keypad-grid\"><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 1\">1</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 2\">2</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 3\">3</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 4\">4</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 5\">5</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 6\">6</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 7\">7</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 8\">8</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 9\">9</button><button type=\"button\" class=\"keypad-key keypad-clear\" aria-label=\"Clear\">C</button><button type=\"button\" class=\"keypad-key\" aria-label=\"Key 0\">0</button><button type=\"button\" class=\"keypad-key keypad-enter\" aria-label=\"Enter\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" style=\"flex-shrink: 0;\"><use href=\"/panel/icons.svg#corner-down-left\" href=\"/panel/icons.svg#corner-down-left\"></use></svg></button></div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "render",
+    "o": [],
+    "f": "3",
+    "n": "home||",
+    "em": "h1"
+   },
+   {
+    "op": "wait",
+    "f": "3",
+    "n": "home||"
+   }
+  ],
+  "dropdown_choice_when_the_dialog_is_closed": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-select\" data-element-id=\"dd\" data-element-type=\"select\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><label>Source</label><select><option value=\"a\">A</option><option value=\"b\">B</option></select></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "em": "h1 dd"
+   },
+   {
+    "op": "pick",
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "dismiss",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-select\" data-element-id=\"dd\" data-element-type=\"select\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><label>Source</label><select><option value=\"a\">A</option><option value=\"b\">B</option></select></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "f": "1,2",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.change",
+      "element_id": "dd",
+      "value": "b"
+     }
+    ]
+   }
+  ],
+  "dropdown_choice_when_the_dialog_is_all_closed": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-select\" data-element-id=\"dd\" data-element-type=\"select\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><label>Source</label><select><option value=\"a\">A</option><option value=\"b\">B</option></select></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "em": "h1 dd"
+   },
+   {
+    "op": "pick",
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "dismissAll",
+    "o": [],
+    "f": "1",
+    "n": "home||",
+    "em": "h1 dd (detached)"
+   },
+   {
+    "op": "wait",
+    "f": "1",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.change",
+      "element_id": "dd",
+      "value": "b"
+     }
+    ]
+   }
+  ],
+  "dropdown_choice_when_the_dialog_is_page_drawn": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-select\" data-element-id=\"dd\" data-element-type=\"select\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><label>Source</label><select><option value=\"a\">A</option><option value=\"b\">B</option></select></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "em": "h1 dd"
+   },
+   {
+    "op": "pick",
+    "f": "1,2",
+    "n": "home|dlg|"
+   },
+   {
+    "op": "render",
+    "o": [],
+    "f": "3",
+    "n": "home||",
+    "em": "h1"
+   },
+   {
+    "op": "wait",
+    "f": "3",
+    "n": "home||"
+   }
+  ],
+  "fader_drag_when_the_dialog_is_closed": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-fader vertical\" data-element-id=\"fd\" data-element-type=\"fader\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"fader-label\">Volume</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"Volume\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 40%;\" aria-valuenow=\"40\"></div></div></div><div class=\"fader-value\">40.0</div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "b": "fd:fader_value",
+    "em": "h1 fd"
+   },
+   {
+    "op": "mouse",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-fader vertical\" data-element-id=\"fd\" data-element-type=\"fader\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"fader-label\">Volume</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"Volume\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 90%;\" aria-valuenow=\"90\"></div></div></div><div class=\"fader-value\">90.0</div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "s": [
+     {
+      "type": "ui.change",
+      "element_id": "fd",
+      "value": 90
+     }
+    ]
+   },
+   {
+    "op": "dismiss",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-fader vertical\" data-element-id=\"fd\" data-element-type=\"fader\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"fader-label\">Volume</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"Volume\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 90%;\" aria-valuenow=\"90\"></div></div></div><div class=\"fader-value\">90.0</div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home||",
+    "b": ""
+   },
+   {
+    "op": "wait",
+    "f": "1,2",
+    "n": "home||"
+   },
+   {
+    "op": "mouse",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-fader vertical\" data-element-id=\"fd\" data-element-type=\"fader\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"fader-label\">Volume</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"Volume\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 20%;\" aria-valuenow=\"20\"></div></div></div><div class=\"fader-value\">20.0</div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.change",
+      "element_id": "fd",
+      "value": 20
+     }
+    ]
+   },
+   {
+    "op": "wait",
+    "f": "1,2",
+    "n": "home||"
+   },
+   {
+    "op": "mouse",
+    "f": "1,2",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "o": [],
+    "f": "1",
+    "n": "home||",
+    "em": "h1 fd (detached)"
+   }
+  ],
+  "fader_drag_when_the_dialog_is_all_closed": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-fader vertical\" data-element-id=\"fd\" data-element-type=\"fader\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"fader-label\">Volume</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"Volume\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 40%;\" aria-valuenow=\"40\"></div></div></div><div class=\"fader-value\">40.0</div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "b": "fd:fader_value",
+    "em": "h1 fd"
+   },
+   {
+    "op": "mouse",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-fader vertical\" data-element-id=\"fd\" data-element-type=\"fader\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"fader-label\">Volume</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"Volume\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 90%;\" aria-valuenow=\"90\"></div></div></div><div class=\"fader-value\">90.0</div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "s": [
+     {
+      "type": "ui.change",
+      "element_id": "fd",
+      "value": 90
+     }
+    ]
+   },
+   {
+    "op": "dismissAll",
+    "o": [],
+    "f": "1",
+    "n": "home||",
+    "em": "h1 fd (detached)"
+   },
+   {
+    "op": "wait",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "mouse",
+    "f": "1",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.change",
+      "element_id": "fd",
+      "value": 20
+     }
+    ]
+   },
+   {
+    "op": "wait",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "mouse",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "f": "1",
+    "n": "home||"
+   }
+  ],
+  "fader_drag_when_the_dialog_is_page_drawn": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-fader vertical\" data-element-id=\"fd\" data-element-type=\"fader\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"fader-label\">Volume</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"Volume\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 40%;\" aria-valuenow=\"40\"></div></div></div><div class=\"fader-value\">40.0</div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "b": "fd:fader_value",
+    "em": "h1 fd"
+   },
+   {
+    "op": "mouse",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-fader vertical\" data-element-id=\"fd\" data-element-type=\"fader\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\"><div class=\"fader-label\">Volume</div><div class=\"fader-body\"><div class=\"fader-scale\"><div class=\"fader-mark\" style=\"bottom: 0%;\">0</div><div class=\"fader-mark\" style=\"bottom: 20%;\">20</div><div class=\"fader-mark\" style=\"bottom: 40%;\">40</div><div class=\"fader-mark\" style=\"bottom: 60%;\">60</div><div class=\"fader-mark\" style=\"bottom: 80%;\">80</div><div class=\"fader-mark\" style=\"bottom: 100%;\">100</div></div><div class=\"fader-track-wrap\"><div class=\"fader-track\"></div><div class=\"fader-handle\" role=\"slider\" aria-label=\"Volume\" aria-valuemin=\"0\" aria-valuemax=\"100\" tabindex=\"0\" style=\"bottom: 90%;\" aria-valuenow=\"90\"></div></div></div><div class=\"fader-value\">90.0</div></div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "s": [
+     {
+      "type": "ui.change",
+      "element_id": "fd",
+      "value": 90
+     }
+    ]
+   },
+   {
+    "op": "render",
+    "o": [],
+    "f": "3",
+    "n": "home||",
+    "b": "",
+    "em": "h1"
+   },
+   {
+    "op": "wait",
+    "f": "3",
+    "n": "home||"
+   },
+   {
+    "op": "mouse",
+    "f": "3",
+    "n": "home||",
+    "s": [
+     {
+      "type": "ui.change",
+      "element_id": "fd",
+      "value": 20
+     }
+    ]
+   },
+   {
+    "op": "wait",
+    "f": "3",
+    "n": "home||"
+   },
+   {
+    "op": "mouse",
+    "f": "3",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "f": "3",
+    "n": "home||"
+   }
+  ],
+  "dialog_opened_twice": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "b": "d1:text",
+    "em": "h1 d1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>",
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>"
+    ],
+    "f": "1,2,3",
+    "n": "home|dlg,dlg|",
+    "b": "d1:text d1:text"
+   },
+   {
+    "op": "state",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>",
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>"
+    ],
+    "f": "1,2,3",
+    "n": "home|dlg,dlg|",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 1
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "dismiss",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>",
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>"
+    ],
+    "f": "1,2,3",
+    "n": "home|dlg|",
+    "b": ""
+   },
+   {
+    "op": "state",
+    "f": "1,2,3",
+    "n": "home|dlg|",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 2
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "dismiss",
+    "f": "1,2,3",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1,2,3",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 3
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "wait",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>"
+    ],
+    "f": "1,3",
+    "n": "home||"
+   },
+   {
+    "op": "nav",
+    "f": "1,3",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1,3",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 4
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "dialog_reopened_inside_its_half_second": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|dlg|",
+    "b": "d1:text",
+    "em": "h1 d1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home||",
+    "b": ""
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>",
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>"
+    ],
+    "f": "1,2,3",
+    "n": "home|dlg|",
+    "b": "d1:text"
+   },
+   {
+    "op": "state",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active dismissing\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">0</div></div></div></div>",
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>"
+    ],
+    "f": "1,2,3",
+    "n": "home|dlg|",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 1
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "nav",
+    "f": "1,2,3",
+    "n": "home||",
+    "b": ""
+   },
+   {
+    "op": "state",
+    "f": "1,2,3",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 2
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "nav",
+    "f": "1,2,3",
+    "n": "home||"
+   },
+   {
+    "op": "wait",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"dlg\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"d1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 90%; height: 90%;\">1</div></div></div></div>"
+    ],
+    "f": "1,3",
+    "n": "home||"
+   },
+   {
+    "op": "state",
+    "f": "1,3",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "device.d.connected": true,
+      "device.d.v": 40,
+      "var.x": 3
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   }
+  ],
+  "dialog_with_a_quote_in_its_id": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "var.x": 0
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    },
+    "em": "h1"
+   },
+   {
+    "op": "nav",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"o&quot;v\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"in&quot;o\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">0</div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home|o\"v|",
+    "b": "in\"o:text",
+    "em": "h1 in\"o"
+   },
+   {
+    "op": "nav",
+    "f": "1,2",
+    "n": "home||",
+    "threw": "'.panel-overlay,,data-page-id,,,o,,v,,' is not a valid selector"
+   },
+   {
+    "op": "state",
+    "o": [
+     "<div class=\"panel-overlay panel-overlay-fade active\" data-page-id=\"o&quot;v\"><div class=\"overlay-backdrop overlay-backdrop-dim\"></div><div class=\"overlay-content overlay-dialog overlay-pos-center\" style=\"width: 31.25%; height: 37.5%;\"><div class=\"panel-page\" style=\"width: 100%; height: 100%;\"><div class=\"panel-element panel-label\" data-element-id=\"in&quot;o\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">1</div></div></div></div>"
+    ],
+    "f": "1,2",
+    "n": "home||",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "surface",
+     "state": {
+      "var.x": 1
+     },
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "wait",
+    "f": "1,2",
+    "n": "home||"
+   },
+   {
+    "op": "nav",
+    "f": "1,2",
+    "n": "home||"
+   }
+  ],
+  "three_page_changes_inside_one_transition": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "moving",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide page-exit-slide\" style=\"position: absolute; inset: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">h1</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">--</div></div></div>",
+    "f": "1,2",
+    "n": "main||home",
+    "b": "m1:text"
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">--</div></div></div>",
+    "f": "2",
+    "n": "main||home"
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide page-exit-slide\" style=\"position: absolute; inset: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">--</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p2l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p2l</div></div></div>",
+    "f": "2,3",
+    "n": "p2||home,main",
+    "b": ""
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide page-exit-slide\" style=\"position: absolute; inset: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">--</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p2l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p2l</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p3l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p3l</div></div></div>",
+    "f": "2,3,4",
+    "n": "p3||home,main,p2"
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide page-exit-slide\" style=\"position: absolute; inset: 0;\"><div class=\"panel-element panel-label\" data-element-id=\"m1\" data-element-type=\"label\" style=\"position: absolute; left: 5%; top: 5%; width: 20%; height: 10%;\">--</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p2l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p2l</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p3l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p3l</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p4l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p4l</div></div></div>",
+    "f": "2,3,4,5",
+    "n": "p4||home,main,p2,p3"
+   },
+   {
+    "op": "wait",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 300ms; position: relative; overflow: hidden;\"><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p2l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p2l</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p3l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p3l</div></div><div class=\"panel-page page-enter-slide\"><div class=\"panel-element panel-label\" data-element-id=\"p4l\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">p4l</div></div></div>",
+    "f": "3,4,5",
+    "n": "p4||home,main,p2,p3"
+   }
+  ],
+  "page_drawn_while_a_macro_runs": [
+   {
+    "op": "mount",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><div class=\"panel-element panel-label\" data-element-id=\"h1\" data-element-type=\"label\" style=\"position: absolute; left: 0%; top: 0%; width: 100%; height: 100%;\">h1</div></div></div>",
+    "o": [],
+    "d": [
+     "<div id=\"connection-status\"></div>",
+     "<div id=\"offline-overlay\"></div>",
+     "<div id=\"loading-state\"></div>"
+    ],
+    "f": "1",
+    "n": "home||",
+    "b": "",
+    "v": "font-size: 14px;",
+    "x": {
+     "edit": false,
+     "embedded": false,
+     "ui": "macro",
+     "state": {},
+     "ready": true,
+     "grid": null,
+     "files": null,
+     "drawn": "landscape",
+     "listening": "message:0 resize:0 orientationchange:0"
+    }
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "msg",
+    "f": "1",
+    "n": "home||"
+   },
+   {
+    "op": "nav",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Ready</div></div></div>",
+    "f": "2",
+    "n": "main||home",
+    "b": "p_run:macro_progress"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Lights</div></div></div>",
+    "f": "2",
+    "n": "main||home"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Ready</div></div></div>",
+    "f": "2",
+    "n": "main||home"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button macro-busy\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-macro-busy=\"m1\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Step 1 of 2</div></div></div>",
+    "f": "2",
+    "n": "main||home"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button macro-busy\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\" data-macro-busy=\"m1\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Screen down</div></div></div>",
+    "f": "2",
+    "n": "main||home"
+   },
+   {
+    "op": "render",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Ready</div></div></div>",
+    "f": "3",
+    "n": "main||home"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Projector on</div></div></div>",
+    "f": "3",
+    "n": "main||home"
+   },
+   {
+    "op": "msg",
+    "h": "<div id=\"panel-root\" style=\"--page-transition-duration: 200ms; position: relative; overflow: hidden;\"><div class=\"panel-page\"><button type=\"button\" class=\"panel-element panel-button\" data-element-id=\"b_run\" aria-label=\"Run\" data-element-type=\"button\" style=\"position: absolute; left: 1%; top: 2%; width: 11%; height: 21%;\">Run</button><div class=\"panel-element panel-label\" data-element-id=\"p_run\" data-element-type=\"label\" style=\"position: absolute; left: 30%; top: 31%; width: 40%; height: 50%;\">Ready</div></div></div>",
+    "f": "3",
+    "n": "main||home"
+   }
+  ]
+ }
+}

@@ -10469,6 +10469,24 @@ const PANEL_STEPS = {
         if (!node) throw new Error(`nothing at ${selector}`);
         node.click();
     },
+    // A person picks `value` in the first <select> the selector finds.
+    pick: (m, selector, value) => {
+        const node = document.querySelector(selector);
+        if (!node) throw new Error(`nothing at ${selector}`);
+        node.value = value;
+        node.dispatchEvent(new window.Event('change', { bubbles: true }));
+    },
+    // A mouse event of `type` at (x, y), on the first node the selector finds
+    // or on the document itself ('document'). jsdom lays nothing out, so a
+    // node is given a 200 by 100 box at (10, 20) first.
+    mouse: (m, target, type, x, y) => {
+        const node = target === 'document' ? document : document.querySelector(target);
+        if (!node) throw new Error(`nothing at ${target}`);
+        if (node !== document) {
+            node.getBoundingClientRect = () => ({ left: 10, top: 20, width: 200, height: 100, right: 210, bottom: 120 });
+        }
+        node.dispatchEvent(new window.MouseEvent(type, { clientX: x, clientY: y, bubbles: true, cancelable: true }));
+    },
     // An event of `type` at the first node the selector finds: a picture
     // that loaded or could not be, which jsdom never fires by itself.
     event: (m, selector, type) => {
@@ -10641,6 +10659,9 @@ async function driveCase(spec) {
             set(v) { this.setAttribute('loading', v); },
         });
     }
+    // `perfClock`: performance.now reads the case's clock, so a fader's send
+    // rate counts the case's waits and not however long the run took.
+    if (c.perfClock) window.performance.now = () => window.Date.now();
     if (c.raf === 'queued') window.requestAnimationFrame = (cb) => { m.frames.push(cb); return m.frames.length; };
     m.flushFrames = () => { for (const cb of m.frames.splice(0)) cb(0); };
     window.WebSocket = class extends own.WebSocket {
@@ -10711,6 +10732,11 @@ async function driveCase(spec) {
         }, step);
         if (c.windowListeners) changed('wl', m.live.map(([t]) => t).join(' '), step);
         if (c.recordDefs) changed('def', (app.uiDef?.pages || []).map((p) => p.elements), step);
+        // The element map, and which of its nodes are no longer on the document.
+        if (c.elementMap) {
+            changed('em', Object.entries(app.elementMap || {})
+                .map(([id, entry]) => (entry && entry.el && entry.el.isConnected ? id : `${id} (detached)`)).join(' '), step);
+        }
         if (m.audio.length) step.au = m.audio.splice(0);
         if (m.probes.length) step.im = m.probes.splice(0).map((img) => img.getAttribute('src'));
         if (m.sent.length) step.s = m.sent.splice(0);
@@ -10784,6 +10810,7 @@ async function driveCase(spec) {
         setViewport(1280, 800);
         delete document.documentElement.clientWidth;
         delete document.documentElement.clientHeight;
+        if (c.perfClock) delete window.performance.now;
         if (own.sheet) own.sheet.remove();
         scrub();
         document.getElementById('panel-root').textContent = '';
@@ -11174,6 +11201,135 @@ Object.assign(tests, {
     async pages_navigate_and_overlay_as_today() {
         const got = await driveCases({}, PAGE_CASES);
         comparePins('pages', got, PAGE_PINS.pages);
+    },
+});
+
+// --- What a page or a dialog leaves running when it goes --------------------
+//
+// A control on a dialog starts things while it is on screen: a keypad's
+// auto send, a dropdown's quiet send, a fader's drag, its bindings and its
+// entry in the element map. These cases close the dialog every way a dialog
+// goes (its own close, every dialog closed at once, a page drawn over it),
+// open and close it in the orders that leave a second copy, change the page
+// faster than its transition, and draw a page while a macro is running, then
+// record what is still sending, still bound and still on screen. Driven by
+// the page rig (driveCase) and compared with panel_surface_pins.json.
+
+const SURFACE_PINS = JSON.parse(fs.readFileSync(path.join(__dirname, 'panel_surface_pins.json'), 'utf8'));
+
+/** A regular page `home` and a dialog `dlg` holding `element` across its box; the dialog is opened. */
+function dialogCase(element, steps, extra) {
+    return {
+        ui: pinUi('surface', [
+            pinPage('home', { elements: [pinLabel('h1')] }),
+            pinPage('dlg', { page_type: 'overlay', elements: [element], placements: { [element.id]: { x: 5, y: 5, w: 90, h: 90 } } }),
+        ]),
+        state: { 'device.d.connected': true, 'device.d.v': 40, 'var.x': 0 },
+        elementMap: true,
+        steps: [['nav', 'dlg'], ...steps],
+        ...extra,
+    };
+}
+
+const SURFACE_KEYPAD = { id: 'kp', type: 'keypad', label: 'PIN', digits: 4, auto_send: true, auto_send_delay_ms: 1500 };
+const SURFACE_DROPDOWN = { id: 'dd', type: 'select', label: 'Source', options: [{ label: 'A', value: 'a' }, { label: 'B', value: 'b' }] };
+const SURFACE_FADER = { id: 'fd', type: 'fader', label: 'Volume', min: 0, max: 100, bindings: { show: { value: { key: 'device.d.v' } } } };
+const SURFACE_LABEL = pinLabel('d1', { bindings: { show: { value: { key: 'var.x' } } } });
+
+/** One digit typed on the dialog's keypad, which sends itself after a pause of 1500 ms. */
+const TYPE_ONE = ['click', '.panel-overlay [data-element-id="kp"] [aria-label="Key 1"]'];
+/** B picked on the dialog's dropdown, which sends 100 ms after the last pick. */
+const PICK_B = ['pick', '.panel-overlay [data-element-id="dd"] select', 'b'];
+/** The dialog's fader taken hold of near the top of its track. */
+const GRAB = ['mouse', '.panel-overlay [data-element-id="fd"] .fader-track-wrap', 'mousedown', 60, 30];
+const DRAG = ['mouse', 'document', 'mousemove', 60, 100];
+const LET_GO = ['mouse', 'document', 'mouseup', 60, 100];
+
+/** The three ways a dialog goes: its own close, every dialog closed at once, the page drawn over it. */
+const DIALOG_GOES = { closed: ['dismiss'], all_closed: ['dismissAll'], page_drawn: ['render'] };
+
+/** Two regular pages, the second running a macro from a button and showing its progress. */
+const MACRO_PAGES = () => pinUi('macro', [
+    pinPage('home', { elements: [pinLabel('h1')] }),
+    pinPage('main', {
+        elements: [
+            { id: 'b_run', type: 'button', label: 'Run', bindings: { do: { press: [{ action: 'macro', macro: 'm1' }] } } },
+            { id: 'p_run', type: 'label', text: '', bindings: { show: { value: { source: 'macro_progress', macro: 'm1', idle_text: 'Ready' } } } },
+        ],
+        placements: { b_run: box(1), p_run: box(30) },
+    }),
+]);
+
+const SURFACE_CASES = {
+    // A digit typed, then the dialog goes before the keypad sends it.
+    ...Object.fromEntries(Object.entries(DIALOG_GOES).map(([how, step]) => [
+        `keypad_entry_when_the_dialog_is_${how}`,
+        dialogCase(SURFACE_KEYPAD, [TYPE_ONE, step, ['wait', 1500]]),
+    ])),
+    // A choice picked, then the dialog goes before the dropdown sends it.
+    ...Object.fromEntries(Object.entries(DIALOG_GOES).map(([how, step]) => [
+        `dropdown_choice_when_the_dialog_is_${how}`,
+        dialogCase(SURFACE_DROPDOWN, [PICK_B, step, ['wait', 100]]),
+    ])),
+    // A fader held, the dialog goes, and the hand keeps moving, then lets go.
+    ...Object.fromEntries(Object.entries(DIALOG_GOES).map(([how, step]) => [
+        `fader_drag_when_the_dialog_is_${how}`,
+        dialogCase(SURFACE_FADER, [GRAB, step, ['wait', 100], DRAG, ['wait', 100], LET_GO, ['wait', 500]], { perfClock: true }),
+    ])),
+    // The same dialog opened twice, then closed twice: which copy each close
+    // takes down, and whether the other copy still shows what changes.
+    dialog_opened_twice: dialogCase(SURFACE_LABEL, [
+        ['nav', 'dlg'], ['state', { 'var.x': 1 }],
+        ['dismiss'], ['state', { 'var.x': 2 }],
+        ['dismiss'], ['state', { 'var.x': 3 }],
+        ['wait', 500], ['nav', '$dismiss'], ['state', { 'var.x': 4 }],
+    ]),
+    // Closed, opened again and closed again inside the half second the first
+    // close is given to animate away.
+    dialog_reopened_inside_its_half_second: dialogCase(SURFACE_LABEL, [
+        ['nav', '$back'], ['nav', 'dlg'], ['state', { 'var.x': 1 }],
+        ['nav', '$back'], ['state', { 'var.x': 2 }],
+        ['nav', '$dismiss'], ['wait', 500], ['state', { 'var.x': 3 }],
+    ]),
+    // A dialog whose id has a quote in it, closed.
+    dialog_with_a_quote_in_its_id: {
+        ui: pinUi('surface', [
+            pinPage('home', { elements: [pinLabel('h1')] }),
+            pinPage('o"v', { page_type: 'overlay', elements: [pinLabel('in"o', { bindings: { show: { value: { key: 'var.x' } } } })] }),
+        ]),
+        state: { 'var.x': 0 },
+        elementMap: true,
+        steps: [['nav', 'o"v'], ['nav', '$back'], ['state', { 'var.x': 1 }], ['wait', 500], ['nav', '$dismiss']],
+    },
+    // Three page changes inside one page transition.
+    three_page_changes_inside_one_transition: {
+        ui: pinUi('moving', NAV_PAGES(), { settings: { page_transition: 'slide', page_transition_duration: 300 } }),
+        steps: [['nav', 'main'], ['wait', 300], ['nav', 'p2'], ['nav', 'p3'], ['nav', 'p4'], ['wait', 300]],
+    },
+    // A macro already running when its page is drawn, and a run that starts
+    // on its page before the page is drawn again: the button's busy mark and
+    // the progress line.
+    page_drawn_while_a_macro_runs: {
+        ui: MACRO_PAGES(),
+        steps: [
+            ['msg', { type: 'macro.started', macro_id: 'm1', total_steps: 3 }],
+            ['msg', { type: 'macro.progress', macro_id: 'm1', description: 'Warming up', step_index: 0, total_steps: 3 }],
+            ['nav', 'main'],
+            ['msg', { type: 'macro.progress', macro_id: 'm1', description: 'Lights', step_index: 1, total_steps: 3 }],
+            ['msg', { type: 'macro.completed', macro_id: 'm1' }],
+            ['msg', { type: 'macro.started', macro_id: 'm1', total_steps: 2 }],
+            ['msg', { type: 'macro.progress', macro_id: 'm1', description: 'Screen down', step_index: 0, total_steps: 2 }],
+            ['render'],
+            ['msg', { type: 'macro.progress', macro_id: 'm1', description: 'Projector on', step_index: 1, total_steps: 2 }],
+            ['msg', { type: 'macro.completed', macro_id: 'm1' }],
+        ],
+    },
+};
+
+Object.assign(tests, {
+    async surfaces_tear_down_as_today() {
+        const got = await driveCases({}, SURFACE_CASES);
+        comparePins('surfaces', got, SURFACE_PINS.surfaces);
     },
 });
 
