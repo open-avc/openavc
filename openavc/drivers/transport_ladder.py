@@ -217,7 +217,7 @@ def _serial_port(config: dict[str, Any]) -> Any:
     Anything else goes to the transport as it is: it refuses a value that is
     not a device path in words of its own."""
     port = config.get("port", "")
-    if port is None or (isinstance(port, str) and not port.strip()):
+    if not str(port or "").strip():
         raise _refused(no_serial_port_message())
     return port
 
