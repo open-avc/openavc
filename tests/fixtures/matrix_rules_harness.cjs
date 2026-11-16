@@ -7,8 +7,12 @@
 // the TypeScript is bundled on the fly with the esbuild in
 // openavc/web/programmer/node_modules, as the other TypeScript harnesses do.
 //
-// stdin: {"route": <tests/fixtures/matrix_route_cases.json>}. stdout: each
-// copy's answers, in the corpus's order.
+// stdin: {"route": <tests/fixtures/matrix_route_cases.json>, "naming": [...]},
+// either part optional. Each naming case carries its axis, the authored spec,
+// the device's readings and the entries the server resolved the spec to.
+// stdout: each copy's answers, in the corpus's order: the route rule from
+// both; from the panel, the name it draws for each entry the server resolved;
+// from the Builder, the entries it resolves the spec to itself.
 const fs = require("fs");
 const path = require("path");
 const { pathToFileURL } = require("url");
@@ -43,6 +47,15 @@ function routeAnswers(copy, corpus) {
   };
 }
 
+// The panel's own naming: the captions the matrix gives in its constructor,
+// then the name it draws for each row. On a copy: the panel writes in place.
+function panelNames(panel, c) {
+  const entries = JSON.parse(JSON.stringify(c.entries));
+  panel.captionUnnamed(entries, c.axis === "sources" ? "In" : "Out");
+  const read = (key) => c.readings[key];
+  return entries.map((entry) => panel.entryLabel(entry, read));
+}
+
 (async () => {
   const [panelPath, modelPath] = process.argv.slice(2);
   const panel = await import(pathToFileURL(panelPath).href);
@@ -58,7 +71,11 @@ function routeAnswers(copy, corpus) {
   };
   const out = {};
   for (const [name, copy] of Object.entries(copies)) {
-    out[name] = { route: routeAnswers(copy, request.route) };
+    out[name] = request.route ? { route: routeAnswers(copy, request.route) } : {};
+  }
+  if (request.naming) {
+    out.panel.names = request.naming.map((c) => panelNames(panel, c));
+    out.builder.resolved = request.naming.map((c) => builder.resolveMatrixAxis({ [c.axis]: c.spec }, c.axis));
   }
   process.stdout.write(JSON.stringify(out));
 })().catch((err) => {

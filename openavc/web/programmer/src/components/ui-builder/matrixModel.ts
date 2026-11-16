@@ -24,6 +24,9 @@ export interface MatrixEntry {
   /** Absent when the entry names a live `label_key` and nobody typed a name --
    *  see withDefaultLabel. */
   label?: string;
+  /** What the row is called until its device reports a name: set only on an
+   *  entry with a `label_key` and no name -- see withDefaultLabel. */
+  caption?: string;
   label_key?: string;
   route_key?: string;
   audio_route_key?: string;
@@ -111,7 +114,7 @@ function generatedEntry(
   label: unknown,
 ): MatrixEntry {
   const entry: MatrixEntry = { value } as MatrixEntry;
-  if (label) entry.label = String(label);
+  if (isNamed(label)) entry.label = String(label);
   for (const key of GENERATED_KEYS) {
     const resolved = matrixSubstitute(from[key], value);
     if (resolved) entry[key] = resolved;
@@ -120,21 +123,31 @@ function generatedEntry(
   return entry;
 }
 
+/** Whether a name is one: anything but nothing and empty text, a 0 among
+ *  them. `_named` in matrix_model.py, `isNamed` in the panel's matrix.js. */
+function isNamed(value: unknown): boolean {
+  return value !== undefined && value !== null && String(value) !== "";
+}
+
 /**
  * An entry with no name gets its axis's "In 3" / "Out 2", by its position in
- * what was written, unless it names a live `label_key`: the device is about to
- * say what it is called, and "Out 2" would win over "Lobby TV" the moment the
- * renderer prefers the authored name. Asked last, so an override naming either
- * one is honoured. A generated entry and an authored one both ask it, as
- * `_with_default_label` in matrix_model.py.
+ * what was written. An entry naming a live `label_key` gets the words as its
+ * `caption` instead: the device is about to say what it is called, and a
+ * `label` of "Out 2" would win over "Lobby TV" the moment the renderer prefers
+ * the authored name. Asked last, so an override naming either one is honoured.
+ * A generated entry and an authored one both ask it, as `_with_default_label`
+ * in matrix_model.py, which is THE rule; tests/test_matrix_naming_parity.py
+ * holds this copy to it.
  */
 function withDefaultLabel(
-  entry: { label?: unknown; label_key?: unknown },
+  entry: { label?: unknown; label_key?: unknown; caption?: unknown },
   axis: MatrixAxisName,
   position: number,
 ): MatrixEntry {
-  if (!entry.label && !entry.label_key) {
-    entry.label = `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`;
+  if (!isNamed(entry.label)) {
+    const words = `${MATRIX_LABEL_PREFIX[axis]} ${position + 1}`;
+    if (entry.label_key) entry.caption = words;
+    else entry.label = words;
   }
   return entry as unknown as MatrixEntry;
 }

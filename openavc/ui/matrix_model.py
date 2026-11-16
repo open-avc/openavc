@@ -241,18 +241,31 @@ def _normalise_entry(raw: Any, axis: str, position: int) -> dict[str, Any] | Non
     return _with_default_label(entry, axis, position)
 
 
+def _named(value: Any) -> bool:
+    """Whether a name is one: anything but nothing and empty text, a 0 among
+    them. ``isNamed`` in the panel's modules/matrix.js and the Builder."""
+    return value is not None and str(value) != ""
+
+
 def _with_default_label(entry: dict[str, Any], axis: str, position: int) -> dict[str, Any]:
     """An entry with no name gets its axis's "In 3" / "Out 2", by its position.
 
-    The position is where it was written, before anything is excluded. An entry
-    carrying a ``label_key`` is left unlabelled on purpose: the device is about
-    to say what it is called, and "Out 2" would win over "Lobby TV" the moment
-    the renderer prefers the authored name (``entryLabel`` in the panel's modules/matrix.js). Asked
-    last, so an override naming either one is honoured. A generated entry and an
-    authored one both ask it, as they ask ``withDefaultLabel`` in the Builder.
+    THE rule for what a row nobody named is called; the panel draws it
+    (``entryLabel`` in its modules/matrix.js), the Builder resolves it the same
+    way (``withDefaultLabel``), and tests/test_matrix_naming_parity.py holds the
+    three to one corpus.
+
+    The position is where it was written, before anything is excluded or
+    dropped. An entry carrying a ``label_key`` gets the words as its
+    ``caption`` instead of its ``label``: the device is about to say what it is
+    called, and a ``label`` of "Out 2" would win over "Lobby TV" the moment the
+    renderer prefers the authored name. The panel draws the caption only until
+    the device's name arrives. Asked last, so an override naming either one is
+    honoured. A generated entry and an authored one both ask it.
     """
-    if not entry.get("label") and not entry.get("label_key"):
-        entry["label"] = f"{_DEFAULT_LABEL_PREFIX[axis]} {position + 1}"
+    if not _named(entry.get("label")):
+        words = f"{_DEFAULT_LABEL_PREFIX[axis]} {position + 1}"
+        entry["caption" if entry.get("label_key") else "label"] = words
     return entry
 
 
@@ -282,7 +295,7 @@ def _generate(spec: Mapping[str, Any], axis: str) -> list[dict[str, Any]]:
             continue
         label = labels[position] if position < len(labels) else None
         entry: dict[str, Any] = {"value": value}
-        if label:
+        if _named(label):
             entry["label"] = str(label)
         for pattern_key, entry_key in (
             ("label_key", "label_key"),

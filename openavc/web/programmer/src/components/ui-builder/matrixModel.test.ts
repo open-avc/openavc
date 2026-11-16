@@ -95,9 +95,9 @@ describe("a generator", () => {
     ).toEqual([{ value: 1, label: "Out 1" }]);
   });
 
-  it("leaves an entry with a live name key uncaptioned, so the device names it", () => {
+  it("leaves an entry with a live name key unnamed, so the device names it, captioned until it does", () => {
     expect(destinations({ from: { count: 1, label_key: "device.sw.output.*.name" } })).toEqual([
-      { value: 1, label_key: "device.sw.output.1.name" },
+      { value: 1, label_key: "device.sw.output.1.name", caption: "Out 1" },
     ]);
   });
 
@@ -116,12 +116,12 @@ describe("a generator", () => {
     ]);
   });
 
-  it("captions an override that takes the name away, unless it names a live key", () => {
+  it("names an override that takes the name away, or captions it when it names a live key", () => {
     expect(
       destinations({ from: { count: 2, labels: ["A", "B"] }, overrides: { "1": { label: "" }, "2": { label: "", label_key: "var.n" } } }),
     ).toEqual([
       { value: 1, label: "Out 1" },
-      { value: 2, label: "", label_key: "var.n" },
+      { value: 2, label: "", label_key: "var.n", caption: "Out 2" },
     ]);
   });
 
@@ -147,9 +147,9 @@ describe("an authored list", () => {
     ]);
   });
 
-  it("leaves an entry with a live name key uncaptioned, and copies the rest as written", () => {
+  it("leaves an entry with a live name key unnamed but captioned, and copies the rest as written", () => {
     expect(destinations([{ value: 1, label_key: "device.sw.output.1.name", route_key: "k" }])).toEqual([
-      { value: 1, label_key: "device.sw.output.1.name", route_key: "k" },
+      { value: 1, label_key: "device.sw.output.1.name", route_key: "k", caption: "Out 1" },
     ]);
   });
 

@@ -1936,22 +1936,64 @@ def test_a_crosspoint_names_its_route_for_a_screen_reader(panel_page) -> None:
     labels = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
         '.matrix-cell:not(.matrix-toggle)')).map(c => c.getAttribute('aria-label'))""")
     assert labels == [
-        "Route Apple TV to Main LCD", "Route input 2 to Main LCD",
-        "Route Apple TV to output 2", "Route input 2 to output 2",
+        "Route Apple TV to Main LCD", "Route In 2 to Main LCD",
+        "Route Apple TV to Out 2", "Route In 2 to Out 2",
     ]
 
 
-@pytest.mark.parametrize("style", ["list", "tiles"])
+# The node each style draws a destination's name in.
+_DESTINATION_NAMES = {
+    "crosspoint": ".matrix-output-header [data-label-text]",
+    "list": ".matrix-list-label",
+    "tiles": ".matrix-tile-dest",
+}
+
+
+def _destination_names(page, style) -> list[str]:
+    return page.evaluate("""(sel) => Array.from(document.querySelectorAll(sel))
+        .map(n => n.textContent)""", _DESTINATION_NAMES[style])
+
+
+@pytest.mark.parametrize("style", ["crosspoint", "list", "tiles"])
 def test_a_matrix_with_no_keys_draws_the_names_it_was_given(panel_page, style) -> None:
-    """Nothing to watch means nothing redraws the names after the first draw."""
+    """Nothing to watch means nothing redraws the names after the first draw,
+    so the first draw is the one rule: a name of 0 is a name in every style."""
     _mount(panel_page, _raw(
         style,
         [{"value": 1, "label": "Apple TV"}],
-        [{"value": 5, "label": "Main LCD"}, {"value": 6}],
+        [{"value": 5, "label": "Main LCD"}, {"value": 6}, {"value": 7, "label": 0}],
     ), 700, 400)
-    names = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
-        '.matrix-list-label, .matrix-tile-dest')).map(n => n.textContent)""")
-    assert names == ["Main LCD", "Out 2"]
+    assert _destination_names(panel_page, style) == ["Main LCD", "Out 2", "0"]
+
+
+@pytest.mark.parametrize("style", ["crosspoint", "list", "tiles"])
+def test_each_style_draws_a_row_by_one_name_before_and_after_its_device_names_it(
+    panel_page, style,
+) -> None:
+    """The drawing and the update name a row the same way; the device's name
+    replaces the caption once it arrives, and the screen reader hears it too."""
+    element = _resolved(
+        sources=[{"value": 1, "label": "Apple TV"}],
+        destinations=[
+            {"value": 5, "label": "Main LCD", "route_key": "device.mx.output.5.input"},
+            {"value": 6, "label_key": "device.mx.output.6.name",
+             "route_key": "device.mx.output.6.input"},
+            {"value": 7, "route_key": "device.mx.output.7.input"},
+        ],
+    )
+    element["matrix_style"] = style
+    _mount(panel_page, element, 700, 400)
+    assert _destination_names(panel_page, style) == ["Main LCD", "Out 2", "Out 3"]
+    panel_page.evaluate("(s) => window.__setState(s)", {"device.mx.output.5.input": 1})
+    assert _destination_names(panel_page, style) == ["Main LCD", "Out 2", "Out 3"]
+    panel_page.evaluate("(s) => window.__setState(s)", {"device.mx.output.6.name": "Lobby TV"})
+    assert _destination_names(panel_page, style) == ["Main LCD", "Lobby TV", "Out 3"]
+    if style == "crosspoint":
+        labels = panel_page.evaluate("""() => Array.from(document.querySelectorAll(
+            '.matrix-cell:not(.matrix-toggle)')).map(c => c.getAttribute('aria-label'))""")
+        assert labels == [
+            "Route Apple TV to Main LCD", "Route Apple TV to Lobby TV", "Route Apple TV to Out 3",
+        ]
 
 
 @pytest.mark.parametrize("held", [True, "on"])

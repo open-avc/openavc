@@ -233,6 +233,11 @@ export function routeState(sources, routed) {
  * changed it -- and so does the resolver, which does not stamp "Out 2" onto
  * an entry that names a `label_key`. Without those two, this precedence would
  * freeze whatever the device happened to be called at setup.
+ *
+ * Every name a row shows comes through here: each style's drawing and its
+ * update, the tile's chooser and the crosspoint's accessible name. The rule
+ * is held to the server's and the Builder's by
+ * tests/test_matrix_naming_parity.py.
  */
 export function entryLabel(entry, read) {
     if (!entry) return '';
@@ -243,7 +248,7 @@ export function entryLabel(entry, read) {
     // Nobody has named this port -- not here and not on the device. "Out 3"
     // beats the id it would otherwise read as, which on an AVoIP endpoint is
     // a MAC address.
-    return String(entry._caption || entry.value);
+    return String(isNamed(entry.caption) ? entry.caption : entry.value);
 }
 
 function isNamed(v) {
@@ -313,16 +318,23 @@ function audioSourceNode(tag, o) {
 }
 
 /**
- * A caption for each row nobody has named, in the same words the resolver uses
- * for a row with no live key at all -- so a matrix reads the same either way.
- * It is not stored as the entry's `label` because a STORED name outranks the
+ * A caption for each row that arrives with neither a name nor one. The server
+ * gives every row it resolves one or the other (matrix_model.py): a `label`
+ * for a row nobody named, and a `caption` for a row waiting on its device's
+ * name, numbered by where it was written. Only a list the server never
+ * resolved reaches here without (the Builder's canvas, when its request to
+ * resolve fails), and it is numbered by place in the list it is.
+ *
+ * Not stored as the entry's `label`, because a STORED name outranks the
  * device's own (see entryLabel), and an invented one would then beat the
  * endpoint's real name the moment somebody typed it into the rack. Written in
  * place: the routing compares entries by identity, so they are never copied.
  */
-function captionUnnamed(entries, prefix) {
+export function captionUnnamed(entries, prefix) {
     entries.forEach((entry, i) => {
-        if (entry && !entry.label) entry._caption = `${prefix} ${i + 1}`;
+        if (entry && !isNamed(entry.label) && !isNamed(entry.caption)) {
+            entry.caption = `${prefix} ${i + 1}`;
+        }
     });
 }
 
@@ -354,7 +366,9 @@ function cellSizes(style, remPx) {
 /**
  * What every style shares. A style is a subclass that provides draw(scrollWrap)
  * (returning a legend or null), updateRoutes(routes), nameSelector() and either
- * rowSelector() or its own destinationRows(); showLockOnRow() is optional.
+ * rowSelector() or its own destinationRows(); showLockOnRow() and
+ * nameRoutes() are optional. Every row's name comes from label(), drawn and
+ * updated alike.
  */
 class MatrixControl {
     constructor(element, style, host) {
@@ -618,7 +632,11 @@ class MatrixControl {
         this.el.querySelectorAll(this.nameSelector()).forEach(h => {
             applyLabel(h, this.destinations[parseInt(h.dataset.outputIdx)]);
         });
+        this.nameRoutes();
     }
+
+    /** Names drawn for a screen reader, which a style that has some renews. */
+    nameRoutes() {}
 }
 
 /**
@@ -669,7 +687,7 @@ class ListMatrix extends MatrixControl {
         const row = div('matrix-list-row');
         const outLabel = document.createElement('span');
         outLabel.className = 'matrix-list-label';
-        outLabel.textContent = dest.label || `Out ${o + 1}`;
+        outLabel.textContent = this.label(dest);
         outLabel.dataset.outputIdx = String(o);
         row.appendChild(outLabel);
         if (dest.audio_route_key) row.appendChild(audioSourceNode('span', o));
@@ -847,7 +865,7 @@ class TileMatrix extends MatrixControl {
         name.dataset.outputIdx = String(o);
         const nameText = document.createElement('span');
         nameText.dataset.labelText = '';
-        nameText.textContent = dest.label || `Out ${o + 1}`;
+        nameText.textContent = this.label(dest);
         name.appendChild(nameText);
         head.appendChild(name);
         if (this.showLock) head.appendChild(this.lockButton(o, true));
@@ -947,6 +965,19 @@ class CrosspointMatrix extends MatrixControl {
 
     nameSelector() {
         return '.matrix-output-header[data-output-idx]';
+    }
+
+    /** What a screen reader calls one crosspoint: the two names drawn beside it. */
+    routeName(i, o) {
+        return `Route ${this.label(this.sources[i])} to ${this.label(this.destinations[o])}`;
+    }
+
+    /** Each crosspoint's accessible name, again, once the rows' names may have moved. */
+    nameRoutes() {
+        this.el.querySelectorAll('.matrix-crosspoint[data-source-idx]').forEach(dot => {
+            dot.parentElement.setAttribute('aria-label',
+                this.routeName(parseInt(dot.dataset.sourceIdx), parseInt(dot.dataset.destIdx)));
+        });
     }
 
     /**
@@ -1067,8 +1098,7 @@ class CrosspointMatrix extends MatrixControl {
         const src = this.sources[i];
         const dest = this.destinations[o];
         const cell = div('matrix-cell');
-        cell.setAttribute('aria-label',
-            `Route ${src.label || `input ${i + 1}`} to ${dest.label || `output ${o + 1}`}`);
+        cell.setAttribute('aria-label', this.routeName(i, o));
         const dot = div('matrix-crosspoint');
         dot.style.backgroundColor = this.inactiveColor;
         // data-input / data-output carry the VALUES, which is what the route
