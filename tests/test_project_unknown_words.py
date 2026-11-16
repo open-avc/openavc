@@ -239,6 +239,58 @@ def test_a_new_note_after_a_dismiss_is_raised_with_only_itself(tmp_path):
     assert [(n["kind"], n["location"]) for n in notes] == [(CHANGED, "Main > level")]
 
 
+def test_a_value_rewritten_again_after_a_dismiss_is_said_again(tmp_path):
+    """A backup from before a repair, restored: the load rewrites the value
+    again, and that is news even though the same note was dismissed."""
+    path = tmp_path / "project.avc"
+    data = _past_bounds()
+    path.write_text(json.dumps(data), encoding="utf-8")
+    load_project(path, keep_notes=True)
+    project_update.dismiss(_State(), tmp_path)
+
+    path.write_text(json.dumps(data), encoding="utf-8")
+    load_project(path, keep_notes=True)
+
+    notes = project_update.read(tmp_path)["notes"]
+    assert ("Main > volume", "Shown decimals changed from 50 to 20. A readout shows 0 to 20.") in [
+        (n["location"], n["message"]) for n in notes
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_project_pushed_from_the_cloud_with_a_later_word_and_a_value_past_a_bound_is_applied(
+    tmp_path, monkeypatch,
+):
+    from openavc.cloud.command_handler import CommandHandler
+    from openavc.core.device_manager import DeviceManager
+    from openavc.core.event_bus import EventBus
+    from openavc.core.state_store import StateStore
+
+    engine, _ = await _edit_rig(tmp_path, monkeypatch, _plain())
+    sent = []
+
+    class _Agent:
+        async def send_message(self, msg_type, payload):
+            sent.append(payload)
+
+    state, events = StateStore(), EventBus()
+    handler = CommandHandler(
+        _Agent(), DeviceManager(state, events), events,
+        reload_fn=AsyncMock(), apply_fn=engine.replace_project, project_path=str(engine.project_path),
+    )
+    pushed = _past_bounds()
+    pushed["macros"][0]["triggers"].append({"id": "t9", "type": UNKNOWN})
+
+    await handler._handle_config_push({"project_json": pushed, "mode": "full_replace"}, "req", "tech@x.com")
+
+    assert sent[-1]["success"] is True, sent[-1]
+    assert [t.type for t in engine.project.macros[0].triggers] == ["startup", UNKNOWN]
+    assert engine.project.ui.pages[0].elements[0].display_decimals == 20
+    said = [(n["kind"], n["location"]) for n in project_update.read(tmp_path)["notes"]]
+    assert (FOUND, "Macros > Warm Up > t9") in said
+    assert (CHANGED, "Main > volume") in said
+
+
 class _State:
     def __init__(self):
         self.values = {}

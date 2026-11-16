@@ -17,7 +17,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
 
 from openavc.api.rest import router, set_engine
 from openavc.core.project_loader import ProjectConfig, UIConfig, UIPage
@@ -184,9 +183,13 @@ class TestDeclaredNotMerelyTolerated:
 
 
 class TestRenderModeIsConstrained:
-    def test_unknown_render_mode_is_rejected(self):
-        """It reserves two named modes. An unconstrained string would let a typo
-        persist as a mode nothing will ever implement.
+    def test_unknown_render_mode_is_kept_and_draws_the_controls(self):
+        """It reserves two named modes. A word this version does not know (a
+        later version's) is kept as written and draws the page's controls; an
+        edit that adds one is refused (tests/test_project_unknown_words.py).
         """
-        with pytest.raises(ValidationError):
-            UIPage(id="main", name="Main", render_mode="freeform")
+        from openavc.core.project_loader import reads_as
+
+        page = UIPage(id="main", name="Main", render_mode="freeform")
+        assert page.render_mode == "freeform"
+        assert reads_as(UIPage, "render_mode", page.render_mode) == "elements"

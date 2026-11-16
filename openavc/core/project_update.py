@@ -21,11 +21,13 @@ A project is migrated once and saved in the new format, so a notice lost to a
 restart would never come back. A library entry keeps its own record from its
 import until it is opened, when it becomes the running project's.
 
-**A note somebody dismissed is not raised again by a later load.** Some are
-found at every load (a word a later release saved, kept as written:
-``core/saved_values.py``), so a dismiss keeps the notes it cleared, and a load
-that finds only those raises nothing. A project that replaces the running one
-starts with no such list.
+**A found note somebody dismissed is not raised again by a later load.** A
+found note is about a value left as written, so every load finds it again (a
+word a later release saved: ``core/saved_values.py``); a dismiss keeps the
+notes it cleared, and a load that finds only those raises nothing. A changed
+note always is: a load that rewrites a value again (a backup restored from
+before the repair) says so. A project that replaces the running one starts
+with no such list.
 
 **A note never holds a secret.** The record is published as ``system.*``
 state, which the cloud receives, so a note about the panel lock PIN says what
@@ -106,14 +108,18 @@ def _marker_path(folder: Path) -> Path:
 def record(folder: Path, notes: MigrationNotes) -> None:
     """Keep ``notes`` in ``folder``'s record. Notes from an earlier load that
     nobody dismissed stay ahead of them: both describe the project there. A
-    note the record already holds, or one somebody dismissed, is not added
-    again (the same repair made twice: an update rolled back and installed
-    again; a word found at every load). Nothing new to note writes nothing.
+    note the record already holds is not added again (the same repair made
+    twice: an update rolled back and installed again), nor a found note
+    somebody dismissed (a word found at every load). Nothing new to note
+    writes nothing.
     Never raises: a load that worked must still come up, and losing the notice
     is not worth losing the project."""
     earlier = list((read(folder) or {}).get("notes", []))
     dismissed = _dismissed(folder)
-    added = [asdict(n) for n in notes.notes if asdict(n) not in earlier and asdict(n) not in dismissed]
+    added = [
+        asdict(n) for n in notes.notes
+        if asdict(n) not in earlier and not (n.kind == FOUND and asdict(n) in dismissed)
+    ]
     if not added:
         return
     _write(folder, {
