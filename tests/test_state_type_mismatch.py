@@ -92,38 +92,24 @@ _CASES = [
 ]
 
 
-@pytest.mark.parametrize(("var_def", "value", "problem", "line"), _CASES)
-def test_what_a_mismatched_write_reports(
-    caplog, var_def: dict[str, Any], value: Any, problem: str | None, line: str | None,
-) -> None:
-    caplog.set_level(logging.DEBUG, logger=_LOGGER)
-    observed: list[tuple[str, dict]] = []
-    drv = _widget(var_def, observed)
+def _single(drv: _AcmeWidget, value: Any) -> None:
     drv.set_state("volume", value)
-    assert drv.get_state("volume") == value
-    mismatches = [detail for kind, detail in observed if kind == TYPE_MISMATCH]
-    if problem is None:
-        assert mismatches == []
-    else:
-        assert mismatches == [{
-            "state": "volume",
-            "declared": var_def.get("type", "string"),
-            "value": value,
-            "problem": problem,
-        }]
-    assert _debug_lines(caplog) == ([] if line is None else [line])
 
 
-@pytest.mark.parametrize(("var_def", "value", "problem", "line"), _CASES)
-def test_a_batch_write_reports_as_a_single_write_does(
-    caplog, var_def: dict[str, Any], value: Any, problem: str | None, line: str | None,
-) -> None:
-    """set_states is the other door a driver writes its own state through,
-    and it reports a value of the wrong type word for word as set_state."""
+def _batch(drv: _AcmeWidget, value: Any) -> None:
+    drv.set_states({"volume": value})
+
+
+@pytest.mark.parametrize("write", [_single, _batch], ids=["set_state", "set_states"])
+@pytest.mark.parametrize("case", _CASES)
+def test_what_a_mismatched_write_reports(caplog, write, case: tuple) -> None:
+    """Both doors a driver writes its own state through report a value of
+    the wrong type word for word alike."""
+    var_def, value, problem, line = case
     caplog.set_level(logging.DEBUG, logger=_LOGGER)
     observed: list[tuple[str, dict]] = []
     drv = _widget(var_def, observed)
-    drv.set_states({"volume": value})
+    write(drv, value)
     assert drv.get_state("volume") == value
     mismatches = [detail for kind, detail in observed if kind == TYPE_MISMATCH]
     if problem is None:
@@ -138,10 +124,9 @@ def test_a_batch_write_reports_as_a_single_write_does(
     assert _debug_lines(caplog) == ([] if line is None else [line])
 
 
-@pytest.mark.parametrize(("var_def", "value", "problem", "line"), _CASES)
-def test_without_an_observer_only_the_log_reports(
-    caplog, var_def: dict[str, Any], value: Any, problem: str | None, line: str | None,
-) -> None:
+@pytest.mark.parametrize("case", _CASES)
+def test_without_an_observer_only_the_log_reports(caplog, case: tuple) -> None:
+    var_def, value, _problem, line = case
     caplog.set_level(logging.DEBUG, logger=_LOGGER)
     drv = _widget(var_def, None)
     drv.set_state("volume", value)
