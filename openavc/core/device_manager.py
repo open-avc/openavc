@@ -129,6 +129,12 @@ class DeviceManager(
         # its own address. Asked before probing for a web page; None in a bare
         # manager.
         self.redirected_to_simulator: Callable[[str], bool] | None = None
+        # Set by the engine to SimulationManager.redirect_of: given a device
+        # id, the connection settings the simulation redirect wrote into its
+        # live driver, or None when it is not redirected. Where a running
+        # device connects now is read through it (dialled_record); None in a
+        # bare manager.
+        self.simulation_redirect: Callable[[str], dict[str, Any] | None] | None = None
         # Set by the engine to SimulationManager.real_connection_of: given a
         # device id, the connection settings the simulation redirect replaced,
         # or None when it is not redirected. Open Web UI links are built from

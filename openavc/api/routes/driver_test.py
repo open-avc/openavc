@@ -96,9 +96,11 @@ async def check_connection_conflict(
 
     Devices are compared where they really connect (``device_connections``):
     the driver's default port, a transport override, a bridge's pass-through
-    port and a USB-serial binding all count. ``tcp`` matches host and port,
-    ``serial`` matches the port name; other transports hold no session and
-    return nothing.
+    port and a USB-serial binding all count, and a running device is matched
+    where its driver connects now, so a device a running simulation points at
+    the simulator holds the simulator's port, not its own. ``tcp`` matches
+    host and port, ``serial`` matches the port name; other transports hold no
+    session and return nothing.
 
     Returns ``{"conflicts": [...]}`` with one entry per matching device. An
     empty list means it's safe to test.
@@ -109,6 +111,7 @@ async def check_connection_conflict(
     engine = _get_engine()
     if not engine.project:
         return {"conflicts": []}
+    running = getattr(engine, "devices", None)
 
     if transport == "tcp":
         try:
@@ -118,14 +121,14 @@ async def check_connection_conflict(
         if not host.strip():
             return {"conflicts": []}
         matches = [
-            conn for conn in devices_at_host(engine.project, [host])
+            conn for conn in devices_at_host(engine.project, [host], running)
             if conn.transport == "tcp" and conn.port == target_port
         ]
     else:
         if not port.strip():
             return {"conflicts": []}
         matches = [
-            conn for conn in device_connections(engine.project)
+            conn for conn in device_connections(engine.project, running)
             if conn.transport == "serial" and isinstance(conn.port, str)
             and same_serial_port(conn.port, port)
         ]

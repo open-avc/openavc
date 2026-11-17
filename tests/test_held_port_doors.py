@@ -242,10 +242,9 @@ class TestTestConnection:
             await _connect(manager, widget)
             # The project names the equipment; the simulation redirects it.
             equipment = _device("lobby_widget", "Lobby Widget", 4321, host="10.77.0.5")
+            manager._device_configs["lobby_widget"]["config"] = dict(equipment.config)
+            manager.simulation_redirect = _redirect("lobby_widget", simulator.port)
             engine = _engine(manager, equipment)
-            engine.simulation = SimpleNamespace(
-                redirect_of=lambda device_id: {"host": HOST, "port": simulator.port},
-            )
 
             result = await run_connection_test(equipment, engine)
             await _settle()
@@ -431,14 +430,19 @@ class TestRawCommand:
 # ---------------------------------------------------------------------------
 
 
+def _redirect(device_id: str, simulator: int):
+    """The simulation's redirect, as ``Engine`` wires it into the manager
+    (``simulation_redirect``): ``device_id`` points at the simulator."""
+    return lambda asked: {"host": HOST, "port": simulator} if asked == device_id else None
+
+
 async def _simulated(manager: DeviceManager, simulator: int, equipment: int) -> None:
     """Lobby Widget as a running simulation leaves it: its driver connected to
     the simulator's port, its record naming the equipment's own address, and
-    the manager told it is redirected (``Engine`` wires that to the
-    simulation)."""
+    the simulation's redirect on its driver."""
     await _connect(manager, _device("lobby_widget", "Lobby Widget", simulator))
     manager._device_configs["lobby_widget"]["config"] = {"host": HOST, "port": equipment}
-    manager.redirected_to_simulator = lambda device_id: device_id == "lobby_widget"
+    manager.simulation_redirect = _redirect("lobby_widget", simulator)
 
 
 class TestASimulatedDevice:

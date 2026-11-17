@@ -13,25 +13,36 @@ Everything that hands a device config to the device manager goes through
 routes, the AI tools), so the layering lives here once rather than in the
 orchestrator.
 
-``device_connections`` turns that around for anything that asks "which
-project devices would a connection to this address meet?": the Driver
-Builder's test panel before it opens a competing session, and a device audit
-before it sends anything. Both read the same resolved config the device
-manager dials, so a device on its driver's default port, a transport
-override, or a serial device reached through a bridge's pass-through port is
-found where it really connects.
+``connection_of`` is THE answer to where one device connects, read from a
+resolved record. Handed the record as it is set to (what
+``resolve_device_config`` returns), it names the equipment's own address:
+what a device's info reports and the AI's project summary lists. Handed the
+record as its driver dials it now (``dialled_record``: the record the device
+manager was handed, with the simulation redirect on that same driver laid
+over it), it names where the device really connects, the simulator on this
+computer while a simulation points it there (``DeviceConnection.simulated``).
+The device manager asks ``dialled_record`` for its running devices
+(``DeviceManager.dialled_record``, ``connections_now``), and the connection
+test (``core/device_reachability``) dials that.
 
-``connection_of`` is that answer for one device. It is what a device's info
-reports, what the AI's project summary lists, and what the connection test
-(``core/device_reachability``) dials, so all three name the address the
-device manager uses.
+``device_connections`` turns that around for anything that asks "which
+project devices would a connection to this address meet?". Handed the device
+manager, it answers each running device where it connects now and a project
+device nothing runs yet as it is set to, so the Driver Builder's test panel
+finds the session or port a driver holds, and never one a simulated device
+let go. Without it every device is answered as it is set to: a device audit
+asks that way, since it pauses every device set to the equipment, a
+simulated one too, which stopping the simulation sends back there. Either
+way a device on its driver's default port, a transport override, or a serial
+device reached through a bridge's pass-through port is found where it
+connects.
 """
 
 from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping, Protocol
 
 from openavc.core.typed_fields import trim_typed_fields
 from openavc.drivers.registry import (
@@ -239,6 +250,11 @@ def bridge_first(
     return [batch for batch in (bridges, others) if batch]
 
 
+# The mark dialled_record leaves on a record the simulation points at the
+# simulator; connection_of reads it into DeviceConnection.simulated.
+_SIMULATED = "simulated"
+
+
 @dataclass(frozen=True)
 class DeviceConnection:
     """Where one project device connects, after every layer and rewrite.
@@ -248,7 +264,10 @@ class DeviceConnection:
     reports that port when the device names none. ``bridge`` is the bridge
     device's id when the device reaches ``host`` through that bridge's
     pass-through port, or (transport ``bridge``) emits through that bridge
-    and holds no connection of its own; empty otherwise.
+    and holds no connection of its own; empty otherwise. ``simulated`` is
+    True when the record was the one its driver dials now and a running
+    simulation points it at the simulator on this computer: the transport,
+    host and port are then the simulator's, not the equipment's.
     """
 
     device_id: str
@@ -258,6 +277,7 @@ class DeviceConnection:
     host: str
     port: int | str | None
     bridge: str = ""
+    simulated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -282,9 +302,11 @@ def connection_of(resolved: dict[str, Any]) -> DeviceConnection:
     """Where a device connects, from its resolved record.
 
     ``resolved`` is what :func:`resolve_device_config` returns, which is also
-    what the device manager holds for every device it was handed. The
-    transport is the one ``BaseDriver.connect`` opens (``transport_choice``:
-    the device's own choice, else its driver's, else tcp).
+    what the device manager holds for every device it was handed: the device
+    as it is set to. Handed :func:`dialled_record`'s answer instead, it is
+    where the device connects now. The transport is the one
+    ``BaseDriver.connect`` opens (``transport_choice``: the device's own
+    choice, else its driver's, else tcp).
     """
     cfg = resolved.get("config") or {}
     driver = str(resolved.get("driver") or "")
@@ -317,18 +339,74 @@ def connection_of(resolved: dict[str, Any]) -> DeviceConnection:
         host=str(cfg.get("host") or ""),
         port=port,
         bridge=str(cfg["bridge"]) if bridged else "",
+        simulated=bool(resolved.get(_SIMULATED)),
     )
 
 
-def device_connections(project) -> list[DeviceConnection]:
+def dialled_record(
+    record: dict[str, Any], redirect: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """The record as its driver dials it now.
+
+    ``record`` is the one the device manager was handed for the driver
+    running; ``redirect`` is the simulation redirect on that same driver
+    (``SimulationManager.redirect_of``), or None. Pairing the two is the
+    caller's part: a redirect laid over a record of another generation (a
+    project edit not applied yet) would name a connection nothing opened.
+
+    With a redirect the device connects to the simulator on this computer:
+    the redirect's settings replace the record's connection, a bridge binding
+    no longer applies, and the record is marked simulated. An IR device,
+    which sends through its bridge and dials nothing, is left as it is set to.
+    Without one, a USB-serial device's port is the one its adapter has now
+    (``resolve_usb_binding``), as ``resolve_device_config`` reads it on every
+    ask.
+    """
+    cfg = dict(record.get("config") or {})
+    driver = str(record.get("driver") or "")
+    if redirect and get_device_transport(driver, cfg) != "bridge":
+        cfg.update(redirect)
+        cfg.pop("bridge", None)
+        cfg.pop("bridge_port", None)
+        return {**record, "config": cfg, _SIMULATED: True}
+    return {**record, "config": resolve_usb_binding(cfg, get_driver_transport(driver))}
+
+
+class RunningDevices(Protocol):
+    """What :func:`device_connections` asks of the device manager."""
+
+    def connections_now(self) -> list[DeviceConnection]: ...
+
+
+def device_connections(
+    project, devices: RunningDevices | None = None,
+) -> list[DeviceConnection]:
     """The effective connection of every enabled device in ``project``.
+
+    ``devices`` is the engine's device manager. Each device it runs is
+    answered where it connects now (``connections_now``: its record and the
+    simulation redirect on its driver), so a simulated device holds its
+    simulator's port and not its own, and a project edit not applied yet
+    does not hide the port the running driver holds; a running device the
+    project no longer has, or has disabled, still holds it and is answered
+    too. A project device nothing runs (its driver not installed, or not yet
+    applied) is answered as it is set to. Without ``devices`` every device is
+    answered as it is set to in ``project``.
 
     A disabled device has no driver running, so it holds no connection and
     is left out. A device whose config cannot be resolved is left out too
     (the reconcile reports it; this answers a question about live devices).
     """
+    running = (
+        {conn.device_id: conn for conn in devices.connections_now()}
+        if devices is not None else {}
+    )
     out: list[DeviceConnection] = []
     for device in getattr(project, "devices", None) or []:
+        now = running.pop(getattr(device, "id", None), None)
+        if now is not None:
+            out.append(now)
+            continue
         if not getattr(device, "enabled", True):
             continue
         try:
@@ -338,6 +416,7 @@ def device_connections(project) -> list[DeviceConnection]:
                       exc_info=True)
             continue
         out.append(connection_of(resolved))
+    out.extend(running.values())
     return out
 
 
@@ -357,16 +436,19 @@ def same_serial_port(a: str, b: str) -> bool:
     return a == b
 
 
-def devices_at_host(project, names: Iterable[str]) -> list[DeviceConnection]:
+def devices_at_host(
+    project, names: Iterable[str], devices: RunningDevices | None = None,
+) -> list[DeviceConnection]:
     """Every enabled device whose connection goes to one of ``names``.
 
     ``names`` are the ways the caller refers to one host (what was typed and
     the address it resolved to, say); a device matches when its effective
     host is any of them. Serial devices have no host and never match.
+    ``devices`` is :func:`device_connections`' own.
     """
     wanted = [n for n in names if n and n.strip()]
     return [
-        conn for conn in device_connections(project)
+        conn for conn in device_connections(project, devices)
         if conn.transport != "serial" and conn.host
         and any(_same_host(conn.host, n) for n in wanted)
     ]

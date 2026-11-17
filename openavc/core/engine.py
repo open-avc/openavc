@@ -166,11 +166,7 @@ class Engine(
         # Settings the device fills in (config fields with learned_from).
         self.learned_config = LearnedConfig(self)
 
-        # Simulation
-        from openavc.core.simulation import SimulationManager
-        self.simulation = SimulationManager(self)
-        self.devices.redirected_to_simulator = self.simulation.is_redirected
-        self.devices.real_connection = self.simulation.real_connection_of
+        self._init_simulation()
 
         # Wire StateStore -> EventBus
         self.state.set_event_bus(self.events)
@@ -202,6 +198,17 @@ class Engine(
         # change, so compute once. Stays None until a detection finds an
         # address -- see _detect_network_info.
         self._network_info: tuple[str, str, list[str]] | None = None
+
+    def _init_simulation(self) -> None:
+        """The simulation, and what the device manager asks it: whether a
+        device is connected to the simulator, the redirect on its driver, and
+        the address that redirect replaced. Callables, so the device manager
+        goes on knowing nothing about simulation."""
+        from openavc.core.simulation import SimulationManager
+        self.simulation = SimulationManager(self)
+        self.devices.redirected_to_simulator = self.simulation.is_redirected
+        self.devices.simulation_redirect = self.simulation.redirect_of
+        self.devices.real_connection = self.simulation.real_connection_of
 
     def monitors(self) -> list[dict]:
         """The readings this project says matter, as plain dicts.

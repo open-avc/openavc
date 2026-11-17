@@ -18,7 +18,7 @@ import pytest
 
 import openavc.system_config as system_config
 from openavc.api.routes import devices as devices_routes
-from openavc.core.device_config import connection_of, resolve_device_config
+from openavc.core.device_config import connection_of, dialled_record, resolve_device_config
 from openavc.core.device_reachability import check_reachability
 from openavc.core.event_bus import EventBus
 from openavc.core.project_loader import DeviceConfig
@@ -493,13 +493,17 @@ async def test_a_simulated_device_tests_the_simulator_and_says_so(drivers, liste
     drivers("acme_reach_sim", "tcp", {"port": 9})
     device = DeviceConfig(id="sim1", driver="acme_reach_sim", name="S1", config={})
     project = _project(device, connections={"sim1": {"host": "10.255.255.1"}})
-    simulation = SimpleNamespace(
-        redirect_of=lambda device_id: {"host": "127.0.0.1", "port": listener.port}
-        if device_id == "sim1" else None,
+    # The device manager's answer for a device its driver runs: the record it
+    # was handed, with the simulation redirect on that driver laid over it.
+    redirect = {"host": "127.0.0.1", "port": listener.port}
+    devices = SimpleNamespace(
+        dialled_record=lambda device_id: dialled_record(
+            resolve_device_config(device, project), redirect,
+        ) if device_id == "sim1" else None,
     )
     monkeypatch.setattr(
         devices_routes, "_get_engine",
-        lambda: SimpleNamespace(project=project, simulation=simulation),
+        lambda: SimpleNamespace(project=project, devices=devices),
     )
 
     result = await devices_routes.test_device_connection("sim1")
@@ -527,3 +531,19 @@ def test_the_simulation_reports_where_a_redirected_device_connects():
 
     assert manager.redirect_of("tv1") == {"host": "127.0.0.1", "port": 19007}
     assert manager.redirect_of("other") is None
+
+
+def test_a_driver_not_carrying_the_redirect_yet_has_none():
+    """A device whose driver a save replaced is pointed at the simulator again
+    before it dials; until then it carries its own address, and the
+    simulation does not answer for it."""
+    from openavc.core.simulation import SimulationManager
+
+    live = SimpleNamespace(config={"host": "10.0.0.5", "port": 23})
+    devices = SimpleNamespace(_devices={"tv1": live})
+    manager = SimulationManager(engine=SimpleNamespace(devices=devices))
+    manager._apply_sim_redirect(live, "tv1", 19007)
+
+    devices._devices["tv1"] = SimpleNamespace(config={"host": "10.0.0.5", "port": 23})
+
+    assert manager.redirect_of("tv1") is None

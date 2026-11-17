@@ -133,7 +133,11 @@ async def target_names(project: Any, address: str, ip: str) -> list[str]:
     """Every way the project names the audited device: what was typed, the
     address it resolved to, and each project device's host name that
     resolves to that address (a device set up as ``amp.local`` is the device
-    at the audited IP). Matched by :func:`devices_at_host`."""
+    at the audited IP). Matched by :func:`devices_at_host`.
+
+    Read as the project sets each device, never where a running simulation
+    points it: the audit pauses every device set to this equipment, a
+    simulated one too, since stopping the simulation sends it back here."""
     import asyncio
     import ipaddress
 

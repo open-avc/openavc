@@ -731,3 +731,96 @@ def test_serial_port_names_compare_the_way_the_os_does(monkeypatch):
     monkeypatch.setattr(device_config.sys, "platform", "linux")
     assert device_config.same_serial_port("/dev/ttyUSB0", "/dev/ttyUSB0")
     assert not device_config.same_serial_port("/dev/ttyUSB0", "/dev/ttyusb0")
+
+
+# ---------------------------------------------------------------------------
+# A device a running simulation points at the simulator
+# ---------------------------------------------------------------------------
+
+
+async def _simulated_engine(core, device, connections: dict, sim_port: int):
+    """An engine as a running simulation leaves it: the device manager running
+    ``device`` from its resolved record, and the simulation's redirect on that
+    driver, wired the way ``Engine`` wires the two."""
+    from types import SimpleNamespace
+
+    from openavc.core.device_config import resolve_device_config
+    from openavc.core.simulation import SimulationManager
+
+    state, events = core
+    project = SimpleNamespace(devices=[device], connections=connections)
+    manager = DeviceManager(state, events)
+    engine = SimpleNamespace(project=project, state=state, devices=manager)
+    simulation = SimulationManager(engine)
+    manager.redirected_to_simulator = simulation.is_redirected
+    manager.simulation_redirect = simulation.redirect_of
+    await manager.add_device(resolve_device_config(device, project))
+    simulation._sim_ports[device.id] = sim_port
+    simulation._apply_sim_redirect(manager._devices[device.id], device.id, sim_port)
+    return engine
+
+
+async def test_a_simulated_serial_device_holds_no_serial_port(monkeypatch, core):
+    """Connected to the simulator over TCP, a serial device has let its port
+    go: a test of a real adapter on that port meets nobody, and a test of the
+    simulator's own port meets the device."""
+    from openavc.api.routes import driver_test as driver_test_routes
+    from openavc.core.project_loader import DeviceConfig
+
+    device = DeviceConfig(id="acme1", driver="mock_a81_serial", name="Acme Relay", config={})
+    engine = await _simulated_engine(core, device, {"acme1": {"port": "/dev/ttyACME0"}}, 19401)
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: engine)
+
+    serial = await driver_test_routes.check_connection_conflict(
+        port="/dev/ttyACME0", transport="serial",
+    )
+    assert serial["conflicts"] == []
+    simulator = await driver_test_routes.check_connection_conflict(
+        host="127.0.0.1", port="19401", transport="tcp",
+    )
+    assert [c["device_id"] for c in simulator["conflicts"]] == ["acme1"]
+
+
+async def test_a_simulated_tcp_device_holds_no_session_at_its_own_address(monkeypatch, core):
+    from openavc.api.routes import driver_test as driver_test_routes
+    from openavc.core.project_loader import DeviceConfig
+
+    device = DeviceConfig(
+        id="proj_main", driver="mock_a81_tcp", name="Main Projector",
+        config={"host": "10.0.0.50", "port": 4352},
+    )
+    engine = await _simulated_engine(core, device, {}, 19400)
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: engine)
+
+    equipment = await driver_test_routes.check_connection_conflict(
+        host="10.0.0.50", port="4352", transport="tcp",
+    )
+    assert equipment["conflicts"] == []
+    simulator = await driver_test_routes.check_connection_conflict(
+        host="127.0.0.1", port="19400", transport="tcp",
+    )
+    assert [c["device_id"] for c in simulator["conflicts"]] == ["proj_main"]
+
+
+async def test_an_edit_not_applied_yet_does_not_hide_the_port_the_driver_holds(
+    monkeypatch, core,
+):
+    """The port a running driver holds is the one a test would fight it for,
+    whatever the saved project has moved the device to since."""
+    from types import SimpleNamespace
+
+    from openavc.api.routes import driver_test as driver_test_routes
+    from openavc.core.device_config import resolve_device_config
+    from openavc.core.project_loader import DeviceConfig
+
+    state, events = core
+    device = DeviceConfig(id="relay", driver="mock_a81_serial", name="Relay", config={})
+    project = SimpleNamespace(devices=[device], connections={"relay": {"port": "COM4"}})
+    manager = DeviceManager(state, events)
+    await manager.add_device(resolve_device_config(device, project))
+    project.connections["relay"] = {"port": "COM5"}  # saved, not applied yet
+    engine = SimpleNamespace(project=project, state=state, devices=manager)
+    monkeypatch.setattr(driver_test_routes, "_get_engine", lambda: engine)
+
+    held = await driver_test_routes.check_connection_conflict(port="COM4", transport="serial")
+    assert [c["device_id"] for c in held["conflicts"]] == ["relay"]

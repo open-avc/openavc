@@ -6,7 +6,10 @@ about a device's address. The address is the one the device manager dials:
 ``core/device_config`` layers the driver's defaults, the device's config and
 the project's connections table, then the bridge and USB rewrites, and
 ``transport/endpoint`` supplies a transport's fallback port and the
-control-interface bind. Each probe opens what that transport opens in
+control-interface bind. A device a driver runs is tested where that driver
+dials now (``DeviceManager.dialled_record``: the record it was handed, with
+the simulation redirect on that driver laid over it); one nothing runs yet,
+as the project sets it. Each probe opens what that transport opens in
 ``BaseDriver._create_transport`` (drivers/transport_ladder.py), without
 speaking the protocol:
 
@@ -108,17 +111,15 @@ async def run_connection_test(device: Any, engine: Any) -> dict[str, Any]:
     and nothing is dialed; neither is a port another connected device holds.
     """
     resolved = resolve_device_config(device, engine.project)
+    dialled = _dialled(engine, device.id) or resolved
     live = _connections(engine, "live_connections")
     own = next((c for c in live if c.device_id == device.id), None)
-    simulation = getattr(engine, "simulation", None)
-    redirect = simulation.redirect_of(device.id) if simulation is not None else None
-    if own is not None and _opens_connection(resolved):
-        return _connected_now(own, resolved, redirect)
+    if own is not None and _opens_connection(dialled):
+        return _connected_now(own, resolved)
     held, _unresolved = await held_ports(_connections(engine, "network_connections"))
-    if not redirect:
-        return await check_reachability(resolved, engine.project, held=held)
-    simulated = {**resolved, "config": {**(resolved.get("config") or {}), **redirect}}
-    result = await check_reachability(simulated, engine.project, held=held)
+    result = await check_reachability(dialled, engine.project, held=held)
+    if not connection_of(dialled).simulated:
+        return result
     where = _where(connection_of(resolved))
     result["simulated"] = True
     result["note"] = (
@@ -127,6 +128,14 @@ async def run_connection_test(device: Any, engine: Any) -> dict[str, Any]:
         "This device is simulated, so the test reached the simulator, not the equipment."
     )
     return result
+
+
+def _dialled(engine: Any, device_id: str) -> dict[str, Any] | None:
+    """The record a running device's driver dials now
+    (``DeviceManager.dialled_record``), or None when nothing runs it, or the
+    engine has no device manager to ask."""
+    read = getattr(getattr(engine, "devices", None), "dialled_record", None)
+    return read(device_id) if read is not None else None
 
 
 def _connections(engine: Any, which: str) -> list[Any]:
@@ -165,29 +174,27 @@ def _where(conn: Any) -> str:
     return conn.host or str(conn.port or "")
 
 
-def _connected_now(
-    own: Any, resolved: dict[str, Any], redirect: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """The answer for a device whose driver is connected now: the address it
-    is connected to, and a note saying no second connection was opened. A
-    simulated device is connected to the simulator, and the note says so."""
-    if not redirect:
+def _connected_now(own: Any, resolved: dict[str, Any]) -> dict[str, Any]:
+    """The answer for a device whose driver is connected now (``own``, from
+    ``live_connections``): the address it is connected to, and a note saying
+    no second connection was opened. A simulated device is connected to the
+    simulator, and the note says so, naming the address ``resolved`` sets."""
+    if not own.simulated:
         return {
             "success": True,
             "error": None,
             "latency_ms": None,
-            "connection": connection_of(resolved).address(),
+            "connection": own.address(),
             "in_use_by": own.name,
             "note": "The device is connected now. The test did not open a second connection to it.",
         }
-    simulated = {**resolved, "config": {**(resolved.get("config") or {}), **redirect}}
     where = _where(connection_of(resolved))
     equipment = f"the equipment at {where}" if where else "the equipment"
     return {
         "success": True,
         "error": None,
         "latency_ms": None,
-        "connection": connection_of(simulated).address(),
+        "connection": own.address(),
         "in_use_by": own.name,
         "simulated": True,
         "note": (

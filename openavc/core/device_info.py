@@ -1,21 +1,25 @@
 """What the device manager says about its devices: one device's details
 (``get_device_info``), its settings with their current values
-(``get_device_settings``), the listing (``list_devices``) and where each
-connected device connects (``live_connections``), less the simulated ones for
-the ports held on the network (``network_connections``). Read-only: nothing
-here changes a device.
+(``get_device_settings``), the listing (``list_devices``), where each running
+device connects now (``dialled_record``, ``connections_now``), each connected
+one (``live_connections``) and, less the simulated ones, the ports held on the
+network (``network_connections``). Read-only: nothing here changes a device.
 
 Three kinds of device are described: one with a live driver, one waiting for its
 driver to be installed (an orphan, core/device_orphans.py) and one that is
 disabled. Product hardware adds its own facts on top (installed equipment).
 
 The rule worth knowing before changing it: where a device connects is read from
-the record the manager was handed (``core.device_config.connection_of``), never
-from the live driver, whose host a running simulation points at 127.0.0.1. The
-one exception is the URL of a link action, built from the driver's own config
-with its real address put back. And an orphan's details are the one answer that
-carries its raw config, which reaches the cloud AI, so every login in it is
-masked.
+the record the manager was handed (``core.device_config.connection_of``). A
+device's details name the address that record sets, never the live driver's
+host, which a running simulation points at 127.0.0.1. Where it connects now is
+that record with the simulation redirect on its driver laid over it
+(``device_config.dialled_record``, the redirect from ``simulation_redirect``),
+which names the simulator on this computer while a simulation points the
+device there. The one exception is the URL of a link action, built from the
+driver's own config with its real address put back.
+And an orphan's details are the one answer that carries its raw config, which
+reaches the cloud AI, so every login in it is masked.
 
 Mixed into DeviceManager (core/device_manager.py).
 """
@@ -25,7 +29,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, TYPE_CHECKING
 
-from openavc.core.device_config import DeviceConnection, connection_of
+from openavc.core.device_config import DeviceConnection, connection_of, dialled_record
 from openavc.core.device_errors import DeviceNotFoundError
 from openavc.core.device_logins import SAVED_LOGIN, login_fields, marked_fields
 from openavc.core.installed_equipment import is_product_hardware_id, missing_driver_reason
@@ -94,7 +98,7 @@ class DeviceInfoMixin:
 
     Holds no state of its own. From its host (DeviceManager) it reads
     ``state``, ``installed_equipment``, ``real_connection``,
-    ``redirected_to_simulator``, ``_devices``, ``_device_configs``,
+    ``simulation_redirect``, ``_devices``, ``_device_configs``,
     ``_orphaned_devices`` (core/device_orphans.py) and
     ``_detected_web_ui_urls`` (core/device_web_ui.py), and asks
     ``_live_driver``.
@@ -103,7 +107,7 @@ class DeviceInfoMixin:
     state: StateStore
     installed_equipment: Any
     real_connection: Callable[[str], dict[str, Any] | None] | None
-    redirected_to_simulator: Callable[[str], bool] | None
+    simulation_redirect: Callable[[str], dict[str, Any] | None] | None
     _devices: dict[str, BaseDriver]
     _device_configs: dict[str, dict[str, Any]]
     _orphaned_devices: dict[str, dict[str, Any]]
@@ -224,41 +228,51 @@ class DeviceInfoMixin:
                 merged[key] = value
         return merged
 
-    def live_connections(self) -> list[DeviceConnection]:
-        """Where each device whose driver is connected right now connects.
+    def dialled_record(self, device_id: str) -> dict[str, Any] | None:
+        """The record a running device's driver dials now, or None when no
+        driver runs it: the record this manager was handed, with the
+        simulation redirect on that driver laid over it
+        (``device_config.dialled_record``). The two are of one generation,
+        since the redirect is read off the driver that record built."""
+        record = self._device_configs.get(device_id)
+        if record is None or device_id not in self._devices:
+            return None
+        redirect = self.simulation_redirect
+        return dialled_record(record, redirect(device_id) if redirect is not None else None)
 
-        Read from the record this manager was handed (``connection_of``), as
-        :meth:`get_device_info` is, so a running simulation, which points the
-        live driver at 127.0.0.1, still names the device's own address. A
-        serial device, one that sends through a bridge with no connection of
-        its own, and one with no network address are left out. A Discovery
-        scan connects to none of these (``discovery/port_guard.py``).
-        """
+    def connections_now(self) -> list[DeviceConnection]:
+        """Where each device a driver runs connects now, connected or not:
+        ``connection_of`` over :meth:`dialled_record`. A device a running
+        simulation points at the simulator is named there, ``simulated``."""
         out: list[DeviceConnection] = []
-        for device_id, driver in self._devices.items():
-            record = self._device_configs.get(device_id)
-            if record is None or not driver.get_state("connected"):
-                continue
-            conn = connection_of(record)
-            if conn.transport in ("serial", "bridge") or not conn.host:
-                continue
-            if not isinstance(conn.port, int):
-                continue
-            out.append(conn)
+        for device_id in self._devices:
+            record = self.dialled_record(device_id)
+            if record is not None:
+                out.append(connection_of(record))
         return out
+
+    def live_connections(self) -> list[DeviceConnection]:
+        """Where each device whose driver is connected right now connects
+        (:meth:`connections_now`): a simulated one at the simulator. A serial
+        device, one that sends through a bridge with no connection of its
+        own, and one with no network address are left out.
+        """
+        return [
+            conn for conn in self.connections_now()
+            if self._devices[conn.device_id].get_state("connected")
+            and conn.transport not in ("serial", "bridge") and conn.host
+            and isinstance(conn.port, int)
+        ]
 
     def network_connections(self) -> list[DeviceConnection]:
         """The ports connected devices hold on the network right now:
         :meth:`live_connections` less every device connected to the simulator,
-        which holds nothing at its own address. A Discovery scan leaves these
-        ports alone and identifies the device found at one from its driver; a
-        simulated device's address is scanned as if it were not in the project.
+        which holds nothing at its own address. A Discovery scan connects to
+        none of these ports (``discovery/port_guard.py``) and identifies the
+        device found at one from its driver; a simulated device's address is
+        scanned as if it were not in the project.
         """
-        simulated = self.redirected_to_simulator
-        return [
-            conn for conn in self.live_connections()
-            if simulated is None or not simulated(conn.device_id)
-        ]
+        return [conn for conn in self.live_connections() if not conn.simulated]
 
     def list_devices(self) -> list[dict[str, Any]]:
         items = self._list_devices()

@@ -345,4 +345,5 @@ def test_the_engine_tells_its_devices_which_are_simulated(tmp_path):
     path.write_text('{"openavc_version": "0.14.0", "project": {"id": "t", "name": "T"}}')
     engine = Engine(str(path))
     assert engine.devices.redirected_to_simulator == engine.simulation.is_redirected
+    assert engine.devices.simulation_redirect == engine.simulation.redirect_of
     assert engine.devices.real_connection == engine.simulation.real_connection_of

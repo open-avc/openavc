@@ -202,6 +202,9 @@ RECORD_NAME = "simulation.json"
 # IDE shows. Empty when there is nothing to say.
 ERROR_KEY = "system.simulation_error"
 
+# Where the redirect points a device: the simulator listens on this computer.
+_SIM_HOST = "127.0.0.1"
+
 
 def _record_path() -> Path:
     from openavc.system_config import get_data_dir
@@ -650,12 +653,20 @@ class SimulationManager:
     def redirect_of(self, device_id: str) -> dict[str, Any] | None:
         """Where a redirected device connects now (the connection settings
         the redirect wrote into its live config), or None when it is not
-        redirected. The connection test dials this instead of the device's
-        own address."""
+        redirected. The device manager lays this over the record of the same
+        driver (``DeviceManager.dialled_record``), which every reader of where
+        a device connects now asks: the connection test, the Driver Builder's
+        conflict check, a Discovery scan's held ports.
+
+        A driver a save replaced carries its own address until the redirect
+        is applied to it again, before it dials (:meth:`sync`); until then
+        nothing is answered for it, so its record is never named at the
+        simulator it has not been pointed at.
+        """
         if device_id not in self._original_configs:
             return None
         driver = self.engine.devices._devices.get(device_id)
-        if driver is None:
+        if driver is None or driver.config.get("host") != _SIM_HOST:
             return None
         return {
             key: driver.config[key]
@@ -1379,13 +1390,13 @@ class SimulationManager:
             "ssl": driver.config.get("ssl"),
             "verify_ssl": driver.config.get("verify_ssl"),
         }
-        driver.config["host"] = "127.0.0.1"
+        driver.config["host"] = _SIM_HOST
         driver.config["port"] = sim_port
         # A datagram the driver sends beside its transport (a wake-on-LAN
         # packet, a message to a presentation's UDP receiver) follows the
         # redirect too: the simulator listens for it on the same port number,
         # so it shows in the protocol log instead of leaving the box.
-        driver.udp_redirect = ("127.0.0.1", sim_port)
+        driver.udp_redirect = (_SIM_HOST, sim_port)
         if self._driver_transport_needs_tcp_stand_in(driver):
             driver.config["transport"] = "tcp"
         if driver.config.get("ssl"):
@@ -1584,7 +1595,7 @@ class SimulationManager:
             if not driver:
                 continue
             sim_port = self._sim_ports[device_id]
-            if driver.config.get("host") != "127.0.0.1" or driver.config.get("port") != sim_port:
+            if driver.config.get("host") != _SIM_HOST or driver.config.get("port") != sim_port:
                 self._apply_sim_redirect(driver, device_id, sim_port)
                 log.info("Re-applied simulation redirect for %s to port %d", device_id, sim_port)
                 if dm.is_paused(device_id):

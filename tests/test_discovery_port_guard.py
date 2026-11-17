@@ -374,9 +374,17 @@ class TestLiveConnections:
             }
 
         assert [c.name for c in manager.network_connections()] == ["Lobby Widget", "Hall Widget"]
-        manager.redirected_to_simulator = lambda device_id: device_id == "lobby_widget"
+        # The simulation's redirect, as Engine wires it into the manager.
+        manager.simulation_redirect = (
+            lambda device_id: {"host": "127.0.0.1", "port": 19001}
+            if device_id == "lobby_widget" else None
+        )
         assert [c.name for c in manager.network_connections()] == ["Hall Widget"]
-        assert [c.name for c in manager.live_connections()] == ["Lobby Widget", "Hall Widget"]
+        live = {c.name: (c.host, c.port, c.simulated) for c in manager.live_connections()}
+        assert live == {
+            "Lobby Widget": ("127.0.0.1", 19001, True),
+            "Hall Widget": ("10.77.0.6", 4321, False),
+        }
 
     def test_a_scan_reads_the_ports_held_on_the_network(self):
         from openavc import main
