@@ -15,16 +15,20 @@ Synthetic only: an invented ``/dev/ttyACME0`` and the transports replaced.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 import serial
 
 from openavc.api.models import TestCommandRequest
+from openavc.api.routes import devices as devices_routes
 from openavc.api.routes import driver_test
 from openavc.core.connection_fault import ConnectionFaultError
 from openavc.core.device_reachability import check_reachability
+from openavc.core.project_loader import DeviceConfig
 from openavc.drivers.base import BaseDriver
+from openavc.drivers.registry import register_driver, unregister_driver
 from openavc.drivers.transport_ladder import serial_line_settings
 
 PORT = "/dev/ttyACME0"
@@ -147,6 +151,20 @@ async def test_raw_send_without_a_draft_opens_at_the_defaults(opened):
     assert _line(opened[0]) == DEFAULT_OPENED
 
 
+async def test_the_test_command_door_sends_a_draft_with_no_command_raw(opened, monkeypatch):
+    """A definition with a command_string and no command_name is a raw probe,
+    and it opens at the draft's line settings."""
+    monkeypatch.setattr(driver_test, "_rate_limit_test", lambda key: None)
+
+    result = await driver_test.test_driver_command(
+        "acme_widget", _raw(definition=_draft(ACME_LINE)),
+    )
+
+    assert result["success"] is True, result
+    assert result["sent"] == "PWR?"
+    assert _line(opened[0]) == ACME_OPENED
+
+
 async def test_raw_send_refuses_a_setting_the_connect_refuses(opened):
     result = await driver_test._test_raw(_raw(definition=_draft({"parity": "Q"})))
 
@@ -198,3 +216,42 @@ async def test_test_connection_refuses_a_setting_the_connect_refuses(probed):
     assert result["success"] is False
     assert result["error"].startswith("This device's Data bits setting is 9")
     assert probed == []
+
+
+class _AcmeSerial(BaseDriver):
+    DRIVER_INFO: dict[str, Any] = {
+        "id": "acme_serial_line",
+        "name": "Acme Serial Line",
+        "manufacturer": "Acme",
+        "category": "utility",
+        "transport": "serial",
+        "default_config": {"port": "", **ACME_LINE},
+        "commands": {},
+        "state_variables": {},
+    }
+
+    async def send_command(self, command: str, params: dict | None = None) -> Any:
+        return None
+
+
+@pytest.fixture
+def acme_serial():
+    register_driver(_AcmeSerial)
+    yield
+    unregister_driver("acme_serial_line")
+
+
+async def test_the_test_connection_door_opens_at_the_drivers_line_settings(
+    acme_serial, probed, monkeypatch,
+):
+    """The device names only its port; the line settings come from the
+    driver's defaults, as they do when the device connects."""
+    device = DeviceConfig(id="w1", driver="acme_serial_line", name="W1", config={})
+    project = SimpleNamespace(devices=[device], connections={"w1": {"port": PORT}})
+    monkeypatch.setattr(devices_routes, "_get_engine", lambda: SimpleNamespace(project=project))
+
+    result = await devices_routes.test_device_connection("w1")
+
+    assert result["success"] is True, result
+    assert probed[0]["port"] == PORT
+    assert _line(probed[0]) == ACME_OPENED
