@@ -33,7 +33,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
-from openavc.core.device_errors import DeviceNotFoundError, not_connected
+from openavc.core.device_errors import DeviceNotFoundError, device_error_text, not_connected
 from openavc.core.device_reconnect import _log_task_exception
 from openavc.drivers.base import (
     DeviceSettingValueError,
@@ -386,7 +386,8 @@ class PendingSettingsMixin:
             # retrying forever hid real problems (a firmware that
             # rejects the value, a bad queued write).
             await self._report_pending_error(
-                device_id, f"Pending setting '{key}' failed to apply: {e}",
+                device_id,
+                f"Pending setting '{key}' failed to apply: {device_error_text(e)}",
             )
 
     async def _refuse_pending(

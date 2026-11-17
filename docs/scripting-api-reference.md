@@ -332,7 +332,7 @@ Events fired by the system that scripts can listen for with `@on_event`.
 | `ui.page.<page_id>` | (none) | Page navigation |
 | `device.connected.<device_id>` | (none) | Device connected |
 | `device.disconnected.<device_id>` | (none) | Transport-level loss (socket dropped, serial port gone, poll watchdog tripped) |
-| `device.error.<device_id>` | `device_id`, `error` | Protocol/parse/command failure on an otherwise-live connection. Complementary to `device.disconnected`; if a single exception is both, only `device.disconnected` fires |
+| `device.error.<device_id>` | `device_id`, `error` | Protocol/parse/command failure on an otherwise-live connection. `error` is the error's own text, or its type (such as `TimeoutError`) when it has no text. Complementary to `device.disconnected`; if a single exception is both, only `device.disconnected` fires |
 | `macro.started.<macro_id>` | `macro_id`, `name`, `total_steps` | Macro began executing |
 | `macro.completed.<macro_id>` | `macro_id`, `name` | Macro finished executing |
 | `macro.cancelled.<macro_id>` | `macro_id`, `name` | Macro was cancelled |

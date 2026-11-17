@@ -12,7 +12,8 @@ Event types follow a dotted namespace convention:
                                  serial port gone, watchdog dry-poll trip)
     device.error.<id>          — protocol/parse/command failure on an
                                  otherwise-live connection (payload:
-                                 {device_id, error})
+                                 {device_id, error}; an exception's error
+                                 is core/device_errors.device_error_text)
     ui.press.<element_id>      — button pressed
     ui.release.<element_id>    — button released
     ui.change.<element_id>     — slider/select changed

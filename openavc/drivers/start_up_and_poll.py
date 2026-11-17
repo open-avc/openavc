@@ -51,6 +51,7 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable
 
+from openavc.core.device_errors import device_error_text
 from openavc.drivers.base import ConnectionFaultError
 from openavc.drivers.spec import DEFAULT_LINE_GAP_S, LINE_GAP_TRANSPORTS
 from openavc.transport.pacing import pacing_clock, sleep_at_least
@@ -402,7 +403,7 @@ class StartUpAndPoll:
         try:
             await self.events.emit(
                 f"device.error.{self.device_id}",
-                {"device_id": self.device_id, "error": str(exc)},
+                {"device_id": self.device_id, "error": device_error_text(exc)},
             )
         except Exception:
             log.exception(f"[{self.device_id}] Failed to emit device.error")

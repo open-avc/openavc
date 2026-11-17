@@ -48,6 +48,7 @@ from openavc.core.command_gates import (
 )
 from openavc.core.device_errors import (
     device_asleep,
+    device_error_text,
     device_restarting,
     mark_failed_command,
     not_connected,
@@ -113,8 +114,8 @@ class DeviceCommandsMixin:
         """Send a command to a device by ID.
 
         Any exception raised by the driver's ``send_command`` is published as
-        ``device.error.<device_id>`` (payload: ``{"device_id", "error"}``) and
-        then re-raised. A refusal before sending (an undeclared name, the
+        ``device.error.<device_id>`` (payload: ``{"device_id", "error"}``, the
+        error in ``device_error_text``'s words) and then re-raised. A refusal before sending (an undeclared name, the
         wrong door, offline, a parameter the declaration refuses) is raised
         with no event. Transport-level loss is reported separately as
         ``device.disconnected.<device_id>`` from the transport callback; the
@@ -170,7 +171,7 @@ class DeviceCommandsMixin:
             mark_failed_command(exc, device_id, command)
             await self.events.emit(
                 f"device.error.{device_id}",
-                {"device_id": device_id, "error": str(exc)},
+                {"device_id": device_id, "error": device_error_text(exc)},
             )
             raise
         # Armed only on a send that did not raise. A command that never left

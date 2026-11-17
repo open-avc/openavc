@@ -501,7 +501,7 @@ log.info(f"Cancelled {count} timers")
 | `ui.page.<page_id>` | Page navigation (no payload) |
 | `device.connected.<device_id>` | Device connected |
 | `device.disconnected.<device_id>` | Device disconnected — transport-level loss (socket dropped, serial port gone, poll watchdog tripped) |
-| `device.error.<device_id>` | Protocol/parse/command failure on an otherwise-live connection (payload includes `device_id`, `error`). Distinct from `device.disconnected.<device_id>` — see note below |
+| `device.error.<device_id>` | Protocol/parse/command failure on an otherwise-live connection (payload includes `device_id`, `error`: the error's own text, or its type, such as `TimeoutError`, when it has no text). Distinct from `device.disconnected.<device_id>` — see note below |
 | `macro.started.<macro_id>` | Macro began executing |
 | `macro.completed.<macro_id>` | Macro finished executing |
 | `macro.cancelled.<macro_id>` | Macro was cancelled |

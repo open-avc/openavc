@@ -6,7 +6,8 @@ cloud) turn these into the words a person sees, through ``friendly_error``.
 They read the facts off attributes, never out of the message: ``device_id``
 names the device the way somebody in the room knows it, ``restart_seconds``
 and ``asleep_wake`` say why it is away, and ``failed_command`` says which
-command a driver's own exception came from.
+command a driver's own exception came from. ``device_error_text`` is THE
+words ``device.error.<id>`` carries for an exception, the empty one included.
 
 The rule worth knowing before changing it: a ``device_id`` attribute marks the
 manager's own refusals, whose text is written for the reader. A driver's
@@ -119,6 +120,21 @@ def not_connected(device_id: str) -> ConnectionError:
     exc = ConnectionError(f"Device '{device_id}' is not connected")
     exc.device_id = device_id
     return exc
+
+
+def device_error_text(exc: BaseException) -> str:
+    """What ``device.error.<id>`` says of an exception: its own text, or its
+    type when it carries none (a bare ``TimeoutError()``, which is what a
+    Python driver's ``send_and_wait`` raises when the device stays silent).
+
+    Every place that publishes the event for an exception, or puts one into
+    the event's sentence, says it this way, so a trigger forwarding
+    ``$trigger.error`` never sends an empty message. The text is kept as it
+    is when there is some: the Programmer and a trigger read it, and a panel
+    receives its own copy of the event that names only the device.
+    """
+    text = str(exc)
+    return text if text.strip() else type(exc).__name__
 
 
 def mark_failed_command(exc: BaseException, device_id: str, command: str) -> None:

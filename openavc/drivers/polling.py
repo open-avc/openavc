@@ -55,6 +55,7 @@ from openavc.core.connection_fault import (
     ConnectionFault,
     classify_connection_fault,
 )
+from openavc.core.device_errors import device_error_text
 from openavc.core.event_bus import detach_emit_chain
 from openavc.drivers.compiled_protocol import state_var_default
 from openavc.drivers.spec import SILENCE_CHECK_TRANSPORTS
@@ -409,7 +410,7 @@ class PollLoop:
         try:
             await self.events.emit(
                 f"device.error.{self.device_id}",
-                {"device_id": self.device_id, "error": str(exc)},
+                {"device_id": self.device_id, "error": device_error_text(exc)},
             )
         except Exception:
             log.exception(
