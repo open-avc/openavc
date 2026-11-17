@@ -6,9 +6,8 @@ edit, remove, shutdown), the config it was handed and the live driver it built
 from it, a driver reload, the connect and drop events, and the one dial every
 door goes through (``_connect_driver``): a missing simulator never falls
 through to physical control, and a USB-serial device is dialled only through
-its own adapter. Every door that swaps a device's instance (an edit, a driver
-reload, its driver arriving, a retry) is ``_replace_device``, which says what
-the device keeps across it; ``remove_device`` forgets it all.
+its own adapter. What a device keeps when its instance is swapped (an edit, a
+driver reload, a retry) is ``_replace_device``; ``remove_device`` forgets it.
 
 The rule worth knowing before changing it: a driver gets its OWN copy of its
 config, because the copy kept here is what the project reconcile compares
@@ -415,20 +414,14 @@ class DeviceManager(
             )
 
     async def remove_device(self, device_id: str) -> None:
-        """Disconnect and remove a device for good, in any state.
-
-        Everything it had goes with it, why it was away on purpose included
-        (a sleep, a commanded-restart window): a device added under this id
-        later is a different device, and would inherit a suppression it never
-        asked for. The same device on a fresh instance is
-        :meth:`_replace_device`.
-        """
+        """Disconnect and remove a device for good, in any state, why it was
+        away on purpose included: a device added under this id later is another
+        device. The same device on a new instance is :meth:`_replace_device`."""
         await self._take_down(device_id)
         self._forget_away(device_id)
 
     async def _take_down(self, device_id: str) -> None:
-        """Disconnect a device and drop what belongs to its instance: the
-        part of a removal a replacement shares."""
+        """Disconnect a device and drop what its instance had."""
         # Cancel reconnect if running — await so reconnect loop finishes
         await self._cancel_reconnect(device_id)
         # Drop pause bookkeeping: the TTL backstop must not fire a resume for
@@ -491,8 +484,8 @@ class DeviceManager(
 
         Handles every device the system has (``device_record``): a running
         one, one waiting for its driver (driver reassignment), one its driver
-        or its settings failed, which this tries again, and a disabled one.
-        What the device keeps across it is :meth:`_replace_device`.
+        or its settings failed, which this tries again, and a disabled one
+        (:meth:`_replace_device`).
 
         Args:
             device_id: The existing device ID.
@@ -505,26 +498,16 @@ class DeviceManager(
     async def _replace_device(
         self, device_id: str, config: dict[str, Any], *, defer_connect: bool = False,
     ) -> None:
-        """Replace a device the system has with a fresh instance built from
-        ``config``: an edit, a driver reload, its driver arriving, a retry of
-        one its driver or its settings failed. THE rule for what a device
-        keeps across it, since it is the same device:
-
-        - its pause, with the time its backstop had left and who holds it
-          (:meth:`_pause_to_carry`), while a driver runs it after: a device
-          the replacement leaves disabled, waiting for its driver or failed
-          has nothing for a pause to hold off the wire;
-        - why it is away on purpose, a sleep and a commanded-restart window,
-          while it stays on the same driver, whose commands declared them;
-          each still ends by its own rules (core/device_away.py);
-        - its queued settings, in ``config``, checked against the driver's
-          declaration before any is sent (core/pending_settings.py).
-
-        Its connection, flap history, read-back watcher, detected web page,
-        recent traffic and state keys start fresh. A disabled device's record
-        alone goes, since nothing ran it. Raises DriverBuildError when the
-        new driver cannot set the device up (it is kept, with why).
-        """
+        """Replace a device with a fresh instance built from ``config`` (an
+        edit, a driver reload, its driver arriving, a retry): THE rule for
+        what the same device keeps, said below."""
+        # What the same device keeps: its pause and who holds it, when a driver
+        # runs it after; its sleep and commanded-restart window while it stays
+        # on the driver whose commands declared them, each ending by its own
+        # rules (core/device_away.py); its queue, in ``config``, checked before
+        # it is sent (core/pending_settings.py). The rest of the instance starts
+        # fresh (_take_down). Raises DriverBuildError when the driver cannot set
+        # the device up (it is kept, with why).
         before = self.device_record(device_id)
         if before is None:
             raise DeviceNotFoundError(f"Device '{device_id}' not found")

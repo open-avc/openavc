@@ -161,6 +161,29 @@ class _ReadbackWatch:
                 self.outstanding.pop(key, None)
 
 
+def _still_taken(pending: dict[str, Any], keys: list[str], taken: dict[str, Any]) -> list[str]:
+    """Each of ``keys`` whose queued entry is still the value a pass took
+    (``taken``); one absent from ``taken`` counts as taken as it stands."""
+    return [
+        key for key in keys
+        if key in pending and pending[key] == taken.get(key, pending.get(key))
+    ]
+
+
+def _cleared_payload(
+    device_id: str, cleared: list[str], refused: dict[str, Any], pending: dict[str, Any],
+) -> dict[str, Any]:
+    """What ``device.pending_settings_applied`` says: the keys a pass cleared,
+    split into those sent and those the driver refused, and the queue left,
+    which the engine saves into the project."""
+    return {
+        "device_id": device_id,
+        "applied": [key for key in cleared if key not in refused],
+        "refused": [key for key in cleared if key in refused],
+        "remaining": dict(pending),
+    }
+
+
 def _checked_value(driver: BaseDriver, device_id: str, key: str, value: Any) -> Any:
     """``value`` for setting ``key`` checked against the driver's declaration
     and coerced to its declared type, for a live write and for the queue's
@@ -415,12 +438,7 @@ class PendingSettingsMixin:
             return
 
         refused = refused or {}
-        taken = {**queued_values, **refused}
-        cleared = [
-            key for key in [*applied_keys, *refused]
-            if key in pending
-            and pending[key] == taken.get(key, pending.get(key))
-        ]
+        cleared = _still_taken(pending, [*applied_keys, *refused], {**queued_values, **refused})
         if not cleared:
             return
         for key in cleared:
@@ -431,12 +449,9 @@ class PendingSettingsMixin:
             config.pop("pending_settings", None)
 
         # Notify the engine to persist the change
-        await self.events.emit("device.pending_settings_applied", {
-            "device_id": device_id,
-            "applied": [key for key in cleared if key not in refused],
-            "refused": [key for key in cleared if key in refused],
-            "remaining": dict(pending),
-        })
+        await self.events.emit(
+            "device.pending_settings_applied", _cleared_payload(device_id, cleared, refused, pending),
+        )
 
     @staticmethod
     def _device_is_reporting(driver: BaseDriver) -> bool:
