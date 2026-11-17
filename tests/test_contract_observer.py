@@ -292,7 +292,7 @@ async def test_the_builder_test_reports_replies_no_rule_matched():
     assert result["success"] is True
 
 
-async def _builder_test(reply: bytes) -> dict:
+async def _builder_test(reply: bytes, definition: dict | None = None) -> dict:
     """The Builder's live test of ``query_power`` against a socket that
     answers ``reply``."""
 
@@ -308,7 +308,8 @@ async def _builder_test(reply: bytes) -> dict:
     try:
         return await _test_via_configurable_driver(CommandRequest(
             host="127.0.0.1", port=str(port), transport="tcp",
-            definition=_definition(), command_name="query_power", timeout=2,
+            definition=definition or _definition(), command_name="query_power",
+            timeout=2,
         ))
     finally:
         server.close()
@@ -349,6 +350,27 @@ async def test_the_builder_test_fails_a_value_outside_its_enum():
     assert result["success"] is False
     assert result["contract_errors"] == [
         "A status value is not the type the driver says it is: input "
+        "(not one of the declared values).",
+    ]
+
+
+async def test_the_builder_test_fails_a_zone_value_outside_its_enum():
+    definition = _definition(
+        child_entity_types={
+            "zone": {
+                "id_format": {"type": "integer", "min": 1, "max": 4},
+                "state_variables": {"mode": {"type": "enum", "values": ["on", "off"]}},
+                "instances": {"count": 2},
+            },
+        },
+        responses=[{"match": r"^Z(\d)MODE(\w+)$", "child_set": [
+            {"type": "zone", "id": "$1", "state": {"mode": "$2"}},
+        ]}],
+    )
+    result = await _builder_test(b"Z1MODEzzz\r", definition)
+    assert result["success"] is False
+    assert result["contract_errors"] == [
+        "A status value is not the type the driver says it is: zone.1.mode "
         "(not one of the declared values).",
     ]
 
