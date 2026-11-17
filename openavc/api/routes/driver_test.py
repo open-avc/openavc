@@ -26,7 +26,7 @@ Split out of `routes/drivers.py`: this is a third of that file behind two
 routes, and it shares nothing with driver installation or definition CRUD.
 """
 
-from typing import Any, Callable, NamedTuple
+from typing import Any, Awaitable, Callable, NamedTuple
 
 from openavc.api.host_policy import ProgrammerRoute
 from fastapi import APIRouter, HTTPException
@@ -551,69 +551,38 @@ async def _test_raw(body: TestCommandRequest) -> dict:
     No auth, no on_connect. Used when a user types a one-off probe in the
     raw command field without selecting a defined command.
     """
-    import asyncio
-
     if not body.command_string:
         raise HTTPException(
             status_code=422,
             detail="Provide either a definition + command_name or a command_string",
         )
-
-    if body.transport == "http":
-        return await _test_http_raw(body)
-
-    if body.transport == "osc":
-        return await _test_osc_raw(body)
-
-    if body.transport == "serial":
-        return await _test_serial_raw(body)
-
-    if body.transport == "udp":
-        return await _test_udp_raw(body)
-
-    if body.transport not in ("tcp",):
+    probe = _RAW_PROBES.get(body.transport)
+    if probe is None:
         raise HTTPException(
             status_code=422,
             detail="Only TCP, UDP, serial, HTTP, and OSC test connections are supported",
         )
+    return await probe(body)
 
-    from openavc.transport.tcp import TCPTransport
 
-    delimiter = body.delimiter.encode().decode("unicode_escape").encode()
+def _not_opened(body: TestCommandRequest, error: BaseException) -> dict:
+    """A raw probe whose transport could not be opened."""
+    return {
+        "success": False,
+        "sent": body.command_string,
+        "received": [],
+        "state_changes": {},
+        "error": str(error),
+    }
+
+
+async def _exchange(transport: Any, body: TestCommandRequest) -> dict:
+    """Send the probe's bytes on an opened transport, wait for the reply,
+    close the transport and report what came back."""
+    import asyncio
+
     response_text = None
     error_text = None
-
-    # Coerce numeric-string port to int for IP transports.
-    try:
-        port = int(body.port)
-    except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid TCP port: {body.port!r}",
-        ) from None
-
-    try:
-        transport = await TCPTransport.create(
-            host=body.host,
-            port=port,
-            on_data=lambda d: None,
-            on_disconnect=lambda: None,
-            delimiter=delimiter,
-            timeout=body.timeout,
-            # TLS over TCP when the driver's own connection is (its ssl and
-            # verify_ssl, as the transport ladder builds a TCP connection).
-            ssl=body.ssl,
-            ssl_verify=body.verify_ssl,
-        )
-    except ConnectionError as e:
-        return {
-            "success": False,
-            "sent": body.command_string,
-            "received": [],
-            "state_changes": {},
-            "error": str(e),
-        }
-
     try:
         cmd_data = body.command_string.encode().decode("unicode_escape").encode()
         response = await transport.send_and_wait(cmd_data, timeout=body.timeout)
@@ -634,13 +603,50 @@ async def _test_raw(body: TestCommandRequest) -> dict:
     }
 
 
+def _raw_port(body: TestCommandRequest, name: str) -> int:
+    """The probe's port as a number, or a 422 naming the transport."""
+    try:
+        return int(body.port)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid {name} port: {body.port!r}",
+        ) from None
+
+
+def _raw_delimiter(body: TestCommandRequest) -> bytes:
+    return body.delimiter.encode().decode("unicode_escape").encode()
+
+
+async def _test_tcp_raw(body: TestCommandRequest) -> dict:
+    """Raw TCP probe, TLS-wrapped when the driver's connection is (its ssl and
+    verify_ssl, as the transport ladder builds a TCP connection)."""
+    from openavc.transport.tcp import TCPTransport
+
+    delimiter = _raw_delimiter(body)
+    port = _raw_port(body, "TCP")
+    try:
+        transport = await TCPTransport.create(
+            host=body.host,
+            port=port,
+            on_data=lambda d: None,
+            on_disconnect=lambda: None,
+            delimiter=delimiter,
+            timeout=body.timeout,
+            ssl=body.ssl,
+            ssl_verify=body.verify_ssl,
+        )
+    except ConnectionError as e:
+        return _not_opened(body, e)
+    return await _exchange(transport, body)
+
+
 async def _test_serial_raw(body: TestCommandRequest) -> dict:
     """Raw serial probe — open SerialTransport with the port path in body.port,
     at the line settings a connect of the draft opens it with (the draft's
     ``default_config`` and the panel's overrides, read by the transport
     ladder). A setting the connect refuses is refused here in its words,
     before the port is opened."""
-    import asyncio
     from openavc.drivers.transport_ladder import serial_line_settings
     from openavc.transport.serial_transport import SerialTransport
 
@@ -651,10 +657,7 @@ async def _test_serial_raw(body: TestCommandRequest) -> dict:
             detail="Serial port path is required (e.g. COM3 or /dev/ttyUSB0).",
         )
 
-    delimiter = body.delimiter.encode().decode("unicode_escape").encode()
-    response_text = None
-    error_text = None
-
+    delimiter = _raw_delimiter(body)
     try:
         transport = await SerialTransport.create(
             port=port_path,
@@ -665,32 +668,8 @@ async def _test_serial_raw(body: TestCommandRequest) -> dict:
             **serial_line_settings(_drafted_config(body)),
         )
     except (OSError, ConnectionError) as e:
-        return {
-            "success": False,
-            "sent": body.command_string,
-            "received": [],
-            "state_changes": {},
-            "error": str(e),
-        }
-
-    try:
-        cmd_data = body.command_string.encode().decode("unicode_escape").encode()
-        response = await transport.send_and_wait(cmd_data, timeout=body.timeout)
-        response_text = display_text(response)
-    except asyncio.TimeoutError:
-        error_text = "Timeout waiting for response"
-    except (OSError, ValueError, UnicodeError) as e:
-        error_text = str(e)
-    finally:
-        await transport.close()
-
-    return {
-        "success": error_text is None,
-        "sent": body.command_string,
-        "received": [response_text] if response_text is not None else [],
-        "state_changes": {},
-        "error": error_text,
-    }
+        return _not_opened(body, e)
+    return await _exchange(transport, body)
 
 
 async def _test_udp_raw(body: TestCommandRequest) -> dict:
@@ -700,50 +679,14 @@ async def _test_udp_raw(body: TestCommandRequest) -> dict:
     surfaces the same shape to the raw probe path so authors can fire one-off
     bytes without first declaring a command.
     """
-    import asyncio
     from openavc.transport.udp import UDPTransport
 
-    try:
-        port = int(body.port)
-    except (TypeError, ValueError):
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid UDP port: {body.port!r}",
-        ) from None
-
-    response_text = None
-    error_text = None
-    udp = UDPTransport(host=body.host, port=port, name="udp_test")
-
+    udp = UDPTransport(host=body.host, port=_raw_port(body, "UDP"), name="udp_test")
     try:
         await udp.open()
     except OSError as e:
-        return {
-            "success": False,
-            "sent": body.command_string,
-            "received": [],
-            "state_changes": {},
-            "error": str(e),
-        }
-
-    try:
-        cmd_data = body.command_string.encode().decode("unicode_escape").encode()
-        response = await udp.send_and_wait(cmd_data, timeout=body.timeout)
-        response_text = display_text(response)
-    except asyncio.TimeoutError:
-        error_text = "Timeout waiting for response"
-    except (OSError, ValueError, UnicodeError) as e:
-        error_text = str(e)
-    finally:
-        await udp.close()
-
-    return {
-        "success": error_text is None,
-        "sent": body.command_string,
-        "received": [response_text] if response_text is not None else [],
-        "state_changes": {},
-        "error": error_text,
-    }
+        return _not_opened(body, e)
+    return await _exchange(udp, body)
 
 
 def _raw_http_endpoint(body: TestCommandRequest) -> HttpEndpoint:
@@ -850,3 +793,13 @@ async def _test_osc_raw(body: TestCommandRequest) -> dict:
         "state_changes": {},
         "error": error_text,
     }
+
+
+# The raw probe for each transport a Live Test raw Send can open.
+_RAW_PROBES: dict[str, Callable[[TestCommandRequest], Awaitable[dict]]] = {
+    "tcp": _test_tcp_raw,
+    "serial": _test_serial_raw,
+    "udp": _test_udp_raw,
+    "http": _test_http_raw,
+    "osc": _test_osc_raw,
+}

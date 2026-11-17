@@ -26,7 +26,11 @@ export function defaultTestPort(draft: DriverDraft): number | string {
   const transport = draft.transport || "tcp";
   const port = draft.default_config?.port;
   if (transport === "serial") return typeof port === "string" ? port : "";
-  if (typeof port === "number") return port;
+  return typeof port === "number" ? port : startingPort(draft, transport);
+}
+
+/** The port box's start for a network draft that names no port. */
+function startingPort(draft: DriverDraft, transport: string): number {
   if (transport === "http") return driverTls(draft).ssl ? HTTPS_PORT : HTTP_PORT;
   return transport === "osc" ? 8000 : 23;
 }
