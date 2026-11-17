@@ -303,7 +303,7 @@ class PanelApp {
     /** What the theme reads from the panel and asks of it, each at call time. */
     _themeHost() {
         return {
-            draw: () => this.renderCurrentPage(),
+            draw: () => this.renderCurrentPage({ inPlace: true }),
             repaint: () => this._repaint(),
             settings: () => this.uiDef?.settings,
         };
@@ -944,9 +944,10 @@ class PanelApp {
      * Open an overlay or a sidebar over the page: a surface of its own on top
      * of the overlay stack, which its controls register on while it draws.
      * One already open, on top or under another, is not opened again: no
-     * second copy, and the stack stays as it is.
+     * second copy, and the stack stays as it is. `atOnce`: open already, with
+     * no animation in, for an overlay a redraw in place opens again.
      */
-    renderOverlay(page) {
+    renderOverlay(page, { atOnce = false } = {}) {
         if (this.overlayStack.includes(page.id)) return;
         const overlay = new Surface(page.id);
         const { container, content } = drawOverlayFrame(page, () => this.dismissOverlay());
@@ -983,8 +984,10 @@ class PanelApp {
         // setConnectionStatus re-enables overlays on reconnect.
         if (this._offline) container.style.pointerEvents = 'none';
 
-        // Trigger animation
-        requestAnimationFrame(() => container.classList.add('active'));
+        // The animation in runs from a frame drawn without `active`; a box
+        // that is `active` from its first frame has no animation to run.
+        if (atOnce) container.classList.add('active');
+        else requestAnimationFrame(() => container.classList.add('active'));
 
         // Evaluate bindings for new elements
         this.evaluateAllBindings();
@@ -1087,14 +1090,26 @@ class PanelApp {
      * stacked in the root, each control bound twice. A theme the draw itself
      * puts on is the exception, since the draw puts it on before it draws a
      * control (`_repaint`).
+     *
+     * A draw closes every overlay, unless it is a redraw `inPlace`: what the
+     * page on screen draws from changed under it (a definition, which is a
+     * save or a reconnect; a theme that lands; a turn of the glass; a ui/
+     * file). Then the page on screen is drawn again where it stands, with no
+     * exit or entry transition and no control animating in, and each overlay
+     * that was open is opened again over it, in order and at once, while its
+     * page is still there and still opens over the page. What a control was
+     * in the middle of goes with the old draw: a digit half typed on a
+     * dialog's keypad is not kept. A page standing in for one that went is
+     * another page, and arrives the way a page change does.
      */
-    renderCurrentPage() {
+    renderCurrentPage({ inPlace = false } = {}) {
         if (!this.uiDef) return;
         if (this._pageDraw) {
             this._pageDraw.again = true;
             return;
         }
-        this._pageDraw = { again: false };
+        const reopen = inPlace ? this.overlayStack : [];
+        this._pageDraw = { again: false, inPlace };
         try {
             do {
                 this._pageDraw.again = false;
@@ -1103,24 +1118,27 @@ class PanelApp {
         } finally {
             this._pageDraw = null;
         }
+        this._reopenOverlays(reopen);
+    }
+
+    /** Open again, in order and at once, each overlay of `ids` whose page is still there and still opens over the page. */
+    _reopenOverlays(ids) {
+        const pages = this.uiDef?.pages || [];
+        for (const id of ids) {
+            const page = pages.find((p) => p.id === id);
+            if (page && opensOver(page)) this.renderOverlay(page, { atOnce: true });
+        }
     }
 
     /**
-     * The look changed under the page on screen (a theme landed): the page
-     * drawn again, and each overlay open over it opened again, in order.
-     * Nothing while no page is up, since the first draw reads the theme
-     * anyway, nor while a draw runs: it put this theme on before drawing any
-     * control.
+     * The look changed under the page on screen (a theme landed): a redraw
+     * in place. Nothing while no page is up, since the first draw reads the
+     * theme anyway, nor while a draw runs: it put this theme on before
+     * drawing any control.
      */
     _repaint() {
         if (this._pageDraw || !this._surfaces.page.nodes.length) return;
-        const open = this.overlayStack;
-        this.renderCurrentPage();
-        const pages = this.uiDef?.pages || [];
-        for (const id of open) {
-            const page = pages.find((p) => p.id === id);
-            if (page && opensOver(page)) this.renderOverlay(page);
-        }
+        this.renderCurrentPage({ inPlace: true });
     }
 
     /** One draw of the page: what is on screen ends, whatever is drawn next, then the page draws. */
@@ -1134,9 +1152,9 @@ class PanelApp {
             this._showNoPages();
             return;
         }
-        const motion = this._pageMotion();
+        const motion = this._motionOf(page);
         this.root.style.setProperty('--page-transition-duration', motion.duration + 'ms');
-        this._clearScreen(motion);
+        this._clearScreen(motion, page.id);
 
         // Apply theme
         this.theme.apply(this.uiDef.settings || {});
@@ -1172,10 +1190,21 @@ class PanelApp {
         }
     }
 
-    /** What is on screen ends, whatever is drawn next: every overlay, the page (going with `motion`), a matrix's drag line and chooser. */
-    _clearScreen(motion) {
+    /**
+     * How `page` arrives: standing still when a redraw in place draws the
+     * page already on screen, with no page transition and no control
+     * animating in; otherwise as the project's settings say.
+     */
+    _motionOf(page) {
+        const motion = this._pageMotion();
+        if (!this._pageDraw.inPlace || this._surfaces.page.pageId !== page.id) return motion;
+        return { ...motion, transition: 'none', entryAnimation: 'none' };
+    }
+
+    /** What is on screen ends, whatever is drawn next (`nextPageId`, if any): every overlay, the page (going with `motion`), a matrix's drag line and chooser. */
+    _clearScreen(motion, nextPageId = null) {
         this.dismissAllOverlays();
-        this._leavePage(motion);
+        this._leavePage(motion, nextPageId);
         clearMatrixOverlays();
     }
 
@@ -1183,13 +1212,13 @@ class PanelApp {
      * The page on screen goes: everything its controls started ends now
      * (nothing on it sends once the next page is drawn), and its nodes leave,
      * at once or when its own transition ends. The page about to be drawn
-     * gets a surface of its own.
+     * (`nextPageId`) gets a surface of its own.
      */
-    _leavePage(motion) {
+    _leavePage(motion, nextPageId) {
         const leaving = this._surfaces.page;
         leaving.end();
         takeAway(this.root, leaving, motion);
-        this._surfaces.page = new Surface();
+        this._surfaces.page = new Surface(nextPageId);
     }
 
     /** The page to draw: the current one, else the one standing in for it (made current); null when there are no pages. */

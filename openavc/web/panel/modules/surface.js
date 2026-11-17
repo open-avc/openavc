@@ -3,9 +3,9 @@
  * ends.
  *
  * Every draw of a page makes one surface, and so does every overlay or
- * sidebar opened over it; the overlay stack holds the overlays' surfaces,
- * each knowing the page it draws (`pageId`), and `Surfaces` holds the page's
- * and the stack. A control drawn on a surface registers what it starts while
+ * sidebar opened over it; each knows the page it draws (`pageId`), the
+ * overlay stack holds the overlays' surfaces, and `Surfaces` holds the
+ * page's and the stack. A control drawn on a surface registers what it starts while
  * it is on screen, on that surface:
  * - its bindings and its element-map entry (the panel's `bindings` and
  *   `elementMap` are the surface being drawn's);
@@ -36,7 +36,7 @@ function runEnd(fn) {
 }
 
 export class Surface {
-    /** `pageId`: the page this surface draws, for an overlay's. */
+    /** `pageId`: the page this surface draws (none before the first page draw, nor with no pages). */
     constructor(pageId = null) {
         this.pageId = pageId;
         this.bindings = [];

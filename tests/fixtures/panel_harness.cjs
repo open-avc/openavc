@@ -11419,6 +11419,36 @@ const PANEL_CHECKS = {
         const have = nodes[0].classList.contains('macro-busy') ? nodes[0].getAttribute('data-macro-busy') : null;
         assert(have === macro, `${id} is busy with ${JSON.stringify(have)}, not ${JSON.stringify(macro)}`);
     },
+    // The root holds one page, standing still (`still`): no page transition
+    // on it or leaving beside it, and no control on it animating in. Not
+    // still: the page arriving runs its transition.
+    stillPage: (m, still = true) => {
+        const pages = [...m.app.root.children].filter((n) => n.classList.contains('panel-page'));
+        const moving = pages.flatMap((n) => [...n.classList].filter((c) => c.startsWith('page-enter-') || c.startsWith('page-exit-')));
+        if (!still) {
+            assert(moving.some((c) => c.startsWith('page-enter-')), `the page arrived with no transition: ${JSON.stringify(moving)}`);
+            return;
+        }
+        assert(pages.length === 1, `the root holds ${pages.length} pages, not 1`);
+        assert(moving.length === 0, `the page moves: ${JSON.stringify(moving)}`);
+        const entering = [...pages[0].querySelectorAll('[data-element-id]')]
+            .filter((n) => n.style.opacity === '0' || [...n.classList].some((c) => c.startsWith('element-entry-')))
+            .map((n) => n.dataset.elementId);
+        assert(entering.length === 0, `controls animate in: ${JSON.stringify(entering)}`);
+    },
+    // Every overlay box on the document is open now, with no animation still
+    // to start, none leaving, and each taking touches.
+    openAtOnce: (m) => {
+        const boxes = [...document.querySelectorAll('.panel-overlay')];
+        const late = boxes.filter((o) => !o.classList.contains('active') || o.classList.contains('dismissing') || o.style.pointerEvents === 'none');
+        assert(late.length === 0, `overlays not open at once: ${JSON.stringify(late.map((o) => `${o.dataset.pageId} ${o.className} ${o.style.pointerEvents}`))}`);
+    },
+    // The Page Nav `id` is lit (`lit`), as it is while its page is showing.
+    navLit: (m, id, lit) => {
+        const node = m.app.root.querySelector(`[data-element-id="${id}"]`);
+        const have = !!node && node.classList.contains('nav-current');
+        assert(node && have === lit, `${id} is ${node ? (have ? 'lit' : 'not lit') : 'not on screen'}, not ${lit ? 'lit' : 'unlit'}`);
+    },
 };
 
 /** A failed check's message, else nothing: each step's `threw`. */
@@ -11855,6 +11885,129 @@ const RUN_PAGES = () => pinUi('runs', [
 const M1_STARTED = (total) => ['msg', { type: 'macro.started', macro_id: 'm1', total_steps: total }];
 const M1_STEP = (description, index, total) => ['msg', { type: 'macro.progress', macro_id: 'm1', description, step_index: index, total_steps: total }];
 const M1_ENDED = ['msg', { type: 'macro.completed', macro_id: 'm1' }];
+
+// --- A redraw keeps the dialogs open over it ---------------------------------
+//
+// The project comes again (a save, every reconnect) while a page is up: the
+// page on screen is drawn again where it stands, with no exit or entry
+// transition and no control animating in again, and each dialog or sidebar
+// that was open is opened again over it, in order and at once, while its page
+// is still there and still opens over the page. A digit half typed on a
+// dialog's keypad is not kept.
+
+/** NAV_PAGES with its Page Navs, the page transition and the entry animation on, as saved (`tag`). */
+const keptUi = (tag, pages = NAV_PAGES()) => pinUi(tag, pages, {
+    master_elements: NAV_MASTERS,
+    settings: { page_transition: 'slide', page_transition_duration: 300, element_entry: 'fade' },
+});
+/** The project arriving from the server, as a save and every reconnect send it. */
+const arrives = (ui) => ['msg', { type: 'ui.definition', ui }];
+/** A running panel whose first definition has drawn, gone to `page`, with `open` opened over it. */
+const keptCase = (steps, { page = 'home', open = ['dlg', 'side'], ui = keptUi('first'), ...extra } = {}) => ({
+    ui, draw: false, fetch: {}, raf: 'queued',
+    steps: [
+        arrives(ui), ['settle'], ['wait', 1000],
+        ...(page === 'home' ? [] : [['nav', page], ['wait', 1000]]),
+        ...open.map((id) => ['nav', id]), ['raf'],
+        ...steps,
+    ],
+    ...extra,
+});
+/** NAV_PAGES with the dialog showing a second label, `d2`: a save that changed it. */
+const NAV_PAGES_EDITED = () => NAV_PAGES().map((p) => (p.id === 'dlg'
+    ? { ...p, elements: [...p.elements, pinLabel('d2')], layouts: [{ ...p.layouts[0], placements: { ...p.layouts[0].placements, d2: box(50) } }] }
+    : p));
+/** NAV_PAGES without the pages named, and with those named in `retyped` made regular pages. */
+const navPagesWithout = (gone, retyped = []) => NAV_PAGES()
+    .filter((p) => !gone.includes(p.id))
+    .map((p) => (retyped.includes(p.id) ? { ...p, page_type: 'page' } : p));
+
+Object.assign(tests, {
+    async a_saved_project_keeps_each_open_dialog_open_in_order() {
+        const steps = await driveCase(keptCase([
+            arrives(keptUi('second', NAV_PAGES_EDITED())),
+            ['check', 'stack', ['dlg', 'side']], ['check', 'overlays', 2], ['check', 'openAtOnce'],
+            ['check', 'page', 'home'],
+            // Drawn from what was saved, the Page Navs lit for what is open.
+            ['check', 'overlayShows', 'd2', 'd2'], ['check', 'navLit', 'mn_dlg', true], ['check', 'navLit', 'mn_side', true],
+            ['check', 'navLit', 'mn_home', true],
+            // The newest goes first, as before the save.
+            ['nav', '$back'], ['check', 'stack', ['dlg']], ['check', 'navLit', 'mn_side', false],
+        ]));
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_reconnect_keeps_each_open_dialog_open() {
+        const steps = await driveCase(keptCase([
+            ['drop'], ['connection', true],
+            ['msg', { type: 'state.snapshot', state: { 'var.x': 7 } }],
+            arrives(keptUi('again')),
+            ['check', 'stack', ['dlg', 'side']], ['check', 'overlays', 2], ['check', 'openAtOnce'],
+            ['check', 'overlayShows', 'd1', '7'],
+        ]));
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_saved_project_redraws_the_page_on_screen_without_its_transition() {
+        const steps = await driveCase(keptCase([
+            arrives(keptUi('second')), ['check', 'stillPage'], ['wait', 1000], ['check', 'stillPage'],
+            // With no dialog open too.
+            ['dismissAll'], arrives(keptUi('third')), ['check', 'stillPage'], ['wait', 1000], ['check', 'stillPage'],
+            // Going to another page still runs the transition.
+            ['nav', 'main'], ['check', 'stillPage', false],
+        ]));
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_dialog_whose_page_went_or_no_longer_opens_over_is_not_reopened() {
+        const failures = [];
+        const saves = {
+            sidebar_deleted: [navPagesWithout(['side']), ['dlg']],
+            dialog_made_a_page: [navPagesWithout([], ['dlg']), ['side']],
+            both: [navPagesWithout(['side'], ['dlg']), []],
+        };
+        for (const [name, [pages, stack]] of Object.entries(saves)) {
+            const steps = await driveCase(keptCase([
+                arrives(keptUi(name, pages)), ['check', 'stack', stack], ['check', 'overlays', stack.length],
+                ['check', 'page', 'home'],
+            ]));
+            for (const why of failedChecks(steps)) failures.push(`${name}: ${why}`);
+        }
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_dialog_stays_open_over_the_page_standing_in_for_one_deleted() {
+        const steps = await driveCase(keptCase([
+            arrives(keptUi('second', navPagesWithout(['main']))),
+            ['check', 'page', 'home'], ['check', 'stack', ['dlg']], ['check', 'overlays', 1], ['check', 'openAtOnce'],
+            // Another page than the one on screen: it arrives the way a page change does.
+            ['check', 'stillPage', false],
+        ], { page: 'main', open: ['dlg'] }));
+        const failures = failedChecks(steps);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+
+    async a_half_typed_entry_on_a_kept_dialog_is_not_sent() {
+        const ui = pinUi('surface', [
+            pinPage('home', { elements: [pinLabel('h1')] }),
+            pinPage('dlg', { page_type: 'overlay', elements: [SURFACE_KEYPAD], placements: { kp: box(2) } }),
+        ]);
+        const steps = await driveCase(keptCase([
+            TYPE_ONE, arrives({ ...ui, tag: 'second' }), ['wait', 1500],
+            ['check', 'stack', ['dlg']],
+            // The dialog opened again sends what is typed on it.
+            TYPE_ONE, ['wait', 1500],
+        ], { ui, open: ['dlg'] }));
+        const failures = failedChecks(steps);
+        const at = steps.findIndex((s) => s.op === 'msg' && s.x && s.x.ui === 'second');
+        const lost = sentFrom(steps, at).filter((f) => f.type === 'ui.submit');
+        if (lost.length !== 1) failures.push(`after the save the keypad sent ${JSON.stringify(lost)}, not only what was typed on the dialog opened again`);
+        assert(failures.length === 0, failures.join('\n'));
+    },
+});
 
 // --- Layout: which arrangement draws, and where each element goes -----------
 

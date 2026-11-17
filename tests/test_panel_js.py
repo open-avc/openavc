@@ -419,6 +419,16 @@ SCENARIOS = [
     # connection forgets the runs, whose ends it can no longer hear.
     "a_page_drawn_while_a_macro_runs_draws_its_busy_buttons_and_its_step",
     "a_dropped_connection_marks_no_run_it_can_no_longer_hear_end",
+    # The project coming again (a save, a reconnect) draws the page on screen
+    # where it stands, with no transition, and opens again, in order and at
+    # once, each dialog still there and still opening over the page; a digit
+    # half typed on a dialog's keypad is not sent.
+    "a_saved_project_keeps_each_open_dialog_open_in_order",
+    "a_reconnect_keeps_each_open_dialog_open",
+    "a_saved_project_redraws_the_page_on_screen_without_its_transition",
+    "a_dialog_whose_page_went_or_no_longer_opens_over_is_not_reopened",
+    "a_dialog_stays_open_over_the_page_standing_in_for_one_deleted",
+    "a_half_typed_entry_on_a_kept_dialog_is_not_sent",
     # The surface record (modules/surface.js): its timers cleared and its
     # ends run once, and whatever is given after it ended ended at once; a
     # page that goes starts none of the entry animations it had still to start.
