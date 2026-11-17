@@ -472,19 +472,25 @@ async def _point_datagram_socket(host: str, port: Any, cfg: dict[str, Any]) -> s
     return None
 
 
-async def _head(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
-    if host:
-        problem = _port_problem(port, cfg)
-        if problem:
-            return problem
-        # The address the HTTP transport is built with, from the same config.
-        endpoint = http_endpoint(host, cfg)
-        url, verify = endpoint.base_url, endpoint.verify
-    else:
+def _head_target(host: str, port: Any, cfg: dict[str, Any]) -> tuple[str, bool] | str:
+    """The URL an http test sends its HEAD to and whether the certificate
+    is checked, or the sentence saying why there is nothing to try."""
+    if not host:
         url = str(cfg.get("base_url") or cfg.get("url") or "")
-        if not url:
-            return _NO_HOST
-        verify = checks_certificate(cfg)
+        return (url, checks_certificate(cfg)) if url else _NO_HOST
+    problem = _port_problem(port, cfg)
+    if problem:
+        return problem
+    # The address the HTTP transport is built with, from the same config.
+    endpoint = http_endpoint(host, cfg)
+    return endpoint.base_url, endpoint.verify
+
+
+async def _head(host: str, port: Any, cfg: dict[str, Any]) -> str | None:
+    target = _head_target(host, port, cfg)
+    if isinstance(target, str):
+        return target
+    url, verify = target
     kwargs: dict[str, Any] = {"timeout": _CONNECT_TIMEOUT_S, "verify": verify}
     bind, refused = _bind_for(host)
     if refused:

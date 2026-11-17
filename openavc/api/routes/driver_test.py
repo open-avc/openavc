@@ -36,7 +36,7 @@ from openavc.core.device_config import (
     same_serial_port,
 )
 from openavc.drivers.transport_choice import effective_transport
-from openavc.transport.endpoint import UnusablePort, http_endpoint
+from openavc.transport.endpoint import HttpEndpoint, UnusablePort, http_endpoint
 from openavc.utils.logger import get_logger
 from openavc.utils.outbound import device_transport
 
@@ -837,6 +837,21 @@ async def _test_udp_raw(body: TestCommandRequest) -> dict:
     }
 
 
+def _raw_http_endpoint(body: TestCommandRequest) -> HttpEndpoint:
+    """Where a raw HTTP probe goes: where the driver's own connection does,
+    from the request's host, port, ssl and verify_ssl."""
+    try:
+        return http_endpoint(
+            body.host,
+            {"port": body.port, "ssl": body.ssl, "verify_ssl": body.verify_ssl},
+        )
+    except UnusablePort:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid HTTP port: {body.port!r}",
+        ) from None
+
+
 async def _test_http_raw(body: TestCommandRequest) -> dict:
     """Raw HTTP probe — parses 'METHOD /path' out of command_string."""
     import httpx
@@ -850,19 +865,8 @@ async def _test_http_raw(body: TestCommandRequest) -> dict:
             method = parts[0].upper()
             path = parts[1]
 
-    try:
-        endpoint = http_endpoint(
-            body.host,
-            {"port": body.port, "ssl": body.ssl, "verify_ssl": body.verify_ssl},
-        )
-    except UnusablePort:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid HTTP port: {body.port!r}",
-        ) from None
-    if not path.startswith("/"):
-        path = "/" + path
-    url = f"{endpoint.base_url}{path}"
+    endpoint = _raw_http_endpoint(body)
+    url = endpoint.base_url + (path if path.startswith("/") else "/" + path)
     sent = f"{method} {url}"
 
     try:

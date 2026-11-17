@@ -81,6 +81,13 @@ const RAW_COMMAND = "__raw__";
  * A "raw" mode is also available for one-off probes that aren't yet declared
  * as commands. Raw mode skips auth/on_connect.
  */
+/** The driver's own HTTPS settings, which a raw HTTP request follows: HTTPS
+ *  when `ssl` is on, the certificate checked unless `verify_ssl` is false. */
+function driverTls(draft: DriverDraft): { ssl: boolean; verifySsl: boolean } {
+  const config = draft.default_config ?? {};
+  return { ssl: Boolean(config.ssl), verifySsl: config.verify_ssl !== false };
+}
+
 export function LiveTestPanel({ draft }: LiveTestPanelProps) {
   const transport = draft.transport || "tcp";
   const isSerial = transport === "serial";
@@ -112,9 +119,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
   // Raw HTTPS probes verify the device certificate as the driver does,
   // checked unless the driver turns it off; AV gear often ships self-signed,
   // so offer the same opt-out the driver config has (verify_ssl).
-  const [rawVerifySsl, setRawVerifySsl] = useState(
-    draft.default_config?.verify_ssl !== false,
-  );
+  const [rawVerifySsl, setRawVerifySsl] = useState(() => driverTls(draft).verifySsl);
   const [results, setResults] = useState<ResultEntry[]>([]);
   const [sending, setSending] = useState(false);
   // What the command asks before it is sent, while asking.
@@ -458,7 +463,7 @@ export function LiveTestPanel({ draft }: LiveTestPanelProps) {
               delimiter: draft.delimiter,
               timeout: 5,
               // HTTPS when the driver's own connection is, on any port.
-              ssl: Boolean(draft.default_config?.ssl),
+              ssl: driverTls(draft).ssl,
               verify_ssl: rawVerifySsl,
             }
           : {
