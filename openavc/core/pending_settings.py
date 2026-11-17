@@ -5,9 +5,12 @@ The doors are ``set_device_setting`` (a live write), ``await_setting_readback``
 (the wait for a live write to read back) and ``store_pending_settings`` (the
 queue). A setting written while a device is offline is queued in the device's
 config (``pending_settings``, saved with the project) and sent on its next
-connect. A live write and the queue's intake are checked against the driver's
-declaration whoever the caller (``_checked_value``), and a live write settles
-the queue's entry for that setting.
+connect. A live write, the queue's intake and every queued value before it is
+sent are checked against the driver's declaration whoever the caller
+(``_checked_value``): a queue stored with no driver to check it against, or
+carried to a driver that declares other settings, meets the one that sends it,
+and a value it refuses leaves the queue unsent and says so. A live write
+settles the queue's entry for that setting.
 
 The rule worth knowing before changing it: a send that does not raise is not
 proof the device got it. On UDP, or on a socket being redirected under the
@@ -32,7 +35,11 @@ from typing import Any, TYPE_CHECKING
 
 from openavc.core.device_errors import DeviceNotFoundError, not_connected
 from openavc.core.device_reconnect import _log_task_exception
-from openavc.drivers.base import UnknownDeviceSettingError, validate_device_setting_value
+from openavc.drivers.base import (
+    DeviceSettingValueError,
+    UnknownDeviceSettingError,
+    validate_device_setting_value,
+)
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -128,6 +135,9 @@ class _PendingPass:
     # is what _clear_applied_pending compares against to tell "the entry I
     # took" from "an entry queued since".
     queued: dict[str, Any] = field(default_factory=dict)
+    # key -> its queued value, for each the driver's declaration refused:
+    # never sent, and taken off the queue.
+    refused: dict[str, Any] = field(default_factory=dict)
     # key -> (the state variable it reads back through, the value sent)
     awaiting: dict[str, tuple[str, Any]] = field(default_factory=dict)
 
@@ -259,8 +269,10 @@ class PendingSettingsMixin:
 
         Validated at intake when the driver is available: a typo'd key or an
         out-of-range value used to sit in the queue and fail on every
-        reconnect with only a warn log. Orphaned devices (driver not
-        installed) store as-is — there's no schema to check against yet.
+        reconnect with only a warn log. A device no driver runs (waiting for
+        its driver, disabled, its driver failed) stores as given, there being
+        no schema to check against yet; the send checks it
+        (:meth:`_send_pending`).
         """
         driver = self._devices.get(device_id)
         if driver is not None:
@@ -305,24 +317,32 @@ class PendingSettingsMixin:
         for key, value in pending.items():
             await self._send_pending(run, key, value)
 
-        if run.applied:
-            await self._clear_applied_pending(device_id, run.applied, run.queued)
+        if run.applied or run.refused:
+            await self._clear_applied_pending(
+                device_id, run.applied, run.queued, refused=run.refused,
+            )
         if run.awaiting:
             self._schedule_pending_confirm(device_id, run.awaiting, run.queued)
 
     async def _send_pending(self, run: _PendingPass, key: str, value: Any) -> None:
         """Send one queued setting, and note whether it clears now or waits
-        for its read-back. A failure leaves it queued and says so."""
+        for its read-back. One the driver's declaration refuses leaves the
+        queue unsent (:meth:`_refuse_pending`); a failed send leaves it
+        queued and says so."""
         device_id = run.device_id
         queued = value
         try:
-            # Coerce against the schema before the value reaches the driver.
-            # store_pending_settings coerces at intake, but a value can
-            # enter the queue by a path that bypasses it (a project reload of
-            # a hand-edited file), and the driver's own set_device_setting
-            # doesn't validate.
-            if key in run.defs:
-                value = validate_device_setting_value(key, run.defs[key], value)
+            # Checked against the declaration before it reaches the driver,
+            # whose own set_device_setting doesn't validate. Intake checks it
+            # too, but a queue can be stored with no driver to check it
+            # against (waiting for its driver, disabled, its driver failed),
+            # or carried into a driver that declares other settings (an edit,
+            # a reload), or hand-edited into the project file.
+            value = _checked_value(run.driver, device_id, key, value)
+        except DeviceSettingValueError as refusal:
+            await self._refuse_pending(run, key, queued, refusal)
+            return
+        try:
             self._require_control_target(device_id)
             await run.driver.set_device_setting(key, value)
             run.queued[key] = queued
@@ -346,6 +366,19 @@ class PendingSettingsMixin:
                 device_id, f"Pending setting '{key}' failed to apply: {e}",
             )
 
+    async def _refuse_pending(
+        self, run: _PendingPass, key: str, queued: Any, refusal: DeviceSettingValueError,
+    ) -> None:
+        """A queued setting this driver's declaration refuses: not sent, and
+        taken off the queue, since no connect would ever send it. The same
+        refusal intake gives, said on ``device.error.<id>``."""
+        run.refused[key] = queued
+        log.warning(f"[{run.device_id}] Pending setting '{key}' was not sent: {refusal}")
+        await self._report_pending_error(
+            run.device_id,
+            f"Pending setting '{key}' was taken off the queue without being sent: {refusal}",
+        )
+
     async def _report_pending_error(self, device_id: str, error: str) -> None:
         """Say on ``device.error.<id>`` what happened to a queued setting; a
         failure to say it is logged, never raised."""
@@ -362,9 +395,11 @@ class PendingSettingsMixin:
             log.exception(f"[{device_id}] Failed to emit device.error")
 
     async def _clear_applied_pending(
-        self, device_id: str, applied_keys: list[str], queued_values: dict[str, Any]
+        self, device_id: str, applied_keys: list[str], queued_values: dict[str, Any],
+        *, refused: dict[str, Any] | None = None,
     ) -> None:
-        """Drop applied keys from the queue and have the engine persist it.
+        """Drop applied keys, and the ``refused`` ones (key -> the value the
+        pass took), from the queue and have the engine persist it.
 
         Only drops a key whose queued entry is still the one this pass took: a
         confirmation can land a poll cycle after the write, and something can
@@ -379,10 +414,12 @@ class PendingSettingsMixin:
         if not isinstance(pending, dict):
             return
 
+        refused = refused or {}
+        taken = {**queued_values, **refused}
         cleared = [
-            key for key in applied_keys
+            key for key in [*applied_keys, *refused]
             if key in pending
-            and pending[key] == queued_values.get(key, pending.get(key))
+            and pending[key] == taken.get(key, pending.get(key))
         ]
         if not cleared:
             return
@@ -394,10 +431,12 @@ class PendingSettingsMixin:
             config.pop("pending_settings", None)
 
         # Notify the engine to persist the change
-        await self.events.emit(
-            "device.pending_settings_applied",
-            {"device_id": device_id, "applied": cleared, "remaining": dict(pending)},
-        )
+        await self.events.emit("device.pending_settings_applied", {
+            "device_id": device_id,
+            "applied": [key for key in cleared if key not in refused],
+            "refused": [key for key in cleared if key in refused],
+            "remaining": dict(pending),
+        })
 
     @staticmethod
     def _device_is_reporting(driver: BaseDriver) -> bool:

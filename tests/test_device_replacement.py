@@ -4,7 +4,8 @@ driver could not set it up.
 
 A replacement is the same device on a new instance. It keeps why it is away on
 purpose (a sleep, a commanded-restart window) while it stays on the driver
-whose commands declared them, and its pause. A removal forgets all of it.
+whose commands declared them, its pause, and its queued settings, which meet
+the driver's declaration before any is sent. A removal forgets all of it.
 
 An invented ``acme_replace_widget`` driver that opens no socket stands in for
 every device: a test can make its next connect fail as an absent device's
@@ -231,3 +232,56 @@ async def test_a_paused_device_replaced_stays_paused_with_the_same_holder(dm):
     assert dm.state.get("device.w.paused_for") == "audit"
     assert not dm.state.get("device.w.connected")
 
+
+# --- its queued settings -----------------------------------------------------
+
+
+async def test_a_queue_stored_while_the_driver_was_missing_meets_it_before_anything_is_sent(dm):
+    """A setting queued while the device waited for its driver was stored as
+    given: there was nothing to check it against. When the driver arrives the
+    queue is checked against what it declares before anything goes out. A
+    good value goes out in its declared type; one the driver refuses is taken
+    off the queue, and the device's error event says why."""
+    _DRIVER_REGISTRY.pop(DRIVER)
+    await dm.add_device(_cfg())
+    await dm.store_pending_settings("w", {"level": "70", "levle": 5})
+    await dm.store_pending_settings("w", {"label": "Lobby"})
+    errors: list[str] = []
+    saved: list[dict[str, Any]] = []
+    dm.events.on("device.error.w", lambda _e, payload: errors.append(payload["error"]))
+    dm.events.on("device.pending_settings_applied", lambda _e, payload: saved.append(payload))
+    _DRIVER_REGISTRY[DRIVER] = _Widget
+
+    await _activate(dm)
+
+    assert _Widget.written == [("level", 70)]
+    assert dm.get_device_config("w").get("pending_settings") is None
+    assert saved[-1]["remaining"] == {}
+    assert sorted(saved[-1]["refused"]) == ["label", "levle"]
+    assert errors == [
+        "Pending setting 'levle' was taken off the queue without being sent: "
+        "Unknown device setting 'levle' for device 'w'",
+        "Pending setting 'label' was taken off the queue without being sent: "
+        "Unknown device setting 'label' for device 'w'",
+    ]
+
+
+async def test_a_queued_value_its_driver_refuses_is_not_retried_at_every_connect(dm):
+    """Out of the declared range, the value can never go out on this driver:
+    it leaves the queue once, saying so, instead of failing on every
+    connection for good."""
+    _DRIVER_REGISTRY.pop(DRIVER)
+    await dm.add_device(_cfg())
+    await dm.store_pending_settings("w", {"level": 250})
+    errors: list[str] = []
+    dm.events.on("device.error.w", lambda _e, payload: errors.append(payload["error"]))
+    _DRIVER_REGISTRY[DRIVER] = _Widget
+
+    await _activate(dm)
+
+    assert _Widget.written == []
+    assert dm.get_device_config("w").get("pending_settings") is None
+    assert errors == [
+        "Pending setting 'level' was taken off the queue without being sent: "
+        "'level' must be at most 100, got 250",
+    ]

@@ -44,7 +44,8 @@ class _ChildTCPController(BaseDriver):
     ``connect`` is a no-op (no real socket, no exception) so the
     DeviceManager neither opens a connection nor spawns a reconnect task.
     Because the base ``set_device_setting`` raises NotImplementedError, the
-    queued ``pending_settings`` can't be applied (and therefore cleared) on
+    queued ``pending_settings`` (a setting the driver declares, so it is
+    sent rather than refused) can't be applied (and therefore cleared) on
     the fake connect — which is exactly the state we want to prove survives
     an edit.
     """
@@ -56,6 +57,9 @@ class _ChildTCPController(BaseDriver):
         "default_config": {"port": 5000},
         "state_variables": {},
         "commands": {},
+        "device_settings": {
+            "brightness": {"type": "integer", "label": "Brightness", "min": 0, "max": 100},
+        },
         "child_entity_types": {
             "encoder": {
                 "label": "Encoder",

@@ -391,7 +391,9 @@ async def test_a_failure_that_cannot_be_reported_does_not_stop_the_rest(dm):
     assert tried == ["Pending setting 'brightness' failed to apply: firmware refused it"]
     assert driver.writes == [("label", "Lobby")]
     assert dm._device_configs["dev"]["pending_settings"] == {"brightness": 70}
-    assert applied == [{"device_id": "dev", "applied": ["label"], "remaining": {"brightness": 70}}]
+    assert applied == [
+        {"device_id": "dev", "applied": ["label"], "refused": [], "remaining": {"brightness": 70}},
+    ]
 
 
 async def test_a_watch_whose_device_is_already_gone_settles_nothing(dm):
@@ -428,7 +430,9 @@ async def test_an_unconfirmed_write_that_cannot_be_reported_still_settles_the_re
         "instead of 70. It stays queued and will be sent again on the next connection."
     ]
     assert dm._device_configs["dev"]["pending_settings"] == {"brightness": 70}
-    assert applied == [{"device_id": "dev", "applied": ["mode"], "remaining": {"brightness": 70}}]
+    assert applied == [
+        {"device_id": "dev", "applied": ["mode"], "refused": [], "remaining": {"brightness": 70}},
+    ]
 
 
 async def test_an_orphaned_device_queues_settings_as_given(dm):
