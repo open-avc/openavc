@@ -13,7 +13,8 @@ write or a fetch fails here:
 - ``get_installed_drivers``: what the driver folder lists and how.
 - ``create_driver_definition`` and ``update_driver_definition``: every
   refusal, where the file is saved, a rename, the driver registered and
-  announced.
+  announced (the checker's issue records they answer with are
+  ``test_ai_driver_definition_issues.py``'s).
 - ``test_driver_command``: what it sends, answers and closes on each way out.
 
 The network is never touched: ``httpx.AsyncClient.get`` and the TCP transport
@@ -460,7 +461,7 @@ async def test_create_definition_saves_registers_and_announces(driver_dirs):
 
     answer = await _handler()._create_driver_definition({"definition": _definition()})
 
-    assert answer == {"status": "created", "id": "acme_yaml"}
+    assert answer == {"status": "created", "id": "acme_yaml", "issues": []}
     assert (repo / "acme_yaml.avcdriver").exists()
     assert is_driver_registered("acme_yaml")
     announced.assert_awaited_once_with("acme_yaml")
@@ -487,6 +488,10 @@ async def test_create_definition_refusals(driver_dirs, monkeypatch):
     }
     assert await handler._create_driver_definition({"definition": {**_definition(), "bogus": 1, "other": 2}}) == {
         "error": "unknown key 'bogus'; unknown key 'other'",
+        "issues": [
+            {"severity": "error", "message": "unknown key 'bogus'", "path": ""},
+            {"severity": "error", "message": "unknown key 'other'", "path": ""},
+        ],
     }
     (repo / "acme_yaml.avcdriver").write_text("id: acme_yaml\nname: Old\ntransport: tcp\n", encoding="utf-8")
     assert await handler._create_driver_definition({"definition": _definition()}) == {
@@ -513,7 +518,7 @@ async def test_update_definition_rewrites_in_place(driver_dirs, monkeypatch):
         {"driver_id": "acme_yaml", "definition": _definition(name="Acme New")},
     )
 
-    assert answer == {"status": "updated", "id": "acme_yaml"}
+    assert answer == {"status": "updated", "id": "acme_yaml", "issues": []}
     assert "Acme New" in (repo / "acme_yaml.avcdriver").read_text(encoding="utf-8")
     assert is_driver_registered("acme_yaml")
     restored.assert_not_called()
@@ -531,7 +536,7 @@ async def test_update_definition_renamed_drops_the_old_file(driver_dirs, monkeyp
         {"driver_id": "acme_yaml", "definition": _definition("acme_renamed")},
     )
 
-    assert answer == {"status": "updated", "id": "acme_renamed"}
+    assert answer == {"status": "updated", "id": "acme_renamed", "issues": []}
     assert not (repo / "acme_yaml.avcdriver").exists()
     assert (repo / "acme_renamed.avcdriver").exists()
     assert is_driver_registered("acme_renamed")
@@ -553,7 +558,10 @@ async def test_update_definition_refusals(driver_dirs):
     }
     assert await handler._update_driver_definition(
         {"driver_id": "acme_yaml", "definition": {**_definition(), "bogus": 1}},
-    ) == {"error": "unknown key 'bogus'"}
+    ) == {
+        "error": "unknown key 'bogus'",
+        "issues": [{"severity": "error", "message": "unknown key 'bogus'", "path": ""}],
+    }
     assert await handler._update_driver_definition(
         {"driver_id": "acme_yaml", "definition": _definition("acme_other")},
     ) == {"error": "A driver definition with id 'acme_other' already exists"}

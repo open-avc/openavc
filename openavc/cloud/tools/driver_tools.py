@@ -8,7 +8,10 @@ surface marked ``editable: false``, and a YAML definition is never written
 over its id. A definition the AI writes is checked strictly (an undeclared
 key it invented would otherwise land in a saved driver and do nothing),
 saved to the user driver folder, never over a shipped built-in, registered,
-and announced to the IDE.
+and announced to the IDE. Create and update answer with the checker's issue
+records, the ones the Driver Builder's Validate shows (errors and warnings,
+each with its place): a refused draft names each error, and a saved one the
+warnings it was saved with, which never refuse it.
 
 ``test_driver_command`` never opens a port a connected project device holds
 (``discovery/port_guard.py``): a device that serves one connection at a time
@@ -99,12 +102,20 @@ def _user_driver_dir(dirs: list[Path]) -> Path:
     return dirs[1] if len(dirs) > 1 else dirs[0]
 
 
-def _refuse_invalid(definition: dict) -> dict | None:
-    """The validator's every complaint, strict: the AI is authoring here."""
-    from openavc.drivers.driver_loader import validate_driver_definition
+def _issues(definition: dict) -> list[dict[str, str]]:
+    """Every issue the checker finds in a draft, errors and warnings, each
+    with its place: the records the Driver Builder's Validate answers
+    (``validate_driver_issues``), strict because the AI is authoring here."""
+    from openavc.drivers.driver_loader import validate_driver_issues
 
-    errors = validate_driver_definition(definition, strict=True)
-    return {"error": "; ".join(errors)} if errors else None
+    return validate_driver_issues(definition, strict=True)
+
+
+def _refuse_invalid(issues: list[dict[str, str]]) -> dict | None:
+    """A draft with an error is refused, its errors' text as the error and
+    every record beside it; a warning alone refuses nothing."""
+    errors = [issue["message"] for issue in issues if issue["severity"] == "error"]
+    return {"error": "; ".join(errors), "issues": issues} if errors else None
 
 
 def _refuse_builtin(driver_id: str, source: Path | None) -> dict | None:
@@ -254,14 +265,15 @@ class DriverToolsMixin:
                 "different id, or use the driver that is already there."
             )}
 
-        refusal = _refuse_invalid(definition)
+        issues = _issues(definition)
+        refusal = _refuse_invalid(issues)
         if refusal:
             return refusal
 
         save_driver_definition(definition, _user_driver_dir(dirs))
         _register_definition(definition)
         await _announce(definition["id"])
-        return {"status": "created", "id": definition["id"]}
+        return {"status": "created", "id": definition["id"], "issues": issues}
 
     async def _update_driver_definition(self, input: dict) -> Any:
         from openavc.drivers.driver_loader import list_driver_definitions, restore_driver_registration
@@ -280,9 +292,10 @@ class DriverToolsMixin:
         source = match.get("_source_file")
         old_path = Path(source) if source else None
         new_id = definition["id"]
+        issues = _issues(definition)
         refusal = (
             _refuse_builtin(driver_id, old_path)
-            or _refuse_invalid(definition)
+            or _refuse_invalid(issues)
             or _refuse_taken_id(driver_id, new_id, existing)
         )
         if refusal:
@@ -296,7 +309,7 @@ class DriverToolsMixin:
             # old id keeps working; otherwise drop the stale registration.
             restore_driver_registration(driver_id, dirs)
         await _announce(new_id)
-        return {"status": "updated", "id": new_id}
+        return {"status": "updated", "id": new_id, "issues": issues}
 
     async def _test_driver_command(self, input: dict) -> Any:
         import asyncio
