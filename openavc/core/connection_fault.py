@@ -185,7 +185,8 @@ def bridge_port_missing(config: dict[str, Any]) -> bool:
 
     Such a binding never resolves, so the device has nowhere to connect, and
     its Edit Device form is on Through a bridge with no IP address field.
-    Asked by BaseDriver before dialing, by the connection test, and by the
+    Asked by the bridge resolver, which records it (core/bridge_binding.py:
+    the connect door and the connection test read that record), and by the
     required check that refuses saving one (core/required_config.py).
     """
     return bool(config.get("bridge")) and not str(config.get("bridge_port") or "").strip()

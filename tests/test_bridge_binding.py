@@ -192,6 +192,14 @@ def test_a_serial_pass_through_is_recorded():
     assert (cfg["transport"], cfg["host"], cfg["port"]) == ("tcp", "192.0.2.40", PASSTHROUGH)
 
 
+def test_a_serial_port_with_no_pass_through_carries_no_connection():
+    project, screen, _label = _bound("serial", "")
+    project.connections["screen"]["bridge_port"] = "serial_bare"
+    cfg = resolve_device_config(screen, project)["config"]
+    assert bridge_binding(cfg).route == binding_rule.NO_ROUTE
+    assert cfg.get("transport") != "tcp"
+
+
 def test_an_ir_port_is_recorded_as_sending_through_the_bridge():
     project, screen, _label = _bound("ir", "")
     binding = bridge_binding(resolve_device_config(screen, project)["config"])
@@ -424,3 +432,46 @@ async def test_an_ir_device_tests_its_bridge_where_its_driver_dials_now():
     assert result["connection"]["bridge"] == "rack"
     assert result["simulated"] is True
     assert "10.77.0.5:4998" in result["note"]
+
+
+# --- what fixes it --------------------------------------------------------------
+
+
+async def test_giving_the_bridge_an_address_resolves_the_devices_on_it(tmp_path):
+    """The bridge's own Edit Device is where its address is fixed, and that
+    save resolves every device bound through it again: the card's next step
+    is the one that works."""
+    import json
+
+    from openavc.core.engine import Engine
+    from openavc.core.project_loader import load_project
+
+    path = tmp_path / "project.avc"
+    path.write_text(json.dumps({
+        "openavc_version": "0.17.0",
+        "project": {"id": "p", "name": "Bridge record"},
+        "devices": [
+            {"id": "rack", "driver": "acme_bb_bridge", "name": "Rack Bridge", "config": {}},
+            {"id": "screen", "driver": "acme_bb_serial", "name": "Screen", "config": {}},
+        ],
+        "connections": {"screen": {"bridge": "rack", "bridge_port": "serial_1"}},
+    }), encoding="utf-8")
+    engine = Engine(str(path))
+    engine.project = load_project(engine.project_path)
+    engine._running = True
+    engine._schedule_device_bringup = lambda: None  # nothing here is dialled
+
+    def route() -> str:
+        return bridge_binding(engine.devices.get_device_config("screen")["config"]).route
+
+    try:
+        await engine._sync_devices(defer_connect=True)
+        assert route() == binding_rule.NO_HOST
+
+        def give_the_bridge_an_address(project) -> None:
+            project.connections["rack"] = {"host": "192.0.2.40"}
+
+        await engine.apply_project_edit(give_the_bridge_an_address)
+        assert route() == binding_rule.PASSTHROUGH
+    finally:
+        await engine.devices.disconnect_all()
